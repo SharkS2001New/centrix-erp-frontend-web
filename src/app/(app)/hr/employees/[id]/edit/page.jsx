@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError, uploadEmployeePhoto } from "@/lib/api";
 import {
   EmployeeFormPageShell,
   EmployeeFormWizard,
@@ -12,6 +12,7 @@ import {
   syncEmployeePaymentAccounts,
   useEmployeeFormResources,
 } from "@/components/hr/employee-form";
+import { composeEmployeeDisplayName } from "@/components/hr/hr-shared";
 
 export default function EditEmployeePage() {
   const params = useParams();
@@ -21,6 +22,8 @@ export default function EditEmployeePage() {
   const {
     user,
     departments,
+    positions,
+    shifts,
     branches,
     users,
     employees,
@@ -32,6 +35,9 @@ export default function EditEmployeePage() {
   const [form, setForm] = useState(null);
   const [employeeCode, setEmployeeCode] = useState(null);
   const [organizationId, setOrganizationId] = useState(null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [removingPhoto, setRemovingPhoto] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -45,6 +51,8 @@ export default function EditEmployeePage() {
       setOrganizationId(employee.organization_id);
       setEmployeeCode(employee.employee_code);
       setForm(employeeToForm(employee));
+      setPhotoPreview(null);
+      setPhotoFile(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load employee");
     } finally {
@@ -55,6 +63,34 @@ export default function EditEmployeePage() {
   useEffect(() => {
     loadEmployee();
   }, [loadEmployee]);
+
+  useEffect(() => {
+    return () => {
+      if (photoPreview?.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
+    };
+  }, [photoPreview]);
+
+  function onPhotoSelect(file) {
+    if (photoPreview?.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  }
+
+  async function removePhoto() {
+    setRemovingPhoto(true);
+    setFormError(null);
+    try {
+      const updated = await apiRequest(`/employees/${employeeId}/photo`, { method: "DELETE" });
+      setForm((prev) => ({ ...prev, photo_url: updated.photo_url ?? "" }));
+      if (photoPreview?.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
+      setPhotoPreview(null);
+      setPhotoFile(null);
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : "Failed to remove photo");
+    } finally {
+      setRemovingPhoto(false);
+    }
+  }
 
   async function saveEmployee(e) {
     e.preventDefault();
@@ -72,8 +108,11 @@ export default function EditEmployeePage() {
       await syncEmployeePaymentAccounts(
         employeeId,
         form.payment_accounts ?? [],
-        form.full_name,
+        composeEmployeeDisplayName(form),
       );
+      if (photoFile) {
+        await uploadEmployeePhoto(employeeId, photoFile);
+      }
       router.push(`/hr/employees/${employeeId}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
@@ -103,6 +142,7 @@ export default function EditEmployeePage() {
         <EmployeeFormWizard
           mode="edit"
           employeeCode={employeeCode}
+          employeeId={employeeId}
           form={form}
           setForm={setForm}
           onSubmit={saveEmployee}
@@ -110,12 +150,18 @@ export default function EditEmployeePage() {
           formError={formError}
           cancelHref={`/hr/employees/${employeeId}`}
           submitLabel="Save changes"
-          departments={departments}
-          branches={branches}
+            departments={departments}
+            positions={positions}
+            shifts={shifts}
+            branches={branches}
           users={users}
           employees={employees.filter((e) => String(e.id) !== String(employeeId))}
           showBranchSelect={showBranchSelect}
           onCreateDepartment={async () => reload()}
+          photoPreview={photoPreview}
+          onPhotoSelect={onPhotoSelect}
+          onPhotoRemove={removePhoto}
+          removingPhoto={removingPhoto}
         />
       ) : null}
     </EmployeeFormPageShell>

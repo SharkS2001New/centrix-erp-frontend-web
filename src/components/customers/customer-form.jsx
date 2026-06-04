@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, resolveCustomerMediaUrl } from "@/lib/api";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { CustomerLocationSection } from "@/components/customers/customer-location-section";
+import { CustomerShopImageField } from "@/components/customers/customer-shop-image-field";
+import { customerLocationPayload } from "@/lib/customer-location";
 
 export const EMPTY_CUSTOMER_FORM = {
   branch_id: "",
@@ -13,10 +16,13 @@ export const EMPTY_CUSTOMER_FORM = {
   phone_number: "",
   additional_phone: "",
   town: "",
+  latitude: "",
+  longitude: "",
   route_id: "",
   kra_pin: "",
   terms_of_payment: "",
   credit_limit: "",
+  shop_image_url: "",
 };
 
 export function isAdminUser(user) {
@@ -42,13 +48,22 @@ export function customerToForm(customer) {
     additional_phone: customer.additional_phone ?? "",
     town: customer.town ?? "",
     route_id: customer.route_id != null ? String(customer.route_id) : "",
+    latitude:
+      customer.latitude != null && customer.latitude !== ""
+        ? String(customer.latitude)
+        : "",
+    longitude:
+      customer.longitude != null && customer.longitude !== ""
+        ? String(customer.longitude)
+        : "",
     kra_pin: customer.kra_pin ?? "",
     terms_of_payment: customer.terms_of_payment ?? "",
     credit_limit: customer.credit_limit != null ? String(customer.credit_limit) : "",
+    shop_image_url: resolveCustomerMediaUrl(customer.shop_image_url ?? customer.shop_image) ?? "",
   };
 }
 
-export function buildCustomerBody(form, { includeBranch = true } = {}) {
+export function buildCustomerBody(form, { includeBranch = true, includeLocation = true } = {}) {
   const routeId = form.route_id ? Number(form.route_id) : null;
   const body = {
     customer_name: form.customer_name.trim(),
@@ -64,7 +79,19 @@ export function buildCustomerBody(form, { includeBranch = true } = {}) {
   if (includeBranch) {
     body.branch_id = form.branch_id ? Number(form.branch_id) : null;
   }
+  if (includeLocation) {
+    Object.assign(body, customerLocationPayload(form.latitude, form.longitude));
+  }
   return body;
+}
+
+export function validateCustomerLocationFields(form) {
+  try {
+    customerLocationPayload(form.latitude, form.longitude);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : "Invalid location";
+  }
 }
 
 export function updateCustomerFormField(form, key, value) {
@@ -123,6 +150,14 @@ export function CustomerFormFields({
   showBranchSelect,
   onChange,
   customerNum,
+  shopImagePreview,
+  onShopImageSelect,
+  onShopImageRemove,
+  removingShopImage = false,
+  locationError = null,
+  showSaveLocation = false,
+  onSaveLocation,
+  savingLocation = false,
 }) {
   return (
     <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-2 xl:grid-cols-3">
@@ -264,6 +299,24 @@ export function CustomerFormFields({
           className={inputClassName()}
         />
       </Field>
+
+      <CustomerShopImageField
+        customerNum={customerNum}
+        previewUrl={shopImagePreview ?? form.shop_image_url ?? null}
+        onFileSelect={onShopImageSelect}
+        onRemove={onShopImageRemove}
+        removing={removingShopImage}
+      />
+
+      <CustomerLocationSection
+        latitude={form.latitude}
+        longitude={form.longitude}
+        onChange={onChange}
+        locationError={locationError}
+        showSaveButton={showSaveLocation}
+        onSaveLocation={onSaveLocation}
+        savingLocation={savingLocation}
+      />
     </div>
   );
 }

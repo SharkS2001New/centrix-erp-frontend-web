@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+
 export function formatShortDate(value) {
   if (!value) return "—";
   return new Date(value).toLocaleDateString("en-KE", {
@@ -13,6 +16,17 @@ export function formatKesMarkup(value) {
   const n = Number(value ?? 0);
   const formatted = n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `+ KES ${formatted}`;
+}
+
+/** Parse money/decimal fields from forms (handles "2500", "2,500.50", spaces). */
+export function parseDecimalInput(value) {
+  if (value === null || value === undefined || value === "") {
+    return 0;
+  }
+  const cleaned = String(value).replace(/[\s,]/g, "");
+  const n = Number.parseFloat(cleaned);
+
+  return Number.isFinite(n) ? n : 0;
 }
 
 export function formatKesCompact(value) {
@@ -244,14 +258,33 @@ export function UomBadge({ label, variant = "blue" }) {
 }
 
 export function FormModal({ title, open, onClose, onSubmit, saving, error, submitLabel, children }) {
-  if (!open) return null;
-  return (
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!open || !mounted) return null;
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    onSubmit(e);
+  }
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form
-        onSubmit={onSubmit}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="form-modal-title"
         className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+        }}
       >
-        <h2 className="text-[15px] font-medium text-slate-900">{title}</h2>
+        <h2 id="form-modal-title" className="text-[15px] font-medium text-slate-900">
+          {title}
+        </h2>
         <div className="mt-4 space-y-3">{children}</div>
         {error && (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
@@ -265,15 +298,17 @@ export function FormModal({ title, open, onClose, onSubmit, saving, error, submi
             Cancel
           </button>
           <button
-            type="submit"
+            type="button"
             disabled={saving}
+            onClick={handleSubmit}
             className="flex-1 rounded-lg bg-[#185FA5] py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
           >
             {saving ? "Saving…" : submitLabel}
           </button>
         </div>
-      </form>
-    </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -314,8 +349,10 @@ export function FormDrawer({
             <DrawerCloseIcon />
           </button>
         </div>
-        <form onSubmit={onSubmit} className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 space-y-3.5 overflow-y-auto px-5 py-4">{children}</div>
+        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-5 py-4 [overflow-anchor:none]">
+            {children}
+          </div>
           {error && (
             <p className="mx-5 mb-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
           )}
@@ -329,6 +366,62 @@ export function FormDrawer({
             </button>
           </div>
         </form>
+      </aside>
+    </>
+  );
+}
+
+/** Right-side read-only panel (detail / breakdown), same shell as FormDrawer. */
+export function DetailDrawer({
+  title,
+  subtitle,
+  open,
+  onClose,
+  wide = false,
+  children,
+  footer,
+}) {
+  if (!open) return null;
+  return (
+    <>
+      <button
+        type="button"
+        className="fixed inset-0 z-40 bg-black/30"
+        aria-label="Close panel"
+        onClick={onClose}
+      />
+      <aside
+        className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-slate-200 bg-white shadow-xl ${
+          wide ? "max-w-lg" : "max-w-md"
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-medium text-slate-900">{title}</h2>
+            {subtitle ? (
+              <p className="mt-0.5 truncate text-sm text-slate-500">{subtitle}</p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            aria-label="Close"
+          >
+            <DrawerCloseIcon />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        {footer ? <div className="border-t border-slate-200 px-5 py-4">{footer}</div> : null}
+        <div className="border-t border-slate-200 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-lg border border-slate-200 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Close
+          </button>
+        </div>
       </aside>
     </>
   );

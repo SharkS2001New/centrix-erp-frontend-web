@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError, uploadCustomerShopImage } from "@/lib/api";
 import {
   buildCustomerBody,
   CustomerFormCard,
@@ -13,6 +13,7 @@ import {
   resolveFormBranchId,
   updateCustomerFormField,
   useCustomerFormResources,
+  validateCustomerLocationFields,
 } from "@/components/customers/customer-form";
 
 export default function NewCustomerPage() {
@@ -21,6 +22,9 @@ export default function NewCustomerPage() {
     useCustomerFormResources();
 
   const [form, setForm] = useState(EMPTY_CUSTOMER_FORM);
+  const [shopImageFile, setShopImageFile] = useState(null);
+  const [shopImagePreview, setShopImagePreview] = useState(null);
+  const [locationError, setLocationError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
@@ -30,14 +34,37 @@ export default function NewCustomerPage() {
     }
   }, [loading, defaultBranch]);
 
+  useEffect(() => {
+    return () => {
+      if (shopImagePreview?.startsWith("blob:")) {
+        URL.revokeObjectURL(shopImagePreview);
+      }
+    };
+  }, [shopImagePreview]);
+
   function updateField(key, value) {
+    setLocationError(null);
     setForm((prev) => updateCustomerFormField(prev, key, value));
+  }
+
+  function onShopImageSelect(file) {
+    if (shopImagePreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(shopImagePreview);
+    }
+    setShopImageFile(file);
+    setShopImagePreview(URL.createObjectURL(file));
   }
 
   async function saveCustomer(e) {
     e.preventDefault();
     if (!user?.organization_id) {
       setFormError("Your user profile is missing organization.");
+      return;
+    }
+
+    const locErr = validateCustomerLocationFields(form);
+    if (locErr) {
+      setLocationError(locErr);
       return;
     }
 
@@ -49,6 +76,7 @@ export default function NewCustomerPage() {
 
     setSaving(true);
     setFormError(null);
+    setLocationError(null);
     try {
       const created = await apiRequest("/customers", {
         method: "POST",
@@ -59,6 +87,9 @@ export default function NewCustomerPage() {
           created_by: user.id,
         },
       });
+      if (shopImageFile) {
+        await uploadCustomerShopImage(created.customer_num, shopImageFile);
+      }
       router.push(`/customers/${created.customer_num}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
@@ -108,6 +139,9 @@ export default function NewCustomerPage() {
             branches={branches}
             showBranchSelect={showBranchSelect}
             onChange={updateField}
+            shopImagePreview={shopImagePreview}
+            onShopImageSelect={onShopImageSelect}
+            locationError={locationError}
           />
         </CustomerFormCard>
       )}

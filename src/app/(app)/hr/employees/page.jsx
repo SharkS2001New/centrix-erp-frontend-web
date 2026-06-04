@@ -17,7 +17,10 @@ import {
 } from "@/components/catalog/catalog-shared";
 import {
   EmployeeStatusBadge,
+  composeEmployeeDisplayName,
   formatHrKesFull,
+  formatShiftExpectedHours,
+  formatWorkShiftLabel,
 } from "@/components/hr/hr-shared";
 
 const PAGE_SIZE = 10;
@@ -75,7 +78,7 @@ export default function HrEmployeesPage() {
       if (statusFilter === "inactive" && e.is_active !== false) return false;
       if (deptFilter !== "all" && String(e.department_id) !== deptFilter) return false;
       if (q) {
-        const hay = `${e.full_name} ${e.employee_code} ${e.job_title} ${e.email}`.toLowerCase();
+        const hay = `${e.full_name} ${e.first_name} ${e.middle_name} ${e.last_name} ${e.employee_code} ${e.job_title} ${e.email}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -95,7 +98,7 @@ export default function HrEmployeesPage() {
   }, [page, safePage]);
 
   async function deleteEmployee(employee) {
-    if (!window.confirm(`Delete employee "${employee.full_name}"?`)) return;
+    if (!window.confirm(`Delete employee "${composeEmployeeDisplayName(employee)}"?`)) return;
     try {
       await apiRequest(`/employees/${employee.id}`, { method: "DELETE" });
       await loadData();
@@ -166,11 +169,12 @@ export default function HrEmployeesPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[780px] border-collapse text-sm">
+              <table className="w-full min-w-[960px] border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
                     <th className="px-4 py-2.5">Employee</th>
                     <th className="px-4 py-2.5">Department</th>
+                    <th className="px-4 py-2.5">Shift</th>
                     <th className="px-4 py-2.5">Branch</th>
                     <th className="px-4 py-2.5">Position</th>
                     <th className="px-4 py-2.5 text-right">Salary</th>
@@ -181,7 +185,7 @@ export default function HrEmployeesPage() {
                 <tbody>
                   {pageSlice.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
                         No employees found.
                       </td>
                     </tr>
@@ -196,7 +200,7 @@ export default function HrEmployeesPage() {
                             href={`/hr/employees/${employee.id}`}
                             className="font-medium text-[#185FA5] hover:underline"
                           >
-                            {employee.full_name}
+                            {composeEmployeeDisplayName(employee)}
                           </Link>
                           <p className="text-xs text-slate-500">{employee.employee_code}</p>
                         </td>
@@ -204,6 +208,18 @@ export default function HrEmployeesPage() {
                           {employee.department?.department_name ??
                             deptById.get(employee.department_id)?.department_name ??
                             "—"}
+                        </td>
+                        <td className="px-4 py-3 text-slate-700">
+                          {employee.shift ? (
+                            <>
+                              <span className="block">{formatWorkShiftLabel(employee.shift)}</span>
+                              <span className="text-xs text-slate-500">
+                                {formatShiftExpectedHours(employee.shift)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-amber-700">Not assigned</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-slate-700">
                           {employee.branch?.branch_name ?? "—"}

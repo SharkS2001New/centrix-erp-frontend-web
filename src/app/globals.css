@@ -14,3 +14,14 @@ button,
 textarea {
   font: inherit;
 }
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  font: inherit;
+}
+
+.customer-map-pin-icon {
+  background: transparent !important;
+  border: none !important;
+}

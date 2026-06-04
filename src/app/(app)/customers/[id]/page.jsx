@@ -5,10 +5,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
+import { CustomerLocationSection } from "@/components/customers/customer-location-section";
 import {
   customerInitials,
   formatCustomerKes,
 } from "@/components/customers/customer-form";
+import { CustomerShopImageDisplay } from "@/components/customers/customer-shop-image-display";
+import { hasValidCustomerLocation } from "@/lib/customer-location";
 import {
   indexProductsByCode,
   saleLineProductLabel,
@@ -134,10 +137,21 @@ export default function CustomerDetailPage() {
       {loading ? (
         <p className="text-sm text-slate-500">Loading customer…</p>
       ) : customer ? (
-        <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="grid gap-6 lg:grid-cols-[minmax(480px,42%)_minmax(0,1fr)] xl:grid-cols-[minmax(560px,45%)_minmax(0,1fr)]">
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
             <div className="flex flex-col items-center text-center">
-              <CustomerAvatar name={customer.customer_name} />
+              {customer.shop_image || customer.shop_image_url ? (
+                <div className="h-28 w-28 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm">
+                  <CustomerShopImageDisplay
+                    customerNum={customer.customer_num}
+                    imageUrl={customer.shop_image_url ?? customer.shop_image}
+                    alt={`${customer.customer_name} shop`}
+                    className="h-28 w-28 object-cover"
+                  />
+                </div>
+              ) : (
+                <CustomerAvatar name={customer.customer_name} large />
+              )}
               <h2 className="mt-4 text-lg font-semibold text-slate-900">
                 {customer.customer_name}
               </h2>
@@ -171,8 +185,22 @@ export default function CustomerDetailPage() {
                 </dd>
               </div>
             </dl>
+
+            {hasValidCustomerLocation(customer.latitude, customer.longitude) ? (
+              <div className="mt-6 border-t border-slate-200 pt-5">
+                <CustomerLocationSection
+                  latitude={customer.latitude}
+                  longitude={customer.longitude}
+                  onChange={() => {}}
+                  readOnly
+                  mapModalTitle={customer.customer_name}
+                  mapModalSubtitle={`Customer #${customer.customer_num}`}
+                />
+              </div>
+            ) : null}
           </div>
 
+          <div className="space-y-4">
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
               <h3 className="text-[15px] font-medium text-slate-900">Recent orders</h3>
@@ -286,15 +314,20 @@ export default function CustomerDetailPage() {
               </ul>
             )}
           </div>
+          </div>
         </div>
       ) : null}
     </div>
   );
 }
 
-function CustomerAvatar({ name }) {
+function CustomerAvatar({ name, large = false }) {
   return (
-    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#E6F1FB] text-xl font-semibold text-[#0C447C]">
+    <div
+      className={`flex items-center justify-center rounded-full bg-[#E6F1FB] font-semibold text-[#0C447C] ${
+        large ? "h-28 w-28 text-2xl" : "h-20 w-20 text-xl"
+      }`}
+    >
       {customerInitials(name)}
     </div>
   );

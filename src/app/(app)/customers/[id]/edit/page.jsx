@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError, resolveCustomerMediaUrl, uploadCustomerShopImage } from "@/lib/api";
+import { customerLocationPayload } from "@/lib/customer-location";
 import {
   buildCustomerBody,
   CustomerFormCard,
@@ -13,6 +14,7 @@ import {
   resolveFormBranchId,
   updateCustomerFormField,
   useCustomerFormResources,
+  validateCustomerLocationFields,
 } from "@/components/customers/customer-form";
 
 export default function EditCustomerPage() {
@@ -24,8 +26,13 @@ export default function EditCustomerPage() {
     useCustomerFormResources();
 
   const [form, setForm] = useState(null);
+  const [shopImageFile, setShopImageFile] = useState(null);
+  const [shopImagePreview, setShopImagePreview] = useState(null);
+  const [locationError, setLocationError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingLocation, setSavingLocation] = useState(false);
+  const [removingShopImage, setRemovingShopImage] = useState(false);
   const [error, setError] = useState(null);
   const [formError, setFormError] = useState(null);
 
@@ -35,6 +42,8 @@ export default function EditCustomerPage() {
     try {
       const customer = await apiRequest(`/customers/${customerNum}`);
       setForm(customerToForm(customer));
+      setShopImagePreview(null);
+      setShopImageFile(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load customer");
     } finally {
@@ -46,12 +55,86 @@ export default function EditCustomerPage() {
     loadCustomer();
   }, [loadCustomer]);
 
+  useEffect(() => {
+    return () => {
+      if (shopImagePreview?.startsWith("blob:")) {
+        URL.revokeObjectURL(shopImagePreview);
+      }
+    };
+  }, [shopImagePreview]);
+
   function updateField(key, value) {
+    setLocationError(null);
     setForm((prev) => updateCustomerFormField(prev, key, value));
+  }
+
+  function onShopImageSelect(file) {
+    if (shopImagePreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(shopImagePreview);
+    }
+    setShopImageFile(file);
+    setShopImagePreview(URL.createObjectURL(file));
+  }
+
+  async function removeShopImage() {
+    setRemovingShopImage(true);
+    setFormError(null);
+    try {
+      const updated = await apiRequest(`/customers/${customerNum}/shop-image`, {
+        method: "DELETE",
+      });
+      setForm((prev) => ({
+        ...prev,
+        shop_image_url: resolveCustomerMediaUrl(updated.shop_image_url ?? updated.shop_image) ?? "",
+      }));
+      if (shopImagePreview?.startsWith("blob:")) {
+        URL.revokeObjectURL(shopImagePreview);
+      }
+      setShopImagePreview(null);
+      setShopImageFile(null);
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : "Failed to remove photo");
+    } finally {
+      setRemovingShopImage(false);
+    }
+  }
+
+  async function saveLocationOnly() {
+    const locErr = validateCustomerLocationFields(form);
+    if (locErr) {
+      setLocationError(locErr);
+      return;
+    }
+
+    setSavingLocation(true);
+    setLocationError(null);
+    try {
+      const updated = await apiRequest(`/customers/${customerNum}`, {
+        method: "PUT",
+        body: customerLocationPayload(form.latitude, form.longitude),
+      });
+      setForm((prev) => ({
+        ...prev,
+        latitude:
+          updated.latitude != null ? String(updated.latitude) : "",
+        longitude:
+          updated.longitude != null ? String(updated.longitude) : "",
+      }));
+    } catch (err) {
+      setLocationError(err instanceof ApiError ? err.message : "Failed to save location");
+    } finally {
+      setSavingLocation(false);
+    }
   }
 
   async function saveCustomer(e) {
     e.preventDefault();
+
+    const locErr = validateCustomerLocationFields(form);
+    if (locErr) {
+      setLocationError(locErr);
+      return;
+    }
 
     const branchId = resolveFormBranchId(form, user, branches, showBranchSelect);
     if (!branchId) {
@@ -61,6 +144,7 @@ export default function EditCustomerPage() {
 
     setSaving(true);
     setFormError(null);
+    setLocationError(null);
     try {
       await apiRequest(`/customers/${customerNum}`, {
         method: "PUT",
@@ -69,6 +153,14 @@ export default function EditCustomerPage() {
           branch_id: branchId,
         },
       });
+      if (shopImageFile) {
+        const withImage = await uploadCustomerShopImage(customerNum, shopImageFile);
+        setForm((prev) => ({
+          ...prev,
+          shop_image_url:
+            resolveCustomerMediaUrl(withImage.shop_image_url ?? withImage.shop_image) ?? "",
+        }));
+      }
       router.push(`/customers/${customerNum}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
@@ -84,7 +176,7 @@ export default function EditCustomerPage() {
       backHref={`/customers/${customerNum}`}
       backLabel="← Back to profile"
       title="Edit customer"
-      subtitle="Update customer details and save changes"
+      subtitle="Update customer details, shop photo, and GPS location"
     >
       {error && (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -127,6 +219,16 @@ export default function EditCustomerPage() {
             showBranchSelect={showBranchSelect}
             onChange={updateField}
             customerNum={customerNum}
+            shopImagePreview={shopImagePreview}
+            onShopImageSelect={onShopImageSelect}
+            onShopImageRemove={
+              form.shop_image_url || shopImagePreview ? removeShopImage : undefined
+            }
+            removingShopImage={removingShopImage}
+            locationError={locationError}
+            showSaveLocation
+            onSaveLocation={saveLocationOnly}
+            savingLocation={savingLocation}
           />
         </CustomerFormCard>
       ) : null}

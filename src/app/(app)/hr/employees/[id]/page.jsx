@@ -8,13 +8,22 @@ import { StatCard, formatShortDate } from "@/components/catalog/catalog-shared";
 import {
   EmployeeStatusBadge,
   employeeBankAccounts,
+  composeEmployeeDisplayName,
   employeeInitials,
   formatHrKesFull,
   formatPaymentAccountSummary,
-  kenyaStatutoryRows,
+  formatShiftExpectedHours,
+  formatWorkShiftLabel,
+  defaultPayrollAllowances,
+  payrollBreakdownRows,
   paymentMethodLabel,
   sumEmployeeYtd,
 } from "@/components/hr/hr-shared";
+import { EmployeeDocuments } from "@/components/hr/employee-documents";
+import {
+  EntityPhotoDisplay,
+  employeePhotoFileUrl,
+} from "@/components/media/entity-photo-display";
 
 export default function EmployeeProfilePage() {
   const params = useParams();
@@ -41,10 +50,29 @@ export default function EmployeeProfilePage() {
       setPayrollRuns(runsRes.data ?? []);
 
       if (Number(emp.base_salary) > 0) {
+        const basic = Number(emp.base_salary);
+        let allowances = defaultPayrollAllowances(basic, emp);
+        try {
+          const allowRes = await apiRequest("/employee-allowances", {
+            searchParams: { employee_id: employeeId, per_page: 50 },
+          });
+          const lines = (allowRes.data ?? []).filter((a) => a.is_active !== false);
+          if (lines.length > 0) {
+            allowances = lines.reduce((s, a) => s + Number(a.amount ?? 0), 0);
+          }
+        } catch {
+          /* use default */
+        }
+        const gross = basic + allowances;
         const preview = await apiRequest("/payroll/calculate", {
-          searchParams: { gross_pay: emp.base_salary },
+          searchParams: { gross_pay: gross },
         });
-        setSalaryPreview(preview);
+        setSalaryPreview({
+          ...preview,
+          basic_salary: basic,
+          allowances,
+          gross_pay: gross,
+        });
       } else {
         setSalaryPreview(null);
       }
@@ -98,11 +126,25 @@ export default function EmployeeProfilePage() {
         <>
           <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#EEEDFE] text-lg font-semibold text-[#3C3489]">
-                {employeeInitials(employee.full_name)}
-              </div>
+              {employee.photo_path || employee.photo_url ? (
+                <div className="h-14 w-14 overflow-hidden rounded-full border border-slate-200 bg-slate-50">
+                  <EntityPhotoDisplay
+                    fileUrl={employeePhotoFileUrl(employee.id)}
+                    imageUrl={employee.photo_url ?? employee.photo_path}
+                    alt={composeEmployeeDisplayName(employee)}
+                    className="h-14 w-14 object-cover"
+                    placeholderClassName="flex h-full w-full items-center justify-center text-lg font-semibold text-[#3C3489]"
+                  />
+                </div>
+              ) : (
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#EEEDFE] text-lg font-semibold text-[#3C3489]">
+                  {employeeInitials(composeEmployeeDisplayName(employee))}
+                </div>
+              )}
               <div>
-                <h1 className="text-xl font-medium text-slate-900">{employee.full_name}</h1>
+                <h1 className="text-xl font-medium text-slate-900">
+                  {composeEmployeeDisplayName(employee)}
+                </h1>
                 <p className="font-mono text-sm text-slate-500">
                   {employee.employee_code}
                   {employee.payroll_number && employee.payroll_number !== employee.employee_code
@@ -124,15 +166,48 @@ export default function EmployeeProfilePage() {
               <h2 className="text-[15px] font-medium text-slate-900">Employment</h2>
               <dl className="mt-4 space-y-3 text-sm">
                 <DetailRow label="Department" value={employee.department?.department_name ?? "—"} />
+                <DetailRow
+                  label="Position"
+                  value={employee.position?.position_title ?? "—"}
+                />
+                <DetailRow
+                  label="Work shift"
+                  value={
+                    employee.shift ? (
+                      <span className="block text-right">
+                        <span className="block font-medium text-slate-800">
+                          {formatWorkShiftLabel(employee.shift)}
+                        </span>
+                        <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                          {formatShiftExpectedHours(employee.shift)}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-amber-700">Not assigned</span>
+                    )
+                  }
+                />
                 <DetailRow label="Branch" value={employee.branch?.branch_name ?? "—"} />
                 <DetailRow label="Job title" value={employee.job_title || "—"} />
                 <DetailRow label="Type" value={employee.employment_type ?? "—"} />
                 <DetailRow
                   label="Manager"
-                  value={employee.reports_to?.full_name ?? "—"}
+                  value={
+                    employee.reports_to
+                      ? composeEmployeeDisplayName(employee.reports_to)
+                      : "—"
+                  }
                 />
                 <DetailRow label="Hired" value={formatShortDate(employee.hire_date)} />
                 <DetailRow label="Basic salary" value={formatHrKesFull(employee.base_salary)} />
+                <DetailRow
+                  label="Allowances"
+                  value={
+                    <Link href="/hr/allowances" className="text-[#185FA5] hover:underline">
+                      View on Allowances →
+                    </Link>
+                  }
+                />
                 <div className="flex items-center justify-between gap-4 border-t border-slate-100 pt-3">
                   <dt className="text-slate-500">Status</dt>
                   <dd>
@@ -167,20 +242,21 @@ export default function EmployeeProfilePage() {
                   Estimated monthly net (Kenya {salaryPreview.effective_label})
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Based on basic salary; actual payroll may include other deductions.
+                  Preview uses basic salary plus default 10% allowances (same as payroll generate).
+                  Statutory numbers on processed runs may differ if allowances are turned off.
                 </p>
                 <dl className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {kenyaStatutoryRows(salaryPreview)
-                    .filter((r) => !r.muted)
-                    .map((row) => (
-                      <div
-                        key={row.label}
-                        className="flex justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm"
-                      >
-                        <span className="text-slate-500">{row.label}</span>
-                        <span className="font-medium">{formatHrKesFull(row.value)}</span>
-                      </div>
-                    ))}
+                  {payrollBreakdownRows(salaryPreview, employee).map((row) => (
+                    <div
+                      key={row.label}
+                      className={`flex justify-between gap-2 rounded-lg px-3 py-2 text-sm ${
+                        row.muted ? "bg-slate-50/80 text-slate-500" : "bg-slate-50"
+                      }`}
+                    >
+                      <span className="text-slate-500">{row.label}</span>
+                      <span className="font-medium">{formatHrKesFull(row.value)}</span>
+                    </div>
+                  ))}
                 </dl>
               </div>
             )}
@@ -230,16 +306,83 @@ export default function EmployeeProfilePage() {
               </dl>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-[15px] font-medium text-slate-900">Payroll history</h2>
+            <EmployeeDocuments employeeId={employee.id} />
+
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-[15px] font-medium text-slate-900">Payroll history</h2>
+                <Link
+                  href="/hr/payroll"
+                  className="text-sm font-medium text-[#185FA5] hover:text-[#144f8a]"
+                >
+                  Open payroll →
+                </Link>
+              </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <StatCard label="YTD net paid" value={formatHrKesFull(ytdEarnings)} />
                 <StatCard
                   label="Last run"
-                  value={lastPayroll ? formatShortDate(lastPayroll.run_date) : "—"}
+                  value={
+                    lastPayroll
+                      ? formatShortDate(lastPayroll.run_date)
+                      : "—"
+                  }
                 />
                 <StatCard label="Pay lines" value={String(payrollLines.length)} />
               </div>
+              {lastPayroll && (
+                <p className="mt-3 text-sm text-slate-600">
+                  <Link
+                    href={`/hr/payroll/runs/${lastPayroll.id}`}
+                    className="font-medium text-[#185FA5] hover:text-[#144f8a]"
+                  >
+                    View last payroll run
+                  </Link>
+                </p>
+              )}
+              {payrollLines.length > 0 && (
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full min-w-[480px] border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
+                        <th className="py-2 pr-4">Run</th>
+                        <th className="py-2 pr-4 text-right">Gross</th>
+                        <th className="py-2 text-right">Net</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...payrollLines]
+                        .sort((a, b) => b.id - a.id)
+                        .slice(0, 6)
+                        .map((line) => {
+                          const run = payrollRuns.find((r) => r.id === line.payroll_run_id);
+                          return (
+                            <tr key={line.id} className="border-b border-slate-100">
+                              <td className="py-2 pr-4 text-slate-800">
+                                {run ? (
+                                  <Link
+                                    href={`/hr/payroll/runs/${run.id}`}
+                                    className="text-[#185FA5] hover:text-[#144f8a]"
+                                  >
+                                    {formatShortDate(run.run_date)}
+                                  </Link>
+                                ) : (
+                                  `Run #${line.payroll_run_id}`
+                                )}
+                              </td>
+                              <td className="py-2 pr-4 text-right">
+                                {formatHrKesFull(line.gross_pay)}
+                              </td>
+                              <td className="py-2 text-right font-medium">
+                                {formatHrKesFull(line.net_pay)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         </>

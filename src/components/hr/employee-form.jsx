@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { Field, FormModal, inputClassName } from "@/components/catalog/catalog-shared";
+import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
+import { EntityPhotoField } from "@/components/media/entity-photo-field";
+import { employeePhotoFileUrl } from "@/components/media/entity-photo-display";
 import {
   EMPTY_DEPARTMENT_FORM,
   EMPTY_EMPLOYEE_FORM,
@@ -18,6 +21,7 @@ import {
   buildDepartmentBody,
   buildEmployeeBody,
   buildPaymentAccountApiBody,
+  composeEmployeeDisplayName,
   createEmptyPaymentAccount,
   employeeToForm,
   isEmployeeTabComplete,
@@ -42,6 +46,8 @@ export {
 export function useEmployeeFormResources() {
   const { user } = useAuth();
   const [departments, setDepartments] = useState([]);
+  const [positions, setPositions] = useState([]);
+  const [shifts, setShifts] = useState([]);
   const [branches, setBranches] = useState([]);
   const [users, setUsers] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -50,14 +56,18 @@ export function useEmployeeFormResources() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [deptRes, branchRes, userRes, empRes] = await Promise.all([
+      const [deptRes, posRes, shiftRes, branchRes, userRes, empRes] = await Promise.all([
         apiRequest("/departments", { searchParams: { per_page: 200 } }),
+        apiRequest("/positions", { searchParams: { per_page: 200 } }),
+        apiRequest("/work-shifts", { searchParams: { per_page: 200 } }),
         apiRequest("/branches", { searchParams: { per_page: 200 } }),
         apiRequest("/users", { searchParams: { per_page: 200 } }),
         apiRequest("/employees", { searchParams: { per_page: 200 } }),
       ]);
       const orgId = user?.organization_id;
       setDepartments(deptRes.data ?? []);
+      setPositions(posRes.data ?? []);
+      setShifts(shiftRes.data ?? []);
       setBranches(
         (branchRes.data ?? []).filter((b) => !orgId || b.organization_id === orgId),
       );
@@ -82,6 +92,8 @@ export function useEmployeeFormResources() {
   return {
     user,
     departments,
+    positions,
+    shifts,
     branches,
     users,
     employees,
@@ -178,11 +190,18 @@ export function EmployeeFormWizard({
   cancelHref,
   submitLabel = "Save employee",
   departments,
+  positions = [],
+  shifts = [],
   branches,
   users,
   employees = [],
   showBranchSelect,
   onCreateDepartment,
+  employeeId = null,
+  photoPreview = null,
+  onPhotoSelect,
+  onPhotoRemove,
+  removingPhoto = false,
 }) {
   const [tabIndex, setTabIndex] = useState(0);
   const [tabErrors, setTabErrors] = useState({});
@@ -346,6 +365,7 @@ export function EmployeeFormWizard({
   }
 
   return (
+    <>
     <form
       onSubmit={handleSubmit}
       className="flex h-full min-h-[min(640px,calc(100vh-12rem))] w-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm"
@@ -391,20 +411,50 @@ export function EmployeeFormWizard({
       <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto p-6 md:grid-cols-2 md:p-8 xl:grid-cols-3">
         {currentTab.id === "identity" && (
           <>
-            <div className="md:col-span-2 xl:col-span-3">
-              <Field label="Full name">
-                <input
-                  type="text"
-                  value={form.full_name}
-                  onChange={(e) => updateField("full_name", e.target.value)}
-                  required
-                  autoFocus
-                  className={inputClassName()}
-                  placeholder="e.g. John Kamau Mwangi"
-                />
-                <FieldError message={tabErrors.full_name} />
-              </Field>
-            </div>
+            {onPhotoSelect ? (
+              <EntityPhotoField
+                label="Employee photo"
+                fileUrl={employeeId ? employeePhotoFileUrl(employeeId) : null}
+                previewUrl={photoPreview ?? form.photo_url ?? null}
+                onFileSelect={onPhotoSelect}
+                onRemove={
+                  form.photo_url || photoPreview ? onPhotoRemove : undefined
+                }
+                removing={removingPhoto}
+              />
+            ) : null}
+            <Field label="First name">
+              <input
+                type="text"
+                value={form.first_name}
+                onChange={(e) => updateField("first_name", e.target.value)}
+                required
+                autoFocus
+                className={inputClassName()}
+                placeholder="John"
+              />
+              <FieldError message={tabErrors.first_name} />
+            </Field>
+            <Field label="Middle name">
+              <input
+                type="text"
+                value={form.middle_name}
+                onChange={(e) => updateField("middle_name", e.target.value)}
+                className={inputClassName()}
+                placeholder="Kamau"
+              />
+            </Field>
+            <Field label="Last name">
+              <input
+                type="text"
+                value={form.last_name}
+                onChange={(e) => updateField("last_name", e.target.value)}
+                required
+                className={inputClassName()}
+                placeholder="Mwangi"
+              />
+              <FieldError message={tabErrors.last_name} />
+            </Field>
             <LockedValue label="Nationality" value={LOCKED_NATIONALITY} hint="Kenya only for now" />
             <Field label="National ID">
               <input
@@ -533,35 +583,31 @@ export function EmployeeFormWizard({
           <>
             {showBranchSelect ? (
               <Field label="Branch">
-                <select
+                <HrSearchableSelect
                   value={form.branch_id}
-                  onChange={(e) => updateField("branch_id", e.target.value)}
-                  className={inputClassName()}
-                >
-                  <option value="">Select branch</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={String(b.id)}>
-                      {b.branch_name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => updateField("branch_id", v)}
+                  options={branches.map((b) => ({
+                    value: String(b.id),
+                    label: b.branch_name,
+                  }))}
+                  placeholder="Search branch…"
+                />
                 <FieldError message={tabErrors.branch_id} />
               </Field>
             ) : null}
             <Field label="Department">
               <div className="flex gap-2">
-                <select
-                  value={form.department_id}
-                  onChange={(e) => updateField("department_id", e.target.value)}
-                  className={`${inputClassName()} min-w-0 flex-1`}
-                >
-                  <option value="">Select department</option>
-                  {departments.map((d) => (
-                    <option key={d.id} value={String(d.id)}>
-                      {d.department_name}
-                    </option>
-                  ))}
-                </select>
+                <div className="min-w-0 flex-1">
+                  <HrSearchableSelect
+                    value={form.department_id}
+                    onChange={(v) => updateField("department_id", v)}
+                    options={departments.map((d) => ({
+                      value: String(d.id),
+                      label: d.department_name,
+                    }))}
+                    placeholder="Search department…"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => {
@@ -577,6 +623,32 @@ export function EmployeeFormWizard({
               </div>
               <FieldError message={tabErrors.department_id} />
             </Field>
+            <Field label="Position">
+              <HrSearchableSelect
+                value={form.position_id}
+                onChange={(v) => updateField("position_id", v)}
+                options={positions.map((p) => ({
+                  value: String(p.id),
+                  label: p.position_title,
+                }))}
+                placeholder="Search position…"
+              />
+            </Field>
+            <Field label="Work shift" required>
+              <HrSearchableSelect
+                value={form.shift_id}
+                onChange={(v) => updateField("shift_id", v)}
+                options={shifts.map((s) => ({
+                  value: String(s.id),
+                  label: `${s.shift_name} (${String(s.start_time).slice(0, 5)}–${String(s.end_time).slice(0, 5)})`,
+                }))}
+                placeholder="Search shift…"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Required for payroll, attendance, and overtime. Controls weekends and holidays.
+              </p>
+              <FieldError message={tabErrors.shift_id} />
+            </Field>
             <Field label="Job title">
               <input
                 type="text"
@@ -584,6 +656,7 @@ export function EmployeeFormWizard({
                 onChange={(e) => updateField("job_title", e.target.value)}
                 required
                 className={inputClassName()}
+                placeholder="e.g. Sales Manager"
               />
               <FieldError message={tabErrors.job_title} />
             </Field>
@@ -624,32 +697,26 @@ export function EmployeeFormWizard({
               <FieldError message={tabErrors.hire_date} />
             </Field>
             <Field label="Reporting manager">
-              <select
+              <HrSearchableSelect
                 value={form.reports_to_employee_id}
-                onChange={(e) => updateField("reports_to_employee_id", e.target.value)}
-                className={inputClassName()}
-              >
-                <option value="">None</option>
-                {employees.map((e) => (
-                  <option key={e.id} value={String(e.id)}>
-                    {e.full_name}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => updateField("reports_to_employee_id", v)}
+                options={employees.map((e) => ({
+                  value: String(e.id),
+                  label: e.full_name ?? composeEmployeeDisplayName(e),
+                }))}
+                placeholder="Search employee…"
+              />
             </Field>
             <Field label="Linked system user">
-              <select
+              <HrSearchableSelect
                 value={form.user_id}
-                onChange={(e) => updateField("user_id", e.target.value)}
-                className={inputClassName()}
-              >
-                <option value="">None</option>
-                {users.map((u) => (
-                  <option key={u.id} value={String(u.id)}>
-                    {u.full_name ?? u.username}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => updateField("user_id", v)}
+                options={users.map((u) => ({
+                  value: String(u.id),
+                  label: u.full_name ?? u.username,
+                }))}
+                placeholder="Search user…"
+              />
             </Field>
             <Field label="Confirmation date">
               <input
@@ -693,7 +760,7 @@ export function EmployeeFormWizard({
                 onUpdate={(patch) => updatePaymentAccount(index, patch)}
                 onRemove={() => removePaymentAccount(index)}
                 onSetPrimary={() => setPrimaryPayment(index)}
-                suggestAccountName={form.full_name?.trim()}
+                suggestAccountName={composeEmployeeDisplayName(form)}
               />
             ))}
             <button
@@ -721,6 +788,10 @@ export function EmployeeFormWizard({
               />
               <FieldError message={tabErrors.base_salary} />
             </Field>
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              Add housing, transport, and other monthly allowances under{" "}
+              <strong>HR → Allowances</strong>. Payroll sums active allowance lines per employee.
+            </p>
             <Field label="Pay frequency">
               <select
                 value={form.pay_frequency}
@@ -814,41 +885,63 @@ export function EmployeeFormWizard({
           )}
         </div>
       </div>
-
-      <FormModal
-        title="Create department"
-        open={deptModalOpen}
-        onClose={() => {
-          setDeptModalOpen(false);
-          setDeptError(null);
-        }}
-        onSubmit={createDepartment}
-        saving={deptSaving}
-        error={deptError}
-        submitLabel="Create department"
-      >
-        <Field label="Department name">
-          <input
-            type="text"
-            value={deptForm.department_name}
-            onChange={(e) => setDeptForm((p) => ({ ...p, department_name: e.target.value }))}
-            required
-            autoFocus
-            className={inputClassName()}
-          />
-        </Field>
-        <Field label="Department code (optional)">
-          <input
-            type="text"
-            value={deptForm.department_code}
-            onChange={(e) =>
-              setDeptForm((p) => ({ ...p, department_code: e.target.value.toUpperCase() }))
-            }
-            className={`${inputClassName()} font-mono`}
-          />
-        </Field>
-      </FormModal>
     </form>
+    <EmployeeDepartmentModal
+      open={deptModalOpen}
+      onClose={() => {
+        setDeptModalOpen(false);
+        setDeptError(null);
+      }}
+      deptForm={deptForm}
+      setDeptForm={setDeptForm}
+      deptError={deptError}
+      deptSaving={deptSaving}
+      onSubmit={createDepartment}
+    />
+    </>
+  );
+}
+
+function EmployeeDepartmentModal({
+  open,
+  onClose,
+  deptForm,
+  setDeptForm,
+  deptError,
+  deptSaving,
+  onSubmit,
+}) {
+  return (
+    <FormModal
+      title="Create department"
+      open={open}
+      onClose={onClose}
+      onSubmit={onSubmit}
+      saving={deptSaving}
+      error={deptError}
+      submitLabel="Create department"
+    >
+      <Field label="Department name">
+        <input
+          type="text"
+          value={deptForm.department_name}
+          onChange={(e) => setDeptForm((p) => ({ ...p, department_name: e.target.value }))}
+          required
+          autoFocus
+          className={inputClassName()}
+        />
+      </Field>
+      <Field label="Department code (optional)">
+        <input
+          type="text"
+          value={deptForm.department_code}
+          onChange={(e) =>
+            setDeptForm((p) => ({ ...p, department_code: e.target.value.toUpperCase() }))
+          }
+          className={`${inputClassName()} font-mono`}
+        />
+      </Field>
+    </FormModal>
   );
 }
 

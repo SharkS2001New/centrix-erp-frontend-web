@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError, uploadEmployeePhoto } from "@/lib/api";
 import {
   EMPTY_EMPLOYEE_FORM,
   EmployeeFormPageShell,
@@ -12,12 +12,15 @@ import {
   syncEmployeePaymentAccounts,
   useEmployeeFormResources,
 } from "@/components/hr/employee-form";
+import { composeEmployeeDisplayName } from "@/components/hr/hr-shared";
 
 export default function NewEmployeePage() {
   const router = useRouter();
   const {
     user,
     departments,
+    positions,
+    shifts,
     branches,
     users,
     employees,
@@ -28,6 +31,8 @@ export default function NewEmployeePage() {
   } = useEmployeeFormResources();
 
   const [form, setForm] = useState(EMPTY_EMPLOYEE_FORM);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
@@ -36,6 +41,18 @@ export default function NewEmployeePage() {
       setForm((prev) => (prev.branch_id ? prev : { ...prev, branch_id: defaultBranch }));
     }
   }, [loading, defaultBranch]);
+
+  useEffect(() => {
+    return () => {
+      if (photoPreview?.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
+    };
+  }, [photoPreview]);
+
+  function onPhotoSelect(file) {
+    if (photoPreview?.startsWith("blob:")) URL.revokeObjectURL(photoPreview);
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  }
 
   async function saveEmployee(e) {
     e.preventDefault();
@@ -54,8 +71,11 @@ export default function NewEmployeePage() {
       await syncEmployeePaymentAccounts(
         created.id,
         form.payment_accounts ?? [],
-        form.full_name,
+        composeEmployeeDisplayName(form),
       );
+      if (photoFile) {
+        await uploadEmployeePhoto(created.id, photoFile);
+      }
       router.push(`/hr/employees/${created.id}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
@@ -83,12 +103,16 @@ export default function NewEmployeePage() {
           formError={formError}
           cancelHref="/hr/employees"
           submitLabel="Save employee"
-          departments={departments}
-          branches={branches}
+            departments={departments}
+            positions={positions}
+            shifts={shifts}
+            branches={branches}
           users={users}
           employees={employees}
           showBranchSelect={showBranchSelect}
           onCreateDepartment={async () => reload()}
+          photoPreview={photoPreview}
+          onPhotoSelect={onPhotoSelect}
         />
       )}
     </EmployeeFormPageShell>

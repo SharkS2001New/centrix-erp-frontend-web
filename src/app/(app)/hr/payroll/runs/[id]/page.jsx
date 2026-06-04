@@ -2,49 +2,48 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
-import { IconButton, StatCard } from "@/components/catalog/catalog-shared";
+import { useAuth } from "@/contexts/auth-context";
+import { DetailDrawer, IconButton, StatCard } from "@/components/catalog/catalog-shared";
 import {
+  PayrollBreakdownPanel,
   PayrollRunStatusBadge,
+  composeEmployeeDisplayName,
   formatHrKesFull,
-  kenyaStatutoryRows,
+  isAdminUser,
+  payrollRunCanDelete,
+  payrollRunDeleteLockHint,
   periodLabel,
 } from "@/components/hr/hr-shared";
 
 export default function PayrollRunDetailPage() {
   const params = useParams();
+  const router = useRouter();
+  const { user } = useAuth();
+  const admin = isAdminUser(user);
   const runId = Number(params.id);
 
   const [run, setRun] = useState(null);
-  const [period, setPeriod] = useState(null);
   const [lines, setLines] = useState([]);
-  const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [processing, setProcessing] = useState(false);
-  const [lineModal, setLineModal] = useState(null);
+  const [selectedLine, setSelectedLine] = useState(null);
+  const [lineDetail, setLineDetail] = useState(null);
+  const [lineLoading, setLineLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
-      const [runData, linesRes, empRes] = await Promise.all([
+      const [runData, linesRes] = await Promise.all([
         apiRequest(`/payroll-runs/${runId}`),
-        apiRequest("/payroll-lines", { searchParams: { per_page: 500 } }),
-        apiRequest("/employees", { searchParams: { per_page: 200 } }),
+        apiRequest("/payroll-lines", {
+          searchParams: { per_page: 500, "filter[payroll_run_id]": runId },
+        }),
       ]);
       setRun(runData);
-      setLines((linesRes.data ?? []).filter((l) => l.payroll_run_id === runId));
-      setEmployees(empRes.data ?? []);
-      if (runData.pay_period_id) {
-        try {
-          const p = await apiRequest(`/pay-periods/${runData.pay_period_id}`);
-          setPeriod(p);
-        } catch {
-          setPeriod(null);
-        }
-      }
+      setLines(linesRes.data ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load payroll run");
     } finally {
@@ -56,50 +55,71 @@ export default function PayrollRunDetailPage() {
     loadData();
   }, [loadData]);
 
-  const empById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  const period = run?.pay_period ?? run?.payPeriod ?? null;
 
-  const totalStatutory = useMemo(
-    () =>
-      lines.reduce(
-        (sum, l) =>
-          sum + Number(l.nssf ?? 0) + Number(l.shif ?? 0) + Number(l.housing_levy ?? 0) + Number(l.paye ?? 0),
-        0,
-      ),
-    [lines],
-  );
-
-  async function processAutoKenya() {
-    if (!window.confirm("Process payroll for all active employees using Kenya statutory auto-calc?")) {
-      return;
+  const totalDeductions = useMemo(() => {
+    if (run?.total_gross != null && run?.total_net != null) {
+      return Number(run.total_gross) - Number(run.total_net);
     }
-    setProcessing(true);
-    setError(null);
+    return lines.reduce((sum, l) => sum + Number(l.deductions ?? 0), 0);
+  }, [run, lines]);
+
+  const employeeCount = run?.employee_count ?? lines.length;
+
+  async function openLineDetail(line) {
+    setSelectedLine(line);
+    setLineDetail(null);
+    setLineLoading(true);
     try {
-      await apiRequest(`/payroll/runs/${runId}/process-auto`, { method: "POST", body: {} });
-      await loadData();
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Processing failed");
+      const detail = await apiRequest(`/payroll-lines/${line.id}`);
+      setLineDetail(detail);
+    } catch {
+      setLineDetail(line);
     } finally {
-      setProcessing(false);
+      setLineLoading(false);
     }
   }
 
+  function closeLineDetail() {
+    setSelectedLine(null);
+    setLineDetail(null);
+  }
+
+  async function deleteRun() {
+    if (!payrollRunCanDelete(run)) {
+      setError(payrollRunDeleteLockHint(run) ?? "This payroll run can no longer be deleted.");
+      return;
+    }
+    if (
+      !confirm(
+        "Delete this payroll run? Lines are removed and closed attendance, overtime, leave, and advance deductions for that cycle are reopened. Historical records stay for reports.",
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    try {
+      await apiRequest(`/payroll-runs/${runId}`, { method: "DELETE" });
+      router.push("/hr/payroll");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Delete failed");
+    }
+  }
+
+  const breakdownLine = lineDetail ?? selectedLine;
+  const breakdownEmployee = breakdownLine?.employee;
+  const employeeName =
+    composeEmployeeDisplayName(breakdownEmployee) ||
+    breakdownEmployee?.full_name ||
+    (selectedLine ? composeEmployeeDisplayName(selectedLine) : null) ||
+    "Employee";
+
   return (
     <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+      <div className="mb-6">
         <Link href="/hr/payroll" className="text-sm text-[#185FA5] hover:text-[#144f8a]">
           ← Back to payroll
         </Link>
-        {run?.status === "draft" && (
-          <button
-            type="button"
-            onClick={processAutoKenya}
-            disabled={processing}
-            className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
-          >
-            {processing ? "Processing…" : "Process (Kenya auto-calc)"}
-          </button>
-        )}
       </div>
 
       {error && (
@@ -112,73 +132,88 @@ export default function PayrollRunDetailPage() {
         <p className="text-sm text-slate-500">Loading payroll run…</p>
       ) : run ? (
         <>
-          <div className="mb-6">
-            <h1 className="text-xl font-medium text-slate-900">
-              Payroll run — {periodLabel(period)}
-            </h1>
-            <p className="mt-1 text-xs text-slate-500">
-              Kenya 2026: PAYE · NSSF · SHIF 2.75% · Housing Levy 1.5%
-            </p>
-            <div className="mt-2">
-              <PayrollRunStatusBadge status={run.status} />
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-medium text-slate-900">
+                Payroll run — {periodLabel(period)}
+              </h1>
+              <div className="mt-2">
+                <PayrollRunStatusBadge status={run.status} />
+              </div>
             </div>
+            {admin && payrollRunCanDelete(run) ? (
+              <button
+                type="button"
+                onClick={deleteRun}
+                className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+              >
+                Delete run
+              </button>
+            ) : admin ? (
+              <p className="max-w-xs text-right text-xs text-slate-500">
+                {payrollRunDeleteLockHint(run)}
+              </p>
+            ) : null}
           </div>
 
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Employees" value={String(lines.length)} />
+            <StatCard label="Employees" value={String(employeeCount)} />
             <StatCard label="Gross salary" value={formatHrKesFull(run.total_gross)} />
             <StatCard label="Net salary" value={formatHrKesFull(run.total_net)} />
-            <StatCard label="Statutory deductions" value={formatHrKesFull(totalStatutory)} />
+            <StatCard label="Deductions" value={formatHrKesFull(totalDeductions)} />
           </div>
 
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-[15px] font-medium text-slate-900">Employee payroll lines</h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Click a row or the view action to open the breakdown in the side panel.
+              </p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] border-collapse text-sm">
+              <table className="w-full min-w-[720px] border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
                     <th className="px-4 py-2.5">Employee</th>
                     <th className="px-4 py-2.5 text-right">Gross</th>
-                    <th className="px-4 py-2.5 text-right">NSSF</th>
-                    <th className="px-4 py-2.5 text-right">SHIF</th>
-                    <th className="px-4 py-2.5 text-right">AHL</th>
-                    <th className="px-4 py-2.5 text-right">PAYE</th>
-                    <th className="px-4 py-2.5 text-right">Net</th>
-                    <th className="w-[70px] px-4 py-2.5" />
+                    <th className="px-4 py-2.5 text-right">Deductions</th>
+                    <th className="px-4 py-2.5 text-right">Net salary</th>
+                    <th className="w-[70px] px-4 py-2.5">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {lines.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
-                        No lines yet. Use &quot;Process (Kenya auto-calc)&quot; for draft runs.
+                      <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
+                        No payroll lines for this run.
                       </td>
                     </tr>
                   ) : (
                     lines.map((line) => {
-                      const emp = empById.get(line.employee_id);
+                      const emp = line.employee;
+                      const name =
+                        composeEmployeeDisplayName(emp) ||
+                        emp?.full_name ||
+                        `#${line.employee_id}`;
+                      const isSelected = selectedLine?.id === line.id;
                       return (
                         <tr
                           key={line.id}
-                          className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
+                          onClick={() => openLineDetail(line)}
+                          className={`cursor-pointer border-b border-slate-100 last:border-b-0 hover:bg-slate-50 ${
+                            isSelected ? "bg-[#E6F1FB]/40" : ""
+                          }`}
                         >
-                          <td className="px-4 py-3 font-medium text-slate-900">
-                            {emp?.full_name ?? `#${line.employee_id}`}
-                          </td>
+                          <td className="px-4 py-3 font-medium text-slate-900">{name}</td>
                           <td className="px-4 py-3 text-right">{formatHrKesFull(line.gross_pay)}</td>
-                          <td className="px-4 py-3 text-right">{formatHrKesFull(line.nssf)}</td>
-                          <td className="px-4 py-3 text-right">{formatHrKesFull(line.shif)}</td>
                           <td className="px-4 py-3 text-right">
-                            {formatHrKesFull(line.housing_levy)}
+                            {formatHrKesFull(line.deductions)}
                           </td>
-                          <td className="px-4 py-3 text-right">{formatHrKesFull(line.paye)}</td>
                           <td className="px-4 py-3 text-right font-medium">
                             {formatHrKesFull(line.net_pay)}
                           </td>
-                          <td className="px-4 py-3">
-                            <IconButton label="Breakdown" onClick={() => setLineModal(line)}>
+                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                            <IconButton label="Breakdown" onClick={() => openLineDetail(line)}>
                               <ViewIcon />
                             </IconButton>
                           </td>
@@ -191,46 +226,19 @@ export default function PayrollRunDetailPage() {
             </div>
           </div>
 
-          {lineModal && (
-            <>
-              <button
-                type="button"
-                className="fixed inset-0 z-40 bg-black/30"
-                aria-label="Close"
-                onClick={() => setLineModal(null)}
-              />
-              <div className="fixed left-1/2 top-1/2 z-50 max-h-[85vh] w-full max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
-                <h3 className="text-[15px] font-medium text-slate-900">Kenya statutory breakdown</h3>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {empById.get(lineModal.employee_id)?.full_name ?? "Employee"}
-                </p>
-                <dl className="mt-4 space-y-2.5 text-sm">
-                  {kenyaStatutoryRows(lineModal).map((row) => (
-                    <div
-                      key={row.label}
-                      className={`flex items-center justify-between gap-4 ${row.muted ? "text-slate-500" : ""}`}
-                    >
-                      <dt>{row.label}</dt>
-                      <dd
-                        className={
-                          row.emphasis ? "font-semibold text-slate-900" : "font-medium text-slate-800"
-                        }
-                      >
-                        {formatHrKesFull(row.value)}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-                <button
-                  type="button"
-                  onClick={() => setLineModal(null)}
-                  className="mt-4 w-full rounded-lg border border-slate-200 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Close
-                </button>
-              </div>
-            </>
-          )}
+          <DetailDrawer
+            title="Payroll breakdown"
+            subtitle={employeeName}
+            open={!!selectedLine}
+            onClose={closeLineDetail}
+            wide
+          >
+            <PayrollBreakdownPanel
+              line={breakdownLine}
+              employee={breakdownEmployee}
+              loading={lineLoading}
+            />
+          </DetailDrawer>
         </>
       ) : null}
     </div>
