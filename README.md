@@ -5,7 +5,7 @@ Next.js frontend for [pos-erp-api](../pos-erp-api). Uses **Laravel Sanctum** bea
 ## Stack
 
 - Next.js 16 (App Router)
-- TypeScript + Tailwind CSS v4
+- JavaScript + Tailwind CSS v4
 - Client-side auth (`localStorage` token)
 
 ## Setup
