@@ -16,8 +16,19 @@ const navSections = [
       { href: "/retail-package-settings", label: "Retail packages", module: null },
       { href: "/vats", label: "VAT rates", module: null },
       { href: "/price-history", label: "Price history", module: null },
-      { href: "/inventory", label: "Inventory", module: "inventory" },
       { href: "/reports", label: "Reports", module: "reports" },
+    ],
+  },
+  {
+    label: "Inventory",
+    module: "inventory",
+    items: [
+      { href: "/inventory/stock", label: "Current stock", module: "inventory" },
+      { href: "/inventory/receipts", label: "Stock receipts", module: "inventory" },
+      { href: "/inventory/transactions", label: "Movements", module: "inventory" },
+      { href: "/inventory/transfers/new", label: "Transfer stock", module: "inventory" },
+      { href: "/inventory/damages", label: "Damages", module: "inventory" },
+      { href: "/inventory/stock-take", label: "Stock take", module: "inventory" },
     ],
   },
   {
@@ -39,6 +50,16 @@ const navSections = [
       { href: "/hr/attendance", label: "Attendance", module: "hr_payroll" },
       { href: "/hr/leave", label: "Leave & off days", module: "hr_payroll" },
       { href: "/hr/payroll", label: "Payroll", module: "hr_payroll" },
+    ],
+  },
+  {
+    label: "Suppliers",
+    module: "customers_suppliers",
+    items: [
+      { href: "/lpo", label: "Purchase orders", module: "customers_suppliers" },
+      { href: "/suppliers", label: "Suppliers", module: "customers_suppliers" },
+      { href: "/suppliers/payments", label: "Supplier payments", module: "customers_suppliers" },
+      { href: "/suppliers/returns", label: "Supplier returns", module: "customers_suppliers" },
     ],
   },
   {

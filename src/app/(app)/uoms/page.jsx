@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { isSinglePieceUom, uomConversionFactor } from "@/lib/stock-uom";
 import {
   ActiveBadge,
   CatalogPageShell,
@@ -36,17 +37,16 @@ const TYPE_CATEGORY_OPTIONS = [
   { value: "length", label: "Length" },
 ];
 
-const BASE_FILTER_OPTIONS = [
-  { value: "all", label: "All" },
-  { value: "base", label: "Base units" },
-  { value: "derived", label: "Derived" },
+const PACK_FILTER_OPTIONS = [
+  { value: "all", label: "All units" },
+  { value: "single", label: "Single (×1)" },
+  { value: "pack", label: "Packs (×>1)" },
 ];
 
 const EMPTY_FORM = {
   full_name: "",
   uom_type: "piece",
   conversion_factor: "1",
-  is_base_unit: false,
   is_active: true,
 };
 
@@ -86,18 +86,6 @@ function UomTypeBadge({ uomType }) {
   );
 }
 
-function BaseUnitBadge({ isBase }) {
-  return isBase ? (
-    <span className="inline-flex rounded-full bg-[#EAF3DE] px-2.5 py-0.5 text-[11px] font-medium text-[#27500A]">
-      Yes
-    </span>
-  ) : (
-    <span className="inline-flex rounded-full bg-[#FCEBEB] px-2.5 py-0.5 text-[11px] font-medium text-[#791F1F]">
-      No
-    </span>
-  );
-}
-
 function ConversionPill({ value }) {
   const n = Number(value ?? 1);
   const text = Number.isInteger(n) ? String(n) : n.toLocaleString("en-KE", { maximumFractionDigits: 4 });
@@ -131,6 +119,34 @@ function Toggle({ checked, onChange, label }) {
   );
 }
 
+function ConversionFactorGuide({ conversionFactor, unitName }) {
+  const name = unitName?.trim() || "this unit";
+  const factor = uomConversionFactor(conversionFactor);
+  const isSingle = factor === 1;
+
+  return (
+    <div className="rounded-lg border border-[#B6D4F0] bg-[#F5FAFF] p-4 text-xs leading-relaxed text-slate-700">
+      <p className="font-medium text-slate-900">How units work in stock</p>
+      <p className="mt-2">
+        Stock is stored as individual pieces. The conversion factor tells the system how many pieces
+        are in one {name.toLowerCase()} when you receive, sell, or count stock.
+      </p>
+      {isSingle ? (
+        <p className="mt-2 text-slate-600">
+          <strong>Factor 1</strong> — one {name.toLowerCase()} is one piece. Use this for pieces,
+          each, kg, litres, and other units you count one at a time.
+        </p>
+      ) : (
+        <p className="mt-2 text-slate-600">
+          <strong>Factor {factor}</strong> — one {name.toLowerCase()} contains{" "}
+          <span className="font-mono">{factor}</span> pieces. Receiving 2 {name.toLowerCase()}s adds{" "}
+          <span className="font-mono">{2 * factor}</span> pieces to stock.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function UomsPage() {
   const [uoms, setUoms] = useState([]);
   const [products, setProducts] = useState([]);
@@ -141,7 +157,7 @@ export default function UomsPage() {
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [baseFilter, setBaseFilter] = useState("all");
+  const [packFilter, setPackFilter] = useState("all");
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState("create");
@@ -185,13 +201,14 @@ export default function UomsPage() {
         return false;
       }
       if (typeFilter !== "all" && uomCategory(u.uom_type) !== typeFilter) return false;
-      if (baseFilter === "base" && !u.is_base_unit) return false;
-      if (baseFilter === "derived" && u.is_base_unit) return false;
+      if (packFilter === "single" && !isSinglePieceUom(u)) return false;
+      if (packFilter === "pack" && isSinglePieceUom(u)) return false;
       return true;
     });
-  }, [uoms, search, typeFilter, baseFilter]);
+  }, [uoms, search, typeFilter, packFilter]);
 
   const formTitle = drawerMode === "create" ? "Add UOM" : "Edit UOM";
+  const formFactor = uomConversionFactor(form.conversion_factor);
 
   function openCreateDrawer() {
     setDrawerMode("create");
@@ -208,7 +225,6 @@ export default function UomsPage() {
       full_name: uom.full_name ?? "",
       uom_type: uom.uom_type ?? "piece",
       conversion_factor: String(uom.conversion_factor ?? 1),
-      is_base_unit: Boolean(uom.is_base_unit),
       is_active: uom.is_active !== false,
     });
     setFormError(null);
@@ -221,24 +237,19 @@ export default function UomsPage() {
   }
 
   function updateField(key, value) {
-    setForm((prev) => {
-      const next = { ...prev, [key]: value };
-      if (key === "is_base_unit" && value) {
-        next.conversion_factor = "1";
-      }
-      return next;
-    });
+    setForm((prev) => ({ ...prev, [key]: value }));
   }
 
   async function saveForm(e) {
     e.preventDefault();
     setFormError(null);
     setSaving(true);
+    const conversionFactor = parseFloat(form.conversion_factor);
     const body = {
       full_name: form.full_name.trim(),
       uom_type: form.uom_type.trim(),
-      conversion_factor: parseFloat(form.conversion_factor),
-      is_base_unit: form.is_base_unit,
+      conversion_factor: conversionFactor,
+      is_base_unit: conversionFactor === 1,
       is_active: form.is_active,
     };
     try {
@@ -275,7 +286,7 @@ export default function UomsPage() {
   return (
     <CatalogPageShell
       title="Units of measure"
-      subtitle="Define measurement units and conversion factors"
+      subtitle="Set how many pieces are in each unit — use 1 for single items, higher numbers for packs"
       action={<PrimaryButton onClick={openCreateDrawer}>Add UOM</PrimaryButton>}
       toolbar={
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -291,9 +302,9 @@ export default function UomsPage() {
             options={TYPE_CATEGORY_OPTIONS}
           />
           <FilterSelect
-            value={baseFilter}
-            onChange={(e) => setBaseFilter(e.target.value)}
-            options={BASE_FILTER_OPTIONS}
+            value={packFilter}
+            onChange={(e) => setPackFilter(e.target.value)}
+            options={PACK_FILTER_OPTIONS}
           />
         </div>
       }
@@ -309,13 +320,12 @@ export default function UomsPage() {
           <p className="p-8 text-sm text-slate-500">Loading units…</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-sm">
+            <table className="w-full min-w-[640px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
                   <th className="px-4 py-2.5">Full name</th>
                   <th className="px-4 py-2.5">Type</th>
                   <th className="px-4 py-2.5">Conversion factor</th>
-                  <th className="px-4 py-2.5">Base unit</th>
                   <th className="px-4 py-2.5">Products</th>
                   <th className="px-4 py-2.5">Status</th>
                   <th className="w-[90px] px-4 py-2.5">Actions</th>
@@ -324,7 +334,7 @@ export default function UomsPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                    <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
                       No units match your filters.
                     </td>
                   </tr>
@@ -342,9 +352,6 @@ export default function UomsPage() {
                         </td>
                         <td className="px-4 py-3">
                           <ConversionPill value={uom.conversion_factor} />
-                        </td>
-                        <td className="px-4 py-3">
-                          <BaseUnitBadge isBase={Boolean(uom.is_base_unit)} />
                         </td>
                         <td className="px-4 py-3 text-slate-700">{count}</td>
                         <td className="px-4 py-3">
@@ -386,7 +393,7 @@ export default function UomsPage() {
             onChange={(e) => updateField("full_name", e.target.value)}
             required
             className={inputClassName()}
-            placeholder="e.g. Carton (12s)"
+            placeholder="e.g. Piece, Carton (12s)"
           />
         </Field>
         <Field label="Type">
@@ -403,24 +410,26 @@ export default function UomsPage() {
             ))}
           </select>
         </Field>
+        <ConversionFactorGuide
+          conversionFactor={form.conversion_factor}
+          unitName={form.full_name}
+        />
         <Field label="Conversion factor">
           <input
             type="number"
             value={form.conversion_factor}
             onChange={(e) => updateField("conversion_factor", e.target.value)}
             required
-            min="0"
-            step="0.001"
-            disabled={form.is_base_unit}
+            min="0.001"
+            step="any"
             className={`${inputClassName()} font-mono`}
           />
-          <p className="mt-1 text-[11px] text-slate-400">Relative to base unit of same type</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+            {formFactor === 1
+              ? "Use 1 when one unit equals one piece (e.g. piece, each, 1 kg)."
+              : `Pieces inside one ${form.full_name?.trim() || "pack"}. Receiving 1 unit multiplies stock by ${formFactor}.`}
+          </p>
         </Field>
-        <Toggle
-          label="Is base unit"
-          checked={form.is_base_unit}
-          onChange={(v) => updateField("is_base_unit", v)}
-        />
         <Toggle label="Active" checked={form.is_active} onChange={(v) => updateField("is_active", v)} />
       </FormDrawer>
     </CatalogPageShell>

@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { apiRequest, ApiError } from "@/lib/api";
+import { DeleteProductDialog } from "@/components/products/delete-product-dialog";
+import { ProductImportExport } from "@/components/products/product-import-export";
+import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
 
 const PAGE_SIZE = 10;
 const COLUMN_STORAGE_KEY = "pos-erp-products-visible-columns";
@@ -18,7 +23,7 @@ const PRODUCT_COLUMNS = [
   { id: "supplier", label: "Supplier", defaultVisible: true },
   { id: "vat", label: "VAT", defaultVisible: true },
   { id: "pricing", label: "Pricing", defaultVisible: true },
-  { id: "alert", label: "Alert", defaultVisible: false },
+  { id: "alert", label: "Reorder", defaultVisible: false },
   { id: "updated", label: "Updated", defaultVisible: true },
   { id: "actions", label: "Actions", defaultVisible: true, required: true, align: "center" },
 ];
@@ -64,11 +69,20 @@ function formatQty(value) {
 }
 
 function formatDiscount(product) {
+  const type = product.discount_type === "fixed" ? "fixed" : "percentage";
   const pct = Number(product.discount_percentage ?? 0);
   const val = Number(product.discount_value ?? 0);
-  if (!product.discount_type || (pct === 0 && val === 0)) return "—";
-  if (product.discount_type === "percentage") return `${pct}%`;
-  return formatKes(val);
+  if (type === "fixed") {
+    if (val === 0) return "—";
+    return formatKes(val);
+  }
+  if (pct === 0) return "—";
+  return `${pct}%`;
+}
+
+function effectiveReorderPoint(product, globalThreshold) {
+  const rp = Number(product.reorder_point ?? 0);
+  return rp > 0 ? rp : Number(globalThreshold ?? 0);
 }
 
 function formatDate(value) {
@@ -80,10 +94,9 @@ function formatDate(value) {
   });
 }
 
-function locationStockStatus(qty, product) {
-  const reorder = Number(product.reorder_point ?? 0);
+function locationStockStatus(qty, reorderPoint) {
   if (qty <= 0) return "out_of_stock";
-  if (product.low_stock_alert_enabled && qty <= reorder) return "low_stock";
+  if (reorderPoint > 0 && qty <= reorderPoint) return "low_stock";
   return "in_stock";
 }
 
@@ -101,7 +114,7 @@ function resolveWeight(product, uom, retailPackage) {
   if (retailPackage?.max_qty_measure != null && retailPackage?.max_uom_measure === "kg") {
     return Number(retailPackage.max_qty_measure);
   }
-  if (uom && !uom.is_base_unit && uom.conversion_factor) {
+  if (uom && Number(uom.conversion_factor ?? 1) > 1) {
     return Number(uom.conversion_factor);
   }
   if (retailPackage?.max_qty_measure != null) {
@@ -110,27 +123,33 @@ function resolveWeight(product, uom, retailPackage) {
   return null;
 }
 
-function enrichProduct(product, subById, catById, vatById, uomById, supplierById, userById, retailByCode) {
+function enrichProduct(
+  product,
+  subById,
+  catById,
+  vatById,
+  uomById,
+  supplierById,
+  retailByCode,
+  globalThreshold,
+) {
   const sub = subById.get(product.subcategory_id);
   const cat = sub ? catById.get(sub.category_id) : null;
   const vat = vatById.get(product.vat_id);
   const uom = uomById.get(product.unit_id);
   const supplier = supplierById.get(product.supplier_id);
   const retailPackage = retailByCode.get(product.product_code);
-  const updater = userById.get(product.updated_by);
   const shop = Number(product.stock_in_shop ?? 0);
   const store = Number(product.stock_in_store ?? 0);
-  const reorder = Number(product.reorder_point ?? 0);
+  const reorderPoint = effectiveReorderPoint(product, globalThreshold);
   const isActive = !product.deleted_at;
   const uomLabel = uom?.uom_type || uom?.full_name || "—";
 
   let stockStatus = "in_stock";
   if (shop + store <= 0) stockStatus = "out_of_stock";
-  else if (product.low_stock_alert_enabled && shop <= reorder) stockStatus = "low_stock";
+  else if (reorderPoint > 0 && shop + store <= reorderPoint) stockStatus = "low_stock";
 
-  let pricing = "Both";
-  if (product.sell_on_retail === 1 || product.sell_on_retail === true) pricing = "Retail";
-  else if (product.sell_on_retail === 0 || product.sell_on_retail === false) pricing = "Wholesale";
+  const pricing = product.sell_on_retail === 1 || product.sell_on_retail === true ? "Retail" : "Wholesale";
 
   return {
     ...product,
@@ -144,12 +163,13 @@ function enrichProduct(product, subById, catById, vatById, uomById, supplierById
     uom_type: uomLabel,
     uom_factor: Number(uom?.conversion_factor ?? 1),
     supplier_name: supplier?.supplier_name ?? "—",
-    updated_by_name: updater?.full_name ?? updater?.username ?? "—",
     display_weight: resolveWeight(product, uom, retailPackage),
     is_active: isActive,
+    effective_reorder_point: reorderPoint,
+    uses_global_reorder: Number(product.reorder_point ?? 0) <= 0,
     stock_status: stockStatus,
-    shop_stock_status: locationStockStatus(shop, product),
-    store_stock_status: locationStockStatus(store, product),
+    shop_stock_status: locationStockStatus(shop, reorderPoint),
+    store_stock_status: locationStockStatus(store, reorderPoint),
     pricing,
     shop_qty: shop,
     store_qty: store,
@@ -168,16 +188,22 @@ function groupProducts(products) {
 }
 
 export default function ProductsPage() {
+  const router = useRouter();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [vats, setVats] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
-  const [users, setUsers] = useState([]);
   const [retailPackages, setRetailPackages] = useState([]);
+  const [globalReorderThreshold, setGlobalReorderThreshold] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletingProduct, setDeletingProduct] = useState(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -209,30 +235,67 @@ export default function ProductsPage() {
 
   const tableColCount = 1 + visibleColumns.length;
 
-  useEffect(() => {
-    Promise.all([
-      apiRequest("/products", { searchParams: { per_page: 200 } }),
-      apiRequest("/categories", { searchParams: { per_page: 200 } }),
-      apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
-      apiRequest("/vats", { searchParams: { per_page: 50 } }),
-      apiRequest("/uoms", { searchParams: { per_page: 100 } }),
-      apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
-      apiRequest("/users", { searchParams: { per_page: 200 } }),
-      apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }),
-    ])
-      .then(([prodRes, catRes, subRes, vatRes, uomRes, supRes, userRes, retailRes]) => {
-        setProducts(prodRes.data ?? []);
-        setCategories(catRes.data ?? []);
-        setSubCategories(subRes.data ?? []);
-        setVats(vatRes.data ?? []);
-        setUoms(uomRes.data ?? []);
-        setSuppliers(supRes.data ?? []);
-        setUsers(userRes.data ?? []);
-        setRetailPackages(retailRes.data ?? []);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setLoading(false));
+  const loadData = useCallback(async () => {
+    setError(null);
+    try {
+      const [prodRes, catRes, subRes, vatRes, uomRes, supRes, retailRes, settingsRes] =
+        await Promise.all([
+          apiRequest("/products", { searchParams: { per_page: 200 } }),
+          apiRequest("/categories", { searchParams: { per_page: 200 } }),
+          apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
+          apiRequest("/vats", { searchParams: { per_page: 50 } }),
+          apiRequest("/uoms", { searchParams: { per_page: 100 } }),
+          apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
+          apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }),
+          apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
+        ]);
+      setProducts(prodRes.data ?? []);
+      setCategories(catRes.data ?? []);
+      setSubCategories(subRes.data ?? []);
+      setVats(vatRes.data ?? []);
+      setUoms(uomRes.data ?? []);
+      setSuppliers(supRes.data ?? []);
+      setRetailPackages(retailRes.data ?? []);
+      const settingsRows = settingsRes?.data ?? settingsRes ?? [];
+      const settings = Array.isArray(settingsRows) ? settingsRows[0] : settingsRows;
+      const threshold = settings?.global_low_stock_threshold;
+      setGlobalReorderThreshold(
+        threshold != null && threshold !== "" ? Number(threshold) : null,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load products");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  function openDeleteDialog(product) {
+    setDeletingProduct(product);
+    setDeleteError(null);
+    setDeleteOpen(true);
+  }
+
+  async function confirmDelete() {
+    if (!deletingProduct) return;
+    setDeleteSaving(true);
+    setDeleteError(null);
+    try {
+      await apiRequest(`/products/${encodeURIComponent(deletingProduct.product_code)}`, {
+        method: "DELETE",
+      });
+      setDeleteOpen(false);
+      setDeletingProduct(null);
+      await loadData();
+    } catch (e) {
+      setDeleteError(e instanceof ApiError ? e.message : "Delete failed");
+    } finally {
+      setDeleteSaving(false);
+    }
+  }
 
   const subById = useMemo(
     () => new Map(subCategories.map((s) => [s.id, s])),
@@ -248,7 +311,6 @@ export default function ProductsPage() {
     () => new Map(suppliers.map((s) => [s.id, s])),
     [suppliers],
   );
-  const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const retailByCode = useMemo(
     () => new Map(retailPackages.map((r) => [r.product_code, r])),
     [retailPackages],
@@ -264,11 +326,20 @@ export default function ProductsPage() {
           vatById,
           uomById,
           supplierById,
-          userById,
           retailByCode,
+          globalReorderThreshold,
         ),
       ),
-    [products, subById, catById, vatById, uomById, supplierById, userById, retailByCode],
+    [
+      products,
+      subById,
+      catById,
+      vatById,
+      uomById,
+      supplierById,
+      retailByCode,
+      globalReorderThreshold,
+    ],
   );
 
   const filtered = useMemo(() => {
@@ -378,27 +449,14 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-          >
-            <ImportIcon />
-            Import
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-          >
-            <ExportIcon />
-            Export
-          </button>
-          <button
-            type="button"
+          <ProductImportExport products={filtered} onImported={loadData} />
+          <Link
+            href="/products/new"
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500"
           >
             <PlusIcon />
             Add product
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -466,7 +524,6 @@ export default function ProductsPage() {
               { value: "all", label: "All pricing" },
               { value: "retail", label: "Retail" },
               { value: "wholesale", label: "Wholesale" },
-              { value: "both", label: "Both" },
             ]}
           />
           <FilterSelect
@@ -544,6 +601,12 @@ export default function ProductsPage() {
                       onToggleSection={toggleSection}
                       visibleColumns={visibleColumns}
                       tableColCount={tableColCount}
+                      onView={(code) => router.push(`/products/${encodeURIComponent(code)}`)}
+                      onEdit={(product) =>
+                        router.push(`/products/${encodeURIComponent(product.product_code)}/edit`)
+                      }
+                      onDelete={openDeleteDialog}
+                      onPriceSaved={loadData}
                     />
                   ))
                 )}
@@ -563,6 +626,20 @@ export default function ProductsPage() {
           </div>
         </div>
       )}
+
+      <DeleteProductDialog
+        open={deleteOpen}
+        product={deletingProduct}
+        saving={deleteSaving}
+        error={deleteError}
+        onClose={() => {
+          if (!deleteSaving) {
+            setDeleteOpen(false);
+            setDeleteError(null);
+          }
+        }}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }
@@ -577,6 +654,10 @@ function CategoryGroup({
   onToggleSection,
   visibleColumns,
   tableColCount,
+  onView,
+  onEdit,
+  onDelete,
+  onPriceSaved,
 }) {
   const categoryKey = `category:${categoryName}`;
   const categoryCollapsed = isCollapsed(categoryKey);
@@ -615,6 +696,10 @@ function CategoryGroup({
             showCategoryHeader={showCategoryHeader}
             visibleColumns={visibleColumns}
             tableColCount={tableColCount}
+            onView={onView}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onPriceSaved={onPriceSaved}
           />
         ))}
     </>
@@ -632,6 +717,10 @@ function SubCategoryGroup({
   showCategoryHeader,
   visibleColumns,
   tableColCount,
+  onView,
+  onEdit,
+  onDelete,
+  onPriceSaved,
 }) {
   const subKey = `subcategory:${categoryName}/${subName}`;
   const subCollapsed = isCollapsed(subKey);
@@ -659,13 +748,26 @@ function SubCategoryGroup({
             checked={selected.has(p.product_code)}
             onToggle={() => onToggle(p.product_code)}
             visibleColumns={visibleColumns}
+            onView={onView}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onPriceSaved={onPriceSaved}
           />
         ))}
     </>
   );
 }
 
-function ProductRow({ product, checked, onToggle, visibleColumns }) {
+function ProductRow({
+  product,
+  checked,
+  onToggle,
+  visibleColumns,
+  onView,
+  onEdit,
+  onDelete,
+  onPriceSaved,
+}) {
   return (
     <tr className="border-t border-slate-100 hover:bg-slate-50/80">
       <td className="px-3 py-3">
@@ -678,24 +780,61 @@ function ProductRow({ product, checked, onToggle, visibleColumns }) {
       </td>
       {visibleColumns.map((col) => (
         <td key={col.id} className={`px-3 py-3 ${alignClass(col.align)}`}>
-          {renderProductCell(product, col.id)}
+          {col.id === "actions" ? (
+            <div className="flex items-center justify-center gap-1">
+              <ActionButton
+                label="View product"
+                className="text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                onClick={() => onView?.(product.product_code)}
+              >
+                <EyeIcon />
+              </ActionButton>
+              <ActionButton
+                label="Edit product"
+                className="text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                onClick={() => onEdit?.(product)}
+              >
+                <PencilIcon />
+              </ActionButton>
+              <ActionButton
+                label="Delete product"
+                className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                onClick={() => onDelete?.(product)}
+              >
+                <TrashIcon />
+              </ActionButton>
+            </div>
+          ) : (
+            renderProductCell(product, col.id, onPriceSaved)
+          )}
         </td>
       ))}
     </tr>
   );
 }
 
-function renderProductCell(product, columnId) {
+function renderProductCell(product, columnId, onPriceSaved) {
   switch (columnId) {
     case "product":
       return (
         <>
-          <p className="font-medium text-slate-900">{product.product_name}</p>
+          <Link
+            href={`/products/${encodeURIComponent(product.product_code)}`}
+            className="font-medium text-slate-900 hover:text-blue-600"
+          >
+            {product.product_name}
+          </Link>
           <p className="mt-0.5 font-mono text-xs text-slate-400">{product.product_code}</p>
         </>
       );
     case "unit_price":
-      return <span className="text-slate-700">{formatKes(product.unit_price)}</span>;
+      return (
+        <InlineUnitPriceCell
+          productCode={product.product_code}
+          unitPrice={product.unit_price}
+          onSaved={onPriceSaved}
+        />
+      );
     case "cost_price":
       return <span className="text-slate-500">{formatKes(product.last_cost_price)}</span>;
     case "discount":
@@ -710,7 +849,8 @@ function renderProductCell(product, columnId) {
       return (
         <StockCell
           qty={product.shop_qty}
-          unit={product.uom_type}
+          unit={product.uom_label}
+          factor={product.uom_factor}
           status={product.shop_stock_status}
         />
       );
@@ -718,15 +858,19 @@ function renderProductCell(product, columnId) {
       return (
         <StockCell
           qty={product.store_qty}
-          unit={product.uom_type}
+          unit={product.uom_label}
+          factor={product.uom_factor}
           status={product.store_stock_status}
         />
       );
     case "reorder":
-      return product.reorder_point != null ? (
+      return product.effective_reorder_point != null ? (
         <>
-          {formatQty(product.reorder_point)}{" "}
-          <span className="text-xs text-slate-400">{product.uom_type}</span>
+          {formatQty(baseToDisplayQty(product.effective_reorder_point, product.uom_factor))}{" "}
+          <span className="text-xs text-slate-400">{product.uom_label}</span>
+          {product.uses_global_reorder ? (
+            <span className="mt-0.5 block text-xs text-slate-400">Global default</span>
+          ) : null}
         </>
       ) : (
         "—"
@@ -738,23 +882,17 @@ function renderProductCell(product, columnId) {
     case "pricing":
       return <PricingBadge type={product.pricing} />;
     case "alert":
-      return <AlertBadge enabled={product.low_stock_alert_enabled} />;
-    case "updated":
-      return <UpdatedByCell name={product.updated_by_name} date={product.updated_at} />;
-    case "actions":
-      return (
-        <div className="flex items-center justify-center gap-1">
-          <ActionButton label="View product" className="text-slate-500 hover:bg-slate-100 hover:text-slate-700">
-            <EyeIcon />
-          </ActionButton>
-          <ActionButton label="Edit product" className="text-slate-500 hover:bg-slate-100 hover:text-slate-700">
-            <PencilIcon />
-          </ActionButton>
-          <ActionButton label="Delete product" className="text-red-500 hover:bg-red-50 hover:text-red-600">
-            <TrashIcon />
-          </ActionButton>
-        </div>
+      return product.uses_global_reorder ? (
+        <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-300/50">
+          Global
+        </span>
+      ) : (
+        <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-600/20">
+          Custom
+        </span>
       );
+    case "updated":
+      return <span className="text-slate-600">{formatDate(product.updated_at)}</span>;
     default:
       return "—";
   }
@@ -829,15 +967,6 @@ function ColumnPicker({
   );
 }
 
-function UpdatedByCell({ name, date }) {
-  return (
-    <div>
-      <p className="font-medium text-slate-800">{name}</p>
-      <p className="text-xs text-slate-500">{formatDate(date)}</p>
-    </div>
-  );
-}
-
 function VatBadge({ treatment }) {
   if (treatment === "—") return <span className="text-slate-400">—</span>;
   const vatable = treatment === "Vatable";
@@ -854,19 +983,93 @@ function VatBadge({ treatment }) {
   );
 }
 
-function AlertBadge({ enabled }) {
-  return enabled ? (
-    <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-600/20">
-      On
-    </span>
-  ) : (
-    <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 ring-1 ring-slate-300/50">
-      Off
-    </span>
+function InlineUnitPriceCell({ productCode, unitPrice, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(String(unitPrice ?? ""));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!editing) setValue(String(unitPrice ?? ""));
+  }, [unitPrice, editing]);
+
+  async function save() {
+    const next = Number(value);
+    if (!Number.isFinite(next) || next < 0) {
+      setError("Enter a valid price");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await apiRequest(`/products/${encodeURIComponent(productCode)}`, {
+        method: "PUT",
+        body: { unit_price: next },
+      });
+      setEditing(false);
+      onSaved?.();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="rounded px-1 text-slate-700 hover:bg-slate-100 hover:text-blue-600"
+        title="Click to update price"
+      >
+        {formatKes(unitPrice)}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <input
+        type="number"
+        min="0"
+        step="any"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="w-28 rounded border border-slate-200 px-2 py-1 text-right text-sm"
+        autoFocus
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save();
+          if (e.key === "Escape") setEditing(false);
+        }}
+      />
+      <div className="flex gap-1">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+        >
+          {saving ? "…" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setEditing(false);
+            setError(null);
+          }}
+          className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600"
+        >
+          Cancel
+        </button>
+      </div>
+      {error ? <p className="text-[10px] text-red-600">{error}</p> : null}
+    </div>
   );
 }
 
-function StockCell({ qty, unit, status }) {
+function StockCell({ qty, unit, factor, status }) {
+  const stockText = formatMixedStockDisplay(qty, factor ?? 1, unit).text;
   const styles = {
     in_stock: {
       label: "In stock",
@@ -888,20 +1091,18 @@ function StockCell({ qty, unit, status }) {
 
   return (
     <div className="text-center">
-      <p className={`text-base font-semibold leading-tight ${s.number}`}>
-        {formatQty(qty)}
-        <span className="ml-1 text-xs font-normal capitalize">{unit}</span>
-      </p>
+      <p className={`text-sm font-semibold leading-tight ${s.number}`}>{stockText}</p>
       <p className={`text-xs ${s.text}`}>{s.label}</p>
     </div>
   );
 }
 
-function ActionButton({ label, className, children }) {
+function ActionButton({ label, className, children, onClick }) {
   return (
     <button
       type="button"
       aria-label={label}
+      onClick={onClick}
       className={`rounded-lg p-1.5 transition ${className}`}
     >
       {children}
@@ -1022,26 +1223,6 @@ function SearchIcon({ className }) {
     <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="11" cy="11" r="8" />
       <path d="m21 21-4.35-4.35" />
-    </svg>
-  );
-}
-
-function ImportIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
-    </svg>
-  );
-}
-
-function ExportIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" y1="3" x2="12" y2="15" />
     </svg>
   );
 }

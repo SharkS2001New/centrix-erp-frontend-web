@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -115,16 +116,29 @@ export function CatalogPageShell({ title, subtitle, action, banner, toolbar, chi
   );
 }
 
-export function PrimaryButton({ children, onClick, type = "button" }) {
+export function PrimaryButton({ children, onClick, type = "button", showIcon = true, disabled }) {
   return (
     <button
       type={type}
       onClick={onClick}
-      className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
+      disabled={disabled}
+      className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
     >
-      <PlusIcon />
+      {showIcon ? <PlusIcon /> : null}
       {children}
     </button>
+  );
+}
+
+export function PrimaryLink({ href, children, showIcon = true }) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
+    >
+      {showIcon ? <PlusIcon /> : null}
+      {children}
+    </Link>
   );
 }
 
@@ -268,7 +282,7 @@ export function FormModal({ title, open, onClose, onSubmit, saving, error, submi
 
   function handleSubmit(e) {
     e.preventDefault();
-    onSubmit(e);
+    if (typeof onSubmit === "function") onSubmit(e);
   }
 
   return createPortal(
