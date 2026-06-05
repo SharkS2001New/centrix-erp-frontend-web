@@ -1,20 +1,43 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { formatShortDate } from "@/components/catalog/catalog-shared";
+import {
+  ReadonlyHierarchyQty,
+  StockTakeCountInputs,
+} from "@/components/inventory/stock-take-count-inputs";
+import {
+  applyLpoReceiveCountUpdate,
+  buildInitialReceiveCounts,
+  fillReceiveCountsForLines,
+  formatLinePackQty,
+  lpoLineOpenRemainingBase,
+  packQtyFromReceiveBase,
+  receiveBaseForLine,
+} from "@/components/inventory/lpo-receive-stock";
+import { useInventoryCatalogMaps } from "@/components/inventory/inventory-product-lines";
+import { formatQty } from "@/components/inventory/inventory-shared";
 import {
   formatLpoKes,
   formatPoNumber,
+  lpoHasSupplierReturns,
   lpoIsCancelledReturned,
-  lpoLineReturnedLabel,
-  lpoLineStatusLabel,
+  lpoLineReturnedQty,
+  lpoOrderDate,
 } from "@/components/lpo/lpo-shared";
-import { formatQty } from "@/components/inventory/inventory-shared";
-import { displayToBaseQty } from "@/lib/stock-uom";
+import { baseToDisplayQty } from "@/lib/stock-uom";
+
+function formatReturnedCell(line, uom) {
+  const returned = lpoLineReturnedQty(line);
+  if (returned <= 0) return "—";
+  const ordered = Number(line.ordered_qty ?? 0);
+  if (returned + 0.0001 >= ordered) return "Fully returned";
+  return formatLinePackQty(returned, uom);
+}
 
 export default function LpoReceivePage() {
   const params = useParams();
@@ -23,28 +46,36 @@ export default function LpoReceivePage() {
   const lpoNo = params.lpoNo;
 
   const [data, setData] = useState(null);
-  const [receiveQty, setReceiveQty] = useState({});
-  const [location, setLocation] = useState("store");
-  const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [notes, setNotes] = useState("");
+  const [uoms, setUoms] = useState([]);
+  const [receiveCounts, setReceiveCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
+  const { uomById } = useInventoryCatalogMaps(uoms);
+  const showReturned = useMemo(
+    () => lpoHasSupplierReturns(data?.lines ?? [], data?.supplier_returns ?? []),
+    [data?.lines, data?.supplier_returns],
+  );
+  const supplierInvoiceNumber = useMemo(() => {
+    const invoices = (data?.supplier_invoices ?? []).filter(
+      (inv) => inv.id != null && Number(inv.lpo_no) === Number(lpoNo),
+    );
+    return invoices[0]?.supplier_invoice_number?.trim() || null;
+  }, [data?.supplier_invoices, lpoNo]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest(`/lpo-mst/${lpoNo}/summary`);
+      const [res, uomRes] = await Promise.all([
+        apiRequest(`/lpo-mst/${lpoNo}/summary`),
+        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
+      ]);
+      setUoms(uomRes.data ?? uomRes ?? []);
       setData(res);
-      const initial = {};
-      for (const line of res.lines ?? []) {
-        initial[line.id] = String(line.remaining_qty ?? 0);
-      }
-      setReceiveQty(initial);
-      const firstInv = res.supplier_invoices?.[0];
-      if (firstInv?.supplier_invoice_number) {
-        setInvoiceNumber(firstInv.supplier_invoice_number);
-      }
+      const uomList = uomRes.data ?? uomRes ?? [];
+      const uomMap = new Map(uomList.map((u) => [u.id, u]));
+      setReceiveCounts(buildInitialReceiveCounts(res.lines, uomMap, 0));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load LPO");
     } finally {
@@ -56,12 +87,22 @@ export default function LpoReceivePage() {
     load();
   }, [load]);
 
+  function setLpoReceiveCount(key, value) {
+    setReceiveCounts((prev) =>
+      applyLpoReceiveCountUpdate(prev, key, value, data?.lines, uomById),
+    );
+  }
+
+  function fillAllRemaining() {
+    setReceiveCounts((prev) => fillReceiveCountsForLines(data?.lines, uomById, prev));
+  }
+
   async function confirmReceipt(partial) {
     const lines = data?.lines ?? [];
     const branchId = user?.branch_id ?? 1;
     const toPost = lines.filter((line) => {
-      const qty = Number(receiveQty[line.id] ?? 0);
-      return qty > 0;
+      const uom = line.unit_id ? uomById.get(line.unit_id) : null;
+      return receiveBaseForLine(String(line.id), uom, receiveCounts) > 0;
     });
 
     if (toPost.length === 0) {
@@ -73,9 +114,11 @@ export default function LpoReceivePage() {
     setError(null);
     try {
       for (const line of toPost) {
-        const packQty = Number(receiveQty[line.id]);
-        const factor = Number(line.conversion_factor ?? 1);
-        if (packQty > line.remaining_qty + 0.0001) {
+        const uom = line.unit_id ? uomById.get(line.unit_id) : null;
+        const lineKey = String(line.id);
+        const receiveBase = receiveBaseForLine(lineKey, uom, receiveCounts);
+        const openRemainingBase = lpoLineOpenRemainingBase(line, uom);
+        if (receiveBase > openRemainingBase + 0.0001) {
           throw new Error(`Receiving qty exceeds remaining for ${line.product_name}`);
         }
         await apiRequest("/inventory/receive", {
@@ -83,11 +126,11 @@ export default function LpoReceivePage() {
           body: {
             product_code: line.product_code,
             branch_id: branchId,
-            units_received: displayToBaseQty(packQty, factor),
-            pack_qty: packQty,
-            stock_location: location,
+            units_received: receiveBase,
+            pack_qty: packQtyFromReceiveBase(receiveBase, uom),
+            stock_location: "store",
             cost_price: line.cost_price,
-            invoice_number: invoiceNumber.trim() || null,
+            invoice_number: supplierInvoiceNumber,
             lpo_no: Number(lpoNo),
             lpo_txn_id: line.id,
           },
@@ -105,135 +148,177 @@ export default function LpoReceivePage() {
   }
 
   const lpo = data?.lpo;
+  const lines = data?.lines ?? [];
+  const orderDate = lpo ? lpoOrderDate(lpo) : null;
 
   return (
-    <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
-      <div className="mb-6 max-w-4xl">
-        <Link href={`/lpo/${lpoNo}`} className="text-sm text-[#185FA5] hover:text-[#144f8a]">
+    <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-base text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
+      <div className="mb-6">
+        <Link href={`/lpo/${lpoNo}`} className="text-base text-[#185FA5] hover:text-[#144f8a]">
           ← Back to {lpo ? formatPoNumber(lpo.lpo_no) : "PO"}
         </Link>
-        <h1 className="mt-2 text-xl font-medium text-slate-900">Stock receipt from LPO</h1>
-        <p className="mt-0.5 text-sm text-slate-500">
+        <h1 className="mt-2 text-2xl font-medium text-slate-900">Stock receipt from LPO</h1>
+        <p className="mt-1 text-base text-slate-500">
           Posts inventory and updates received quantities on the purchase order.
         </p>
       </div>
 
       {error && (
-        <p className="mb-4 max-w-4xl rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-base text-red-700">
           {error}
         </p>
       )}
 
       {loading ? (
-        <p className="text-sm text-slate-500">Loading…</p>
+        <p className="text-base text-slate-500">Loading…</p>
       ) : lpo && (lpo.can_receive === false || lpoIsCancelledReturned(lpo)) ? (
-        <div className="max-w-4xl rounded-xl border border-orange-200 bg-orange-50 px-6 py-5 text-sm text-orange-900">
-          <p>Stock cannot be received on this purchase order because all items were returned to the supplier.</p>
+        <div className="rounded-xl border border-orange-200 bg-orange-50 px-6 py-5 text-base text-orange-900">
+          <p>
+            Stock cannot be received on this purchase order because all items were returned to the
+            supplier.
+          </p>
           <Link href={`/lpo/${lpoNo}`} className="mt-3 inline-block font-medium text-[#185FA5] hover:underline">
             Back to LPO
           </Link>
         </div>
       ) : lpo ? (
-        <div className="max-w-4xl space-y-6">
-          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <dl className="grid gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-xs text-slate-500">PO</dt>
-                <dd className="font-medium">{formatPoNumber(lpo.lpo_no)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-slate-500">Supplier</dt>
-                <dd>
-                  <Link href={`/suppliers/${lpo.supplier_id}`} className="text-[#185FA5] hover:underline">
-                    {lpo.supplier_name}
-                  </Link>
-                </dd>
-              </div>
-            </dl>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <Field label="Stock location">
-                <select
-                  className={inputClassName()}
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                >
-                  <option value="store">Store</option>
-                  <option value="shop">Shop</option>
-                </select>
-              </Field>
-              <Field label="Supplier invoice / GRN ref">
-                <input
-                  className={inputClassName()}
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                />
-              </Field>
-              <div className="sm:col-span-2">
-                <Field label="Notes">
-                  <input
-                    className={inputClassName()}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
-                </Field>
-              </div>
+        <div className="space-y-6">
+          <section className="rounded-xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
+            <div className="overflow-x-auto">
+              <dl className="grid min-w-[800px] grid-cols-5 gap-6">
+                <div className="min-w-0">
+                  <dt className="text-sm text-slate-500">PO</dt>
+                  <dd className="mt-1 font-medium text-slate-900">{formatPoNumber(lpo.lpo_no)}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-sm text-slate-500">Supplier</dt>
+                  <dd className="mt-1 truncate">
+                    <Link href={`/suppliers/${lpo.supplier_id}`} className="font-medium text-[#185FA5] hover:underline">
+                      {lpo.supplier_name}
+                    </Link>
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-sm text-slate-500">LPO date</dt>
+                  <dd className="mt-1 text-slate-900">
+                    {orderDate ? formatShortDate(orderDate) : "—"}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-sm text-slate-500">Your reference</dt>
+                  <dd className="mt-1 truncate text-slate-900">{lpo.reference_number || "—"}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-sm text-slate-500">Supplier invoice</dt>
+                  <dd className="mt-1 truncate text-slate-900">{supplierInvoiceNumber ?? "—"}</dd>
+                </div>
+              </dl>
             </div>
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-sm font-semibold text-slate-900">Items to receive</h2>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-base font-semibold text-slate-900">Items to receive</h2>
+              {lines.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={fillAllRemaining}
+                  className="text-base font-medium text-[#185FA5] hover:underline"
+                >
+                  Fill all remaining
+                </button>
+              ) : null}
+            </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] border-collapse text-sm">
+              <table className="w-full min-w-[860px] table-fixed border-collapse text-base">
+                <colgroup>
+                  <col className="w-[22%]" />
+                  <col className="w-[11%]" />
+                  {showReturned ? <col className="w-[10%]" /> : null}
+                  <col className="w-[11%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[10%]" />
+                </colgroup>
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
-                    <th className="py-2 pr-3">Product</th>
-                    <th className="py-2 pr-3 text-right">Ordered</th>
-                    <th className="py-2 pr-3 text-right">Returned</th>
-                    <th className="py-2 pr-3 text-right">Already received</th>
-                    <th className="py-2 pr-3 text-right">Remaining</th>
-                    <th className="py-2 pr-3 text-right">Receiving now</th>
-                    <th className="py-2 pr-3 text-right">Cost</th>
+                  <tr className="border-b border-slate-200 text-left text-sm font-medium text-slate-500">
+                    <th className="py-2.5 pr-3">Product</th>
+                    <th className="py-2.5 pr-3 text-right">Ordered</th>
+                    {showReturned ? (
+                      <th className="py-2.5 pr-1 text-right">Returned</th>
+                    ) : null}
+                    <th className="py-2.5 pr-1 text-right">Already received</th>
+                    <th className="py-2.5 pr-3 text-right">Remaining</th>
+                    <th className="py-2.5 pr-3 text-right">Receiving now</th>
+                    <th className="py-2.5 pr-3 text-right">Cost</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(data.lines ?? []).map((line) => {
-                    const canReceive = Number(line.remaining_qty) > 0;
+                  {lines.map((line) => {
+                    const lineUom = line.unit_id ? uomById.get(line.unit_id) : null;
+                    const lineKey = String(line.id);
+                    const openRemainingBase = lpoLineOpenRemainingBase(line, lineUom);
+                    const receivingNowBase = receiveBaseForLine(
+                      lineKey,
+                      lineUom,
+                      receiveCounts,
+                    );
+                    const adjustedRemainingBase = Math.max(
+                      0,
+                      openRemainingBase - receivingNowBase,
+                    );
+                    const canReceive = openRemainingBase > 0;
+
                     return (
                       <tr
                         key={line.id}
                         className={`border-b border-slate-100 ${!canReceive ? "bg-slate-50/80" : ""}`}
                       >
-                        <td className="py-2.5 pr-3 font-medium text-slate-900">
+                        <td className="py-3 pr-3 align-top font-medium text-slate-900">
                           {line.product_name}
-                          <p className="text-xs font-normal text-slate-500">
-                            {line.package_name || line.uom} · {lpoLineStatusLabel(line)}
-                          </p>
+                          <p className="text-sm font-normal text-slate-500">{line.product_code}</p>
                         </td>
-                        <td className="py-2.5 pr-3 text-right">{formatQty(line.ordered_qty)}</td>
-                        <td className="py-2.5 pr-3 text-right text-amber-800">
-                          {lpoLineReturnedLabel(line)}
+                        <td className="py-3 pr-3 text-right align-top tabular-nums">
+                          {formatLinePackQty(line.ordered_qty, lineUom)}
                         </td>
-                        <td className="py-2.5 pr-3 text-right text-slate-600">
-                          {formatQty(line.received_qty)}
+                        {showReturned ? (
+                          <td className="py-3 pr-1 text-right align-top tabular-nums text-amber-800">
+                            {formatReturnedCell(line, lineUom)}
+                          </td>
+                        ) : null}
+                        <td className="py-3 pr-1 text-right align-top tabular-nums text-slate-600">
+                          {formatLinePackQty(line.received_qty ?? 0, lineUom)}
                         </td>
-                        <td className="py-2.5 pr-3 text-right font-medium">
-                          {formatQty(line.remaining_qty)}
+                        <td className="py-3 pr-3 text-right align-top">
+                          {lineUom ? (
+                            <ReadonlyHierarchyQty
+                              baseQty={adjustedRemainingBase}
+                              uom={lineUom}
+                              highlight={receivingNowBase > 0}
+                            />
+                          ) : (
+                            <span className="tabular-nums font-medium">
+                              {formatQty(baseToDisplayQty(adjustedRemainingBase, 1))}
+                            </span>
+                          )}
                         </td>
-                        <td className="py-2.5 pr-3 text-right">
-                          <input
-                            type="number"
-                            min="0"
-                            max={line.remaining_qty}
-                            step="any"
-                            className={`${inputClassName()} w-28 text-right`}
-                            value={receiveQty[line.id] ?? ""}
-                            onChange={(e) =>
-                              setReceiveQty((p) => ({ ...p, [line.id]: e.target.value }))
-                            }
-                            disabled={!canReceive}
-                          />
+                        <td className="py-3 pr-3 align-top">
+                          {canReceive ? (
+                            <StockTakeCountInputs
+                              lineId={lineKey}
+                              uom={lineUom}
+                              counts={receiveCounts}
+                              onChange={setLpoReceiveCount}
+                              maxBase={openRemainingBase}
+                              showPreview
+                            />
+                          ) : (
+                            <span className="block text-right text-slate-400">—</span>
+                          )}
                         </td>
-                        <td className="py-2.5 pr-3 text-right">{formatLpoKes(line.cost_price)}</td>
+                        <td className="py-3 pr-3 text-right align-top">
+                          {formatLpoKes(line.cost_price)}
+                        </td>
                       </tr>
                     );
                   })}
@@ -242,12 +327,12 @@ export default function LpoReceivePage() {
             </div>
           </section>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-3">
             <button
               type="button"
               disabled={saving}
               onClick={() => confirmReceipt(false)}
-              className="rounded-lg bg-[#185FA5] px-5 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
+              className="rounded-lg bg-[#185FA5] px-6 py-2.5 text-base font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
             >
               {saving ? "Posting…" : "Confirm receipt & update stock"}
             </button>
@@ -255,13 +340,13 @@ export default function LpoReceivePage() {
               type="button"
               disabled={saving}
               onClick={() => confirmReceipt(true)}
-              className="rounded-lg border border-slate-200 bg-white px-5 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+              className="rounded-lg border border-slate-200 bg-white px-6 py-2.5 text-base font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
             >
               Partial receipt (stay on page)
             </button>
             <Link
               href={`/lpo/${lpoNo}`}
-              className="rounded-lg border border-slate-200 bg-white px-5 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              className="rounded-lg border border-slate-200 bg-white px-6 py-2.5 text-base text-slate-700 hover:bg-slate-50"
             >
               Cancel
             </Link>

@@ -1,4 +1,28 @@
-/** Packaging label: UOM full name and conversion factor, e.g. "Carton (20)". */
+import { smallPackagingLabel, uomConversionSummary } from "@/lib/uom-packaging";
+import {
+  baseToHierarchyCounts,
+  displayToBaseQty,
+  formatMixedStockDisplay,
+  stockTakeCountsToBase,
+  uomConversionFactor,
+} from "@/lib/stock-uom";
+import { uomStockTakeLevels } from "@/lib/uom-packaging";
+
+/** Human-readable UOM chain, e.g. "1 Bag = 50 kg · 1 outer = 20 kg". */
+export function formatLpoPackagingLabel(uom) {
+  if (!uom) return "—";
+  const summary = uomConversionSummary(uom);
+  if (summary) return summary;
+  const small = smallPackagingLabel(uom);
+  return `Count in ${small}`;
+}
+
+/** @deprecated Prefer formatLpoPackagingLabel for LPO packaging column. */
+export function formatPackagingLabel(uom) {
+  if (!uom) return "—";
+  const packageName = packageNameFromUom(uom);
+  return `${packageName} (${formatFactor(uom.conversion_factor ?? 1)})`;
+}
 
 export function packageNameFromUom(uom) {
   if (!uom) return "package";
@@ -23,10 +47,56 @@ export function measureUnitFromUom(uom) {
   return labels[t.toLowerCase()] ?? t;
 }
 
-export function formatPackagingLabel(uom) {
-  if (!uom) return "—";
-  const packageName = packageNameFromUom(uom);
-  return `${packageName} (${formatFactor(uom.conversion_factor ?? 1)})`;
+export function formatPackQtyString(packQty) {
+  const n = Number(packQty);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return String(Math.round(n * 1000) / 1000);
+}
+
+/** Split stored pack qty into per-level count strings for order inputs. */
+export function orderCountsObjectFromPackQty(packQty, uom) {
+  const factor = uomConversionFactor(uom);
+  const base = factor > 1 ? displayToBaseQty(packQty, factor) : Number(packQty) || 0;
+  const { full, middle, small } = baseToHierarchyCounts(base, uom);
+  const levels = uomStockTakeLevels(uom);
+  const counts = {};
+  for (const level of levels) {
+    const v = level.key === "full" ? full : level.key === "middle" ? middle : small;
+    counts[level.key] = String(v);
+  }
+  return counts;
+}
+
+/** Hierarchy count inputs → decimal full-pack qty for API / cost totals. */
+export function orderCountsToPackQty(orderCounts, uom) {
+  if (!orderCounts) return 0;
+  const levels = uomStockTakeLevels(uom);
+  const byKey = {};
+  for (const level of levels) {
+    const raw = orderCounts[level.key];
+    byKey[level.key] = raw === "" || raw == null ? 0 : Number(raw);
+  }
+  const base = stockTakeCountsToBase(byKey, uom);
+  const factor = uomConversionFactor(uom);
+  if (factor <= 1) return base;
+  return Math.round((base / factor) * 1000) / 1000;
+}
+
+/** Pack qty (stored on LPO lines) → mixed UOM text, e.g. "2 Bag, 40 kg". */
+export function formatLpoPackQtyDisplay(packQty, uom) {
+  const qty = Number(packQty);
+  if (!Number.isFinite(qty)) return "—";
+  if (!uom) return String(packQty);
+  const factor = uomConversionFactor(uom);
+  const base = factor > 1 ? displayToBaseQty(qty, factor) : qty;
+  return formatMixedStockDisplay(base, uom).text;
+}
+
+/** Split packaging summary into display lines. */
+export function lpoPackagingParts(label) {
+  const text = String(label ?? "").trim();
+  if (!text || text === "—") return ["—"];
+  return text.split(" · ").map((part) => part.trim()).filter(Boolean);
 }
 
 export function formatFactor(value) {
@@ -41,7 +111,7 @@ export function formatFactor(value) {
 export function enrichProductForLpo(product, uomById, vatById) {
   const uom = uomById.get(product.unit_id);
   const vat = vatById.get(product.vat_id);
-  const packaging = formatPackagingLabel(uom);
+  const packaging = formatLpoPackagingLabel(uom);
   const packName = packageNameFromUom(uom);
 
   return {
@@ -66,18 +136,20 @@ export function lineFromEnrichedProduct(product) {
       : 0;
   const uom = product.uom;
   const packName = product.package_name ?? packageNameFromUom(uom);
+  const order_counts = orderCountsObjectFromPackQty(1, uom);
 
   return {
     product_code: product.product_code,
     product_name: product.product_name ?? product.product_code,
-    packaging_label: product.packaging_label ?? formatPackagingLabel(uom),
+    packaging_label: product.packaging_label ?? formatLpoPackagingLabel(uom),
     conversion_factor: Number(product.conversion_factor ?? uom?.conversion_factor ?? 1),
     package_name: packName,
     measure_unit: product.measure_unit ?? measureUnitFromUom(uom),
     uom: packName,
     unit_id: product.unit_id,
     vat_rate: product.vat_rate ?? 0,
-    ordered_qty: "1",
+    order_counts,
+    ordered_qty: formatPackQtyString(orderCountsToPackQty(order_counts, uom)),
     cost_price: cost > 0 ? String(Math.trunc(cost)) : "",
   };
 }

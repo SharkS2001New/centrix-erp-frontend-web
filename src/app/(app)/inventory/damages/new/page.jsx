@@ -6,24 +6,24 @@ import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
-import { lineFromEnrichedProduct, packageNameFromUom } from "@/components/lpo/lpo-product-utils";
+import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
+import {
+  DamageMeasureSelect,
+  defaultDamagePackageType,
+} from "@/components/inventory/damage-measure-select";
 import {
   InventoryProductLines,
   useInventoryCatalogMaps,
 } from "@/components/inventory/inventory-product-lines";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
-import { damageQtyToBase } from "@/lib/stock-uom";
-
-const PACKAGE_OPTIONS = [
-  { value: "full_package", label: "Full pack" },
-  { value: "pieces", label: "Loose units" },
-];
+import { damageMeasureLabel, damageQtyToBase } from "@/lib/stock-uom";
 
 function lineFromProduct(product) {
+  const uom = product.uom;
   return {
     ...lineFromEnrichedProduct(product),
     quantity: "1",
-    package_type: "full_package",
+    package_type: defaultDamagePackageType(uom),
     stock_location: "shop",
   };
 }
@@ -71,16 +71,15 @@ export default function RecordDamagePage() {
     const reasonText = [reason.trim(), notes.trim()].filter(Boolean).join(" — ");
     try {
       for (const line of toPost) {
-        const factor = Number(line.conversion_factor ?? 1);
-        const packName = line.package_name ?? packageNameFromUom(line.uom);
+        const uom = uomById.get(line.unit_id);
         await apiRequest("/damages", {
           method: "POST",
           body: {
             product_code: line.product_code,
             branch_id: branchId,
-            quantity: damageQtyToBase(line.quantity, line.package_type, factor),
+            quantity: damageQtyToBase(line.quantity, line.package_type, uom),
             package_type: line.package_type,
-            uom_label: packName,
+            uom_label: damageMeasureLabel(uom, line.package_type),
             stock_location: line.stock_location,
             reason: reasonText || null,
           },
@@ -143,21 +142,17 @@ export default function RecordDamagePage() {
             { key: "loc", label: "Location" },
           ]}
           emptyMessage="Search and add products to record damage."
-          renderCells={(line, index) => (
+          renderCells={(line, index) => {
+            const uom = uomById.get(line.unit_id);
+            return (
             <>
               <td className="px-3 py-2">
-                <select
-                  className={`${inputClassName()} text-xs`}
+                <DamageMeasureSelect
+                  uom={uom}
                   value={line.package_type}
-                  onChange={(e) => updateLine(index, { package_type: e.target.value })}
+                  onChange={(package_type) => updateLine(index, { package_type })}
                   onClick={(e) => e.stopPropagation()}
-                >
-                  {PACKAGE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                />
               </td>
               <td className="px-3 py-2 text-right">
                 <input
@@ -182,7 +177,8 @@ export default function RecordDamagePage() {
                 </select>
               </td>
             </>
-          )}
+            );
+          }}
         />
 
         <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">

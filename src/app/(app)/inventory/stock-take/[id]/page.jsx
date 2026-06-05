@@ -10,16 +10,23 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import {
-  formatQty,
   InventoryPageShell,
   InventoryTableShell,
   SESSION_STATUS_LABELS,
-  uomLabelFrom,
 } from "@/components/inventory/inventory-shared";
 import {
+  initStockTakeCounts,
+  readStockTakeCounts,
+  StockTakeCountInputs,
+} from "@/components/inventory/stock-take-count-inputs";
+import {
+  uomHierarchyChain,
+  uomStockTakeHint,
+  uomStockTakeLevels,
+} from "@/lib/uom-packaging";
+import {
   formatMixedStockDisplay,
-  mixedToBase,
-  splitBaseToMixed,
+  stockTakeCountsToBase,
 } from "@/lib/stock-uom";
 
 function varianceClass(value) {
@@ -76,14 +83,11 @@ export default function StockTakeSessionPage() {
       for (const line of loadedLines) {
         const product = prodMap.get(line.product_code);
         const uom = product ? uomMap.get(product.unit_id) : null;
-        const factor = Number(uom?.conversion_factor ?? 1);
-        const { packs, loose } = splitBaseToMixed(line.counted_quantity, factor);
-        if (factor > 1) {
-          initial[`${line.id}:packs`] = String(packs);
-          initial[`${line.id}:loose`] = String(loose);
-        } else {
-          initial[line.id] = String(loose);
-        }
+        const levels = uomStockTakeLevels(uom);
+        Object.assign(
+          initial,
+          initStockTakeCounts(line.id, line.counted_quantity, uom, levels),
+        );
       }
       setCounts(initial);
     } catch (e) {
@@ -106,24 +110,19 @@ export default function StockTakeSessionPage() {
   function productMeta(productCode) {
     const product = productByCode.get(productCode);
     const uom = product ? uomById.get(product.unit_id) : null;
+    const levels = uomStockTakeLevels(uom);
     return {
-      factor: Number(uom?.conversion_factor ?? 1),
-      label: uomLabelFrom(uom),
-      packLabel: uom?.full_name ?? uomLabelFrom(uom),
       uom,
+      levels,
+      hierarchy: uomHierarchyChain(uom),
+      countHint: uomStockTakeHint(uom),
     };
   }
 
   function countedBaseForLine(line) {
-    const { factor } = productMeta(line.product_code);
-    if (factor > 1) {
-      return mixedToBase(
-        counts[`${line.id}:packs`],
-        counts[`${line.id}:loose`],
-        factor,
-      );
-    }
-    return Number(counts[line.id] ?? 0);
+    const { uom, levels } = productMeta(line.product_code);
+    const byKey = readStockTakeCounts(line.id, levels, counts);
+    return stockTakeCountsToBase(byKey, uom);
   }
 
   const showShop = session?.stock_location === "shop" || session?.stock_location === "both";
@@ -135,12 +134,11 @@ export default function StockTakeSessionPage() {
       let row = map.get(line.product_code);
       if (!row) {
         const product = productByCode.get(line.product_code);
-        const { factor, label } = productMeta(line.product_code);
+        const meta = productMeta(line.product_code);
         row = {
           product_code: line.product_code,
           product_name: product?.product_name ?? line.product_code,
-          factor,
-          label,
+          ...meta,
           shop: null,
           store: null,
         };
@@ -163,17 +161,14 @@ export default function StockTakeSessionPage() {
   const variances = useMemo(() => {
     const items = [];
     for (const line of lines) {
-      const { factor, label, packLabel, uom } = productMeta(line.product_code);
+      const meta = productMeta(line.product_code);
       const systemBase = Number(line.system_quantity ?? 0);
       const countedBase = countedBaseForLine(line);
       const varianceBase = countedBase - systemBase;
       if (Math.abs(varianceBase) >= 0.0001) {
         items.push({
           line,
-          label,
-          packLabel,
-          uom,
-          factor,
+          ...meta,
           varianceBase,
           location: line.stock_location,
         });
@@ -227,7 +222,7 @@ export default function StockTakeSessionPage() {
 
   const readOnly = session?.status === "completed";
 
-  function locationCells(line) {
+  function locationCells(line, uom) {
     if (!line) {
       return (
         <>
@@ -237,11 +232,11 @@ export default function StockTakeSessionPage() {
         </>
       );
     }
-    const { factor, packLabel, uom } = productMeta(line.product_code);
-    const systemText = formatMixedStockDisplay(line.system_quantity, uom ?? factor, packLabel).text;
+    const systemText = formatMixedStockDisplay(line.system_quantity, uom).text;
     const countedBase = countedBaseForLine(line);
     const varianceBase = countedBase - Number(line.system_quantity ?? 0);
-    const varianceText = formatMixedStockDisplay(Math.abs(varianceBase), uom ?? factor, packLabel).text;
+    const varianceText = formatMixedStockDisplay(Math.abs(varianceBase), uom).text;
+    const levels = uomStockTakeLevels(uom);
 
     return (
       <>
@@ -249,42 +244,24 @@ export default function StockTakeSessionPage() {
         <td className="px-3 py-2 text-right">
           {readOnly ? (
             <span className="text-sm tabular-nums">
-              {formatMixedStockDisplay(countedBase, uom ?? factor, packLabel).text}
+              {formatMixedStockDisplay(countedBase, uom).text}
             </span>
-          ) : factor > 1 ? (
-            <div className="flex flex-col items-end gap-1">
-              <label className="flex items-center gap-1 text-[10px] text-slate-500">
-                Packs
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  className={`${inputClassName()} w-16 text-right`}
-                  value={counts[`${line.id}:packs`] ?? ""}
-                  onChange={(e) => setCount(`${line.id}:packs`, e.target.value)}
-                  disabled={saving}
-                />
-              </label>
-              <label className="flex items-center gap-1 text-[10px] text-slate-500">
-                Loose pcs
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  className={`${inputClassName()} w-16 text-right`}
-                  value={counts[`${line.id}:loose`] ?? ""}
-                  onChange={(e) => setCount(`${line.id}:loose`, e.target.value)}
-                  disabled={saving}
-                />
-              </label>
-            </div>
-          ) : (
+          ) : levels.length === 1 && levels[0].key === "small" ? (
             <input
               type="number"
               step="any"
               className={`${inputClassName()} w-20 text-right`}
-              value={counts[line.id] ?? ""}
-              onChange={(e) => setCount(line.id, e.target.value)}
+              value={counts[`${line.id}:small`] ?? ""}
+              onChange={(e) => setCount(`${line.id}:small`, e.target.value)}
+              disabled={saving}
+              aria-label={`${levels[0].label} count`}
+            />
+          ) : (
+            <StockTakeCountInputs
+              lineId={line.id}
+              uom={uom}
+              counts={counts}
+              onChange={setCount}
               disabled={saving}
             />
           )}
@@ -329,8 +306,8 @@ export default function StockTakeSessionPage() {
         </Link>
         {!readOnly ? (
           <p className="text-sm text-slate-500">
-            For pack products, enter full packs and any loose pieces left (e.g. 1 carton, 2 pcs).
-            Save, then close to update system stock.
+            Count using each product&apos;s UOM packaging — full packs, outers (if set), or base
+            units. Totals reconcile to system stock in small units.
             {dirty ? <span className="ml-2 text-amber-700">Unsaved changes.</span> : null}
           </p>
         ) : null}
@@ -351,7 +328,7 @@ export default function StockTakeSessionPage() {
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                   <th className="px-3 py-2 font-medium" rowSpan={2}>
-                    Product
+                    Product / UOM
                   </th>
                   {showShop ? (
                     <th
@@ -403,10 +380,13 @@ export default function StockTakeSessionPage() {
                     <tr key={row.product_code} className="border-b border-slate-100">
                       <td className="px-3 py-2.5">
                         <span className="font-medium text-slate-900">{row.product_name}</span>
-                        <p className="text-xs text-slate-500">{row.label}</p>
+                        <p className="text-xs text-slate-500">{row.hierarchy}</p>
+                        {!readOnly ? (
+                          <p className="mt-0.5 text-[10px] text-slate-400">{row.countHint}</p>
+                        ) : null}
                       </td>
-                      {showShop ? locationCells(row.shop) : null}
-                      {showStore ? locationCells(row.store) : null}
+                      {showShop ? locationCells(row.shop, row.uom) : null}
+                      {showStore ? locationCells(row.store, row.uom) : null}
                     </tr>
                   ))
                 )}
@@ -440,7 +420,7 @@ export default function StockTakeSessionPage() {
                   </span>
                   <span className={varianceClass(item.varianceBase)}>
                     {item.varianceBase > 0 ? "+" : item.varianceBase < 0 ? "−" : ""}
-                    {formatMixedStockDisplay(Math.abs(item.varianceBase), item.uom ?? item.factor, item.packLabel).text}
+                    {formatMixedStockDisplay(Math.abs(item.varianceBase), item.uom).text}
                   </span>
                 </li>
               );

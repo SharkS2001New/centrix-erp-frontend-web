@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 8;
 
 function formatKes(value) {
   if (value == null || value === "") return "—";
@@ -52,10 +53,13 @@ function enrichHistory(records, productByCode, userById, subById) {
   const prevPrice = new Map();
 
   const enriched = sorted.map((row) => {
+    const unitPrice = Number(row.unit_price);
     const oldPrice = prevPrice.has(row.product_code)
       ? prevPrice.get(row.product_code)
-      : null;
-    prevPrice.set(row.product_code, Number(row.unit_price));
+      : row.previous_unit_price != null
+        ? Number(row.previous_unit_price)
+        : null;
+    prevPrice.set(row.product_code, unitPrice);
 
     const product = productByCode.get(row.product_code);
     const sub = product ? subById.get(product.subcategory_id) : null;
@@ -67,16 +71,45 @@ function enrichHistory(records, productByCode, userById, subById) {
       product_name: product?.product_name ?? "—",
       category_id: sub?.category_id ?? null,
       old_price: oldPrice,
-      new_price: Number(row.unit_price),
+      new_price: unitPrice,
       cost_price: row.cost_price,
       discount_pct: row.discount_pct,
       changed_by_name: userName,
-      delta: priceDelta(oldPrice, row.unit_price),
+      delta: priceDelta(oldPrice, unitPrice),
+      is_unit_price_change: oldPrice == null || oldPrice !== unitPrice,
     };
   });
 
-  return enriched.sort(
-    (a, b) => new Date(b.changed_at).getTime() - new Date(a.changed_at).getTime(),
+  return enriched
+    .filter((row) => row.is_unit_price_change)
+    .sort(
+      (a, b) => new Date(b.changed_at).getTime() - new Date(a.changed_at).getTime(),
+    );
+}
+
+function groupByProduct(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    let group = map.get(row.product_code);
+    if (!group) {
+      group = {
+        product_code: row.product_code,
+        product_name: row.product_name,
+        category_id: row.category_id,
+        changes: [],
+        latest_at: row.changed_at,
+        current_price: row.new_price,
+      };
+      map.set(row.product_code, group);
+    }
+    group.changes.push(row);
+    if (new Date(row.changed_at) >= new Date(group.latest_at)) {
+      group.latest_at = row.changed_at;
+      group.current_price = row.new_price;
+    }
+  }
+  return [...map.values()].sort(
+    (a, b) => new Date(b.latest_at).getTime() - new Date(a.latest_at).getTime(),
   );
 }
 
@@ -104,15 +137,14 @@ export default function PriceHistoryPage() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
+  const [expanded, setExpanded] = useState(() => new Set());
 
   const loadData = useCallback(async () => {
     setError(null);
     try {
       const [histRes, prodRes, catRes, subRes, userRes] = await Promise.all([
-        apiRequest("/price-history", { searchParams: { per_page: 200 } }),
+        apiRequest("/price-history", { searchParams: { per_page: 200, days: 7 } }),
         apiRequest("/products", { searchParams: { per_page: 200 } }),
         apiRequest("/categories", { searchParams: { per_page: 200 } }),
         apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
@@ -149,10 +181,8 @@ export default function PriceHistoryPage() {
     [records, productByCode, userById, subById],
   );
 
-  const filtered = useMemo(() => {
+  const filteredChanges = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const fromMs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
-    const toMs = dateTo ? new Date(`${dateTo}T23:59:59`).getTime() : null;
 
     return enriched.filter((row) => {
       if (
@@ -168,24 +198,77 @@ export default function PriceHistoryPage() {
       if (userFilter !== "all" && String(row.changed_by) !== userFilter) {
         return false;
       }
-      const changedMs = new Date(row.changed_at).getTime();
-      if (fromMs != null && changedMs < fromMs) return false;
-      if (toMs != null && changedMs > toMs) return false;
       return true;
     });
-  }, [enriched, search, categoryFilter, userFilter, dateFrom, dateTo]);
+  }, [enriched, search, categoryFilter, userFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const productGroups = useMemo(
+    () => groupByProduct(filteredChanges),
+    [filteredChanges],
+  );
+
+  const totalChangeCount = filteredChanges.length;
+
+  const totalPages = Math.max(1, Math.ceil(productGroups.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageSlice = productGroups.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   useEffect(() => {
     setPage(1);
-  }, [search, categoryFilter, userFilter, dateFrom, dateTo]);
+  }, [search, categoryFilter, userFilter]);
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
   }, [page, safePage]);
+
+  useEffect(() => {
+    const slice = productGroups.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    setExpanded(new Set(slice.map((g) => g.product_code)));
+  }, [safePage, productGroups]);
+
+  function toggleProduct(code) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }
+
+  function exportCsv() {
+    const headers = [
+      "Product code",
+      "Product name",
+      "Old price",
+      "New price",
+      "Cost price",
+      "Discount",
+      "Changed by",
+      "Changed at",
+    ];
+    const lines = [headers.join(",")];
+    for (const row of filteredChanges) {
+      lines.push(
+        [
+          row.product_code,
+          `"${String(row.product_name).replace(/"/g, '""')}"`,
+          row.old_price ?? "",
+          row.new_price,
+          row.cost_price ?? "",
+          row.discount_pct ?? 0,
+          `"${row.changed_by_name}"`,
+          row.changed_at,
+        ].join(","),
+      );
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `price-history-7d-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
@@ -193,12 +276,14 @@ export default function PriceHistoryPage() {
         <div>
           <h1 className="text-xl font-medium text-slate-900">Price history</h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Audit trail of all product price changes
+            Selling price changes in the last 7 days, grouped by product
           </p>
         </div>
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50"
+          onClick={exportCsv}
+          disabled={loading || filteredChanges.length === 0}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
         >
           <DownloadIcon />
           Export
@@ -216,6 +301,9 @@ export default function PriceHistoryPage() {
             className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
           />
         </div>
+        <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
+          Last 7 days
+        </span>
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
@@ -228,20 +316,6 @@ export default function PriceHistoryPage() {
             </option>
           ))}
         </select>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 outline-none focus:border-[#185FA5]"
-          aria-label="From date"
-        />
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 outline-none focus:border-[#185FA5]"
-          aria-label="To date"
-        />
         <select
           value={userFilter}
           onChange={(e) => setUserFilter(e.target.value)}
@@ -265,92 +339,115 @@ export default function PriceHistoryPage() {
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading price history…</p>
+        ) : pageSlice.length === 0 ? (
+          <p className="px-4 py-12 text-center text-sm text-slate-500">
+            No price changes in the last 7 days match your filters.
+          </p>
         ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px] border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
-                    <th className="w-[95px] px-4 py-2.5">Product code</th>
-                    <th className="px-4 py-2.5">Product name</th>
-                    <th className="w-[120px] px-4 py-2.5">Old price</th>
-                    <th className="w-[120px] px-4 py-2.5">New price</th>
-                    <th className="w-[120px] px-4 py-2.5">Cost price</th>
-                    <th className="w-[90px] px-4 py-2.5">Discount</th>
-                    <th className="w-[130px] px-4 py-2.5">Changed by</th>
-                    <th className="w-[130px] px-4 py-2.5">Changed at</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pageSlice.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
-                        No price changes match your filters.
-                      </td>
-                    </tr>
-                  ) : (
-                    pageSlice.map((row) => (
-                      <tr
-                        key={row.id}
-                        className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
-                      >
-                        <td className="px-4 py-3">
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-500">
-                            {row.product_code}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-medium text-slate-900">
-                          {row.product_name}
-                        </td>
-                        <td className="px-4 py-3">
-                          {row.old_price != null ? (
-                            <span className="text-xs text-slate-400 line-through">
-                              {formatKes(row.old_price)}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="font-mono text-sm">{formatKes(row.new_price)}</span>{" "}
-                          <PriceDelta delta={row.delta} />
-                        </td>
-                        <td className="px-4 py-3 font-mono text-sm text-slate-700">
-                          {formatKes(row.cost_price)}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-sm text-slate-700">
-                          {formatDiscount(row.discount_pct)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center text-sm text-slate-700">
-                            <span className="mr-1.5 inline-flex h-[26px] w-[26px] items-center justify-center rounded-full bg-[#E6F1FB] text-[10px] font-medium text-[#0C447C]">
-                              {initials(row.changed_by_name)}
-                            </span>
-                            {row.changed_by_name}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-slate-500">
-                          {formatDateTime(row.changed_at)}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+          <ul className="divide-y divide-slate-200">
+            {pageSlice.map((group) => {
+              const isOpen = expanded.has(group.product_code);
+              return (
+                <li key={group.product_code}>
+                  <button
+                    type="button"
+                    onClick={() => toggleProduct(group.product_code)}
+                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-slate-50"
+                  >
+                    <ChevronIcon open={isOpen} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-baseline gap-2">
+                        <span className="font-medium text-slate-900">{group.product_name}</span>
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-500">
+                          {group.product_code}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {group.changes.length} price change{group.changes.length === 1 ? "" : "s"} ·
+                        current {formatKes(group.current_price)} · last updated{" "}
+                        {formatDateTime(group.latest_at)}
+                      </p>
+                    </div>
+                    <Link
+                      href={`/products/${encodeURIComponent(group.product_code)}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="shrink-0 text-xs font-medium text-[#185FA5] hover:underline"
+                    >
+                      View product
+                    </Link>
+                  </button>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-2.5 text-xs text-slate-500">
-              <span>
-                Showing{" "}
-                {filtered.length === 0
-                  ? "0"
-                  : `${(safePage - 1) * PAGE_SIZE + 1}–${Math.min(safePage * PAGE_SIZE, filtered.length)}`}{" "}
-                of {filtered.length} records
-              </span>
-              <Pagination page={safePage} totalPages={totalPages} onChange={setPage} />
-            </div>
-          </>
+                  {isOpen ? (
+                    <div className="border-t border-slate-100 bg-slate-50/50 px-4 pb-3">
+                      <table className="w-full border-collapse text-sm">
+                        <thead>
+                          <tr className="text-left text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                            <th className="py-2 pr-3">Changed at</th>
+                            <th className="py-2 pr-3">Old price</th>
+                            <th className="py-2 pr-3">New price</th>
+                            <th className="py-2 pr-3">Cost</th>
+                            <th className="py-2 pr-3">Discount</th>
+                            <th className="py-2">Changed by</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.changes.map((row) => (
+                            <tr
+                              key={row.id}
+                              className="border-t border-slate-100 first:border-t-0"
+                            >
+                              <td className="py-2.5 pr-3 text-slate-600">
+                                {formatDateTime(row.changed_at)}
+                              </td>
+                              <td className="py-2.5 pr-3">
+                                {row.old_price != null ? (
+                                  <span className="text-xs text-slate-400 line-through">
+                                    {formatKes(row.old_price)}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-slate-400">Initial</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 pr-3">
+                                <span className="font-mono">{formatKes(row.new_price)}</span>{" "}
+                                <PriceDelta delta={row.delta} />
+                              </td>
+                              <td className="py-2.5 pr-3 font-mono text-slate-700">
+                                {formatKes(row.cost_price)}
+                              </td>
+                              <td className="py-2.5 pr-3">{formatDiscount(row.discount_pct)}</td>
+                              <td className="py-2.5">
+                                <span className="inline-flex items-center text-slate-700">
+                                  <span className="mr-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#E6F1FB] text-[10px] font-medium text-[#0C447C]">
+                                    {initials(row.changed_by_name)}
+                                  </span>
+                                  {row.changed_by_name}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
         )}
+
+        {!loading && productGroups.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-2.5 text-xs text-slate-500">
+            <span>
+              {productGroups.length} product{productGroups.length === 1 ? "" : "s"} ·{" "}
+              {totalChangeCount} price change{totalChangeCount === 1 ? "" : "s"}
+              {productGroups.length > PAGE_SIZE
+                ? ` · showing ${(safePage - 1) * PAGE_SIZE + 1}–${Math.min(safePage * PAGE_SIZE, productGroups.length)}`
+                : ""}
+            </span>
+            <Pagination page={safePage} totalPages={totalPages} onChange={setPage} />
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -377,6 +474,22 @@ function PriceDelta({ delta }) {
     return <span className="text-xs text-slate-400">{delta.label}</span>;
   }
   return null;
+}
+
+function ChevronIcon({ open }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className={`shrink-0 text-slate-400 transition ${open ? "rotate-90" : ""}`}
+    >
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
 }
 
 function Pagination({ page, totalPages, onChange }) {

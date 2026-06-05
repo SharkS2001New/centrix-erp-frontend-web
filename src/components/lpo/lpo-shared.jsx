@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  formatLpoPackagingLabel,
+  formatPackQtyString,
+  orderCountsObjectFromPackQty,
+} from "./lpo-product-utils";
+
 export function formatLpoKes(value) {
   const n = Number(value ?? 0);
   return `KES ${n.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -37,6 +43,12 @@ export function formatPoNumber(lpoNo) {
   return lpoNo != null ? `PO-${lpoNo}` : "—";
 }
 
+/** Best available LPO creation/sent date from API row. */
+export function lpoOrderDate(lpo) {
+  if (!lpo) return null;
+  return lpo.order_date ?? lpo.created_at ?? lpo.sent_at ?? null;
+}
+
 export function isLpoHeaderComplete(form) {
   return Boolean(
     form?.supplier_id &&
@@ -68,6 +80,17 @@ export function lpoCanEdit(lpo) {
 }
 
 /** LPO lines that still have quantity available to return (ordered minus prior returns). */
+export function lpoHasSupplierReturns(lines = [], supplierReturns = []) {
+  if (supplierReturns.length > 0) return true;
+  return lines.some(
+    (line) => Number(line.returned_qty ?? line.committed_return_qty ?? 0) > 0,
+  );
+}
+
+export function lpoLineReturnedQty(line) {
+  return Number(line?.returned_qty ?? line?.committed_return_qty ?? 0);
+}
+
 export function lpoReturnableLines(lines = []) {
   return (lines ?? []).filter((l) => {
     const ordered = Number(l.ordered_qty ?? 0);
@@ -171,6 +194,7 @@ export const EMPTY_LPO_LINE = {
   unit_id: null,
   vat_rate: 0,
   ordered_qty: "",
+  order_counts: null,
   cost_price: "",
 };
 
@@ -185,7 +209,7 @@ export const EMPTY_LPO_FORM = {
   lines: [],
 };
 
-export function lpoHeaderToForm(lpo, lines = []) {
+export function lpoHeaderToForm(lpo, lines = [], uomById) {
   return {
     supplier_id: String(lpo.supplier_id ?? ""),
     reference_number: lpo.reference_number ?? "",
@@ -196,23 +220,46 @@ export function lpoHeaderToForm(lpo, lines = []) {
     lpo_status_code: String(lpo.lpo_status_code ?? 1),
     lines:
       lines.length > 0
-        ? lines.map((l) => ({
-            product_code: l.product_code,
-            product_name: l.product_name ?? l.product_code,
-            packaging_label: l.packaging_label ?? l.uom ?? "",
-            conversion_factor: Number(l.conversion_factor ?? 1),
-            package_name: l.package_name ?? l.uom ?? "",
-            measure_unit: l.measure_unit ?? "",
-            uom: l.uom ?? "",
-            unit_id: l.unit_id ?? null,
-            vat_rate: Number(l.vat_rate ?? 0),
-            ordered_qty: String(l.ordered_qty ?? ""),
-            cost_price:
-              l.cost_price != null && l.cost_price !== ""
-                ? sanitizeLpoWholeNumber(l.cost_price)
-                : "",
-          }))
+        ? lines.map((l) => {
+            const uom = uomById?.get(l.unit_id);
+            const packQty = Number(l.ordered_qty) || 0;
+            const order_counts = uom ? orderCountsObjectFromPackQty(packQty, uom) : null;
+            return {
+              product_code: l.product_code,
+              product_name: l.product_name ?? l.product_code,
+              packaging_label: uom
+                ? formatLpoPackagingLabel(uom)
+                : (l.packaging_label ?? l.uom ?? ""),
+              conversion_factor: Number(l.conversion_factor ?? uom?.conversion_factor ?? 1),
+              package_name: l.package_name ?? l.uom ?? "",
+              measure_unit: l.measure_unit ?? "",
+              uom: l.uom ?? "",
+              unit_id: l.unit_id ?? null,
+              vat_rate: Number(l.vat_rate ?? 0),
+              order_counts,
+              ordered_qty: formatPackQtyString(packQty),
+              cost_price:
+                l.cost_price != null && l.cost_price !== ""
+                  ? sanitizeLpoWholeNumber(l.cost_price)
+                  : "",
+            };
+          })
         : [],
+  };
+}
+
+/** Per-line net, VAT, and gross from qty × cost and product VAT rate. */
+export function computeLpoLineTotals(line) {
+  const qty = Number(line.ordered_qty) || 0;
+  const cost = Number(line.cost_price) || 0;
+  const net = qty * cost;
+  const rate = Number(line.vat_rate ?? 0);
+  const vat = net * (rate / 100);
+  return {
+    net: Math.round(net * 100) / 100,
+    vat: Math.round(vat * 100) / 100,
+    gross: Math.round((net + vat) * 100) / 100,
+    rate,
   };
 }
 
@@ -221,12 +268,9 @@ export function computeLpoTotals(lines) {
   let subtotal = 0;
   let vat = 0;
   for (const line of lines) {
-    const qty = Number(line.ordered_qty) || 0;
-    const cost = Number(line.cost_price) || 0;
-    const lineNet = qty * cost;
-    subtotal += lineNet;
-    const rate = Number(line.vat_rate ?? 0);
-    vat += lineNet * (rate / 100);
+    const lineTotals = computeLpoLineTotals(line);
+    subtotal += lineTotals.net;
+    vat += lineTotals.vat;
   }
   return {
     subtotal: Math.round(subtotal * 100) / 100,

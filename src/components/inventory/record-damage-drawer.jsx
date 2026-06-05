@@ -9,26 +9,15 @@ import {
   PrimaryButton,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
-import { formatPackagingLabel, packageNameFromUom } from "@/components/lpo/lpo-product-utils";
-import { damageQtyToBase } from "@/lib/stock-uom";
-
-const PACKAGE_OPTIONS = [
-  {
-    value: "full_package",
-    label: "Full pack",
-    hint: "Each unit is one full pack (e.g. one carton)",
-  },
-  {
-    value: "partial",
-    label: "Partial pack",
-    hint: "Quantity in the product's usual pack unit",
-  },
-  {
-    value: "pieces",
-    label: "Loose pieces",
-    hint: "Individual pieces — not multiplied by pack size",
-  },
-];
+import { formatPackagingLabel } from "@/components/lpo/lpo-product-utils";
+import {
+  DamageMeasureSelect,
+  defaultDamagePackageType,
+} from "@/components/inventory/damage-measure-select";
+import {
+  damageMeasureLabel,
+  damageQtyToBase,
+} from "@/lib/stock-uom";
 
 export function RecordDamageDrawer({ open, onClose, onSaved }) {
   const { user } = useAuth();
@@ -39,7 +28,7 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
   const [form, setForm] = useState({
     product_code: "",
     quantity: "",
-    package_type: "partial",
+    package_type: "full",
     stock_location: "shop",
     reason: "",
     notes: "",
@@ -70,21 +59,14 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
     const product = products.find((p) => p.product_code === form.product_code);
     if (!product) return null;
     const uom = uomById.get(product.unit_id);
-    return {
-      ...product,
-      uom,
-      factor: Number(uom?.conversion_factor ?? 1),
-      packName: packageNameFromUom(uom),
-    };
+    return { ...product, uom };
   }, [form.product_code, products, uomById]);
-
-  const packageHint = PACKAGE_OPTIONS.find((o) => o.value === form.package_type)?.hint;
 
   function reset() {
     setForm({
       product_code: "",
       quantity: "",
-      package_type: "partial",
+      package_type: "full",
       stock_location: "shop",
       reason: "",
       notes: "",
@@ -98,10 +80,19 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
     onClose();
   }
 
+  function handleProductChange(productCode) {
+    const product = products.find((p) => p.product_code === productCode);
+    const uom = product ? uomById.get(product.unit_id) : null;
+    setForm((p) => ({
+      ...p,
+      product_code: productCode,
+      package_type: defaultDamagePackageType(uom),
+    }));
+  }
+
   function quantityLabel() {
-    if (form.package_type === "pieces") return "Quantity (loose pieces)";
-    if (selectedProduct?.packName) return `Quantity (${selectedProduct.packName})`;
-    return "Quantity";
+    const label = damageMeasureLabel(selectedProduct?.uom, form.package_type);
+    return `Quantity (${label})`;
   }
 
   async function submit(e) {
@@ -109,9 +100,8 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
     setSaving(true);
     setError(null);
     try {
-      const factor = selectedProduct?.factor ?? 1;
-      const packName = selectedProduct?.packName ?? null;
-      const baseQty = damageQtyToBase(form.quantity, form.package_type, factor);
+      const uom = selectedProduct?.uom;
+      const baseQty = damageQtyToBase(form.quantity, form.package_type, uom);
       const reason = [form.reason.trim(), form.notes.trim()].filter(Boolean).join(" — ");
       await apiRequest("/damages", {
         method: "POST",
@@ -120,7 +110,7 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
           branch_id: branchId,
           quantity: baseQty,
           package_type: form.package_type,
-          uom_label: packName,
+          uom_label: damageMeasureLabel(uom, form.package_type),
           stock_location: form.stock_location,
           reason: reason || null,
         },
@@ -153,7 +143,7 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
           <select
             className={inputClassName()}
             value={form.product_code}
-            onChange={(e) => setForm((p) => ({ ...p, product_code: e.target.value }))}
+            onChange={(e) => handleProductChange(e.target.value)}
             required
           >
             <option value="">Select product…</option>
@@ -169,19 +159,13 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
           <p className="text-xs text-slate-500">Pack size: {formatPackagingLabel(selectedProduct.uom)}</p>
         ) : null}
 
-        <Field label="How is the quantity measured?">
-          <select
-            className={inputClassName()}
+        <Field label="Measured as">
+          <DamageMeasureSelect
+            uom={selectedProduct?.uom}
             value={form.package_type}
-            onChange={(e) => setForm((p) => ({ ...p, package_type: e.target.value }))}
-          >
-            {PACKAGE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          {packageHint ? <p className="mt-1 text-xs text-slate-500">{packageHint}</p> : null}
+            onChange={(package_type) => setForm((p) => ({ ...p, package_type }))}
+            className={inputClassName()}
+          />
         </Field>
 
         <Field label={quantityLabel()}>

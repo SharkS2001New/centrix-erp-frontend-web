@@ -12,13 +12,23 @@ import {
   InventoryProductLines,
   useInventoryCatalogMaps,
 } from "@/components/inventory/inventory-product-lines";
+import {
+  initStockTakeCounts,
+  ReadonlyHierarchyQty,
+  StockTakeCountInputs,
+} from "@/components/inventory/stock-take-count-inputs";
+import {
+  applyLpoReceiveCountUpdate,
+  buildInitialReceiveCounts,
+  fillReceiveCountsForLines,
+  formatLinePackQty,
+  lpoLineOpenRemainingBase,
+  packQtyFromReceiveBase,
+  receiveBaseForLine,
+} from "@/components/inventory/lpo-receive-stock";
 import { formatQty, InventoryPageShell } from "@/components/inventory/inventory-shared";
-import { displayToBaseQty } from "@/lib/stock-uom";
-
-function manualLineFromProduct(product) {
-  const base = lineFromEnrichedProduct(product);
-  return { ...base, qty: "1" };
-}
+import { uomStockTakeLevels } from "@/lib/uom-packaging";
+import { baseToDisplayQty, displayToBaseQty } from "@/lib/stock-uom";
 
 function makeReceiptRef(userRef) {
   const trimmed = userRef?.trim();
@@ -39,7 +49,7 @@ export default function ReceiveStockPage() {
   const [uoms, setUoms] = useState([]);
   const [lpoOptions, setLpoOptions] = useState([]);
   const [lpoData, setLpoData] = useState(null);
-  const [receiveQty, setReceiveQty] = useState({});
+  const [receiveCounts, setReceiveCounts] = useState({});
   const [manualLines, setManualLines] = useState([]);
   const [form, setForm] = useState({
     supplier_id: "",
@@ -75,19 +85,31 @@ export default function ReceiveStockPage() {
     [products],
   );
 
+  function setReceiveCount(key, value) {
+    setReceiveCounts((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setLpoReceiveCount(key, value) {
+    setReceiveCounts((prev) =>
+      applyLpoReceiveCountUpdate(prev, key, value, lpoData?.lines, uomById),
+    );
+  }
+
   function fillAllRemaining() {
-    const next = { ...receiveQty };
-    for (const line of lpoData?.lines ?? []) {
-      if (Number(line.remaining_qty) > 0) {
-        next[line.id] = String(line.remaining_qty);
-      }
-    }
-    setReceiveQty(next);
+    setReceiveCounts((prev) =>
+      fillReceiveCountsForLines(lpoData?.lines, uomById, prev),
+    );
   }
 
   function addManualProduct(product) {
     if (manualLines.some((l) => l.product_code === product.product_code)) return;
-    setManualLines((prev) => [...prev, manualLineFromProduct(product)]);
+    setManualLines((prev) => [...prev, lineFromEnrichedProduct(product)]);
+    const uom = product.uom ?? uomById.get(product.unit_id);
+    const levels = uomStockTakeLevels(uom);
+    setReceiveCounts((prev) => ({
+      ...prev,
+      ...initStockTakeCounts(product.product_code, 0, uom, levels),
+    }));
   }
 
   useEffect(() => {
@@ -102,29 +124,28 @@ export default function ReceiveStockPage() {
       .catch(() => setLpoOptions([]));
   }, [mode, form.supplier_id]);
 
-  const loadLpo = useCallback(async (lpoNo) => {
-    if (!lpoNo) {
-      setLpoData(null);
-      setReceiveQty({});
-      return;
-    }
-    setLoadingLpo(true);
-    setError(null);
-    try {
-      const res = await apiRequest(`/lpo-mst/${lpoNo}/summary`);
-      setLpoData(res);
-      const initial = {};
-      for (const line of res.lines ?? []) {
-        initial[line.id] = String(line.remaining_qty ?? 0);
+  const loadLpo = useCallback(
+    async (lpoNo) => {
+      if (!lpoNo) {
+        setLpoData(null);
+        setReceiveCounts({});
+        return;
       }
-      setReceiveQty(initial);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load purchase order");
-      setLpoData(null);
-    } finally {
-      setLoadingLpo(false);
-    }
-  }, []);
+      setLoadingLpo(true);
+      setError(null);
+      try {
+        const res = await apiRequest(`/lpo-mst/${lpoNo}/summary`);
+        setLpoData(res);
+        setReceiveCounts(buildInitialReceiveCounts(res.lines, uomById, 0));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load purchase order");
+        setLpoData(null);
+      } finally {
+        setLoadingLpo(false);
+      }
+    },
+    [uomById],
+  );
 
   useEffect(() => {
     if (mode === "lpo" && form.lpo_no) loadLpo(form.lpo_no);
@@ -137,7 +158,10 @@ export default function ReceiveStockPage() {
   async function submitLpo(e) {
     e.preventDefault();
     const lines = lpoData?.lines ?? [];
-    const toPost = lines.filter((line) => Number(receiveQty[line.id] ?? 0) > 0);
+    const toPost = lines.filter((line) => {
+      const uom = line.unit_id ? uomById.get(line.unit_id) : null;
+      return receiveBaseForLine(String(line.id), uom, receiveCounts) > 0;
+    });
     if (toPost.length === 0) {
       setError("Enter quantity to receive for at least one line.");
       return;
@@ -148,9 +172,10 @@ export default function ReceiveStockPage() {
     setError(null);
     try {
       for (const line of toPost) {
-        const packQty = Number(receiveQty[line.id]);
-        const factor = Number(line.conversion_factor ?? 1);
-        if (packQty > Number(line.remaining_qty ?? 0) + 0.0001) {
+        const uom = line.unit_id ? uomById.get(line.unit_id) : null;
+        const receiveBase = receiveBaseForLine(String(line.id), uom, receiveCounts);
+        const remainingBase = lpoLineOpenRemainingBase(line, uom);
+        if (receiveBase > remainingBase + 0.0001) {
           throw new Error(`Receiving qty exceeds remaining for ${line.product_name}`);
         }
         await apiRequest("/inventory/receive", {
@@ -158,8 +183,8 @@ export default function ReceiveStockPage() {
           body: {
             product_code: line.product_code,
             branch_id: branchId,
-            units_received: displayToBaseQty(packQty, factor),
-            pack_qty: packQty,
+            units_received: receiveBase,
+            pack_qty: packQtyFromReceiveBase(receiveBase, uom),
             stock_location: form.stock_location,
             cost_price: line.cost_price,
             invoice_number: receiptRef,
@@ -178,9 +203,11 @@ export default function ReceiveStockPage() {
 
   async function submitManual(e) {
     e.preventDefault();
-    const toPost = manualLines.filter(
-      (line) => line.product_code && Number(line.qty) > 0,
-    );
+    const toPost = manualLines.filter((line) => {
+      const product = productByCode.get(line.product_code);
+      const uom = product ? uomById.get(product.unit_id) : null;
+      return receiveBaseForLine(line.product_code, uom, receiveCounts) > 0;
+    });
     if (toPost.length === 0) {
       setError("Add at least one product with a quantity.");
       return;
@@ -193,14 +220,13 @@ export default function ReceiveStockPage() {
       for (const line of toPost) {
         const product = productByCode.get(line.product_code);
         const uom = product ? uomById.get(product.unit_id) : null;
-        const factor = Number(uom?.conversion_factor ?? 1);
-        const packQty = Number(line.qty);
+        const receiveBase = receiveBaseForLine(line.product_code, uom, receiveCounts);
         await apiRequest("/inventory/receive", {
           method: "POST",
           body: {
             product_code: line.product_code,
             branch_id: branchId,
-            units_received: displayToBaseQty(packQty, factor),
+            units_received: receiveBase,
             stock_location: form.stock_location,
             cost_price: line.cost_price
               ? Number(line.cost_price)
@@ -342,50 +368,61 @@ export default function ReceiveStockPage() {
                     </thead>
                     <tbody>
                       {lpoLines.map((line) => {
-                        const remaining = Number(line.remaining_qty ?? 0);
-                        const status = line.receive_status ?? (remaining <= 0 ? "complete" : "open");
+                        const lineUom = line.unit_id ? uomById.get(line.unit_id) : null;
+                        const lineKey = String(line.id);
+                        const openRemainingBase = lpoLineOpenRemainingBase(line, lineUom);
+                        const receivingNowBase = receiveBaseForLine(
+                          lineKey,
+                          lineUom,
+                          receiveCounts,
+                        );
+                        const adjustedRemainingBase = Math.max(
+                          0,
+                          openRemainingBase - receivingNowBase,
+                        );
+                        const status =
+                          line.receive_status ??
+                          (openRemainingBase <= 0 ? "complete" : "open");
                         return (
                           <tr key={line.id} className="border-b border-slate-100">
                             <td className="px-3 py-2.5">
                               <p className="font-medium text-slate-900">{line.product_name}</p>
-                              <p className="text-xs text-slate-500">{line.packaging_label || line.package_name}</p>
+                              <p className="text-xs text-slate-500">
+                                {line.packaging_label || line.package_name}
+                              </p>
                             </td>
-                            <td className="px-3 py-2.5 text-right tabular-nums">{formatQty(line.ordered_qty)}</td>
+                            <td className="px-3 py-2.5 text-right tabular-nums">
+                              {formatLinePackQty(line.ordered_qty, lineUom)}
+                            </td>
                             <td className="px-3 py-2.5 text-right tabular-nums text-slate-600">
-                              {formatQty(line.received_qty ?? 0)}
+                              {formatLinePackQty(line.received_qty ?? 0, lineUom)}
                             </td>
-                            <td className="px-3 py-2.5 text-right tabular-nums font-medium">
-                              {formatQty(remaining)}
-                            </td>
-                            <td className="px-3 py-2.5 text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max={remaining}
-                                  step="any"
-                                  className={`${inputClassName()} w-24 text-right`}
-                                  value={receiveQty[line.id] ?? ""}
-                                  onChange={(e) =>
-                                    setReceiveQty((p) => ({ ...p, [line.id]: e.target.value }))
-                                  }
-                                  disabled={remaining <= 0}
+                            <td className="px-3 py-2.5 text-right align-top">
+                              {lineUom ? (
+                                <ReadonlyHierarchyQty
+                                  baseQty={adjustedRemainingBase}
+                                  uom={lineUom}
+                                  highlight={receivingNowBase > 0}
                                 />
-                                {remaining > 0 ? (
-                                  <button
-                                    type="button"
-                                    className="text-[10px] text-[#185FA5] hover:underline"
-                                    onClick={() =>
-                                      setReceiveQty((p) => ({
-                                        ...p,
-                                        [line.id]: String(remaining),
-                                      }))
-                                    }
-                                  >
-                                    Max
-                                  </button>
-                                ) : null}
-                              </div>
+                              ) : (
+                                <span className="tabular-nums font-medium">
+                                  {formatQty(baseToDisplayQty(adjustedRemainingBase, 1))}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              {openRemainingBase <= 0 ? (
+                                <span className="block text-right text-slate-400">—</span>
+                              ) : (
+                                <StockTakeCountInputs
+                                  lineId={lineKey}
+                                  uom={lineUom}
+                                  counts={receiveCounts}
+                                  onChange={setLpoReceiveCount}
+                                  maxBase={openRemainingBase}
+                                  showPreview
+                                />
+                              )}
                             </td>
                             <td className="px-3 py-2.5">
                               <span
@@ -453,40 +490,37 @@ export default function ReceiveStockPage() {
               onAddProduct={addManualProduct}
               tableHeaders={[
                 { key: "product", label: "Product" },
-                { key: "pack", label: "Packaging" },
                 { key: "qty", label: "Qty received", align: "right" },
                 { key: "cost", label: "Cost", align: "right" },
               ]}
               emptyMessage="Search and add products received."
-              renderCells={(line, index) => (
-                <>
-                  <td className="px-3 py-2 text-xs text-slate-600">
-                    {line.packaging_label || "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <input
-                      type="number"
-                      min="0.001"
-                      step="any"
-                      className={`${inputClassName()} w-24 text-right`}
-                      value={line.qty}
-                      onChange={(e) => updateManualLine(index, { qty: e.target.value })}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <input
-                      type="number"
-                      min="0"
-                      step="any"
-                      className={`${inputClassName()} w-24 text-right`}
-                      value={line.cost_price}
-                      onChange={(e) => updateManualLine(index, { cost_price: e.target.value })}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </td>
-                </>
-              )}
+              renderCells={(line, index) => {
+                const uom = uomById.get(line.unit_id);
+                return (
+                  <>
+                    <td className="px-3 py-2">
+                      <StockTakeCountInputs
+                        lineId={line.product_code}
+                        uom={uom}
+                        counts={receiveCounts}
+                        onChange={setReceiveCount}
+                        showPreview
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        className={`${inputClassName()} w-24 text-right`}
+                        value={line.cost_price}
+                        onChange={(e) => updateManualLine(index, { cost_price: e.target.value })}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
+                  </>
+                );
+              }}
             />
 
             <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { inputClassName } from "@/components/catalog/catalog-shared";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
@@ -36,32 +36,46 @@ export function LpoProductSearchPanel({
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState(null);
   const [selectedCode, setSelectedCode] = useState(null);
+  const searchSeq = useRef(0);
+  const uomByIdRef = useRef(uomById);
+  const vatByIdRef = useRef(vatById);
 
-  const searchProducts = useCallback(
-    async (q) => {
-      const trimmed = q.trim();
-      if (trimmed.length < 1) {
-        setResults([]);
-        setSearchError(null);
-        return;
-      }
-      setSearching(true);
+  useEffect(() => {
+    uomByIdRef.current = uomById;
+    vatByIdRef.current = vatById;
+  }, [uomById, vatById]);
+
+  const searchProducts = useCallback(async (q) => {
+    const trimmed = q.trim();
+    const seq = ++searchSeq.current;
+
+    if (trimmed.length < 1) {
+      setResults([]);
       setSearchError(null);
-      try {
-        const res = await apiRequest("/products", {
-          searchParams: { per_page: 80, q: trimmed },
-        });
-        const list = (res.data ?? []).map((p) => enrichProductForLpo(p, uomById, vatById));
-        setResults(list.slice(0, 40));
-      } catch {
-        setSearchError("Could not search products.");
-        setResults([]);
-      } finally {
-        setSearching(false);
-      }
-    },
-    [uomById, vatById],
-  );
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    setSearchError(null);
+    try {
+      const res = await apiRequest("/products", {
+        searchParams: { per_page: 80, q: trimmed },
+      });
+      if (seq !== searchSeq.current) return;
+
+      const list = (res.data ?? []).map((p) =>
+        enrichProductForLpo(p, uomByIdRef.current, vatByIdRef.current),
+      );
+      setResults(list.slice(0, 40));
+    } catch {
+      if (seq !== searchSeq.current) return;
+      setSearchError("Could not search products.");
+      setResults([]);
+    } finally {
+      if (seq === searchSeq.current) setSearching(false);
+    }
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => searchProducts(query), 280);
@@ -69,6 +83,8 @@ export function LpoProductSearchPanel({
   }, [query, searchProducts]);
 
   function clearProductSearch() {
+    searchSeq.current += 1;
+    setSearching(false);
     setQuery("");
     setResults([]);
     setSelectedCode(null);
@@ -91,6 +107,8 @@ export function LpoProductSearchPanel({
     : `${resultsMaxHeight} overflow-auto`;
 
   const rootClass = disabled ? "pointer-events-none opacity-60" : undefined;
+  const showEmpty = results.length === 0;
+  const emptyMessage = query.trim() ? "No products found." : "Type to search products.";
 
   return (
     <div className={rootClass}>
@@ -118,8 +136,13 @@ export function LpoProductSearchPanel({
         </button>
       </div>
       {searchError ? <p className="mb-2 text-xs text-red-600">{searchError}</p> : null}
-      <div className="overflow-hidden rounded-lg border border-slate-300 bg-white">
-        <div className={scrollClass}>
+      <div className="relative overflow-hidden rounded-lg border border-slate-300 bg-white">
+        {searching ? (
+          <div className="pointer-events-none absolute right-2 top-2 z-20 rounded bg-white/90 px-1.5 py-0.5 text-[10px] text-slate-500">
+            Searching…
+          </div>
+        ) : null}
+        <div className={`${scrollClass} min-h-[220px]`}>
           <table className="w-full border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-slate-100">
               <tr className="text-left font-semibold text-slate-600">
@@ -129,16 +152,10 @@ export function LpoProductSearchPanel({
               </tr>
             </thead>
             <tbody>
-              {searching ? (
+              {showEmpty ? (
                 <tr>
                   <td colSpan={3} className="px-2 py-6 text-center text-slate-500">
-                    Searching…
-                  </td>
-                </tr>
-              ) : results.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="px-2 py-6 text-center text-slate-500">
-                    {query.trim() ? "No products found." : "Type to search products."}
+                    {searching && query.trim() ? "Searching…" : emptyMessage}
                   </td>
                 </tr>
               ) : (

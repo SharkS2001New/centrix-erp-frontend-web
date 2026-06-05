@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -11,12 +11,11 @@ import {
   formatLpoKes,
   formatPoNumber,
   lpoCanRecordReturn,
-  lpoLineReturnedLabel,
   lpoIsCancelledReturned,
-  lpoLineStatusLabel,
   LpoStatusBadge,
   LPO_STATUS,
 } from "@/components/lpo/lpo-shared";
+import { LpoDetailOrderItemsTable } from "@/components/lpo/lpo-detail-order-items";
 import { LpoDetailActions, LpoWorkflowPanel } from "@/components/lpo/lpo-workflow";
 import { PaymentStatusBadge } from "@/components/suppliers/suppliers-shared";
 
@@ -25,18 +24,25 @@ export default function LpoDetailPage() {
   const lpoNo = params.lpoNo;
 
   const [data, setData] = useState(null);
+  const [uoms, setUoms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [invoiceModal, setInvoiceModal] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [deletingLpo, setDeletingLpo] = useState(false);
 
+  const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
+
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
-      const res = await apiRequest(`/lpo-mst/${lpoNo}/summary`);
+      const [res, uomRes] = await Promise.all([
+        apiRequest(`/lpo-mst/${lpoNo}/summary`),
+        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
+      ]);
       setData(res);
+      setUoms(uomRes.data ?? uomRes ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load LPO");
     } finally {
@@ -76,7 +82,13 @@ export default function LpoDetailPage() {
 
   const lpo = data?.lpo;
   const lines = data?.lines ?? [];
-  const invoices = data?.supplier_invoices ?? [];
+  const invoices = useMemo(
+    () =>
+      (data?.supplier_invoices ?? []).filter(
+        (inv) => inv.id != null && Number(inv.lpo_no) === Number(lpoNo),
+      ),
+    [data?.supplier_invoices, lpoNo],
+  );
   const supplierReturns = data?.supplier_returns ?? [];
   const canRecordReturn = lpo ? lpoCanRecordReturn(lpo, lines) : false;
 
@@ -169,7 +181,7 @@ export default function LpoDetailPage() {
               <Detail label="Your reference" value={lpo.reference_number} />
               <Detail label="Delivery" value={lpo.delivery_address} />
               <Detail label="Payable (received)" value={formatLpoKes(lpo.received_payable_total)} />
-              <Detail label="Subtotal" value={formatLpoKes(lpo.subtotal)} />
+              <Detail label="Subtotal (Before VAT)" value={formatLpoKes(lpo.subtotal)} />
               <Detail label="VAT" value={formatLpoKes(lpo.vat_amount)} />
               <Detail
                 label="Order total"
@@ -219,71 +231,13 @@ export default function LpoDetailPage() {
 
           <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-4 text-sm font-semibold text-slate-900">Order items</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
-                    <th className="py-2 pr-3">#</th>
-                    <th className="py-2 pr-3">Product</th>
-                    <th className="py-2 pr-3 text-right">Ordered</th>
-                    <th className="py-2 pr-3 text-right">Received</th>
-                    <th className="py-2 pr-3 text-right">Returned</th>
-                    <th className="py-2 pr-3 text-right">Unit cost</th>
-                    <th className="py-2 pr-3 text-right">Total</th>
-                    <th className="py-2">Status</th>
-                    <th className="py-2 text-right">Return</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((line, i) => (
-                    <tr key={line.id} className="border-b border-slate-100">
-                      <td className="py-2.5 pr-3 text-slate-500">{i + 1}</td>
-                      <td className="py-2.5 pr-3">
-                        <span className="font-medium text-slate-900">{line.product_name}</span>
-                        <span className="ml-2 font-mono text-xs text-slate-500">{line.product_code}</span>
-                      </td>
-                      <td className="py-2.5 pr-3 text-right">{line.ordered_qty}</td>
-                      <td className="py-2.5 pr-3 text-right">{line.received_qty}</td>
-                      <td className="py-2.5 pr-3 text-right text-amber-800">
-                        {lpoLineReturnedLabel(line)}
-                      </td>
-                      <td className="py-2.5 pr-3 text-right">{formatLpoKes(line.cost_price)}</td>
-                      <td className="py-2.5 pr-3 text-right font-medium">{formatLpoKes(line.line_total)}</td>
-                      <td className="py-2.5">
-                        <span
-                          className={
-                            line.receive_status === "fully_returned"
-                              ? "text-orange-700"
-                              : line.receive_status === "complete"
-                                ? "text-emerald-700"
-                                : line.receive_status === "partial"
-                                  ? "text-amber-700"
-                                  : "text-slate-500"
-                          }
-                        >
-                          {lpoLineStatusLabel(line)}
-                        </span>
-                      </td>
-                      <td className="py-2.5 text-right">
-                        {Number(line.max_return_qty) > 0 &&
-                        line.receive_status !== "fully_returned" &&
-                        Number(lpo.lpo_status_code) >= LPO_STATUS.AWAITING_RECEIVE &&
-                        !lpoIsCancelledReturned(lpo) ? (
-                          <Link
-                            href={`/lpo/${lpoNo}/supplier-return?product=${encodeURIComponent(line.product_code)}`}
-                            className="text-xs font-medium text-orange-700 hover:underline"
-                          >
-                            Return
-                          </Link>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <LpoDetailOrderItemsTable
+              lines={lines}
+              uomById={uomById}
+              lpo={lpo}
+              lpoNo={lpoNo}
+              supplierReturns={supplierReturns}
+            />
           </section>
 
           <section className="rounded-xl border border-orange-200 bg-orange-50/30 p-6 shadow-sm">

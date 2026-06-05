@@ -2,15 +2,22 @@
 
 import { useMemo, useState } from "react";
 import { inputClassName } from "@/components/catalog/catalog-shared";
-import { lineFromEnrichedProduct } from "./lpo-product-utils";
+import {
+  formatPackQtyString,
+  lineFromEnrichedProduct,
+  orderCountsObjectFromPackQty,
+  orderCountsToPackQty,
+} from "./lpo-product-utils";
 import { LpoProductSearchPanel } from "./lpo-product-search-panel";
 import {
+  computeLpoLineTotals,
   computeLpoTotals,
   formatLpoAmount,
   formatLpoKes,
-  sanitizeLpoOrderQty,
   sanitizeLpoWholeNumber,
 } from "./lpo-shared";
+import { StockTakeCountInputs } from "@/components/inventory/stock-take-count-inputs";
+import { uomStockTakeLevels } from "@/lib/uom-packaging";
 
 export function LpoOrderItemsSection({
   lines,
@@ -40,13 +47,34 @@ export function LpoOrderItemsSection({
     setSelectedLineIndex(null);
   }
 
+  function updateOrderCount(index, levelKey, value) {
+    const line = lines[index];
+    const uom = uomById.get(line.unit_id);
+    const order_counts = { ...(line.order_counts ?? {}), [levelKey]: value };
+    const packQty = orderCountsToPackQty(order_counts, uom);
+    updateLine(index, {
+      order_counts,
+      ordered_qty: formatPackQtyString(packQty),
+    });
+  }
+
   function addProduct(product) {
     const code = product.product_code;
     const existingIndex = lines.findIndex((l) => l.product_code === code);
     if (existingIndex >= 0) {
       const row = lines[existingIndex];
-      const qty = Number(row.ordered_qty) || 0;
-      updateLine(existingIndex, { ordered_qty: String(qty + 1) });
+      const uom = uomById.get(row.unit_id) ?? product.uom;
+      const counts = {
+        ...(row.order_counts ??
+          orderCountsObjectFromPackQty(Number(row.ordered_qty) || 0, uom)),
+      };
+      const primaryKey = uomStockTakeLevels(uom)[0]?.key ?? "full";
+      counts[primaryKey] = String((Number(counts[primaryKey]) || 0) + 1);
+      const packQty = orderCountsToPackQty(counts, uom);
+      updateLine(existingIndex, {
+        order_counts: counts,
+        ordered_qty: formatPackQtyString(packQty),
+      });
       setSelectedLineIndex(existingIndex);
       return;
     }
@@ -95,44 +123,57 @@ export function LpoOrderItemsSection({
 
         <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-slate-300 bg-white">
           <div className="max-h-[380px] overflow-auto">
-            <table className="w-full min-w-[640px] table-fixed border-collapse text-sm">
+            <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
               <colgroup>
-                <col className="w-[41%]" />
-                <col className="w-[18%]" />
-                <col className="w-[12%]" />
+                <col className="w-[26%]" />
+                <col className="w-[16%]" />
+                <col className="w-[20%]" />
                 <col className="w-[14%]" />
-                <col className="w-[15%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
               </colgroup>
               <thead className="sticky top-0 z-10 bg-slate-100">
                 <tr className="text-left text-xs font-semibold text-slate-600">
                   <th className="px-2 py-2">Product name</th>
-                  <th className="whitespace-nowrap px-2 py-2">
-                    <span className="block">Packaging</span>
-                    <span className="block font-normal text-slate-500">(Units per package)</span>
-                  </th>
+                  <th className="px-2 py-2">Packaging</th>
                   <th className="whitespace-nowrap px-2 py-2 text-right">
                     <span className="block">Qty to order</span>
-                    <span className="block font-normal text-slate-500">(in packs, decimals OK)</span>
+                    <span className="block font-normal text-slate-500">(by packaging level)</span>
                   </th>
-                  <th className="px-2 py-2 text-right">
+                  <th className="whitespace-nowrap px-2 py-2 text-right">
                     <span className="block">Cost price</span>
-                    <span className="font-normal text-slate-500">(per pack)</span>
+                    <span className="block font-normal text-slate-500">(Supplier selling price)</span>
                   </th>
-                  <th className="px-3 py-2 text-right">Amount</th>
+                  <th className="whitespace-nowrap px-2 py-2 text-right">
+                    <span className="block">Amount</span>
+                    <span className="block font-normal text-slate-500">(Before VAT)</span>
+                  </th>
+                  <th className="px-2 py-2 text-right">VAT</th>
                 </tr>
               </thead>
               <tbody>
                 {lines.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-12 text-center text-slate-500">
+                    <td colSpan={6} className="px-3 py-12 text-center text-slate-500">
                       No items in this order yet.
                     </td>
                   </tr>
                 ) : (
                   lines.map((line, index) => {
-                    const amount =
-                      (Number(line.ordered_qty) || 0) * (Number(line.cost_price) || 0);
+                    const uom = uomById.get(line.unit_id);
+                    const { net, vat } = computeLpoLineTotals(line);
                     const rowSelected = selectedLineIndex === index;
+                    const countsFlat = {};
+                    const orderCounts =
+                      line.order_counts ??
+                      (uom
+                        ? orderCountsObjectFromPackQty(Number(line.ordered_qty) || 0, uom)
+                        : null);
+                    if (orderCounts) {
+                      for (const [k, v] of Object.entries(orderCounts)) {
+                        countsFlat[`${index}:${k}`] = v;
+                      }
+                    }
                     return (
                       <tr
                         key={`${line.product_code}-${index}`}
@@ -147,34 +188,43 @@ export function LpoOrderItemsSection({
                             {line.product_code}
                           </span>
                         </td>
-                        <td className="px-2 py-2 text-xs text-slate-700">
-                          {line.packaging_label || line.uom || "—"}
+                        <td className="px-2 py-2 align-middle text-xs leading-snug text-slate-700">
+                          {(line.packaging_label || line.uom || "—")
+                            .split(" · ")
+                            .map((part) => part.trim())
+                            .filter(Boolean)
+                            .map((part, i) => (
+                              <span key={i} className="block">
+                                {part}
+                              </span>
+                            ))}
                         </td>
                         <td className="px-2 py-2 text-right">
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            inputMode="decimal"
-                            className={`${inputClassName()} w-20 text-right`}
-                            value={line.ordered_qty}
-                            onChange={(e) =>
-                              updateLine(index, {
-                                ordered_qty: sanitizeLpoOrderQty(e.target.value),
-                              })
-                            }
-                            onClick={(e) => e.stopPropagation()}
-                            readOnly={readOnly}
-                            title="Packs to order — use 1.5 for one and a half cartons, etc."
-                          />
+                          {uom ? (
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <StockTakeCountInputs
+                                lineId={String(index)}
+                                uom={uom}
+                                counts={countsFlat}
+                                onChange={(key, value) => {
+                                  const levelKey = key.split(":")[1];
+                                  updateOrderCount(index, levelKey, value);
+                                }}
+                                disabled={readOnly}
+                                showPreview
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
                         </td>
-                        <td className="px-2 py-2 text-right">
+                        <td className="whitespace-nowrap px-2 py-2 text-right align-middle">
                           <input
                             type="number"
                             min="0"
                             step="1"
                             inputMode="numeric"
-                            className={`${inputClassName()} w-24 text-right`}
+                            className={`${inputClassName()} w-24 shrink-0 text-right`}
                             value={line.cost_price}
                             onChange={(e) =>
                               updateLine(index, {
@@ -183,11 +233,14 @@ export function LpoOrderItemsSection({
                             }
                             onClick={(e) => e.stopPropagation()}
                             readOnly={readOnly}
-                            title="Cost per package — updates product last cost when PO is saved"
+                            title="Supplier selling price per full package — updates product last cost when PO is saved"
                           />
                         </td>
-                        <td className="px-3 py-2 text-right font-medium tabular-nums text-slate-900">
-                          {formatLpoAmount(amount)}
+                        <td className="px-2 py-2 text-right align-middle font-medium tabular-nums text-slate-900">
+                          {formatLpoAmount(net)}
+                        </td>
+                        <td className="px-2 py-2 text-right align-middle tabular-nums text-slate-700">
+                          {vat > 0 ? formatLpoAmount(vat) : "—"}
                         </td>
                       </tr>
                     );
@@ -200,13 +253,12 @@ export function LpoOrderItemsSection({
 
         <div className="mt-3 flex items-end justify-between gap-4 border-t border-slate-200 pt-3">
           <p className="text-xs text-slate-500">
-            Qty is in packs — enter decimals for part packs (e.g. 1.5 = one and a half cartons).
-            Packaging shows units per pack (e.g. Carton (20)). Cost is a whole number per pack. VAT
-            from the product catalog.
+            Enter quantity at each packaging level from UOM settings (e.g. bags, outers, kg).
+            Cost is per full package. VAT from the product catalog.
           </p>
           <div className="text-right">
             <p className="text-xs text-slate-500">
-              Subtotal {formatLpoKes(totals.subtotal)} · VAT {formatLpoKes(totals.vat)}
+              Subtotal (Before VAT) {formatLpoKes(totals.subtotal)} · VAT {formatLpoKes(totals.vat)}
             </p>
             <p className="text-lg font-bold text-slate-900">TOTAL: {formatLpoKes(totals.total)}</p>
           </div>

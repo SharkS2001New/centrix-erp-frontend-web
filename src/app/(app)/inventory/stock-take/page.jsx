@@ -20,6 +20,67 @@ import {
   SESSION_STATUS_LABELS,
 } from "@/components/inventory/inventory-shared";
 
+async function fetchAllPages(path, searchParams = {}) {
+  const all = [];
+  let pageNum = 1;
+  let lastPage = 1;
+  do {
+    const res = await apiRequest(path, {
+      searchParams: { ...searchParams, page: pageNum, per_page: 200 },
+    });
+    all.push(...(res.data ?? []));
+    lastPage = res.last_page ?? 1;
+    pageNum += 1;
+  } while (pageNum <= lastPage);
+  return all;
+}
+
+async function createStockTakeLines(sessionId, lineBodies) {
+  const batchSize = 20;
+  for (let i = 0; i < lineBodies.length; i += batchSize) {
+    const batch = lineBodies.slice(i, i + batchSize);
+    await Promise.all(
+      batch.map((body) =>
+        apiRequest("/stock-take-lines", {
+          method: "POST",
+          body: { session_id: sessionId, ...body },
+        }),
+      ),
+    );
+  }
+}
+
+async function upsertCurrentStockBatch(branchId, products, stockByCode) {
+  const batchSize = 20;
+  const bodies = products.map((product) => {
+    const stock = stockByCode.get(product.product_code);
+    return {
+      product_code: product.product_code,
+      branch_id: branchId,
+      shop_quantity: reconciledStockQty(stock, "shop", product),
+      store_quantity: reconciledStockQty(stock, "store", product),
+    };
+  });
+
+  for (let i = 0; i < bodies.length; i += batchSize) {
+    const batch = bodies.slice(i, i + batchSize);
+    await Promise.all(
+      batch.map((body) => apiRequest("/current-stock", { method: "POST", body })),
+    );
+  }
+}
+
+/** Use branch stock row when set; fall back to product totals when ledger row is missing or zero. */
+function reconciledStockQty(stockRow, location, product) {
+  const productField = location === "shop" ? "stock_in_shop" : "stock_in_store";
+  const stockField = location === "shop" ? "shop_quantity" : "store_quantity";
+  const fromProduct = Number(product[productField] ?? 0);
+  if (!stockRow) return fromProduct;
+  const fromStock = Number(stockRow[stockField] ?? 0);
+  if (fromStock === 0 && fromProduct > 0) return fromProduct;
+  return fromStock;
+}
+
 export default function StockTakeListPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -74,40 +135,44 @@ export default function StockTakeListPage() {
         },
       });
 
-      const stockRes = await apiRequest("/current-stock", {
-        searchParams: { per_page: 500, "filter[branch_id]": branchId },
-      });
-      const stockRows = stockRes.data ?? [];
+      const [products, stockRows] = await Promise.all([
+        fetchAllPages("/products"),
+        fetchAllPages("/current-stock", { "filter[branch_id]": branchId }),
+      ]);
+      const stockByCode = new Map(stockRows.map((row) => [row.product_code, row]));
       const loc = form.stock_location;
+      const lineBodies = [];
 
-      for (const row of stockRows) {
+      for (const product of products) {
+        const stock = stockByCode.get(product.product_code);
+        const shopQty = reconciledStockQty(stock, "shop", product);
+        const storeQty = reconciledStockQty(stock, "store", product);
+
         const lineDefs =
           loc === "both"
             ? [
-                { location: "shop", qty: Number(row.shop_quantity ?? 0) },
-                { location: "store", qty: Number(row.store_quantity ?? 0) },
+                { location: "shop", qty: shopQty },
+                { location: "store", qty: storeQty },
               ]
             : [
                 {
                   location: loc,
-                  qty: Number(loc === "shop" ? row.shop_quantity : row.store_quantity ?? 0),
+                  qty: Number(loc === "shop" ? shopQty : storeQty),
                 },
               ];
 
         for (const line of lineDefs) {
-          if (line.qty === 0 && loc !== "both") continue;
-          await apiRequest("/stock-take-lines", {
-            method: "POST",
-            body: {
-              session_id: session.id,
-              product_code: row.product_code,
-              stock_location: line.location,
-              system_quantity: line.qty,
-              counted_quantity: line.qty,
-            },
+          lineBodies.push({
+            product_code: product.product_code,
+            stock_location: line.location,
+            system_quantity: line.qty,
+            counted_quantity: line.qty,
           });
         }
       }
+
+      await upsertCurrentStockBatch(branchId, products, stockByCode);
+      await createStockTakeLines(session.id, lineBodies);
 
       setModalOpen(false);
       setForm({ session_code: "", stock_location: "both" });

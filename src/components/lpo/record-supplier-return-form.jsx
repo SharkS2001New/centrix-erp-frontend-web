@@ -11,6 +11,11 @@ import {
   lpoCanRecordReturn,
   lpoStockDeductQty,
 } from "./lpo-shared";
+import {
+  formatStockLocationLabel,
+  lpoReceivedLocationMeta,
+  stockLocationSelectOptions,
+} from "@/components/suppliers/supplier-return-shared";
 
 export function RecordSupplierReturnForm({
   lpoNo,
@@ -44,6 +49,14 @@ export function RecordSupplierReturnForm({
     () => returnableLines.find((l) => l.product_code === form.product_code),
     [returnableLines, form.product_code],
   );
+  const selectedLocationMeta = useMemo(
+    () => (selectedLine ? lpoReceivedLocationMeta(selectedLine) : null),
+    [selectedLine],
+  );
+  const locationOptions = useMemo(
+    () => stockLocationSelectOptions({ mode: "lpo", lpoLine: selectedLine }),
+    [selectedLine],
+  );
   const stockDeductPreview = useMemo(() => {
     if (!selectedLine) return null;
     return lpoStockDeductQty(selectedLine, form.quantity);
@@ -75,10 +88,14 @@ export function RecordSupplierReturnForm({
         if (!p.product_code && !p.quantity) return p;
         return { ...p, product_code: "", quantity: "" };
       }
-      if (p.product_code === defaultProductCode && p.quantity === "1") return p;
-      return { ...p, product_code: defaultProductCode, quantity: "1" };
+      const line = returnableLines.find((l) => l.product_code === defaultProductCode);
+      const { primary } = line ? lpoReceivedLocationMeta(line) : { primary: "store" };
+      if (p.product_code === defaultProductCode && p.quantity === "1" && p.stock_location === primary) {
+        return p;
+      }
+      return { ...p, product_code: defaultProductCode, quantity: "1", stock_location: primary };
     });
-  }, [defaultProductCode]);
+  }, [defaultProductCode, returnableLines]);
 
   async function submit(e) {
     e.preventDefault();
@@ -181,10 +198,12 @@ export function RecordSupplierReturnForm({
                 value={form.product_code}
                 onChange={(e) => {
                   const line = returnableLines.find((l) => l.product_code === e.target.value);
+                  const { primary } = line ? lpoReceivedLocationMeta(line) : { primary: "store" };
                   setForm((p) => ({
                     ...p,
                     product_code: e.target.value,
                     quantity: line ? String(Math.min(1, Number(line.returnable_qty))) : "",
+                    stock_location: primary,
                   }));
                 }}
                 required
@@ -229,14 +248,26 @@ export function RecordSupplierReturnForm({
             </Field>
 
             <Field label="Return from">
-              <select
-                className={inputClassName()}
-                value={form.stock_location}
-                onChange={(e) => setForm((p) => ({ ...p, stock_location: e.target.value }))}
-              >
-                <option value="store">Store</option>
-                <option value="shop">Shop</option>
-              </select>
+              {selectedLocationMeta?.locked ? (
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                  {formatStockLocationLabel(form.stock_location)}
+                  <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                    Stock for this LPO line was received here
+                  </span>
+                </p>
+              ) : (
+                <select
+                  className={inputClassName()}
+                  value={form.stock_location}
+                  onChange={(e) => setForm((p) => ({ ...p, stock_location: e.target.value }))}
+                >
+                  {locationOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              )}
             </Field>
 
             <Field label="Package type">

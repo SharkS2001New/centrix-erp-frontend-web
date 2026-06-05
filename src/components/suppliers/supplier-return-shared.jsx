@@ -10,7 +10,6 @@ export const REASON_SCOPE = {
 export const STOCK_LOCATION = {
   SHOP: "shop",
   STORE: "store",
-  BOTH: "both",
 };
 
 export const DEFAULT_RETURN_DRAFT = {
@@ -72,67 +71,70 @@ export function PackageTypeField({ value, onChange, packagingLabel, idPrefix = "
   );
 }
 
-/** Split return qty across store (first) then shop when returning from both. */
-export function splitBothStockQty(qty, shopAvail, storeAvail) {
-  const total = Number(qty) || 0;
-  const shop = Math.max(0, Number(shopAvail) || 0);
-  const store = Math.max(0, Number(storeAvail) || 0);
+/** LPO line receive locations from API summary. */
+export function lpoReceivedLocationMeta(line) {
+  const byLoc = line?.received_qty_by_location ?? {};
+  const shop = Number(byLoc.shop ?? 0);
+  const store = Number(byLoc.store ?? 0);
+  const options = [];
+  if (shop > 0) options.push(STOCK_LOCATION.SHOP);
+  if (store > 0) options.push(STOCK_LOCATION.STORE);
 
-  let storeQty = Math.min(total, store);
-  let shopQty = total - storeQty;
-  if (shopQty > shop) {
-    shopQty = Math.min(total, shop);
-    storeQty = total - shopQty;
-  }
+  const primary =
+    (line?.received_location_options?.length === 1
+      ? line.received_location_options[0]
+      : null) ??
+    line?.received_stock_location ??
+    (options.length === 1 ? options[0] : STOCK_LOCATION.STORE);
 
-  return {
-    storeQty: Math.max(0, storeQty),
-    shopQty: Math.max(0, shopQty),
-  };
+  return { options, primary, shop, store, locked: options.length === 1 };
 }
 
-export function formatStockLocationLabel(location, line) {
-  if (location === STOCK_LOCATION.BOTH && line) {
-    const storeQty = line.store_qty ?? 0;
-    const shopQty = line.shop_qty ?? 0;
-    return `Both (store ${storeQty}, shop ${shopQty})`;
-  }
+export function formatStockLocationLabel(location) {
   if (location === STOCK_LOCATION.SHOP) return "Shop";
   if (location === STOCK_LOCATION.STORE) return "Store";
-  if (location === STOCK_LOCATION.BOTH) return "Both";
   return location ?? "—";
 }
 
-/** Expand UI lines with stock_location both into separate API lines. */
+export function stockLocationSelectOptions({ mode, lpoLine, manual = false } = {}) {
+  if (manual || mode !== "lpo" || !lpoLine) {
+    return [
+      { value: STOCK_LOCATION.STORE, label: "Store" },
+      { value: STOCK_LOCATION.SHOP, label: "Shop" },
+    ];
+  }
+
+  const { options, primary } = lpoReceivedLocationMeta(lpoLine);
+  if (options.length === 0) {
+    return [
+      { value: STOCK_LOCATION.STORE, label: "Store" },
+      { value: STOCK_LOCATION.SHOP, label: "Shop" },
+    ];
+  }
+
+  return options.map((value) => ({
+    value,
+    label: formatStockLocationLabel(value),
+    selected: value === primary,
+  }));
+}
+
+/** Map UI lines to API payload — one line per product, single location. */
 export function expandLinesForSubmit(lines, reasonScope, docNotes) {
   return lines.flatMap((l) => {
     const reason =
       reasonScope === REASON_SCOPE.PER_PRODUCT ? (l.reason ?? "").trim() : docNotes;
-    const base = {
-      product_code: l.product_code,
-      package_type: l.package_type === "partial" ? "pieces" : l.package_type,
-      uom_label: l.uom_label,
-      reason,
-    };
-
-    if (l.stock_location === STOCK_LOCATION.BOTH) {
-      const parts = [];
-      const storeQty = Number(l.store_qty ?? 0);
-      const shopQty = Number(l.shop_qty ?? 0);
-      if (storeQty > 0) {
-        parts.push({ ...base, stock_location: STOCK_LOCATION.STORE, quantity: storeQty });
-      }
-      if (shopQty > 0) {
-        parts.push({ ...base, stock_location: STOCK_LOCATION.SHOP, quantity: shopQty });
-      }
-      return parts.length > 0 ? parts : [];
-    }
+    const qty = Number(l.quantity);
+    if (!qty || qty <= 0) return [];
 
     return [
       {
-        ...base,
+        product_code: l.product_code,
+        package_type: l.package_type === "partial" ? "pieces" : l.package_type,
+        uom_label: l.uom_label,
+        reason,
         stock_location: l.stock_location,
-        quantity: Number(l.quantity),
+        quantity: qty,
       },
     ];
   });

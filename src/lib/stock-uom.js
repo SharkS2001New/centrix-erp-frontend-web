@@ -1,4 +1,13 @@
-/** Stock quantities in the database are stored in base pieces. */
+/** Stock quantities in the database are stored in small-packaging units (pcs, kg, litres, etc.). */
+
+import {
+  fullPackageLabel,
+  middlePackagingLabel,
+  smallPackagingLabel,
+  uomHasFullPack,
+  uomHasMiddlePack,
+  uomStockTakeLevels,
+} from "./uom-packaging";
 
 /** True when one display unit equals one piece in stock (conversion factor 1). */
 export function isSinglePieceUom(uomOrFactor) {
@@ -30,10 +39,52 @@ export function uomLabelFrom(uom) {
 }
 
 /** Convert damage entry quantity to base pieces for the ledger. */
-export function damageQtyToBase(displayQty, packageType, conversionFactor) {
+export function normalizeDamageLevel(packageType, uom) {
+  if (packageType === "full_package" || packageType === "partial" || packageType === "full") {
+    if (uomHasFullPack(uom)) return "full";
+    return "small";
+  }
+  if (packageType === "pieces" || packageType === "small") return "small";
+  if (packageType === "middle") return "middle";
+  return defaultDamageMeasureLevel(uom);
+}
+
+export function defaultDamageMeasureLevel(uom) {
+  const levels = uomStockTakeLevels(uom);
+  return levels.find((l) => l.key === "full")?.key ?? levels[0]?.key ?? "small";
+}
+
+export function damageMeasureLabel(uom, packageType) {
+  const level = normalizeDamageLevel(packageType, uom);
+  const match = uomStockTakeLevels(uom).find((l) => l.key === level);
+  return match?.label ?? level;
+}
+
+export function damageQtyToBase(displayQty, packageType, uomOrFactor) {
   const qty = Number(displayQty ?? 0);
-  if (packageType === "pieces") return qty;
-  return displayToBaseQty(qty, conversionFactor);
+  const uom = uomOrFactor != null && typeof uomOrFactor === "object" ? uomOrFactor : null;
+  const level = normalizeDamageLevel(packageType, uom);
+
+  if (level === "small") return qty;
+  if (level === "middle") {
+    const mid = Number(uom?.middle_factor ?? 0);
+    return mid > 0 ? qty * mid : qty;
+  }
+  return displayToBaseQty(qty, uomOrFactor);
+}
+
+/** Convert stored base quantity back to the damage form display value. */
+export function damageBaseToDisplay(baseQty, packageType, uomOrFactor) {
+  const base = Number(baseQty ?? 0);
+  const uom = uomOrFactor != null && typeof uomOrFactor === "object" ? uomOrFactor : null;
+  const level = normalizeDamageLevel(packageType, uom);
+
+  if (level === "small") return formatDisplayQty(base);
+  if (level === "middle") {
+    const mid = Number(uom?.middle_factor ?? 0);
+    return formatDisplayQty(mid > 0 ? base / mid : base);
+  }
+  return formatDisplayQty(baseToDisplayQty(base, uomOrFactor));
 }
 
 /** Prefer whole numbers in UI when the value is effectively an integer. */
@@ -49,16 +100,55 @@ export function formatDisplayQty(displayQty, maxDecimals = 3) {
   });
 }
 
-/** Split base pieces into full packs and leftover loose pieces. */
-export function splitBaseToMixed(baseQty, conversionFactor) {
-  const base = Number(baseQty ?? 0);
-  const factor = uomConversionFactor(conversionFactor);
+/** Split base qty into full / middle / small packaging parts. */
+export function splitBaseToHierarchy(baseQty, uomOrFactor) {
+  const uom = uomOrFactor != null && typeof uomOrFactor === "object" ? uomOrFactor : null;
+  const factor = uomConversionFactor(uomOrFactor);
+  let remaining = Number(baseQty ?? 0);
+  const smallLabel = smallPackagingLabel(uom);
+  const parts = [];
+
   if (factor <= 1) {
-    return { packs: 0, loose: base, factor };
+    if (remaining > 0.0001 || remaining === 0) {
+      parts.push({ label: smallLabel, qty: remaining });
+    }
+    return parts.length ? parts : [{ label: smallLabel, qty: 0 }];
   }
-  const packs = Math.floor(base / factor);
-  const loose = Math.round((base - packs * factor) * 10000) / 10000;
-  return { packs, loose, factor };
+
+  const fullLabel = fullPackageLabel(uom);
+  const fullCount = Math.floor(remaining / factor);
+  remaining = Math.round((remaining - fullCount * factor) * 10000) / 10000;
+  if (fullCount > 0) {
+    parts.push({ label: fullLabel, qty: fullCount });
+  }
+
+  const middleLabel = middlePackagingLabel(uom);
+  const middleFactor = Number(uom?.middle_factor ?? 0);
+  if (middleLabel && middleFactor > 1) {
+    const midCount = Math.floor(remaining / middleFactor);
+    remaining = Math.round((remaining - midCount * middleFactor) * 10000) / 10000;
+    if (midCount > 0) {
+      parts.push({ label: middleLabel, qty: midCount });
+    }
+  }
+
+  if (remaining > 0.0001) {
+    parts.push({ label: smallLabel, qty: remaining });
+  }
+  if (!parts.length) {
+    parts.push({ label: fullLabel, qty: 0 });
+  }
+
+  return parts;
+}
+
+/** @deprecated use splitBaseToHierarchy */
+export function splitBaseToMixed(baseQty, conversionFactor) {
+  const factor = uomConversionFactor(conversionFactor);
+  const parts = splitBaseToHierarchy(baseQty, { conversion_factor: factor });
+  const full = parts[0]?.qty ?? 0;
+  const loose = parts.length > 1 ? parts[parts.length - 1].qty : 0;
+  return { packs: factor > 1 ? full : 0, loose: factor <= 1 ? full : loose, factor };
 }
 
 /** Combine pack count + loose pieces into base pieces for storage. */
@@ -66,6 +156,110 @@ export function mixedToBase(packs, loose, conversionFactor) {
   const factor = uomConversionFactor(conversionFactor);
   if (factor <= 1) return Number(loose ?? packs ?? 0);
   return Number(packs ?? 0) * factor + Number(loose ?? 0);
+}
+
+/** Counted quantities at each packaging level → base (small) units. */
+export function hierarchyToBase(fullQty, middleQty, looseQty, uomOrFactor) {
+  const uom = uomOrFactor != null && typeof uomOrFactor === "object" ? uomOrFactor : null;
+  const factor = uomConversionFactor(uomOrFactor);
+  if (factor <= 1) {
+    return Number(looseQty ?? fullQty ?? 0);
+  }
+  const midFactor = Number(uom?.middle_factor ?? 0);
+  const mid = middlePackagingLabel(uom) && midFactor > 1 ? midFactor : 0;
+  return (
+    Number(fullQty ?? 0) * factor +
+    Number(middleQty ?? 0) * mid +
+    Number(looseQty ?? 0)
+  );
+}
+
+/** Split stored base qty into counts per level (for forms / stock take load). */
+export function baseToHierarchyCounts(baseQty, uomOrFactor) {
+  const uom = uomOrFactor != null && typeof uomOrFactor === "object" ? uomOrFactor : null;
+  const parts = splitBaseToHierarchy(baseQty, uom);
+  const fullLabel = fullPackageLabel(uom);
+  const midLabel = middlePackagingLabel(uom);
+  const smallLabel = smallPackagingLabel(uom);
+  return {
+    full: parts.find((p) => p.label === fullLabel)?.qty ?? 0,
+    middle: midLabel ? parts.find((p) => p.label === midLabel)?.qty ?? 0 : 0,
+    small: parts.find((p) => p.label === smallLabel)?.qty ?? 0,
+    /** @deprecated use small */
+    loose: parts.find((p) => p.label === smallLabel)?.qty ?? 0,
+  };
+}
+
+/** Map stock-take level keys → base (small) units using the product UOM. */
+export function stockTakeCountsToBase(countsByKey, uomOrFactor) {
+  const uom = uomOrFactor != null && typeof uomOrFactor === "object" ? uomOrFactor : null;
+  const factor = uomConversionFactor(uomOrFactor);
+  if (factor <= 1) {
+    return Number(countsByKey.small ?? countsByKey.full ?? 0);
+  }
+  return hierarchyToBase(
+    countsByKey.full,
+    countsByKey.middle,
+    countsByKey.small,
+    uom,
+  );
+}
+
+/** Cap hierarchy total to maxBase, preserving the edited level and adjusting larger packs first. */
+export function clampHierarchyCountsToMaxBase(byKey, changedLevelKey, uom, maxBase) {
+  const max = Math.max(0, Number(maxBase ?? 0));
+  const result = {
+    full: Number(byKey.full ?? 0),
+    middle: Number(byKey.middle ?? 0),
+    small: Number(byKey.small ?? 0),
+  };
+
+  if (stockTakeCountsToBase(result, uom) <= max + 0.0001) {
+    return result;
+  }
+
+  const changedVal = result[changedLevelKey];
+  const changedOnly = {
+    full: changedLevelKey === "full" ? changedVal : 0,
+    middle: changedLevelKey === "middle" ? changedVal : 0,
+    small: changedLevelKey === "small" ? changedVal : 0,
+  };
+  const changedBase = stockTakeCountsToBase(changedOnly, uom);
+  const factor = uomConversionFactor(uom);
+  const midFactor = Number(uom?.middle_factor ?? 0);
+
+  if (changedBase > max + 0.0001) {
+    const capped = { full: 0, middle: 0, small: 0 };
+    if (changedLevelKey === "full" && factor > 1) {
+      capped.full = Math.floor(max / factor + 0.0001);
+    } else if (changedLevelKey === "middle" && uomHasMiddlePack(uom) && midFactor > 1) {
+      capped.middle = Math.floor(max / midFactor + 0.0001);
+    } else {
+      capped.small = max;
+    }
+    return capped;
+  }
+
+  let budget = max - changedBase;
+
+  for (const key of ["full", "middle", "small"]) {
+    if (key === changedLevelKey) continue;
+
+    if (key === "full" && factor > 1) {
+      const maxFull = Math.floor(budget / factor + 0.0001);
+      result.full = Math.min(result.full, maxFull);
+      budget -= result.full * factor;
+    } else if (key === "middle" && uomHasMiddlePack(uom) && midFactor > 1) {
+      const maxMiddle = Math.floor(budget / midFactor + 0.0001);
+      result.middle = Math.min(result.middle, maxMiddle);
+      budget -= result.middle * midFactor;
+    } else if (key === "small") {
+      result.small = Math.min(result.small, Math.max(0, budget));
+      budget -= result.small;
+    }
+  }
+
+  return result;
 }
 
 export function formatStockDisplay(baseQty, uomOrFactor, label) {
@@ -83,35 +277,30 @@ export function formatStockDisplay(baseQty, uomOrFactor, label) {
   };
 }
 
-/** e.g. "1 Carton (12s) + 2 pcs" when stock does not divide evenly into packs. */
+/** e.g. "2 Bag, 40 kg" or "1 Carton, 3 Outers, 5 pcs" */
 export function formatMixedStockDisplay(baseQty, uomOrFactor, packLabel) {
-  const factor = uomConversionFactor(uomOrFactor);
-  const packName =
-    packLabel ??
-    (uomOrFactor && typeof uomOrFactor === "object"
-      ? (uomOrFactor.full_name || uomOrFactor.uom_type || "pack").trim()
-      : "pack");
-  const unit =
-    uomOrFactor && typeof uomOrFactor === "object" ? uomLabelFrom(uomOrFactor) : "units";
+  const uom =
+    uomOrFactor != null && typeof uomOrFactor === "object"
+      ? uomOrFactor
+      : { conversion_factor: uomOrFactor, full_name: packLabel };
+  const factor = uomConversionFactor(uom);
+  const hierarchy = splitBaseToHierarchy(baseQty, uom);
+  const text = hierarchy.map((p) => `${formatDisplayQty(p.qty)} ${p.label}`).join(", ");
 
-  if (factor <= 1) {
-    const single = formatStockDisplay(baseQty, factor, unit);
-    return { ...single, packs: 0, loose: single.display };
-  }
-
-  const { packs, loose } = splitBaseToMixed(baseQty, factor);
-  const parts = [];
-  if (packs > 0) parts.push(`${formatDisplayQty(packs)} ${packName}`);
-  if (loose > 0.0001) parts.push(`${formatDisplayQty(loose)} pcs`);
-  if (!parts.length) parts.push(`0 ${packName}`);
+  const packs = factor > 1 ? (hierarchy[0]?.qty ?? 0) : 0;
+  const loose =
+    factor <= 1
+      ? Number(baseQty ?? 0)
+      : (hierarchy.find((p) => p.label === smallPackagingLabel(uom))?.qty ?? 0);
 
   return {
     display: baseToDisplayQty(baseQty, factor),
     base: Number(baseQty ?? 0),
     factor,
-    unit: packName,
+    unit: fullPackageLabel(uom, packLabel),
     packs,
     loose,
-    text: parts.join(", "),
+    parts: hierarchy,
+    text: text || `0 ${smallPackagingLabel(uom)}`,
   };
 }

@@ -12,7 +12,16 @@ import {
 import { DeleteProductDialog } from "@/components/products/delete-product-dialog";
 import { formatUomOption } from "@/components/products/product-form";
 import { formatPoNumber } from "@/components/lpo/lpo-shared";
-import { baseToDisplayQty } from "@/lib/stock-uom";
+import {
+  fullPackageLabel,
+  measureLevelLabel,
+  normalizePricingTiers,
+  uomConversionSummary,
+  uomHasFullPack,
+  uomHierarchyChain,
+} from "@/lib/uom-packaging";
+import { stockSellingValue } from "@/lib/retail-pricing";
+import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
 
 const MAIN_TABS = [
   { id: "info", label: "Product information" },
@@ -119,6 +128,7 @@ function enrichProduct(product, subById, catById, supplierById, uomById, vatById
   const store = Number(product.stock_in_store ?? 0);
   const factor = Number(uom?.conversion_factor ?? 1);
   const sellOnRetail = product.sell_on_retail === 1 || product.sell_on_retail === true;
+  const packLabel = fullPackageLabel(uom);
 
   return {
     ...product,
@@ -126,53 +136,78 @@ function enrichProduct(product, subById, catById, supplierById, uomById, vatById
     category_name: cat?.category_name ?? "Uncategorised",
     subcategory_name: sub?.subcategory_name ?? "General",
     supplier_name: supplier?.supplier_name ?? "—",
-    uom_label: uom?.full_name ?? uom?.uom_type ?? "—",
+    product_uom: uom ?? null,
+    uom_label: packLabel,
     uom_factor: factor,
     uom_display: uom ? formatUomOption(uom) : "—",
+    uom_hierarchy: uom ? uomHierarchyChain(uom) : "—",
+    uom_conversion: uom ? uomConversionSummary(uom) : null,
     vat_label: vat
       ? `${vat.vat_name ?? vat.vat_code} (${vat.vat_percentage}%)`
       : "—",
     discount_label: formatDiscount(product),
     is_active: !product.deleted_at,
-    sell_on_retail_label: sellOnRetail ? "Yes" : "No",
+    pricing_mode: sellOnRetail ? "Sells W/R" : "Wholesale",
+    sell_on_retail_label: sellOnRetail ? "Sells W/R" : "Wholesale only",
     total_stock: shop + store,
-    stock_in_shop_display: baseToDisplayQty(shop, factor),
-    stock_in_store_display: baseToDisplayQty(store, factor),
-    total_stock_display: baseToDisplayQty(shop + store, factor),
+    stock_shop_text: formatMixedStockDisplay(shop, uom).text,
+    stock_store_text: formatMixedStockDisplay(store, uom).text,
+    stock_total_text: formatMixedStockDisplay(shop + store, uom).text,
     retail_package: retailPackage,
   };
 }
 
-function movementLabel(row, factor = 1) {
-  const type = String(row.transaction_type ?? "").toUpperCase();
-  const qty = Number(row.quantity_change ?? 0);
-  const abs = baseToDisplayQty(Math.abs(qty), factor);
-  const fmt = (n) => formatQty(n);
-  if (type === "PURCHASE") {
-    return `+${fmt(abs)} Purchase / receipt`;
-  }
-  if (type === "POS_SALE" || type === "MOBILE_SALE" || type === "BACKEND_SALE") {
-    return `−${fmt(abs)} Sale`;
-  }
-  if (type === "SUPPLIER_RETURN") {
-    return `−${fmt(abs)} Supplier return`;
-  }
-  if (type === "RETURN") {
-    return `+${fmt(abs)} Customer return`;
-  }
-  if (type === "TRANSFER") {
-    return `${qty > 0 ? "+" : "−"}${fmt(abs)} Transfer`;
-  }
-  if (type === "ADJUSTMENT" || type === "STOCK_TAKE") {
-    return `${qty > 0 ? "+" : "−"}${fmt(abs)} ${type === "STOCK_TAKE" ? "Stock take" : "Adjustment"}`;
-  }
-  if (type === "DAMAGE" || type === "WRITE_OFF") {
-    return `−${fmt(abs)} ${type === "DAMAGE" ? "Damage" : "Write-off"}`;
-  }
-  return `${qty > 0 ? "+" : qty < 0 ? "−" : ""}${fmt(abs)} ${type || "Movement"}`;
+function formatRetailTiersSummary(retailPackage, uom) {
+  if (!retailPackage) return [];
+  const raw = retailPackage.pricing_tiers?.length
+    ? retailPackage.pricing_tiers
+    : retailPackage.max_qty_measure
+      ? [
+          {
+            min_qty: 1,
+            max_qty: retailPackage.max_qty_measure,
+            measure_level: "small",
+            markup_price: retailPackage.markup_price ?? 0,
+          },
+        ]
+      : [];
+  return normalizePricingTiers(raw).map((tier) => {
+    const to = tier.max_qty === "" || tier.max_qty == null ? "∞" : tier.max_qty;
+    const level = measureLevelLabel(uom, tier.measure_level);
+    return `${tier.min_qty}–${to} ${level} · markup ${formatKes(tier.markup_price)}/unit`;
+  });
 }
 
-function buildPurchaseRows(lpoLines, receiptTxns, factor = 1) {
+function movementLabel(row, uom) {
+  const type = String(row.transaction_type ?? "").toUpperCase();
+  const qty = Number(row.quantity_change ?? 0);
+  const absText = formatMixedStockDisplay(Math.abs(qty), uom).text;
+  if (type === "PURCHASE") {
+    return `+${absText} Purchase / receipt`;
+  }
+  if (type === "POS_SALE" || type === "MOBILE_SALE" || type === "BACKEND_SALE") {
+    return `−${absText} Sale`;
+  }
+  if (type === "SUPPLIER_RETURN") {
+    return `−${absText} Supplier return`;
+  }
+  if (type === "RETURN") {
+    return `+${absText} Customer return`;
+  }
+  if (type === "TRANSFER") {
+    return `${qty > 0 ? "+" : "−"}${absText} Transfer`;
+  }
+  if (type === "ADJUSTMENT" || type === "STOCK_TAKE") {
+    return `${qty > 0 ? "+" : "−"}${absText} ${type === "STOCK_TAKE" ? "Stock take" : "Adjustment"}`;
+  }
+  if (type === "DAMAGE" || type === "WRITE_OFF") {
+    return `−${absText} ${type === "DAMAGE" ? "Damage" : "Write-off"}`;
+  }
+  return `${qty > 0 ? "+" : qty < 0 ? "−" : ""}${absText} ${type || "Movement"}`;
+}
+
+function buildPurchaseRows(lpoLines, receiptTxns, uom) {
+  const packLabel = fullPackageLabel(uom);
   const rows = [];
 
   for (const line of lpoLines) {
@@ -182,15 +217,15 @@ function buildPurchaseRows(lpoLines, receiptTxns, factor = 1) {
       kind: "lpo",
       sortKey: Number(line.lpo_no ?? 0),
       date: "Purchase order",
-      label: `Ordered ${formatQty(line.ordered_qty)} on ${formatPoNumber(line.lpo_no)}`,
-      subtitle: `Received ${formatQty(received)} · ${formatKes(line.cost_price)} per unit`,
+      label: `Ordered ${formatQty(line.ordered_qty)} ${packLabel} on ${formatPoNumber(line.lpo_no)}`,
+      subtitle: `Received ${formatQty(received)} ${packLabel} · ${formatKes(line.cost_price)} per ${packLabel}`,
       tone: received > 0 ? "in" : "neutral",
       href: `/lpo/${line.lpo_no}`,
     });
   }
 
   for (const txn of receiptTxns) {
-    const qty = baseToDisplayQty(Math.abs(Number(txn.quantity_change ?? 0)), factor);
+    const qty = formatMixedStockDisplay(Math.abs(Number(txn.quantity_change ?? 0)), uom).text;
     rows.push({
       id: `receipt-${txn.id}`,
       kind: "receipt",
@@ -198,10 +233,10 @@ function buildPurchaseRows(lpoLines, receiptTxns, factor = 1) {
       date: txn.created_at
         ? formatShortDate(String(txn.created_at).slice(0, 10))
         : "—",
-      label: `+${formatQty(qty)} received into ${txn.stock_location ?? "store"}`,
+      label: `+${qty} received into ${txn.stock_location ?? "store"}`,
       subtitle:
         txn.unit_cost != null && txn.unit_cost !== ""
-          ? `Unit cost ${formatKes(txn.unit_cost)}`
+          ? `Cost per ${packLabel} ${formatKes(txn.unit_cost)}`
           : undefined,
       tone: "in",
     });
@@ -465,26 +500,50 @@ export default function ProductDetailPage() {
 
   const stockValue = useMemo(() => {
     if (!enriched) return null;
-    const qty = Number(enriched.total_stock ?? 0);
+    const shop = Number(enriched.stock_in_shop ?? 0);
+    const store = Number(enriched.stock_in_store ?? 0);
+    const total = shop + store;
     const cost = Number(enriched.last_cost_price ?? 0);
     const sell = Number(enriched.unit_price ?? 0);
+    const uom = enriched.product_uom;
+    const factor = enriched.uom_factor;
+    const sellOnRetail =
+      enriched.sell_on_retail === 1 || enriched.sell_on_retail === true;
+    const packQty = factor > 1 ? baseToDisplayQty(total, factor) : total;
+
     return {
-      atCost: qty * cost,
-      atSelling: qty * sell,
+      atCost: packQty * cost,
+      atSelling:
+        stockSellingValue(shop, sell, uom, enriched.retail_package, sellOnRetail) +
+        stockSellingValue(store, sell, uom, enriched.retail_package, sellOnRetail),
+      packQty,
     };
   }, [enriched]);
 
   const reorderLabel = useMemo(() => {
     if (!enriched) return "—";
+    const pack = enriched.uom_label;
     const rp = Number(enriched.reorder_point ?? 0);
     if (rp > 0) {
-      return `${formatQty(baseToDisplayQty(rp, enriched.uom_factor))} ${enriched.uom_label}`;
+      const packs = baseToDisplayQty(rp, enriched.uom_factor);
+      return `${formatQty(packs)} ${pack} — alert when total stock falls below this`;
     }
     if (globalReorderLevel != null) {
-      return `${formatQty(baseToDisplayQty(globalReorderLevel, enriched.uom_factor))} ${enriched.uom_label} (organisation default)`;
+      const packs = baseToDisplayQty(globalReorderLevel, enriched.uom_factor);
+      return `${formatQty(packs)} ${pack} (organisation default)`;
     }
     return "Organisation default";
   }, [enriched, globalReorderLevel]);
+
+  const priceUnitLabel = useMemo(() => {
+    if (!enriched) return "unit";
+    return uomHasFullPack(enriched.product_uom) ? enriched.uom_label : "unit";
+  }, [enriched]);
+
+  const retailTierLines = useMemo(() => {
+    if (!enriched?.retail_package) return [];
+    return formatRetailTiersSummary(enriched.retail_package, enriched.product_uom);
+  }, [enriched]);
 
   const loadMeta = useCallback(async () => {
     const [catRes, subRes, supRes, uomRes, vatRes, retailRes, settingsRes] = await Promise.all([
@@ -549,7 +608,7 @@ export default function ProductDetailPage() {
         ]);
         const lpoLines = lpoRes.data ?? [];
         const receiptTxns = txnRes.data ?? [];
-        setPurchaseRows(buildPurchaseRows(lpoLines, receiptTxns, enriched?.uom_factor ?? 1));
+        setPurchaseRows(buildPurchaseRows(lpoLines, receiptTxns, enriched?.product_uom ?? null));
       } else if (activityView === "sales") {
         const itemsRes = await apiRequest("/sale-items", {
           searchParams: {
@@ -749,25 +808,27 @@ export default function ProductDetailPage() {
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <MetricCard
                 label="Total stock"
-                value={`${formatQty(enriched.total_stock_display)} ${enriched.uom_label}`}
-                hint={`Shop ${formatQty(enriched.stock_in_shop_display)} · Store ${formatQty(enriched.stock_in_store_display)}`}
+                value={enriched.stock_total_text}
+                hint={`Shop: ${enriched.stock_shop_text} · Store: ${enriched.stock_store_text}`}
                 accent="blue"
               />
               <MetricCard
                 label="Stock value (cost)"
                 value={stockValue ? formatKes(stockValue.atCost) : "—"}
                 hint={
-                  enriched.total_stock > 0
-                    ? `${formatQty(enriched.total_stock)} × ${formatKes(enriched.last_cost_price)}`
+                  enriched.total_stock > 0 && stockValue
+                    ? `${formatQty(stockValue.packQty)} ${priceUnitLabel} × ${formatKes(enriched.last_cost_price)}`
                     : undefined
                 }
                 accent="green"
               />
               <MetricCard
-                label="Selling price"
+                label={`Wholesale price / ${priceUnitLabel}`}
                 value={formatKes(enriched.unit_price)}
                 hint={
-                  profitMargin != null ? `${profitMargin}% profit margin` : "Per unit wholesale price"
+                  profitMargin != null
+                    ? `${profitMargin}% margin · ${enriched.pricing_mode}`
+                    : enriched.pricing_mode
                 }
                 accent="violet"
               />
@@ -775,9 +836,11 @@ export default function ProductDetailPage() {
                 label="Stock value (selling)"
                 value={stockValue ? formatKes(stockValue.atSelling) : "—"}
                 hint={
-                  enriched.total_stock > 0
-                    ? `${formatQty(enriched.total_stock)} × ${formatKes(enriched.unit_price)}`
-                    : undefined
+                  enriched.pricing_mode === "Sells W/R"
+                    ? "Uses retail tier markups when configured"
+                    : enriched.total_stock > 0 && stockValue
+                      ? `${formatQty(stockValue.packQty)} ${priceUnitLabel} × ${formatKes(enriched.unit_price)}`
+                      : undefined
                 }
               />
             </div>
@@ -789,7 +852,12 @@ export default function ProductDetailPage() {
                 </DetailItem>
                 <DetailItem label="Category">{enriched.category_name}</DetailItem>
                 <DetailItem label="Sub-category">{enriched.subcategory_name}</DetailItem>
-                <DetailItem label="Unit of measure">{enriched.uom_display}</DetailItem>
+                <DetailItem label="Unit of measure">
+                  <span>{enriched.uom_hierarchy}</span>
+                  {enriched.uom_conversion ? (
+                    <span className="mt-0.5 block text-xs text-slate-500">{enriched.uom_conversion}</span>
+                  ) : null}
+                </DetailItem>
                 <DetailItem label="Supplier">{enriched.supplier_name}</DetailItem>
                 <DetailItem label="Product weight">
                   {enriched.product_weight != null && enriched.product_weight !== ""
@@ -798,26 +866,34 @@ export default function ProductDetailPage() {
                 </DetailItem>
               </SectionCard>
 
-              <SectionCard title="Pricing & tax" description="Unit economics and VAT">
-                <DetailItem label="Cost price">{formatKes(enriched.last_cost_price)}</DetailItem>
-                <DetailItem label="Selling price">{formatKes(enriched.unit_price)}</DetailItem>
-                <DetailItem label="Last selling price">{formatKes(enriched.last_selling_price)}</DetailItem>
-                <DetailItem label="Discount">{enriched.discount_label}</DetailItem>
+              <SectionCard
+                title="Pricing & tax"
+                description={`Wholesale prices per ${priceUnitLabel} — same unit used on LPO and invoices`}
+              >
+                <DetailItem label={`Cost price / ${priceUnitLabel}`}>
+                  {formatKes(enriched.last_cost_price)}
+                </DetailItem>
+                <DetailItem label={`Selling price / ${priceUnitLabel}`}>
+                  {formatKes(enriched.unit_price)}
+                </DetailItem>
+                <DetailItem label={`Last selling price / ${priceUnitLabel}`}>
+                  {formatKes(enriched.last_selling_price)}
+                </DetailItem>
+                <DetailItem label={`Discount on ${priceUnitLabel}`}>
+                  {enriched.discount_label}
+                </DetailItem>
+                <DetailItem label="Pricing channel">{enriched.pricing_mode}</DetailItem>
                 <DetailItem label="VAT status">{enriched.vat_label}</DetailItem>
                 <DetailItem label="Profit margin">
                   {profitMargin != null ? `${profitMargin}%` : "—"}
                 </DetailItem>
               </SectionCard>
 
-              <SectionCard title="Inventory" description="Stock levels and alerts">
-                <DetailItem label="Stock in shop">
-                  {formatQty(enriched.stock_in_shop_display)} {enriched.uom_label}
-                </DetailItem>
-                <DetailItem label="Stock in store">
-                  {formatQty(enriched.stock_in_store_display)} {enriched.uom_label}
-                </DetailItem>
+              <SectionCard title="Inventory" description="Stock in UOM packaging — same format as stock take">
+                <DetailItem label="Stock in shop">{enriched.stock_shop_text}</DetailItem>
+                <DetailItem label="Stock in store">{enriched.stock_store_text}</DetailItem>
                 <DetailItem label="Reorder level">{reorderLabel}</DetailItem>
-                <DetailItem label="Sell on retail">{enriched.sell_on_retail_label}</DetailItem>
+                <DetailItem label="Retail sales">{enriched.sell_on_retail_label}</DetailItem>
               </SectionCard>
 
               <SectionCard title="Record" description="Audit trail">
@@ -834,25 +910,40 @@ export default function ProductDetailPage() {
                 <div className="border-b border-[#B5D4F4]/60 px-5 py-3.5">
                   <h2 className="text-sm font-semibold text-[#0C447C]">Retail package settings</h2>
                   <p className="mt-0.5 text-xs text-[#0C447C]/70">
-                    Pack sizes and markups for retail checkout
+                    Tier markups on wholesale price per {priceUnitLabel} — quantities use UOM measure
+                    levels
                   </p>
                 </div>
-                <dl className="grid gap-x-8 gap-y-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
-                  <DetailItem label="Pack qty">
-                    {retail.max_qty_measure != null ? formatQty(retail.max_qty_measure) : "—"}
-                    {retail.max_uom_measure ? ` ${retail.max_uom_measure}` : ""}
-                  </DetailItem>
-                  <DetailItem label="Retail markup">{formatKes(retail.markup_price)}</DetailItem>
-                  <DetailItem label="Wholesale pack qty">
-                    {retail.wholesale_qty_measure != null
-                      ? formatQty(retail.wholesale_qty_measure)
-                      : "—"}
-                    {retail.min_uom_measure ? ` ${retail.min_uom_measure}` : ""}
-                  </DetailItem>
-                  <DetailItem label="Wholesale markup">
-                    {formatKes(retail.wholesale_markup_price)}
-                  </DetailItem>
-                </dl>
+                <div className="p-5">
+                  {retailTierLines.length > 0 ? (
+                    <ul className="space-y-2 text-sm text-slate-700">
+                      {retailTierLines.map((line, i) => (
+                        <li key={i} className="rounded-lg border border-slate-100 bg-white px-3 py-2">
+                          {line}
+                        </li>
+                      ))}
+                      <li className="text-xs text-slate-500">
+                        Outside all tiers = wholesale ({formatKes(enriched.unit_price)} per{" "}
+                        {priceUnitLabel}, no markup).
+                      </li>
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-slate-500">No retail tiers configured.</p>
+                  )}
+                  <Link
+                    href="/retail-package-settings"
+                    className="mt-3 inline-block text-xs font-medium text-[#185FA5] hover:underline"
+                  >
+                    Edit in Retail package settings →
+                  </Link>
+                </div>
+              </section>
+            ) : enriched.pricing_mode === "Sells W/R" ? (
+              <section className="rounded-xl border border-amber-200 bg-amber-50/50 px-5 py-4 text-sm text-amber-900">
+                Sells on retail but no package tiers configured.{" "}
+                <Link href="/retail-package-settings" className="font-medium underline">
+                  Add retail package setting
+                </Link>
               </section>
             ) : null}
           </div>
@@ -901,7 +992,7 @@ export default function ProductDetailPage() {
                             ? formatShortDate(String(row.created_at).slice(0, 10))
                             : "—"
                         }
-                        label={movementLabel(row, enriched.uom_factor)}
+                        label={movementLabel(row, enriched.product_uom)}
                         tone={movementTone(row)}
                       />
                     ))}

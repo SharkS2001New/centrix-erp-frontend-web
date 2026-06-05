@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { formatShortDate } from "@/components/catalog/catalog-shared";
 import {
   baseToDisplayQty,
   displayToBaseQty,
@@ -158,7 +157,48 @@ export function ProductCodeLink({ code }) {
 
 export function formatReceiptDate(value) {
   if (!value) return "—";
-  return formatShortDate(String(value).slice(0, 10));
+  return formatMovementDate(value);
+}
+
+export const NAIROBI_TZ = "Africa/Nairobi";
+
+/** Calendar date (YYYY-MM-DD) in Africa/Nairobi for a timestamp. */
+export function nairobiCalendarDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: NAIROBI_TZ }).format(date);
+}
+
+function addDaysToCalendarDate(isoDate, deltaDays) {
+  const ms = Date.parse(`${isoDate}T12:00:00+03:00`) + deltaDays * 86_400_000;
+  return nairobiCalendarDate(new Date(ms));
+}
+
+export function formatMovementDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-KE", {
+    timeZone: NAIROBI_TZ,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+export function formatMovementDateTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-KE", {
+    timeZone: NAIROBI_TZ,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export const LOCATION_OPTIONS = [
@@ -166,6 +206,39 @@ export const LOCATION_OPTIONS = [
   { value: "shop", label: "Shop" },
   { value: "store", label: "Store / warehouse" },
 ];
+
+export function stockLocationLabel(location) {
+  if (!location) return "—";
+  const v = String(location).toLowerCase();
+  if (v === "shop") return "Shop";
+  if (v === "store") return "Store";
+  return String(location)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Human-readable from/to location for a ledger movement row. */
+export function movementLocationLabel(row) {
+  const type = String(row?.transaction_type ?? "").toUpperCase();
+  const loc = stockLocationLabel(row?.stock_location);
+  const notes = String(row?.notes ?? "");
+
+  if (type === "TRANSFER") {
+    const outMatch = notes.match(/^Transfer out to ([^\s·—]+)/i);
+    if (outMatch) {
+      return `${loc} → ${stockLocationLabel(outMatch[1])}`;
+    }
+    const inMatch = notes.match(/^Transfer in from ([^\s·—]+)/i);
+    if (inMatch) {
+      return `${stockLocationLabel(inMatch[1])} → ${loc}`;
+    }
+  }
+
+  const qty = Number(row?.quantity_change ?? 0);
+  if (qty > 0) return `To ${loc}`;
+  if (qty < 0) return `From ${loc}`;
+  return loc;
+}
 
 export const SESSION_STATUS_LABELS = {
   draft: "Draft",
@@ -218,21 +291,21 @@ export function receiptDetailHref(ref) {
 }
 
 export function isoDate(value = new Date()) {
-  return new Date(value).toISOString().slice(0, 10);
+  return nairobiCalendarDate(value) ?? "";
 }
 
 export function defaultDateRange(days = 7) {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - (days - 1));
-  return { from: isoDate(from), to: isoDate(to) };
+  const to = isoDate();
+  const from = addDaysToCalendarDate(to, -(days - 1));
+  return { from, to };
 }
 
 export function rowInDateRange(row, from, to, dateKeys = ["created_at", "damage_date", "receipt_date"]) {
   for (const key of dateKeys) {
     const raw = row[key];
     if (!raw) continue;
-    const day = String(raw).slice(0, 10);
+    const day = nairobiCalendarDate(raw);
+    if (!day) continue;
     if (from && day < from) return false;
     if (to && day > to) return false;
     return true;

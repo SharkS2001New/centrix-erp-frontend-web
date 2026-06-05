@@ -18,6 +18,11 @@ import {
   LOCATION_OPTIONS,
   StockHealthBadge,
 } from "@/components/inventory/inventory-shared";
+import {
+  priceListRowsForProduct,
+  priceListToCsv,
+  stockSellingValue,
+} from "@/lib/retail-pricing";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 
 const PAGE_SIZE = 15;
@@ -28,8 +33,9 @@ const STOCK_COLUMNS = [
   { id: "sku", label: "SKU", defaultVisible: false },
   { id: "shop", label: "Shop", defaultVisible: true, align: "right" },
   { id: "store", label: "Store", defaultVisible: true, align: "right" },
-  { id: "stock_value", label: "Stock value", defaultVisible: true, align: "right" },
-  { id: "profit_margin", label: "Profit margin", defaultVisible: true, align: "right" },
+  { id: "shop_value", label: "Shop value", defaultVisible: true, align: "right" },
+  { id: "store_value", label: "Store value", defaultVisible: true, align: "right" },
+  { id: "profit_margin", label: "Profit margin", defaultVisible: false, align: "right" },
   { id: "reorder", label: "Reorder", defaultVisible: false, align: "right" },
   { id: "status", label: "Status", defaultVisible: true },
 ];
@@ -64,6 +70,7 @@ export default function CurrentStockPage() {
   const [subCategories, setSubCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
+  const [retailPackages, setRetailPackages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
@@ -82,7 +89,7 @@ export default function CurrentStockPage() {
     setError(null);
     setLoading(true);
     try {
-      const [stockRes, valRes, catRes, subRes, prodRes, uomRes] = await Promise.all([
+      const [stockRes, valRes, catRes, subRes, prodRes, uomRes, retailRes] = await Promise.all([
         apiRequest("/reports/stock-on-hand", {
           searchParams: { branch_id: branchId, per_page: 500 },
         }),
@@ -93,6 +100,7 @@ export default function CurrentStockPage() {
         apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
         apiRequest("/products", { searchParams: { per_page: 500 } }),
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
+        apiRequest("/retail-package-settings", { searchParams: { per_page: 500 } }),
       ]);
       setStockRows(stockRes.data ?? []);
       setValuationRows(valRes.data ?? []);
@@ -100,6 +108,7 @@ export default function CurrentStockPage() {
       setSubCategories(subRes.data ?? []);
       setProducts(prodRes.data ?? []);
       setUoms(uomRes.data ?? []);
+      setRetailPackages(retailRes.data ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load current stock");
     } finally {
@@ -126,6 +135,11 @@ export default function CurrentStockPage() {
     return map;
   }, [products, subCategories]);
 
+  const retailByCode = useMemo(
+    () => new Map(retailPackages.map((r) => [r.product_code, r])),
+    [retailPackages],
+  );
+
   const uomByProductCode = useMemo(() => {
     const uomById = new Map(uoms.map((u) => [u.id, u]));
     const map = new Map();
@@ -134,6 +148,7 @@ export default function CurrentStockPage() {
       map.set(p.product_code, {
         factor: Number(uom?.conversion_factor ?? 1),
         name: uom?.full_name ?? "units",
+        uom: uom ?? null,
       });
     }
     return map;
@@ -150,10 +165,14 @@ export default function CurrentStockPage() {
       const val = valuationByCode.get(product.product_code);
       const cost = Number(val?.last_cost_price ?? product.last_cost_price ?? 0);
       const sell = Number(val?.unit_price ?? row?.wholesale_price ?? product.unit_price ?? 0);
+      const retailPackage = retailByCode.get(product.product_code) ?? null;
+      const sellOnRetail = product.sell_on_retail === 1 || product.sell_on_retail === true;
       const shopQty = Number(row?.shop_quantity ?? product.stock_in_shop ?? 0);
       const storeQty = Number(row?.store_quantity ?? product.stock_in_store ?? 0);
       const totalBase = shopQty + storeQty;
-      const stockValue = Number(val?.cost_value ?? totalBase * cost);
+      const uomObj = uomMeta?.uom ?? null;
+      const shopValue = stockSellingValue(shopQty, sell, uomObj, retailPackage, sellOnRetail);
+      const storeValue = stockSellingValue(storeQty, sell, uomObj, retailPackage, sellOnRetail);
       const profitMargin =
         sell > 0 ? Math.round(((sell - cost) / sell) * 100) : null;
       const reorderPoint = Number(row?.reorder_point ?? product.reorder_point ?? 0);
@@ -171,14 +190,19 @@ export default function CurrentStockPage() {
         reorderDisplay: baseToDisplayQty(reorderPoint, factor),
         uomName,
         factor,
-        stockValue,
+        uom: uomObj,
+        shopValue,
+        storeValue,
         profitMargin,
         cost,
         sell,
+        sellOnRetail,
+        retailPackage,
+        product,
         hasStockRecord: Boolean(row),
       };
     });
-  }, [products, stockRows, valuationByCode, uomByProductCode]);
+  }, [products, stockRows, valuationByCode, uomByProductCode, retailByCode]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -232,17 +256,19 @@ export default function CurrentStockPage() {
       case "shop":
         return (
           <span title={`${row.shop_quantity} base pieces`}>
-            {formatMixedStockDisplay(row.shop_quantity, row.factor, row.uomName).text}
+            {formatMixedStockDisplay(row.shop_quantity, row.uom ?? row.factor, row.uomName).text}
           </span>
         );
       case "store":
         return (
           <span title={`${row.store_quantity} base pieces`}>
-            {formatMixedStockDisplay(row.store_quantity, row.factor, row.uomName).text}
+            {formatMixedStockDisplay(row.store_quantity, row.uom ?? row.factor, row.uomName).text}
           </span>
         );
-      case "stock_value":
-        return formatInventoryKes(row.stockValue);
+      case "shop_value":
+        return formatInventoryKes(row.shopValue);
+      case "store_value":
+        return formatInventoryKes(row.storeValue);
       case "profit_margin":
         return row.profitMargin != null ? `${row.profitMargin}%` : "—";
       case "reorder":
@@ -266,10 +292,43 @@ export default function CurrentStockPage() {
     }
   }
 
+  function generatePriceList() {
+    const inStock = filtered.filter(
+      (row) => Number(row.shop_quantity ?? 0) > 0 || Number(row.store_quantity ?? 0) > 0,
+    );
+    const rows = inStock.map((row) =>
+      priceListRowsForProduct({
+        product: row.product,
+        uom: row.uom,
+        retailPackage: row.retailPackage,
+        shopQty: row.shop_quantity,
+        storeQty: row.store_quantity,
+      }),
+    );
+    const csv = priceListToCsv(rows);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `price-list-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const totals = useMemo(() => {
+    let shop = 0;
+    let store = 0;
+    for (const row of filtered) {
+      shop += row.shopValue ?? 0;
+      store += row.storeValue ?? 0;
+    }
+    return { shop, store, all: shop + store };
+  }, [filtered]);
+
   return (
     <InventoryPageShell
       title="Current stock"
-      subtitle="All products listed — quantities shown in selling units (divide base stock by conversion factor)"
+      subtitle="Quantities in packaging hierarchy — values use retail tier prices when configured"
     >
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SearchInput
@@ -291,6 +350,14 @@ export default function CurrentStockPage() {
           onChange={(e) => setLocationFilter(e.target.value)}
           options={LOCATION_OPTIONS}
         />
+        <button
+          type="button"
+          onClick={generatePriceList}
+          disabled={loading || filtered.length === 0}
+          className="rounded-lg border border-[#185FA5] bg-[#185FA5] px-3 py-2 text-sm font-medium text-white hover:bg-[#0C447C] disabled:opacity-50"
+        >
+          Generate price list
+        </button>
         <div className="relative">
           <button
             type="button"
@@ -324,6 +391,13 @@ export default function CurrentStockPage() {
       {error ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </p>
+      ) : null}
+
+      {!loading && filtered.length > 0 ? (
+        <p className="mb-3 text-xs text-slate-500">
+          Stock value totals — Shop: {formatInventoryKes(totals.shop)} · Store:{" "}
+          {formatInventoryKes(totals.store)} · Combined: {formatInventoryKes(totals.all)}
         </p>
       ) : null}
 

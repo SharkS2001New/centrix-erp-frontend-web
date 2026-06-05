@@ -6,11 +6,14 @@ import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import {
   CatalogPageShell,
+  Field,
   FilterSelect,
   PaginationBar,
   SearchInput,
   formatShortDate,
+  inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { defaultDateRange } from "@/components/inventory/inventory-shared";
 import { formatSupplierKes, formatSupplierPaymentReference } from "@/components/suppliers/suppliers-shared";
 
 const PAGE_SIZE = 15;
@@ -27,15 +30,24 @@ export default function SupplierPaymentsPage() {
   const [supplierFilter, setSupplierFilter] = useState(presetSupplier ?? "all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const initialRange = defaultDateRange(7);
+  const [fromDate, setFromDate] = useState(initialRange.from);
+  const [toDate, setToDate] = useState(initialRange.to);
+
   const loadData = useCallback(async () => {
     setError(null);
+    setLoading(true);
     try {
-      const searchParams = { per_page: 200 };
+      const params = {
+        per_page: 200,
+        date_from: fromDate,
+        date_to: toDate,
+      };
       if (supplierFilter !== "all") {
-        searchParams.supplier_id = supplierFilter;
+        params.supplier_id = supplierFilter;
       }
       const [payRes, supRes] = await Promise.all([
-        apiRequest("/supplier-payments", { searchParams }),
+        apiRequest("/supplier-payments", { searchParams: params }),
         apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
       ]);
       setPayments(payRes.data ?? []);
@@ -45,7 +57,7 @@ export default function SupplierPaymentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [supplierFilter]);
+  }, [supplierFilter, fromDate, toDate]);
 
   useEffect(() => {
     loadData();
@@ -79,7 +91,7 @@ export default function SupplierPaymentsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, supplierFilter]);
+  }, [search, supplierFilter, fromDate, toDate]);
 
   const totalPaid = useMemo(
     () => filtered.reduce((sum, p) => sum + Number(p.amount_paid ?? 0), 0),
@@ -103,7 +115,23 @@ export default function SupplierPaymentsPage() {
         </Link>
       }
       toolbar={
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <Field label="From">
+            <input
+              type="date"
+              className={inputClassName()}
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+            />
+          </Field>
+          <Field label="To">
+            <input
+              type="date"
+              className={inputClassName()}
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+            />
+          </Field>
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}

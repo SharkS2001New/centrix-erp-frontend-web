@@ -2,7 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { isSinglePieceUom, uomConversionFactor } from "@/lib/stock-uom";
+import {
+  defaultSmallLabelForType,
+  uomCategory,
+  uomConversionSummary,
+  uomFromForm,
+  uomHierarchyChain,
+  uomHasMiddlePack,
+  uomStockReportExamples,
+  UOM_TYPE_FILTER_OPTIONS,
+  UOM_TYPE_OPTIONS,
+} from "@/lib/uom-packaging";
+import { formatMixedStockDisplay, isSinglePieceUom, uomConversionFactor } from "@/lib/stock-uom";
 import {
   ActiveBadge,
   CatalogPageShell,
@@ -17,26 +28,6 @@ import {
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
 
-const UOM_TYPE_OPTIONS = [
-  { value: "piece", label: "piece — count" },
-  { value: "carton", label: "carton — count" },
-  { value: "bag", label: "bag — count" },
-  { value: "kg", label: "kg — weight" },
-  { value: "g", label: "g — weight" },
-  { value: "l", label: "l — volume" },
-  { value: "ml", label: "ml — volume" },
-  { value: "m", label: "m — length" },
-  { value: "cm", label: "cm — length" },
-];
-
-const TYPE_CATEGORY_OPTIONS = [
-  { value: "all", label: "All types" },
-  { value: "count", label: "Count" },
-  { value: "weight", label: "Weight" },
-  { value: "volume", label: "Volume" },
-  { value: "length", label: "Length" },
-];
-
 const PACK_FILTER_OPTIONS = [
   { value: "all", label: "All units" },
   { value: "single", label: "Single (×1)" },
@@ -44,22 +35,16 @@ const PACK_FILTER_OPTIONS = [
 ];
 
 const EMPTY_FORM = {
+  measure_name: "",
+  small_packaging_label: "piece",
+  has_middle_pack: false,
+  middle_packaging_label: "",
+  middle_factor: "",
   full_name: "",
-  uom_type: "piece",
   conversion_factor: "1",
+  uom_type: "piece",
   is_active: true,
 };
-
-function uomCategory(uomType) {
-  const t = String(uomType ?? "").toLowerCase();
-  if (["piece", "pcs", "carton", "bag", "box", "unit", "count", "dozen"].includes(t)) {
-    return "count";
-  }
-  if (["kg", "g", "gram", "kilogram", "tonne", "lb"].includes(t)) return "weight";
-  if (["l", "litre", "liter", "ml", "millilitre", "milliliter"].includes(t)) return "volume";
-  if (["m", "cm", "mm", "meter", "metre", "length"].includes(t)) return "length";
-  return "other";
-}
 
 function UomTypeBadge({ uomType }) {
   const category = uomCategory(uomType);
@@ -82,16 +67,6 @@ function UomTypeBadge({ uomType }) {
       className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize ${styles[category]}`}
     >
       {labels[category]}
-    </span>
-  );
-}
-
-function ConversionPill({ value }) {
-  const n = Number(value ?? 1);
-  const text = Number.isInteger(n) ? String(n) : n.toLocaleString("en-KE", { maximumFractionDigits: 4 });
-  return (
-    <span className="inline-flex min-w-[40px] items-center justify-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 font-mono text-sm font-medium text-slate-800">
-      {text}
     </span>
   );
 }
@@ -119,30 +94,26 @@ function Toggle({ checked, onChange, label }) {
   );
 }
 
-function ConversionFactorGuide({ conversionFactor, unitName }) {
-  const name = unitName?.trim() || "this unit";
-  const factor = uomConversionFactor(conversionFactor);
-  const isSingle = factor === 1;
+function StockReportPreview({ form }) {
+  const uom = uomFromForm(form);
+  const examples = uomStockReportExamples(uom);
+  const conversion = uomConversionSummary(uom);
 
   return (
-    <div className="rounded-lg border border-[#B6D4F0] bg-[#F5FAFF] p-4 text-xs leading-relaxed text-slate-700">
-      <p className="font-medium text-slate-900">How units work in stock</p>
-      <p className="mt-2">
-        Stock is stored as individual pieces. The conversion factor tells the system how many pieces
-        are in one {name.toLowerCase()} when you receive, sell, or count stock.
-      </p>
-      {isSingle ? (
-        <p className="mt-2 text-slate-600">
-          <strong>Factor 1</strong> — one {name.toLowerCase()} is one piece. Use this for pieces,
-          each, kg, litres, and other units you count one at a time.
-        </p>
-      ) : (
-        <p className="mt-2 text-slate-600">
-          <strong>Factor {factor}</strong> — one {name.toLowerCase()} contains{" "}
-          <span className="font-mono">{factor}</span> pieces. Receiving 2 {name.toLowerCase()}s adds{" "}
-          <span className="font-mono">{2 * factor}</span> pieces to stock.
-        </p>
-      )}
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 text-xs leading-relaxed text-slate-700">
+      <p className="font-medium text-emerald-900">Stock will report as</p>
+      <p className="mt-1 text-slate-600">Hierarchy: {uomHierarchyChain(uom)}</p>
+      {conversion ? (
+        <p className="mt-1 font-medium text-emerald-800">{conversion}</p>
+      ) : null}
+      <ul className="mt-2 space-y-1">
+        {examples.map((ex) => (
+          <li key={`${ex.base}-${ex.note}`} className="font-mono text-sm text-slate-800">
+            {formatMixedStockDisplay(ex.base, uom).text}
+            <span className="ml-2 font-sans text-[11px] text-slate-500">({ex.note})</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -197,7 +168,12 @@ export default function UomsPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return uoms.filter((u) => {
-      if (q && !u.full_name?.toLowerCase().includes(q) && !u.uom_type?.toLowerCase().includes(q)) {
+      if (
+        q &&
+        !u.full_name?.toLowerCase().includes(q) &&
+        !u.measure_name?.toLowerCase().includes(q) &&
+        !u.uom_type?.toLowerCase().includes(q)
+      ) {
         return false;
       }
       if (typeFilter !== "all" && uomCategory(u.uom_type) !== typeFilter) return false;
@@ -209,6 +185,7 @@ export default function UomsPage() {
 
   const formTitle = drawerMode === "create" ? "Add UOM" : "Edit UOM";
   const formFactor = uomConversionFactor(form.conversion_factor);
+  const fullSectionNum = form.has_middle_pack ? 3 : 2;
 
   function openCreateDrawer() {
     setDrawerMode("create");
@@ -222,9 +199,14 @@ export default function UomsPage() {
     setDrawerMode("edit");
     setEditingId(uom.id);
     setForm({
+      measure_name: uom.measure_name ?? "",
+      small_packaging_label: uom.small_packaging_label ?? defaultSmallLabelForType(uom.uom_type),
+      has_middle_pack: uomHasMiddlePack(uom),
+      middle_packaging_label: uom.middle_packaging_label ?? "",
+      middle_factor: uom.middle_factor != null ? String(uom.middle_factor) : "",
       full_name: uom.full_name ?? "",
-      uom_type: uom.uom_type ?? "piece",
       conversion_factor: String(uom.conversion_factor ?? 1),
+      uom_type: uom.uom_type ?? "piece",
       is_active: uom.is_active !== false,
     });
     setFormError(null);
@@ -237,7 +219,17 @@ export default function UomsPage() {
   }
 
   function updateField(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "uom_type" && !prev.small_packaging_label) {
+        next.small_packaging_label = defaultSmallLabelForType(value);
+      }
+      if (key === "has_middle_pack" && !value) {
+        next.middle_packaging_label = "";
+        next.middle_factor = "";
+      }
+      return next;
+    });
   }
 
   async function saveForm(e) {
@@ -245,8 +237,14 @@ export default function UomsPage() {
     setFormError(null);
     setSaving(true);
     const conversionFactor = parseFloat(form.conversion_factor);
+    const useMiddle = form.has_middle_pack && form.middle_packaging_label.trim();
     const body = {
       full_name: form.full_name.trim(),
+      measure_name: form.measure_name.trim() || null,
+      small_packaging_label: form.small_packaging_label.trim() || defaultSmallLabelForType(form.uom_type),
+      middle_packaging_label: useMiddle ? form.middle_packaging_label.trim() : null,
+      middle_factor:
+        useMiddle && form.middle_factor !== "" ? parseFloat(form.middle_factor) : null,
       uom_type: form.uom_type.trim(),
       conversion_factor: conversionFactor,
       is_base_unit: conversionFactor === 1,
@@ -286,7 +284,7 @@ export default function UomsPage() {
   return (
     <CatalogPageShell
       title="Units of measure"
-      subtitle="Set how many pieces are in each unit — use 1 for single items, higher numbers for packs"
+      subtitle="Define how stock is counted and reported — base unit, optional middle packs, and full packages"
       action={<PrimaryButton onClick={openCreateDrawer}>Add UOM</PrimaryButton>}
       toolbar={
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -299,7 +297,7 @@ export default function UomsPage() {
           <FilterSelect
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            options={TYPE_CATEGORY_OPTIONS}
+            options={UOM_TYPE_FILTER_OPTIONS}
           />
           <FilterSelect
             value={packFilter}
@@ -323,9 +321,9 @@ export default function UomsPage() {
             <table className="w-full min-w-[640px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
-                  <th className="px-4 py-2.5">Full name</th>
+                  <th className="px-4 py-2.5">Hierarchy</th>
+                  <th className="px-4 py-2.5">Example stock</th>
                   <th className="px-4 py-2.5">Type</th>
-                  <th className="px-4 py-2.5">Conversion factor</th>
                   <th className="px-4 py-2.5">Products</th>
                   <th className="px-4 py-2.5">Status</th>
                   <th className="w-[90px] px-4 py-2.5">Actions</th>
@@ -346,12 +344,26 @@ export default function UomsPage() {
                         key={uom.id}
                         className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
                       >
-                        <td className="px-4 py-3 font-medium text-slate-900">{uom.full_name}</td>
-                        <td className="px-4 py-3">
-                          <UomTypeBadge uomType={uom.uom_type} />
+                        <td className="px-4 py-3 text-slate-700">
+                          <span className="font-medium text-slate-900">{uomHierarchyChain(uom)}</span>
+                          {Number(uom.conversion_factor ?? 1) > 1 ? (
+                            <span className="mt-0.5 block text-xs text-slate-500">
+                              1 {uom.full_name} = {uom.conversion_factor}{" "}
+                              {uom.small_packaging_label ?? uom.uom_type}
+                              {uomHasMiddlePack(uom)
+                                ? ` · 1 ${uom.middle_packaging_label} = ${uom.middle_factor} ${uom.small_packaging_label ?? "units"}`
+                                : ""}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-slate-600">
+                          {formatMixedStockDisplay(
+                            uomStockReportExamples(uom)[0]?.base ?? 0,
+                            uom,
+                          ).text}
                         </td>
                         <td className="px-4 py-3">
-                          <ConversionPill value={uom.conversion_factor} />
+                          <UomTypeBadge uomType={uom.uom_type} />
                         </td>
                         <td className="px-4 py-3 text-slate-700">{count}</td>
                         <td className="px-4 py-3">
@@ -386,50 +398,116 @@ export default function UomsPage() {
         error={formError}
         submitLabel={drawerMode === "create" ? "Save UOM" : "Save changes"}
       >
-        <Field label="Full name">
+        <Field label="Measure name (optional)">
           <input
             type="text"
-            value={form.full_name}
-            onChange={(e) => updateField("full_name", e.target.value)}
-            required
+            value={form.measure_name}
+            onChange={(e) => updateField("measure_name", e.target.value)}
             className={inputClassName()}
-            placeholder="e.g. Piece, Carton (12s)"
+            placeholder="e.g. Sugars — distinguishes same hierarchy, different packages"
           />
         </Field>
-        <Field label="Type">
-          <select
-            value={form.uom_type}
-            onChange={(e) => updateField("uom_type", e.target.value)}
-            required
-            className={inputClassName()}
-          >
-            {UOM_TYPE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <ConversionFactorGuide
-          conversionFactor={form.conversion_factor}
-          unitName={form.full_name}
+
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          1. {form.small_packaging_label?.trim() || "Base"} unit (always 1 = this unit)
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Small unit name">
+            <input
+              type="text"
+              value={form.small_packaging_label}
+              onChange={(e) => updateField("small_packaging_label", e.target.value)}
+              required
+              className={inputClassName()}
+              placeholder="e.g. piece, kg, litres"
+            />
+          </Field>
+          <Field label="Category">
+            <select
+              value={form.uom_type}
+              onChange={(e) => updateField("uom_type", e.target.value)}
+              required
+              className={inputClassName()}
+            >
+              {UOM_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        <Toggle
+          label="Use middle packs (e.g. outers, dozens between full bale and pieces)"
+          checked={form.has_middle_pack}
+          onChange={(v) => updateField("has_middle_pack", v)}
         />
-        <Field label="Conversion factor">
-          <input
-            type="number"
-            value={form.conversion_factor}
-            onChange={(e) => updateField("conversion_factor", e.target.value)}
-            required
-            min="0.001"
-            step="any"
-            className={`${inputClassName()} font-mono`}
-          />
-          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-            {formFactor === 1
-              ? "Use 1 when one unit equals one piece (e.g. piece, each, 1 kg)."
-              : `Pieces inside one ${form.full_name?.trim() || "pack"}. Receiving 1 unit multiplies stock by ${formFactor}.`}
-          </p>
-        </Field>
+
+        {form.has_middle_pack ? (
+          <>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              2. Middle pack
+            </p>
+            <div className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <Field label="Middle pack name">
+              <input
+                type="text"
+                value={form.middle_packaging_label}
+                onChange={(e) => updateField("middle_packaging_label", e.target.value)}
+                className={inputClassName()}
+                placeholder="e.g. outer, dozen"
+              />
+            </Field>
+            <Field label={`${form.small_packaging_label || "units"} per middle pack`}>
+              <input
+                type="number"
+                min="2"
+                step="any"
+                value={form.middle_factor}
+                onChange={(e) => updateField("middle_factor", e.target.value)}
+                className={inputClassName()}
+                placeholder="e.g. 12 pieces per outer"
+              />
+            </Field>
+          </div>
+          </>
+        ) : null}
+
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {fullSectionNum}. Full package (optional — set factor to 1 to skip)
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Full package name">
+            <input
+              type="text"
+              value={form.full_name}
+              onChange={(e) => updateField("full_name", e.target.value)}
+              required
+              className={inputClassName()}
+              placeholder="e.g. Bag, Bale, Carton"
+            />
+          </Field>
+          <Field label={`${form.small_packaging_label || "units"} per full package`}>
+            <input
+              type="number"
+              value={form.conversion_factor}
+              onChange={(e) => updateField("conversion_factor", e.target.value)}
+              required
+              min="1"
+              step="any"
+              className={`${inputClassName()} font-mono`}
+            />
+          </Field>
+        </div>
+        <p className="text-[11px] leading-relaxed text-slate-500">
+          {formFactor === 1
+            ? `Stock counted only in ${form.small_packaging_label || "small units"} (no full package split).`
+            : `1 ${form.full_name || "pack"} = ${formFactor} ${form.small_packaging_label || "units"}. e.g. 60 ${form.small_packaging_label} → 1 ${form.full_name}, 10 ${form.small_packaging_label}.`}
+        </p>
+
+        <StockReportPreview form={form} />
+
         <Toggle label="Active" checked={form.is_active} onChange={(v) => updateField("is_active", v)} />
       </FormDrawer>
     </CatalogPageShell>

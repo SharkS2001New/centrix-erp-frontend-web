@@ -53,15 +53,16 @@ export default function EditProductPage() {
         loadRetailPackageForProduct(productCode).catch(() => null),
       ]);
       const product = productRes.data ?? productRes;
+      const uom = uoms.find((u) => String(u.id) === String(product.unit_id)) ?? null;
       setForm(
-        productToForm({ ...product, is_active: !product.deleted_at }, retailPackage),
+        productToForm({ ...product, is_active: !product.deleted_at }, retailPackage, uom),
       );
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load product");
     } finally {
       setProductLoading(false);
     }
-  }, [productCode]);
+  }, [productCode, uoms]);
 
   useEffect(() => {
     loadProduct();
@@ -119,7 +120,8 @@ export default function EditProductPage() {
     setSaving(true);
     setFormError(null);
     try {
-      const body = buildProductBody(form);
+      const uom = uoms.find((u) => String(u.id) === String(form.unit_id)) ?? null;
+      const body = buildProductBody(form, uom);
       await apiRequest(`/products/${encodeURIComponent(productCode)}`, {
         method: "PUT",
         body,

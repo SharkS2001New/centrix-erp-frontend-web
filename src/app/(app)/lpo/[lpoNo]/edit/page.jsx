@@ -48,9 +48,11 @@ export default function EditLpoPage() {
           setForm(null);
           return;
         }
-        setForm(lpoHeaderToForm(detail.lpo, detail.lines));
+        const uomList = uomRes.data ?? uomRes ?? [];
+        const uomMap = new Map(uomList.map((u) => [u.id, u]));
+        setForm(lpoHeaderToForm(detail.lpo, detail.lines, uomMap));
         setSuppliers(supRes.data ?? []);
-        setUoms(uomRes.data ?? uomRes ?? []);
+        setUoms(uomList);
         setVats(vatRes.data ?? vatRes ?? []);
         const addr = branch?.branch_address?.trim();
         if (addr) setBranchAddress(addr);

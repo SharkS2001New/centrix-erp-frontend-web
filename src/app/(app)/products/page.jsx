@@ -149,7 +149,8 @@ function enrichProduct(
   if (shop + store <= 0) stockStatus = "out_of_stock";
   else if (reorderPoint > 0 && shop + store <= reorderPoint) stockStatus = "low_stock";
 
-  const pricing = product.sell_on_retail === 1 || product.sell_on_retail === true ? "Retail" : "Wholesale";
+  const pricing =
+    product.sell_on_retail === 1 || product.sell_on_retail === true ? "Sells W/R" : "Wholesale";
 
   return {
     ...product,
@@ -162,6 +163,7 @@ function enrichProduct(
     uom_label: uom?.full_name ?? "—",
     uom_type: uomLabel,
     uom_factor: Number(uom?.conversion_factor ?? 1),
+    product_uom: uom ?? null,
     supplier_name: supplier?.supplier_name ?? "—",
     display_weight: resolveWeight(product, uom, retailPackage),
     is_active: isActive,
@@ -351,7 +353,8 @@ export default function ProductsPage() {
       if (categoryFilter !== "all" && String(p.category_id) !== categoryFilter) return false;
       if (subCategoryFilter !== "all" && String(p.subcategory_id) !== subCategoryFilter) return false;
       if (stockFilter !== "all" && p.stock_status !== stockFilter) return false;
-      if (pricingFilter !== "all" && p.pricing.toLowerCase() !== pricingFilter) return false;
+      if (pricingFilter === "retail" && p.pricing !== "Sells W/R") return false;
+      if (pricingFilter === "wholesale" && p.pricing !== "Wholesale") return false;
       if (activeFilter === "active" && !p.is_active) return false;
       if (activeFilter === "inactive" && p.is_active) return false;
       return true;
@@ -522,7 +525,7 @@ export default function ProductsPage() {
             onChange={(e) => setPricingFilter(e.target.value)}
             options={[
               { value: "all", label: "All pricing" },
-              { value: "retail", label: "Retail" },
+              { value: "retail", label: "Sells W/R" },
               { value: "wholesale", label: "Wholesale" },
             ]}
           />
@@ -849,6 +852,7 @@ function renderProductCell(product, columnId, onPriceSaved) {
       return (
         <StockCell
           qty={product.shop_qty}
+          uom={product.product_uom}
           unit={product.uom_label}
           factor={product.uom_factor}
           status={product.shop_stock_status}
@@ -858,6 +862,7 @@ function renderProductCell(product, columnId, onPriceSaved) {
       return (
         <StockCell
           qty={product.store_qty}
+          uom={product.product_uom}
           unit={product.uom_label}
           factor={product.uom_factor}
           status={product.store_stock_status}
@@ -1068,8 +1073,8 @@ function InlineUnitPriceCell({ productCode, unitPrice, onSaved }) {
   );
 }
 
-function StockCell({ qty, unit, factor, status }) {
-  const stockText = formatMixedStockDisplay(qty, factor ?? 1, unit).text;
+function StockCell({ qty, uom, unit, factor, status }) {
+  const stockText = formatMixedStockDisplay(qty, uom ?? factor ?? 1, unit).text;
   const styles = {
     in_stock: {
       label: "In stock",
@@ -1146,13 +1151,13 @@ function FilterSelect({ value, onChange, options }) {
 
 function PricingBadge({ type }) {
   const styles = {
-    Both: "bg-sky-50 text-sky-700 ring-sky-600/20",
-    Retail: "bg-violet-50 text-violet-700 ring-violet-600/20",
+    "Sells W/R": "bg-violet-50 text-violet-700 ring-violet-600/20",
     Wholesale: "bg-indigo-50 text-indigo-700 ring-indigo-600/20",
   };
   return (
     <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${styles[type] ?? styles.Both}`}
+      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${styles[type] ?? styles.Wholesale}`}
+      title={type === "Sells W/R" ? "Sells wholesale and retail" : "Wholesale only"}
     >
       {type}
     </span>

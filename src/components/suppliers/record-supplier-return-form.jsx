@@ -19,8 +19,10 @@ import {
   REASON_SCOPE,
   STOCK_LOCATION,
   expandLinesForSubmit,
+  formatStockLocationLabel,
+  lpoReceivedLocationMeta,
   packagingLabelFromProduct,
-  splitBothStockQty,
+  stockLocationSelectOptions,
 } from "@/components/suppliers/supplier-return-shared";
 
 const RETURN_MODES = {
@@ -104,7 +106,9 @@ export function RecordSupplierReturnForm({
   );
 
   const lpoInvoiceChoices = useMemo(() => {
-    const list = lpoSummary?.supplier_invoices ?? [];
+    const list = (lpoSummary?.supplier_invoices ?? []).filter(
+      (inv) => !lpoNo || Number(inv.lpo_no) === Number(lpoNo),
+    );
     const seen = new Set();
     const choices = [];
     for (const inv of list) {
@@ -120,18 +124,17 @@ export function RecordSupplierReturnForm({
       });
     }
     return choices;
-  }, [lpoSummary?.supplier_invoices]);
+  }, [lpoSummary?.supplier_invoices, lpoNo]);
 
   const pendingLpoStockPreview = useMemo(() => {
     if (!pendingLpoLine) return null;
     const total = lpoStockDeductQty(pendingLpoLine, addDraft.quantity);
     if (total <= 0) return { total: 0 };
-    if (addDraft.stock_location === STOCK_LOCATION.BOTH && stockHint) {
-      const split = splitBothStockQty(total, stockHint.shop, stockHint.store);
-      return { total, both: true, ...split };
-    }
-    return { total, both: false, location: addDraft.stock_location };
-  }, [pendingLpoLine, addDraft.quantity, addDraft.stock_location, stockHint]);
+    return {
+      total,
+      location: addDraft.stock_location,
+    };
+  }, [pendingLpoLine, addDraft.quantity, addDraft.stock_location]);
 
   useEffect(() => {
     const bid = user?.branch_id;
@@ -375,9 +378,11 @@ export function RecordSupplierReturnForm({
     }
     setPendingLpoLine(line);
     setPendingManual(null);
+    const { primary } = lpoReceivedLocationMeta(line);
     setAddDraft({
       ...DEFAULT_RETURN_DRAFT,
       quantity: String(Math.min(1, Number(line.max_return_qty ?? 1))),
+      stock_location: primary,
       reason: reasonScope === REASON_SCOPE.ORDER ? returnReason : "",
     });
     setFormError(null);
@@ -390,37 +395,11 @@ export function RecordSupplierReturnForm({
     const shopAvail = stockHint?.shop ?? 0;
     const storeAvail = stockHint?.store ?? 0;
 
-    if (addDraft.stock_location === STOCK_LOCATION.BOTH) {
-      if (qty > shopAvail + storeAvail + 0.0001) {
-        setAddError(
-          `Quantity exceeds combined stock (shop ${shopAvail} + store ${storeAvail} = ${shopAvail + storeAvail}).`,
-        );
-        return null;
-      }
-      const { shopQty, storeQty } = splitBothStockQty(qty, shopAvail, storeAvail);
-      return {
-        key: newLineKey(),
-        product_code,
-        product_name,
-        quantity: String(qty),
-        package_type: addDraft.package_type,
-        stock_location: STOCK_LOCATION.BOTH,
-        shop_qty: shopQty,
-        store_qty: storeQty,
-        shop_stock: shopAvail,
-        store_stock: storeAvail,
-        uom_label,
-        packaging_label,
-        reason: lineReason,
-        ...extras,
-      };
-    }
-
     if (mode === RETURN_MODES.MANUAL) {
       const at =
         addDraft.stock_location === STOCK_LOCATION.SHOP ? shopAvail : storeAvail;
       if (qty > at + 0.0001) {
-        setAddError(`Quantity exceeds ${addDraft.stock_location} stock (${at}).`);
+        setAddError(`Quantity exceeds ${formatStockLocationLabel(addDraft.stock_location)} stock (${at}).`);
         return null;
       }
     }
@@ -492,6 +471,9 @@ export function RecordSupplierReturnForm({
           max_return_qty: pendingLpoLine.max_return_qty,
           received_qty: pendingLpoLine.received_qty,
           ordered_qty: pendingLpoLine.ordered_qty,
+          received_stock_location: pendingLpoLine.received_stock_location,
+          received_location_options: pendingLpoLine.received_location_options,
+          received_qty_by_location: pendingLpoLine.received_qty_by_location,
         },
         lineReason: reasonScope === REASON_SCOPE.PER_PRODUCT ? lineReason : "",
       });
@@ -514,17 +496,7 @@ export function RecordSupplierReturnForm({
 
   function updateLine(key, patch) {
     setLines((prev) =>
-      prev.map((l) => {
-        if (l.key !== key) return l;
-        const next = { ...l, ...patch };
-        if (next.stock_location === STOCK_LOCATION.BOTH) {
-          const qty = Number(next.quantity) || 0;
-          const split = splitBothStockQty(qty, next.shop_stock ?? 0, next.store_stock ?? 0);
-          next.shop_qty = split.shopQty;
-          next.store_qty = split.storeQty;
-        }
-        return next;
-      }),
+      prev.map((l) => (l.key === key ? { ...l, ...patch } : l)),
     );
   }
 
@@ -722,10 +694,18 @@ export function RecordSupplierReturnForm({
     { id: RETURN_MODES.MANUAL, label: "Manual / legacy stock" },
   ];
 
-  const combinedStock =
-    stockHint != null ? Number(stockHint.shop ?? 0) + Number(stockHint.store ?? 0) : null;
 
   function PendingAddBar({ title, subtitle }) {
+    const lpoLocMeta =
+      mode === RETURN_MODES.LPO && pendingLpoLine
+        ? lpoReceivedLocationMeta(pendingLpoLine)
+        : null;
+    const locationOptions = stockLocationSelectOptions({
+      mode,
+      lpoLine: pendingLpoLine,
+      manual: mode === RETURN_MODES.MANUAL,
+    });
+
     return (
       <div className="relative z-20 rounded-lg border border-[#185FA5]/30 bg-[#E6F1FB]/40 p-4 shadow-sm">
         <p className="text-sm font-medium text-slate-900">{title}</p>
@@ -745,15 +725,26 @@ export function RecordSupplierReturnForm({
             />
           </Field>
           <Field label="Return from">
-            <select
-              className={inputClassName()}
-              value={addDraft.stock_location}
-              onChange={(e) => setAddDraft((d) => ({ ...d, stock_location: e.target.value }))}
-            >
-              <option value={STOCK_LOCATION.STORE}>Store</option>
-              <option value={STOCK_LOCATION.SHOP}>Shop</option>
-              <option value={STOCK_LOCATION.BOTH}>Both (shop + store)</option>
-            </select>
+            {lpoLocMeta?.locked ? (
+              <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                {formatStockLocationLabel(addDraft.stock_location)}
+                <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                  LPO stock was received into this location
+                </span>
+              </p>
+            ) : (
+              <select
+                className={inputClassName()}
+                value={addDraft.stock_location}
+                onChange={(e) => setAddDraft((d) => ({ ...d, stock_location: e.target.value }))}
+              >
+                {locationOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            )}
           </Field>
           <div className="sm:col-span-2">
             <PackageTypeField
@@ -786,29 +777,25 @@ export function RecordSupplierReturnForm({
         {stockHint ? (
           <p className="mt-2 text-xs text-slate-500">
             Branch stock — shop: {stockHint.shop}, store: {stockHint.store}
-            {addDraft.stock_location === STOCK_LOCATION.BOTH && combinedStock != null ? (
-              <> · combined: {combinedStock}</>
-            ) : addDraft.stock_location === STOCK_LOCATION.SHOP ? (
-              <> · shop: {stockHint.shop}</>
-            ) : addDraft.stock_location === STOCK_LOCATION.STORE ? (
-              <> · store: {stockHint.store}</>
+            {mode === RETURN_MODES.MANUAL && addDraft.stock_location === STOCK_LOCATION.SHOP ? (
+              <> · returning from shop</>
+            ) : mode === RETURN_MODES.MANUAL && addDraft.stock_location === STOCK_LOCATION.STORE ? (
+              <> · returning from store</>
             ) : null}
+          </p>
+        ) : null}
+        {mode === RETURN_MODES.LPO && pendingLpoLine && lpoLocMeta && (lpoLocMeta.shop > 0 || lpoLocMeta.store > 0) ? (
+          <p className="mt-2 text-xs text-slate-500">
+            Received on this LPO — shop: {lpoLocMeta.shop}, store: {lpoLocMeta.store} (base units)
           </p>
         ) : null}
         {mode === RETURN_MODES.LPO && pendingLpoStockPreview != null ? (
           <p className="mt-2 text-xs text-slate-500">
             {pendingLpoStockPreview.total > 0 ? (
-              pendingLpoStockPreview.both ? (
-                <>
-                  {pendingLpoStockPreview.total} pack(s) when approved — store:{" "}
-                  {pendingLpoStockPreview.storeQty}, shop: {pendingLpoStockPreview.shopQty}
-                </>
-              ) : (
-                <>
-                  {pendingLpoStockPreview.total} pack(s) from {pendingLpoStockPreview.location}{" "}
-                  when approved
-                </>
-              )
+              <>
+                {pendingLpoStockPreview.total} pack(s) from{" "}
+                {formatStockLocationLabel(pendingLpoStockPreview.location)} when approved
+              </>
             ) : (
               "No stock deduction on approval — qty exceeds received on the LPO."
             )}
@@ -894,8 +881,8 @@ export function RecordSupplierReturnForm({
               </p>
             ) : null}
             <p className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              Every return is tied to one supplier. Choose Shop, Store, or Both — Both deducts from
-              each location when approved (store first, then shop).
+              Every return is tied to one supplier. Choose Shop or Store — stock is deducted from
+              that location only. LPO returns use the location where stock was received on the PO.
             </p>
 
             <div className="grid shrink-0 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1343,34 +1330,39 @@ export function RecordSupplierReturnForm({
                                   />
                                 </Field>
                                 <Field label="Return from">
-                                  <select
-                                    className={inputClassName()}
-                                    value={line.stock_location}
-                                    onChange={(e) => {
-                                      const loc = e.target.value;
-                                      if (loc === STOCK_LOCATION.BOTH) {
-                                        const qty = Number(line.quantity) || 0;
-                                        const split = splitBothStockQty(
-                                          qty,
-                                          line.shop_stock ?? stockHint?.shop ?? 0,
-                                          line.store_stock ?? stockHint?.store ?? 0,
-                                        );
-                                        updateLine(line.key, {
-                                          stock_location: loc,
-                                          shop_qty: split.shopQty,
-                                          store_qty: split.storeQty,
-                                          shop_stock: line.shop_stock ?? stockHint?.shop ?? 0,
-                                          store_stock: line.store_stock ?? stockHint?.store ?? 0,
-                                        });
-                                      } else {
-                                        updateLine(line.key, { stock_location: loc });
-                                      }
-                                    }}
-                                  >
-                                    <option value={STOCK_LOCATION.STORE}>Store</option>
-                                    <option value={STOCK_LOCATION.SHOP}>Shop</option>
-                                    <option value={STOCK_LOCATION.BOTH}>Both</option>
-                                  </select>
+                                  {(() => {
+                                    const lineLocMeta =
+                                      mode === RETURN_MODES.LPO
+                                        ? lpoReceivedLocationMeta(line)
+                                        : null;
+                                    const lineOptions = stockLocationSelectOptions({
+                                      mode,
+                                      lpoLine: line,
+                                      manual: mode === RETURN_MODES.MANUAL,
+                                    });
+                                    if (lineLocMeta?.locked) {
+                                      return (
+                                        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                                          {formatStockLocationLabel(line.stock_location)}
+                                        </p>
+                                      );
+                                    }
+                                    return (
+                                      <select
+                                        className={inputClassName()}
+                                        value={line.stock_location}
+                                        onChange={(e) =>
+                                          updateLine(line.key, { stock_location: e.target.value })
+                                        }
+                                      >
+                                        {lineOptions.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    );
+                                  })()}
                                 </Field>
                                 <div className="sm:col-span-2">
                                   <PackageTypeField
@@ -1383,9 +1375,9 @@ export function RecordSupplierReturnForm({
                                   />
                                 </div>
                               </div>
-                              {line.stock_location === STOCK_LOCATION.BOTH ? (
+                              {mode === RETURN_MODES.LPO && line.stock_location ? (
                                 <p className="mt-2 text-[11px] text-slate-500">
-                                  Deduct store {line.store_qty ?? 0}, shop {line.shop_qty ?? 0} when
+                                  Deduct from {formatStockLocationLabel(line.stock_location)} when
                                   approved
                                 </p>
                               ) : null}

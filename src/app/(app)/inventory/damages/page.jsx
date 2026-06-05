@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import {
   Field,
+  IconButton,
   PaginationBar,
+  PencilIcon,
   PrimaryLink,
+  TrashIcon,
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
@@ -18,6 +21,7 @@ import {
   ProductCodeLink,
   rowInDateRange,
 } from "@/components/inventory/inventory-shared";
+import { EditDamageDrawer } from "@/components/inventory/edit-damage-drawer";
 
 const PAGE_SIZE = 15;
 
@@ -34,6 +38,8 @@ export default function DamagesPage() {
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
   const [page, setPage] = useState(1);
+  const [deletingId, setDeletingId] = useState(null);
+  const [editingDamage, setEditingDamage] = useState(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -99,6 +105,30 @@ export default function DamagesPage() {
     setPage(1);
   }, [fromDate, toDate]);
 
+  async function deleteDamage(row) {
+    const product = productByCode.get(row.product_code);
+    const label = product?.product_name ?? row.product_code;
+    const qtyLabel = formatStockQty(row.quantity, uomByProduct.get(row.product_code));
+    if (
+      !window.confirm(
+        `Delete this damage record for ${label} and restore ${qtyLabel} to ${row.stock_location ?? "shop"} stock?`,
+      )
+    ) {
+      return;
+    }
+
+    setDeletingId(row.id);
+    setError(null);
+    try {
+      await apiRequest(`/damages/${row.id}`, { method: "DELETE" });
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to delete damage");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <InventoryPageShell
       title="Damages"
@@ -147,12 +177,13 @@ export default function DamagesPage() {
                     <th className="px-4 py-3 font-medium text-right">Qty</th>
                     <th className="px-4 py-3 font-medium">Location</th>
                     <th className="px-4 py-3 font-medium">Reason</th>
+                    <th className="px-4 py-3 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pageSlice.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                      <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                         No damages in this date range.
                       </td>
                     </tr>
@@ -181,6 +212,23 @@ export default function DamagesPage() {
                             {row.stock_location ?? "—"}
                           </td>
                           <td className="px-4 py-3 text-slate-600">{row.reason ?? "—"}</td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="inline-flex gap-1">
+                              <IconButton
+                                label="Edit damage"
+                                onClick={() => setEditingDamage(row)}
+                              >
+                                <PencilIcon />
+                              </IconButton>
+                              <IconButton
+                                label="Delete and restore stock"
+                                onClick={() => deleteDamage(row)}
+                                disabled={deletingId === row.id}
+                              >
+                                <TrashIcon />
+                              </IconButton>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })
@@ -198,6 +246,15 @@ export default function DamagesPage() {
           </>
         )}
       </InventoryTableShell>
+
+      <EditDamageDrawer
+        open={Boolean(editingDamage)}
+        damage={editingDamage}
+        products={products}
+        uoms={uoms}
+        onClose={() => setEditingDamage(null)}
+        onSaved={load}
+      />
     </InventoryPageShell>
   );
 }

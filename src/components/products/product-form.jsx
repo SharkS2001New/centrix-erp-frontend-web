@@ -3,6 +3,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { Field, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
+import { RetailPricingTiersEditor } from "@/components/catalog/retail-pricing-tiers";
+import {
+  EMPTY_PRICING_TIER,
+  fullPackageLabel,
+  normalizePricingTiers,
+  pricingTiersToApi,
+  smallPackagingLabel,
+  uomHasFullPack,
+} from "@/lib/uom-packaging";
+import { baseToDisplayQty } from "@/lib/stock-uom";
+import {
+  ProductInventoryFields,
+  reorderBaseFromForm,
+  stockBaseFromForm,
+  stockHierarchyToForm,
+} from "@/components/products/product-inventory-fields";
 import {
   CustomerFormCard,
   CustomerFormPageShell,
@@ -21,25 +37,30 @@ export const EMPTY_PRODUCT_FORM = {
   discount_percentage: "",
   discount_value: "",
   product_weight: "",
-  stock_in_shop: "",
-  stock_in_store: "",
-  reorder_point: "",
+  shop_stock_full: "0",
+  shop_stock_middle: "0",
+  shop_stock_small: "0",
+  store_stock_full: "0",
+  store_stock_middle: "0",
+  store_stock_small: "0",
+  reorder_packs: "",
   sell_on_retail: false,
   retail_package_id: "",
-  retail_max_qty_measure: "",
-  retail_max_uom_measure: "",
-  retail_markup_price: "",
-  retail_wholesale_qty_measure: "",
-  retail_min_uom_measure: "",
-  retail_wholesale_markup_price: "",
+  retail_pricing_tiers: [{ ...EMPTY_PRICING_TIER, min_qty: "1" }],
   vat_id: "",
   is_active: true,
 };
 
 export function formatUomOption(uom) {
-  const name = uom.full_name || uom.uom_type || `Unit ${uom.id}`;
+  const measure = uom.measure_name?.trim();
+  const pack = uom.full_name || uom.uom_type || `Unit ${uom.id}`;
   const factor = uom.conversion_factor != null ? Number(uom.conversion_factor) : 1;
-  return `${name} (${factor})`;
+  const small = uom.small_packaging_label || uom.uom_type || "units";
+  const prefix = measure ? `${measure}: ` : "";
+  if (factor > 1) {
+    return `${prefix}${pack} (1 = ${factor} ${small})`;
+  }
+  return `${prefix}${small}`;
 }
 
 export function subcategoryLabel(sub, categoryById) {
@@ -52,30 +73,36 @@ export function retailPackageToFormFields(row) {
   if (!row) {
     return {
       retail_package_id: "",
-      retail_max_qty_measure: "",
-      retail_max_uom_measure: "",
-      retail_markup_price: "",
-      retail_wholesale_qty_measure: "",
-      retail_min_uom_measure: "",
-      retail_wholesale_markup_price: "",
+      retail_pricing_tiers: [{ ...EMPTY_PRICING_TIER, min_qty: "1" }],
     };
   }
+
+  const tiers = row.pricing_tiers?.length
+    ? normalizePricingTiers(row.pricing_tiers)
+    : normalizePricingTiers([
+        {
+          min_qty: row.max_qty_measure ?? 1,
+          max_qty: row.max_qty_measure,
+          measure_level: "small",
+          markup_price: row.markup_price ?? 0,
+        },
+      ]);
+
   return {
     retail_package_id: row.id != null ? String(row.id) : "",
-    retail_max_qty_measure:
-      row.max_qty_measure != null ? String(row.max_qty_measure) : "",
-    retail_max_uom_measure: row.max_uom_measure ?? "",
-    retail_markup_price: row.markup_price != null ? String(row.markup_price) : "",
-    retail_wholesale_qty_measure:
-      row.wholesale_qty_measure != null ? String(row.wholesale_qty_measure) : "",
-    retail_min_uom_measure: row.min_uom_measure ?? "",
-    retail_wholesale_markup_price:
-      row.wholesale_markup_price != null ? String(row.wholesale_markup_price) : "",
+    retail_pricing_tiers: tiers.length ? tiers : [{ ...EMPTY_PRICING_TIER, min_qty: "1" }],
   };
 }
 
-export function productToForm(product, retailPackage = null) {
+export function productToForm(product, retailPackage = null, uom = null) {
   const discountType = product.discount_type === "fixed" ? "fixed" : "percentage";
+  const shopStock = stockHierarchyToForm(product.stock_in_shop ?? 0, uom);
+  const storeStock = stockHierarchyToForm(product.stock_in_store ?? 0, uom);
+  const factor = Number(uom?.conversion_factor ?? 1);
+  const rp = Number(product.reorder_point ?? 0);
+  const reorderPacks =
+    rp > 0 ? (factor > 1 ? String(baseToDisplayQty(rp, factor)) : String(rp)) : "";
+
   return {
     product_name: product.product_name ?? "",
     product_code: product.product_code ?? "",
@@ -91,11 +118,13 @@ export function productToForm(product, retailPackage = null) {
     discount_value: product.discount_value != null ? String(product.discount_value) : "",
     product_weight:
       product.product_weight != null ? String(product.product_weight) : "",
-    stock_in_shop:
-      product.stock_in_shop != null ? String(product.stock_in_shop) : "0",
-    stock_in_store:
-      product.stock_in_store != null ? String(product.stock_in_store) : "0",
-    reorder_point: product.reorder_point != null ? String(product.reorder_point) : "",
+    shop_stock_full: shopStock.full,
+    shop_stock_middle: shopStock.middle,
+    shop_stock_small: shopStock.small,
+    store_stock_full: storeStock.full,
+    store_stock_middle: storeStock.middle,
+    store_stock_small: storeStock.small,
+    reorder_packs: reorderPacks,
     sell_on_retail: product.sell_on_retail === 1 || product.sell_on_retail === true,
     vat_id: product.vat_id ? String(product.vat_id) : "",
     is_active: product.is_active !== false && !product.deleted_at,
@@ -103,7 +132,7 @@ export function productToForm(product, retailPackage = null) {
   };
 }
 
-export function buildProductBody(form) {
+export function buildProductBody(form, uom = null) {
   const unitPrice = parseDecimalInput(form.unit_price);
   const body = {
     product_code: form.product_code.trim(),
@@ -115,12 +144,12 @@ export function buildProductBody(form) {
     last_cost_price: parseDecimalInput(form.last_cost_price),
     discount_type: form.discount_type === "fixed" ? "fixed" : "percentage",
     product_weight: parseDecimalInput(form.product_weight) || null,
-    stock_in_shop: parseDecimalInput(form.stock_in_shop),
-    stock_in_store: parseDecimalInput(form.stock_in_store),
+    stock_in_shop: stockBaseFromForm(form, "shop", uom),
+    stock_in_store: stockBaseFromForm(form, "store", uom),
     supplier_id: form.supplier_id ? Number(form.supplier_id) : null,
     sell_on_retail: Boolean(form.sell_on_retail),
     vat_id: form.vat_id ? Number(form.vat_id) : undefined,
-    reorder_point: parseDecimalInput(form.reorder_point),
+    reorder_point: reorderBaseFromForm(form, uom),
     deleted_at: form.is_active ? null : new Date().toISOString(),
   };
 
@@ -138,15 +167,13 @@ export function buildProductBody(form) {
 export function buildRetailPackageBody(form, productCode) {
   return {
     product_code: productCode,
-    max_qty_measure:
-      form.retail_max_qty_measure === ""
-        ? null
-        : parseDecimalInput(form.retail_max_qty_measure),
-    max_uom_measure: form.retail_max_uom_measure?.trim() || null,
-    markup_price: parseDecimalInput(form.retail_markup_price),
-    wholesale_qty_measure: parseDecimalInput(form.retail_wholesale_qty_measure),
-    min_uom_measure: form.retail_min_uom_measure?.trim() || null,
-    wholesale_markup_price: parseDecimalInput(form.retail_wholesale_markup_price),
+    pricing_tiers: pricingTiersToApi(form.retail_pricing_tiers),
+    max_qty_measure: null,
+    max_uom_measure: null,
+    markup_price: 0,
+    wholesale_qty_measure: 0,
+    min_uom_measure: null,
+    wholesale_markup_price: 0,
   };
 }
 
@@ -182,11 +209,9 @@ export async function saveRetailPackageSetting(form, productCode) {
 
 export function validateRetailPackage(form) {
   if (!form.sell_on_retail) return null;
-  if (form.retail_max_qty_measure === "" || form.retail_max_qty_measure == null) {
-    return "Retail pack quantity is required when sell on retail is enabled.";
-  }
-  if (!form.retail_max_uom_measure?.trim()) {
-    return "Retail UOM (e.g. piece, bag) is required.";
+  const tiers = pricingTiersToApi(form.retail_pricing_tiers);
+  if (!tiers.length) {
+    return "Add at least one retail pricing tier when sell on retail is enabled.";
   }
   return null;
 }
@@ -276,71 +301,14 @@ export async function generateProductSku() {
   throw new ApiError("Could not generate a unique SKU. Try again or enter a barcode.", 503, null);
 }
 
-function RetailPackageFields({ form, onChange }) {
+function RetailPackageFields({ form, onChange, productUom }) {
   return (
-    <div className="md:col-span-2 xl:col-span-3 mt-3 grid grid-cols-1 gap-x-4 gap-y-3.5 rounded-lg border border-[#B5D4F4] bg-[#E6F1FB]/40 p-4 md:grid-cols-2 xl:grid-cols-3">
-      <p className="md:col-span-2 xl:col-span-3 text-xs leading-relaxed text-[#0C447C]">
-        Retail price per unit = <strong>(unit price ÷ pack qty) + markup</strong>. Wholesale price
-        = <strong>unit price + wholesale markup</strong>.
-      </p>
-      <Field label="Pack qty (max)">
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.retail_max_qty_measure}
-          onChange={(e) => onChange("retail_max_qty_measure", e.target.value)}
-          className={inputClassName()}
-          placeholder="e.g. 12"
-        />
-      </Field>
-      <Field label="Retail UOM">
-        <input
-          type="text"
-          value={form.retail_max_uom_measure}
-          onChange={(e) => onChange("retail_max_uom_measure", e.target.value)}
-          className={inputClassName()}
-          placeholder="piece, bag, carton"
-        />
-      </Field>
-      <Field label="Markup (retail) KES">
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.retail_markup_price}
-          onChange={(e) => onChange("retail_markup_price", e.target.value)}
-          className={inputClassName()}
-          placeholder="0"
-        />
-      </Field>
-      <Field label="Wholesale pack qty">
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.retail_wholesale_qty_measure}
-          onChange={(e) => onChange("retail_wholesale_qty_measure", e.target.value)}
-          className={inputClassName()}
-          placeholder="0"
-        />
-      </Field>
-      <Field label="Wholesale UOM">
-        <input
-          type="text"
-          value={form.retail_min_uom_measure}
-          onChange={(e) => onChange("retail_min_uom_measure", e.target.value)}
-          className={inputClassName()}
-          placeholder="crate, carton"
-        />
-      </Field>
-      <Field label="Markup (wholesale) KES">
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.retail_wholesale_markup_price}
-          onChange={(e) => onChange("retail_wholesale_markup_price", e.target.value)}
-          className={inputClassName()}
-          placeholder="0"
-        />
-      </Field>
+    <div className="md:col-span-2 xl:col-span-3 mt-3 rounded-lg border border-[#B5D4F4] bg-[#E6F1FB]/40 p-4">
+      <RetailPricingTiersEditor
+        tiers={form.retail_pricing_tiers}
+        onChange={(retail_pricing_tiers) => onChange("retail_pricing_tiers", retail_pricing_tiers)}
+        productUom={productUom}
+      />
     </div>
   );
 }
@@ -370,6 +338,16 @@ export function ProductFormFields({
     () => uoms.filter((u) => u.is_active !== false && u.is_active !== 0),
     [uoms],
   );
+
+  const selectedUom = useMemo(
+    () => activeUoms.find((u) => String(u.id) === String(form.unit_id)) ?? null,
+    [activeUoms, form.unit_id],
+  );
+
+  const packLabel = selectedUom && uomHasFullPack(selectedUom)
+    ? fullPackageLabel(selectedUom)
+    : "full package";
+  const smallLabel = selectedUom ? smallPackagingLabel(selectedUom) : "unit";
 
   const suggestedUom = useMemo(() => {
     return activeUoms.find((u) => Number(u.conversion_factor ?? 1) === 1) ?? activeUoms[0] ?? null;
@@ -508,9 +486,22 @@ export function ProductFormFields({
 
       <div className="md:col-span-2 xl:col-span-3 border-t border-slate-100 pt-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pricing</p>
+        <p className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-600">
+          Wholesale prices are per <strong>{packLabel}</strong>
+          {selectedUom && uomHasFullPack(selectedUom) ? (
+            <>
+              {" "}
+              (1 {packLabel} = {selectedUom.conversion_factor} {smallLabel})
+            </>
+          ) : (
+            <> (base {smallLabel})</>
+          )}
+          . Cost, selling price, and discounts all apply to that same wholesale unit — e.g. price
+          for one bag of sugar, not per kg.
+        </p>
       </div>
 
-      <Field label="Cost price (KES)">
+      <Field label={`Cost price per ${packLabel} (KES)`}>
         <input
           type="text"
           inputMode="decimal"
@@ -519,9 +510,10 @@ export function ProductFormFields({
           className={inputClassName()}
           placeholder="0.00"
         />
+        <p className="mt-1 text-xs text-slate-500">What you pay suppliers per {packLabel}.</p>
       </Field>
 
-      <Field label="Selling price (KES)">
+      <Field label={`Selling price per ${packLabel} (KES)`}>
         <input
           type="text"
           inputMode="decimal"
@@ -531,6 +523,7 @@ export function ProductFormFields({
           className={inputClassName()}
           placeholder="0.00"
         />
+        <p className="mt-1 text-xs text-slate-500">Wholesale price charged per {packLabel}.</p>
       </Field>
 
       <Field label="Discount type">
@@ -545,7 +538,7 @@ export function ProductFormFields({
       </Field>
 
       {form.discount_type === "fixed" ? (
-        <Field label="Discount amount (KES)">
+        <Field label={`Discount amount per ${packLabel} (KES)`}>
           <input
             type="text"
             inputMode="decimal"
@@ -556,7 +549,7 @@ export function ProductFormFields({
           />
         </Field>
       ) : (
-        <Field label="Discount (%)">
+        <Field label={`Discount on ${packLabel} (%)`}>
           <input
             type="text"
             inputMode="decimal"
@@ -596,58 +589,25 @@ export function ProductFormFields({
           />
           <span>Sell on retail — configure pack sizes and markups below</span>
         </label>
-        {form.sell_on_retail ? <RetailPackageFields form={form} onChange={onChange} /> : null}
+        {form.sell_on_retail ? (
+          <RetailPackageFields
+            form={form}
+            onChange={onChange}
+            productUom={activeUoms.find((u) => String(u.id) === String(form.unit_id))}
+          />
+        ) : null}
       </div>
 
       <div className="md:col-span-2 xl:col-span-3 border-t border-slate-100 pt-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Inventory</p>
       </div>
 
-      <Field label="Stock in shop">
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.stock_in_shop}
-          onChange={(e) => onChange("stock_in_shop", e.target.value)}
-          className={inputClassName()}
-          placeholder="0"
-        />
-      </Field>
-
-      <Field label="Stock in store">
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.stock_in_store}
-          onChange={(e) => onChange("stock_in_store", e.target.value)}
-          className={inputClassName()}
-          placeholder="0"
-        />
-      </Field>
-
-      <Field label="Reorder level">
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.reorder_point}
-          onChange={(e) => onChange("reorder_point", e.target.value)}
-          className={inputClassName()}
-          placeholder="0"
-        />
-        <p className="mt-1 text-xs leading-relaxed text-slate-500">
-          Minimum quantity in the system before a low-stock alert is raised. Leave at{" "}
-          <strong>0</strong> to use the organisation&apos;s general reorder level
-          {globalReorderLevel != null ? (
-            <>
-              {" "}
-              (<strong>{globalReorderLevel}</strong> units)
-            </>
-          ) : (
-            ""
-          )}{" "}
-          from system settings.
-        </p>
-      </Field>
+      <ProductInventoryFields
+        form={form}
+        onChange={onChange}
+        productUom={selectedUom}
+        globalReorderLevel={globalReorderLevel}
+      />
 
       {mode === "edit" ? (
         <div className="md:col-span-2 xl:col-span-3 border-t border-slate-100 pt-4">

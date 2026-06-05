@@ -8,27 +8,17 @@ import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { LpoProductSearchPanel } from "@/components/lpo/lpo-product-search-panel";
 import { formatPackagingLabel } from "@/components/lpo/lpo-product-utils";
+import {
+  UomMeasureSelect,
+  defaultUomMeasureLevel,
+  uomMeasureLabel,
+} from "@/components/inventory/damage-measure-select";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
-import { displayToBaseQty } from "@/lib/stock-uom";
-
-const TRANSFER_PURPOSES = [
-  { value: "location_move", label: "Move between locations" },
-  { value: "internal_use", label: "Internal use" },
-  { value: "staff_consumption", label: "Staff consumption" },
-  { value: "charity", label: "Charity / donation" },
-  { value: "sample", label: "Sample / demo" },
-  { value: "production", label: "Production / manufacturing" },
-  { value: "display", label: "Display / merchandising" },
-];
-
-const LOCATION_LABELS = {
-  shop: "Shop",
-  store: "Store / warehouse",
-};
-
-function oppositeLocation(location) {
-  return location === "shop" ? "store" : "shop";
-}
+import {
+  TRANSFER_FROM_OPTIONS,
+  transferToOptionsFor,
+} from "@/lib/inventory-transfer-routes";
+import { damageQtyToBase } from "@/lib/stock-uom";
 
 export default function StockTransferPage() {
   const router = useRouter();
@@ -38,12 +28,12 @@ export default function StockTransferPage() {
   const [uoms, setUoms] = useState([]);
   const [selected, setSelected] = useState(null);
   const [fromLocation, setFromLocation] = useState("shop");
-  const [purpose, setPurpose] = useState("location_move");
+  const [toLocation, setToLocation] = useState("store");
+  const [packageType, setPackageType] = useState("full");
+  const [reason, setReason] = useState("");
   const [qty, setQty] = useState("1");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-
-  const toLocation = oppositeLocation(fromLocation);
 
   useEffect(() => {
     apiRequest("/uoms", { searchParams: { per_page: 200 } })
@@ -52,12 +42,33 @@ export default function StockTransferPage() {
   }, []);
 
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
+  const toOptions = useMemo(
+    () => transferToOptionsFor(fromLocation),
+    [fromLocation],
+  );
+
+  useEffect(() => {
+    if (!toOptions.some((opt) => opt.value === toLocation)) {
+      setToLocation(toOptions[0]?.value ?? "store");
+    }
+  }, [fromLocation, toOptions, toLocation]);
 
   const handleSelectProduct = useCallback((product) => {
     setSelected(product);
+    setPackageType(defaultUomMeasureLevel(product.uom));
     setQty("1");
     setError(null);
   }, []);
+
+  function handleFromChange(from) {
+    setFromLocation(from);
+    const nextToOptions = transferToOptionsFor(from);
+    setToLocation((prev) =>
+      nextToOptions.some((opt) => opt.value === prev)
+        ? prev
+        : (nextToOptions[0]?.value ?? "store"),
+    );
+  }
 
   async function submit(e) {
     e.preventDefault();
@@ -65,20 +76,24 @@ export default function StockTransferPage() {
       setError("Select a product to transfer.");
       return;
     }
+    if (!reason.trim()) {
+      setError("Enter a reason for this transfer.");
+      return;
+    }
 
     setSaving(true);
     setError(null);
     try {
-      const factor = Number(selected.conversion_factor ?? selected.uom?.conversion_factor ?? 1);
+      const uom = selected.uom ?? uomById.get(selected.unit_id);
       await apiRequest("/inventory/transfer", {
         method: "POST",
         body: {
           branch_id: branchId,
           product_code: selected.product_code,
-          quantity: displayToBaseQty(qty, factor),
+          quantity: damageQtyToBase(qty, packageType, uom),
           from_location: fromLocation,
           to_location: toLocation,
-          purpose,
+          notes: reason.trim(),
         },
       });
       router.push("/inventory/transactions?type=TRANSFER");
@@ -89,10 +104,12 @@ export default function StockTransferPage() {
     }
   }
 
+  const measureLabel = uomMeasureLabel(selected?.uom, packageType);
+
   return (
     <InventoryPageShell
       title="Transfer stock"
-      subtitle="Move stock between shop and store, or record why stock is being moved"
+      subtitle="Move stock between locations or record stock leaving for internal use, donations, and more"
     >
       <div className="mb-4">
         <Link href="/inventory/transactions" className="text-sm text-[#185FA5] hover:underline">
@@ -111,7 +128,7 @@ export default function StockTransferPage() {
         className="space-y-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
       >
         <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-          <div className="min-h-[320px]">
+          <div className="min-h-[380px] min-w-0 lg:sticky lg:top-6 lg:self-start">
             <LpoProductSearchPanel
               uomById={uomById}
               onSelect={handleSelectProduct}
@@ -135,42 +152,55 @@ export default function StockTransferPage() {
               <p className="text-sm text-slate-500">No product selected.</p>
             )}
 
-            <Field label="Transfer reason">
-              <select
-                className={inputClassName()}
-                value={purpose}
-                onChange={(e) => setPurpose(e.target.value)}
-              >
-                {TRANSFER_PURPOSES.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="From">
                 <select
                   className={inputClassName()}
                   value={fromLocation}
-                  onChange={(e) => setFromLocation(e.target.value)}
+                  onChange={(e) => handleFromChange(e.target.value)}
                 >
-                  <option value="shop">Shop</option>
-                  <option value="store">Store / warehouse</option>
+                  {TRANSFER_FROM_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
                 </select>
               </Field>
               <Field label="To">
-                <div className={`${inputClassName()} bg-slate-50 text-slate-700`}>
-                  {LOCATION_LABELS[toLocation]}
-                </div>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Always the opposite location from &ldquo;From&rdquo;.
-                </p>
+                <select
+                  className={inputClassName()}
+                  value={toLocation}
+                  onChange={(e) => setToLocation(e.target.value)}
+                >
+                  {toOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </Field>
             </div>
 
-            <Field label={`Quantity (${selected?.package_name || "full packs"})`}>
+            <Field label="Reason">
+              <input
+                className={inputClassName()}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="e.g. Staff lunch, damaged display units, donation to church"
+                required
+              />
+            </Field>
+
+            <Field label="Measured as">
+              <UomMeasureSelect
+                uom={selected?.uom ?? uomById.get(selected?.unit_id)}
+                value={packageType}
+                onChange={setPackageType}
+                className={inputClassName()}
+              />
+            </Field>
+
+            <Field label={`Quantity (${measureLabel})`}>
               <input
                 type="number"
                 min="0.001"
@@ -180,9 +210,6 @@ export default function StockTransferPage() {
                 onChange={(e) => setQty(e.target.value)}
                 required
               />
-              <p className="mt-1 text-[11px] text-slate-500">
-                Enter whole packs. The system multiplies by the conversion factor when saving.
-              </p>
             </Field>
           </div>
         </div>

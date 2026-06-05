@@ -117,7 +117,8 @@ export default function NewProductPage() {
     setSaving(true);
     setFormError(null);
     try {
-      const body = buildProductBody(form);
+      const uom = uoms.find((u) => String(u.id) === String(form.unit_id)) ?? null;
+      const body = buildProductBody(form, uom);
       const res = await apiRequest("/products", { method: "POST", body });
       const saved = res.data ?? res;
       const code = saved.product_code ?? form.product_code.trim();
