@@ -8,7 +8,6 @@ const navSections = [
   {
     items: [
       { href: "/dashboard", label: "Dashboard", module: null },
-      { href: "/sales", label: "Sales", module: "sales.backend" },
       { href: "/customers", label: "Customers", module: "customers_suppliers" },
       { href: "/products", label: "Products", module: null },
       { href: "/categories", label: "Categories", module: null },
@@ -50,6 +49,17 @@ const navSections = [
       { href: "/hr/attendance", label: "Attendance", module: "hr_payroll" },
       { href: "/hr/leave", label: "Leave & off days", module: "hr_payroll" },
       { href: "/hr/payroll", label: "Payroll", module: "hr_payroll" },
+    ],
+  },
+  {
+    label: "Sales",
+    module: "sales.backend",
+    items: [
+      { href: "/sales", label: "Dashboard", module: "sales.backend", exact: true },
+      { href: "/sales/pos", label: "Point of sale", module: "sales.backend" },
+      { href: "/sales/orders", label: "Orders", module: "sales.backend" },
+      { href: "/sales/reservations", label: "Reservations", module: "sales.backend" },
+      { href: "/sales/returns", label: "Returns", module: "sales.backend" },
     ],
   },
   {

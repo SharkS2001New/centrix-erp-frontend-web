@@ -1,6 +1,7 @@
 /** Client-side retail tier pricing (mirrors API RetailPricing). */
 
 import {
+  coercePricingTiersInput,
   fullPackageLabel,
   middlePackagingLabel,
   normalizePricingTiers,
@@ -11,8 +12,8 @@ import { splitBaseToHierarchy, uomConversionFactor } from "./stock-uom";
 
 export function tiersForRetailPackage(retailPackage) {
   if (!retailPackage) return [];
-  const raw = retailPackage.pricing_tiers;
-  if (Array.isArray(raw) && raw.length > 0) {
+  const raw = coercePricingTiersInput(retailPackage.pricing_tiers);
+  if (raw.length > 0) {
     return pricingTiersToNormalized(raw);
   }
   return legacyTiersFromPackage(retailPackage);

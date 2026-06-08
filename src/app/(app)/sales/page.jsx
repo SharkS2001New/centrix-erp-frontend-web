@@ -1,166 +1,116 @@
 "use client";
 
-import { useState } from "react";
-import { apiRequest, ApiError } from "@/lib/api";
-import { useAuth } from "@/contexts/auth-context";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { apiRequest } from "@/lib/api";
+import {
+  CatalogPageShell,
+  PrimaryLink,
+  StatCard,
+  formatKesCompact,
+} from "@/components/catalog/catalog-shared";
+import { HourlySalesChart } from "@/components/sales/sales-shared";
+import {
+  aggregateSalesKpis,
+  buildHourlySalesChart,
+  filterSalesByPeriod,
+  formatSaleKes,
+} from "@/lib/sales";
 
-export default function SalesPage() {
-  const { user, capabilities } = useAuth();
-  const channel =
-    capabilities?.channels?.includes("backend")
-      ? "backend"
-      : capabilities?.channels?.[0] ?? "pos";
-  const [productCode, setProductCode] = useState("6161100100015");
-  const [quantity, setQuantity] = useState("1");
-  const [cart, setCart] = useState(null);
-  const [sale, setSale] = useState(null);
-  const [message, setMessage] = useState(null);
-  const [busy, setBusy] = useState(false);
+export default function SalesDashboardPage() {
+  const [sales, setSales] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  async function createCart() {
-    setBusy(true);
-    setMessage(null);
-    setSale(null);
+  const loadData = useCallback(async () => {
+    setError(null);
     try {
-      const c = await apiRequest("/sales/carts", {
-        method: "POST",
-        body: {
-          channel,
-          branch_id: user?.branch_id,
-        },
+      const res = await apiRequest("/sales", {
+        searchParams: { per_page: 200, with_items: 0 },
       });
-      setCart(c);
-      setMessage(`Cart #${c.id} created (${channel})`);
+      setSales(res.data ?? []);
     } catch (e) {
-      setMessage(e instanceof ApiError ? e.message : "Failed to create cart");
+      setError(e instanceof Error ? e.message : "Failed to load sales");
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
-  }
+  }, []);
 
-  async function addLine(e) {
-    e.preventDefault();
-    if (!cart) return;
-    setBusy(true);
-    setMessage(null);
-    try {
-      await apiRequest(`/sales/carts/${cart.id}/lines`, {
-        method: "POST",
-        body: {
-          product_code: productCode,
-          quantity: parseFloat(quantity),
-        },
-      });
-      const updated = await apiRequest(`/sales/carts/${cart.id}`);
-      setCart(updated);
-      setMessage("Line added");
-    } catch (e) {
-      setMessage(e instanceof ApiError ? e.message : "Failed to add line");
-    } finally {
-      setBusy(false);
-    }
-  }
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
-  async function checkout() {
-    if (!cart) return;
-    setBusy(true);
-    setMessage(null);
-    try {
-      const s = await apiRequest(`/sales/carts/${cart.id}/checkout`, {
-        method: "POST",
-        body: {
-          status: "completed",
-          payment_method_code: "CASH",
-        },
-      });
-      setSale(s);
-      setCart(null);
-      setMessage(`Sale completed — order #${s.order_num}`);
-    } catch (e) {
-      setMessage(e instanceof ApiError ? e.message : "Checkout failed");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const todaySales = useMemo(() => filterSalesByPeriod(sales, "day"), [sales]);
+  const kpis = useMemo(() => aggregateSalesKpis(todaySales), [todaySales]);
+  const hourly = useMemo(() => buildHourlySalesChart(sales), [sales]);
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <h1 className="text-2xl font-semibold text-white">Sales</h1>
-      <p className="mt-1 text-sm text-slate-400">
-        Cart → lines → checkout (operations API)
-      </p>
-
-      <div className="mt-6 space-y-4">
-        <button
-          type="button"
-          onClick={createCart}
-          disabled={busy}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-        >
-          1. New cart
-        </button>
-
-        {cart && (
-          <>
-            <p className="text-sm text-slate-400">
-              Cart #{cart.id} · {cart.lines?.length ?? 0} line(s)
-            </p>
-            <form onSubmit={addLine} className="flex flex-wrap gap-2">
-              <input
-                className="min-w-[10rem] flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
-                placeholder="Product code"
-                value={productCode}
-                onChange={(e) => setProductCode(e.target.value)}
-              />
-              <input
-                className="w-24 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm"
-                type="number"
-                step="any"
-                min="0.001"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-              />
-              <button
-                type="submit"
-                disabled={busy}
-                className="rounded-lg border border-slate-600 px-4 py-2 text-sm hover:bg-slate-800"
-              >
-                2. Add line
-              </button>
-            </form>
-            <button
-              type="button"
-              onClick={checkout}
-              disabled={busy}
-              className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200 disabled:opacity-50"
-            >
-              3. Checkout
-            </button>
-            {cart.lines && cart.lines.length > 0 && (
-              <ul className="rounded-lg border border-slate-800 bg-slate-900/50 p-3 text-sm">
-                {cart.lines.map((l) => (
-                  <li key={l.id} className="flex justify-between py-1 text-slate-300">
-                    <span>{l.product_name ?? l.product_code}</span>
-                    <span>
-                      {l.quantity} × {l.unit_price} = {l.amount}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </>
-        )}
-
-        {sale && (
-          <div className="rounded-lg border border-emerald-800/50 bg-emerald-950/30 p-4 text-sm text-emerald-200">
-            Order #{sale.order_num} · {sale.status} · total {sale.order_total}
+    <CatalogPageShell
+      title="Sales dashboard"
+      subtitle="Today's performance — open POS to start selling"
+      action={
+        <div className="flex flex-wrap gap-2">
+          <PrimaryLink href="/sales/pos" showIcon={false}>
+            Open POS
+          </PrimaryLink>
+          <Link
+            href="/sales/orders"
+            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            View orders
+          </Link>
+        </div>
+      }
+      banner={
+        error ? (
+          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </p>
+        ) : null
+      }
+    >
+      {loading ? (
+        <p className="text-sm text-slate-500">Loading dashboard…</p>
+      ) : (
+        <div className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard
+              label="Today's sales"
+              value={formatKesCompact(kpis.revenue)}
+              hint={`${kpis.orderCount} completed orders`}
+            />
+            <StatCard label="Orders today" value={String(kpis.orderCount)} />
+            <StatCard label="Revenue today" value={formatSaleKes(kpis.revenue)} />
           </div>
-        )}
 
-        {message && (
-          <p className="text-sm text-slate-400">{message}</p>
-        )}
-      </div>
-    </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-sm font-medium text-slate-900">Hourly sales chart</h2>
+            <p className="mt-0.5 text-xs text-slate-500">Revenue by hour (today)</p>
+            <div className="mt-4">
+              <HourlySalesChart points={hourly} />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <QuickLink href="/sales/pos" title="Point of sale" desc="Search products, cart, checkout" />
+            <QuickLink href="/sales/orders" title="Orders" desc="Search and manage sales orders" />
+            <QuickLink href="/sales/reservations" title="Reservations" desc="Stock held for pending orders" />
+            <QuickLink href="/sales/returns" title="Returns" desc="Customer sale returns" />
+          </div>
+        </div>
+      )}
+    </CatalogPageShell>
+  );
+}
+
+function QuickLink({ href, title, desc }) {
+  return (
+    <Link
+      href={href}
+      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-[#185FA5]/30 hover:shadow"
+    >
+      <p className="text-sm font-medium text-slate-900">{title}</p>
+      <p className="mt-1 text-xs text-slate-500">{desc}</p>
+    </Link>
   );
 }

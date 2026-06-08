@@ -154,8 +154,30 @@ export const EMPTY_PRICING_TIER = {
   markup_price: "",
 };
 
+/** API / DB may return tiers as an array, JSON string, or keyed object. */
+export function coercePricingTiersInput(tiers) {
+  if (tiers == null) return [];
+  if (Array.isArray(tiers)) return tiers;
+
+  if (typeof tiers === "string") {
+    const trimmed = tiers.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === "object") return Object.values(parsed);
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
+  if (typeof tiers === "object") return Object.values(tiers);
+  return [];
+}
+
 export function normalizePricingTiers(tiers) {
-  return (tiers ?? []).map((t) => ({
+  return coercePricingTiersInput(tiers).map((t) => ({
     min_qty: t.min_qty ?? "",
     max_qty: t.max_qty ?? "",
     measure_level: t.measure_level ?? "small",
@@ -164,7 +186,7 @@ export function normalizePricingTiers(tiers) {
 }
 
 export function pricingTiersToApi(tiers) {
-  return (tiers ?? [])
+  return coercePricingTiersInput(tiers)
     .filter((t) => t.min_qty !== "" && t.min_qty != null)
     .map((t) => ({
       min_qty: Number(t.min_qty),

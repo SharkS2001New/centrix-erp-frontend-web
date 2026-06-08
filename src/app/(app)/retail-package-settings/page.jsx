@@ -18,6 +18,7 @@ import {
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
 import {
   EMPTY_PRICING_TIER,
+  coercePricingTiersInput,
   measureLevelLabel,
   normalizePricingTiers,
   pricingTiersToApi,
@@ -175,7 +176,7 @@ export default function RetailPackageSettingsPage() {
   function openEdit(row) {
     setEditingId(row.id);
     setPickedProduct(productByCode.get(row.product_code) ?? null);
-    const tiers = row.pricing_tiers?.length
+    const tiers = coercePricingTiersInput(row.pricing_tiers).length
       ? normalizePricingTiers(row.pricing_tiers)
       : normalizePricingTiers([
           {

@@ -13,6 +13,7 @@ import { DeleteProductDialog } from "@/components/products/delete-product-dialog
 import { formatUomOption } from "@/components/products/product-form";
 import { formatPoNumber } from "@/components/lpo/lpo-shared";
 import {
+  coercePricingTiersInput,
   fullPackageLabel,
   measureLevelLabel,
   normalizePricingTiers,
@@ -159,8 +160,9 @@ function enrichProduct(product, subById, catById, supplierById, uomById, vatById
 
 function formatRetailTiersSummary(retailPackage, uom) {
   if (!retailPackage) return [];
-  const raw = retailPackage.pricing_tiers?.length
-    ? retailPackage.pricing_tiers
+  const parsedTiers = coercePricingTiersInput(retailPackage.pricing_tiers);
+  const raw = parsedTiers.length
+    ? parsedTiers
     : retailPackage.max_qty_measure
       ? [
           {

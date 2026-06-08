@@ -6,6 +6,7 @@ import { Field, inputClassName, parseDecimalInput } from "@/components/catalog/c
 import { RetailPricingTiersEditor } from "@/components/catalog/retail-pricing-tiers";
 import {
   EMPTY_PRICING_TIER,
+  coercePricingTiersInput,
   fullPackageLabel,
   normalizePricingTiers,
   pricingTiersToApi,
@@ -77,7 +78,7 @@ export function retailPackageToFormFields(row) {
     };
   }
 
-  const tiers = row.pricing_tiers?.length
+  const tiers = coercePricingTiersInput(row.pricing_tiers).length
     ? normalizePricingTiers(row.pricing_tiers)
     : normalizePricingTiers([
         {
