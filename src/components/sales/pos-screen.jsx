@@ -28,10 +28,13 @@ import {
   productHasConfiguredDiscount,
 } from "@/lib/product-discount";
 import { formatSaleKes } from "@/lib/sales";
+import { getChannelWorkflow, workflowPipelineSteps } from "@/lib/order-workflow";
 import {
   getPosSalesConfig,
   posChannelFromStockSource,
+  resolveCheckoutStatus,
   resolveSaveOrderStatus,
+  resolveSaveOrderStatusLabel,
 } from "@/lib/sales-settings";
 import {
   canAdjustCartLineQuantity,
@@ -124,6 +127,14 @@ export function PosScreen() {
   const [routes, setRoutes] = useState([]);
 
   const channel = posChannelFromStockSource(sellFromShop, posSalesConfig);
+  const channelWorkflow = useMemo(
+    () => getChannelWorkflow(capabilities, channel),
+    [capabilities, channel],
+  );
+
+  useEffect(() => {
+    refreshCapabilities().catch(() => {});
+  }, [refreshCapabilities]);
 
   useEffect(() => {
     if (posSalesConfig.perLineStockRouting) return;
@@ -198,6 +209,7 @@ export function PosScreen() {
   const [editingLineId, setEditingLineId] = useState(null);
   const [editingLineRef, setEditingLineRef] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [lineBusy, setLineBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [saveOrderOpen, setSaveOrderOpen] = useState(false);
@@ -236,7 +248,8 @@ export function PosScreen() {
     const grossTotal = Math.max(0, net - orderDiscount) + vat;
     const voucherPayment = Math.max(0, Number(cart?.voucher_payment_amount ?? 0));
     const pointsPayment = Math.max(0, Number(cart?.points_payment_amount ?? 0));
-    const amountDue = Math.max(0, grossTotal - voucherPayment - pointsPayment);
+    const mpesaPayment = Math.max(0, Number(cart?.mpesa_payment_amount ?? 0));
+    const amountDue = Math.max(0, grossTotal - voucherPayment - pointsPayment - mpesaPayment);
     return {
       subtotal: net + lineDiscounts,
       lineDiscounts,
@@ -246,6 +259,7 @@ export function PosScreen() {
       total: grossTotal,
       voucherPayment,
       pointsPayment,
+      mpesaPayment,
       amountDue,
     };
   }, [
@@ -253,6 +267,7 @@ export function PosScreen() {
     cart?.order_discount,
     cart?.voucher_payment_amount,
     cart?.points_payment_amount,
+    cart?.mpesa_payment_amount,
     orderDiscountDraft,
     enableOrderDiscount,
   ]);
@@ -277,15 +292,17 @@ export function PosScreen() {
     loadHeldOrdersCount();
   }, [loadHeldOrdersCount]);
 
+  const cartActionPending = busy || lineBusy;
+
   useEffect(() => {
-    if (busy || !focusSearchAfterAdd.current) return;
+    if (cartActionPending || !focusSearchAfterAdd.current) return;
     focusSearchAfterAdd.current = false;
     const frame = window.requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
+      searchInputRef.current?.focus({ preventScroll: true });
       searchInputRef.current?.select?.();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [busy]);
+  }, [cartActionPending]);
 
   const loadPosReferenceData = useCallback(async () => {
     const [uomRes, vatRes, retailRes] = await Promise.all([
@@ -343,7 +360,7 @@ export function PosScreen() {
 
   const loadCashierCart = useCallback(async () => {
     if (!user?.branch_id) return null;
-    const body = { channel, branch_id: user.branch_id };
+    const body = { channel, order_source: "backoffice", branch_id: user.branch_id };
     if (usesRouteMarkup) {
       body.route_id = Number(selectedRouteId);
     }
@@ -629,6 +646,8 @@ export function PosScreen() {
 
     await refreshCart(activeCart.id);
 
+    if (successMessage) setStatusMessage(successMessage);
+
     if (clearEntry) {
       setLineForm(EMPTY_LINE);
       setSelectedProductCode(null);
@@ -642,12 +661,11 @@ export function PosScreen() {
       focusSearchAfterAdd.current = true;
     }
 
-    if (successMessage) setStatusMessage(successMessage);
     return true;
   }
 
   async function quickAddOrIncrementProduct(product) {
-    if (busy || !product) return;
+    if (busy || lineBusy || !product) return;
     if (!assertRouteReadyForAdd()) return;
 
     const computed = applyComputedPrice(product, "1", 0);
@@ -661,8 +679,7 @@ export function PosScreen() {
       sellWholesale,
     );
 
-    setBusy(true);
-    setStatusMessage(null);
+    setLineBusy(true);
     try {
       await commitCartLine({
         product,
@@ -674,7 +691,7 @@ export function PosScreen() {
     } catch (e) {
       setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
     } finally {
-      setBusy(false);
+      setLineBusy(false);
     }
   }
 
@@ -715,7 +732,7 @@ export function PosScreen() {
   useEffect(() => {
     if (!selectedProduct?.product_code) return;
     const frame = window.requestAnimationFrame(() => {
-      qtyInputRef.current?.focus();
+      qtyInputRef.current?.focus({ preventScroll: true });
       qtyInputRef.current?.select?.();
     });
     return () => window.cancelAnimationFrame(frame);
@@ -1077,8 +1094,7 @@ export function PosScreen() {
           sellWholesale,
         );
 
-    setBusy(true);
-    setStatusMessage(null);
+    setLineBusy(true);
     const wasEditing = editingLineId;
     const editingLine = cart?.lines?.find((l) => sameLineId(l.id, editingLineId)) ?? null;
     try {
@@ -1107,7 +1123,7 @@ export function PosScreen() {
             : "Failed to add line",
       );
     } finally {
-      setBusy(false);
+      setLineBusy(false);
     }
   }
 
@@ -1120,12 +1136,12 @@ export function PosScreen() {
   }
 
   function focusLineField(ref) {
-    ref.current?.focus();
+    ref.current?.focus({ preventScroll: true });
     ref.current?.select?.();
   }
 
   function handleQuantityEnter() {
-    if (!selectedProduct || busy || addLineBlocked) return;
+    if (!selectedProduct || busy || lineBusy || addLineBlocked) return;
     if (canEditManualLineDiscount()) {
       focusLineField(discountInputRef);
       return;
@@ -1140,7 +1156,7 @@ export function PosScreen() {
   function handleDiscountEnter(e) {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    if (!selectedProduct || busy || addLineBlocked) return;
+    if (!selectedProduct || busy || lineBusy || addLineBlocked) return;
     if (allowEditUnitPrice) {
       focusLineField(unitPriceRef);
       return;
@@ -1151,7 +1167,7 @@ export function PosScreen() {
   function handleUnitPriceEnter(e) {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    if (!busy && !addLineBlocked) void handleAddLine();
+    if (!busy && !lineBusy && !addLineBlocked) void handleAddLine();
   }
 
   async function rebuildCart(remainingLines) {
@@ -1209,9 +1225,8 @@ export function PosScreen() {
   }
 
   async function adjustCartLineQuantity(line, delta) {
-    if (!line || !cart?.id || busy || !delta) return;
-    setBusy(true);
-    setStatusMessage(null);
+    if (!line || !cart?.id || busy || lineBusy || !delta) return;
+    setLineBusy(true);
     try {
       const product =
         productByCode[line.product_code] ?? (await resolveProductByCode(line.product_code));
@@ -1291,7 +1306,7 @@ export function PosScreen() {
     } catch (e) {
       setStatusMessage(e instanceof ApiError ? e.message : "Failed to update quantity");
     } finally {
-      setBusy(false);
+      setLineBusy(false);
     }
   }
 
@@ -1319,14 +1334,19 @@ export function PosScreen() {
   }
 
   async function clearAllLines() {
-    if (!cart?.id) return;
+    if (!cart?.id || !cart?.lines?.length) return;
+    if (!window.confirm("Clear all items from the cart?")) return;
     setBusy(true);
     setStatusMessage(null);
     try {
       await apiRequest(`/sales/carts/${cart.id}/lines`, { method: "DELETE" });
       await refreshCart(cart.id);
+      clearLineEntry();
       setSelectedLineId(null);
       setStatusMessage("Cart cleared.");
+      window.requestAnimationFrame(() => {
+        searchInputRef.current?.focus({ preventScroll: true });
+      });
     } catch (e) {
       setStatusMessage(e instanceof ApiError ? e.message : "Failed to clear cart");
     } finally {
@@ -1409,21 +1429,20 @@ export function PosScreen() {
         next[row.product_code] = enrichProductForLpo(row, uomMap, vatMap);
       }
     }
-    setProductByCode(next);
+    setProductByCode((prev) => ({ ...prev, ...next }));
   }
 
   async function handleRefresh() {
     setBusy(true);
-    setStatusMessage(null);
     try {
-      clearLineEntry();
       await refreshCapabilities();
       const { uomMap, vatMap } = await loadPosReferenceData();
       const activeCart = cart?.id ? await refreshCart(cart.id) : await loadCashierCart();
       await reloadCartProductMeta(activeCart?.lines, uomMap, vatMap);
+      clearLineEntry();
       setStatusMessage("Refreshed — settings and products reloaded.");
       window.requestAnimationFrame(() => {
-        searchInputRef.current?.focus();
+        searchInputRef.current?.focus({ preventScroll: true });
       });
     } catch (e) {
       setStatusMessage(e instanceof ApiError ? e.message : "Refresh failed");
@@ -1464,6 +1483,46 @@ export function PosScreen() {
     }
   }
 
+  async function handleMpesaOrderComplete(updatedCart) {
+    const payNow = Number(updatedCart?.mpesa_payment_amount ?? cart?.mpesa_payment_amount ?? 0);
+    if (payNow <= 0) return;
+
+    const total = cartSummary.amountDue + payNow;
+    const status = resolveCheckoutStatus({
+      channel,
+      isCredit: false,
+      payNow,
+      total,
+      workflow: channelWorkflow,
+      paymentMethodCode: "MPESA",
+      allowPartialPayment: posSalesConfig.payment.allowPartialPayment,
+    });
+    const body = {
+      pay_now: payNow,
+      payment_method_code: "MPESA",
+      payment_reference: updatedCart?.mpesa_transaction_code ?? cart?.mpesa_transaction_code ?? null,
+      status,
+      is_credit_sale: false,
+      deduct_stock: true,
+    };
+
+    if (posSalesConfig.enableCheckoutCustomerName) {
+      body.customer_name_override = "Walk-in";
+    }
+
+    const sale = await handleCheckout(body);
+    if (sale) {
+      clearLineEntry();
+      await loadCashierCart();
+      setStatusMessage(
+        `Order #${sale.order_num} completed — M-Pesa ${formatSaleKes(payNow)} received. Ready for next order.`,
+      );
+      window.requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+      });
+    }
+  }
+
   async function handleContinueNextOrder() {
     setPaymentOpen(false);
     setPaymentError(null);
@@ -1486,17 +1545,22 @@ export function PosScreen() {
     }
   }
 
-  async function handleSaveOrder({ walkIn, walkInName, customer, hold = false }) {
+  async function handleSaveOrder({ walkIn, walkInName, customer, hold = false } = {}) {
     if (!cart?.id) return;
+    if (!hold && posSalesConfig.showCheckoutOnCreate) {
+      setSaveOrderError("Save order is disabled while checkout on create order is enabled.");
+      return;
+    }
     setBusy(true);
     setSaveOrderError(null);
     setStatusMessage(null);
     try {
       const body = {
-        status: hold ? "held" : resolveSaveOrderStatus(channel),
+        status: hold ? "held" : resolveSaveOrderStatus({ channel, workflow: channelWorkflow }),
         pay_now: 0,
         is_credit_sale: false,
-        deduct_stock: false,
+        deduct_stock: true,
+        save_only: true,
       };
       if (walkIn) {
         body.customer_name_override = walkInName?.trim() || "Walk-in";
@@ -1513,11 +1577,14 @@ export function PosScreen() {
       clearLineEntry();
       setSelectedLineId(null);
       await loadCashierCart();
-      const who = walkIn ? walkInName?.trim() || "Walk-in" : customer?.customer_name;
+      const who = walkIn
+        ? walkInName?.trim() || "Walk-in"
+        : customer?.customer_name;
+      const whoSuffix = who ? ` for ${who}` : "";
       setStatusMessage(
         hold
-          ? `Order held for ${who} — #${sale.order_num}. Ready for next sale.`
-          : `Order saved for ${who} — #${sale.order_num} (${sale.status}). Ready for next sale.`,
+          ? `Order held${whoSuffix} — #${sale.order_num}. Ready for next sale.`
+          : `Order saved${whoSuffix} — #${sale.order_num} (${sale.status}). Ready for next sale.`,
       );
       if (hold) {
         await loadHeldOrdersCount();
@@ -1529,6 +1596,16 @@ export function PosScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function openSaveOrderDialog(mode) {
+    setSaveOrderError(null);
+    setOrderDialogMode(mode);
+    if (!posSalesConfig.enableCheckoutCustomerName) {
+      void handleSaveOrder({ hold: mode === "hold" });
+      return;
+    }
+    setSaveOrderOpen(true);
   }
 
   return (
@@ -1551,9 +1628,9 @@ export function PosScreen() {
         </div>
         <div className="text-right text-[10px] text-blue-100">
           <p>{capabilities?.profile_label ?? "POS"} · {channel.toUpperCase()}</p>
-          {statusMessage ? (
-            <p className="mt-0.5 normal-case text-white">{statusMessage}</p>
-          ) : null}
+          <p className="mt-0.5 min-h-[1.125rem] normal-case text-white">
+            {statusMessage || "\u00a0"}
+          </p>
         </div>
       </div>
 
@@ -1789,7 +1866,7 @@ export function PosScreen() {
             <div className="col-span-2 mt-1 flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={busy || addLineBlocked}
+                disabled={busy || lineBusy || addLineBlocked}
                 onClick={handleAddLine}
                 className="flex min-w-[7rem] flex-1 items-center justify-center gap-1 rounded-lg border border-[#144f8a] bg-[#185FA5] py-2 text-xs font-bold uppercase text-white shadow-sm hover:bg-[#144f8a] disabled:opacity-50"
               >
@@ -1809,7 +1886,10 @@ export function PosScreen() {
               <button
                 type="button"
                 disabled={busy}
-                onClick={handleRefresh}
+                onClick={(e) => {
+                  e.preventDefault();
+                  void handleRefresh();
+                }}
                 className="flex min-w-[7rem] flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white py-2 text-xs font-bold uppercase text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
                 <span className="text-base text-[#185FA5]">↻</span> Refresh
@@ -1820,11 +1900,14 @@ export function PosScreen() {
           <PosCartPaymentOptions
             cart={cart}
             busy={busy}
+            amountDue={cartSummary.amountDue}
             enableVouchers={enableVouchers}
             enablePoints={enableRedeemablePoints}
             enableMpesa={enableMpesaOnPos}
             onCartUpdated={setCart}
             onMessage={setStatusMessage}
+            onPaymentApplied={() => setPaymentOpen(true)}
+            onCompleteOrder={(updatedCart) => void handleMpesaOrderComplete(updatedCart)}
           />
         </div>
 
@@ -1855,7 +1938,7 @@ export function PosScreen() {
                     <th className="px-2 py-2">Type</th>
                   ) : null}
                   <th className="px-2 py-2">Package</th>
-                  <th className="px-2 py-2 text-right">Qty</th>
+                  <th className="px-2 py-2 text-center">Qty</th>
                   <th className="px-2 py-2 text-right">Unit price</th>
                   {allowDiscounts ? (
                     <th className="px-2 py-2 text-right">Discount</th>
@@ -1866,7 +1949,7 @@ export function PosScreen() {
               <tbody>
                 {!cart?.lines?.length ? (
                   <tr>
-                    <td colSpan={cartTableColSpan} className="h-[min(40vh,320px)] text-center text-slate-500">
+                    <td colSpan={cartTableColSpan} className="py-12 text-center text-slate-500">
                       No items in cart
                     </td>
                   </tr>
@@ -1918,14 +2001,14 @@ export function PosScreen() {
                             ? uomWholesaleConversionExample(uom)
                             : (line.uom ?? productMeta?.packaging_label ?? "—")}
                         </td>
-                        <td className="px-2 py-1.5">
+                        <td className="px-2 py-1.5 text-center">
                           <div
-                            className="flex items-center justify-end gap-1"
+                            className="flex items-center justify-center gap-1"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <button
                               type="button"
-                              disabled={busy || !qtyAdjust.canDecrease}
+                              disabled={busy || lineBusy || !qtyAdjust.canDecrease}
                               onClick={() => void adjustCartLineQuantity(line, -1)}
                               className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
                               aria-label="Decrease quantity"
@@ -1939,7 +2022,7 @@ export function PosScreen() {
                             </span>
                             <button
                               type="button"
-                              disabled={busy || !qtyAdjust.canIncrease}
+                              disabled={busy || lineBusy || !qtyAdjust.canIncrease}
                               onClick={() => void adjustCartLineQuantity(line, 1)}
                               className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
                               aria-label="Increase quantity"
@@ -2034,14 +2117,16 @@ export function PosScreen() {
                   <span>Subtotal</span>
                   <span>{formatSaleKes(cartSummary.subtotal)}</span>
                 </div>
-                <div className="flex justify-between text-slate-700">
-                  <span>Line discounts</span>
-                  <span>
-                    {cartSummary.lineDiscounts > 0
-                      ? `−${formatSaleKes(cartSummary.lineDiscounts)}`
-                      : formatSaleKes(0)}
-                  </span>
-                </div>
+                {allowDiscounts || enableOrderDiscount ? (
+                  <div className="flex justify-between text-slate-700">
+                    <span>Line discounts</span>
+                    <span>
+                      {cartSummary.lineDiscounts > 0
+                        ? `−${formatSaleKes(cartSummary.lineDiscounts)}`
+                        : formatSaleKes(0)}
+                    </span>
+                  </div>
+                ) : null}
                 {enableOrderDiscount && cartSummary.orderDiscount > 0 ? (
                   <div className="flex justify-between text-slate-700">
                     <span>Order discount</span>
@@ -2058,6 +2143,12 @@ export function PosScreen() {
                   <div className="flex justify-between text-slate-700">
                     <span>Points redeemed</span>
                     <span>−{formatSaleKes(cartSummary.pointsPayment)}</span>
+                  </div>
+                ) : null}
+                {cartSummary.mpesaPayment > 0 ? (
+                  <div className="flex justify-between text-slate-700">
+                    <span>M-Pesa payment</span>
+                    <span>−{formatSaleKes(cartSummary.mpesaPayment)}</span>
                   </div>
                 ) : null}
                 <div className="flex justify-between text-slate-700">
@@ -2109,11 +2200,7 @@ export function PosScreen() {
                 icon="⏸"
                 iconClass="text-amber-700"
                 disabled={busy || !cart?.lines?.length || cartStockBlocked}
-                onClick={() => {
-                  setSaveOrderError(null);
-                  setOrderDialogMode("hold");
-                  setSaveOrderOpen(true);
-                }}
+                onClick={() => openSaveOrderDialog("hold")}
               />
               {posSalesConfig.showCheckoutOnCreate ? (
                 <PosActionButton
@@ -2132,11 +2219,7 @@ export function PosScreen() {
                   icon="💾"
                   iconClass="text-[#185FA5]"
                   disabled={busy || !cart?.lines?.length || cartStockBlocked}
-                  onClick={() => {
-                    setSaveOrderError(null);
-                    setOrderDialogMode("save");
-                    setSaveOrderOpen(true);
-                  }}
+                  onClick={() => openSaveOrderDialog("save")}
                 />
               )}
             </div>
@@ -2154,7 +2237,11 @@ export function PosScreen() {
         onClose={() => setPaymentOpen(false)}
         billTotal={cartSummary.amountDue}
         channel={channel}
+        workflow={channelWorkflow}
         paymentConfig={posSalesConfig.payment}
+        prefillMpesaAmount={cart?.mpesa_payment_amount}
+        prefillMpesaCode={cart?.mpesa_transaction_code}
+        lockMpesaFields={Number(cart?.mpesa_payment_amount ?? 0) > 0}
         saving={busy}
         error={paymentError}
         onComplete={handleCheckout}
@@ -2171,6 +2258,12 @@ export function PosScreen() {
         saving={busy}
         error={saveOrderError}
         onSave={handleSaveOrder}
+        saveStatusLabel={resolveSaveOrderStatusLabel({
+          channel,
+          workflow: channelWorkflow,
+          hold: orderDialogMode === "hold",
+        })}
+        workflowPipeline={workflowPipelineSteps(channelWorkflow)}
       />
 
       <PosHeldOrdersOverlay
@@ -2195,7 +2288,10 @@ function PosActionButton({ label, icon, iconClass, disabled, onClick, badge = 0 
     <button
       type="button"
       disabled={disabled}
-      onClick={onClick}
+      onClick={(e) => {
+        e.preventDefault();
+        onClick?.(e);
+      }}
       className="relative flex flex-col items-center gap-0.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase text-slate-700 shadow-sm hover:border-[#185FA5]/30 hover:bg-[#E6F1FB]/50 disabled:opacity-40"
     >
       <span className={`relative text-lg leading-none ${iconClass}`}>
@@ -2210,3 +2306,5 @@ function PosActionButton({ label, icon, iconClass, disabled, onClick, badge = 0 
     </button>
   );
 }
+
+export default PosScreen;

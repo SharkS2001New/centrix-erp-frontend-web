@@ -96,7 +96,11 @@ export function PosPaymentPanel({
   onClose,
   billTotal,
   channel = "pos",
+  workflow,
   paymentConfig,
+  prefillMpesaAmount = 0,
+  prefillMpesaCode = "",
+  lockMpesaFields = false,
   saving,
   error,
   onComplete,
@@ -150,8 +154,9 @@ export function PosPaymentPanel({
     setSessionBillTotal(total);
     setPaymentDate(todayDateString());
     setCashAmount("0");
-    setMpesaAmount("0");
-    setMpesaCode("");
+    const mpesaPrefill = Math.max(0, Number(prefillMpesaAmount) || 0);
+    setMpesaAmount(mpesaPrefill > 0 ? String(mpesaPrefill) : "0");
+    setMpesaCode(String(prefillMpesaCode ?? "").trim());
     setBankType("");
     setBankAmount("0");
     setBankRef("");
@@ -161,7 +166,7 @@ export function PosPaymentPanel({
     setChequeAmount("0");
     setChequeNo("");
     setWalkInCustomerName("");
-  }, [open, billTotal]);
+  }, [open, billTotal, prefillMpesaAmount, prefillMpesaCode]);
 
   useEffect(() => {
     if (!open || !cfg.enableCreditPayment) return;
@@ -291,21 +296,24 @@ export function PosPaymentPanel({
   function buildCheckoutBody() {
     const payNow = Math.min(amountPaid, checkoutTotal);
     const creditSale = hasCreditCustomer;
+    const paymentMethodCode = creditSale && payNow <= 0 ? "CREDIT" : primaryMethodCode();
     const status = resolveCheckoutStatus({
       channel,
       isCredit: creditSale,
       payNow,
       total: checkoutTotal,
+      workflow,
+      paymentMethodCode,
+      allowPartialPayment: cfg.allowPartialPayment,
     });
 
     const body = {
       pay_now: payNow,
-      payment_method_code: creditSale && payNow <= 0 ? "CREDIT" : primaryMethodCode(),
+      payment_method_code: paymentMethodCode,
       payment_reference: paymentReferenceForPrimary(),
       payment_date: resolvedPaymentDate(),
       status,
       is_credit_sale: creditSale,
-      deduct_stock: status === "completed",
     };
 
     if (creditCustomer) {
@@ -809,8 +817,10 @@ export function PosPaymentPanel({
                 type="number"
                 min="0"
                 step="any"
-                className={inputCls}
+                className={`${inputCls} ${lockMpesaFields ? "cursor-not-allowed bg-slate-100" : ""}`}
                 value={mpesaAmount}
+                readOnly={lockMpesaFields}
+                disabled={lockMpesaFields}
                 onChange={(e) => setMpesaAmount(e.target.value)}
                 onKeyDown={(e) => handlePaymentAmountKeyDown(e, mpesaAmount, setMpesaAmount)}
               />
@@ -819,8 +829,10 @@ export function PosPaymentPanel({
           {cfg.enableMpesaAmount && cfg.enableMpesaCode ? (
             <PosField label="M-Pesa code">
               <input
-                className={inputCls}
+                className={`${inputCls} ${lockMpesaFields ? "cursor-not-allowed bg-slate-100" : ""}`}
                 value={mpesaCode}
+                readOnly={lockMpesaFields}
+                disabled={lockMpesaFields}
                 onChange={(e) => setMpesaCode(e.target.value)}
                 placeholder="Transaction code"
               />

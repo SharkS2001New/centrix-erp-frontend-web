@@ -14,6 +14,8 @@ export function PosSaveOrderDialog({
   error,
   onSave,
   mode = "save",
+  saveStatusLabel = "",
+  workflowPipeline = [],
 }) {
   const isHold = mode === "hold";
   const [mounted, setMounted] = useState(false);
@@ -85,11 +87,23 @@ export function PosSaveOrderDialog({
           </h2>
           {isHold ? (
             <p className="mt-1 text-center text-[11px] text-amber-100">
-              Stock stays reserved until the order is completed or cancelled.
+              Stock is deducted when the order is held.
+            </p>
+          ) : saveStatusLabel ? (
+            <p className="mt-1 text-center text-[11px] text-blue-100">
+              Workflow status: <strong>{saveStatusLabel}</strong>
+              {" · "}
+              Created via: <strong>Backoffice</strong>
             </p>
           ) : null}
         </div>
         <div className="p-4">
+          {!isHold && workflowPipeline.length > 0 ? (
+            <p className="mb-3 rounded border border-[#c4b89a]/60 bg-white/60 px-2.5 py-2 text-[11px] text-slate-700">
+              <span className="font-semibold text-[#0C447C]">Order flow: </span>
+              {workflowPipeline.map((s) => s.label).join(" → ")}
+            </p>
+          ) : null}
           {!isWalkIn ? (
             <label className="block">
               <span className="mb-0.5 block text-[11px] font-bold uppercase tracking-wide text-[#4a5d23]">
@@ -156,11 +170,7 @@ export function PosSaveOrderDialog({
             </p>
           ) : null}
         </div>
-        <div
-          className={`grid gap-2 border-t border-[#c4b89a] bg-[#ebe3d4] p-3 ${
-            isHold ? "grid-cols-2" : "grid-cols-3"
-          }`}
-        >
+        <div className="grid grid-cols-2 gap-2 border-t border-[#c4b89a] bg-[#ebe3d4] p-3">
           {isHold ? (
             <button
               type="button"
@@ -171,24 +181,14 @@ export function PosSaveOrderDialog({
               {saving ? "Holding…" : "Hold order"}
             </button>
           ) : (
-            <>
-              <button
-                type="button"
-                disabled={saving || loading}
-                onClick={() => handleSave("save")}
-                className="rounded border border-[#6b8f3c] bg-[#e8f5d8] px-3 py-3 text-xs font-bold uppercase text-[#2d5016] hover:bg-[#d4edc0] disabled:opacity-50"
-              >
-                {saving ? "Saving…" : "Save order"}
-              </button>
-              <button
-                type="button"
-                disabled={saving || loading}
-                onClick={() => handleSave("hold")}
-                className="rounded border border-amber-300 bg-amber-50 px-3 py-3 text-xs font-bold uppercase text-amber-800 hover:bg-amber-100 disabled:opacity-50"
-              >
-                {saving ? "Holding…" : "Hold"}
-              </button>
-            </>
+            <button
+              type="button"
+              disabled={saving || loading}
+              onClick={() => handleSave("save")}
+              className="rounded border border-[#6b8f3c] bg-[#e8f5d8] px-3 py-3 text-xs font-bold uppercase text-[#2d5016] hover:bg-[#d4edc0] disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save order"}
+            </button>
           )}
           <button
             type="button"

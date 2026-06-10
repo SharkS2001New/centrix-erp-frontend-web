@@ -150,8 +150,8 @@ export function todayDeliveryStats(sales) {
     if (sale.deleted_at || !isDeliverySale(sale)) continue;
     const ts = getSaleTimestamp(sale);
     if (!ts || !isSameCalendarDay(ts, ref)) continue;
-    if (sale.status === "completed") completed += 1;
-    else if (["pending", "booked", "processed", "pending_payment", "paid"].includes(sale.status)) {
+    if (sale.status === "completed" || sale.status === "delivered") completed += 1;
+    else if (["pending", "booked", "unpaid", "processed", "pending_payment", "paid"].includes(sale.status)) {
       pending += 1;
     }
   }
@@ -160,11 +160,11 @@ export function todayDeliveryStats(sales) {
 
 export function deliveryStatsFromSales(sales) {
   return {
-    completed: sales.filter((s) => s.status === "completed" && !s.deleted_at).length,
+    completed: sales.filter((s) => (s.status === "completed" || s.status === "delivered") && !s.deleted_at).length,
     pending: sales.filter(
       (s) =>
         !s.deleted_at &&
-        ["pending", "booked", "processed", "pending_payment", "paid"].includes(s.status),
+        ["pending", "booked", "unpaid", "processed", "pending_payment", "paid"].includes(s.status),
     ).length,
     cancelled: sales.filter((s) => s.status === "cancelled").length,
   };
@@ -173,11 +173,11 @@ export function deliveryStatsFromSales(sales) {
 export function driverDeliveryStats(sales, driverId) {
   const list = salesForDriver(sales, driverId);
   return {
-    completed: list.filter((s) => s.status === "completed" && !s.deleted_at).length,
+    completed: list.filter((s) => (s.status === "completed" || s.status === "delivered") && !s.deleted_at).length,
     pending: list.filter(
       (s) =>
         !s.deleted_at &&
-        ["pending", "booked", "processed", "pending_payment", "paid"].includes(s.status),
+        ["pending", "booked", "unpaid", "processed", "pending_payment", "paid"].includes(s.status),
     ).length,
     cancelled: list.filter((s) => s.status === "cancelled").length,
   };

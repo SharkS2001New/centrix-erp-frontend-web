@@ -1,16 +1,19 @@
 import { getSaleTimestamp, isSameCalendarDay } from "@/components/catalog/catalog-shared";
+import {
+  DEFAULT_ORDER_WORKFLOW,
+  nextTransitionOptions as workflowNextTransitions,
+  pipelineStepIndex as workflowPipelineIndex,
+  workflowPipelineSteps,
+  workflowStatusLabel,
+  workflowTransitions,
+} from "@/lib/order-workflow";
 
-export const SALE_STATUS_LABELS = {
-  draft: "Draft",
-  held: "Held",
-  booked: "Confirmed",
-  pending: "Pending",
-  pending_payment: "Pending payment",
-  paid: "Paid",
-  processed: "Packed",
-  completed: "Delivered",
-  cancelled: "Cancelled",
-};
+export const SALE_STATUS_LABELS = Object.fromEntries(
+  DEFAULT_ORDER_WORKFLOW.steps.map((s) => [s.status, s.label]),
+);
+SALE_STATUS_LABELS.draft = "Draft";
+SALE_STATUS_LABELS.held = "Held";
+SALE_STATUS_LABELS.cancelled = "Cancelled";
 
 export const PAYMENT_STATUS_LABELS = {
   unpaid: "Unpaid",
@@ -18,25 +21,24 @@ export const PAYMENT_STATUS_LABELS = {
   paid: "Paid",
 };
 
+/** Which client system created the order (audit). */
+export const ORDER_SOURCE_LABELS = {
+  pos: "Point of sale",
+  mobile: "Mobile",
+  backoffice: "Backoffice",
+  backend: "Backoffice",
+};
+
+export function orderSourceLabel(source, fallbackChannel) {
+  const key = String(source ?? fallbackChannel ?? "").toLowerCase();
+  return ORDER_SOURCE_LABELS[key] ?? key ?? "—";
+}
+
 /** Visual pipeline steps for backend/mobile orders. */
-export const ORDER_PIPELINE_STEPS = [
-  { key: "draft", label: "Draft" },
-  { key: "booked", label: "Confirmed" },
-  { key: "paid", label: "Paid" },
-  { key: "processed", label: "Packed" },
-  { key: "completed", label: "Delivered" },
-];
+export const ORDER_PIPELINE_STEPS = workflowPipelineSteps();
 
 /** Allowed transitions (mirrors OrderWorkflowController). */
-export const SALE_TRANSITIONS = {
-  booked: ["pending", "cancelled"],
-  pending: ["pending_payment", "processed", "cancelled"],
-  pending_payment: ["paid", "partial", "cancelled"],
-  paid: ["processed", "completed"],
-  processed: ["completed"],
-  draft: ["held", "completed", "booked", "cancelled"],
-  held: ["draft", "booked", "completed", "cancelled"],
-};
+export const SALE_TRANSITIONS = workflowTransitions();
 
 export function formatSaleKes(value) {
   if (value == null || value === "") return "—";
@@ -118,16 +120,16 @@ export function buildHourlySalesChart(sales, reference = new Date()) {
   return buckets;
 }
 
-export function pipelineStepIndex(status) {
-  const idx = ORDER_PIPELINE_STEPS.findIndex((s) => s.key === status);
-  return idx >= 0 ? idx : 0;
+export function pipelineStepIndex(status, workflow) {
+  return workflowPipelineIndex(status, workflow);
 }
 
-export function nextTransitionOptions(status) {
-  const allowed = SALE_TRANSITIONS[status] ?? [];
-  return [...allowed, "cancelled"].filter(
-    (v, i, arr) => arr.indexOf(v) === i && v !== status,
-  );
+export function nextTransitionOptions(status, workflow) {
+  return workflowNextTransitions(status, workflow);
+}
+
+export function saleStatusLabel(status, workflow) {
+  return workflowStatusLabel(workflow, status) ?? SALE_STATUS_LABELS[status] ?? status;
 }
 
 export function getPaymentMethodKind(method) {

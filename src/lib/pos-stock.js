@@ -279,6 +279,9 @@ export function posCartHasInsufficientStock(
 
 /** Which stock columns to show in POS product search for current settings. */
 export function posStockDisplayMode(posSalesConfig, sellWholesale) {
+  if (posSalesConfig.retailShopWholesaleStoreStock) {
+    return "both";
+  }
   if (posSalesConfig.perLineStockRouting) {
     return sellWholesale === false ? "shop" : "store";
   }

@@ -4,8 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiRequest } from "@/lib/api";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
-import { saleLineProductLabel } from "@/lib/sale-line-items";
+import {
+  saleLineDisplayUnitPrice,
+  saleLineProductLabel,
+  saleLineQtyLabel,
+} from "@/lib/sale-line-items";
 import { formatReceiptNumber, formatSaleKes } from "@/components/sales/sales-shared";
+import { OrderExpandIcon } from "@/components/sales/sales-orders-shared";
 import { saleCustomerLabel } from "@/lib/sales";
 
 function orderKey(order) {
@@ -37,9 +42,23 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
   const [detailLoadingId, setDetailLoadingId] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [busyOrderId, setBusyOrderId] = useState(null);
+  const [uomById, setUomById] = useState(() => new Map());
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  const loadUoms = useCallback(async () => {
+    try {
+      const res = await apiRequest("/uoms", { searchParams: { per_page: 500 } });
+      const map = new Map();
+      for (const u of res.data ?? []) {
+        if (u?.id != null) map.set(u.id, u);
+      }
+      setUomById(map);
+    } catch {
+      setUomById(new Map());
+    }
   }, []);
 
   const loadHeldOrders = useCallback(async () => {
@@ -92,8 +111,9 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
       setBusyOrderId(null);
       return;
     }
+    void loadUoms();
     loadHeldOrders();
-  }, [open, loadHeldOrders]);
+  }, [open, loadHeldOrders, loadUoms]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -282,12 +302,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
                     onToggle={(e) => handleDetailsToggle(order, e)}
                   >
                     <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 marker:content-none [&::-webkit-details-marker]:hidden">
-                      <span
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#E6F1FB] text-xs text-[#185FA5] transition-transform group-open:rotate-90"
-                        aria-hidden
-                      >
-                        ▶
-                      </span>
+                      <OrderExpandIcon />
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-semibold text-slate-900">
                           {heldOrderTitle(order)}
@@ -311,7 +326,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
                           <thead>
                             <tr className="border-b border-slate-200 bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                               <th className="px-4 py-2">Product</th>
-                              <th className="px-4 py-2 text-right">Qty</th>
+                              <th className="px-4 py-2 text-center">Qty</th>
                               <th className="px-4 py-2 text-right">Price</th>
                               <th className="px-4 py-2 text-right">Amount</th>
                             </tr>
@@ -330,11 +345,11 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
                                     </span>
                                   ) : null}
                                 </td>
-                                <td className="px-4 py-2.5 text-right text-slate-700">
-                                  {line.quantity}
+                                <td className="px-4 py-2.5 text-center text-slate-700">
+                                  {saleLineQtyLabel(line, uomById)}
                                 </td>
                                 <td className="px-4 py-2.5 text-right text-slate-700">
-                                  {formatSaleKes(line.selling_price)}
+                                  {formatSaleKes(saleLineDisplayUnitPrice(line, uomById))}
                                 </td>
                                 <td className="px-4 py-2.5 text-right font-medium text-slate-900">
                                   {formatSaleKes(line.amount)}

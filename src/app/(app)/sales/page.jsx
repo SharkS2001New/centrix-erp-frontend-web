@@ -6,15 +6,12 @@ import { apiRequest } from "@/lib/api";
 import {
   CatalogPageShell,
   PrimaryLink,
-  StatCard,
-  formatKesCompact,
 } from "@/components/catalog/catalog-shared";
 import { HourlySalesChart } from "@/components/sales/sales-shared";
+import { OrderSummaryStats, summarizeOrders } from "@/components/sales/sales-orders-shared";
 import {
-  aggregateSalesKpis,
   buildHourlySalesChart,
   filterSalesByPeriod,
-  formatSaleKes,
 } from "@/lib/sales";
 
 export default function SalesDashboardPage() {
@@ -26,7 +23,7 @@ export default function SalesDashboardPage() {
     setError(null);
     try {
       const res = await apiRequest("/sales", {
-        searchParams: { per_page: 200, with_items: 0 },
+        searchParams: { per_page: 200, with_items: 0, exclude_status: "held" },
       });
       setSales(res.data ?? []);
     } catch (e) {
@@ -41,7 +38,7 @@ export default function SalesDashboardPage() {
   }, [loadData]);
 
   const todaySales = useMemo(() => filterSalesByPeriod(sales, "day"), [sales]);
-  const kpis = useMemo(() => aggregateSalesKpis(todaySales), [todaySales]);
+  const orderSummary = useMemo(() => summarizeOrders(todaySales), [todaySales]);
   const hourly = useMemo(() => buildHourlySalesChart(sales), [sales]);
 
   return (
@@ -73,14 +70,12 @@ export default function SalesDashboardPage() {
         <p className="text-sm text-slate-500">Loading dashboard…</p>
       ) : (
         <div className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard
-              label="Today's sales"
-              value={formatKesCompact(kpis.revenue)}
-              hint={`${kpis.orderCount} completed orders`}
-            />
-            <StatCard label="Orders today" value={String(kpis.orderCount)} />
-            <StatCard label="Revenue today" value={formatSaleKes(kpis.revenue)} />
+          <div>
+            <h2 className="text-sm font-medium text-slate-900">Order summary</h2>
+            <p className="mt-0.5 text-xs text-slate-500">Today&apos;s orders (excluding held)</p>
+            <div className="mt-4">
+              <OrderSummaryStats summary={orderSummary} hint="Today" />
+            </div>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

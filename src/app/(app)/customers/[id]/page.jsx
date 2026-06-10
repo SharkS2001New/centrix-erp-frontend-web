@@ -16,6 +16,7 @@ import {
   indexProductsByCode,
   saleLineProductLabel,
 } from "@/lib/sale-line-items";
+import { orderSourceLabel } from "@/lib/sales";
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -247,10 +248,10 @@ export default function CustomerDetailPage() {
                                   </span>
                                 </>
                               ) : null}
-                              {order.channel ? (
+                              {order.order_source || order.channel ? (
                                 <>
                                   {" · "}
-                                  <span className="capitalize">{order.channel}</span>
+                                  <span>{orderSourceLabel(order.order_source, order.channel)}</span>
                                 </>
                               ) : null}
                               {" · "}

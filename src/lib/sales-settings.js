@@ -96,6 +96,7 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
           : null,
     perLineStockRouting: retailShopWholesaleStoreStock,
     showCheckoutOnCreate: Boolean(sales.show_checkout_on_create_order),
+    enableCheckoutCustomerName: Boolean(sales.enable_checkout_customer_name),
     retailShopWholesaleStoreStock,
     enableRetailPricing,
     allowDiscounts: Boolean(sales.allow_discounts),
@@ -165,18 +166,15 @@ export function posChannelFromStockSource(sellFromShop, config) {
   return sellFromShop ? "pos" : "backend";
 }
 
-/** Resolve sale status after checkout from channel and payment. */
-export function resolveCheckoutStatus({ channel, isCredit, payNow, total }) {
-  if (payNow + 0.01 >= total) {
-    return channel === "pos" ? "completed" : "paid";
-  }
-  if (isCredit || payNow > 0) {
-    return "pending_payment";
-  }
-  return channel === "mobile" ? "pending" : "booked";
-}
-
-/** Status when saving order without checkout popup. */
-export function resolveSaveOrderStatus(channel) {
-  return channel === "mobile" ? "pending" : "booked";
-}
+export {
+  getChannelWorkflow,
+  getOrderWorkflow,
+  isImmediatePaymentMethod,
+  pickEnabledStatus,
+  resolveCheckoutStatus,
+  resolveOrderChannel,
+  resolveSaveOrderStatus,
+  resolveSaveOrderStatusLabel,
+  sanitizeWorkflowReferences,
+  workflowPipelineSteps,
+} from "@/lib/order-workflow";

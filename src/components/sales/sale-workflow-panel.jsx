@@ -1,11 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
+import { getOrderWorkflow } from "@/lib/order-workflow";
 import { OrderWorkflowPipeline } from "./sales-shared";
-import { nextTransitionOptions } from "@/lib/sales";
+import { nextTransitionOptions, saleStatusLabel } from "@/lib/sales";
 
 export function SaleWorkflowPanel({ sale, onUpdated }) {
+  const { capabilities } = useAuth();
+  const workflow = useMemo(
+    () => getOrderWorkflow(capabilities, sale),
+    [capabilities, sale],
+  );
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
 
@@ -26,12 +33,15 @@ export function SaleWorkflowPanel({ sale, onUpdated }) {
     }
   }
 
-  const nextOptions = nextTransitionOptions(sale?.status);
+  const nextOptions = nextTransitionOptions(sale?.status, workflow);
 
   return (
     <div className="space-y-3">
       <OrderWorkflowPipeline
         status={sale?.status}
+        workflow={workflow}
+        orderSource={sale?.order_source}
+        channel={sale?.channel}
         onAdvance={nextOptions.length ? advance : null}
         busyStatus={busy}
       />
@@ -40,7 +50,7 @@ export function SaleWorkflowPanel({ sale, onUpdated }) {
           {error}
         </p>
       ) : null}
-      {nextOptions.length > 1 ? (
+      {nextOptions.filter((s) => s !== "cancelled").length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {nextOptions
             .filter((s) => s !== "cancelled")
@@ -52,7 +62,7 @@ export function SaleWorkflowPanel({ sale, onUpdated }) {
                 onClick={() => advance(status)}
                 className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
-                → {status.replace(/_/g, " ")}
+                {saleStatusLabel(status, workflow)}
               </button>
             ))}
         </div>

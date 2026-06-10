@@ -42,6 +42,14 @@ export function formatApiErrorMessage(data, fallback = "Request failed") {
     if (typeof data.message === "string" && data.message.trim()) {
       return data.message;
     }
+    if (typeof data.error === "object" && data.error !== null) {
+      if (typeof data.error.errorMessage === "string" && data.error.errorMessage.trim()) {
+        return data.error.errorMessage;
+      }
+      if (typeof data.error.message === "string" && data.error.message.trim()) {
+        return data.error.message;
+      }
+    }
   }
   return fallback || "Request failed";
 }

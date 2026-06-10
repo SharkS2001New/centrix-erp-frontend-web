@@ -6,6 +6,10 @@ import { mergeSalesSettings, resolvePosOrderTypeMode } from "@/lib/sales-setting
 import { useAuth } from "@/contexts/auth-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
+  OrderWorkflowSettingsEditor,
+  orderWorkflowFromApi,
+} from "@/components/admin/order-workflow-settings";
+import {
   CatalogPageShell,
   Field,
   PrimaryButton,
@@ -140,6 +144,7 @@ export default function AdminSettingsPage() {
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
   const [salesForm, setSalesForm] = useState(EMPTY_SALES_FORM);
+  const [orderWorkflow, setOrderWorkflow] = useState(null);
   const [generalForm] = useState(GENERAL_FORM);
 
   const loadSalesSettings = useCallback(async () => {
@@ -148,6 +153,7 @@ export default function AdminSettingsPage() {
     try {
       const res = await apiRequest("/erp/settings/sales");
       setSalesForm(salesFormFromApi(res));
+      setOrderWorkflow(orderWorkflowFromApi(res.sales));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load settings");
     } finally {
@@ -170,6 +176,7 @@ export default function AdminSettingsPage() {
         default_tax_rate: Number(salesForm.default_tax_rate) || 0,
         point_cash_value: Number(salesForm.point_cash_value) || 0,
         points_earn_per_kes: Number(salesForm.points_earn_per_kes) || 0,
+        order_workflow: orderWorkflow,
       };
       if (
         !body.allow_sell_from_shop &&
@@ -186,8 +193,10 @@ export default function AdminSettingsPage() {
         return;
       }
       await apiRequest("/erp/settings/sales", { method: "PATCH", body });
+      const res = await apiRequest("/erp/settings/sales");
+      setOrderWorkflow(orderWorkflowFromApi(res.sales));
       await refreshCapabilities();
-      setMessage("Sales settings saved.");
+      setMessage("Sales settings saved. POS will use this workflow after refresh.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save settings");
     } finally {
@@ -523,15 +532,14 @@ export default function AdminSettingsPage() {
                     </p>
                     <Toggle
                       label="Show checkout on create order"
-                      description="When off, POS shows Save Order instead of opening checkout."
+                      description="When off, POS uses Save order (no checkout) and the save-order workflow settings below apply."
                       checked={salesForm.show_checkout_on_create_order}
                       onChange={(v) => setSalesForm((f) => ({ ...f, show_checkout_on_create_order: v }))}
                     />
                     <Toggle
                       label="Request customer name on checkout"
-                      description="When direct checkout is enabled, show a customer name popup after payment confirmation (before the order is saved). Skipped for credit sales with a selected customer."
+                      description="When enabled, POS prompts for a customer on save order, hold order, and checkout (skipped for credit sales with a selected customer). When off, orders save immediately with no name prompt."
                       checked={salesForm.enable_checkout_customer_name}
-                      disabled={!salesForm.show_checkout_on_create_order}
                       onChange={(v) =>
                         setSalesForm((f) => ({ ...f, enable_checkout_customer_name: v }))
                       }
@@ -643,6 +651,15 @@ export default function AdminSettingsPage() {
                     />
                   </div>
                 )}
+                {orderWorkflow ? (
+                  <div className="mt-6">
+                    <OrderWorkflowSettingsEditor
+                      workflow={orderWorkflow}
+                      onChange={setOrderWorkflow}
+                      showCheckoutOnCreate={salesForm.show_checkout_on_create_order}
+                    />
+                  </div>
+                ) : null}
                 <div className="mt-6">
                   <PrimaryButton type="submit" disabled={loading || saving} showIcon={false}>
                     {saving ? "Saving…" : "Save"}
