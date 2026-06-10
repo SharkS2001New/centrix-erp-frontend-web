@@ -6,7 +6,7 @@ import { posListUnitPrice } from "@/lib/pos-line";
 import { isExactProductCodeQuery } from "@/lib/pos-cart-merge";
 
 const fieldInput =
-  "w-full rounded border border-[#b8a88a] bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-[#185FA5]";
+  "w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 shadow-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20";
 
 function formatStockQty(baseQty, product) {
   const { text } = formatMixedStockDisplay(
@@ -139,8 +139,8 @@ export function PosProductSearch({
   const tableColSpan = 2 + stockColCount;
 
   return (
-    <div ref={rootRef} className="relative">
-      <label className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-[#4a5d23]">
+    <div ref={rootRef} className="relative space-y-1">
+      <label className="block text-[10px] font-bold uppercase tracking-wide text-[#0C447C]">
         {searchLabel}
       </label>
       <input

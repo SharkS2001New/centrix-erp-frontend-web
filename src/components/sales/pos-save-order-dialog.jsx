@@ -7,7 +7,15 @@ import { apiRequest } from "@/lib/api";
 const inputCls =
   "w-full rounded border border-[#c4b89a] bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-[#185FA5]";
 
-export function PosSaveOrderDialog({ open, onClose, saving, error, onSave }) {
+export function PosSaveOrderDialog({
+  open,
+  onClose,
+  saving,
+  error,
+  onSave,
+  mode = "save",
+}) {
+  const isHold = mode === "hold";
   const [mounted, setMounted] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [isWalkIn, setIsWalkIn] = useState(false);
@@ -40,18 +48,18 @@ export function PosSaveOrderDialog({ open, onClose, saving, error, onSave }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, saving, onClose]);
 
-  function handleSave() {
+  function handleSave(mode = "save") {
     if (isWalkIn) {
       const name = walkInName.trim();
       if (!name) {
         setLocalError("Enter the walk-in customer's name.");
         return;
       }
-      onSave?.({ walkIn: true, walkInName: name });
+      onSave?.({ walkIn: true, walkInName: name, hold: mode === "hold" });
       return;
     }
     if (!customerNum) {
-      setLocalError("Select a customer to save this order.");
+      setLocalError(isHold ? "Select a customer to hold this order." : "Select a customer to save this order.");
       return;
     }
     const customer = customers.find((c) => String(c.customer_num) === customerNum);
@@ -59,7 +67,7 @@ export function PosSaveOrderDialog({ open, onClose, saving, error, onSave }) {
       setLocalError("Select a valid customer.");
       return;
     }
-    onSave?.({ walkIn: false, customer });
+    onSave?.({ walkIn: false, customer, hold: mode === "hold" });
   }
 
   if (!open || !mounted) return null;
@@ -71,8 +79,15 @@ export function PosSaveOrderDialog({ open, onClose, saving, error, onSave }) {
         aria-modal="true"
         className="flex w-full max-w-md flex-col overflow-hidden rounded-lg border border-[#8a7a5c] bg-[#f3ebe0] shadow-2xl"
       >
-        <div className="bg-[#1e3a5f] px-4 py-3 text-white">
-          <h2 className="text-center text-sm font-bold tracking-wide">SAVE ORDER</h2>
+        <div className={`px-4 py-3 text-white ${isHold ? "bg-amber-700" : "bg-[#1e3a5f]"}`}>
+          <h2 className="text-center text-sm font-bold tracking-wide">
+            {isHold ? "HOLD ORDER" : "SAVE ORDER"}
+          </h2>
+          {isHold ? (
+            <p className="mt-1 text-center text-[11px] text-amber-100">
+              Stock stays reserved until the order is completed or cancelled.
+            </p>
+          ) : null}
         </div>
         <div className="p-4">
           {!isWalkIn ? (
@@ -141,15 +156,40 @@ export function PosSaveOrderDialog({ open, onClose, saving, error, onSave }) {
             </p>
           ) : null}
         </div>
-        <div className="grid grid-cols-2 gap-2 border-t border-[#c4b89a] bg-[#ebe3d4] p-3">
-          <button
-            type="button"
-            disabled={saving || loading}
-            onClick={handleSave}
-            className="rounded border border-[#6b8f3c] bg-[#e8f5d8] px-3 py-3 text-xs font-bold uppercase text-[#2d5016] hover:bg-[#d4edc0] disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save order"}
-          </button>
+        <div
+          className={`grid gap-2 border-t border-[#c4b89a] bg-[#ebe3d4] p-3 ${
+            isHold ? "grid-cols-2" : "grid-cols-3"
+          }`}
+        >
+          {isHold ? (
+            <button
+              type="button"
+              disabled={saving || loading}
+              onClick={() => handleSave("hold")}
+              className="rounded border border-amber-400 bg-amber-100 px-3 py-3 text-xs font-bold uppercase text-amber-900 hover:bg-amber-200 disabled:opacity-50"
+            >
+              {saving ? "Holding…" : "Hold order"}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={saving || loading}
+                onClick={() => handleSave("save")}
+                className="rounded border border-[#6b8f3c] bg-[#e8f5d8] px-3 py-3 text-xs font-bold uppercase text-[#2d5016] hover:bg-[#d4edc0] disabled:opacity-50"
+              >
+                {saving ? "Saving…" : "Save order"}
+              </button>
+              <button
+                type="button"
+                disabled={saving || loading}
+                onClick={() => handleSave("hold")}
+                className="rounded border border-amber-300 bg-amber-50 px-3 py-3 text-xs font-bold uppercase text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+              >
+                {saving ? "Holding…" : "Hold"}
+              </button>
+            </>
+          )}
           <button
             type="button"
             disabled={saving}

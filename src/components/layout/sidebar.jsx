@@ -58,6 +58,8 @@ const navSections = [
       { href: "/sales", label: "Dashboard", module: "sales.backend", exact: true },
       { href: "/sales/pos", label: "Point of sale", module: "sales.backend" },
       { href: "/sales/orders", label: "Orders", module: "sales.backend" },
+      { href: "/sales/vouchers", label: "Vouchers", module: "sales.backend" },
+      { href: "/sales/loyalty-cards", label: "Loyalty cards", module: "sales.backend" },
       { href: "/sales/reservations", label: "Reservations", module: "sales.backend" },
       { href: "/sales/returns", label: "Returns", module: "sales.backend" },
     ],

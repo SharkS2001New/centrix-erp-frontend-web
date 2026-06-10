@@ -61,7 +61,7 @@ export default function SalesOrdersPage() {
   const loadData = useCallback(async () => {
     setError(null);
     try {
-      const params = { per_page: 200 };
+      const params = { per_page: 200, exclude_status: "held" };
       if (statusFilter !== "all") params["filter[status]"] = statusFilter;
       const res = await apiRequest("/sales", { searchParams: params });
       setRows(res.data ?? []);

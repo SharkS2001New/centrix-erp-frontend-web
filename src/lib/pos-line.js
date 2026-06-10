@@ -174,6 +174,39 @@ export function resolvePosQuantity(entryQty, product, retailPackage, sellWholesa
   };
 }
 
+function isRetailRouteLine(sellWholesale, retailLine) {
+  if (retailLine != null) return Boolean(retailLine);
+  return isPosRetailSession(sellWholesale);
+}
+
+function applyRouteMarkupToLine({
+  lineAmount,
+  displayUnitPrice,
+  routeMarkupPerUnit,
+  sellWholesale,
+  retailLine,
+  packQty,
+  baseQty,
+}) {
+  const routeMarkup = Math.max(0, Number(routeMarkupPerUnit ?? 0));
+  if (routeMarkup <= 0 || baseQty <= 0) {
+    return { lineAmount, displayUnitPrice };
+  }
+
+  if (isRetailRouteLine(sellWholesale, retailLine)) {
+    return {
+      lineAmount: lineAmount + routeMarkup,
+      displayUnitPrice,
+    };
+  }
+
+  const wholesaleQty = Math.max(0, Number(packQty) || Number(baseQty) || 0);
+  return {
+    lineAmount: lineAmount + routeMarkup * wholesaleQty,
+    displayUnitPrice: displayUnitPrice + routeMarkup,
+  };
+}
+
 /** Unit price field label — retail/markup/route breakdown when applicable. */
 export function posUnitPriceFieldLabel(
   product,
@@ -181,6 +214,7 @@ export function posUnitPriceFieldLabel(
   retailPackage = null,
   entryQty = "1",
   routeMarkupPerUnit = 0,
+  retailLine = null,
 ) {
   const base = "Unit price";
   if (!product) return base;
@@ -188,8 +222,8 @@ export function posUnitPriceFieldLabel(
   const uom = product?.uom ?? null;
   const resolved = resolvePosQuantity(entryQty, product, retailPackage, sellWholesale);
   const level = resolved.measureLevel || "small";
-  const routePerBase = Math.max(0, Number(routeMarkupPerUnit ?? 0));
-  const routeAtLevel = routePerBase * smallUnitsPerLevel(uom, level);
+  const routeMarkup = Math.max(0, Number(routeMarkupPerUnit ?? 0));
+  const retailRouteLine = isRetailRouteLine(sellWholesale, retailLine);
   const parts = [];
 
   if (usesPosRetailPricing(sellWholesale, product, retailPackage) && resolved.tier && resolved.pricingRetail) {
@@ -203,7 +237,7 @@ export function posUnitPriceFieldLabel(
     if (markup > 0) {
       parts.push(`Markup ${formatSaleKes(markup)}`);
     }
-  } else if (routeAtLevel > 0) {
+  } else if (routeMarkup > 0 && !retailRouteLine) {
     const factor = uomConversionFactor(uom);
     const wholesaleMarkup = Number(retailPackage?.wholesale_markup_price ?? 0);
     const catalogUnitPrice = Number(product.unit_price ?? 0);
@@ -214,8 +248,12 @@ export function posUnitPriceFieldLabel(
     parts.push(`Price ${formatSaleKes(priceAtLevel)}`);
   }
 
-  if (routeAtLevel > 0) {
-    parts.push(`Route markup ${formatSaleKes(routeAtLevel)}`);
+  if (routeMarkup > 0) {
+    parts.push(
+      retailRouteLine
+        ? `Route markup ${formatSaleKes(routeMarkup)}`
+        : `Route markup ${formatSaleKes(routeMarkup)} / unit`,
+    );
   }
 
   if (parts.length === 0) return base;
@@ -260,6 +298,7 @@ export function computePosLine({
   discount = 0,
   unitPriceOverride = null,
   routeMarkupPerUnit = 0,
+  retailLine = null,
 }) {
   const uom = product?.uom ?? null;
   const factor = uomConversionFactor(uom);
@@ -301,12 +340,15 @@ export function computePosLine({
     lineAmount = packQty * displayUnitPrice;
   }
 
-  const routeMarkup = Math.max(0, Number(routeMarkupPerUnit ?? 0));
-  if (routeMarkup > 0 && baseQty > 0) {
-    lineAmount += routeMarkup * baseQty;
-    const level = resolved.measureLevel || "small";
-    displayUnitPrice += routeMarkup * smallUnitsPerLevel(uom, level);
-  }
+  ({ lineAmount, displayUnitPrice } = applyRouteMarkupToLine({
+    lineAmount,
+    displayUnitPrice,
+    routeMarkupPerUnit,
+    sellWholesale,
+    retailLine,
+    packQty,
+    baseQty,
+  }));
 
   const lineAmountBeforeDiscount = lineAmount;
   const discountNum = Math.max(0, Number(discount ?? 0));

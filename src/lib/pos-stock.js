@@ -8,7 +8,7 @@ import {
   fullPackageLabel,
   smallPackagingLabel,
 } from "./uom-packaging";
-import { usesPosRetailPricing } from "./pos-line";
+import { posEntryQtyFromBaseQty, usesPosRetailPricing } from "./pos-line";
 
 export function posLineIsRetail(product, onWholesaleRetail) {
   return Boolean(product?.sell_on_retail) && Boolean(onWholesaleRetail);
@@ -27,6 +27,69 @@ export function posLineRetailStockFlag(posSalesConfig, sellWholesale, computedIs
 
 export function cartLineRetailStockFlag(line) {
   return Number(line?.on_wholesale_retail) === 1;
+}
+
+/** One +/- click changes quantity by this many base (stock) units. */
+export function cartLineQuantityStep(product, line, retailPackage = null) {
+  const isRetailLine = cartLineRetailStockFlag(line);
+  const factor = uomConversionFactor(product?.uom);
+  if (isRetailLine || factor <= 1) {
+    return 1;
+  }
+  return factor;
+}
+
+export function cartLineNextBaseQty(line, product, retailPackage, delta) {
+  const step = cartLineQuantityStep(product, line, retailPackage);
+  return Number(line?.quantity ?? 0) + step * delta;
+}
+
+export function canAdjustCartLineQuantity({
+  line,
+  product,
+  retailPackage = null,
+  delta,
+  cartLines,
+  sellFromShop,
+  posSalesConfig,
+  allowNegativeStock,
+  productByCode = {},
+}) {
+  const nextBaseQty = cartLineNextBaseQty(line, product, retailPackage, delta);
+  if (nextBaseQty <= 0) {
+    return { ok: true, willRemove: true };
+  }
+  if (delta < 0) {
+    return { ok: true, willRemove: false };
+  }
+  if (allowNegativeStock) {
+    return { ok: true, willRemove: false };
+  }
+
+  const lineRetailStockFlag = cartLineRetailStockFlag(line);
+  const stockCheck = posStockAvailability({
+    product,
+    baseQty: nextBaseQty,
+    cartLines,
+    sellFromShop,
+    posSalesConfig,
+    allowNegativeStock,
+    lineRetailStockFlag,
+    productByCode,
+    excludeLineId: line?.id,
+  });
+
+  return {
+    ok: stockCheck.ok,
+    willRemove: false,
+    stockCheck,
+  };
+}
+
+/** Entry qty string for repricing after a base-qty cart adjustment. */
+export function cartLineEntryQtyForBaseQty(line, product, retailPackage, baseQty) {
+  const isRetailLine = cartLineRetailStockFlag(line);
+  return posEntryQtyFromBaseQty(baseQty, product, retailPackage, isRetailLine);
 }
 
 /**
@@ -73,10 +136,11 @@ export function cartQtyAtLocation(
   excludeLineId = null,
 ) {
   if (!cartLines?.length) return 0;
+  const excludedId = excludeLineId != null ? String(excludeLineId) : null;
   let total = 0;
   for (const line of cartLines) {
     if (line.product_code !== productCode) continue;
-    if (excludeLineId != null && line.id === excludeLineId) continue;
+    if (excludedId != null && String(line.id) === excludedId) continue;
     const product = productByCode?.[line.product_code] ?? productByCode;
     const lineLoc = cartLineStockLocation(line, product, sellFromShop, posSalesConfig);
     if (lineLoc === location) {

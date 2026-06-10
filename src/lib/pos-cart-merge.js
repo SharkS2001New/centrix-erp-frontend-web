@@ -7,6 +7,7 @@ export function findMergeableCartLine(
   excludeLineId = null,
 ) {
   if (!cartLines?.length || !productCode || !computed) return null;
+  const excludedId = excludeLineId != null ? String(excludeLineId) : null;
   const nextRetail = posSalesConfig?.perLineStockRouting
     ? sellWholesale === false
     : Boolean(computed.isRetail);
@@ -14,7 +15,7 @@ export function findMergeableCartLine(
 
   return (
     cartLines.find((line) => {
-      if (excludeLineId != null && line.id === excludeLineId) return false;
+      if (excludedId != null && String(line.id) === excludedId) return false;
       if (line.product_code !== productCode) return false;
       const lineRetail = Number(line.on_wholesale_retail) === 1;
       if (lineRetail !== nextRetail) return false;

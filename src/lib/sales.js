@@ -35,7 +35,7 @@ export const SALE_TRANSITIONS = {
   paid: ["processed", "completed"],
   processed: ["completed"],
   draft: ["held", "completed", "booked", "cancelled"],
-  held: ["draft", "completed", "cancelled"],
+  held: ["draft", "booked", "completed", "cancelled"],
 };
 
 export function formatSaleKes(value) {
@@ -138,15 +138,20 @@ export function getPaymentMethodKind(method) {
   return "bank";
 }
 
-export function cartTotals(lines) {
+export function cartTotals(lines, orderDiscount = 0) {
   const rows = lines ?? [];
   const subtotal = rows.reduce((sum, l) => sum + Number(l.amount ?? 0), 0);
   const tax = rows.reduce((sum, l) => sum + Number(l.product_vat ?? 0), 0);
   const discount = rows.reduce((sum, l) => sum + Number(l.discount_given ?? 0), 0);
+  const cappedOrderDiscount = Math.min(
+    Math.max(0, Number(orderDiscount ?? 0)),
+    subtotal,
+  );
   return {
     subtotal,
     tax,
     discount,
-    total: subtotal,
+    orderDiscount: cappedOrderDiscount,
+    total: Math.max(0, subtotal - cappedOrderDiscount),
   };
 }

@@ -17,6 +17,7 @@ import {
   posEntryQtyFromCartLine,
   posEntryQtyFromBaseQty,
   posQuantityFieldMeta,
+  resolvePosQuantity,
   posStockDeductionHint,
   posUnitPriceFieldLabel,
   usesPosRetailPricing,
@@ -26,13 +27,16 @@ import {
   formatProductDiscountLabel,
   productHasConfiguredDiscount,
 } from "@/lib/product-discount";
-import { cartTotals, formatSaleKes } from "@/lib/sales";
+import { formatSaleKes } from "@/lib/sales";
 import {
   getPosSalesConfig,
   posChannelFromStockSource,
   resolveSaveOrderStatus,
 } from "@/lib/sales-settings";
 import {
+  canAdjustCartLineQuantity,
+  cartLineEntryQtyForBaseQty,
+  cartLineNextBaseQty,
   cartLineRetailStockFlag,
   posCartHasInsufficientStock,
   posLineRetailStockFlag,
@@ -45,14 +49,19 @@ import {
 import { findMergeableCartLine } from "@/lib/pos-cart-merge";
 import { PosPaymentPanel } from "./pos-payment-panel";
 import { PosProductSearch } from "./pos-product-search";
+import { PosCartPaymentOptions } from "./pos-cart-payment-options";
+import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
 import { PosSaveOrderDialog } from "./pos-save-order-dialog";
 
 const fieldInput =
-  "w-full rounded border border-[#b8a88a] bg-white px-2 py-1 text-sm text-slate-900 outline-none focus:border-[#185FA5]";
+  "w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 shadow-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20";
+
+const compactAmountInput =
+  "w-[4.5rem] shrink-0 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-right text-xs text-slate-900 shadow-sm outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
 
 function PosLabel({ children }) {
   return (
-    <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-[#4a5d23]">
+    <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-[#0C447C]">
       {children}
     </span>
   );
@@ -67,6 +76,15 @@ const EMPTY_LINE = {
   unit_price: "",
 };
 
+function cartLineRef(line) {
+  return line?.update_code ?? line?.id ?? null;
+}
+
+function sameLineId(a, b) {
+  if (a == null || b == null) return false;
+  return String(a) === String(b);
+}
+
 export function PosScreen() {
   const { user, capabilities, refreshCapabilities } = useAuth();
   const posSalesConfig = useMemo(
@@ -77,6 +95,14 @@ export function PosScreen() {
     [capabilities?.module_settings, capabilities?.allow_negative_stock],
   );
   const allowDiscounts = posSalesConfig.allowDiscounts;
+  const allowEditLineDiscount = posSalesConfig.allowEditLineDiscount;
+  const showCartLineType = posSalesConfig.enableRetailPricing;
+  const cartTableColSpan =
+    6 + (showCartLineType ? 1 : 0) + (allowDiscounts ? 1 : 0);
+  const enableOrderDiscount = posSalesConfig.enableOrderDiscount;
+  const enableVouchers = posSalesConfig.enableVouchers;
+  const enableRedeemablePoints = posSalesConfig.enableRedeemablePoints;
+  const enableMpesaOnPos = posSalesConfig.payment?.enableMpesaAmount;
   const allowEditUnitPrice = posSalesConfig.allowEditUnitPrice;
   const enableBarcodeScanner = posSalesConfig.enableBarcodeScanner;
   const allowNegativeStock = posSalesConfig.allowNegativeStock;
@@ -86,6 +112,7 @@ export function PosScreen() {
   const lockedToRouteOrder = addRouteMarkupPrices && posOrderTypeMode === "route";
   const showRouteOrderUi = addRouteMarkupPrices && posOrderTypeMode !== "normal";
   const qtyInputRef = useRef(null);
+  const discountInputRef = useRef(null);
   const unitPriceRef = useRef(null);
   const searchInputRef = useRef(null);
   const focusSearchAfterAdd = useRef(false);
@@ -169,10 +196,14 @@ export function PosScreen() {
   const [cart, setCart] = useState(null);
   const [selectedLineId, setSelectedLineId] = useState(null);
   const [editingLineId, setEditingLineId] = useState(null);
+  const [editingLineRef, setEditingLineRef] = useState(null);
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [saveOrderOpen, setSaveOrderOpen] = useState(false);
+  const [heldOrdersOpen, setHeldOrdersOpen] = useState(false);
+  const [heldOrdersCount, setHeldOrdersCount] = useState(0);
+  const [orderDialogMode, setOrderDialogMode] = useState("save");
   const [saveOrderError, setSaveOrderError] = useState(null);
   const [paymentError, setPaymentError] = useState(null);
   const [completedSale, setCompletedSale] = useState(null);
@@ -189,7 +220,62 @@ export function PosScreen() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [posSalesConfig.enableRetailPricing, paymentOpen, saveOrderOpen]);
 
-  const totals = useMemo(() => cartTotals(cart?.lines), [cart?.lines]);
+  const [orderDiscountDraft, setOrderDiscountDraft] = useState("");
+
+  const cartSummary = useMemo(() => {
+    const rows = cart?.lines ?? [];
+    const lineDiscounts = rows.reduce((sum, line) => sum + Number(line.discount_given ?? 0), 0);
+    const net = rows.reduce((sum, line) => sum + Number(line.amount ?? 0), 0);
+    const vat = rows.reduce((sum, line) => sum + Number(line.product_vat ?? 0), 0);
+    const orderDiscountRaw = enableOrderDiscount
+      ? orderDiscountDraft !== ""
+        ? Math.max(0, parseDecimalInput(orderDiscountDraft))
+        : Number(cart?.order_discount ?? 0)
+      : 0;
+    const orderDiscount = Math.min(Math.max(0, orderDiscountRaw), net);
+    const grossTotal = Math.max(0, net - orderDiscount) + vat;
+    const voucherPayment = Math.max(0, Number(cart?.voucher_payment_amount ?? 0));
+    const pointsPayment = Math.max(0, Number(cart?.points_payment_amount ?? 0));
+    const amountDue = Math.max(0, grossTotal - voucherPayment - pointsPayment);
+    return {
+      subtotal: net + lineDiscounts,
+      lineDiscounts,
+      orderDiscount,
+      discounts: lineDiscounts + orderDiscount,
+      vat,
+      total: grossTotal,
+      voucherPayment,
+      pointsPayment,
+      amountDue,
+    };
+  }, [
+    cart?.lines,
+    cart?.order_discount,
+    cart?.voucher_payment_amount,
+    cart?.points_payment_amount,
+    orderDiscountDraft,
+    enableOrderDiscount,
+  ]);
+
+  useEffect(() => {
+    const value = Number(cart?.order_discount ?? 0);
+    setOrderDiscountDraft(value > 0 ? String(value) : "");
+  }, [cart?.id, cart?.order_discount]);
+
+  const loadHeldOrdersCount = useCallback(async () => {
+    try {
+      const res = await apiRequest("/sales", {
+        searchParams: { per_page: 1, "filter[status]": "held" },
+      });
+      setHeldOrdersCount(Number(res.total ?? (res.data ?? []).length ?? 0));
+    } catch {
+      setHeldOrdersCount(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadHeldOrdersCount();
+  }, [loadHeldOrdersCount]);
 
   useEffect(() => {
     if (busy || !focusSearchAfterAdd.current) return;
@@ -357,8 +443,25 @@ export function PosScreen() {
     return () => clearTimeout(t);
   }, [searchQuery, searchProducts]);
 
-  function applyComputedPrice(product, entryQty, discount, overridePrice = null) {
+  function retailLineFlagFor(product, entryQty, retailLine = null, sellWholesaleOverride = null) {
+    if (retailLine != null) return retailLine;
+    const sellMode = sellWholesaleOverride ?? sellWholesale;
     const retailPackage = retailByCode[product.product_code] ?? null;
+    const resolved = resolvePosQuantity(entryQty, product, retailPackage, sellMode);
+    return posLineRetailStockFlag(posSalesConfig, sellMode, resolved.isRetail);
+  }
+
+  function applyComputedPrice(
+    product,
+    entryQty,
+    discount,
+    overridePrice = null,
+    retailLine = null,
+    sellWholesaleOverride = null,
+  ) {
+    const sellMode = sellWholesaleOverride ?? sellWholesale;
+    const retailPackage = retailByCode[product.product_code] ?? null;
+    const lineRetailFlag = retailLineFlagFor(product, entryQty, retailLine, sellMode);
     const autoProductDiscount =
       allowDiscounts && productHasConfiguredDiscount(product);
     let discountAmount = 0;
@@ -368,18 +471,19 @@ export function PosScreen() {
         const preDiscount = computePosLine({
           product,
           entryQty,
-          sellWholesale,
+          sellWholesale: sellMode,
           retailPackage,
           discount: 0,
           unitPriceOverride: overridePrice,
           routeMarkupPerUnit,
+          retailLine: lineRetailFlag,
         });
         discountAmount = computeProductLineDiscount(
           product,
           preDiscount.lineAmountBeforeDiscount,
           preDiscount.packQty,
         );
-      } else {
+      } else if (allowEditLineDiscount) {
         discountAmount = parseDecimalInput(discount);
       }
     }
@@ -387,11 +491,12 @@ export function PosScreen() {
     const computed = computePosLine({
       product,
       entryQty,
-      sellWholesale,
+      sellWholesale: sellMode,
       retailPackage,
       discount: discountAmount,
       unitPriceOverride: overridePrice,
       routeMarkupPerUnit,
+      retailLine: lineRetailFlag,
     });
 
     return {
@@ -442,14 +547,16 @@ export function PosScreen() {
     incrementBaseQty,
     mergeTarget = null,
     editingId = null,
+    editingRef = null,
     discount = 0,
     override = null,
     successMessage,
     clearEntry = true,
+    lineRetailStockFlagOverride = null,
   }) {
     const retailPackage = retailByCode[product.product_code] ?? null;
     let finalComputed = computed;
-    let targetLineId = editingId ?? mergeTarget?.id ?? null;
+    let targetLineRef = editingRef ?? cartLineRef(mergeTarget);
 
     if (mergeTarget && !editingId) {
       const newBaseQty = Number(mergeTarget.quantity) + incrementBaseQty;
@@ -462,11 +569,10 @@ export function PosScreen() {
       finalComputed = applyComputedPrice(product, mergedEntryQty, discount, override);
     }
 
-    const lineRetailStockFlag = posLineRetailStockFlag(
-      posSalesConfig,
-      sellWholesale,
-      computed.isRetail,
-    );
+    const lineRetailStockFlag =
+      lineRetailStockFlagOverride != null
+        ? lineRetailStockFlagOverride
+        : posLineRetailStockFlag(posSalesConfig, sellWholesale, computed.isRetail);
 
     const stockBaseQty =
       mergeTarget && !editingId
@@ -506,8 +612,8 @@ export function PosScreen() {
       discount_given: allowDiscounts ? finalComputed.discountApplied : 0,
     };
 
-    if (targetLineId) {
-      await apiRequest(`/sales/carts/${activeCart.id}/lines/${targetLineId}`, {
+    if (targetLineRef) {
+      await apiRequest(`/sales/carts/${activeCart.id}/lines/${targetLineRef}`, {
         method: "PATCH",
         body: {
           ...lineBody,
@@ -531,6 +637,7 @@ export function PosScreen() {
       setSearchResults([]);
       setUnitPriceTouched(false);
       setEditingLineId(null);
+      setEditingLineRef(null);
       setSelectedLineId(null);
       focusSearchAfterAdd.current = true;
     }
@@ -601,8 +708,9 @@ export function PosScreen() {
   }
 
   useEffect(() => {
+    if (editingLineId) return;
     setUnitPriceTouched(false);
-  }, [sellWholesale, routeMarkupPerUnit]);
+  }, [sellWholesale, routeMarkupPerUnit, editingLineId]);
 
   useEffect(() => {
     if (!selectedProduct?.product_code) return;
@@ -614,7 +722,7 @@ export function PosScreen() {
   }, [selectedProduct?.product_code]);
 
   useEffect(() => {
-    if (!selectedProduct) return;
+    if (!selectedProduct || editingLineId) return;
     const retailPackage = retailByCode[selectedProduct.product_code] ?? null;
     const autoRetailPrice = usesPosRetailPricing(
       sellWholesale,
@@ -632,7 +740,9 @@ export function PosScreen() {
       const nextDiscount = allowDiscounts
         ? computed.autoProductDiscount
           ? String(computed.discountAmount ?? 0)
-          : prev.discount
+          : allowEditLineDiscount
+            ? prev.discount
+            : "0"
         : "0";
       if (
         prev.unit_price === nextPrice &&
@@ -655,7 +765,9 @@ export function PosScreen() {
     retailByCode,
     unitPriceTouched,
     allowDiscounts,
+    allowEditLineDiscount,
     routeMarkupPerUnit,
+    editingLineId,
   ]);
 
   const retailPricingSession = isPosRetailSession(sellWholesale);
@@ -669,6 +781,7 @@ export function PosScreen() {
       retailPackage,
       lineForm.quantity,
       routeMarkupPerUnit,
+      retailLineFlagFor(selectedProduct, lineForm.quantity),
     );
   }, [selectedProduct, sellWholesale, retailByCode, lineForm.quantity, routeMarkupPerUnit]);
 
@@ -804,20 +917,71 @@ export function PosScreen() {
     return updated;
   }
 
+  async function commitOrderDiscount(rawValue = orderDiscountDraft) {
+    if (!cart?.id || !enableOrderDiscount) return;
+    const parsed = Math.max(0, parseDecimalInput(rawValue));
+    const net = (cart.lines ?? []).reduce((sum, line) => sum + Number(line.amount ?? 0), 0);
+    const next = Math.min(parsed, net);
+    if (next === Number(cart.order_discount ?? 0)) {
+      setOrderDiscountDraft(next > 0 ? String(next) : "");
+      return;
+    }
+    setBusy(true);
+    try {
+      const updated = await apiRequest(`/sales/carts/${cart.id}`, {
+        method: "PATCH",
+        body: { order_discount: next },
+      });
+      setCart(updated);
+      setOrderDiscountDraft(next > 0 ? String(next) : "");
+    } catch (e) {
+      setStatusMessage(e instanceof ApiError ? e.message : "Failed to update order discount");
+      setOrderDiscountDraft(
+        Number(cart.order_discount ?? 0) > 0 ? String(cart.order_discount) : "",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function repriceCartForRouteMarkup(nextMarkup) {
     if (!cart?.id) {
       appliedRouteMarkupRef.current = nextMarkup;
       return;
     }
-    const delta = nextMarkup - appliedRouteMarkupRef.current;
-    if (!cart.lines?.length || Math.abs(delta) < 0.0001) {
+    if (!cart.lines?.length) {
       appliedRouteMarkupRef.current = nextMarkup;
       return;
     }
-    const repriced = cart.lines.map((row) => ({
-      ...row,
-      unit_price: Math.max(0, Number(row.unit_price) + delta),
-    }));
+
+    const repriced = [];
+    for (const row of cart.lines) {
+      const product =
+        productByCode[row.product_code] ?? (await resolveProductByCode(row.product_code));
+      if (!product) {
+        repriced.push(row);
+        continue;
+      }
+      const retailPackage = retailByCode[row.product_code] ?? null;
+      const isRetailLine = cartLineRetailStockFlag(row);
+      const entryQty = posEntryQtyFromCartLine(row, product, retailPackage);
+      const computed = computePosLine({
+        product,
+        entryQty,
+        sellWholesale: !isRetailLine,
+        retailPackage,
+        discount: Number(row.discount_given ?? 0),
+        routeMarkupPerUnit: nextMarkup,
+        retailLine: isRetailLine,
+      });
+      repriced.push({
+        ...row,
+        quantity: computed.baseQty,
+        unit_price: computed.unitPricePerBase,
+        discount_given: computed.discountApplied,
+      });
+    }
+
     await rebuildCart(repriced);
     appliedRouteMarkupRef.current = nextMarkup;
   }
@@ -916,6 +1080,7 @@ export function PosScreen() {
     setBusy(true);
     setStatusMessage(null);
     const wasEditing = editingLineId;
+    const editingLine = cart?.lines?.find((l) => sameLineId(l.id, editingLineId)) ?? null;
     try {
       const ok = await commitCartLine({
         product: selectedProduct,
@@ -923,6 +1088,7 @@ export function PosScreen() {
         incrementBaseQty: computed.baseQty,
         mergeTarget,
         editingId: editingLineId,
+        editingRef: editingLineRef ?? cartLineRef(editingLine),
         discount,
         override,
         successMessage: wasEditing
@@ -945,11 +1111,38 @@ export function PosScreen() {
     }
   }
 
+  function canEditManualLineDiscount(product = selectedProduct) {
+    return (
+      allowDiscounts &&
+      allowEditLineDiscount &&
+      !productHasConfiguredDiscount(product)
+    );
+  }
+
+  function focusLineField(ref) {
+    ref.current?.focus();
+    ref.current?.select?.();
+  }
+
   function handleQuantityEnter() {
     if (!selectedProduct || busy || addLineBlocked) return;
+    if (canEditManualLineDiscount()) {
+      focusLineField(discountInputRef);
+      return;
+    }
     if (allowEditUnitPrice) {
-      unitPriceRef.current?.focus();
-      unitPriceRef.current?.select();
+      focusLineField(unitPriceRef);
+      return;
+    }
+    void handleAddLine();
+  }
+
+  function handleDiscountEnter(e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (!selectedProduct || busy || addLineBlocked) return;
+    if (allowEditUnitPrice) {
+      focusLineField(unitPriceRef);
       return;
     }
     void handleAddLine();
@@ -980,16 +1173,141 @@ export function PosScreen() {
     await refreshCart(cart.id);
   }
 
-  async function removeSelectedLine() {
-    if (!cart?.id || !cart?.lines?.length || !selectedLineId) return;
+  function cartLineQtyAdjustState(line, product, delta) {
+    if (!line || !product) {
+      return { canDecrease: false, canIncrease: false };
+    }
+    const retailPackage = retailByCode[line.product_code] ?? null;
+    const currentBase = Number(line.quantity ?? 0);
+    const decreaseCheck = canAdjustCartLineQuantity({
+      line,
+      product,
+      retailPackage,
+      delta: -1,
+      cartLines: cart?.lines,
+      sellFromShop,
+      posSalesConfig,
+      allowNegativeStock,
+      productByCode,
+    });
+    const increaseCheck = canAdjustCartLineQuantity({
+      line,
+      product,
+      retailPackage,
+      delta: 1,
+      cartLines: cart?.lines,
+      sellFromShop,
+      posSalesConfig,
+      allowNegativeStock,
+      productByCode,
+    });
+    return {
+      canDecrease: currentBase > 0 && decreaseCheck.ok,
+      canIncrease: increaseCheck.ok,
+      increaseCheck,
+    };
+  }
+
+  async function adjustCartLineQuantity(line, delta) {
+    if (!line || !cart?.id || busy || !delta) return;
     setBusy(true);
     setStatusMessage(null);
     try {
-      const updated = await apiRequest(`/sales/carts/${cart.id}/lines/${selectedLineId}`, {
+      const product =
+        productByCode[line.product_code] ?? (await resolveProductByCode(line.product_code));
+      if (!product) {
+        setStatusMessage("Product not found for this cart line.");
+        return;
+      }
+
+      const retailPackage = retailByCode[line.product_code] ?? null;
+      const isRetailLine = cartLineRetailStockFlag(line);
+      const adjustCheck = canAdjustCartLineQuantity({
+        line,
+        product,
+        retailPackage,
+        delta,
+        cartLines: cart?.lines,
+        sellFromShop,
+        posSalesConfig,
+        allowNegativeStock,
+        productByCode,
+      });
+
+      if (!adjustCheck.ok) {
+        setStatusMessage(
+          posStockInsufficientMessage(adjustCheck.stockCheck, {
+            product,
+            sellWholesale: !isRetailLine,
+            retailPackage,
+            posSalesConfig,
+          }),
+        );
+        return;
+      }
+
+      const nextBaseQty = cartLineNextBaseQty(line, product, retailPackage, delta);
+
+      if (adjustCheck.willRemove || nextBaseQty <= 0) {
+        const lineRef = cartLineRef(line);
+        if (!lineRef) return;
+        const updated = await apiRequest(`/sales/carts/${cart.id}/lines/${lineRef}`, {
+          method: "DELETE",
+        });
+        setCart(updated);
+        if (sameLineId(editingLineId, line.id)) {
+          clearLineEntry();
+        }
+        if (sameLineId(selectedLineId, line.id)) {
+          setSelectedLineId(null);
+        }
+        return;
+      }
+
+      const entryQty = cartLineEntryQtyForBaseQty(line, product, retailPackage, nextBaseQty);
+      const computed = applyComputedPrice(
+        product,
+        entryQty,
+        line.discount_given ?? 0,
+        null,
+        isRetailLine,
+        !isRetailLine,
+      );
+
+      const ok = await commitCartLine({
+        product,
+        computed,
+        incrementBaseQty: computed.baseQty,
+        editingId: line.id,
+        editingRef: cartLineRef(line),
+        discount: line.discount_given ?? 0,
+        clearEntry: false,
+        successMessage: null,
+        lineRetailStockFlagOverride: isRetailLine,
+      });
+      if (ok) {
+        setSelectedLineId(line.id);
+      }
+    } catch (e) {
+      setStatusMessage(e instanceof ApiError ? e.message : "Failed to update quantity");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeSelectedLine() {
+    if (!cart?.id || !cart?.lines?.length || !selectedLineId) return;
+    const line = cart.lines.find((l) => sameLineId(l.id, selectedLineId));
+    const lineRef = cartLineRef(line);
+    if (!lineRef) return;
+    setBusy(true);
+    setStatusMessage(null);
+    try {
+      const updated = await apiRequest(`/sales/carts/${cart.id}/lines/${lineRef}`, {
         method: "DELETE",
       });
       setCart(updated);
-      if (editingLineId === selectedLineId) {
+      if (sameLineId(editingLineId, selectedLineId)) {
         clearLineEntry();
       }
       setSelectedLineId(null);
@@ -1024,45 +1342,51 @@ export function PosScreen() {
     setSearchResults([]);
     setUnitPriceTouched(false);
     setEditingLineId(null);
+    setEditingLineRef(null);
   }
 
-  function handleEditSelectedLine(lineId = selectedLineId) {
-    if (!lineId || !cart?.lines?.length) return;
-    const line = cart.lines.find((l) => l.id === lineId);
+  async function handleEditSelectedLine(lineId = selectedLineId) {
+    if (!lineId || !cart?.lines?.length || busy) return;
+    const line = cart.lines.find((l) => sameLineId(l.id, lineId));
     if (!line) return;
 
-    const product =
-      productByCode[line.product_code] ??
-      searchResults.find((p) => p.product_code === line.product_code);
-    if (!product) {
-      setStatusMessage("Product details still loading — try again in a moment.");
-      return;
-    }
+    setBusy(true);
+    setStatusMessage(null);
+    try {
+      const product = await resolveProductByCode(line.product_code);
+      if (!product) {
+        setStatusMessage("Could not load product for this line.");
+        return;
+      }
 
-    const retailPackage = retailByCode[line.product_code] ?? null;
-    const isRetailLine = Number(line.on_wholesale_retail) === 1;
-    setSellWholesale(!isRetailLine);
-    setSelectedProductCode(line.product_code);
-    setSelectedProduct(product);
-    setSearchQuery(product.product_name ?? line.product_code);
-    setUnitPriceTouched(true);
-    setEditingLineId(line.id);
-    setSelectedLineId(line.id);
-    setLineForm({
-      product_code: line.product_code,
-      description: line.product_name ?? product.product_name ?? "",
-      package: line.uom ?? "",
-      quantity: posEntryQtyFromCartLine(line, product, retailPackage),
-      discount: String(Number(line.discount_given ?? 0)),
-      unit_price: String(
-        cartLineDisplayUnitPrice(line, product.uom, isRetailLine),
-      ),
-    });
-    setStatusMessage(`Editing line #${line.line_no ?? line.id} (${posCartLineTypeLabel(line)}).`);
-    window.requestAnimationFrame(() => {
-      qtyInputRef.current?.focus();
-      qtyInputRef.current?.select?.();
-    });
+      const retailPackage = retailByCode[line.product_code] ?? null;
+      const isRetailLine = Number(line.on_wholesale_retail) === 1;
+      setEditingLineId(line.id);
+      setEditingLineRef(cartLineRef(line));
+      setSelectedLineId(line.id);
+      setSellWholesale(!isRetailLine);
+      setSelectedProductCode(line.product_code);
+      setSelectedProduct(product);
+      setSearchQuery(product.product_name ?? line.product_code);
+      setUnitPriceTouched(true);
+      setLineForm({
+        product_code: line.product_code,
+        description: line.product_name ?? product.product_name ?? "",
+        package: line.uom ?? "",
+        quantity: posEntryQtyFromCartLine(line, product, retailPackage),
+        discount: String(Number(line.discount_given ?? 0)),
+        unit_price: String(
+          cartLineDisplayUnitPrice(line, product.uom, isRetailLine),
+        ),
+      });
+      setStatusMessage(`Editing line #${line.line_no ?? line.id} (${posCartLineTypeLabel(line)}).`);
+      window.requestAnimationFrame(() => {
+        qtyInputRef.current?.focus();
+        qtyInputRef.current?.select?.();
+      });
+    } finally {
+      setBusy(false);
+    }
   }
 
   function handleCancelEdit() {
@@ -1162,14 +1486,14 @@ export function PosScreen() {
     }
   }
 
-  async function handleSaveOrder({ walkIn, walkInName, customer }) {
+  async function handleSaveOrder({ walkIn, walkInName, customer, hold = false }) {
     if (!cart?.id) return;
     setBusy(true);
     setSaveOrderError(null);
     setStatusMessage(null);
     try {
       const body = {
-        status: resolveSaveOrderStatus(channel),
+        status: hold ? "held" : resolveSaveOrderStatus(channel),
         pay_now: 0,
         is_credit_sale: false,
         deduct_stock: false,
@@ -1185,49 +1509,59 @@ export function PosScreen() {
         body,
       });
       setCompletedSale(sale);
-      setCart(null);
       setSaveOrderOpen(false);
+      clearLineEntry();
       setSelectedLineId(null);
+      await loadCashierCart();
       const who = walkIn ? walkInName?.trim() || "Walk-in" : customer?.customer_name;
-      setStatusMessage(`Order saved for ${who} — #${sale.order_num} (${sale.status})`);
+      setStatusMessage(
+        hold
+          ? `Order held for ${who} — #${sale.order_num}. Ready for next sale.`
+          : `Order saved for ${who} — #${sale.order_num} (${sale.status}). Ready for next sale.`,
+      );
+      if (hold) {
+        await loadHeldOrdersCount();
+      }
     } catch (e) {
-      setSaveOrderError(e instanceof ApiError ? e.message : "Failed to save order");
+      setSaveOrderError(
+        e instanceof ApiError ? e.message : hold ? "Failed to hold order" : "Failed to save order",
+      );
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="-m-6 flex min-h-[calc(100vh-4rem)] flex-col bg-[#e8e0d4] text-slate-900 md:-m-8">
+    <div className="flex h-full min-h-0 flex-col bg-slate-100 text-slate-900">
       {/* Title bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#8a7a5c] bg-[#d4cbb8] px-3 py-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#144f8a] bg-[#185FA5] px-4 py-2.5 text-white shadow-sm">
         <div className="flex items-center gap-3">
-          <Link href="/sales" className="text-xs text-[#185FA5] hover:underline">
+          <Link href="/sales" className="text-xs text-blue-100 hover:text-white hover:underline">
             ← Dashboard
           </Link>
-          <h1 className="text-sm font-bold text-slate-800">CREATE NEW ORDER</h1>
+          <h1 className="text-sm font-semibold tracking-wide">CREATE NEW ORDER</h1>
           {completedSale ? (
             <Link
               href={`/sales/orders/${completedSale.id}`}
-              className="text-xs font-medium text-emerald-700 hover:underline"
+              className="text-xs font-medium text-emerald-200 hover:text-white hover:underline"
             >
               View #{completedSale.order_num}
             </Link>
           ) : null}
         </div>
-        <div className="text-right text-[10px] text-slate-600">
+        <div className="text-right text-[10px] text-blue-100">
           <p>{capabilities?.profile_label ?? "POS"} · {channel.toUpperCase()}</p>
           {statusMessage ? (
-            <p className="mt-0.5 normal-case text-slate-700">{statusMessage}</p>
+            <p className="mt-0.5 normal-case text-white">{statusMessage}</p>
           ) : null}
         </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Left — product info + search */}
-        <div className="flex w-full shrink-0 flex-col border-b border-[#8a7a5c] bg-[#f3ebe0] lg:w-[42%] lg:border-b-0 lg:border-r">
-          <div className="border-b border-[#c4b89a] px-3 py-2">
-            <p className="text-center text-xs font-bold uppercase text-[#4a5d23]">Product info</p>
+        <div className="flex w-full shrink-0 flex-col border-b border-slate-200 bg-white lg:w-[42%] lg:border-b-0 lg:border-r">
+          <div className="border-b border-slate-200 bg-slate-50/80 px-3 py-2">
+            <p className="text-center text-xs font-bold uppercase tracking-wide text-[#0C447C]">Product info</p>
             <div className="mt-2 flex flex-wrap gap-4 text-xs">
               {posSalesConfig.perLineStockRouting ? (
                 <span className="text-slate-600">
@@ -1308,7 +1642,7 @@ export function PosScreen() {
                   ) : null}
                   {lockedToRouteOrder || isRouteOrder ? (
                     <select
-                      className="min-w-[10rem] rounded border border-[#b8a88a] bg-white px-2 py-1 text-xs text-slate-900"
+                      className="min-w-[10rem] rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 shadow-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
                       value={selectedRouteId}
                       disabled={busy}
                       onChange={(e) => void handleRouteChange(e.target.value)}
@@ -1318,7 +1652,7 @@ export function PosScreen() {
                         <option key={route.id} value={route.id}>
                           {route.route_name}
                           {Number(route.route_markup_price ?? 0) > 0
-                            ? ` (+${Number(route.route_markup_price).toLocaleString()} / unit)`
+                            ? ` (+${Number(route.route_markup_price).toLocaleString()} markup)`
                             : ""}
                         </option>
                       ))}
@@ -1330,8 +1664,8 @@ export function PosScreen() {
           </div>
 
           {/* Line entry form */}
-          <div className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-1 border-b border-[#c4b89a] p-3 text-sm">
-            <div className="col-span-2 space-y-1">
+          <div className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-3 border-b border-slate-200 p-3 text-sm">
+            <div className="col-span-2 space-y-3">
               <PosProductSearch
                 inputRef={searchInputRef}
                 query={searchQuery}
@@ -1347,7 +1681,7 @@ export function PosScreen() {
                 stockDisplayMode={stockDisplayMode}
                 disabled={busy}
               />
-              <div>
+              <div className="space-y-1">
                 <PosLabel>Description</PosLabel>
                 <input
                   className={fieldInput}
@@ -1357,7 +1691,7 @@ export function PosScreen() {
                 />
               </div>
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 space-y-1">
               <PosLabel>Package</PosLabel>
               <input
                 className={`${fieldInput} cursor-not-allowed bg-slate-100 text-slate-700`}
@@ -1371,7 +1705,7 @@ export function PosScreen() {
                 </p>
               ) : null}
             </div>
-            <div className="col-span-2">
+            <div className="col-span-2 space-y-1">
               <PosLabel>{qtyFieldMeta?.label ?? "Quantity"}</PosLabel>
               <input
                 ref={qtyInputRef}
@@ -1395,7 +1729,7 @@ export function PosScreen() {
                 <p className="mt-0.5 text-[10px] text-slate-600">{qtyFieldMeta.hint}</p>
               ) : null}
               {stockDeductionHint ? (
-                <p className="mt-0.5 text-[10px] font-medium text-[#4a5d23]">
+                <p className="mt-0.5 text-[10px] font-medium text-[#0C447C]">
                   {stockDeductionHint}
                 </p>
               ) : null}
@@ -1404,26 +1738,36 @@ export function PosScreen() {
               ) : null}
             </div>
             {allowDiscounts ? (
-              <div className="col-span-2">
-                <PosLabel>Discount given</PosLabel>
+              <div className="col-span-2 space-y-1">
+                <PosLabel>Discount</PosLabel>
                 <input
-                  className={`${fieldInput} text-[#185FA5] font-semibold disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600`}
+                  ref={discountInputRef}
+                  className={`${fieldInput} font-semibold text-[#185FA5] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600`}
                   type="number"
                   min="0"
                   step="any"
                   value={lineForm.discount}
-                  readOnly={productHasConfiguredDiscount(selectedProduct)}
-                  disabled={productHasConfiguredDiscount(selectedProduct) || busy || !selectedProduct}
+                  readOnly={!canEditManualLineDiscount()}
+                  disabled={busy || !selectedProduct || !canEditManualLineDiscount()}
                   onChange={(e) => setLineForm((p) => ({ ...p, discount: e.target.value }))}
+                  onKeyDown={canEditManualLineDiscount() ? handleDiscountEnter : undefined}
                 />
                 {productHasConfiguredDiscount(selectedProduct) ? (
                   <p className="mt-0.5 text-[10px] text-slate-600">
-                    Auto: {formatProductDiscountLabel(selectedProduct)}
+                    From product: {formatProductDiscountLabel(selectedProduct)}
                   </p>
-                ) : null}
+                ) : allowEditLineDiscount ? (
+                  <p className="mt-0.5 text-[10px] text-slate-600">
+                    Enter a manual discount for this line. Press Enter to continue.
+                  </p>
+                ) : (
+                  <p className="mt-0.5 text-[10px] text-slate-600">
+                    Applied automatically from product settings.
+                  </p>
+                )}
               </div>
             ) : null}
-            <div className="col-span-2">
+            <div className="col-span-2 space-y-1">
               <PosLabel>{unitPriceLabel}</PosLabel>
               <input
                 ref={unitPriceRef}
@@ -1447,9 +1791,9 @@ export function PosScreen() {
                 type="button"
                 disabled={busy || addLineBlocked}
                 onClick={handleAddLine}
-                className="flex min-w-[7rem] flex-1 items-center justify-center gap-1 rounded border border-[#6b8f3c] bg-[#e8f5d8] py-2 text-xs font-bold uppercase text-[#2d5016] hover:bg-[#d4edc0] disabled:opacity-50"
+                className="flex min-w-[7rem] flex-1 items-center justify-center gap-1 rounded-lg border border-[#144f8a] bg-[#185FA5] py-2 text-xs font-bold uppercase text-white shadow-sm hover:bg-[#144f8a] disabled:opacity-50"
               >
-                <span className="text-base text-[#185FA5]">{editingLineId ? "✓" : "+"}</span>
+                <span className="text-base">{editingLineId ? "✓" : "+"}</span>
                 {editingLineId ? "Update" : "Add"}
               </button>
               {editingLineId ? (
@@ -1466,23 +1810,50 @@ export function PosScreen() {
                 type="button"
                 disabled={busy}
                 onClick={handleRefresh}
-                className="flex min-w-[7rem] flex-1 items-center justify-center gap-1 rounded border border-[#6b8f3c] bg-[#e8f5d8] py-2 text-xs font-bold uppercase text-[#2d5016] hover:bg-[#d4edc0] disabled:opacity-50"
+                className="flex min-w-[7rem] flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white py-2 text-xs font-bold uppercase text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
               >
-                <span className="text-base text-emerald-600">↻</span> Refresh
+                <span className="text-base text-[#185FA5]">↻</span> Refresh
               </button>
             </div>
           </div>
+
+          <PosCartPaymentOptions
+            cart={cart}
+            busy={busy}
+            enableVouchers={enableVouchers}
+            enablePoints={enableRedeemablePoints}
+            enableMpesa={enableMpesaOnPos}
+            onCartUpdated={setCart}
+            onMessage={setStatusMessage}
+          />
         </div>
 
         {/* Right — cart grid */}
-        <div className="flex min-h-0 flex-1 flex-col bg-[#fff4e6]">
+        <div className="flex min-h-0 flex-1 flex-col bg-white">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-[#E6F1FB] px-3 py-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setHeldOrdersOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#185FA5]/30 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#0C447C] shadow-sm hover:bg-[#E6F1FB] disabled:opacity-50"
+            >
+              Held orders
+              {heldOrdersCount > 0 ? (
+                <span className="inline-flex min-w-[1rem] items-center justify-center rounded-full bg-[#185FA5] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                  {heldOrdersCount > 99 ? "99+" : heldOrdersCount}
+                </span>
+              ) : null}
+            </button>
+          </div>
           <div className="min-h-0 flex-1 overflow-auto p-2">
             <table className="w-full border-collapse text-xs">
-              <thead className="sticky top-0 z-10 bg-[#f5dcc4]">
-                <tr className="border-b border-[#c4a882] text-left font-bold uppercase text-slate-700">
+              <thead className="sticky top-0 z-10 bg-slate-50">
+                <tr className="border-b border-slate-200 text-left text-[10px] font-bold uppercase tracking-wide text-slate-600">
                   <th className="px-2 py-2">Scan code</th>
                   <th className="px-2 py-2">Description</th>
-                  <th className="px-2 py-2">Type</th>
+                  {showCartLineType ? (
+                    <th className="px-2 py-2">Type</th>
+                  ) : null}
                   <th className="px-2 py-2">Package</th>
                   <th className="px-2 py-2 text-right">Qty</th>
                   <th className="px-2 py-2 text-right">Unit price</th>
@@ -1495,28 +1866,31 @@ export function PosScreen() {
               <tbody>
                 {!cart?.lines?.length ? (
                   <tr>
-                    <td colSpan={allowDiscounts ? 8 : 7} className="h-[min(40vh,320px)] text-center text-slate-500">
+                    <td colSpan={cartTableColSpan} className="h-[min(40vh,320px)] text-center text-slate-500">
                       No items in cart
                     </td>
                   </tr>
                 ) : (
                   cart.lines.map((line) => {
-                    const selected = selectedLineId === line.id;
-                    const editing = editingLineId === line.id;
+                    const selected = sameLineId(selectedLineId, line.id);
+                    const editing = sameLineId(editingLineId, line.id);
                     const productMeta = productByCode[line.product_code];
                     const uom = productMeta?.uom;
                     const isRetailLine = Number(line.on_wholesale_retail) === 1;
+                    const qtyAdjust = productMeta
+                      ? cartLineQtyAdjustState(line, productMeta, 0)
+                      : { canDecrease: false, canIncrease: false };
                     return (
                       <tr
                         key={line.id}
                         onClick={() => setSelectedLineId(line.id)}
                         onDoubleClick={() => handleEditSelectedLine(line.id)}
-                        className={`cursor-pointer border-b border-[#e8d4b8] ${
+                        className={`cursor-pointer border-b border-slate-100 ${
                           editing
-                            ? "bg-amber-100 ring-1 ring-inset ring-amber-400"
+                            ? "bg-amber-50 ring-1 ring-inset ring-amber-300"
                             : selected
-                              ? "bg-red-100"
-                              : "hover:bg-[#ffecd6]"
+                              ? "bg-[#E6F1FB]"
+                              : "hover:bg-slate-50"
                         }`}
                       >
                         <td className="px-2 py-1.5 font-mono text-[11px]">
@@ -1526,26 +1900,58 @@ export function PosScreen() {
                           </span>
                         </td>
                         <td className="px-2 py-1.5">{line.product_name}</td>
-                        <td className="px-2 py-1.5 text-[11px]">
-                          <span
-                            className={`rounded px-1.5 py-0.5 font-semibold ${
-                              isRetailLine
-                                ? "bg-violet-100 text-violet-800"
-                                : "bg-sky-100 text-sky-800"
-                            }`}
-                          >
-                            {posCartLineTypeLabel(line)}
-                          </span>
-                        </td>
+                        {showCartLineType ? (
+                          <td className="px-2 py-1.5 text-[11px]">
+                            <span
+                              className={`rounded px-1.5 py-0.5 font-semibold ${
+                                isRetailLine
+                                  ? "bg-violet-100 text-violet-800"
+                                  : "bg-sky-100 text-sky-800"
+                              }`}
+                            >
+                              {posCartLineTypeLabel(line)}
+                            </span>
+                          </td>
+                        ) : null}
                         <td className="px-2 py-1.5 text-[11px]">
                           {uom
                             ? uomWholesaleConversionExample(uom)
                             : (line.uom ?? productMeta?.packaging_label ?? "—")}
                         </td>
-                        <td className="px-2 py-1.5 text-right">
-                          {uom
-                            ? formatPosCartQty(line.quantity, uom)
-                            : formatMixedStockDisplay(line.quantity, 1).text}
+                        <td className="px-2 py-1.5">
+                          <div
+                            className="flex items-center justify-end gap-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              disabled={busy || !qtyAdjust.canDecrease}
+                              onClick={() => void adjustCartLineQuantity(line, -1)}
+                              className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                              aria-label="Decrease quantity"
+                            >
+                              −
+                            </button>
+                            <span className="min-w-[3.5rem] text-center text-[11px] font-medium text-slate-800">
+                              {uom
+                                ? formatPosCartQty(line.quantity, uom)
+                                : formatMixedStockDisplay(line.quantity, 1).text}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={busy || !qtyAdjust.canIncrease}
+                              onClick={() => void adjustCartLineQuantity(line, 1)}
+                              className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                              aria-label="Increase quantity"
+                              title={
+                                !qtyAdjust.canIncrease && !allowNegativeStock
+                                  ? "Not enough stock"
+                                  : undefined
+                              }
+                            >
+                              +
+                            </button>
+                          </div>
                         </td>
                         <td className="px-2 py-1.5 text-right">
                           {Number(
@@ -1568,14 +1974,121 @@ export function PosScreen() {
             </table>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#c4a882] bg-[#ebe3d4] px-3 py-2">
-            <div className="flex flex-wrap gap-2">
+          <div className="shrink-0 border-t border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="mb-2 border-b border-slate-200 pb-2 text-sm">
+              {enableOrderDiscount ? (
+                <div className="mb-2.5 rounded-lg border border-[#185FA5]/20 bg-gradient-to-r from-[#E6F1FB] via-white to-[#E6F1FB]/40 px-3 py-2.5 shadow-sm">
+                  <div className="grid grid-cols-12 items-center gap-3">
+                    <label
+                      htmlFor="pos-order-discount"
+                      className="col-span-8 flex items-center gap-2.5"
+                    >
+                      <span
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#185FA5]/20 bg-white text-[#185FA5] shadow-sm"
+                        aria-hidden="true"
+                      >
+                        <svg
+                          width="17"
+                          height="17"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.25"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" />
+                          <circle cx="7.5" cy="7.5" r=".5" fill="currentColor" />
+                        </svg>
+                      </span>
+                      <span className="text-sm font-bold leading-tight tracking-tight text-[#0C447C]">
+                        Give Full Order Discount
+                      </span>
+                    </label>
+                    <div className="col-span-4">
+                      <input
+                        id="pos-order-discount"
+                        type="number"
+                        min="0"
+                        step="any"
+                        disabled={busy || !cart?.lines?.length}
+                        value={orderDiscountDraft}
+                        onChange={(e) => setOrderDiscountDraft(e.target.value)}
+                        onBlur={() => void commitOrderDiscount()}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void commitOrderDiscount();
+                          }
+                        }}
+                        placeholder="0.00"
+                        aria-label="Full order discount amount"
+                        className="w-full rounded-lg border border-[#185FA5]/25 bg-white px-2.5 py-1.5 text-right text-sm font-bold text-[#0C447C] shadow-sm outline-none placeholder:font-medium placeholder:text-slate-400 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/25 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              <div className="space-y-3 pt-1">
+                <div className="flex justify-between text-slate-700">
+                  <span>Subtotal</span>
+                  <span>{formatSaleKes(cartSummary.subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-slate-700">
+                  <span>Line discounts</span>
+                  <span>
+                    {cartSummary.lineDiscounts > 0
+                      ? `−${formatSaleKes(cartSummary.lineDiscounts)}`
+                      : formatSaleKes(0)}
+                  </span>
+                </div>
+                {enableOrderDiscount && cartSummary.orderDiscount > 0 ? (
+                  <div className="flex justify-between text-slate-700">
+                    <span>Order discount</span>
+                    <span>−{formatSaleKes(cartSummary.orderDiscount)}</span>
+                  </div>
+                ) : null}
+                {cartSummary.voucherPayment > 0 ? (
+                  <div className="flex justify-between text-slate-700">
+                    <span>Voucher payment</span>
+                    <span>−{formatSaleKes(cartSummary.voucherPayment)}</span>
+                  </div>
+                ) : null}
+                {cartSummary.pointsPayment > 0 ? (
+                  <div className="flex justify-between text-slate-700">
+                    <span>Points redeemed</span>
+                    <span>−{formatSaleKes(cartSummary.pointsPayment)}</span>
+                  </div>
+                ) : null}
+                <div className="flex justify-between text-slate-700">
+                  <span>VAT</span>
+                  <span>{formatSaleKes(cartSummary.vat)}</span>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 pt-3 text-base font-bold text-[#0C447C]">
+                  <span>{cartSummary.amountDue < cartSummary.total ? "Amount due" : "Total"}</span>
+                  <span>
+                    {formatSaleKes(
+                      cartSummary.amountDue < cartSummary.total
+                        ? cartSummary.amountDue
+                        : cartSummary.total,
+                    )}
+                  </span>
+                </div>
+              </div>
+              {cartSummary.amountDue < cartSummary.total ? (
+                <div className="flex justify-between text-xs text-slate-500">
+                  <span>Order total</span>
+                  <span>{formatSaleKes(cartSummary.total)}</span>
+                </div>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2 pt-2">
               <PosActionButton
                 label="Edit item"
                 icon="✎"
                 iconClass="text-[#185FA5]"
                 disabled={busy || !selectedLineId}
-                onClick={handleEditSelectedLine}
+                onClick={() => handleEditSelectedLine()}
               />
               <PosActionButton
                 label="Remove item"
@@ -1590,6 +2103,17 @@ export function PosScreen() {
                 iconClass="text-amber-700"
                 disabled={busy || !cart?.lines?.length}
                 onClick={clearAllLines}
+              />
+              <PosActionButton
+                label="Hold"
+                icon="⏸"
+                iconClass="text-amber-700"
+                disabled={busy || !cart?.lines?.length || cartStockBlocked}
+                onClick={() => {
+                  setSaveOrderError(null);
+                  setOrderDialogMode("hold");
+                  setSaveOrderOpen(true);
+                }}
               />
               {posSalesConfig.showCheckoutOnCreate ? (
                 <PosActionButton
@@ -1610,17 +2134,14 @@ export function PosScreen() {
                   disabled={busy || !cart?.lines?.length || cartStockBlocked}
                   onClick={() => {
                     setSaveOrderError(null);
+                    setOrderDialogMode("save");
                     setSaveOrderOpen(true);
                   }}
                 />
               )}
             </div>
-            <p className="text-lg font-bold text-slate-900">
-              TOTAL:{" "}
-              <span className="text-xl">{Math.round(totals.total).toLocaleString()}</span>
-            </p>
             {cartStockBlocked ? (
-              <p className="w-full text-right text-xs font-medium text-red-700">
+              <p className="mt-2 text-right text-xs font-medium text-red-700">
                 Cart exceeds available stock — reduce quantities or enable negative stock in admin.
               </p>
             ) : null}
@@ -1631,7 +2152,7 @@ export function PosScreen() {
       <PosPaymentPanel
         open={paymentOpen}
         onClose={() => setPaymentOpen(false)}
-        billTotal={totals.total}
+        billTotal={cartSummary.amountDue}
         channel={channel}
         paymentConfig={posSalesConfig.payment}
         saving={busy}
@@ -1642,24 +2163,49 @@ export function PosScreen() {
 
       <PosSaveOrderDialog
         open={saveOrderOpen}
-        onClose={() => setSaveOrderOpen(false)}
+        mode={orderDialogMode}
+        onClose={() => {
+          setSaveOrderOpen(false);
+          setSaveOrderError(null);
+        }}
         saving={busy}
         error={saveOrderError}
         onSave={handleSaveOrder}
+      />
+
+      <PosHeldOrdersOverlay
+        open={heldOrdersOpen}
+        onClose={() => setHeldOrdersOpen(false)}
+        onCountChange={setHeldOrdersCount}
+        onRestored={(restoredCart) => {
+          setCart(restoredCart);
+          setSelectedLineId(null);
+          setEditingLineRef(null);
+          clearLineEntry();
+          setStatusMessage("Held order restored to cart — ready to complete or edit.");
+          void loadHeldOrdersCount();
+        }}
       />
     </div>
   );
 }
 
-function PosActionButton({ label, icon, iconClass, disabled, onClick }) {
+function PosActionButton({ label, icon, iconClass, disabled, onClick, badge = 0 }) {
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="flex flex-col items-center gap-0.5 rounded border border-[#8a7a5c] bg-white px-3 py-1.5 text-[10px] font-bold uppercase text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+      className="relative flex flex-col items-center gap-0.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase text-slate-700 shadow-sm hover:border-[#185FA5]/30 hover:bg-[#E6F1FB]/50 disabled:opacity-40"
     >
-      <span className={`text-lg leading-none ${iconClass}`}>{icon}</span>
+      <span className={`relative text-lg leading-none ${iconClass}`}>
+        {icon}
+        {badge > 0 ? (
+          <span className="absolute -right-2.5 -top-2 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#185FA5] px-1 text-[9px] font-bold leading-none text-white">
+            {badge > 99 ? "99+" : badge}
+          </span>
+        ) : null}
+      </span>
       {label}
     </button>
   );

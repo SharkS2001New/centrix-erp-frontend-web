@@ -28,6 +28,12 @@ const EMPTY_SALES_FORM = {
   allow_sell_from_store: false,
   enable_retail_pricing: false,
   allow_discounts: true,
+  allow_edit_line_discount: false,
+  enable_order_discount: false,
+  enable_vouchers: false,
+  enable_redeemable_points: false,
+  point_cash_value: "1",
+  points_earn_per_kes: "1000",
   allow_edit_unit_price: true,
   allow_negative_stock: false,
   enable_barcode_scanner: false,
@@ -58,6 +64,12 @@ function salesFormFromApi(res) {
     allow_sell_from_store: Boolean(sales.allow_sell_from_store),
     enable_retail_pricing: Boolean(sales.enable_retail_pricing),
     allow_discounts: Boolean(sales.allow_discounts),
+    allow_edit_line_discount: Boolean(sales.allow_edit_line_discount),
+    enable_order_discount: Boolean(sales.enable_order_discount),
+    enable_vouchers: Boolean(sales.enable_vouchers),
+    enable_redeemable_points: Boolean(sales.enable_redeemable_points),
+    point_cash_value: String(sales.point_cash_value ?? 1),
+    points_earn_per_kes: String(sales.points_earn_per_kes ?? 1000),
     allow_edit_unit_price: Boolean(sales.allow_edit_unit_price),
     allow_negative_stock: Boolean(res.allow_negative_stock),
     enable_barcode_scanner: Boolean(sales.enable_barcode_scanner),
@@ -156,6 +168,8 @@ export default function AdminSettingsPage() {
       const body = {
         ...salesForm,
         default_tax_rate: Number(salesForm.default_tax_rate) || 0,
+        point_cash_value: Number(salesForm.point_cash_value) || 0,
+        points_earn_per_kes: Number(salesForm.points_earn_per_kes) || 0,
       };
       if (
         !body.allow_sell_from_shop &&
@@ -416,11 +430,74 @@ export default function AdminSettingsPage() {
                       onChange={(v) => setSalesForm((f) => ({ ...f, allow_negative_stock: v }))}
                     />
                     <Toggle
-                      label="Allow discounts"
-                      description="Shows discount fields on products and POS. Product discount settings are applied automatically at checkout."
+                      label="Allow product discounts"
+                      description="Applies product discount rules on POS lines automatically. The discount field is read-only unless manual entry is enabled below."
                       checked={salesForm.allow_discounts}
-                      onChange={(v) => setSalesForm((f) => ({ ...f, allow_discounts: v }))}
+                      onChange={(v) =>
+                        setSalesForm((f) => ({
+                          ...f,
+                          allow_discounts: v,
+                          allow_edit_line_discount: v ? f.allow_edit_line_discount : false,
+                        }))
+                      }
                     />
+                    <Toggle
+                      label="Allow manual line discount at POS"
+                      description="Lets cashiers type a discount when adding a line instead of relying only on product discount settings."
+                      checked={salesForm.allow_edit_line_discount}
+                      disabled={!salesForm.allow_discounts}
+                      onChange={(v) => setSalesForm((f) => ({ ...f, allow_edit_line_discount: v }))}
+                    />
+                    <Toggle
+                      label="Enable full order discount"
+                      description="Shows a discount field on the cart total so cashiers can reduce the whole order before checkout."
+                      checked={salesForm.enable_order_discount}
+                      onChange={(v) => setSalesForm((f) => ({ ...f, enable_order_discount: v }))}
+                    />
+                    <Toggle
+                      label="Enable vouchers"
+                      description="Allows payment vouchers at POS and voucher management. Create payment vouchers under Sales → Vouchers."
+                      checked={salesForm.enable_vouchers}
+                      onChange={(v) => setSalesForm((f) => ({ ...f, enable_vouchers: v }))}
+                    />
+                    <Toggle
+                      label="Enable redeemable points"
+                      description="Registered customers with a loyalty card earn points on completed orders and can redeem by mobile at POS."
+                      checked={salesForm.enable_redeemable_points}
+                      onChange={(v) => setSalesForm((f) => ({ ...f, enable_redeemable_points: v }))}
+                    />
+                    <Field label="KES spent per point earned">
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        disabled={!salesForm.enable_redeemable_points}
+                        className={`${inputClassName()} w-32`}
+                        value={salesForm.points_earn_per_kes}
+                        onChange={(e) =>
+                          setSalesForm((f) => ({ ...f, points_earn_per_kes: e.target.value }))
+                        }
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        e.g. 1000 means a 5,000 KES order earns 5 points.
+                      </p>
+                    </Field>
+                    <Field label="KES value per point when redeeming">
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        disabled={!salesForm.enable_redeemable_points}
+                        className={`${inputClassName()} w-32`}
+                        value={salesForm.point_cash_value}
+                        onChange={(e) =>
+                          setSalesForm((f) => ({ ...f, point_cash_value: e.target.value }))
+                        }
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        How much each point is worth as payment at checkout.
+                      </p>
+                    </Field>
                     <Toggle
                       label="Editable unit price on POS"
                       description="When off, unit price is fixed and Enter on quantity adds the line to the cart."
