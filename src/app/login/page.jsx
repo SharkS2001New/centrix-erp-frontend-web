@@ -36,7 +36,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
+    <div className="flex min-h-full items-center justify-center overflow-y-auto bg-slate-950 px-4 py-8">
       <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-xl">
         <h1 className="text-2xl font-semibold text-white">POS / ERP</h1>
         <p className="mt-1 text-sm text-slate-400">

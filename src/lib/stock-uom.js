@@ -304,3 +304,19 @@ export function formatMixedStockDisplay(baseQty, uomOrFactor, packLabel) {
     text: text || `0 ${smallPackagingLabel(uom)}`,
   };
 }
+
+/** Compact cart qty from stored base (smallest UOM) — display only, not used for stock. */
+export function formatPosCartQty(baseQty, uom) {
+  const parts = splitBaseToHierarchy(baseQty, uom).filter((p) => p.qty > 0.0001);
+  if (!parts.length) {
+    const factor = uomConversionFactor(uom);
+    const label = factor > 1 ? fullPackageLabel(uom) : smallPackagingLabel(uom);
+    return `0 ${label}`;
+  }
+  return parts.map((p) => `${formatDisplayQty(p.qty)} ${p.label}`).join(", ");
+}
+
+/** @deprecated use formatPosCartQty */
+export function formatSmallUnitTotal(baseQty, uom) {
+  return formatPosCartQty(baseQty, uom);
+}

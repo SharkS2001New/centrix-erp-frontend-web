@@ -81,6 +81,19 @@ const navSections = [
       { href: "/fulfillment/routes", label: "Routes", module: "customers_suppliers" },
     ],
   },
+  {
+    label: "Administration",
+    module: "admin",
+    items: [
+      { href: "/admin", label: "Overview", module: "admin", exact: true },
+      { href: "/admin/company", label: "Company profile", module: "admin" },
+      { href: "/admin/branches", label: "Branches", module: "admin" },
+      { href: "/admin/users", label: "Users", module: "admin" },
+      { href: "/admin/roles", label: "Roles & permissions", module: "admin" },
+      { href: "/admin/audit", label: "Audit trail", module: "admin" },
+      { href: "/admin/settings", label: "System settings", module: "admin" },
+    ],
+  },
 ];
 
 export function Sidebar() {
@@ -98,14 +111,14 @@ export function Sidebar() {
     .filter((section) => section.items.length > 0);
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
+    <aside className="flex h-full min-h-0 w-56 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
       <div className="border-b border-slate-800 px-4 py-5">
         <p className="text-sm font-semibold text-white">POS / ERP</p>
         <p className="mt-1 truncate text-xs text-slate-400">
           {capabilities?.profile_label ?? capabilities?.deployment_profile}
         </p>
       </div>
-      <nav className="flex-1 space-y-3 overflow-y-auto p-3">
+      <nav className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-3">
         {visibleSections.map((section) => (
           <div key={section.label ?? "main"}>
             {section.label && (

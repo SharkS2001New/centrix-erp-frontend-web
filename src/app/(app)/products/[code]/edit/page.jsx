@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
+import { mergeSalesSettings } from "@/lib/sales-settings";
 import {
   buildProductBody,
   EMPTY_PRODUCT_FORM,
@@ -21,6 +23,8 @@ import { SubcategoryCreateModal } from "@/components/products/subcategory-create
 export default function EditProductPage() {
   const params = useParams();
   const router = useRouter();
+  const { capabilities } = useAuth();
+  const allowDiscounts = Boolean(mergeSalesSettings(capabilities?.module_settings).allow_discounts);
   const productCode = decodeURIComponent(params.code);
 
   const {
@@ -121,7 +125,7 @@ export default function EditProductPage() {
     setFormError(null);
     try {
       const uom = uoms.find((u) => String(u.id) === String(form.unit_id)) ?? null;
-      const body = buildProductBody(form, uom);
+      const body = buildProductBody(form, uom, { allowDiscounts });
       await apiRequest(`/products/${encodeURIComponent(productCode)}`, {
         method: "PUT",
         body,
@@ -193,6 +197,7 @@ export default function EditProductPage() {
               imagePreview={imagePreview}
               onImageSelect={onImageSelect}
               onOpenSubcategoryModal={() => setSubcategoryModalOpen(true)}
+              allowDiscounts={allowDiscounts}
             />
           </ProductFormCard>
 

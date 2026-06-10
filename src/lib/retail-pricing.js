@@ -62,19 +62,52 @@ export function tierForQuantity(tiers, quantity) {
   return null;
 }
 
-export function retailUnitPrice(baseUnitPrice, tiers, quantityInSmall) {
+/** Catalog unit_price is per full pack when conversion_factor > 1, else per small unit. */
+export function wholesalePricePerSmallUnit(baseUnitPrice, uom) {
   const base = Number(baseUnitPrice ?? 0);
-  const tier = tierForQuantity(tiers, quantityInSmall);
-  if (!tier) return base;
-  return base + Number(tier.markup_price ?? 0);
+  const factor = uomConversionFactor(uom);
+  if (factor <= 1) return base;
+  return base / factor;
 }
 
-export function linePrice(baseUnitPrice, tiers, quantityInSmall, isRetail = true) {
+/** Wholesale price for exactly one unit at full / middle / small level. */
+export function wholesalePriceAtMeasureLevel(baseUnitPrice, uom, level) {
+  const base = Number(baseUnitPrice ?? 0);
+  const factor = uomConversionFactor(uom);
+  if (factor <= 1) return base;
+  if (level === "full") return base;
+  if (level === "middle" && uomHasMiddlePack(uom)) {
+    const mid = Number(uom.middle_factor ?? 1);
+    return (base / factor) * mid;
+  }
+  return base / factor;
+}
+
+/** Retail price for one unit at the tier's measure level: wholesale ÷ factor + markup. */
+export function retailPriceAtMeasureLevel(baseUnitPrice, tier, uom) {
+  const level = tier?.measure_level ?? "small";
+  const markup = Number(tier?.markup_price ?? 0);
+  return wholesalePriceAtMeasureLevel(baseUnitPrice, uom, level) + markup;
+}
+
+/** Per-small-unit retail price for a quantity that falls in a tier range. */
+export function retailUnitPrice(baseUnitPrice, tiers, quantityInSmall, uom = null) {
+  const tier = tierForQuantity(tiers, quantityInSmall);
+  if (!tier) {
+    return wholesalePricePerSmallUnit(baseUnitPrice, uom);
+  }
+  const priceAtLevel = retailPriceAtMeasureLevel(baseUnitPrice, tier, uom);
+  const smallPerLevel = smallUnitsPerLevel(uom, tier.measure_level ?? "small");
+  return priceAtLevel / smallPerLevel;
+}
+
+export function linePrice(baseUnitPrice, tiers, quantityInSmall, isRetail = true, uom = null) {
   const qty = Number(quantityInSmall ?? 0);
   if (!isRetail || !tiers.length) {
-    return Math.round(baseUnitPrice * qty * 100) / 100;
+    const perSmall = wholesalePricePerSmallUnit(baseUnitPrice, uom);
+    return Math.round(perSmall * qty * 100) / 100;
   }
-  const perUnit = retailUnitPrice(baseUnitPrice, tiers, qty);
+  const perUnit = retailUnitPrice(baseUnitPrice, tiers, qty, uom);
   return Math.round(perUnit * qty * 100) / 100;
 }
 
@@ -90,8 +123,18 @@ export function smallUnitsPerLevel(uom, level) {
 
 /** Selling price for exactly one unit at full / middle / small level. */
 export function priceForMeasureLevel(baseUnitPrice, tiers, uom, level, sellOnRetail) {
-  const qty = smallUnitsPerLevel(uom, level);
-  return linePrice(baseUnitPrice, tiers, qty, sellOnRetail);
+  const wholesaleAtLevel = wholesalePriceAtMeasureLevel(baseUnitPrice, uom, level);
+  if (!sellOnRetail || !tiers.length) {
+    return wholesaleAtLevel;
+  }
+
+  const qtyAtLevel = smallUnitsPerLevel(uom, level);
+  const tier =
+    tierForQuantity(tiers, qtyAtLevel) ??
+    tiers.find((t) => (t.measure_level || "small") === level);
+
+  if (!tier) return wholesaleAtLevel;
+  return retailPriceAtMeasureLevel(baseUnitPrice, tier, uom);
 }
 
 /** Value stock by pricing each hierarchy part at its own tier quantity. */
@@ -103,7 +146,8 @@ export function stockSellingValue(baseQty, unitPrice, uom, retailPackage, sellOn
   const sellRetail = Boolean(sellOnRetail) && tiers.length > 0;
 
   if (!sellRetail) {
-    return Math.round(Number(unitPrice ?? 0) * qty * 100) / 100;
+    const perSmall = wholesalePricePerSmallUnit(unitPrice, uom);
+    return Math.round(perSmall * qty * 100) / 100;
   }
 
   const parts = splitBaseToHierarchy(qty, uom);
@@ -120,7 +164,7 @@ export function stockSellingValue(baseQty, unitPrice, uom, retailPackage, sellOn
     else if (midLabel && part.label === midLabel) smallQty = part.qty * midFactor;
     else if (part.label === smallLabel) smallQty = part.qty;
 
-    total += linePrice(unitPrice, tiers, smallQty, true);
+    total += linePrice(unitPrice, tiers, smallQty, true, uom);
   }
 
   return Math.round(total * 100) / 100;

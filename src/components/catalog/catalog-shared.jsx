@@ -223,13 +223,14 @@ function PagBtn({ children, onClick, disabled, active }) {
   );
 }
 
-export function IconButton({ label, onClick, danger, children }) {
+export function IconButton({ label, onClick, danger, disabled, children }) {
   return (
     <button
       type="button"
       aria-label={label}
       onClick={onClick}
-      className={`inline-flex rounded-md p-1 text-slate-500 hover:bg-slate-100 ${
+      disabled={disabled}
+      className={`inline-flex rounded-md p-1 text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${
         danger ? "hover:bg-red-50 hover:text-red-700" : "hover:text-slate-700"
       }`}
     >

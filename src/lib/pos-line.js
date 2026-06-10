@@ -1,0 +1,381 @@
+import {
+  linePrice,
+  retailPriceAtMeasureLevel,
+  tierForQuantity,
+  tiersForRetailPackage,
+  wholesalePriceAtMeasureLevel,
+  wholesalePricePerSmallUnit,
+  smallUnitsPerLevel,
+} from "@/lib/retail-pricing";
+import { formatSaleKes } from "@/lib/sales";
+import {
+  baseToDisplayQty,
+  displayToBaseQty,
+  formatDisplayQty,
+  formatPosCartQty,
+  uomConversionFactor,
+} from "@/lib/stock-uom";
+import {
+  fullPackageLabel,
+  measureLevelLabel,
+  smallPackagingLabel,
+  uomSmallUnitIsWholeNumber,
+} from "@/lib/uom-packaging";
+
+/** POS session is selling at retail when the cashier toggles it on. */
+export function isPosRetailSession(sellWholesale) {
+  return !sellWholesale;
+}
+
+/** Product has retail package tiers configured. */
+export function productHasRetailTiers(retailPackage) {
+  return tiersForRetailPackage(retailPackage).length > 0;
+}
+
+/** Retail tier pricing applies for this product in the current POS session. */
+export function usesPosRetailPricing(sellWholesale, product, retailPackage) {
+  return isPosRetailSession(sellWholesale) && productHasRetailTiers(retailPackage);
+}
+
+/** Default POS quantity: 1 wholesale pack or 1 small unit in retail session. */
+export function defaultPosEntryQty(product, sellWholesale, retailPackage = null) {
+  return "1";
+}
+
+function formatTierRange(tier, smallLabel) {
+  const to = tier.max_qty == null ? "∞" : tier.max_qty;
+  return `${tier.min_qty}–${to} ${smallLabel}`;
+}
+
+/**
+ * Label + hint for the single quantity field (cashier never picks package manually).
+ */
+export function posQuantityFieldMeta(
+  product,
+  sellWholesale,
+  retailPackage = null,
+  entryQty = "1",
+) {
+  const uom = product?.uom ?? null;
+  const factor = uomConversionFactor(uom);
+  const retailPricing = usesPosRetailPricing(sellWholesale, product, retailPackage);
+  const tiers = tiersForRetailPackage(retailPackage);
+
+  if (isPosRetailSession(sellWholesale) && !product) {
+    return {
+      label: "Quantity",
+      hint: "Select a product — retail tier sets the selling unit and price",
+      step: "any",
+    };
+  }
+
+  if (isPosRetailSession(sellWholesale) && product && !tiers.length) {
+    const small = smallPackagingLabel(uom);
+    return {
+      label: `Quantity (${small})`,
+      hint: "No retail tiers for this product — wholesale pricing applies",
+      step: uomSmallUnitIsWholeNumber(uom) ? "1" : "any",
+    };
+  }
+
+  if (!retailPricing) {
+    const unit =
+      factor > 1 ? fullPackageLabel(uom) : smallPackagingLabel(uom);
+    const small = smallPackagingLabel(uom);
+    return {
+      label: `Quantity (${unit})`,
+      hint:
+        factor > 1
+          ? `Wholesale — each count is 1 ${unit}; stock is recorded in ${small}`
+          : `Wholesale — count in ${unit}`,
+      step: uomSmallUnitIsWholeNumber(uom) ? "1" : "any",
+    };
+  }
+
+  const small = smallPackagingLabel(uom);
+  const qty = Math.max(0, Number(entryQty) || 0);
+  const tierQty = qty > 0 ? qty : 1;
+  const tier = tierForQuantity(tiers, qty) ?? tierForQuantity(tiers, tierQty);
+  const sellUnit = tier
+    ? measureLevelLabel(uom, tier.measure_level || "small")
+    : small;
+
+  return {
+    label: `Quantity (${small})`,
+    hint: tier
+      ? `Retail tier ${formatTierRange(tier, small)} → sold as ${sellUnit}`
+      : `Retail — enter ${small}; stock is recorded in ${small}`,
+    step: uomSmallUnitIsWholeNumber(uom) ? "1" : "any",
+  };
+}
+
+/**
+ * Resolve a single cashier quantity into base stock units, wholesale pack qty,
+ * retail tier, and the measure level / package label to show.
+ *
+ * `baseQty` is always in the smallest UOM (kg, pcs, …) — this is what cart lines,
+ * sales, and stock ledger use. Display labels (e.g. "1 bag") are derived from baseQty.
+ */
+export function resolvePosQuantity(entryQty, product, retailPackage, sellWholesale) {
+  const uom = product?.uom ?? null;
+  const factor = uomConversionFactor(uom);
+  const qty = Math.max(0, Number(entryQty) || 0);
+  const tiers = tiersForRetailPackage(retailPackage);
+  const retailPricing = usesPosRetailPricing(sellWholesale, product, retailPackage);
+
+  if (!retailPricing) {
+    const packQty = qty;
+    const baseQty = factor > 1 ? displayToBaseQty(qty, factor) : qty;
+    const measureLevel = factor > 1 ? "full" : "small";
+    return {
+      baseQty,
+      packQty,
+      measureLevel,
+      packagingLabel: measureLevelLabel(uom, measureLevel),
+      tier: null,
+      isRetail: false,
+      pricingRetail: false,
+      retailSession: false,
+    };
+  }
+
+  const tier = tierForQuantity(tiers, qty);
+  const baseQty = qty;
+  const packQty = factor > 1 ? baseToDisplayQty(baseQty, factor) : qty;
+
+  const tierQty = qty > 0 ? qty : 1;
+  const activeTier = tier ?? tierForQuantity(tiers, tierQty);
+
+  if (!activeTier) {
+    const measureLevel = factor > 1 ? "full" : "small";
+    return {
+      baseQty,
+      packQty,
+      measureLevel,
+      packagingLabel: measureLevelLabel(uom, measureLevel),
+      tier: null,
+      isRetail: false,
+      pricingRetail: false,
+      retailSession: true,
+    };
+  }
+
+  const measureLevel = activeTier.measure_level || "small";
+  const inTier = Boolean(tier);
+  return {
+    baseQty,
+    packQty,
+    measureLevel,
+    packagingLabel: measureLevelLabel(uom, measureLevel),
+    tier: activeTier,
+    isRetail: inTier,
+    pricingRetail: inTier,
+    retailSession: true,
+  };
+}
+
+/** Unit price field label — retail/markup/route breakdown when applicable. */
+export function posUnitPriceFieldLabel(
+  product,
+  sellWholesale,
+  retailPackage = null,
+  entryQty = "1",
+  routeMarkupPerUnit = 0,
+) {
+  const base = "Unit price";
+  if (!product) return base;
+
+  const uom = product?.uom ?? null;
+  const resolved = resolvePosQuantity(entryQty, product, retailPackage, sellWholesale);
+  const level = resolved.measureLevel || "small";
+  const routePerBase = Math.max(0, Number(routeMarkupPerUnit ?? 0));
+  const routeAtLevel = routePerBase * smallUnitsPerLevel(uom, level);
+  const parts = [];
+
+  if (usesPosRetailPricing(sellWholesale, product, retailPackage) && resolved.tier && resolved.pricingRetail) {
+    const wholesaleAtLevel = wholesalePriceAtMeasureLevel(
+      Number(product.unit_price ?? 0),
+      uom,
+      resolved.tier.measure_level || "small",
+    );
+    parts.push(`Retail price ${formatSaleKes(wholesaleAtLevel)}`);
+    const markup = Number(resolved.tier.markup_price ?? 0);
+    if (markup > 0) {
+      parts.push(`Markup ${formatSaleKes(markup)}`);
+    }
+  } else if (routeAtLevel > 0) {
+    const factor = uomConversionFactor(uom);
+    const wholesaleMarkup = Number(retailPackage?.wholesale_markup_price ?? 0);
+    const catalogUnitPrice = Number(product.unit_price ?? 0);
+    const priceAtLevel =
+      factor > 1 && !isPosRetailSession(sellWholesale)
+        ? catalogUnitPrice + wholesaleMarkup
+        : wholesalePriceAtMeasureLevel(catalogUnitPrice, uom, level) + wholesaleMarkup;
+    parts.push(`Price ${formatSaleKes(priceAtLevel)}`);
+  }
+
+  if (routeAtLevel > 0) {
+    parts.push(`Route markup ${formatSaleKes(routeAtLevel)}`);
+  }
+
+  if (parts.length === 0) return base;
+  return `${base} (${parts.join(" + ")})`;
+}
+
+/**
+ * Convert cashier sale qty to base (smallest UOM) for cart lines and stock ledger.
+ * Wholesale: entry is in full packs when conversion_factor > 1. Retail: entry is in small units.
+ */
+export function posEntryToBaseQty(entryQty, product, sellWholesale, retailPackage = null) {
+  return resolvePosQuantity(entryQty, product, retailPackage, sellWholesale).baseQty;
+}
+
+/** Label for stock that will be deducted — smallest UOM plus packaging equivalent when applicable. */
+export function posStockDeductionHint(entryQty, product, sellWholesale, retailPackage = null) {
+  const uom = product?.uom ?? null;
+  if (!uom) return null;
+  const baseQty = posEntryToBaseQty(entryQty, product, sellWholesale, retailPackage);
+  if (baseQty <= 0) return null;
+  const small = smallPackagingLabel(uom);
+  const baseText = `${formatDisplayQty(baseQty)} ${small}`;
+  const packText = formatPosCartQty(baseQty, uom);
+  const factor = uomConversionFactor(uom);
+
+  if (factor <= 1 || packText === baseText) {
+    return `Stock deducts ${baseText}`;
+  }
+
+  return `Stock deducts ${baseText} equal to ${packText}`;
+}
+
+/**
+ * Compute POS line totals using catalog UOM + retail package settings.
+ * `baseQty` (smallest UOM) is sent to the API for cart lines and stock deduction.
+ */
+export function computePosLine({
+  product,
+  entryQty = "1",
+  sellWholesale,
+  retailPackage = null,
+  discount = 0,
+  unitPriceOverride = null,
+  routeMarkupPerUnit = 0,
+}) {
+  const uom = product?.uom ?? null;
+  const factor = uomConversionFactor(uom);
+  const resolved = resolvePosQuantity(entryQty, product, retailPackage, sellWholesale);
+  const { baseQty, packQty, pricingRetail, retailSession } = resolved;
+  const catalogUnitPrice = Number(product?.unit_price ?? 0);
+  const tiers = tiersForRetailPackage(retailPackage);
+  const wholesaleMarkup = Number(retailPackage?.wholesale_markup_price ?? 0);
+
+  let lineAmount;
+  let displayUnitPrice;
+
+  if (unitPriceOverride != null && Number(unitPriceOverride) > 0) {
+    const override = Number(unitPriceOverride);
+    if (retailSession || factor <= 1) {
+      lineAmount = baseQty * override;
+      displayUnitPrice = override;
+    } else {
+      lineAmount = packQty * override;
+      displayUnitPrice = override;
+    }
+  } else if (retailSession && resolved.tier) {
+    displayUnitPrice = retailPriceAtMeasureLevel(
+      catalogUnitPrice,
+      resolved.tier,
+      uom,
+    );
+    if (pricingRetail && baseQty > 0) {
+      lineAmount = linePrice(catalogUnitPrice, tiers, baseQty, true, uom);
+    } else if (baseQty > 0) {
+      const perSmall = wholesalePricePerSmallUnit(catalogUnitPrice, uom);
+      displayUnitPrice = perSmall;
+      lineAmount = perSmall * baseQty;
+    } else {
+      lineAmount = 0;
+    }
+  } else {
+    displayUnitPrice = catalogUnitPrice + wholesaleMarkup;
+    lineAmount = packQty * displayUnitPrice;
+  }
+
+  const routeMarkup = Math.max(0, Number(routeMarkupPerUnit ?? 0));
+  if (routeMarkup > 0 && baseQty > 0) {
+    lineAmount += routeMarkup * baseQty;
+    const level = resolved.measureLevel || "small";
+    displayUnitPrice += routeMarkup * smallUnitsPerLevel(uom, level);
+  }
+
+  const lineAmountBeforeDiscount = lineAmount;
+  const discountNum = Math.max(0, Number(discount ?? 0));
+  lineAmount = Math.max(0, lineAmount - discountNum);
+  const unitPricePerBase = baseQty > 0 ? lineAmount / baseQty : 0;
+
+  return {
+    ...resolved,
+    lineAmountBeforeDiscount: Math.round(lineAmountBeforeDiscount * 100) / 100,
+    discountApplied: Math.round(discountNum * 100) / 100,
+    lineAmount: Math.round(lineAmount * 100) / 100,
+    displayUnitPrice: Math.round(displayUnitPrice * 100) / 100,
+    unitPricePerBase: Math.round(unitPricePerBase * 10000) / 10000,
+    qtyLabel: formatPosCartQty(baseQty, uom),
+    uomLabel: resolved.packagingLabel,
+  };
+}
+
+/** Unit price shown in product search for the current POS pricing mode. */
+export function posListUnitPrice(product, sellWholesale, retailPackage) {
+  if (!product?.uom) {
+    return Number(product?.unit_price ?? 0);
+  }
+  const { displayUnitPrice } = computePosLine({
+    product,
+    entryQty: "1",
+    sellWholesale,
+    retailPackage,
+    discount: 0,
+  });
+  return displayUnitPrice;
+}
+
+/** Cart grid unit price — per retail measure unit or per wholesale pack. */
+export function cartLineDisplayUnitPrice(line, uom, isRetailLine = false) {
+  const perBase = Number(line?.unit_price ?? 0);
+  const factor = uomConversionFactor(uom);
+  if (isRetailLine || factor <= 1) {
+    return perBase;
+  }
+  return Math.round(perBase * factor * 100) / 100;
+}
+
+/** Rebuild POS entry quantity from a saved cart line (base qty in DB). */
+export function posEntryQtyFromCartLine(line, product, retailPackage) {
+  const uom = product?.uom ?? null;
+  const factor = uomConversionFactor(uom);
+  const baseQty = Number(line?.quantity ?? 0);
+  const isRetailLine = Number(line?.on_wholesale_retail) === 1;
+
+  if (isRetailLine && productHasRetailTiers(retailPackage)) {
+    return String(baseQty);
+  }
+  if (factor > 1 && !isRetailLine) {
+    return String(baseToDisplayQty(baseQty, factor));
+  }
+  return String(baseQty);
+}
+
+/** Rebuild POS entry quantity from a base (stock) quantity. */
+export function posEntryQtyFromBaseQty(baseQty, product, retailPackage, isRetailLine) {
+  return posEntryQtyFromCartLine(
+    { quantity: baseQty, on_wholesale_retail: isRetailLine ? 1 : 0 },
+    product,
+    retailPackage,
+  );
+}
+
+/** Short label for retail vs wholesale on cart rows. */
+export function posCartLineTypeLabel(line) {
+  return Number(line?.on_wholesale_retail) === 1 ? "Retail" : "Wholesale";
+}

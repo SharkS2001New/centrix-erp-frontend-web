@@ -114,7 +114,13 @@ export function uomStockTakeHint(uom) {
 
 export function smallPackagingLabel(uom) {
   if (!uom) return "pcs";
-  return (uom.small_packaging_label || uom.uom_type || "pcs").trim();
+  const explicit = uom.small_packaging_label?.trim();
+  if (explicit) return explicit;
+  const factor = Number(uom.conversion_factor ?? 1);
+  if (factor > 1 && uom.uom_type) {
+    return defaultSmallLabelForType(uom.uom_type);
+  }
+  return (uom.uom_type || "pcs").trim();
 }
 
 export function fullPackageLabel(uom, fallback = "pack") {
@@ -131,15 +137,21 @@ export function uomMeasureLevels(uom) {
     return [{ level: "small", label: "pcs" }];
   }
 
-  const levels = [{ level: "small", label: smallPackagingLabel(uom) }];
-  const middle = middlePackagingLabel(uom);
-  if (middle) {
-    levels.push({ level: "middle", label: middle });
-  }
-  if (Number(uom.conversion_factor ?? 1) > 1) {
-    levels.push({ level: "full", label: fullPackageLabel(uom) });
-  }
-  return levels;
+  const stockLevels = uomStockTakeLevels(uom);
+  const levels = [...stockLevels].reverse().map(({ key, label }) => ({
+    level: key,
+    label,
+  }));
+
+  const seen = new Map();
+  return levels.map(({ level, label }) => {
+    const key = label.toLowerCase();
+    if (seen.has(key)) {
+      return { level, label: `${label} (${level})` };
+    }
+    seen.set(key, level);
+    return { level, label };
+  });
 }
 
 export function measureLevelLabel(uom, level) {
@@ -209,22 +221,30 @@ export function uomSmallUnitIsWholeNumber(uom) {
   return uomCategory(uom?.uom_type) === "count";
 }
 
+/** e.g. "1 bale = 12 pcs" — one wholesale (full) unit to small units. */
+export function uomWholesaleConversionExample(uom) {
+  const factor = Number(uom?.conversion_factor ?? 1);
+  const small = smallPackagingLabel(uom);
+  if (factor <= 1) return `1 ${small}`;
+
+  const full = fullPackageLabel(uom);
+  const factorText = uomSmallUnitIsWholeNumber(uom)
+    ? String(Math.round(factor))
+    : String(factor);
+
+  return `1 ${full} = ${factorText} ${small}`;
+}
+
 /** e.g. "1 bale = 12 pcs · 1 outer = 10 pcs" */
 export function uomConversionSummary(uom) {
   const factor = Number(uom?.conversion_factor ?? 1);
   if (factor <= 1) return null;
 
-  const full = fullPackageLabel(uom);
-  const small = smallPackagingLabel(uom);
-  const factorText = uomSmallUnitIsWholeNumber(uom)
-    ? String(Math.round(factor))
-    : String(factor);
-
-  const parts = [`1 ${full} = ${factorText} ${small}`];
+  const parts = [uomWholesaleConversionExample(uom)];
 
   if (uomHasMiddlePack(uom)) {
     const mid = Number(uom.middle_factor ?? 0);
-    parts.push(`1 ${middlePackagingLabel(uom)} = ${mid} ${small}`);
+    parts.push(`1 ${middlePackagingLabel(uom)} = ${mid} ${smallPackagingLabel(uom)}`);
   }
 
   return parts.join(" · ");

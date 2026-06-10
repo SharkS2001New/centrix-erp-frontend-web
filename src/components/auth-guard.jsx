@@ -17,7 +17,7 @@ export function AuthGuard({ children }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-300">
+      <div className="flex h-full items-center justify-center bg-slate-950 text-slate-300">
         Loading…
       </div>
     );

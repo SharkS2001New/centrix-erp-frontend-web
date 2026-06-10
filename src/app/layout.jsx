@@ -15,7 +15,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${dmSans.variable} h-full`}>
-      <body className="min-h-full bg-slate-950 font-sans text-slate-100 antialiased">
+      <body className="h-full overflow-hidden bg-slate-950 font-sans text-slate-100 antialiased">
         <Providers>{children}</Providers>
       </body>
     </html>

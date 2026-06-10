@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { Field, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
-import { RetailPricingTiersEditor } from "@/components/catalog/retail-pricing-tiers";
+import { RetailPricingTiersEditor, defaultRetailPricingTier } from "@/components/catalog/retail-pricing-tiers";
 import {
-  EMPTY_PRICING_TIER,
   coercePricingTiersInput,
   fullPackageLabel,
   normalizePricingTiers,
@@ -47,7 +46,7 @@ export const EMPTY_PRODUCT_FORM = {
   reorder_packs: "",
   sell_on_retail: false,
   retail_package_id: "",
-  retail_pricing_tiers: [{ ...EMPTY_PRICING_TIER, min_qty: "1" }],
+  retail_pricing_tiers: [defaultRetailPricingTier(null)],
   vat_id: "",
   is_active: true,
 };
@@ -74,7 +73,7 @@ export function retailPackageToFormFields(row) {
   if (!row) {
     return {
       retail_package_id: "",
-      retail_pricing_tiers: [{ ...EMPTY_PRICING_TIER, min_qty: "1" }],
+      retail_pricing_tiers: [defaultRetailPricingTier(null)],
     };
   }
 
@@ -91,7 +90,12 @@ export function retailPackageToFormFields(row) {
 
   return {
     retail_package_id: row.id != null ? String(row.id) : "",
-    retail_pricing_tiers: tiers.length ? tiers : [{ ...EMPTY_PRICING_TIER, min_qty: "1" }],
+    retail_pricing_tiers: tiers.length
+      ? tiers.map((t) => ({
+          ...t,
+          measure_level: t.measure_level || "small",
+        }))
+      : [defaultRetailPricingTier(null)],
   };
 }
 
@@ -133,7 +137,7 @@ export function productToForm(product, retailPackage = null, uom = null) {
   };
 }
 
-export function buildProductBody(form, uom = null) {
+export function buildProductBody(form, uom = null, { allowDiscounts = true } = {}) {
   const unitPrice = parseDecimalInput(form.unit_price);
   const body = {
     product_code: form.product_code.trim(),
@@ -143,7 +147,9 @@ export function buildProductBody(form, uom = null) {
     unit_price: unitPrice,
     last_selling_price: unitPrice,
     last_cost_price: parseDecimalInput(form.last_cost_price),
-    discount_type: form.discount_type === "fixed" ? "fixed" : "percentage",
+    discount_type: "percentage",
+    discount_percentage: 0,
+    discount_value: 0,
     product_weight: parseDecimalInput(form.product_weight) || null,
     stock_in_shop: stockBaseFromForm(form, "shop", uom),
     stock_in_store: stockBaseFromForm(form, "store", uom),
@@ -154,12 +160,15 @@ export function buildProductBody(form, uom = null) {
     deleted_at: form.is_active ? null : new Date().toISOString(),
   };
 
-  if (body.discount_type === "fixed") {
-    body.discount_value = parseDecimalInput(form.discount_value);
-    body.discount_percentage = 0;
-  } else {
-    body.discount_percentage = parseDecimalInput(form.discount_percentage);
-    body.discount_value = 0;
+  if (allowDiscounts) {
+    body.discount_type = form.discount_type === "fixed" ? "fixed" : "percentage";
+    if (body.discount_type === "fixed") {
+      body.discount_value = parseDecimalInput(form.discount_value);
+      body.discount_percentage = 0;
+    } else {
+      body.discount_percentage = parseDecimalInput(form.discount_percentage);
+      body.discount_value = 0;
+    }
   }
 
   return body;
@@ -309,6 +318,7 @@ function RetailPackageFields({ form, onChange, productUom }) {
         tiers={form.retail_pricing_tiers}
         onChange={(retail_pricing_tiers) => onChange("retail_pricing_tiers", retail_pricing_tiers)}
         productUom={productUom}
+        unitPrice={form.unit_price}
       />
     </div>
   );
@@ -329,6 +339,7 @@ export function ProductFormFields({
   onOpenSubcategoryModal,
   generatingSku = false,
   onGenerateSku,
+  allowDiscounts = true,
 }) {
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
@@ -443,7 +454,16 @@ export function ProductFormFields({
       <Field label="Unit of measure">
         <select
           value={form.unit_id}
-          onChange={(e) => onChange("unit_id", e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            onChange("unit_id", value);
+            if (form.sell_on_retail) {
+              const nextUom = activeUoms.find((u) => String(u.id) === String(value)) ?? null;
+              if (!form.retail_pricing_tiers?.length) {
+                onChange("retail_pricing_tiers", [defaultRetailPricingTier(nextUom)]);
+              }
+            }
+          }}
           required
           className={inputClassName()}
         >
@@ -527,40 +547,44 @@ export function ProductFormFields({
         <p className="mt-1 text-xs text-slate-500">Wholesale price charged per {packLabel}.</p>
       </Field>
 
-      <Field label="Discount type">
-        <select
-          value={form.discount_type}
-          onChange={(e) => onChange("discount_type", e.target.value)}
-          className={inputClassName()}
-        >
-          <option value="percentage">Percentage (%)</option>
-          <option value="fixed">Fixed amount (KES)</option>
-        </select>
-      </Field>
+      {allowDiscounts ? (
+        <>
+          <Field label="Discount type">
+            <select
+              value={form.discount_type}
+              onChange={(e) => onChange("discount_type", e.target.value)}
+              className={inputClassName()}
+            >
+              <option value="percentage">Percentage (%)</option>
+              <option value="fixed">Fixed amount (KES)</option>
+            </select>
+          </Field>
 
-      {form.discount_type === "fixed" ? (
-        <Field label={`Discount amount per ${packLabel} (KES)`}>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={form.discount_value}
-            onChange={(e) => onChange("discount_value", e.target.value)}
-            className={inputClassName()}
-            placeholder="0"
-          />
-        </Field>
-      ) : (
-        <Field label={`Discount on ${packLabel} (%)`}>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={form.discount_percentage}
-            onChange={(e) => onChange("discount_percentage", e.target.value)}
-            className={inputClassName()}
-            placeholder="0"
-          />
-        </Field>
-      )}
+          {form.discount_type === "fixed" ? (
+            <Field label={`Discount amount per ${packLabel} (KES)`}>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.discount_value}
+                onChange={(e) => onChange("discount_value", e.target.value)}
+                className={inputClassName()}
+                placeholder="0"
+              />
+            </Field>
+          ) : (
+            <Field label={`Discount on ${packLabel} (%)`}>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={form.discount_percentage}
+                onChange={(e) => onChange("discount_percentage", e.target.value)}
+                className={inputClassName()}
+                placeholder="0"
+              />
+            </Field>
+          )}
+        </>
+      ) : null}
 
       <Field label="VAT status">
         <select
@@ -585,7 +609,13 @@ export function ProductFormFields({
           <input
             type="checkbox"
             checked={form.sell_on_retail}
-            onChange={(e) => onChange("sell_on_retail", e.target.checked)}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              onChange("sell_on_retail", checked);
+              if (checked) {
+                onChange("retail_pricing_tiers", [defaultRetailPricingTier(selectedUom)]);
+              }
+            }}
             className="mt-0.5 rounded border-slate-300"
           />
           <span>Sell on retail — configure pack sizes and markups below</span>
@@ -594,7 +624,7 @@ export function ProductFormFields({
           <RetailPackageFields
             form={form}
             onChange={onChange}
-            productUom={activeUoms.find((u) => String(u.id) === String(form.unit_id))}
+            productUom={selectedUom}
           />
         ) : null}
       </div>

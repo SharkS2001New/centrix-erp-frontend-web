@@ -418,6 +418,7 @@ export default function RetailPackageSettingsPage() {
           tiers={form.pricing_tiers}
           onChange={(pricing_tiers) => setForm((p) => ({ ...p, pricing_tiers }))}
           productUom={selectedProductUom}
+          unitPrice={pickedProduct?.unit_price ?? ""}
         />
       </FormDrawer>
     </CatalogPageShell>
