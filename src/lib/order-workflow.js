@@ -51,17 +51,14 @@ export const ORDER_STATUS_OPTIONS = [
 /** Drop transitions and status references that no longer exist in the pipeline. */
 export function sanitizeWorkflowReferences(workflow) {
   const wf = workflow ?? DEFAULT_ORDER_WORKFLOW;
-  const enabledStatuses = wf.steps.filter((s) => s.enabled !== false).map((s) => s.status);
-  const firstEnabled = enabledStatuses[0] ?? "unpaid";
-  const configurableStatuses = new Set(
-    ORDER_STATUS_OPTIONS.filter(
-      (o) => !["draft", "held", "cancelled"].includes(o.value),
-    ).map((o) => o.value),
+  const enabledStatuses = new Set(
+    wf.steps.filter((s) => s.enabled !== false).map((s) => s.status),
   );
+  const firstEnabled = [...enabledStatuses][0] ?? "unpaid";
 
   function pickRef(status) {
     if (!status) return status;
-    if (configurableStatuses.has(status)) return status;
+    if (enabledStatuses.has(status)) return status;
     return firstEnabled;
   }
 
@@ -81,6 +78,7 @@ export function sanitizeWorkflowReferences(workflow) {
     ...wf,
     save_status,
     checkout,
+    deduct_stock_on: pickRef(wf.deduct_stock_on ?? DEFAULT_ORDER_WORKFLOW.deduct_stock_on),
   };
 }
 
@@ -150,6 +148,16 @@ export function getChannelWorkflow(capabilities, channel = "backend") {
     return buildChannelWorkflow(saved, channel);
   }
   return buildChannelWorkflow(DEFAULT_ORDER_WORKFLOW, channel);
+}
+
+/** Sidebar + queue pages — pipeline step order from saved org workflow config. */
+export function getSalesOrderQueueWorkflow(capabilities, channel = "backend") {
+  const sales = capabilities?.module_settings?.sales;
+  const saved = mergeOrderWorkflow(sales);
+  if (sales?.order_workflow?.steps?.length) {
+    return buildChannelWorkflow(saved, channel);
+  }
+  return getChannelWorkflow(capabilities, channel);
 }
 
 /** Workflow for a specific order — prefers API payload, then saved org config. */
@@ -419,6 +427,81 @@ export function matchesWorkflowStatusFilter(sale, statusFilter, workflow) {
   return workflowListableStatusKeys(workflow).has(status);
 }
 
+const QUEUE_EXCLUDED_STATUSES = new Set(["draft", "held", "cancelled"]);
+
+export function salesOrderQueueTitle(pageName) {
+  const trimmed = String(pageName ?? "").trim();
+  if (!trimmed) return "Orders";
+  if (trimmed.toLowerCase().endsWith(" orders")) return trimmed;
+  return `${trimmed} Orders`;
+}
+
+/** Sidebar + queue routes derived from the org workflow pipeline. */
+export function salesOrderQueueNavItems(workflow, { includeMobile = false } = {}) {
+  const items = [
+    { slug: "all", label: salesOrderQueueTitle("View All"), href: "/sales/orders" },
+  ];
+  for (const step of workflowPipelineSteps(workflow)) {
+    if (QUEUE_EXCLUDED_STATUSES.has(step.key)) continue;
+    items.push({
+      slug: step.key,
+      label: salesOrderQueueTitle(step.label),
+      href: `/sales/orders/queues/${step.key}`,
+    });
+  }
+  if (includeMobile) {
+    items.push({
+      slug: "mobile",
+      label: salesOrderQueueTitle("Mobile"),
+      href: "/sales/orders/queues/mobile",
+    });
+  }
+  return items;
+}
+
+export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true } = {}) {
+  if (!slug || slug === "all") {
+    return {
+      slug: "all",
+      title: salesOrderQueueTitle("View All"),
+      subtitle: "Browse and manage every sales order in your workflow",
+      fixedStatusFilter: null,
+      fixedSourceFilter: null,
+      showRouteColumn: false,
+      showDeliveryDateColumn: false,
+      lockStatusFilter: false,
+      lockSourceFilter: false,
+    };
+  }
+  if (slug === "mobile") {
+    if (!includeMobile) return null;
+    return {
+      slug: "mobile",
+      title: salesOrderQueueTitle("Mobile"),
+      subtitle: "Orders placed via the mobile sales channel",
+      fixedStatusFilter: null,
+      fixedSourceFilter: "mobile",
+      showRouteColumn: true,
+      showDeliveryDateColumn: true,
+      lockStatusFilter: false,
+      lockSourceFilter: true,
+    };
+  }
+  const step = workflowPipelineSteps(workflow).find((s) => s.key === slug);
+  if (!step) return null;
+  return {
+    slug: step.key,
+    title: salesOrderQueueTitle(step.label),
+    subtitle: `Orders currently in ${step.label.toLowerCase()} status`,
+    fixedStatusFilter: step.key,
+    fixedSourceFilter: null,
+    showRouteColumn: false,
+    showDeliveryDateColumn: false,
+    lockStatusFilter: true,
+    lockSourceFilter: false,
+  };
+}
+
 /** Status filter options from admin order workflow settings (enabled pipeline steps). */
 export function workflowStatusFilterOptionsFromConfig(config) {
   const options = [{ value: "all", label: "All statuses" }];
@@ -436,3 +519,86 @@ export function workflowStatusFilterOptionsFromConfig(config) {
   }
   return options;
 }
+
+const PAYMENT_STEP_KEYS = new Set(["unpaid", "pending_payment", "paid"]);
+
+/** Timeline events from the org workflow pipeline (backend labels + step order). */
+export function buildOrderWorkflowTimeline(sale, workflow, options = {}) {
+  const { actor = "System", payments = [], stepDetail = null } = options;
+  const events = [];
+  const currentStatus = String(sale?.status ?? "").toLowerCase();
+  const steps = workflowPipelineSteps(workflow);
+  const currentIdx = pipelineStatusIndex(currentStatus, workflow);
+
+  function resolveDetail(step) {
+    if (typeof stepDetail === "function") {
+      return stepDetail(sale, step, payments, workflow);
+    }
+    return `Order marked as ${step.label.toLowerCase()}.`;
+  }
+
+  function resolveTimestamp(stepIndex, isCurrent) {
+    if (isCurrent) {
+      return sale.completed_at ?? sale.updated_at ?? sale.created_at;
+    }
+    if (stepIndex === 0) return sale.created_at;
+    return sale.updated_at ?? sale.created_at;
+  }
+
+  if (currentStatus === "draft" || currentStatus === "held") {
+    events.push({
+      key: currentStatus,
+      title: workflowStatusLabel(workflow, currentStatus),
+      detail: currentStatus === "held" ? "Order is on hold." : "Order is saved as a draft.",
+      at: sale.updated_at ?? sale.created_at,
+      actor,
+      complete: currentStatus === "held",
+      current: true,
+    });
+  }
+
+  if (currentIdx >= 0) {
+    for (let i = 0; i <= currentIdx; i += 1) {
+      const step = steps[i];
+      const isCurrent = i === currentIdx && currentStatus !== "cancelled";
+      events.push({
+        key: step.key,
+        title: step.label,
+        detail: resolveDetail(step),
+        at: resolveTimestamp(i, isCurrent),
+        actor: payments[0]?.recorded_by_name ?? actor,
+        complete: !isCurrent || currentStatus === "completed",
+        current: isCurrent && currentStatus !== "completed",
+      });
+    }
+  }
+
+  if (sale?.created_at) {
+    events.push({
+      key: "created",
+      title: "Order created",
+      detail: "Order has been created.",
+      at: sale.created_at,
+      actor,
+      complete: true,
+    });
+  }
+
+  if (currentStatus === "cancelled") {
+    events.push({
+      key: "cancelled",
+      title: workflowStatusLabel(workflow, "cancelled"),
+      detail: "This order was cancelled.",
+      at: sale.cancelled_at ?? sale.updated_at ?? sale.created_at,
+      actor,
+      complete: false,
+      cancelled: true,
+    });
+  }
+
+  return events.sort(
+    (a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime(),
+  );
+}
+
+export { PAYMENT_STEP_KEYS };

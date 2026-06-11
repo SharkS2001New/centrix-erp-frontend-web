@@ -59,10 +59,17 @@ const EMPTY_SALES_FORM = {
   retail_shop_wholesale_store_stock: false,
   add_route_markup_prices: false,
   pos_order_type_mode: "normal",
+  enable_mobile_orders: false,
+  enable_pos_orders: false,
+  order_document_type: "receipt",
+  invoice_valid_days: "7",
+  show_branch_on_receipt: true,
+  receipt_copies: "1",
 };
 
 function salesFormFromApi(res) {
-  const sales = mergeSalesSettings({ sales: res.sales });
+  const source = res?.sales ?? res;
+  const sales = mergeSalesSettings({ sales: source });
   return {
     allow_sell_from_shop: Boolean(sales.allow_sell_from_shop),
     allow_sell_from_store: Boolean(sales.allow_sell_from_store),
@@ -75,7 +82,7 @@ function salesFormFromApi(res) {
     point_cash_value: String(sales.point_cash_value ?? 1),
     points_earn_per_kes: String(sales.points_earn_per_kes ?? 1000),
     allow_edit_unit_price: Boolean(sales.allow_edit_unit_price),
-    allow_negative_stock: Boolean(res.allow_negative_stock),
+    allow_negative_stock: Boolean(res.allow_negative_stock ?? source.allow_negative_stock),
     enable_barcode_scanner: Boolean(sales.enable_barcode_scanner),
     default_tax_rate: String(sales.default_tax_rate ?? 16),
     enable_mpesa_amount: Boolean(sales.enable_mpesa_amount),
@@ -95,6 +102,12 @@ function salesFormFromApi(res) {
     retail_shop_wholesale_store_stock: Boolean(sales.retail_shop_wholesale_store_stock),
     add_route_markup_prices: Boolean(sales.add_route_markup_prices),
     pos_order_type_mode: resolvePosOrderTypeMode(sales),
+    enable_mobile_orders: Boolean(sales.enable_mobile_orders),
+    enable_pos_orders: Boolean(sales.enable_pos_orders),
+    order_document_type: sales.order_document_type === "invoice" ? "invoice" : "receipt",
+    invoice_valid_days: String(sales.invoice_valid_days ?? 7),
+    show_branch_on_receipt: Boolean(sales.show_branch_on_receipt),
+    receipt_copies: String(sales.receipt_copies ?? 1),
   };
 }
 
@@ -171,33 +184,46 @@ export default function AdminSettingsPage() {
     setError(null);
     setMessage(null);
     try {
-      const body = {
+      const salesPayload = {
         ...salesForm,
         default_tax_rate: Number(salesForm.default_tax_rate) || 0,
         point_cash_value: Number(salesForm.point_cash_value) || 0,
         points_earn_per_kes: Number(salesForm.points_earn_per_kes) || 0,
-        order_workflow: orderWorkflow,
+        invoice_valid_days: Number(salesForm.invoice_valid_days) || 0,
       };
       if (
-        !body.allow_sell_from_shop &&
-        !body.allow_sell_from_store &&
-        !(body.enable_retail_pricing && body.retail_shop_wholesale_store_stock)
+        !salesPayload.allow_sell_from_shop &&
+        !salesPayload.allow_sell_from_store &&
+        !(salesPayload.enable_retail_pricing && salesPayload.retail_shop_wholesale_store_stock)
       ) {
         setError(
           "Enable shop stock, store stock, or retail-from-shop / wholesale-from-store routing.",
         );
+        setSaving(false);
         return;
       }
-      if (body.allow_sell_from_shop && body.allow_sell_from_store) {
+      if (salesPayload.allow_sell_from_shop && salesPayload.allow_sell_from_store) {
         setError("Enable only shop stock or store stock — not both at the same time.");
+        setSaving(false);
         return;
       }
-      await apiRequest("/erp/settings/sales", { method: "PATCH", body });
+      const payload = {
+        ...salesPayload,
+        order_workflow: orderWorkflow,
+      };
+      console.log("🔵 Sending payload:", payload);
+      await apiRequest("/erp/settings/sales", {
+        method: "PATCH",
+        body: payload,
+      });
+      console.log("✅ Save successful");
       const res = await apiRequest("/erp/settings/sales");
+      console.log("📥 Response:", res);
       setOrderWorkflow(orderWorkflowFromApi(res.sales));
       await refreshCapabilities();
       setMessage("Sales settings saved. POS will use this workflow after refresh.");
     } catch (e) {
+      console.error("❌ Save error:", e);
       setError(e instanceof ApiError ? e.message : "Failed to save settings");
     } finally {
       setSaving(false);
@@ -651,8 +677,73 @@ export default function AdminSettingsPage() {
                     />
                   </div>
                 )}
+                <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Receipt Type Printer Selection
+                </p>
+                <div className="mt-3 space-y-3">
+                  <Field label="Order print format">
+                  <select
+                    className={inputClassName()}
+                    value={salesForm.order_document_type}
+                    onChange={(e) =>
+                      setSalesForm((f) => ({ ...f, order_document_type: e.target.value }))
+                    }
+                  >
+                    <option value="receipt">Receipt — compact thermal-style layout</option>
+                    <option value="invoice">Invoice — A4 tax invoice (detailed)</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Applies to Print and Download on order summary and the orders list.
+                  </p>
+                </Field>
+                <Field label="Receipt copies">
+                  <select
+                    className={inputClassName()}
+                    value={salesForm.receipt_copies}
+                    onChange={(e) => setSalesForm((f) => ({ ...f, receipt_copies: e.target.value }))}
+                  >
+                    <option value="1">Single receipt</option>
+                    <option value="2">Double receipt (customer + merchant)</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">Controls how many copies are printed on checkout.</p>
+                </Field>
+                <Toggle
+                  label="Show branch details on receipt"
+                  description="When enabled and a branch is selected, receipt will show branch name, address and phone."
+                  checked={salesForm.show_branch_on_receipt}
+                  onChange={(v) => setSalesForm((f) => ({ ...f, show_branch_on_receipt: v }))}
+                />
+                </div>
+                {salesForm.order_document_type === "invoice" ? (
+                  <Field label="Invoice valid for (days)">
+                    <input
+                      type="number"
+                      min={0}
+                      max={365}
+                      className={inputClassName()}
+                      value={salesForm.invoice_valid_days}
+                      onChange={(e) =>
+                        setSalesForm((f) => ({ ...f, invoice_valid_days: e.target.value }))
+                      }
+                    />
+                  </Field>
+                ) : null}
+                <div className="mt-4 space-y-3">
+                  <Toggle
+                    label="Enable mobile orders"
+                    description="When on, Mobile Orders appears in the Sales sidebar for orders placed via the mobile channel."
+                    checked={salesForm.enable_mobile_orders}
+                    onChange={(v) => setSalesForm((f) => ({ ...f, enable_mobile_orders: v }))}
+                  />
+                  <Toggle
+                    label="Enable point of sale orders"
+                    description="When on, Point of sale appears as a source option in the orders list." 
+                    checked={salesForm.enable_pos_orders}
+                    onChange={(v) => setSalesForm((f) => ({ ...f, enable_pos_orders: v }))}
+                  />
+                </div>
                 {orderWorkflow ? (
-                  <div className="mt-6">
+                  <div className="mt-4">
                     <OrderWorkflowSettingsEditor
                       workflow={orderWorkflow}
                       onChange={setOrderWorkflow}

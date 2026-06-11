@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { getSalesOrderQueueWorkflow, salesOrderQueueNavItems } from "@/lib/order-workflow";
+import { isMobileOrdersEnabled } from "@/lib/sales-settings";
 
 const navSections = [
   {
@@ -57,7 +60,7 @@ const navSections = [
     items: [
       { href: "/sales", label: "Dashboard", module: "sales.backend", exact: true },
       { href: "/sales/pos", label: "Point of sale", module: "sales.backend" },
-      { href: "/sales/orders", label: "Orders", module: "sales.backend" },
+      { href: "/sales/orders", label: "Orders", module: "sales.backend", ordersNav: true },
       { href: "/sales/vouchers", label: "Vouchers", module: "sales.backend" },
       { href: "/sales/loyalty-cards", label: "Loyalty cards", module: "sales.backend" },
       { href: "/sales/reservations", label: "Reservations", module: "sales.backend" },
@@ -102,13 +105,26 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user, capabilities, logout, isModuleEnabled } = useAuth();
 
+  const salesOrderNavItems = useMemo(() => {
+    const workflow = getSalesOrderQueueWorkflow(capabilities, "backend");
+    const includeMobile = isMobileOrdersEnabled(capabilities?.module_settings);
+    return salesOrderQueueNavItems(workflow, { includeMobile }).map((item) => ({
+      href: item.href,
+      label: item.label,
+      module: "sales.backend",
+      exact: item.slug === "all",
+    }));
+  }, [capabilities]);
+
   const visibleSections = navSections
     .filter((section) => !section.module || isModuleEnabled(section.module))
     .map((section) => ({
       ...section,
-      items: section.items.filter(
-        (item) => !item.module || isModuleEnabled(item.module),
-      ),
+      items: section.items.flatMap((item) => {
+        if (item.ordersNav) return salesOrderNavItems;
+        if (!item.module || isModuleEnabled(item.module)) return [item];
+        return [];
+      }),
     }))
     .filter((section) => section.items.length > 0);
 

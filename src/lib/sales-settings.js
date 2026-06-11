@@ -29,7 +29,38 @@ const SALES_DEFAULTS = {
   retail_shop_wholesale_store_stock: false,
   add_route_markup_prices: false,
   pos_order_type_mode: "normal",
+  enable_mobile_orders: false,
+  enable_pos_orders: false,
+  order_document_type: "receipt",
+  invoice_valid_days: 7,
+  receipt_copies: 1,
+  show_branch_on_receipt: true,
 };
+
+/** Whether Mobile Orders appears in the sales sidebar and queue routes. */
+export function isMobileOrdersEnabled(moduleSettings) {
+  return Boolean(mergeSalesSettings(moduleSettings).enable_mobile_orders);
+}
+
+export function isPosOrdersEnabled(moduleSettings) {
+  return Boolean(mergeSalesSettings(moduleSettings).enable_pos_orders);
+}
+
+export const ORDER_DOCUMENT_TYPES = ["receipt", "invoice"];
+
+/** Order print format from sales settings — receipt (compact) or invoice (A4). */
+export function getOrderDocumentType(moduleSettings) {
+  const type = mergeSalesSettings(moduleSettings).order_document_type;
+  return ORDER_DOCUMENT_TYPES.includes(type) ? type : "receipt";
+}
+
+export function orderDocumentPrintLabel(moduleSettings) {
+  return getOrderDocumentType(moduleSettings) === "invoice" ? "Print invoice" : "Print receipt";
+}
+
+export function orderDocumentTitle(moduleSettings) {
+  return getOrderDocumentType(moduleSettings) === "invoice" ? "TAX INVOICE" : "RECEIPT";
+}
 
 export const POS_ORDER_TYPE_MODES = ["normal", "route", "toggle"];
 
@@ -112,6 +143,8 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     posOrderTypeMode: sales.add_route_markup_prices
       ? resolvePosOrderTypeMode(sales)
       : "normal",
+    receiptCopies: Number(sales.receipt_copies ?? 1),
+    showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
     payment: getCheckoutPaymentConfig(moduleSettings),
   };
 }

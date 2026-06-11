@@ -128,7 +128,8 @@ export function OrderWorkflowSettingsEditor({ workflow, onChange, showCheckoutOn
         <h3 className="text-sm font-semibold text-slate-900">Order workflow</h3>
         <p className="mt-1 text-xs text-slate-500">
           Define the order pipeline for this client. Stages can be inserted, edited, reordered, or
-          deleted. Status moves follow this pipeline — one step up or down only.
+          deleted. Status moves follow this pipeline — one step up or down only. Enabled stages
+          appear as sidebar order pages in this order (View All, then each stage).
           {saveOrderMode
             ? " POS uses Save order (no checkout) — configure the initial save status below. Payment rules apply to all orders."
             : " POS opens checkout on create order. Payment rules below apply to all orders."}

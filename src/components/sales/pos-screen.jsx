@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { parseDecimalInput } from "@/components/catalog/catalog-shared";
@@ -36,6 +37,7 @@ import {
   resolveSaveOrderStatus,
   resolveSaveOrderStatusLabel,
 } from "@/lib/sales-settings";
+import { printSaleOrder } from "@/components/sales/sale-order-print";
 import {
   canAdjustCartLineQuantity,
   cartLineEntryQtyForBaseQty,
@@ -55,6 +57,7 @@ import { PosProductSearch } from "./pos-product-search";
 import { PosCartPaymentOptions } from "./pos-cart-payment-options";
 import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
 import { PosSaveOrderDialog } from "./pos-save-order-dialog";
+import { PosLeaveGuardDialog } from "./pos-leave-guard-dialog";
 
 const fieldInput =
   "w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 shadow-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20";
@@ -89,6 +92,7 @@ function sameLineId(a, b) {
 }
 
 export function PosScreen() {
+  const router = useRouter();
   const { user, capabilities, refreshCapabilities } = useAuth();
   const posSalesConfig = useMemo(
     () =>
@@ -219,6 +223,9 @@ export function PosScreen() {
   const [saveOrderError, setSaveOrderError] = useState(null);
   const [paymentError, setPaymentError] = useState(null);
   const [completedSale, setCompletedSale] = useState(null);
+  const [leaveGuardOpen, setLeaveGuardOpen] = useState(false);
+  const [leaveGuardBusy, setLeaveGuardBusy] = useState(false);
+  const pendingLeaveHrefRef = useRef(null);
 
   useEffect(() => {
     if (!posSalesConfig.enableRetailPricing) return undefined;
@@ -233,6 +240,9 @@ export function PosScreen() {
   }, [posSalesConfig.enableRetailPricing, paymentOpen, saveOrderOpen]);
 
   const [orderDiscountDraft, setOrderDiscountDraft] = useState("");
+
+  const cartLineCount = cart?.lines?.length ?? 0;
+  const cartHasReservedItems = cartLineCount > 0;
 
   const cartSummary = useMemo(() => {
     const rows = cart?.lines ?? [];
@@ -1365,6 +1375,73 @@ export function PosScreen() {
     setEditingLineRef(null);
   }
 
+  function completeLeaveNavigation(href) {
+    setLeaveGuardOpen(false);
+    const target = href ?? pendingLeaveHrefRef.current;
+    pendingLeaveHrefRef.current = null;
+    if (!target) return;
+    router.push(target);
+  }
+
+  async function clearCartAndLeave() {
+    const href = pendingLeaveHrefRef.current;
+    if (!cart?.id || !cart?.lines?.length) {
+      completeLeaveNavigation(href);
+      return;
+    }
+    setLeaveGuardBusy(true);
+    setStatusMessage(null);
+    try {
+      await apiRequest(`/sales/carts/${cart.id}/lines`, { method: "DELETE" });
+      await refreshCart(cart.id);
+      clearLineEntry();
+      setSelectedLineId(null);
+      completeLeaveNavigation(href);
+    } catch (e) {
+      setStatusMessage(e instanceof ApiError ? e.message : "Failed to clear cart");
+      setLeaveGuardOpen(false);
+    } finally {
+      setLeaveGuardBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!cartHasReservedItems || leaveGuardOpen) return undefined;
+
+    function onBeforeUnload(e) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+
+    function onDocumentClick(e) {
+      const anchor = e.target.closest("a[href]");
+      if (!anchor || anchor.dataset.posLeaveIgnore === "true") return;
+      if (anchor.closest("[data-pos-leave-guard]")) return;
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
+        return;
+      }
+      let pathname = href;
+      try {
+        pathname = new URL(href, window.location.href).pathname;
+      } catch {
+        return;
+      }
+      if (pathname === "/sales/pos" || pathname.startsWith("/sales/pos/")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pendingLeaveHrefRef.current = href.startsWith("/") ? href : pathname;
+      setLeaveGuardOpen(true);
+    }
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("click", onDocumentClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("click", onDocumentClick, true);
+    };
+  }, [cartHasReservedItems, leaveGuardOpen]);
+
   async function handleEditSelectedLine(lineId = selectedLineId) {
     if (!lineId || !cart?.lines?.length || busy) return;
     const line = cart.lines.find((l) => sameLineId(l.id, lineId));
@@ -1474,6 +1551,22 @@ export function PosScreen() {
       setCompletedSale(sale);
       setCart(null);
       setSelectedLineId(null);
+      try {
+        if (posSalesConfig.showCheckoutOnCreate) {
+          const copies = Number(posSalesConfig.receiptCopies ?? 1) || 1;
+          for (let i = 0; i < copies; i++) {
+            printSaleOrder(sale, {
+              moduleSettings: capabilities?.module_settings,
+              organizationName: capabilities?.profile_label,
+              uomById,
+            });
+          }
+        }
+      } catch (printErr) {
+        // non-fatal; printing failures shouldn't block checkout
+        // eslint-disable-next-line no-console
+        console.error("Receipt print failed", printErr);
+      }
       return sale;
     } catch (e) {
       setPaymentError(e instanceof ApiError ? e.message : "Checkout failed");
@@ -1620,6 +1713,7 @@ export function PosScreen() {
           {completedSale ? (
             <Link
               href={`/sales/orders/${completedSale.id}`}
+              data-pos-leave-ignore="true"
               className="text-xs font-medium text-emerald-200 hover:text-white hover:underline"
             >
               View #{completedSale.order_num}
@@ -2278,6 +2372,18 @@ export function PosScreen() {
           setStatusMessage("Held order restored to cart — ready to complete or edit.");
           void loadHeldOrdersCount();
         }}
+      />
+
+      <PosLeaveGuardDialog
+        open={leaveGuardOpen}
+        lineCount={cartLineCount}
+        busy={leaveGuardBusy}
+        onStay={() => {
+          pendingLeaveHrefRef.current = null;
+          setLeaveGuardOpen(false);
+        }}
+        onLeaveKeepReservation={() => completeLeaveNavigation()}
+        onClearAndLeave={() => void clearCartAndLeave()}
       />
     </div>
   );

@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { formatShortDate, formatKesCompact, getSaleTimestamp, StatCard } from "@/components/catalog/catalog-shared";
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import {
@@ -21,8 +23,15 @@ import {
   nextTransitionOptions,
   orderSourceLabel,
   saleCustomerLabel,
+  salePaymentMethodDisplay,
   saleStatusLabel,
 } from "@/lib/sales";
+import {
+  saleRouteCell,
+  saleDeliveryDateCell,
+  saleVatCell,
+  salePaymentReferenceLabel,
+} from "@/components/sales/sales-orders-columns";
 import {
   OrderSourceBadge,
   PaymentStatusBadge,
@@ -42,6 +51,23 @@ export const ORDER_SOURCE_FILTER_OPTIONS = [
   { value: "pos", label: "Point of sale" },
   { value: "mobile", label: "Mobile" },
 ];
+
+export function orderSourceFilterOptions(includeMobile = true, includePos = true) {
+  return ORDER_SOURCE_FILTER_OPTIONS.filter((o) => {
+    if (o.value === "mobile" && !includeMobile) return false;
+    if (o.value === "pos" && !includePos) return false;
+    return true;
+  });
+}
+
+export function saleBranchLabel(sale, branchById) {
+  if (sale?.branch?.branch_name) return sale.branch.branch_name;
+  const id = sale?.branch_id;
+  if (id != null && branchById?.has(id)) {
+    return branchById.get(id).branch_name ?? "—";
+  }
+  return "—";
+}
 
 export function summarizeOrders(rows) {
   const list = rows ?? [];
@@ -129,7 +155,7 @@ export function matchesPaymentFilter(sale, paymentFilter) {
 }
 
 /** Compact pipeline position for list rows. */
-export function OrderMiniPipeline({ status, workflow }) {
+export function OrderMiniPipeline({ status, workflow, showLabel = true }) {
   const steps = workflowPipelineSteps(workflow);
   if (!steps.length) return null;
   const idx = pipelineStatusIndex(status, workflow);
@@ -138,8 +164,10 @@ export function OrderMiniPipeline({ status, workflow }) {
 
   return (
     <div className="min-w-[7rem]" title={label}>
-      <p className="truncate text-[10px] font-medium text-slate-600">{label}</p>
-      <div className="mt-1 flex items-center gap-0.5">
+      {showLabel ? (
+        <p className="truncate text-[10px] font-medium text-slate-600">{label}</p>
+      ) : null}
+      <div className={`flex items-center gap-0.5 ${showLabel ? "mt-1" : ""}`}>
         {steps.map((step, stepIdx) => (
           <span
             key={step.key}
@@ -270,42 +298,339 @@ export function OrderInlineItems({ items, loading, uomById }) {
   );
 }
 
-export function OrderListWorkflowActions({ sale, workflow, busy, onAdvance, onCancel }) {
+export function buildOrderContextMenuItems({
+  sale,
+  workflow,
+  busy,
+  onView,
+  onPrint,
+  onAdvance,
+  onCancel,
+  includePrint = true,
+  printLabel = "Print receipt",
+}) {
+  const items = [
+    { key: "view", label: "View Full Order Summary", icon: "view", onClick: onView },
+  ];
+  if (includePrint) {
+    items.push({ key: "print", label: printLabel, icon: "print", onClick: onPrint });
+  }
+
   if (!sale || sale.status === "cancelled" || sale.status === "completed") {
-    return <span className="text-xs text-slate-400">—</span>;
+    return items;
   }
 
   const forward = primaryWorkflowAdvanceStatus(sale.status, workflow);
   const canCancel = nextTransitionOptions(sale.status, workflow).includes("cancelled");
-  const forwardLabel = forward ? workflowStatusLabel(workflow, forward) : null;
 
-  if (!forward && !canCancel) {
-    return <span className="text-xs text-slate-400">—</span>;
+  if (forward || canCancel) {
+    items.push({ type: "separator" });
+    if (forward) {
+      items.push({
+        key: "advance",
+        label: busy ? "Updating…" : `Confirm → ${workflowStatusLabel(workflow, forward)}`,
+        icon: "advance",
+        disabled: busy,
+        onClick: () => onAdvance?.(forward),
+      });
+    }
+    if (canCancel) {
+      items.push({
+        key: "cancel",
+        label: "Cancel order",
+        icon: "cancel",
+        disabled: busy,
+        destructive: true,
+        onClick: onCancel,
+      });
+    }
   }
 
+  return items;
+}
+
+/** Action menu items for the order detail / summary page (no "view", always includes print). */
+export function buildOrderDetailActionItems({
+  sale,
+  workflow,
+  busy,
+  onPrint,
+  onAdvance,
+  onCancel,
+  onRecordPayment,
+  canRecordPayment,
+  printLabel = "Print receipt",
+}) {
+  const items = [];
+
+  if (onPrint) {
+    items.push({ key: "print", label: printLabel, icon: "print", onClick: onPrint });
+  }
+
+  if (canRecordPayment && onRecordPayment) {
+    items.push({
+      key: "payment",
+      label: "Record payment",
+      icon: "advance",
+      onClick: onRecordPayment,
+    });
+  }
+
+  if (!sale || sale.status === "cancelled" || sale.status === "completed") {
+    return items;
+  }
+
+  const forward = primaryWorkflowAdvanceStatus(sale.status, workflow);
+  const canCancel = nextTransitionOptions(sale.status, workflow).includes("cancelled");
+
+  if (forward || canCancel) {
+    if (items.length) items.push({ type: "separator" });
+    if (forward) {
+      items.push({
+        key: "advance",
+        label: busy ? "Updating…" : `Confirm → ${workflowStatusLabel(workflow, forward)}`,
+        icon: "advance",
+        disabled: busy,
+        onClick: () => onAdvance?.(forward),
+      });
+    }
+    if (canCancel) {
+      items.push({
+        key: "cancel",
+        label: "Cancel order",
+        icon: "cancel",
+        disabled: busy,
+        destructive: true,
+        onClick: onCancel,
+      });
+    }
+  }
+
+  return items;
+}
+
+function ContextMenuIcon({ name }) {
+  if (name === "view") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    );
+  }
+  if (name === "print") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+        <path d="M6 14h12v8H6z" />
+      </svg>
+    );
+  }
+  if (name === "advance") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </svg>
+    );
+  }
+  if (name === "cancel") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M15 9l-6 6M9 9l6 6" />
+      </svg>
+    );
+  }
+  return null;
+}
+
+export function OrderContextMenu({ open, x, y, items, onClose }) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handleDismiss(event) {
+      if (event.type === "keydown" && event.key !== "Escape") return;
+      onClose();
+    }
+    const timer = window.setTimeout(() => {
+      window.addEventListener("click", handleDismiss);
+      window.addEventListener("scroll", handleDismiss, true);
+      window.addEventListener("keydown", handleDismiss);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("click", handleDismiss);
+      window.removeEventListener("scroll", handleDismiss, true);
+      window.removeEventListener("keydown", handleDismiss);
+    };
+  }, [open, onClose]);
+
+  if (!open || !mounted || !items?.length) return null;
+
+  const menuWidth = 260;
+  const left = Math.min(x, window.innerWidth - menuWidth - 8);
+  const top = Math.min(y, window.innerHeight - items.length * 36 - 16);
+
+  return createPortal(
+    <div
+      role="menu"
+      className="fixed z-50 min-w-[12rem] overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+      style={{ top, left }}
+      onClick={(event) => event.stopPropagation()}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      {items.map((item, index) => {
+        if (item.type === "separator") {
+          return <div key={`sep-${index}`} className="my-1 border-t border-slate-100" role="separator" />;
+        }
+        return (
+          <button
+            key={item.key}
+            type="button"
+            role="menuitem"
+            disabled={item.disabled}
+            onClick={() => {
+              item.onClick?.();
+              onClose();
+            }}
+            className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
+              item.destructive
+                ? "text-red-600 hover:bg-red-50"
+                : "text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            {item.icon ? <ContextMenuIcon name={item.icon} /> : null}
+            <span>{item.label}</span>
+          </button>
+        );
+      })}
+    </div>,
+    document.body,
+  );
+}
+
+const PAYMENT_REF_METHODS = new Set(["M-Pesa", "Equity", "KCB", "Bank transfer", "Cheque"]);
+
+function shouldShowPaymentReference(label, methods, isMixed) {
+  if (isMixed) return methods.some((m) => PAYMENT_REF_METHODS.has(m));
+  return PAYMENT_REF_METHODS.has(label);
+}
+
+export function OrderPaymentMethodCell({ sale, paymentRefsBySaleId }) {
+  const { label, methods, isMixed } = salePaymentMethodDisplay(sale);
+  const refs = paymentRefsBySaleId?.get(sale.id) ?? [];
+  const refText = salePaymentReferenceLabel(refs);
+  const showRef = refText && shouldShowPaymentReference(label, methods, isMixed);
+
   return (
-    <div className="flex flex-col items-start gap-1">
-      {forward ? (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onAdvance?.(forward)}
-          className="whitespace-nowrap rounded-lg bg-[#185FA5] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#144f8a] disabled:opacity-50"
-        >
-          {busy ? "Updating…" : `Confirm → ${forwardLabel}`}
-        </button>
+    <div className="min-w-[5.5rem]">
+      <p className="text-sm text-slate-700">{label}</p>
+      {isMixed ? (
+        <p className="mt-0.5 text-[11px] leading-snug text-slate-500">{methods.join(" · ")}</p>
       ) : null}
-      {canCancel ? (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onCancel?.()}
-          className="text-[11px] font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
-        >
-          Cancel
-        </button>
+      {showRef ? (
+        <p className="mt-0.5 text-[11px] leading-snug text-slate-500">{refText}</p>
       ) : null}
     </div>
+  );
+}
+
+function ViewIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function PrintIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <path d="M6 14h12v8H6z" />
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+      <circle cx="5" cy="12" r="1.75" />
+      <circle cx="12" cy="12" r="1.75" />
+      <circle cx="19" cy="12" r="1.75" />
+    </svg>
+  );
+}
+
+export function OrderRowActions({ onView, onPrint, onOpenMenu, busy = false, printAriaLabel = "Print receipt" }) {
+  return (
+    <div className="flex items-center justify-end gap-0.5">
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onView?.();
+        }}
+        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+        aria-label="View order"
+      >
+        <ViewIcon />
+      </button>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onPrint?.();
+        }}
+        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+        aria-label={printAriaLabel}
+      >
+        <PrintIcon />
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpenMenu?.(event);
+        }}
+        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+        aria-label="More actions"
+      >
+        <MoreIcon />
+      </button>
+    </div>
+  );
+}
+
+export function OrderListTableHead({
+  showBranchColumn,
+  showRouteColumn = false,
+  showDeliveryDateColumn = false,
+  showSourceColumn = true,
+}) {
+  return (
+    <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+      <th className="w-12 px-4 py-2.5" aria-label="Expand" />
+      <th className="px-4 py-2.5">Receipt</th>
+      <th className="px-4 py-2.5">Customer</th>
+      {showBranchColumn ? <th className="px-4 py-2.5">Branch</th> : null}
+      {showRouteColumn ? <th className="px-4 py-2.5">Route</th> : null}
+      {showDeliveryDateColumn ? <th className="px-4 py-2.5">Delivery date</th> : null}
+      <th className="px-4 py-2.5 text-right">Amount</th>
+      <th className="px-4 py-2.5 text-right">VAT</th>
+      <th className="px-4 py-2.5">Status</th>
+      <th className="px-4 py-2.5">Payment</th>
+      <th className="px-4 py-2.5">Method</th>
+      {showSourceColumn ? <th className="px-4 py-2.5">Source</th> : null}
+      <th className="w-28 px-4 py-2.5 text-right">Actions</th>
+    </tr>
   );
 }
 
@@ -317,17 +642,33 @@ export function OrderListTableRow({
   uomById,
   expanded,
   onToggleExpand,
+  onContextMenu,
+  onPrint,
+  onView,
+  onOpenActionsMenu,
   actionBusy = false,
-  onAdvance,
-  onCancel,
-  columnCount = 9,
+  showBranchColumn = false,
+  branchName = "—",
+  showRouteColumn = false,
+  showDeliveryDateColumn = false,
+  showSourceColumn = true,
+  routeById,
+  paymentRefsBySaleId,
+  columnCount = 10,
 }) {
   const href = `/sales/orders/${sale.id}`;
   const items = detail?.items ?? sale.items ?? [];
 
   return (
     <>
-      <tr className="border-b border-slate-100 hover:bg-slate-50/80">
+      <tr
+        className="border-b border-slate-100 hover:bg-slate-50/80"
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onContextMenu?.(event);
+        }}
+        title="Right-click for actions"
+      >
         <td className="w-12 px-4 py-3">
           <OrderExpandButton
             expanded={expanded}
@@ -342,28 +683,42 @@ export function OrderListTableRow({
           <p className="mt-0.5 text-xs text-slate-500">#{sale.order_num}</p>
         </td>
         <td className="px-4 py-3 text-slate-700">{saleCustomerLabel(sale)}</td>
+        {showBranchColumn ? (
+          <td className="px-4 py-3 text-slate-600">{branchName}</td>
+        ) : null}
+        {showRouteColumn ? (
+          <td className="px-4 py-3 text-slate-700">{saleRouteCell(sale, routeById)}</td>
+        ) : null}
+        {showDeliveryDateColumn ? (
+          <td className="px-4 py-3 text-slate-700">{saleDeliveryDateCell(sale)}</td>
+        ) : null}
         <td className="px-4 py-3 text-right font-medium text-slate-900">
           {formatSaleKes(sale.order_total)}
         </td>
+        <td className="px-4 py-3 text-right text-slate-700">{saleVatCell(sale)}</td>
         <td className="px-4 py-3">
           <SaleStatusBadge status={sale.status} workflow={workflow} />
-        </td>
-        <td className="px-4 py-3">
-          <OrderMiniPipeline status={sale.status} workflow={workflow} />
+          <div className="mt-1.5">
+            <OrderMiniPipeline status={sale.status} workflow={workflow} showLabel={false} />
+          </div>
         </td>
         <td className="px-4 py-3">
           <PaymentStatusBadge status={sale.payment_status} />
         </td>
         <td className="px-4 py-3">
-          <OrderSourceBadge source={sale.order_source} channel={sale.channel} />
+          <OrderPaymentMethodCell sale={sale} paymentRefsBySaleId={paymentRefsBySaleId} />
         </td>
+        {showSourceColumn ? (
+          <td className="px-4 py-3">
+            <OrderSourceBadge source={sale.order_source} channel={sale.channel} />
+          </td>
+        ) : null}
         <td className="px-4 py-3">
-          <OrderListWorkflowActions
-            sale={sale}
-            workflow={workflow}
+          <OrderRowActions
             busy={actionBusy}
-            onAdvance={onAdvance}
-            onCancel={onCancel}
+            onView={onView}
+            onPrint={onPrint}
+            onOpenMenu={onOpenActionsMenu}
           />
         </td>
       </tr>

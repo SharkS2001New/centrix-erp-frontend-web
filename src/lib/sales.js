@@ -140,6 +140,42 @@ export function getPaymentMethodKind(method) {
   return "bank";
 }
 
+function formatPaymentMethodCode(code) {
+  const upper = String(code ?? "").toUpperCase();
+  if (!upper) return "—";
+  if (upper.includes("CASH")) return "Cash";
+  if (upper.includes("MPESA") || upper.includes("M-PESA")) return "M-Pesa";
+  if (upper.includes("EQUITY")) return "Equity";
+  if (upper.includes("KCB")) return "KCB";
+  if (upper.includes("CREDIT")) return "Credit";
+  if (upper.includes("CHEQUE")) return "Cheque";
+  if (upper.includes("BANK")) return "Bank transfer";
+  return code;
+}
+
+/** Checkout methods used on an order (amount buckets + credit flag). */
+export function salePaymentMethods(sale) {
+  const methods = [];
+  if (Number(sale?.cash ?? 0) > 0) methods.push("Cash");
+  if (Number(sale?.mpesa_amount ?? 0) > 0) methods.push("M-Pesa");
+  if (Number(sale?.equity_amount ?? 0) > 0) methods.push("Equity");
+  if (Number(sale?.kcb_amount ?? 0) > 0) methods.push("KCB");
+  if (Number(sale?.voucher_payment_amount ?? 0) > 0) methods.push("Voucher");
+  if (Number(sale?.points_payment_amount ?? 0) > 0) methods.push("Points");
+  if (sale?.is_credit_sale && !methods.includes("Credit")) methods.push("Credit");
+  if (!methods.length && sale?.payment_method_code) {
+    methods.push(formatPaymentMethodCode(sale.payment_method_code));
+  }
+  return methods;
+}
+
+export function salePaymentMethodDisplay(sale) {
+  const methods = salePaymentMethods(sale);
+  if (!methods.length) return { label: "—", methods: [], isMixed: false };
+  if (methods.length === 1) return { label: methods[0], methods: [], isMixed: false };
+  return { label: "Mixed", methods, isMixed: true };
+}
+
 export function cartTotals(lines, orderDiscount = 0) {
   const rows = lines ?? [];
   const subtotal = rows.reduce((sum, l) => sum + Number(l.amount ?? 0), 0);
