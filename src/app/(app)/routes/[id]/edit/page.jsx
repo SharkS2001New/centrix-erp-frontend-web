@@ -1,13 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
-
-export default function EditRouteRedirectPage() {
-  const params = useParams();
-  const router = useRouter();
-  useEffect(() => {
-    router.replace(`/fulfillment/routes?edit=${params.id}`);
-  }, [router, params.id]);
-  return null;
+export default async function EditRouteRedirectPage({ params }) {
+  const { id } = await params;
+  redirect(`/fulfillment/routes?edit=${id}`);
 }

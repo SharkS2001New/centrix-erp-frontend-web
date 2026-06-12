@@ -31,6 +31,7 @@ const SALES_DEFAULTS = {
   pos_order_type_mode: "normal",
   enable_mobile_orders: false,
   enable_pos_orders: false,
+  require_pos_till_float: false,
   order_document_type: "receipt",
   invoice_valid_days: 7,
   receipt_copies: 1,
@@ -44,6 +45,17 @@ export function isMobileOrdersEnabled(moduleSettings) {
 
 export function isPosOrdersEnabled(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).enable_pos_orders);
+}
+
+/** When true, cashiers must open a till session with operating float before POS sales. */
+export function isPosTillFloatRequired(moduleSettings) {
+  return Boolean(mergeSalesSettings(moduleSettings).require_pos_till_float);
+}
+
+/** True when any sales discount feature is enabled in settings. */
+export function areSalesDiscountsEnabled(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  return Boolean(sales.allow_discounts || sales.enable_order_discount);
 }
 
 export const ORDER_DOCUMENT_TYPES = ["receipt", "invoice"];
@@ -143,6 +155,7 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     posOrderTypeMode: sales.add_route_markup_prices
       ? resolvePosOrderTypeMode(sales)
       : "normal",
+    requirePosTillFloat: Boolean(sales.require_pos_till_float),
     receiptCopies: Number(sales.receipt_copies ?? 1),
     showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
     payment: getCheckoutPaymentConfig(moduleSettings),

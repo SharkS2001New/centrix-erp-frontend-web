@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { getToken } from "@/lib/auth-storage";
 import { ApiError } from "@/lib/api";
@@ -9,6 +9,8 @@ import { ApiError } from "@/lib/api";
 export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const sessionEnded = searchParams.get("reason") === "session";
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("password");
   const [error, setError] = useState(null);
@@ -40,7 +42,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-xl">
         <h1 className="text-2xl font-semibold text-white">POS / ERP</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Sign in with your Sanctum API credentials
+          Sign in with your username. Only one active login is allowed per account.
         </p>
         <form onSubmit={onSubmit} className="mt-8 space-y-4">
           <label className="block">
@@ -64,6 +66,11 @@ export default function LoginPage() {
               required
             />
           </label>
+          {sessionEnded ? (
+            <p className="rounded-lg bg-amber-950/40 px-3 py-2 text-sm text-amber-200">
+              Your session ended because this account signed in elsewhere.
+            </p>
+          ) : null}
           {error && (
             <p className="rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-300">
               {error}

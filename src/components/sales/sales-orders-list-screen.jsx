@@ -38,7 +38,7 @@ import { saleCustomerLabel } from "@/lib/sales";
 import { isMobileOrdersEnabled, isPosOrdersEnabled, orderDocumentPrintLabel } from "@/lib/sales-settings";
 
 const PAGE_SIZE = 15;
-const FILTER_CONTROL_CLASS = "h-[38px] w-full min-w-[10.5rem] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#185FA5]";
+const FILTER_CONTROL_CLASS = "h-[38px] w-full min-w-[10.5rem] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-black outline-none focus:border-[#185FA5]";
 
 function indexPaymentRefs(payments) {
   const map = new Map();

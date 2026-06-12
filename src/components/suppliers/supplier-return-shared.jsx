@@ -53,7 +53,7 @@ export function PackageTypeField({ value, onChange, packagingLabel, idPrefix = "
       <span className="mb-1 block text-xs font-medium text-slate-500">How are you returning?</span>
       <select
         id={`${idPrefix}-type`}
-        className="w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm text-slate-900 outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
+        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-black outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
         value={normalized}
         onChange={(e) => onChange(e.target.value)}
       >

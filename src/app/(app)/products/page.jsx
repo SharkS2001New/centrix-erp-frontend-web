@@ -484,7 +484,7 @@ export default function ProductsPage() {
             placeholder="Search by name or code…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-black shadow-sm outline-none placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
           />
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1138,7 +1138,7 @@ function FilterSelect({ value, onChange, options }) {
     <select
       value={value}
       onChange={onChange}
-      className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+      className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-black shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>

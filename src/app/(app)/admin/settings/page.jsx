@@ -61,6 +61,7 @@ const EMPTY_SALES_FORM = {
   pos_order_type_mode: "normal",
   enable_mobile_orders: false,
   enable_pos_orders: false,
+  require_pos_till_float: false,
   order_document_type: "receipt",
   invoice_valid_days: "7",
   show_branch_on_receipt: true,
@@ -104,6 +105,7 @@ function salesFormFromApi(res) {
     pos_order_type_mode: resolvePosOrderTypeMode(sales),
     enable_mobile_orders: Boolean(sales.enable_mobile_orders),
     enable_pos_orders: Boolean(sales.enable_pos_orders),
+    require_pos_till_float: Boolean(sales.require_pos_till_float),
     order_document_type: sales.order_document_type === "invoice" ? "invoice" : "receipt",
     invoice_valid_days: String(sales.invoice_valid_days ?? 7),
     show_branch_on_receipt: Boolean(sales.show_branch_on_receipt),
@@ -740,6 +742,12 @@ export default function AdminSettingsPage() {
                     description="When on, Point of sale appears as a source option in the orders list." 
                     checked={salesForm.enable_pos_orders}
                     onChange={(v) => setSalesForm((f) => ({ ...f, enable_pos_orders: v }))}
+                  />
+                  <Toggle
+                    label="Require operating till float at POS"
+                    description="When on, cashiers must open a till session and declare the operating float (any amount) before POS sales. X reports, Z reports, and end-of-day sales include the float breakdown. When off, POS sells without a session; reports still run but omit float."
+                    checked={salesForm.require_pos_till_float}
+                    onChange={(v) => setSalesForm((f) => ({ ...f, require_pos_till_float: v }))}
                   />
                 </div>
                 {orderWorkflow ? (

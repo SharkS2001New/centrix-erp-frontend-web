@@ -15,8 +15,8 @@ export function AppShell({ children }) {
         <main
           className={
             isPos
-              ? "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-              : "min-h-0 flex-1 overflow-y-auto p-6 md:p-8"
+              ? "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-100 text-slate-900"
+              : "min-h-0 flex-1 overflow-y-auto bg-slate-50 p-6 text-slate-900 md:p-8"
           }
         >
           {children}

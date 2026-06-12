@@ -1,9 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 
 const sections = ["sales", "inventory", "finance", "operations"];
+
+const REPORT_UI_ROUTES = {
+  "eod-report": "/sales/end-of-day",
+  "eod-cashier": "/sales/end-of-day",
+};
 
 export default function ReportsPage() {
   const [catalog, setCatalog] = useState(null);
@@ -39,18 +45,26 @@ export default function ReportsPage() {
                   {section}
                 </h2>
                 <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {items.map((r) => (
+                  {items.map((r) => {
+                    const uiHref = REPORT_UI_ROUTES[r.key];
+                    return (
                     <li
                       key={r.key}
                       className="rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3"
                     >
                       <p className="font-medium text-slate-200">{r.label}</p>
+                      {uiHref ? (
+                        <Link href={uiHref} className="mt-1 inline-block text-xs font-medium text-[#185FA5] hover:underline">
+                          Open report →
+                        </Link>
+                      ) : null}
                       <p className="mt-1 font-mono text-xs text-emerald-400/80">
                         GET {base}
                         {r.path}
                       </p>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </section>
             );

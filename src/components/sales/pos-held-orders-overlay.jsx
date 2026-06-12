@@ -264,7 +264,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search order #, customer…"
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none placeholder:text-slate-400 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-black shadow-sm outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
           />
         </div>
 

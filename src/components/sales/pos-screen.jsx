@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { usePosSession } from "@/contexts/pos-session-context";
 import { parseDecimalInput } from "@/components/catalog/catalog-shared";
 import { enrichProductForLpo } from "@/components/lpo/lpo-product-utils";
 import { formatMixedStockDisplay, formatPosCartQty } from "@/lib/stock-uom";
@@ -58,12 +59,19 @@ import { PosCartPaymentOptions } from "./pos-cart-payment-options";
 import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
 import { PosSaveOrderDialog } from "./pos-save-order-dialog";
 import { PosLeaveGuardDialog } from "./pos-leave-guard-dialog";
+import { OpenSessionModal, AddFloatModal } from "@/components/pos/till-session-ui";
+import { filterByOrganization, orgListParams } from "@/lib/admin";
+import {
+  createBranchTill,
+  indexOpenSessionsByTill,
+  pickBranchTillForCashier,
+} from "@/lib/pos-till";
 
 const fieldInput =
-  "w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 shadow-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20";
+  "w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-black shadow-sm outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600";
 
 const compactAmountInput =
-  "w-[4.5rem] shrink-0 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-right text-xs text-slate-900 shadow-sm outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
+  "w-[4.5rem] shrink-0 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-right text-xs text-black shadow-sm outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600";
 
 function PosLabel({ children }) {
   return (
@@ -94,6 +102,18 @@ function sameLineId(a, b) {
 export function PosScreen() {
   const router = useRouter();
   const { user, capabilities, refreshCapabilities } = useAuth();
+  const {
+    activeSession,
+    tillId,
+    floatSessionId,
+    openSession,
+    addFloat,
+    busy: sessionBusy,
+    error: sessionError,
+    setError: setSessionError,
+    loading: sessionLoading,
+  } = usePosSession();
+  const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const posSalesConfig = useMemo(
     () =>
       getPosSalesConfig(capabilities?.module_settings, {
@@ -115,6 +135,7 @@ export function PosScreen() {
   const allowNegativeStock = posSalesConfig.allowNegativeStock;
   const addRouteMarkupPrices = posSalesConfig.addRouteMarkupPrices;
   const posOrderTypeMode = posSalesConfig.posOrderTypeMode;
+  const requirePosTillFloat = posSalesConfig.requirePosTillFloat;
   const canChooseOrderType = addRouteMarkupPrices && posOrderTypeMode === "toggle";
   const lockedToRouteOrder = addRouteMarkupPrices && posOrderTypeMode === "route";
   const showRouteOrderUi = addRouteMarkupPrices && posOrderTypeMode !== "normal";
@@ -129,6 +150,113 @@ export function PosScreen() {
   const [isRouteOrder, setIsRouteOrder] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState("");
   const [routes, setRoutes] = useState([]);
+  const [posTills, setPosTills] = useState([]);
+  const [posBranches, setPosBranches] = useState([]);
+  const [posOpenSessions, setPosOpenSessions] = useState([]);
+  const [floatModalOpen, setFloatModalOpen] = useState(false);
+  const [addFloatOpen, setAddFloatOpen] = useState(false);
+  const [preferredTillId, setPreferredTillId] = useState(null);
+  const [pendingTillSuggestion, setPendingTillSuggestion] = useState(null);
+  const [posTillMetaLoading, setPosTillMetaLoading] = useState(false);
+
+  const loadPosTillMeta = useCallback(async () => {
+    if (!organizationId) return;
+    setPosTillMetaLoading(true);
+    try {
+      const [tillRes, branchRes, sessionRes] = await Promise.all([
+        apiRequest("/tills", { searchParams: { per_page: 200 } }),
+        apiRequest("/branches", {
+          searchParams: { per_page: 200, ...orgListParams(organizationId) },
+        }),
+        apiRequest("/till-float-sessions", {
+          searchParams: { per_page: 200, "filter[status]": "open" },
+        }).catch(() => ({ data: [] })),
+      ]);
+      let tills = tillRes.data ?? [];
+      const sessions = sessionRes.data ?? [];
+      const branches = filterByOrganization(branchRes.data ?? [], organizationId);
+      const branchId = user?.branch_id ?? branches[0]?.id;
+
+      if (branchId) {
+        const picked = pickBranchTillForCashier({
+          branchId,
+          tills,
+          openSessions: sessions,
+          userId: user?.id,
+        });
+        setPreferredTillId(picked.till?.id ?? null);
+        setPendingTillSuggestion(picked.suggested);
+      } else {
+        setPreferredTillId(tills[0]?.id ?? null);
+        setPendingTillSuggestion(null);
+      }
+
+      setPosTills(tills);
+      setPosBranches(branches);
+      setPosOpenSessions(sessions);
+    } catch {
+      setPosTills([]);
+      setPosBranches([]);
+      setPosOpenSessions([]);
+      setPreferredTillId(null);
+      setPendingTillSuggestion(null);
+    } finally {
+      setPosTillMetaLoading(false);
+    }
+  }, [organizationId, user?.branch_id, user?.id]);
+
+  const openByTill = useMemo(
+    () => indexOpenSessionsByTill(posOpenSessions),
+    [posOpenSessions],
+  );
+
+  useEffect(() => {
+    if (!requirePosTillFloat || activeSession || sessionLoading) return;
+    setFloatModalOpen(true);
+    loadPosTillMeta();
+  }, [requirePosTillFloat, activeSession, sessionLoading, loadPosTillMeta]);
+
+  async function handlePosOpenSession(payload) {
+    try {
+      let tillId = payload.till_id;
+      const branchId = payload.branch_id ?? user?.branch_id;
+
+      if (!tillId && branchId) {
+        const created = await createBranchTill({
+          branchId,
+          existingTills: posTills,
+          suggested: pendingTillSuggestion,
+          cashierId: user?.id,
+        });
+        tillId = created.id;
+        setPosTills((rows) => [...rows, created]);
+        setPreferredTillId(created.id);
+        setPendingTillSuggestion(null);
+      }
+
+      if (!tillId) {
+        throw new Error("No till is available for this branch.");
+      }
+
+      await openSession({
+        ...payload,
+        till_id: tillId,
+        branch_id: branchId,
+      });
+      setFloatModalOpen(false);
+    } catch {
+      /* sessionError set in context */
+    }
+  }
+
+  async function handlePosAddFloat(payload) {
+    try {
+      await addFloat(payload);
+      setAddFloatOpen(false);
+    } catch {
+      /* sessionError set in context */
+    }
+  }
 
   const channel = posChannelFromStockSource(sellFromShop, posSalesConfig);
   const channelWorkflow = useMemo(
@@ -371,6 +499,7 @@ export function PosScreen() {
   const loadCashierCart = useCallback(async () => {
     if (!user?.branch_id) return null;
     const body = { channel, order_source: "backoffice", branch_id: user.branch_id };
+    if (tillId) body.till_id = tillId;
     if (usesRouteMarkup) {
       body.route_id = Number(selectedRouteId);
     }
@@ -392,6 +521,7 @@ export function PosScreen() {
   }, [
     channel,
     user?.branch_id,
+    tillId,
     showRouteOrderUi,
     usesRouteMarkup,
     selectedRouteId,
@@ -1541,12 +1671,19 @@ export function PosScreen() {
 
   async function handleCheckout(body) {
     if (!cart?.id) return null;
+    if (requirePosTillFloat && !activeSession) {
+      setPaymentError("Open a till session and declare your operating float before completing sales.");
+      return null;
+    }
     setBusy(true);
     setPaymentError(null);
     try {
       const sale = await apiRequest(`/sales/carts/${cart.id}/checkout`, {
         method: "POST",
-        body,
+        body: {
+          ...body,
+          ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
+        },
       });
       setCompletedSale(sale);
       setCart(null);
@@ -1663,7 +1800,10 @@ export function PosScreen() {
       }
       const sale = await apiRequest(`/sales/carts/${cart.id}/checkout`, {
         method: "POST",
-        body,
+        body: {
+          ...body,
+          ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
+        },
       });
       setCompletedSale(sale);
       setSaveOrderOpen(false);
@@ -1702,7 +1842,7 @@ export function PosScreen() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-slate-100 text-slate-900">
+    <div className="relative flex h-full min-h-0 flex-col bg-slate-100 text-slate-900">
       {/* Title bar */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#144f8a] bg-[#185FA5] px-4 py-2.5 text-white shadow-sm">
         <div className="flex items-center gap-3">
@@ -1720,13 +1860,72 @@ export function PosScreen() {
             </Link>
           ) : null}
         </div>
-        <div className="text-right text-[10px] text-blue-100">
-          <p>{capabilities?.profile_label ?? "POS"} · {channel.toUpperCase()}</p>
-          <p className="mt-0.5 min-h-[1.125rem] normal-case text-white">
-            {statusMessage || "\u00a0"}
-          </p>
+        <div className="flex items-center gap-3">
+          {requirePosTillFloat && activeSession ? (
+            <button
+              type="button"
+              onClick={() => setAddFloatOpen(true)}
+              className="rounded border border-blue-300/40 bg-blue-900/30 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-blue-100 hover:bg-blue-900/50"
+            >
+              Add float
+            </button>
+          ) : null}
+          <div className="text-right text-[10px] text-blue-100">
+            <p>{capabilities?.profile_label ?? "POS"} · {channel.toUpperCase()}</p>
+            <p className="mt-0.5 min-h-[1.125rem] normal-case text-white">
+              {statusMessage || "\u00a0"}
+            </p>
+          </div>
         </div>
       </div>
+
+      {!requirePosTillFloat || activeSession ? null : (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+          <span>Declare your operating float to start selling on this till.</span>
+          <button
+            type="button"
+            onClick={() => {
+              setFloatModalOpen(true);
+              loadPosTillMeta();
+            }}
+            className="shrink-0 rounded-lg bg-amber-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-900"
+          >
+            Declare float
+          </button>
+        </div>
+      )}
+
+      <OpenSessionModal
+        open={requirePosTillFloat && !activeSession && !sessionLoading && floatModalOpen}
+        onClose={() => {
+          setSessionError(null);
+          setFloatModalOpen(false);
+        }}
+        tills={posTills}
+        branches={posBranches}
+        user={user}
+        openByTill={openByTill}
+        preferredTillId={preferredTillId}
+        pendingTillLabel={pendingTillSuggestion?.till_name ?? pendingTillSuggestion?.till_number ?? null}
+        autoAssignTill
+        onOpen={handlePosOpenSession}
+        busy={sessionBusy || posTillMetaLoading}
+        error={sessionError}
+        title="Declare operating float"
+        subtitle="Your till is assigned automatically (Till01, Till02, …). Each till belongs to one cashier. Enter the cash you are starting with."
+      />
+
+      <AddFloatModal
+        open={addFloatOpen}
+        onClose={() => {
+          setSessionError(null);
+          setAddFloatOpen(false);
+        }}
+        onSaved={handlePosAddFloat}
+        session={activeSession}
+        busy={sessionBusy}
+        error={sessionError}
+      />
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Left — product info + search */}
@@ -1813,7 +2012,7 @@ export function PosScreen() {
                   ) : null}
                   {lockedToRouteOrder || isRouteOrder ? (
                     <select
-                      className="min-w-[10rem] rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 shadow-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
+                      className="min-w-[10rem] rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-black shadow-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
                       value={selectedRouteId}
                       disabled={busy}
                       onChange={(e) => void handleRouteChange(e.target.value)}

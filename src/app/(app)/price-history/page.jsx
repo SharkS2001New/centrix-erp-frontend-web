@@ -298,7 +298,7 @@ export default function PriceHistoryPage() {
             placeholder="Search by product name or code…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
+            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
           />
         </div>
         <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
@@ -307,7 +307,7 @@ export default function PriceHistoryPage() {
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#185FA5]"
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-black outline-none focus:border-[#185FA5]"
         >
           <option value="all">All categories</option>
           {categories.map((c) => (
@@ -319,7 +319,7 @@ export default function PriceHistoryPage() {
         <select
           value={userFilter}
           onChange={(e) => setUserFilter(e.target.value)}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#185FA5]"
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-black outline-none focus:border-[#185FA5]"
         >
           <option value="all">All users</option>
           {users.map((u) => (

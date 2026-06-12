@@ -16,6 +16,7 @@ import {
   getToken,
   setSession,
 } from "@/lib/auth-storage";
+import { clearStoredActiveSession } from "@/lib/pos-till";
 
 const AuthContext = createContext(null);
 
@@ -70,6 +71,7 @@ export function AuthProvider({ children }) {
       /* ignore */
     }
     clearSession();
+    clearStoredActiveSession();
     setUser(null);
     setCapabilities(null);
     router.replace("/login");

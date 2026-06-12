@@ -1,4 +1,4 @@
-import { getToken } from "./auth-storage";
+import { getToken, clearSession } from "./auth-storage";
 
 const baseUrl = () =>
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
@@ -88,6 +88,13 @@ export async function apiRequest(path, options = {}) {
   }
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined") {
+      clearSession();
+      localStorage.removeItem("pos_erp_active_session");
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.assign("/login?reason=session");
+      }
+    }
     throw new ApiError(formatApiErrorMessage(data, res.statusText), res.status, data);
   }
 

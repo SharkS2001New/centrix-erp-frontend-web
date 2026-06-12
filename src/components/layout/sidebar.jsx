@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { getSalesOrderQueueWorkflow, salesOrderQueueNavItems } from "@/lib/order-workflow";
-import { isMobileOrdersEnabled } from "@/lib/sales-settings";
+import { isMobileOrdersEnabled, isPosTillFloatRequired } from "@/lib/sales-settings";
 
 const navSections = [
   {
@@ -55,11 +55,19 @@ const navSections = [
     ],
   },
   {
+    label: "POS",
+    module: "sales.backend",
+    items: [
+      { href: "/sales/till-management", label: "Till Management", module: "sales.backend", requireTillFloat: true },
+      { href: "/sales/pos", label: "Point of sale", module: "sales.backend" },
+      { href: "/sales/end-of-day", label: "End of day report", module: "sales.backend" },
+    ],
+  },
+  {
     label: "Sales",
     module: "sales.backend",
     items: [
       { href: "/sales", label: "Dashboard", module: "sales.backend", exact: true },
-      { href: "/sales/pos", label: "Point of sale", module: "sales.backend" },
       { href: "/sales/orders", label: "Orders", module: "sales.backend", ordersNav: true },
       { href: "/sales/vouchers", label: "Vouchers", module: "sales.backend" },
       { href: "/sales/loyalty-cards", label: "Loyalty cards", module: "sales.backend" },
@@ -105,6 +113,8 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user, capabilities, logout, isModuleEnabled } = useAuth();
 
+  const requireTillFloat = isPosTillFloatRequired(capabilities?.module_settings);
+
   const salesOrderNavItems = useMemo(() => {
     const workflow = getSalesOrderQueueWorkflow(capabilities, "backend");
     const includeMobile = isMobileOrdersEnabled(capabilities?.module_settings);
@@ -122,6 +132,7 @@ export function Sidebar() {
       ...section,
       items: section.items.flatMap((item) => {
         if (item.ordersNav) return salesOrderNavItems;
+        if (item.requireTillFloat && !requireTillFloat) return [];
         if (!item.module || isModuleEnabled(item.module)) return [item];
         return [];
       }),

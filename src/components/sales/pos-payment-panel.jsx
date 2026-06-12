@@ -20,7 +20,7 @@ function PosField({ label, children }) {
 }
 
 const inputCls =
-  "w-full rounded border border-[#c4b89a] bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-[#185FA5]";
+  "w-full rounded border border-[#c4b89a] bg-white px-2 py-1.5 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5]";
 
 function buildConfirmPaymentMessage({ billTotal, payNow, balanceDue, isCredit }) {
   if (billTotal <= 0.01) {

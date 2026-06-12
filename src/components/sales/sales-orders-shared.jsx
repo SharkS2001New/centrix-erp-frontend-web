@@ -474,42 +474,50 @@ export function OrderContextMenu({ open, x, y, items, onClose }) {
 
   const menuWidth = 260;
   const left = Math.min(x, window.innerWidth - menuWidth - 8);
-  const top = Math.min(y, window.innerHeight - items.length * 36 - 16);
+  const top = Math.min(y, window.innerHeight - items.length * 40 - 16);
 
   return createPortal(
-    <div
-      role="menu"
-      className="fixed z-50 min-w-[12rem] overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
-      style={{ top, left }}
-      onClick={(event) => event.stopPropagation()}
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      {items.map((item, index) => {
-        if (item.type === "separator") {
-          return <div key={`sep-${index}`} className="my-1 border-t border-slate-100" role="separator" />;
-        }
-        return (
-          <button
-            key={item.key}
-            type="button"
-            role="menuitem"
-            disabled={item.disabled}
-            onClick={() => {
-              item.onClick?.();
-              onClose();
-            }}
-            className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
-              item.destructive
-                ? "text-red-600 hover:bg-red-50"
-                : "text-slate-700 hover:bg-slate-50"
-            }`}
-          >
-            {item.icon ? <ContextMenuIcon name={item.icon} /> : null}
-            <span>{item.label}</span>
-          </button>
-        );
-      })}
-    </div>,
+    <>
+      <button
+        type="button"
+        className="fixed inset-0 z-[9998] cursor-default bg-slate-900/30"
+        aria-label="Close menu"
+        onClick={onClose}
+      />
+      <div
+        role="menu"
+        className="fixed z-[9999] min-w-[14rem] overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 text-slate-900 shadow-2xl ring-1 ring-black/5"
+        style={{ top, left }}
+        onClick={(event) => event.stopPropagation()}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        {items.map((item, index) => {
+          if (item.type === "separator") {
+            return <div key={`sep-${index}`} className="my-1 border-t border-slate-200" role="separator" />;
+          }
+          return (
+            <button
+              key={item.key}
+              type="button"
+              role="menuitem"
+              disabled={item.disabled}
+              onClick={() => {
+                item.onClick?.();
+                onClose();
+              }}
+              className={`flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
+                item.destructive
+                  ? "text-red-700 hover:bg-red-50"
+                  : "text-slate-900 hover:bg-slate-100"
+              }`}
+            >
+              {item.icon ? <ContextMenuIcon name={item.icon} /> : null}
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </>,
     document.body,
   );
 }

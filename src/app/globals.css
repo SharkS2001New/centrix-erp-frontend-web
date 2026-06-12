@@ -8,6 +8,35 @@ body {
   margin: 0;
 }
 
+/* Dark app chrome sets light default text; light panels must stay readable. */
+.bg-white,
+.bg-slate-50,
+.bg-slate-100 {
+  color: #0f172a;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+select,
+textarea {
+  color: #000;
+}
+
+select option {
+  color: #000;
+  background-color: #fff;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #64748b;
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  color: #475569;
+}
+
 input,
 select,
 button,

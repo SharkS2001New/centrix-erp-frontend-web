@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 const defaultInputCls =
-  "w-full rounded border border-[#c4b89a] bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-[#185FA5]";
+  "w-full rounded border border-[#c4b89a] bg-white px-2 py-1.5 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5]";
 
 const LIST_MAX_HEIGHT = 200;
 const SEARCH_HEADER_HEIGHT = 44;
@@ -162,7 +162,7 @@ export function PosSearchableSelect({
                 setOpen(false);
               }
             }}
-            className="w-full rounded border border-[#c4b89a] bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-[#185FA5]"
+            className="w-full rounded border border-[#c4b89a] bg-white px-2 py-1.5 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5]"
           />
         </div>
         <ul
@@ -207,7 +207,7 @@ export function PosSearchableSelect({
         onClick={toggleOpen}
         className={`${inputClassName} flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60`}
       >
-        <span className={`min-w-0 flex-1 truncate ${selected ? "" : "text-slate-500"}`}>
+        <span className={`min-w-0 flex-1 truncate ${selected ? "text-black" : "text-slate-500"}`}>
           {triggerLabel}
         </span>
         <span aria-hidden className="shrink-0 text-xs text-slate-500">

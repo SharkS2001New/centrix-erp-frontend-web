@@ -151,7 +151,7 @@ export function SearchInput({ value, onChange, placeholder, className = "" }) {
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
+        className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
       />
     </div>
   );
@@ -162,7 +162,7 @@ export function FilterSelect({ value, onChange, options }) {
     <select
       value={value}
       onChange={onChange}
-      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#185FA5]"
+      className={SELECT_CLASS}
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>
@@ -292,7 +292,7 @@ export function FormModal({ title, open, onClose, onSubmit, saving, error, submi
         role="dialog"
         aria-modal="true"
         aria-labelledby="form-modal-title"
-        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl"
+        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 text-slate-900 shadow-xl"
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose();
         }}
@@ -349,7 +349,7 @@ export function FormDrawer({
         onClick={onClose}
       />
       <aside
-        className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-slate-200 bg-white shadow-xl ${
+        className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-slate-200 bg-white text-slate-900 shadow-xl ${
           wide ? "max-w-lg" : "max-w-md"
         }`}
       >
@@ -406,7 +406,7 @@ export function DetailDrawer({
         onClick={onClose}
       />
       <aside
-        className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-slate-200 bg-white shadow-xl ${
+        className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-slate-200 bg-white text-slate-900 shadow-xl ${
           wide ? "max-w-lg" : "max-w-md"
         }`}
       >
@@ -460,8 +460,14 @@ export function Field({ label, children }) {
   );
 }
 
+export const INPUT_CLASS =
+  "w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600";
+
+export const SELECT_CLASS =
+  "rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-black outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600";
+
 export function inputClassName() {
-  return "w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm text-slate-900 outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20";
+  return INPUT_CLASS;
 }
 
 export function PencilIcon() {

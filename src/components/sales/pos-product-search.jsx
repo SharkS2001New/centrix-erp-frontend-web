@@ -6,7 +6,7 @@ import { posListUnitPrice } from "@/lib/pos-line";
 import { isExactProductCodeQuery } from "@/lib/pos-cart-merge";
 
 const fieldInput =
-  "w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 shadow-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20";
+  "w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-black shadow-sm outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20";
 
 function formatStockQty(baseQty, product) {
   const { text } = formatMixedStockDisplay(
