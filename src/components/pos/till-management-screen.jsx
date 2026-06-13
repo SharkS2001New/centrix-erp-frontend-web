@@ -20,6 +20,7 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { PosStatusBadge } from "@/components/pos/pos-shared";
+import { ZReportModal, HandoverSessionModal } from "@/components/pos/pos-session-modals";
 import {
   DeleteTillConfirmModal,
   EditSessionFloatDrawer,
@@ -39,6 +40,7 @@ import {
   tillStatusLabel,
   tillStatusTone,
 } from "@/lib/pos-till";
+import { isPosTillFloatRequired } from "@/lib/sales-settings";
 
 const TABS = [
   { id: "tills", label: "Tills" },
@@ -262,6 +264,16 @@ export function TillManagementScreen() {
   const [historyStatus, setHistoryStatus] = useState("");
   const [historyPage, setHistoryPage] = useState(1);
   const [deletingSessionId, setDeletingSessionId] = useState(null);
+  const [zReportSessionId, setZReportSessionId] = useState(null);
+  const [handoverTarget, setHandoverTarget] = useState(null);
+  const [handoverBusy, setHandoverBusy] = useState(false);
+  const [handoverError, setHandoverError] = useState(null);
+
+  const showFloatBreakdown = isPosTillFloatRequired(capabilities?.module_settings);
+  const organizationName = capabilities?.profile_label ?? "POS / ERP";
+  const canHandoverSession = Boolean(
+    user?.is_admin || capabilities?.permissions?.["sales.manage"],
+  );
 
   const loadMeta = useCallback(async () => {
     if (!organizationId) return;
@@ -318,6 +330,14 @@ export function TillManagementScreen() {
       router.replace("/sales/till-management?tab=tills", { scroll: false });
     }
   }, [searchParams, router]);
+
+  useEffect(() => {
+    const zReport = searchParams.get("zReport");
+    if (zReport) {
+      setTab("history");
+      setZReportSessionId(zReport);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     loadMeta();
@@ -449,6 +469,26 @@ export function TillManagementScreen() {
       cashierName: cashier?.full_name ?? cashier?.username ?? null,
     });
     setFloatDrawerOpen(true);
+  }
+
+  async function handleHandover(payload) {
+    if (!handoverTarget?.session?.id) return;
+    setHandoverBusy(true);
+    setHandoverError(null);
+    try {
+      await apiRequest(`/pos/sessions/${handoverTarget.session.id}/handover`, {
+        method: "POST",
+        body: payload,
+      });
+      setHandoverTarget(null);
+      await loadMeta();
+      if (tab === "history") await loadHistory();
+    } catch (e) {
+      setHandoverError(e instanceof ApiError ? e.message : "Could not hand over session");
+      throw e;
+    } finally {
+      setHandoverBusy(false);
+    }
   }
 
   function sessionHasFloat(session) {
@@ -644,6 +684,7 @@ export function TillManagementScreen() {
                       const till = tills.find((t) => t.id === row.till_id);
                       const cashier = userById.get(row.cashier_id);
                       const isOpen = String(row.status).toLowerCase() === "open";
+                      const isSuspended = String(row.status).toLowerCase() === "suspended";
                       return (
                         <tr key={row.id} className="border-b border-slate-100 last:border-b-0">
                           <td className="px-4 py-3 font-medium text-slate-900">#{row.id}</td>
@@ -658,18 +699,39 @@ export function TillManagementScreen() {
                           <td className="px-4 py-3 text-slate-600">{formatShortDate(row.opened_at)} {formatSessionTime(row.opened_at)}</td>
                           <td className="px-4 py-3 text-slate-600">{row.closed_at ? `${formatShortDate(row.closed_at)} ${formatSessionTime(row.closed_at)}` : "—"}</td>
                           <td className="px-4 py-3">
-                            <PosStatusBadge label={isOpen ? "Open" : "Closed"} tone={isOpen ? "open" : "closed"} />
+                            <PosStatusBadge
+                              label={isOpen ? "Open" : isSuspended ? "Suspended" : "Closed"}
+                              tone={isOpen ? "open" : isSuspended ? "suspended" : "closed"}
+                            />
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex justify-end gap-1">
                               {isOpen ? (
-                                <IconLink href="/sales/pos" label="Open POS">
-                                  <OpenPosIcon />
-                                </IconLink>
+                                <>
+                                  <IconLink href="/sales/pos" label="Open POS">
+                                    <OpenPosIcon />
+                                  </IconLink>
+                                  {canHandoverSession ? (
+                                    <IconButton
+                                      label="Hand over session"
+                                      onClick={() => {
+                                        setHandoverError(null);
+                                        setHandoverTarget({ session: row, till, cashier });
+                                      }}
+                                    >
+                                      <span className="text-[10px] font-bold">H</span>
+                                    </IconButton>
+                                  ) : null}
+                                </>
                               ) : (
-                                <Link href={`/sales/session/z-report?session=${row.id}`} className="text-xs text-[#185FA5] hover:underline">
+                                <button
+                                  type="button"
+                                  onClick={() => setZReportSessionId(String(row.id))}
+                                  className="rounded-md px-1 text-xs font-medium text-[#185FA5] hover:bg-[#E6F1FB] hover:underline"
+                                  title="View Z report"
+                                >
                                   Z
-                                </Link>
+                                </button>
                               )}
                               {sessionHasFloat(row) ? (
                                 <IconButton
@@ -761,6 +823,36 @@ export function TillManagementScreen() {
         }
         deleting={Boolean(deleteTillTarget && deletingTillId === deleteTillTarget.id)}
         error={deleteTillError}
+      />
+
+      <HandoverSessionModal
+        open={Boolean(handoverTarget)}
+        onClose={() => {
+          if (handoverBusy) return;
+          setHandoverTarget(null);
+          setHandoverError(null);
+        }}
+        session={handoverTarget?.session}
+        tillName={handoverTarget?.till ? tillDisplayName(handoverTarget.till) : null}
+        cashierName={handoverTarget?.cashier?.full_name ?? handoverTarget?.cashier?.username ?? null}
+        cashiers={users.filter((u) => u.is_active !== false)}
+        onHandover={handleHandover}
+        busy={handoverBusy}
+        error={handoverError}
+      />
+
+      <ZReportModal
+        open={Boolean(zReportSessionId)}
+        sessionId={zReportSessionId}
+        onClose={() => {
+          setZReportSessionId(null);
+          if (searchParams.get("zReport")) {
+            router.replace("/sales/till-management?tab=history", { scroll: false });
+          }
+        }}
+        organizationName={organizationName}
+        showFloatBreakdown={showFloatBreakdown}
+        fallbackCashierName={user?.full_name ?? user?.username ?? null}
       />
 
       <TillFormDrawer

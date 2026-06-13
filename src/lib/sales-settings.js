@@ -32,6 +32,7 @@ const SALES_DEFAULTS = {
   enable_mobile_orders: false,
   enable_pos_orders: false,
   require_pos_till_float: false,
+  blind_till_close: false,
   order_document_type: "receipt",
   invoice_valid_days: 7,
   receipt_copies: 1,
@@ -50,6 +51,11 @@ export function isPosOrdersEnabled(moduleSettings) {
 /** When true, cashiers must open a till session with operating float before POS sales. */
 export function isPosTillFloatRequired(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).require_pos_till_float);
+}
+
+/** When true, cashiers count cash without seeing expected amount during close. */
+export function isBlindTillCloseEnabled(moduleSettings) {
+  return Boolean(mergeSalesSettings(moduleSettings).blind_till_close);
 }
 
 /** True when any sales discount feature is enabled in settings. */
@@ -156,6 +162,7 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
       ? resolvePosOrderTypeMode(sales)
       : "normal",
     requirePosTillFloat: Boolean(sales.require_pos_till_float),
+    blindTillClose: Boolean(sales.blind_till_close),
     receiptCopies: Number(sales.receipt_copies ?? 1),
     showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
     payment: getCheckoutPaymentConfig(moduleSettings),

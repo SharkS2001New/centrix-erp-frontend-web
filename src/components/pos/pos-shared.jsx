@@ -84,7 +84,12 @@ export function printPosTillReport({
             : "—",
         ),
       ].join("")
-    : line("Expected Cash", formatTillKes(report?.expected_cash).replace(/^KES\s*/, ""));
+    : [
+        ...(Number(report?.session_expenses) > 0
+          ? [line("Session expenses", formatTillKes(report.session_expenses).replace(/^KES\s*/, ""))]
+          : []),
+        line("Expected Cash", formatTillKes(report?.expected_cash).replace(/^KES\s*/, "")),
+      ].join("");
 
   const html = `<!DOCTYPE html>
 <html>
@@ -139,6 +144,7 @@ export function PosStatusBadge({ label, tone = "closed" }) {
     closed: "bg-red-50 text-red-700 ring-red-600/20",
     inactive: "bg-amber-50 text-amber-800 ring-amber-600/20",
     open: "bg-blue-50 text-blue-700 ring-blue-600/20",
+    suspended: "bg-amber-50 text-amber-800 ring-amber-600/20",
   };
   return (
     <span

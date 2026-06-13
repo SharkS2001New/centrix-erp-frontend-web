@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -59,13 +59,18 @@ import { PosCartPaymentOptions } from "./pos-cart-payment-options";
 import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
 import { PosSaveOrderDialog } from "./pos-save-order-dialog";
 import { PosLeaveGuardDialog } from "./pos-leave-guard-dialog";
-import { OpenSessionModal, AddFloatModal } from "@/components/pos/till-session-ui";
+import { CloseSessionModal, XReportModal, ZReportModal } from "@/components/pos/pos-session-modals";
+import { FloatBreakdownModal, OpenSessionModal } from "@/components/pos/till-session-ui";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import {
   createBranchTill,
   indexOpenSessionsByTill,
   pickBranchTillForCashier,
+  tillDisplayName,
 } from "@/lib/pos-till";
+
+const cartToolbarBtnClassName =
+  "inline-flex items-center gap-1.5 rounded-lg border border-[#185FA5]/30 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#0C447C] shadow-sm hover:bg-[#E6F1FB] disabled:opacity-50";
 
 const fieldInput =
   "w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-black shadow-sm outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600";
@@ -108,10 +113,18 @@ export function PosScreen() {
     floatSessionId,
     openSession,
     addFloat,
+    recordCashMovement,
+    suspendSession,
+    resumeSession,
+    closeSession,
+    sessionReport,
+    refreshReport,
+    suspendedSession,
     busy: sessionBusy,
     error: sessionError,
     setError: setSessionError,
     loading: sessionLoading,
+    hasPosTill,
   } = usePosSession();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const posSalesConfig = useMemo(
@@ -136,6 +149,7 @@ export function PosScreen() {
   const addRouteMarkupPrices = posSalesConfig.addRouteMarkupPrices;
   const posOrderTypeMode = posSalesConfig.posOrderTypeMode;
   const requirePosTillFloat = posSalesConfig.requirePosTillFloat;
+  const blindTillClose = posSalesConfig.blindTillClose;
   const canChooseOrderType = addRouteMarkupPrices && posOrderTypeMode === "toggle";
   const lockedToRouteOrder = addRouteMarkupPrices && posOrderTypeMode === "route";
   const showRouteOrderUi = addRouteMarkupPrices && posOrderTypeMode !== "normal";
@@ -154,7 +168,12 @@ export function PosScreen() {
   const [posBranches, setPosBranches] = useState([]);
   const [posOpenSessions, setPosOpenSessions] = useState([]);
   const [floatModalOpen, setFloatModalOpen] = useState(false);
-  const [addFloatOpen, setAddFloatOpen] = useState(false);
+  const [floatDetailsOpen, setFloatDetailsOpen] = useState(false);
+  const [xReportOpen, setXReportOpen] = useState(false);
+  const [xReportLoading, setXReportLoading] = useState(false);
+  const [closeSessionOpen, setCloseSessionOpen] = useState(false);
+  const [zReportOpen, setZReportOpen] = useState(false);
+  const [zReportPayload, setZReportPayload] = useState(null);
   const [preferredTillId, setPreferredTillId] = useState(null);
   const [pendingTillSuggestion, setPendingTillSuggestion] = useState(null);
   const [posTillMetaLoading, setPosTillMetaLoading] = useState(false);
@@ -210,11 +229,16 @@ export function PosScreen() {
     [posOpenSessions],
   );
 
+  const activeTill = useMemo(
+    () => posTills.find((t) => String(t.id) === String(tillId ?? activeSession?.till_id)) ?? null,
+    [posTills, tillId, activeSession?.till_id],
+  );
+
   useEffect(() => {
-    if (!requirePosTillFloat || activeSession || sessionLoading) return;
+    if (!requirePosTillFloat || activeSession || suspendedSession || sessionLoading) return;
     setFloatModalOpen(true);
     loadPosTillMeta();
-  }, [requirePosTillFloat, activeSession, sessionLoading, loadPosTillMeta]);
+  }, [requirePosTillFloat, activeSession, suspendedSession, sessionLoading, loadPosTillMeta]);
 
   async function handlePosOpenSession(payload) {
     try {
@@ -250,14 +274,64 @@ export function PosScreen() {
   }
 
   async function handlePosAddFloat(payload) {
+    await addFloat(payload);
+    setSessionError(null);
+  }
+
+  async function handleOpenXReport() {
+    if (!activeSession?.id) return;
+    setSessionError(null);
+    setXReportOpen(true);
+    setXReportLoading(true);
     try {
-      await addFloat(payload);
-      setAddFloatOpen(false);
+      await refreshReport(activeSession.id);
     } catch {
-      /* sessionError set in context */
+      /* sessionError from context */
+    } finally {
+      setXReportLoading(false);
     }
   }
 
+  async function handleOpenCloseSession() {
+    if (!activeSession?.id) return;
+    setSessionError(null);
+    setCloseSessionOpen(true);
+    try {
+      await refreshReport(activeSession.id);
+    } catch {
+      /* sessionError from context */
+    }
+  }
+
+  function handleSessionClosed(res) {
+    setCloseSessionOpen(false);
+    setZReportPayload(res);
+    setZReportOpen(true);
+  }
+
+  async function handleSuspendSession() {
+    if (!window.confirm("Suspend this session? You can resume the same shift later — no new float is needed.")) return;
+    setSessionError(null);
+    try {
+      await suspendSession();
+      setFloatModalOpen(false);
+    } catch {
+      /* sessionError from context */
+    }
+  }
+
+  async function handleResumeSession() {
+    setSessionError(null);
+    try {
+      await resumeSession();
+      setFloatModalOpen(false);
+    } catch {
+      /* sessionError from context */
+    }
+  }
+
+  const organizationName = capabilities?.profile_label ?? "POS / ERP";
+  const posCashierName = user?.full_name ?? user?.username ?? null;
   const channel = posChannelFromStockSource(sellFromShop, posSalesConfig);
   const channelWorkflow = useMemo(
     () => getChannelWorkflow(capabilities, channel),
@@ -1672,7 +1746,11 @@ export function PosScreen() {
   async function handleCheckout(body) {
     if (!cart?.id) return null;
     if (requirePosTillFloat && !activeSession) {
-      setPaymentError("Open a till session and declare your operating float before completing sales.");
+      setPaymentError(
+        suspendedSession
+          ? "Resume your suspended session before completing sales."
+          : "Open a till session and declare your operating float before completing sales.",
+      );
       return null;
     }
     setBusy(true);
@@ -1845,7 +1923,7 @@ export function PosScreen() {
     <div className="relative flex h-full min-h-0 flex-col bg-slate-100 text-slate-900">
       {/* Title bar */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#144f8a] bg-[#185FA5] px-4 py-2.5 text-white shadow-sm">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <Link href="/sales" className="text-xs text-blue-100 hover:text-white hover:underline">
             ← Dashboard
           </Link>
@@ -1860,16 +1938,7 @@ export function PosScreen() {
             </Link>
           ) : null}
         </div>
-        <div className="flex items-center gap-3">
-          {requirePosTillFloat && activeSession ? (
-            <button
-              type="button"
-              onClick={() => setAddFloatOpen(true)}
-              className="rounded border border-blue-300/40 bg-blue-900/30 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-blue-100 hover:bg-blue-900/50"
-            >
-              Add float
-            </button>
-          ) : null}
+        <div className="flex items-center">
           <div className="text-right text-[10px] text-blue-100">
             <p>{capabilities?.profile_label ?? "POS"} · {channel.toUpperCase()}</p>
             <p className="mt-0.5 min-h-[1.125rem] normal-case text-white">
@@ -1879,7 +1948,21 @@ export function PosScreen() {
         </div>
       </div>
 
-      {!requirePosTillFloat || activeSession ? null : (
+      {!requirePosTillFloat || activeSession ? null : suspendedSession ? (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-3 py-2">
+          <p className="text-xs text-amber-900">
+            Session #{suspendedSession.id} is suspended — resume to continue selling.
+          </p>
+          <button
+            type="button"
+            disabled={sessionBusy}
+            onClick={() => void handleResumeSession()}
+            className="rounded-lg bg-amber-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-900 disabled:opacity-50"
+          >
+            Resume session
+          </button>
+        </div>
+      ) : (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
           <span>Declare your operating float to start selling on this till.</span>
           <button
@@ -1896,7 +1979,7 @@ export function PosScreen() {
       )}
 
       <OpenSessionModal
-        open={requirePosTillFloat && !activeSession && !sessionLoading && floatModalOpen}
+        open={requirePosTillFloat && !activeSession && !suspendedSession && !sessionLoading && floatModalOpen}
         onClose={() => {
           setSessionError(null);
           setFloatModalOpen(false);
@@ -1915,16 +1998,66 @@ export function PosScreen() {
         subtitle="Your till is assigned automatically (Till01, Till02, …). Each till belongs to one cashier. Enter the cash you are starting with."
       />
 
-      <AddFloatModal
-        open={addFloatOpen}
+      <FloatBreakdownModal
+        open={floatDetailsOpen}
         onClose={() => {
           setSessionError(null);
-          setAddFloatOpen(false);
+          setFloatDetailsOpen(false);
         }}
-        onSaved={handlePosAddFloat}
         session={activeSession}
+        tillName={activeTill ? tillDisplayName(activeTill) : null}
+        cashierName={user?.full_name ?? user?.username ?? null}
+        canAddFloat
+        onAddFloat={handlePosAddFloat}
+        addFloatBusy={sessionBusy}
+        addFloatError={sessionError}
+        onCashMovement={recordCashMovement}
+        cashMovementBusy={sessionBusy}
+        cashMovementError={sessionError}
+      />
+
+      <XReportModal
+        open={xReportOpen}
+        onClose={() => {
+          setSessionError(null);
+          setXReportOpen(false);
+        }}
+        session={activeSession}
+        report={sessionReport}
+        tillName={activeTill ? tillDisplayName(activeTill) : null}
+        cashierName={posCashierName}
+        showFloatBreakdown={requirePosTillFloat}
+        organizationName={organizationName}
+        loading={xReportLoading}
+        error={sessionError}
+      />
+
+      <CloseSessionModal
+        open={closeSessionOpen}
+        onClose={() => {
+          setSessionError(null);
+          setCloseSessionOpen(false);
+        }}
+        session={activeSession}
+        sessionReport={sessionReport}
+        closeSession={closeSession}
         busy={sessionBusy}
         error={sessionError}
+        requireTillFloat={requirePosTillFloat}
+        blindTillClose={blindTillClose}
+        onClosed={handleSessionClosed}
+      />
+
+      <ZReportModal
+        open={zReportOpen}
+        onClose={() => {
+          setZReportPayload(null);
+          setZReportOpen(false);
+        }}
+        payload={zReportPayload}
+        organizationName={organizationName}
+        showFloatBreakdown={requirePosTillFloat}
+        fallbackCashierName={posCashierName}
       />
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -2206,12 +2339,12 @@ export function PosScreen() {
 
         {/* Right — cart grid */}
         <div className="flex min-h-0 flex-1 flex-col bg-white">
-          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-[#E6F1FB] px-3 py-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-[#E6F1FB] px-3 py-2">
             <button
               type="button"
               disabled={busy}
               onClick={() => setHeldOrdersOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#185FA5]/30 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#0C447C] shadow-sm hover:bg-[#E6F1FB] disabled:opacity-50"
+              className={cartToolbarBtnClassName}
             >
               Held orders
               {heldOrdersCount > 0 ? (
@@ -2220,6 +2353,47 @@ export function PosScreen() {
                 </span>
               ) : null}
             </button>
+            {requirePosTillFloat && activeSession ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setSessionError(null);
+                  setFloatDetailsOpen(true);
+                }}
+                className={cartToolbarBtnClassName}
+              >
+                Float details
+              </button>
+            ) : null}
+            {requirePosTillFloat && activeSession && hasPosTill ? (
+              <>
+                <button
+                  type="button"
+                  disabled={busy || sessionBusy}
+                  onClick={() => void handleOpenXReport()}
+                  className={cartToolbarBtnClassName}
+                >
+                  X report
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || sessionBusy}
+                  onClick={() => void handleOpenCloseSession()}
+                  className={cartToolbarBtnClassName}
+                >
+                  Close session
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || sessionBusy}
+                  onClick={() => void handleSuspendSession()}
+                  className={cartToolbarBtnClassName}
+                >
+                  Suspend
+                </button>
+              </>
+            ) : null}
           </div>
           <div className="min-h-0 flex-1 overflow-auto p-2">
             <table className="w-full border-collapse text-xs">

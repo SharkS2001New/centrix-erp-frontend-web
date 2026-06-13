@@ -455,18 +455,83 @@ export function AddFloatModal({ open, onClose, onSaved, session, busy, error }) 
   );
 }
 
-export function FloatBreakdownModal({ open, onClose, session, tillName, cashierName, onCorrectFloat }) {
+export function FloatBreakdownModal({
+  open,
+  onClose,
+  session,
+  tillName,
+  cashierName,
+  onCorrectFloat,
+  canAddFloat = false,
+  onAddFloat,
+  addFloatBusy = false,
+  addFloatError = null,
+  onCashMovement,
+  cashMovementBusy = false,
+  cashMovementError = null,
+}) {
+  const [addingFloat, setAddingFloat] = useState(false);
+  const [recordingMovement, setRecordingMovement] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [paymentType, setPaymentType] = useState("CASH");
+  const [movementType, setMovementType] = useState("drop");
+  const [movementReason, setMovementReason] = useState("");
+
   const entries = normalizeFloatEntries(session?.float_breakdown);
+  const movements = Array.isArray(session?.cash_movements) ? session.cash_movements : [];
   const total = sumFloatEntries(entries) || Number(session?.working_amount ?? 0);
+  const nextTotal = total + (Number(amount) || 0);
+
+  useEffect(() => {
+    if (!open) return;
+    setAddingFloat(false);
+    setRecordingMovement(false);
+    setAmount("");
+    setPaymentType("CASH");
+    setMovementType("drop");
+    setMovementReason("");
+  }, [open, session?.id, session?.working_amount]);
 
   if (!open) return null;
+
+  function cancelAddFloat() {
+    setAddingFloat(false);
+    setAmount("");
+    setPaymentType("CASH");
+  }
+
+  async function handleSaveFloat() {
+    if (!amount || Number(amount) <= 0 || !onAddFloat) return;
+    try {
+      await onAddFloat({ new_float: Number(amount), payment_type: paymentType });
+      cancelAddFloat();
+    } catch {
+      /* addFloatError from parent keeps the form open */
+    }
+  }
+
+  async function handleSaveMovement() {
+    if (!amount || Number(amount) <= 0 || !onCashMovement) return;
+    try {
+      await onCashMovement({
+        type: movementType,
+        amount: Number(amount),
+        reason: movementReason.trim() || null,
+      });
+      setRecordingMovement(false);
+      setAmount("");
+      setMovementReason("");
+    } catch {
+      /* cashMovementError from parent */
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
       <div className="relative flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-slate-200 bg-white text-slate-900 shadow-xl">
         <div className="border-b border-slate-200 px-6 py-4">
-          <h2 className="text-lg font-semibold text-slate-900">Float breakdown</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Float details</h2>
           <p className="mt-1 text-sm text-slate-500">
             {tillName ? `${tillName} · ` : ""}
             {cashierName ?? "Cashier"}
@@ -507,15 +572,188 @@ export function FloatBreakdownModal({ open, onClose, session, tillName, cashierN
               </tfoot>
             </table>
           )}
+
+          {movements.length > 0 ? (
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Cash movements</p>
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                    <th className="px-3 py-2">Type</th>
+                    <th className="px-3 py-2">Reason</th>
+                    <th className="px-3 py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movements.map((row, index) => (
+                    <tr key={`${row.recorded_at}-${index}`} className="border-b border-slate-100 last:border-b-0">
+                      <td className="px-3 py-2.5 capitalize text-slate-800">{String(row.type ?? "").replace("_", " ")}</td>
+                      <td className="px-3 py-2.5 text-slate-600">{row.reason ?? "—"}</td>
+                      <td className="px-3 py-2.5 text-right font-medium text-slate-900">{formatTillKes(row.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          {addingFloat ? (
+            <div className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-medium text-slate-900">Add float</p>
+              {addFloatError ? (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {addFloatError}
+                </p>
+              ) : null}
+              <Field label="Payment type">
+                <select
+                  className={inputClassName()}
+                  value={paymentType}
+                  onChange={(e) => setPaymentType(e.target.value)}
+                  disabled={addFloatBusy}
+                >
+                  {FLOAT_PAYMENT_TYPES.map((type) => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Amount to add (KES)">
+                <input
+                  type="number"
+                  min={0.01}
+                  step="0.01"
+                  className={inputClassName()}
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="Enter amount received for float"
+                  disabled={addFloatBusy}
+                />
+              </Field>
+              {amount && Number(amount) > 0 ? (
+                <div className="flex justify-between gap-3 text-sm">
+                  <span className="text-slate-500">After this add</span>
+                  <span className="font-semibold text-emerald-700">{formatTillKes(nextTotal)}</span>
+                </div>
+              ) : null}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={cancelAddFloat}
+                  disabled={addFloatBusy}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-white disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <PrimaryButton
+                  type="button"
+                  showIcon={false}
+                  disabled={addFloatBusy || !amount || Number(amount) <= 0}
+                  onClick={() => void handleSaveFloat()}
+                >
+                  {addFloatBusy ? "Saving…" : "Save float"}
+                </PrimaryButton>
+              </div>
+            </div>
+          ) : null}
+
+          {recordingMovement ? (
+            <div className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-medium text-slate-900">Record cash movement</p>
+              {cashMovementError ? (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {cashMovementError}
+                </p>
+              ) : null}
+              <Field label="Type">
+                <select
+                  className={inputClassName()}
+                  value={movementType}
+                  onChange={(e) => setMovementType(e.target.value)}
+                  disabled={cashMovementBusy}
+                >
+                  <option value="drop">Safe drop</option>
+                  <option value="pay_out">Pay out</option>
+                  <option value="pay_in">Pay in</option>
+                </select>
+              </Field>
+              <Field label="Amount (KES)">
+                <input
+                  type="number"
+                  min={0.01}
+                  step="0.01"
+                  className={inputClassName()}
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  disabled={cashMovementBusy}
+                />
+              </Field>
+              <Field label="Reason (optional)">
+                <input
+                  className={inputClassName()}
+                  value={movementReason}
+                  onChange={(e) => setMovementReason(e.target.value)}
+                  disabled={cashMovementBusy}
+                />
+              </Field>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecordingMovement(false);
+                    setAmount("");
+                    setMovementReason("");
+                  }}
+                  disabled={cashMovementBusy}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-white disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <PrimaryButton
+                  type="button"
+                  showIcon={false}
+                  disabled={cashMovementBusy || !amount || Number(amount) <= 0}
+                  onClick={() => void handleSaveMovement()}
+                >
+                  {cashMovementBusy ? "Saving…" : "Save movement"}
+                </PrimaryButton>
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-6 py-4">
-          {onCorrectFloat ? (
-            <PrimaryButton type="button" showIcon={false} onClick={onCorrectFloat}>
-              Edit cashier float
-            </PrimaryButton>
-          ) : (
-            <span />
-          )}
+          <div className="flex flex-wrap gap-2">
+            {canAddFloat && !addingFloat && !recordingMovement ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecordingMovement(false);
+                    setAddingFloat(true);
+                  }}
+                  className="rounded-lg border border-[#185FA5]/30 bg-[#E6F1FB] px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#0C447C] hover:bg-[#185FA5]/10"
+                >
+                  Add float
+                </button>
+                {onCashMovement ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddingFloat(false);
+                      setRecordingMovement(true);
+                    }}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-700 hover:bg-slate-50"
+                  >
+                    Cash movement
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+            {onCorrectFloat ? (
+              <PrimaryButton type="button" showIcon={false} onClick={onCorrectFloat}>
+                Edit cashier float
+              </PrimaryButton>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={onClose}

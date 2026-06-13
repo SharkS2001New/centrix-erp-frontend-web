@@ -21,6 +21,7 @@ const PosSessionContext = createContext(null);
 export function PosSessionProvider({ children }) {
   const { user, capabilities } = useAuth();
   const [activeSession, setActiveSession] = useState(null);
+  const [suspendedSession, setSuspendedSession] = useState(null);
   const [sessionReport, setSessionReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -63,6 +64,22 @@ export function PosSessionProvider({ children }) {
     }
   }, []);
 
+  const findSuspendedSessionForUser = useCallback(async (userId) => {
+    if (!userId) return null;
+    try {
+      const res = await apiRequest("/till-float-sessions", {
+        searchParams: {
+          per_page: 10,
+          "filter[status]": "suspended",
+          "filter[cashier_id]": userId,
+        },
+      });
+      return (res.data ?? []).find((row) => String(row.status).toLowerCase() === "suspended") ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const refreshReport = useCallback(async (sessionId) => {
     const id = sessionId ?? activeSession?.id;
     if (!id) {
@@ -91,8 +108,10 @@ export function PosSessionProvider({ children }) {
           verified = await verifySession(recovered);
         }
       }
+      const suspended = !verified && user?.id ? await findSuspendedSessionForUser(user.id) : null;
       if (!cancelled) {
         setActiveSession(verified);
+        setSuspendedSession(suspended);
         if (verified?.id) {
           await refreshReport(verified.id);
         }
@@ -103,7 +122,7 @@ export function PosSessionProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [verifySession, refreshReport, findOpenSessionForUser, user?.id]);
+  }, [verifySession, refreshReport, findOpenSessionForUser, findSuspendedSessionForUser, user?.id]);
 
   const openSession = useCallback(
     async ({ till_id, branch_id, working_amount, payment_type }) => {
@@ -162,6 +181,35 @@ export function PosSessionProvider({ children }) {
     [activeSession?.id, refreshReport],
   );
 
+  const recordCashMovement = useCallback(
+    async ({ type, amount, reason }) => {
+      if (!activeSession?.id) return null;
+      setBusy(true);
+      setError(null);
+      try {
+        const session = await apiRequest(`/pos/sessions/${activeSession.id}/cash-movement`, {
+          method: "POST",
+          body: {
+            type,
+            amount: Number(amount),
+            reason: reason?.trim() || null,
+          },
+        });
+        setStoredActiveSession(session);
+        setActiveSession(session);
+        await refreshReport(session.id);
+        return session;
+      } catch (e) {
+        const message = e instanceof ApiError ? e.message : "Could not record cash movement";
+        setError(message);
+        throw e;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [activeSession?.id, refreshReport],
+  );
+
   const refreshActiveSession = useCallback(async () => {
     if (!activeSession?.id) return null;
     const verified = await verifySession(activeSession);
@@ -170,8 +218,56 @@ export function PosSessionProvider({ children }) {
     return verified;
   }, [activeSession, verifySession, refreshReport]);
 
+  const suspendSession = useCallback(async () => {
+    if (!activeSession?.id) return null;
+    setBusy(true);
+    setError(null);
+    try {
+      const session = await apiRequest(`/pos/sessions/${activeSession.id}/suspend`, {
+        method: "POST",
+      });
+      clearStoredActiveSession();
+      setActiveSession(null);
+      setSessionReport(null);
+      setSuspendedSession(session);
+      return session;
+    } catch (e) {
+      const message = e instanceof ApiError ? e.message : "Could not suspend session";
+      setError(message);
+      throw e;
+    } finally {
+      setBusy(false);
+    }
+  }, [activeSession?.id]);
+
+  const resumeSession = useCallback(
+    async (sessionId) => {
+      const id = sessionId ?? suspendedSession?.id ?? activeSession?.id;
+      if (!id) return null;
+      setBusy(true);
+      setError(null);
+      try {
+        const session = await apiRequest(`/pos/sessions/${id}/resume`, {
+          method: "POST",
+        });
+        setStoredActiveSession(session);
+        setActiveSession(session);
+        setSuspendedSession(null);
+        await refreshReport(session.id);
+        return session;
+      } catch (e) {
+        const message = e instanceof ApiError ? e.message : "Could not resume session";
+        setError(message);
+        throw e;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [activeSession?.id, refreshReport, suspendedSession?.id],
+  );
+
   const closeSession = useCallback(
-    async ({ closing_amount, expected_amount, notes }) => {
+    async ({ closing_amount, expected_amount, notes, closing_denominations }) => {
       if (!activeSession?.id) return null;
       setBusy(true);
       setError(null);
@@ -183,10 +279,12 @@ export function PosSessionProvider({ children }) {
             expected_amount:
               expected_amount != null ? Number(expected_amount) : sessionReport?.expected_cash,
             notes: notes?.trim() || null,
+            closing_denominations: closing_denominations ?? null,
           },
         });
         clearStoredActiveSession();
         setActiveSession(null);
+        setSuspendedSession(null);
         setSessionReport(null);
         return res;
       } catch (e) {
@@ -203,6 +301,7 @@ export function PosSessionProvider({ children }) {
   const clearSession = useCallback(() => {
     clearStoredActiveSession();
     setActiveSession(null);
+    setSuspendedSession(null);
     setSessionReport(null);
   }, []);
 
@@ -212,6 +311,7 @@ export function PosSessionProvider({ children }) {
       capabilities,
       hasPosTill,
       activeSession,
+      suspendedSession,
       sessionReport,
       loading,
       busy,
@@ -219,6 +319,9 @@ export function PosSessionProvider({ children }) {
       setError,
       openSession,
       addFloat,
+      recordCashMovement,
+      suspendSession,
+      resumeSession,
       closeSession,
       clearSession,
       refreshReport,
@@ -232,12 +335,16 @@ export function PosSessionProvider({ children }) {
       capabilities,
       hasPosTill,
       activeSession,
+      suspendedSession,
       sessionReport,
       loading,
       busy,
       error,
       openSession,
       addFloat,
+      recordCashMovement,
+      suspendSession,
+      resumeSession,
       closeSession,
       clearSession,
       refreshReport,
