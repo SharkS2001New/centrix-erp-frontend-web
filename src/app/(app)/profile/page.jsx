@@ -79,11 +79,13 @@ export default function ProfilePage() {
             <div>
               <dt className="text-slate-500">Access</dt>
               <dd className="text-slate-900">
-                {user?.is_admin
-                  ? "Organization administrator"
-                  : user?.access_scope === "org"
-                    ? "Whole organization"
-                    : "Single branch"}
+                {user?.is_super_admin || capabilities?.is_super_admin
+                  ? "Platform super administrator"
+                  : user?.is_admin || capabilities?.is_admin
+                    ? "Organization administrator"
+                    : user?.access_scope === "org"
+                      ? "Whole organization"
+                      : "Single branch"}
               </dd>
             </div>
           </dl>

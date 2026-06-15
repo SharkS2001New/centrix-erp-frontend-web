@@ -6,6 +6,10 @@ import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shar
 const links = [
   { href: "/accounting/chart-of-accounts", label: "Chart of Accounts", description: "Manage GL accounts and balances" },
   { href: "/accounting/journal-entries", label: "Journal Entries", description: "Create, post, and reverse journal entries" },
+  { href: "/accounting/fiscal-periods", label: "Fiscal Periods", description: "Monthly close checklist and year-end" },
+  { href: "/accounting/settings", label: "Settings", description: "Auto-post toggles and chart seeding" },
+  { href: "/accounting/account-mappings", label: "Account Mappings", description: "Map GL accounts to QuickBooks" },
+  { href: "/accounting/export-queue", label: "Export Queue", description: "Monitor external journal exports" },
   { href: "/accounting/general-ledger", label: "General Ledger", description: "Line-level posted journal activity" },
   { href: "/accounting/trial-balance", label: "Trial Balance", description: "Debit and credit balances by account" },
   { href: "/accounting/balance-sheet", label: "Balance Sheet", description: "Assets, liabilities, and equity snapshot" },

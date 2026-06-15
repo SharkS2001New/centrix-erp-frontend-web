@@ -29,7 +29,11 @@ export function PosSessionProvider({ children }) {
 
   const hasPosTill = useMemo(() => {
     const perms = capabilities?.permissions ?? {};
-    return Boolean(perms["pos.till"] ?? capabilities?.modules?.["sales.pos"]);
+    return Boolean(
+      perms["pos.till_management.create"] ??
+        perms["pos.till"] ??
+        capabilities?.modules?.["sales.pos"],
+    );
   }, [capabilities]);
 
   const verifySession = useCallback(async (session) => {

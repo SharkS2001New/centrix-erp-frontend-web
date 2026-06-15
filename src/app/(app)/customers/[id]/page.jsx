@@ -119,13 +119,21 @@ export default function CustomerDetailPage() {
           <h1 className="mt-2 text-xl font-medium text-slate-900">Customer Profile</h1>
         </div>
         {customer && (
-          <Link
-            href={`/customers/${customer.customer_num}/edit`}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
-          >
-            <PencilIcon />
-            Edit customer
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/reports/customer-statement?customer=${customer.customer_num}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#185FA5] px-4 py-2 text-sm font-medium text-[#185FA5] hover:bg-[#E6F1FB]"
+            >
+              View statement
+            </Link>
+            <Link
+              href={`/customers/${customer.customer_num}/edit`}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
+            >
+              <PencilIcon />
+              Edit customer
+            </Link>
+          </div>
         )}
       </div>
 

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
+import { openPrintWindow } from "@/lib/open-print-window";
 import { baseToDisplayQty } from "@/lib/stock-uom";
 
 const SAMPLE_HEADERS = [
@@ -157,12 +158,7 @@ function ExportModal({ open, onClose, products }) {
       <table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
       <tbody>${rows.map((row) => `<tr>${headers.map((h) => `<td>${row[h] ?? ""}</td>`).join("")}</tr>`).join("")}</tbody>
       </table></body></html>`;
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    win.print();
+    openPrintWindow(html, "width=900,height=720");
     onClose();
   }
 

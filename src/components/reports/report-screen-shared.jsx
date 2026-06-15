@@ -1,0 +1,218 @@
+"use client";
+
+import Link from "next/link";
+import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { StatCard, Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { formatReportCell } from "@/lib/reports/format";
+
+const BADGE_TONES = {
+  success: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+  warning: "bg-amber-50 text-amber-800 ring-amber-600/20",
+  danger: "bg-red-50 text-red-700 ring-red-600/20",
+  primary: "bg-blue-50 text-blue-700 ring-blue-600/20",
+  neutral: "bg-slate-100 text-slate-700 ring-slate-500/20",
+};
+
+export function ReportBadge({ label, tone = "neutral" }) {
+  return (
+    <span
+      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${BADGE_TONES[tone] ?? BADGE_TONES.neutral}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function ReportKpiGrid({ items }) {
+  if (!items?.length) return null;
+  return (
+    <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {items.map((item) => (
+        <StatCard key={item.id} label={item.label} value={item.value} hint={item.hint} />
+      ))}
+    </div>
+  );
+}
+
+export function ReportFilterBar({
+  fromDate,
+  toDate,
+  branchId,
+  branches,
+  showDateRange = true,
+  extraFilters = [],
+  extraValues = {},
+  onFromDateChange,
+  onToDateChange,
+  onBranchChange,
+  onExtraChange,
+  onFilter,
+  onReset,
+  loading = false,
+}) {
+  return (
+    <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-end gap-4">
+        {showDateRange ? (
+          <>
+            <Field label="From date">
+              <input
+                type="date"
+                className={inputClassName()}
+                value={fromDate}
+                onChange={(e) => onFromDateChange(e.target.value)}
+              />
+            </Field>
+            <Field label="To date">
+              <input
+                type="date"
+                className={inputClassName()}
+                value={toDate}
+                onChange={(e) => onToDateChange(e.target.value)}
+              />
+            </Field>
+          </>
+        ) : null}
+        <Field label="Branch">
+          <select className={inputClassName()} value={branchId} onChange={(e) => onBranchChange(e.target.value)}>
+            <option value="">All branches</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.branch_name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {extraFilters.map((filter) =>
+          filter.type === "checkbox" ? (
+            <label key={filter.id} className="flex cursor-pointer items-center gap-2 pb-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={Boolean(extraValues[filter.id])}
+                onChange={(e) => onExtraChange(filter.id, e.target.checked)}
+              />
+              {filter.label}
+            </label>
+          ) : null,
+        )}
+        <div className="flex gap-2 pb-0.5">
+          <PrimaryButton type="button" showIcon={false} disabled={loading} onClick={onFilter}>
+            {loading ? "Loading…" : "Filter"}
+          </PrimaryButton>
+          <button
+            type="button"
+            onClick={onReset}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ReportTable({ columns, rows, footerTotals = {}, emptyLabel = "No rows for this filter." }) {
+  if (!rows.length) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white px-5 py-10 text-center text-sm text-slate-500 shadow-sm">
+        {emptyLabel}
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-max border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {columns.map((col) => (
+                <th
+                  key={col.key}
+                  className={`whitespace-nowrap px-4 py-3 ${col.align === "right" ? "text-right" : "text-left"}`}
+                >
+                  {col.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, idx) => (
+              <tr key={row.id ?? idx} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60">
+                {columns.map((col) => {
+                  const badge = col.badge?.(row);
+                  const raw = col.accessor(row);
+                  return (
+                    <td
+                      key={col.key}
+                      className={`whitespace-nowrap px-4 py-2.5 text-slate-800 ${col.align === "right" ? "text-right" : "text-left"}`}
+                    >
+                      {badge ? (
+                        <ReportBadge label={badge.label} tone={badge.tone} />
+                      ) : (
+                        formatReportCell(col.key, raw)
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+          {Object.keys(footerTotals).length ? (
+            <tfoot>
+              <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-900">
+                {columns.map((col, idx) => (
+                  <td
+                    key={col.key}
+                    className={`px-4 py-3 ${col.align === "right" ? "text-right" : "text-left"}`}
+                  >
+                    {idx === 0 ? "Totals" : footerTotals[col.key] ?? ""}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          ) : null}
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export function ReportPageShell({ section, title, subtitle, onExport, children }) {
+  return (
+    <div>
+      <AdminBreadcrumb
+        items={[
+          { label: "Reports", href: "/reports" },
+          ...(section ? [{ label: section, href: "/reports" }] : []),
+          { label: title },
+        ]}
+      />
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
+          {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
+        </div>
+        {onExport ? (
+          <button
+            type="button"
+            onClick={onExport}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            Export CSV
+          </button>
+        ) : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+export function ReportBackLink() {
+  return (
+    <Link href="/reports" className="mb-4 inline-block text-sm font-medium text-[#185FA5] hover:underline">
+      ← All reports
+    </Link>
+  );
+}

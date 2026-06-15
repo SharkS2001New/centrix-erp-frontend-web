@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { apiRequest } from "@/lib/api";
+import { REPORT_DEFINITIONS } from "@/lib/reports/definitions";
+import { StructuredReportScreen } from "@/components/reports/structured-report-screen";
 import { GenericReportScreen } from "@/components/reports/generic-report-screen";
+import { useEffect, useState } from "react";
+import { apiRequest } from "@/lib/api";
 
 export default function ReportViewerPage() {
   const params = useParams();
@@ -11,7 +13,10 @@ export default function ReportViewerPage() {
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState(null);
 
+  const structured = REPORT_DEFINITIONS[reportKey];
+
   useEffect(() => {
+    if (structured) return;
     apiRequest("/reports/")
       .then((catalog) => {
         for (const section of Object.values(catalog ?? {})) {
@@ -25,12 +30,14 @@ export default function ReportViewerPage() {
         setError("Report not found in catalog.");
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load catalog"));
-  }, [reportKey]);
+  }, [reportKey, structured]);
+
+  if (structured) {
+    return <StructuredReportScreen definition={{ ...structured, key: reportKey }} />;
+  }
 
   if (error) {
-    return (
-      <div className="p-6 text-sm text-red-600">{error}</div>
-    );
+    return <div className="p-6 text-sm text-red-600">{error}</div>;
   }
 
   if (!meta) {
@@ -38,10 +45,6 @@ export default function ReportViewerPage() {
   }
 
   return (
-    <GenericReportScreen
-      reportKey={reportKey}
-      label={meta.label}
-      apiPath={meta.path}
-    />
+    <GenericReportScreen reportKey={reportKey} label={meta.label} apiPath={meta.path} />
   );
 }

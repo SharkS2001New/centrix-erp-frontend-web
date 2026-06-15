@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { AdminGuard } from "@/components/admin/admin-guard";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 
 const inputClass =
@@ -69,17 +68,16 @@ export default function ProvisionOrganizationPage() {
   }
 
   return (
-    <AdminGuard>
-      <CatalogPageShell
-        title="Provision organization"
-        subtitle="Create a new organization and its manager account. The manager signs in and creates staff users."
-      >
-        <AdminBreadcrumb
-          items={[
-            { label: "Administration", href: "/admin" },
-            { label: "Provision organization" },
-          ]}
-        />
+    <CatalogPageShell
+      title="Provision organization"
+      subtitle="Create a new tenant organization and its manager account. The manager signs in with the company code and manages staff."
+    >
+      <AdminBreadcrumb
+        items={[
+          { label: "Platform", href: "/platform" },
+          { label: "Provision organization" },
+        ]}
+      />
 
         {result ? (
           <div className="mt-6 max-w-2xl rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-sm text-emerald-900">
@@ -253,6 +251,5 @@ export default function ProvisionOrganizationPage() {
           </form>
         )}
       </CatalogPageShell>
-    </AdminGuard>
   );
 }

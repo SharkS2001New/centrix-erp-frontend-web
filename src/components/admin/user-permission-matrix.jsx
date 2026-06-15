@@ -8,6 +8,8 @@ const ACTION_LABELS = {
   approve: "Approve",
 };
 
+const ACTION_ORDER = ["view", "create", "edit", "delete", "approve"];
+
 function effectiveHas(roleIds, grantedIds, deniedIds, permId) {
   if (deniedIds.has(permId)) return false;
   return roleIds.has(permId) || grantedIds.has(permId);
@@ -21,8 +23,14 @@ function cellState(roleIds, grantedIds, deniedIds, permId) {
   return "off";
 }
 
+function checkboxClass(state) {
+  if (state === "denied") return "accent-red-600";
+  if (state === "granted") return "accent-emerald-600";
+  return undefined;
+}
+
 export function UserPermissionMatrix({
-  matrix,
+  groups,
   rolePermissionIds,
   grantedIds,
   deniedIds,
@@ -30,6 +38,12 @@ export function UserPermissionMatrix({
   readOnly = false,
 }) {
   const roleIds = rolePermissionIds instanceof Set ? rolePermissionIds : new Set(rolePermissionIds ?? []);
+  const granted = grantedIds instanceof Set ? grantedIds : new Set(grantedIds ?? []);
+  const denied = deniedIds instanceof Set ? deniedIds : new Set(deniedIds ?? []);
+
+  if (!groups?.length) {
+    return <p className="text-sm text-slate-500">No permissions defined.</p>;
+  }
 
   return (
     <div>
@@ -48,91 +62,64 @@ export function UserPermissionMatrix({
         </span>
       </div>
 
-      <table className="min-w-full text-sm">
-        <thead className="border-b border-slate-200 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-          <tr>
-            <th className="px-3 py-2">Module</th>
-            {Object.values(ACTION_LABELS).map((label) => (
-              <th key={label} className="px-3 py-2 text-center">
-                {label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {matrix.map((row) => (
-            <tr key={row.module}>
-              <td className="px-3 py-2 font-medium text-slate-800">{row.label}</td>
-              {Object.keys(ACTION_LABELS).map((action) => {
-                const perm = row.cells[action];
-                const state = cellState(roleIds, grantedIds, deniedIds, perm?.id);
-                const checked = perm
-                  ? effectiveHas(roleIds, grantedIds, deniedIds, perm.id)
-                  : false;
+      <div className="space-y-6">
+        {groups.map((group) => (
+          <div key={group.module} className="rounded-lg border border-slate-200">
+            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-sm font-semibold text-slate-900">{group.label}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2">Feature / link</th>
+                    {ACTION_ORDER.map((action) => (
+                      <th key={action} className="px-3 py-2 text-center">
+                        {ACTION_LABELS[action]}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {group.features.map((feature) => {
+                    const byAction = Object.fromEntries(
+                      feature.permissions.map((p) => [p.action, p]),
+                    );
 
-                return (
-                  <td key={action} className="px-3 py-2 text-center">
-                    {perm ? (
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={readOnly}
-                        onChange={() => onToggle?.(perm.id)}
-                        title={perm.permission_name}
-                        className={
-                          state === "denied"
-                            ? "accent-red-600"
-                            : state === "granted"
-                              ? "accent-emerald-600"
-                              : undefined
-                        }
-                      />
-                    ) : (
-                      <span className="text-slate-300">—</span>
-                    )}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                    return (
+                      <tr key={feature.key}>
+                        <td className="px-4 py-2 font-medium text-slate-800">{feature.label}</td>
+                        {ACTION_ORDER.map((action) => {
+                          const perm = byAction[action];
+                          const state = cellState(roleIds, granted, denied, perm?.id);
+                          const checked = perm ? effectiveHas(roleIds, granted, denied, perm.id) : false;
 
-      {matrix.some((row) => row.extras.length > 0) ? (
-        <div className="mt-5 border-t border-slate-200 pt-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Additional permissions
-          </p>
-          <div className="space-y-2">
-            {matrix.flatMap((row) =>
-              row.extras.map((perm) => {
-                const state = cellState(roleIds, grantedIds, deniedIds, perm.id);
-                const checked = effectiveHas(roleIds, grantedIds, deniedIds, perm.id);
-                return (
-                  <label key={perm.id} className="flex items-center gap-2 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={readOnly}
-                      onChange={() => onToggle?.(perm.id)}
-                      className={
-                        state === "denied"
-                          ? "accent-red-600"
-                          : state === "granted"
-                            ? "accent-emerald-600"
-                            : undefined
-                      }
-                    />
-                    <span>
-                      {row.label} — {perm.permission_name}
-                    </span>
-                  </label>
-                );
-              }),
-            )}
+                          return (
+                            <td key={action} className="px-3 py-2 text-center">
+                              {perm ? (
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={readOnly}
+                                  onChange={() => onToggle?.(perm.id)}
+                                  title={perm.permission_name}
+                                  className={checkboxClass(state)}
+                                />
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      ) : null}
+        ))}
+      </div>
     </div>
   );
 }

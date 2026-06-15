@@ -7,7 +7,7 @@ import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { AdminGuard } from "@/components/admin/admin-guard";
 import { UserDetailModal } from "@/components/admin/user-detail-modal";
 import { toggleUserPermissionOverride } from "@/components/admin/user-permission-matrix";
-import { buildPermissionMatrix, filterByOrganization, orgListParams } from "@/lib/admin";
+import { filterByOrganization, orgListParams } from "@/lib/admin";
 import {
   ActiveBadge,
   CatalogPageShell,
@@ -49,6 +49,7 @@ export default function AdminUsersPage() {
   const [branches, setBranches] = useState([]);
   const [roles, setRoles] = useState([]);
   const [permissions, setPermissions] = useState([]);
+  const [permissionGroups, setPermissionGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
@@ -65,7 +66,7 @@ export default function AdminUsersPage() {
   const [grantedIds, setGrantedIds] = useState(new Set());
   const [deniedIds, setDeniedIds] = useState(new Set());
 
-  const matrix = useMemo(() => buildPermissionMatrix(permissions), [permissions]);
+  const matrix = permissionGroups;
   const branchById = useMemo(() => new Map(branches.map((b) => [b.id, b])), [branches]);
   const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
 
@@ -84,6 +85,7 @@ export default function AdminUsersPage() {
       setBranches(filterByOrganization(branchRes.data, organizationId));
       setRoles(roleRes.data ?? []);
       setPermissions(matrixRes.permissions ?? []);
+      setPermissionGroups(matrixRes.groups ?? []);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load users");
     } finally {
@@ -288,7 +290,7 @@ export default function AdminUsersPage() {
   const viewRoleName = viewUser ? roleById.get(viewUser.role_id)?.role_name : null;
 
   return (
-    <AdminGuard>
+    <AdminGuard strict>
       <CatalogPageShell
         title="Users"
         subtitle="Manage system users, branches, roles, and per-user permission overrides."
@@ -391,6 +393,7 @@ export default function AdminUsersPage() {
           roleName={viewRoleName}
           branchName={viewUser ? branchById.get(viewUser.branch_id)?.branch_name : null}
           matrix={matrix}
+          permissionGroups={permissionGroups}
           rolePermissionIds={rolePermissionIds}
           grantedIds={grantedIds}
           deniedIds={deniedIds}

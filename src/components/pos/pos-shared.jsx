@@ -1,4 +1,5 @@
 import { formatTillKes, formatTillKesExact, tillDisplayName, normalizeFloatEntries, formatFloatEntryDate } from "@/lib/pos-till";
+import { openPrintWindow } from "@/lib/open-print-window";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -128,14 +129,10 @@ export function printPosTillReport({
     <hr />
     <div class="footer">${isZ ? "SESSION CLOSED" : "SESSION STILL OPEN"}</div>
   </div>
-  <script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };</script>
 </body>
 </html>`;
 
-  const win = window.open("", "_blank", "width=360,height=720");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
+  openPrintWindow(html, "width=360,height=720");
 }
 
 export function PosStatusBadge({ label, tone = "closed" }) {

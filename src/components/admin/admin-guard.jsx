@@ -4,16 +4,19 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 
-export function AdminGuard({ children }) {
-  const { user, capabilities, loading } = useAuth();
+export function AdminGuard({ children, strict = false }) {
+  const { user, capabilities, loading, hasPermission } = useAuth();
   const router = useRouter();
   const isAdmin = user?.is_admin || capabilities?.is_admin;
+  const canAccess = strict
+    ? isAdmin
+    : isAdmin || hasPermission("admin.overview.view") || hasPermission("admin.manage");
 
   useEffect(() => {
-    if (!loading && !isAdmin) {
+    if (!loading && !canAccess) {
       router.replace("/dashboard");
     }
-  }, [loading, isAdmin, router]);
+  }, [canAccess, loading, router]);
 
   if (loading) {
     return (
@@ -23,7 +26,7 @@ export function AdminGuard({ children }) {
     );
   }
 
-  if (!isAdmin) return null;
+  if (!canAccess) return null;
 
   return <>{children}</>;
 }

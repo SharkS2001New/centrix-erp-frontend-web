@@ -11,6 +11,13 @@ const FINANCE_DEFAULTS = {
   accounting_sync_direction: "export",
 };
 
+export const QUICKBOOKS_DEFAULTS = {
+  client_id: "",
+  client_secret: "",
+  redirect_uri: "",
+  environment: "sandbox",
+};
+
 export const MPESA_DEFAULTS = {
   env: "sandbox",
   consumer_key: "",
@@ -28,6 +35,7 @@ export function mergeFinanceSettings(moduleSettings) {
   const finance = { ...FINANCE_DEFAULTS, ...(moduleSettings?.finance ?? {}) };
   const sales = moduleSettings?.sales ?? {};
   finance.mpesa = { ...MPESA_DEFAULTS, ...(finance.mpesa ?? {}) };
+  finance.quickbooks = { ...QUICKBOOKS_DEFAULTS, ...(finance.quickbooks ?? {}) };
   if (finance.default_submit_kra === undefined && sales.default_submit_kra !== undefined) {
     finance.default_submit_kra = sales.default_submit_kra !== false;
   }
@@ -49,6 +57,7 @@ export function shouldSubmitKraOnCheckout(moduleSettings) {
 export function financeFormFromApi(res) {
   const finance = mergeFinanceSettings({ finance: res?.finance ?? res });
   const mpesa = finance.mpesa ?? MPESA_DEFAULTS;
+  const quickbooks = finance.quickbooks ?? QUICKBOOKS_DEFAULTS;
   return {
     enable_kra_device: Boolean(finance.enable_kra_device),
     kra_device_ip: String(finance.kra_device_ip ?? ""),
@@ -73,6 +82,13 @@ export function financeFormFromApi(res) {
       c2b_validation_url: String(mpesa.c2b_validation_url ?? ""),
     },
     mpesa_status: res?.finance?.mpesa_status ?? null,
+    quickbooks: {
+      client_id: String(quickbooks.client_id ?? ""),
+      client_secret: String(quickbooks.client_secret ?? ""),
+      redirect_uri: String(quickbooks.redirect_uri ?? ""),
+      environment: quickbooks.environment === "production" ? "production" : "sandbox",
+    },
+    quickbooks_status: res?.finance?.quickbooks_status ?? null,
   };
 }
 
@@ -80,6 +96,9 @@ export function financePayloadFromForm(form) {
   const mpesa = { ...form.mpesa };
   if (mpesa.consumer_secret === "********") delete mpesa.consumer_secret;
   if (mpesa.passkey === "********") delete mpesa.passkey;
+
+  const quickbooks = { ...form.quickbooks };
+  if (quickbooks.client_secret === "********") delete quickbooks.client_secret;
 
   return {
     enable_kra_device: Boolean(form.enable_kra_device),
@@ -103,6 +122,12 @@ export function financePayloadFromForm(form) {
       c2b_validation_url: mpesa.c2b_validation_url.trim(),
       ...(mpesa.consumer_secret ? { consumer_secret: mpesa.consumer_secret.trim() } : {}),
       ...(mpesa.passkey ? { passkey: mpesa.passkey.trim() } : {}),
+    },
+    quickbooks: {
+      client_id: quickbooks.client_id.trim(),
+      redirect_uri: quickbooks.redirect_uri.trim(),
+      environment: quickbooks.environment === "production" ? "production" : "sandbox",
+      ...(quickbooks.client_secret ? { client_secret: quickbooks.client_secret.trim() } : {}),
     },
   };
 }

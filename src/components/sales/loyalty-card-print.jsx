@@ -1,5 +1,6 @@
 "use client";
 
+import { openPrintWindow } from "@/lib/open-print-window";
 export function printLoyaltyCard(card, organizationName = "POS / ERP") {
   const html = `<!DOCTYPE html>
 <html>
@@ -31,12 +32,8 @@ export function printLoyaltyCard(card, organizationName = "POS / ERP") {
     </div>
     <div class="pts">${Number(card.points_balance ?? 0).toLocaleString()} pts</div>
   </div>
-  <script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };</script>
 </body>
 </html>`;
 
-  const win = window.open("", "_blank", "width=420,height=320");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
+  openPrintWindow(html, "width=420,height=320");
 }

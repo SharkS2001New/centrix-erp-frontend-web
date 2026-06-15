@@ -2,14 +2,14 @@ export const THEME_STORAGE_KEY = "pos_erp_theme";
 const THEME_CHANGE_EVENT = "pos-erp-theme-change";
 
 export function readStoredTheme() {
-  if (typeof window === "undefined") return "dark";
+  if (typeof window === "undefined") return "light";
   const stored = localStorage.getItem(THEME_STORAGE_KEY);
   if (stored === "dark" || stored === "light") return stored;
-  return "dark";
+  return "light";
 }
 
 export function getTheme() {
-  if (typeof document === "undefined") return "dark";
+  if (typeof document === "undefined") return "light";
   const fromDom = document.documentElement.dataset.theme;
   if (fromDom === "dark" || fromDom === "light") return fromDom;
   return readStoredTheme();
@@ -45,21 +45,3 @@ export function subscribeTheme(callback) {
   window.addEventListener(THEME_CHANGE_EVENT, callback);
   return () => window.removeEventListener(THEME_CHANGE_EVENT, callback);
 }
-
-export const themeInitScript = `
-(function () {
-  try {
-    var stored = localStorage.getItem("${THEME_STORAGE_KEY}");
-    var theme =
-      stored === "dark" || stored === "light" ? stored : "dark";
-    var root = document.documentElement;
-    root.dataset.theme = theme;
-    root.classList.remove("light", "dark");
-    root.classList.add(theme);
-    root.style.colorScheme = theme;
-  } catch (e) {
-    document.documentElement.dataset.theme = "dark";
-    document.documentElement.classList.add("dark");
-  }
-})();
-`;

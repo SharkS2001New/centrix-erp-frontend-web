@@ -12,6 +12,7 @@ export function UserDetailModal({
   roleName,
   branchName,
   matrix,
+  permissionGroups,
   rolePermissionIds,
   grantedIds,
   deniedIds,
@@ -123,7 +124,7 @@ export function UserDetailModal({
                 ) : null}
                 <div className="mt-4 overflow-x-auto">
                   <UserPermissionMatrix
-                    matrix={matrix}
+                    groups={permissionGroups ?? matrix}
                     rolePermissionIds={rolePermissionIds}
                     grantedIds={grantedIds}
                     deniedIds={deniedIds}

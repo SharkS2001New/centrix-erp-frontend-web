@@ -46,6 +46,12 @@ const SUMMARY_LABELS = {
   cash_in: "Cash in",
   cash_out: "Cash out",
   net_change: "Net change",
+  net_operating: "Net operating cash",
+  net_investing: "Net investing cash",
+  net_financing: "Net financing cash",
+  net_change_in_cash: "Net change in cash",
+  beginning_cash: "Beginning cash",
+  ending_cash: "Ending cash",
 };
 
 export function AccountingReportScreen({
@@ -210,11 +216,11 @@ export function AccountingReportScreen({
       {summary ? (
         <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {Object.entries(summary).map(([key, value]) => (
-            <div key={key} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            <div key={key} className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
+              <p className="theme-subtext text-xs font-medium uppercase tracking-wide">
                 {SUMMARY_LABELS[key] ?? labelizeKey(key)}
               </p>
-              <p className="mt-1 text-lg font-semibold text-slate-900">
+              <p className="theme-heading mt-1 text-lg font-semibold">
                 {formatAccountingAmount(value)}
               </p>
             </div>
@@ -222,16 +228,16 @@ export function AccountingReportScreen({
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="theme-panel overflow-hidden rounded-xl border shadow-sm">
         {loading ? (
-          <p className="px-5 py-8 text-center text-sm text-slate-500">Loading report…</p>
+          <p className="theme-subtext px-5 py-8 text-center text-sm">Loading report…</p>
         ) : rows.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-slate-500">{emptyLabel}</p>
+          <p className="theme-subtext px-5 py-8 text-center text-sm">{emptyLabel}</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-max border-collapse text-sm">
+            <table className="theme-table w-full min-w-max border-collapse text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                <tr className="theme-table-head border-b text-left text-xs font-medium uppercase tracking-wide">
                   {columns.map((col) => (
                     <th key={col} className="whitespace-nowrap px-4 py-2.5">
                       {labelizeKey(col)}
@@ -248,14 +254,14 @@ export function AccountingReportScreen({
                       key={row.id ?? idx}
                       className={
                         isHeader
-                          ? "bg-slate-100 font-semibold text-slate-900"
+                          ? "theme-table-section font-semibold"
                           : isTotal
-                            ? "border-t border-slate-200 bg-slate-50 font-semibold"
-                            : "border-b border-slate-100 last:border-b-0"
+                            ? "theme-table-total border-t font-semibold"
+                            : "theme-table-row border-b last:border-b-0"
                       }
                     >
                       {columns.map((col) => (
-                        <td key={col} className="whitespace-nowrap px-4 py-2.5 text-slate-800">
+                        <td key={col} className="whitespace-nowrap px-4 py-2.5">
                           {isHeader && col !== "section" ? "" : formatCell(col, row[col])}
                         </td>
                       ))}

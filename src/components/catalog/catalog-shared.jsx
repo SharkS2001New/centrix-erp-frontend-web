@@ -416,19 +416,19 @@ export function DetailDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="theme-subtext shrink-0 rounded-lg p-1 hover:bg-[var(--theme-hover)] hover:text-[var(--theme-text)]"
             aria-label="Close"
           >
             <DrawerCloseIcon />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
-        {footer ? <div className="border-t border-slate-200 px-5 py-4">{footer}</div> : null}
-        <div className="border-t border-slate-200 px-5 py-4">
+        {footer ? <div className="border-t border-[var(--theme-border)] px-5 py-4">{footer}</div> : null}
+        <div className="border-t border-[var(--theme-border)] px-5 py-4">
           <button
             type="button"
             onClick={onClose}
-            className="w-full rounded-lg border border-slate-200 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+            className="theme-btn-secondary w-full rounded-lg border py-2.5 text-sm"
           >
             Close
           </button>

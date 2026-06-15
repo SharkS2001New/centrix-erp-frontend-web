@@ -10,6 +10,7 @@ import {
   orderWorkflowFromApi,
 } from "@/components/admin/order-workflow-settings";
 import { FinanceSettingsPanel } from "@/components/admin/finance-settings-panel";
+import { InventorySettingsPanel } from "@/components/admin/inventory-settings-panel";
 import {
   CatalogPageShell,
   Field,
@@ -29,9 +30,6 @@ const TABS = [
 ];
 
 const EMPTY_SALES_FORM = {
-  allow_sell_from_shop: true,
-  allow_sell_from_store: false,
-  enable_retail_pricing: false,
   allow_discounts: true,
   allow_edit_line_discount: false,
   enable_order_discount: false,
@@ -40,8 +38,6 @@ const EMPTY_SALES_FORM = {
   point_cash_value: "1",
   points_earn_per_kes: "1000",
   allow_edit_unit_price: true,
-  allow_negative_stock: false,
-  enable_barcode_scanner: false,
   default_tax_rate: "16",
   enable_mpesa_amount: true,
   enable_mpesa_code: true,
@@ -57,7 +53,6 @@ const EMPTY_SALES_FORM = {
   allow_credit_pay_now: false,
   show_checkout_on_create_order: true,
   enable_checkout_customer_name: false,
-  retail_shop_wholesale_store_stock: false,
   add_route_markup_prices: false,
   pos_order_type_mode: "normal",
   enable_mobile_orders: false,
@@ -74,9 +69,6 @@ function salesFormFromApi(res) {
   const source = res?.sales ?? res;
   const sales = mergeSalesSettings({ sales: source });
   return {
-    allow_sell_from_shop: Boolean(sales.allow_sell_from_shop),
-    allow_sell_from_store: Boolean(sales.allow_sell_from_store),
-    enable_retail_pricing: Boolean(sales.enable_retail_pricing),
     allow_discounts: Boolean(sales.allow_discounts),
     allow_edit_line_discount: Boolean(sales.allow_edit_line_discount),
     enable_order_discount: Boolean(sales.enable_order_discount),
@@ -85,8 +77,6 @@ function salesFormFromApi(res) {
     point_cash_value: String(sales.point_cash_value ?? 1),
     points_earn_per_kes: String(sales.points_earn_per_kes ?? 1000),
     allow_edit_unit_price: Boolean(sales.allow_edit_unit_price),
-    allow_negative_stock: Boolean(res.allow_negative_stock ?? source.allow_negative_stock),
-    enable_barcode_scanner: Boolean(sales.enable_barcode_scanner),
     default_tax_rate: String(sales.default_tax_rate ?? 16),
     enable_mpesa_amount: Boolean(sales.enable_mpesa_amount),
     enable_mpesa_code: Boolean(sales.enable_mpesa_code),
@@ -102,7 +92,6 @@ function salesFormFromApi(res) {
     allow_credit_pay_now: Boolean(sales.allow_credit_pay_now),
     show_checkout_on_create_order: Boolean(sales.show_checkout_on_create_order),
     enable_checkout_customer_name: Boolean(sales.enable_checkout_customer_name),
-    retail_shop_wholesale_store_stock: Boolean(sales.retail_shop_wholesale_store_stock),
     add_route_markup_prices: Boolean(sales.add_route_markup_prices),
     pos_order_type_mode: resolvePosOrderTypeMode(sales),
     enable_mobile_orders: Boolean(sales.enable_mobile_orders),
@@ -196,39 +185,19 @@ export default function AdminSettingsPage() {
         points_earn_per_kes: Number(salesForm.points_earn_per_kes) || 0,
         invoice_valid_days: Number(salesForm.invoice_valid_days) || 0,
       };
-      if (
-        !salesPayload.allow_sell_from_shop &&
-        !salesPayload.allow_sell_from_store &&
-        !(salesPayload.enable_retail_pricing && salesPayload.retail_shop_wholesale_store_stock)
-      ) {
-        setError(
-          "Enable shop stock, store stock, or retail-from-shop / wholesale-from-store routing.",
-        );
-        setSaving(false);
-        return;
-      }
-      if (salesPayload.allow_sell_from_shop && salesPayload.allow_sell_from_store) {
-        setError("Enable only shop stock or store stock — not both at the same time.");
-        setSaving(false);
-        return;
-      }
       const payload = {
         ...salesPayload,
         order_workflow: orderWorkflow,
       };
-      console.log("🔵 Sending payload:", payload);
       await apiRequest("/erp/settings/sales", {
         method: "PATCH",
         body: payload,
       });
-      console.log("✅ Save successful");
       const res = await apiRequest("/erp/settings/sales");
-      console.log("📥 Response:", res);
       setOrderWorkflow(orderWorkflowFromApi(res.sales));
       await refreshCapabilities();
       setMessage("Sales settings saved. POS will use this workflow after refresh.");
     } catch (e) {
-      console.error("❌ Save error:", e);
       setError(e instanceof ApiError ? e.message : "Failed to save settings");
     } finally {
       setSaving(false);
@@ -308,82 +277,7 @@ export default function AdminSettingsPage() {
                   <p className="mt-4 text-sm text-slate-500">Loading…</p>
                 ) : (
                   <div className="mt-5 space-y-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stock source</p>
-                    <Toggle
-                      label="Sell from shop stock"
-                      description="Sell from branch shop (POS) stock. Cannot be enabled together with store stock."
-                      checked={salesForm.allow_sell_from_shop}
-                      disabled={salesForm.retail_shop_wholesale_store_stock}
-                      onChange={(v) =>
-                        setSalesForm((f) => ({
-                          ...f,
-                          allow_sell_from_shop: v,
-                          ...(v
-                            ? {
-                                allow_sell_from_store: false,
-                                retail_shop_wholesale_store_stock: false,
-                              }
-                            : {}),
-                        }))
-                      }
-                    />
-                    <Toggle
-                      label="Sell from store stock"
-                      description="Sell from central store stock. Cannot be enabled together with shop stock."
-                      checked={salesForm.allow_sell_from_store}
-                      disabled={salesForm.retail_shop_wholesale_store_stock}
-                      onChange={(v) =>
-                        setSalesForm((f) => ({
-                          ...f,
-                          allow_sell_from_store: v,
-                          ...(v
-                            ? {
-                                allow_sell_from_shop: false,
-                                retail_shop_wholesale_store_stock: false,
-                              }
-                            : {}),
-                        }))
-                      }
-                    />
-                    <Toggle
-                      label="Enable retail pricing"
-                      description="Turns on retail pricing on POS (wholesale remains the default). Also enables per-line shop/store stock routing below."
-                      checked={salesForm.enable_retail_pricing}
-                      onChange={(v) =>
-                        setSalesForm((f) => ({
-                          ...f,
-                          enable_retail_pricing: v,
-                          retail_shop_wholesale_store_stock: v
-                            ? f.retail_shop_wholesale_store_stock
-                            : false,
-                          ...(!v
-                            ? {
-                                allow_sell_from_shop: true,
-                                allow_sell_from_store: false,
-                              }
-                            : {}),
-                        }))
-                      }
-                    />
-                    <Toggle
-                      label="Retail from shop, wholesale from store"
-                      description="Retail lines deduct shop stock; wholesale lines deduct store stock. Turns off global shop/store selection — neither stock source is selected by default."
-                      checked={salesForm.retail_shop_wholesale_store_stock}
-                      disabled={!salesForm.enable_retail_pricing}
-                      onChange={(v) =>
-                        setSalesForm((f) => ({
-                          ...f,
-                          retail_shop_wholesale_store_stock: v,
-                          ...(v
-                            ? {
-                                allow_sell_from_shop: false,
-                                allow_sell_from_store: false,
-                              }
-                            : {}),
-                        }))
-                      }
-                    />
-                    <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Checkout</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Checkout</p>
                     <Toggle
                       label="Add route markup prices"
                       description="Enables route markup on sales. Choose whether cashiers always use normal pricing, always select a route for markup, or can toggle below."
@@ -457,18 +351,6 @@ export default function AdminSettingsPage() {
                         </label>
                       </fieldset>
                     ) : null}
-                    <Toggle
-                      label="Enable barcode scanner"
-                      description="Scan SKU/barcode to add qty 1 directly to the cart (same product and pricing mode merges lines). If the code is not found, search manually."
-                      checked={salesForm.enable_barcode_scanner}
-                      onChange={(v) => setSalesForm((f) => ({ ...f, enable_barcode_scanner: v }))}
-                    />
-                    <Toggle
-                      label="Allow negative stock"
-                      description="Allow selling products even if stock is negative."
-                      checked={salesForm.allow_negative_stock}
-                      onChange={(v) => setSalesForm((f) => ({ ...f, allow_negative_stock: v }))}
-                    />
                     <Toggle
                       label="Allow product discounts"
                       description="Applies product discount rules on POS lines automatically. The discount field is read-only unless manual entry is enabled below."
@@ -778,9 +660,11 @@ export default function AdminSettingsPage() {
           ) : null}
 
           {tab === "inventory" ? (
-            <PlaceholderPanel
-              title="Inventory settings"
-              description="Stock alerts, default receive location, and stock-take options will be configured here."
+            <InventorySettingsPanel
+              saving={saving}
+              setSaving={setSaving}
+              setError={setError}
+              setMessage={setMessage}
             />
           ) : null}
           {tab === "procurement" ? (

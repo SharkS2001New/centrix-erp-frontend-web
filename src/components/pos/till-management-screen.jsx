@@ -272,7 +272,9 @@ export function TillManagementScreen() {
   const showFloatBreakdown = isPosTillFloatRequired(capabilities?.module_settings);
   const organizationName = capabilities?.profile_label ?? "POS / ERP";
   const canHandoverSession = Boolean(
-    user?.is_admin || capabilities?.permissions?.["sales.manage"],
+    user?.is_admin ||
+      capabilities?.permissions?.["sales.orders.approve"] ||
+      capabilities?.permissions?.["sales.manage"],
   );
 
   const loadMeta = useCallback(async () => {

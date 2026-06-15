@@ -1,4 +1,5 @@
 import { customerReturnLineQtyLabel } from "@/components/sales/customer-returns-shared";
+import { openPrintWindow } from "@/lib/open-print-window";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 
 function escapeHtml(value) {
@@ -159,12 +160,8 @@ export function printCreditNote(
     ${kraBlock}
     <div class="thanks">This credit note is issued against the original sale listed above.</div>
   </div>
-  <script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };</script>
 </body>
 </html>`;
 
-  const win = window.open("", "_blank", "width=420,height=640");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
+  openPrintWindow(html, "width=420,height=640");
 }

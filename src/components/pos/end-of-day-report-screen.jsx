@@ -6,6 +6,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { isPosTillFloatRequired, areSalesDiscountsEnabled } from "@/lib/sales-settings";
+import { openPrintWindow } from "@/lib/open-print-window";
 import { formatTillKes, formatTillKesExact } from "@/lib/pos-till";
 import {
   FilterSelect,
@@ -158,12 +159,8 @@ ${meta.showFloat ? `<div class="row"><span>Opening float</span><span>${kesNum(s.
 </div>
 </div>
 <p class="footer">Generated ${new Date().toLocaleString("en-KE")} by ${meta.userName ?? "—"}</p>
-<script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
 </body></html>`;
-  const win = window.open("", "_blank", "width=900,height=720");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
+  openPrintWindow(html, "width=900,height=720");
 }
 
 export function EndOfDayReportScreen() {

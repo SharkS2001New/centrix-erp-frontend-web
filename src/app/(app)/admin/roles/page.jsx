@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { PermissionMatrix } from "@/components/admin/permission-matrix";
-import { buildPermissionMatrix } from "@/lib/admin";
 import {
   CatalogPageShell,
   Field,
@@ -18,6 +17,7 @@ import {
 export default function AdminRolesPage() {
   const [roles, setRoles] = useState([]);
   const [permissions, setPermissions] = useState([]);
+  const [permissionGroups, setPermissionGroups] = useState([]);
   const [selectedRoleId, setSelectedRoleId] = useState(null);
   const [assignedIds, setAssignedIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
@@ -33,7 +33,7 @@ export default function AdminRolesPage() {
     [roles, selectedRoleId],
   );
 
-  const matrix = useMemo(() => buildPermissionMatrix(permissions), [permissions]);
+  const matrix = permissionGroups;
 
   const loadRoles = useCallback(async () => {
     const res = await apiRequest("/roles", { searchParams: { per_page: 200 } });
@@ -46,6 +46,7 @@ export default function AdminRolesPage() {
   const loadPermissionsCatalog = useCallback(async () => {
     const res = await apiRequest("/roles/permissions/matrix");
     setPermissions(res.permissions ?? []);
+    setPermissionGroups(res.groups ?? []);
   }, []);
 
   const loadRolePermissions = useCallback(async (roleId) => {
@@ -82,6 +83,17 @@ export default function AdminRolesPage() {
       const next = new Set(prev);
       if (next.has(permissionId)) next.delete(permissionId);
       else next.add(permissionId);
+      return next;
+    });
+  }
+
+  function toggleManyPermissionIds(permissionIds, checked) {
+    setAssignedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of permissionIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
       return next;
     });
   }
@@ -161,7 +173,7 @@ export default function AdminRolesPage() {
   return (
     <CatalogPageShell
       title="Roles & permissions"
-      subtitle="Assign module access levels per role."
+      subtitle="Assign feature-level access per link and action."
       action={
         <PrimaryButton type="button" onClick={() => setDrawerOpen(true)}>
           Create role
@@ -249,12 +261,13 @@ export default function AdminRolesPage() {
 
               <div className="overflow-x-auto p-5">
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Permission matrix
+                  Permissions by module & feature
                 </p>
                 <PermissionMatrix
-                  matrix={matrix}
+                  groups={matrix}
                   assignedIds={assignedIds}
                   onToggle={togglePermission}
+                  onToggleMany={toggleManyPermissionIds}
                 />
               </div>
             </>

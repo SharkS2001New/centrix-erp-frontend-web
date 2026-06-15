@@ -5,6 +5,8 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { financeFormFromApi, financePayloadFromForm } from "@/lib/finance-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { ExternalAccountingIntegrationPanel } from "@/components/admin/external-accounting-integration-panel";
+import { AccountingAutoPostPanel } from "@/components/admin/accounting-auto-post-panel";
 
 function Toggle({ checked, onChange, label, description }) {
   return (
@@ -188,15 +190,118 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
                       <option value="bidirectional">Two-way sync (planned)</option>
                     </select>
                   </Field>
-                  <p className="theme-subtext rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-3 py-2 text-xs">
-                    QuickBooks OAuth connection and automatic journal export are planned. This setting records your
-                    preference so we can enable the connector without changing your workflow later.
-                  </p>
+                  {form.accounting_provider === "quickbooks" ? (
+                    <div className="space-y-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-4">
+                      <h4 className="theme-heading text-sm font-medium">QuickBooks API credentials</h4>
+                      <p className="theme-subtext text-xs">
+                        From your Intuit Developer app. Register the redirect URI below in the Intuit portal. Leave blank
+                        only if the server already has QUICKBOOKS_* environment variables.
+                      </p>
+                      {form.quickbooks_status ? (
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium uppercase dark:bg-slate-800">
+                            {form.quickbooks_status.environment ?? "sandbox"}
+                          </span>
+                          <span
+                            className={
+                              form.quickbooks_status.ready
+                                ? "rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-800"
+                                : "rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800"
+                            }
+                          >
+                            {form.quickbooks_status.ready ? "Credentials ready" : "Incomplete"}
+                          </span>
+                        </div>
+                      ) : null}
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field label="Client ID">
+                          <input
+                            className={inputClassName()}
+                            value={form.quickbooks?.client_id ?? ""}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                quickbooks: { ...f.quickbooks, client_id: e.target.value },
+                              }))
+                            }
+                            placeholder="Intuit app Client ID"
+                          />
+                        </Field>
+                        <Field label="Client secret">
+                          <input
+                            type="password"
+                            className={inputClassName()}
+                            value={form.quickbooks?.client_secret ?? ""}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                quickbooks: { ...f.quickbooks, client_secret: e.target.value },
+                              }))
+                            }
+                            placeholder="Leave blank to keep existing"
+                          />
+                        </Field>
+                        <Field label="Environment">
+                          <select
+                            className={inputClassName()}
+                            value={form.quickbooks?.environment ?? "sandbox"}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                quickbooks: { ...f.quickbooks, environment: e.target.value },
+                              }))
+                            }
+                          >
+                            <option value="sandbox">Sandbox (testing)</option>
+                            <option value="production">Production (live books)</option>
+                          </select>
+                        </Field>
+                        <Field label="Redirect URI">
+                          <input
+                            className={inputClassName()}
+                            value={form.quickbooks?.redirect_uri ?? ""}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                quickbooks: { ...f.quickbooks, redirect_uri: e.target.value },
+                              }))
+                            }
+                            placeholder="https://your-api.example.com/api/v1/accounting/quickbooks/callback"
+                          />
+                        </Field>
+                      </div>
+                      {form.quickbooks_status?.issues?.length ? (
+                        <ul className="list-disc space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                          {form.quickbooks_status.issues.map((issue) => (
+                            <li key={issue}>{issue}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {form.accounting_mode === "external" && form.accounting_provider ? (
+                    <ExternalAccountingIntegrationPanel
+                      provider={form.accounting_provider}
+                      saving={saving}
+                      setMessage={setMessage}
+                      setError={setError}
+                    />
+                  ) : null}
                 </>
               ) : (
-                <p className="theme-subtext text-xs">
-                  Sales and till variance can auto-post to your chart of accounts when the accounting module is enabled.
-                </p>
+                <div className="space-y-4">
+                  <p className="theme-subtext text-xs">
+                    Sales, expenses, purchases, payroll, and returns can auto-post to your chart of accounts when the
+                    accounting module is enabled.
+                  </p>
+                  <AccountingAutoPostPanel
+                    compact
+                    saving={saving}
+                    setSaving={setSaving}
+                    setError={setError}
+                    setMessage={setMessage}
+                  />
+                </div>
               )}
             </div>
           </div>

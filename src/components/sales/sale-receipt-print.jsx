@@ -1,4 +1,5 @@
 import { saleLineProductLabel, saleLineQtyLabel } from "@/lib/sale-line-items";
+import { openPrintWindow } from "@/lib/open-print-window";
 import {
   formatReceiptNumber,
   formatSaleKes,
@@ -229,12 +230,8 @@ export function printSaleReceipt(
     <div class="barcode"></div>
     <div class="barcode-code">${escapeHtml(receipt)}</div>
   </div>
-  <script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };</script>
 </body>
 </html>`;
 
-  const win = window.open("", "_blank", "width=420,height=640");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
+  openPrintWindow(html, "width=420,height=640");
 }

@@ -1,4 +1,5 @@
 import { accountOptionLabel, formatAccountingAmount, journalStatusLabel } from "@/lib/accounting-shared";
+import { openPrintWindow } from "@/lib/open-print-window";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
 
 function escapeHtml(value) {
@@ -74,12 +75,8 @@ export function printJournalEntry(entry, { organizationName = "POS / ERP" } = {}
       </tfoot>
     </table>
   </div>
-  <script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };</script>
 </body>
 </html>`;
 
-  const win = window.open("", "_blank", "width=820,height=720");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
+  openPrintWindow(html, "width=820,height=720");
 }

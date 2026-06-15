@@ -135,6 +135,16 @@ html[data-theme="light"] .app-sidebar-section-label {
   color: #94a3b8;
 }
 
+html[data-theme="dark"] .app-sidebar-section-toggle:hover {
+  background-color: #1e293b;
+  color: #cbd5e1;
+}
+
+html[data-theme="light"] .app-sidebar-section-toggle:hover {
+  background-color: #f1f5f9;
+  color: #475569;
+}
+
 html[data-theme="dark"] .app-sidebar-link {
   color: #cbd5e1;
 }
@@ -370,6 +380,142 @@ select option {
 html[data-theme="dark"] select option {
   color: #f8fafc;
   background-color: #0f172a;
+}
+
+/* Shared table utilities */
+.theme-table {
+  color: var(--theme-text);
+}
+
+.theme-table-head {
+  background-color: var(--theme-surface-muted);
+  border-color: var(--theme-border);
+  color: var(--theme-text-subtle);
+}
+
+.theme-table-row {
+  border-color: var(--theme-border);
+  color: var(--theme-text-muted);
+}
+
+.theme-table-row:hover {
+  background-color: var(--theme-hover);
+}
+
+.theme-table-total,
+.theme-table-section {
+  background-color: var(--theme-surface-muted);
+  color: var(--theme-text);
+  border-color: var(--theme-border);
+}
+
+/* Status / alert surfaces */
+html[data-theme="dark"] .bg-red-50,
+html[data-theme="dark"] .bg-red-100 {
+  background-color: rgb(127 29 29 / 0.25) !important;
+  color: #fecaca !important;
+}
+
+html[data-theme="dark"] .bg-emerald-50,
+html[data-theme="dark"] .bg-emerald-100,
+html[data-theme="dark"] .bg-green-50 {
+  background-color: rgb(6 78 59 / 0.3) !important;
+  color: #a7f3d0 !important;
+}
+
+html[data-theme="dark"] .bg-amber-50,
+html[data-theme="dark"] .bg-amber-100,
+html[data-theme="dark"] .bg-yellow-50 {
+  background-color: rgb(120 53 15 / 0.3) !important;
+  color: #fde68a !important;
+}
+
+html[data-theme="dark"] .bg-blue-50,
+html[data-theme="dark"] .bg-sky-50 {
+  background-color: rgb(30 58 138 / 0.25) !important;
+  color: #bfdbfe !important;
+}
+
+html[data-theme="dark"] .border-red-200,
+html[data-theme="dark"] .border-red-300 {
+  border-color: rgb(248 113 113 / 0.35) !important;
+}
+
+html[data-theme="dark"] .border-emerald-200,
+html[data-theme="dark"] .border-green-200 {
+  border-color: rgb(52 211 153 / 0.35) !important;
+}
+
+html[data-theme="dark"] .border-amber-200,
+html[data-theme="dark"] .border-yellow-200 {
+  border-color: rgb(251 191 36 / 0.35) !important;
+}
+
+html[data-theme="dark"] .text-red-700,
+html[data-theme="dark"] .text-red-800,
+html[data-theme="dark"] .text-red-600 {
+  color: #fca5a5 !important;
+}
+
+html[data-theme="dark"] .text-emerald-700,
+html[data-theme="dark"] .text-emerald-800,
+html[data-theme="dark"] .text-green-700,
+html[data-theme="dark"] .text-green-800 {
+  color: #6ee7b7 !important;
+}
+
+html[data-theme="dark"] .text-amber-700,
+html[data-theme="dark"] .text-amber-800,
+html[data-theme="dark"] .text-amber-900,
+html[data-theme="dark"] .text-yellow-800 {
+  color: #fcd34d !important;
+}
+
+html[data-theme="dark"] .bg-slate-800,
+html[data-theme="dark"] .bg-slate-900,
+html[data-theme="dark"] .bg-gray-900 {
+  background-color: var(--theme-surface-muted) !important;
+  color: var(--theme-text) !important;
+}
+
+html[data-theme="dark"] .bg-gray-50,
+html[data-theme="dark"] .bg-gray-100,
+html[data-theme="dark"] .bg-neutral-50 {
+  background-color: var(--theme-surface) !important;
+}
+
+html[data-theme="dark"] .text-gray-900,
+html[data-theme="dark"] .text-gray-800,
+html[data-theme="dark"] .text-neutral-900 {
+  color: var(--theme-text) !important;
+}
+
+html[data-theme="dark"] .text-gray-600,
+html[data-theme="dark"] .text-gray-500,
+html[data-theme="dark"] .text-neutral-600 {
+  color: var(--theme-text-muted) !important;
+}
+
+html[data-theme="dark"] .border-gray-200,
+html[data-theme="dark"] .border-gray-300,
+html[data-theme="dark"] .border-neutral-200 {
+  border-color: var(--theme-border) !important;
+}
+
+html[data-theme="dark"] .hover\:bg-gray-50:hover,
+html[data-theme="dark"] .hover\:bg-gray-100:hover {
+  background-color: var(--theme-hover) !important;
+}
+
+html[data-theme="dark"] .fixed.inset-0.bg-black\/30,
+html[data-theme="dark"] .bg-black\/30 {
+  background-color: rgb(0 0 0 / 0.55) !important;
+}
+
+html[data-theme="dark"] ::placeholder,
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder {
+  color: var(--theme-text-subtle);
 }
 
 input::placeholder,

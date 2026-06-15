@@ -147,6 +147,13 @@ export function AuthProvider({ children }) {
       logout,
       refreshCapabilities,
       isModuleEnabled: (key) => capabilities?.modules?.[key] ?? false,
+      isSuperAdmin: () => Boolean(user?.is_super_admin || capabilities?.is_super_admin),
+      hasPermission: (code) => {
+        if (user?.is_super_admin || capabilities?.is_super_admin) return true;
+        if (user?.is_admin || capabilities?.is_admin) return true;
+        if (!code) return true;
+        return capabilities?.permissions?.[code] ?? false;
+      },
       isOrgWide: () => (capabilities?.access_scope ?? user?.access_scope) === "org" || user?.is_admin,
     }),
     [

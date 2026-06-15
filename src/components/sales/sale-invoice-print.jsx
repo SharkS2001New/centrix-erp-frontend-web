@@ -1,4 +1,5 @@
 import { saleLineProductLabel, saleLineQtyLabel } from "@/lib/sale-line-items";
+import { openPrintWindow } from "@/lib/open-print-window";
 import {
   formatReceiptNumber,
   saleCustomerLabel,
@@ -260,12 +261,8 @@ export function printSaleInvoice(
       <span>Page 1 of 1</span>
     </div>
   </div>
-  <script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };</script>
 </body>
 </html>`;
 
-  const win = window.open("", "_blank", "width=860,height=960");
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
+  openPrintWindow(html, "width=860,height=960");
 }

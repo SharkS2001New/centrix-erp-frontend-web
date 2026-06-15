@@ -8,69 +8,117 @@ const ACTION_LABELS = {
   approve: "Approve",
 };
 
-export function PermissionMatrix({ matrix, assignedIds, onToggle }) {
-  return (
-    <div>
-      <table className="min-w-full text-sm">
-        <thead className="border-b border-slate-200 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-          <tr>
-            <th className="px-3 py-2">Module</th>
-            {Object.values(ACTION_LABELS).map((label) => (
-              <th key={label} className="px-3 py-2 text-center">
-                {label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {matrix.map((row) => (
-            <tr key={row.module}>
-              <td className="px-3 py-2 font-medium text-slate-800">{row.label}</td>
-              {Object.keys(ACTION_LABELS).map((action) => {
-                const perm = row.cells[action];
-                return (
-                  <td key={action} className="px-3 py-2 text-center">
-                    {perm ? (
-                      <input
-                        type="checkbox"
-                        checked={assignedIds.has(perm.id)}
-                        onChange={() => onToggle(perm.id)}
-                        title={perm.permission_name}
-                      />
-                    ) : (
-                      <span className="text-slate-300">—</span>
-                    )}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+const ACTION_ORDER = ["view", "create", "edit", "delete", "approve"];
 
-      {matrix.some((row) => row.extras.length > 0) ? (
-        <div className="mt-5 border-t border-slate-200 pt-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Additional permissions
-          </p>
-          <div className="space-y-2">
-            {matrix.flatMap((row) =>
-              row.extras.map((perm) => (
-                <label key={perm.id} className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={assignedIds.has(perm.id)}
-                    onChange={() => onToggle(perm.id)}
-                  />
-                  <span>
-                    {row.label} — {perm.permission_name}
-                  </span>
-                </label>
-              )),
-            )}
+function modulePermissionIds(group) {
+  return group.features.flatMap((feature) => feature.permissions.map((p) => p.id));
+}
+
+function moduleSelectionState(group, assignedIds) {
+  const ids = modulePermissionIds(group);
+  if (!ids.length) return "none";
+  const selected = ids.filter((id) => assignedIds.has(id)).length;
+  if (selected === 0) return "none";
+  if (selected === ids.length) return "all";
+  return "partial";
+}
+
+export function PermissionMatrix({ groups, assignedIds, onToggle, onToggleMany }) {
+  if (!groups?.length) {
+    return <p className="text-sm text-slate-500">No permissions defined.</p>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {groups.map((group) => {
+        const selection = moduleSelectionState(group, assignedIds);
+        const moduleIds = modulePermissionIds(group);
+
+        return (
+          <div key={group.module} className="rounded-lg border border-slate-200">
+            <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <input
+                type="checkbox"
+                ref={(el) => {
+                  if (el) el.indeterminate = selection === "partial";
+                }}
+                checked={selection === "all"}
+                onChange={() => onToggleMany(moduleIds, selection !== "all")}
+                title={`Select all ${group.label} permissions`}
+              />
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{group.label}</p>
+                <p className="text-xs text-slate-500">{group.module}</p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2">Feature / link</th>
+                    {ACTION_ORDER.map((action) => (
+                      <th key={action} className="px-3 py-2 text-center">
+                        {ACTION_LABELS[action]}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {group.features.map((feature) => {
+                    const byAction = Object.fromEntries(
+                      feature.permissions.map((p) => [p.action, p]),
+                    );
+                    const featureIds = feature.permissions.map((p) => p.id);
+                    const featureSelected = featureIds.filter((id) => assignedIds.has(id)).length;
+
+                    return (
+                      <tr key={feature.key}>
+                        <td className="px-4 py-2">
+                          <label className="flex items-center gap-2 font-medium text-slate-800">
+                            <input
+                              type="checkbox"
+                              checked={featureSelected === featureIds.length && featureIds.length > 0}
+                              ref={(el) => {
+                                if (el) {
+                                  el.indeterminate =
+                                    featureSelected > 0 && featureSelected < featureIds.length;
+                                }
+                              }}
+                              onChange={() =>
+                                onToggleMany(featureIds, featureSelected !== featureIds.length)
+                              }
+                              title={`Select all ${feature.label} permissions`}
+                            />
+                            <span>{feature.label}</span>
+                          </label>
+                        </td>
+                        {ACTION_ORDER.map((action) => {
+                          const perm = byAction[action];
+                          return (
+                            <td key={action} className="px-3 py-2 text-center">
+                              {perm ? (
+                                <input
+                                  type="checkbox"
+                                  checked={assignedIds.has(perm.id)}
+                                  onChange={() => onToggle(perm.id)}
+                                  title={perm.permission_name}
+                                />
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      ) : null}
+        );
+      })}
     </div>
   );
 }

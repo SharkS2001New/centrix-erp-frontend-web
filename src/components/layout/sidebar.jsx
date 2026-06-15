@@ -1,133 +1,73 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { OrganizationSwitcher } from "@/components/layout/organization-switcher";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { getSalesOrderQueueWorkflow, salesOrderQueueNavItems } from "@/lib/order-workflow";
 import { isMobileOrdersEnabled, isPosTillFloatRequired } from "@/lib/sales-settings";
+import { isNavItemActive, isNavSectionActive, isNavItemVisible, navSections } from "@/lib/nav-config";
 
-const navSections = [
-  {
-    items: [
-      { href: "/dashboard", label: "Dashboard", module: null },
-      { href: "/customers", label: "Customers", module: "customers_suppliers" },
-      { href: "/products", label: "Products", module: null },
-      { href: "/categories", label: "Categories", module: null },
-      { href: "/uoms", label: "Units of measure", module: null },
-      { href: "/retail-package-settings", label: "Retail packages", module: null },
-      { href: "/vats", label: "VAT rates", module: null },
-      { href: "/price-history", label: "Price history", module: null },
-      { href: "/reports", label: "Reports", module: "reports" },
-    ],
-  },
-  {
-    label: "Inventory",
-    module: "inventory",
-    items: [
-      { href: "/inventory/stock", label: "Current stock", module: "inventory" },
-      { href: "/inventory/receipts", label: "Stock receipts", module: "inventory" },
-      { href: "/inventory/transactions", label: "Movements", module: "inventory" },
-      { href: "/inventory/transfers/new", label: "Transfer stock", module: "inventory" },
-      { href: "/inventory/damages", label: "Damages", module: "inventory" },
-      { href: "/inventory/stock-take", label: "Stock take", module: "inventory" },
-    ],
-  },
-  {
-    label: "Accounting",
-    module: "accounting",
-    items: [
-      { href: "/accounting", label: "Dashboard", module: "accounting", exact: true },
-      { href: "/accounting/chart-of-accounts", label: "Chart of Accounts", module: "accounting" },
-      { href: "/accounting/journal-entries", label: "Journal Entries", module: "accounting" },
-      { href: "/accounting/general-ledger", label: "General Ledger", module: "accounting" },
-      { href: "/accounting/trial-balance", label: "Trial Balance", module: "accounting" },
-      { href: "/accounting/profit-loss", label: "Profit & Loss", module: "accounting" },
-      { href: "/accounting/balance-sheet", label: "Balance Sheet", module: "accounting" },
-      { href: "/accounting/cash-flow", label: "Cash Flow", module: "accounting" },
-      { href: "/accounting/accounts-receivable", label: "Accounts Receivable", module: "accounting" },
-      { href: "/accounting/accounts-payable", label: "Accounts Payable", module: "accounting" },
-      { href: "/expenses", label: "Expenses", module: "accounting" },
-      { href: "/admin/settings", label: "Settings", module: "admin" },
-    ],
-  },
-  {
-    label: "HR & Payroll",
-    module: "hr_payroll",
-    items: [
-      { href: "/hr/employees", label: "Employees", module: "hr_payroll" },
-      { href: "/hr/positions", label: "Positions", module: "hr_payroll" },
-      { href: "/hr/shifts", label: "Shifts", module: "hr_payroll" },
-      { href: "/hr/allowances", label: "Allowances", module: "hr_payroll" },
-      { href: "/hr/deductions", label: "Deductions", module: "hr_payroll" },
-      { href: "/hr/overtime", label: "Overtime", module: "hr_payroll" },
-      { href: "/hr/cash-advances", label: "Cash advances", module: "hr_payroll" },
-      { href: "/hr/attendance", label: "Attendance", module: "hr_payroll" },
-      { href: "/hr/leave", label: "Leave & off days", module: "hr_payroll" },
-      { href: "/hr/payroll", label: "Payroll", module: "hr_payroll" },
-    ],
-  },
-  {
-    label: "POS",
-    module: "sales.backend",
-    items: [
-      { href: "/sales/till-management", label: "Till Management", module: "sales.backend", requireTillFloat: true },
-      { href: "/sales/pos", label: "Point of sale", module: "sales.backend" },
-      { href: "/sales/end-of-day", label: "End of day report", module: "sales.backend" },
-    ],
-  },
-  {
-    label: "Sales",
-    module: "sales.backend",
-    items: [
-      { href: "/sales", label: "Dashboard", module: "sales.backend", exact: true },
-      { href: "/sales/orders", label: "Orders", module: "sales.backend", ordersNav: true },
-      { href: "/sales/vouchers", label: "Vouchers", module: "sales.backend" },
-      { href: "/sales/loyalty-cards", label: "Loyalty cards", module: "sales.backend" },
-      { href: "/sales/reservations", label: "Reservations", module: "sales.backend" },
-      { href: "/sales/returns", label: "Returns", module: "sales.backend" },
-      { href: "/sales/returns/new", label: "Create return", module: "sales.backend", exact: true },
-    ],
-  },
-  {
-    label: "Suppliers",
-    module: "customers_suppliers",
-    items: [
-      { href: "/lpo", label: "Purchase orders", module: "customers_suppliers" },
-      { href: "/suppliers", label: "Suppliers", module: "customers_suppliers" },
-      { href: "/suppliers/payments", label: "Supplier payments", module: "customers_suppliers" },
-      { href: "/suppliers/returns", label: "Supplier returns", module: "customers_suppliers" },
-    ],
-  },
-  {
-    label: "Fulfillment",
-    module: "customers_suppliers",
-    items: [
-      { href: "/fulfillment/drivers", label: "Drivers", module: null },
-      { href: "/fulfillment/vehicles", label: "Vehicles", module: null },
-      { href: "/fulfillment/routes", label: "Routes", module: "customers_suppliers" },
-    ],
-  },
-  {
-    label: "Administration",
-    module: "admin",
-    items: [
-      { href: "/admin", label: "Overview", module: "admin", exact: true },
-      { href: "/admin/company", label: "Company profile", module: "admin" },
-      { href: "/admin/branches", label: "Branches", module: "admin" },
-      { href: "/admin/users", label: "Users", module: "admin" },
-      { href: "/admin/roles", label: "Roles & permissions", module: "admin" },
-      { href: "/admin/audit", label: "Audit trail", module: "admin" },
-      { href: "/admin/settings", label: "System settings", module: "admin" },
-    ],
-  },
-];
+const STORAGE_KEY = "sidebar-expanded-sections";
+
+function ChevronIcon({ open }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function readStoredSections() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function CollapsibleNavSection({ section, pathname, expanded, onToggle, children }) {
+  const active = isNavSectionActive(section, pathname);
+  const open = expanded || active;
+
+  if (!section.collapsible || !section.label) {
+    return <div className="space-y-0.5">{children}</div>;
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => onToggle(section.id)}
+        className={`app-sidebar-section-label app-sidebar-section-toggle flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider transition ${
+          active ? "text-[var(--sidebar-accent,#185FA5)]" : ""
+        }`}
+        aria-expanded={open}
+      >
+        <span>{section.label}</span>
+        <ChevronIcon open={open} />
+      </button>
+      {open ? <div className="mt-0.5 space-y-0.5">{children}</div> : null}
+    </div>
+  );
+}
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, capabilities, logout, isModuleEnabled } = useAuth();
+  const { user, capabilities, logout, isModuleEnabled, hasPermission, isSuperAdmin } = useAuth();
 
   const requireTillFloat = isPosTillFloatRequired(capabilities?.module_settings);
 
@@ -138,22 +78,73 @@ export function Sidebar() {
       href: item.href,
       label: item.label,
       module: "sales.backend",
+      permission: "sales.orders.view",
       exact: item.slug === "all",
     }));
   }, [capabilities]);
 
-  const visibleSections = navSections
-    .filter((section) => !section.module || isModuleEnabled(section.module))
-    .map((section) => ({
-      ...section,
-      items: section.items.flatMap((item) => {
-        if (item.ordersNav) return salesOrderNavItems;
-        if (item.requireTillFloat && !requireTillFloat) return [];
-        if (!item.module || isModuleEnabled(item.module)) return [item];
-        return [];
-      }),
-    }))
-    .filter((section) => section.items.length > 0);
+  const navContext = useMemo(
+    () => ({
+      isModuleEnabled,
+      hasPermission,
+      isSuperAdmin,
+      requireTillFloat,
+      user,
+      capabilities,
+    }),
+    [capabilities, hasPermission, isModuleEnabled, isSuperAdmin, requireTillFloat, user],
+  );
+
+  const visibleSections = useMemo(
+    () =>
+      navSections
+        .filter((section) => !section.superAdminOnly || isSuperAdmin())
+        .map((section) => ({
+          ...section,
+          items: section.items.flatMap((item) => {
+            if (item.ordersNav) {
+              return salesOrderNavItems.filter((navItem) => isNavItemVisible(navItem, navContext));
+            }
+            return isNavItemVisible(item, navContext) ? [item] : [];
+          }),
+        }))
+        .filter((section) => section.items.length > 0),
+    [isSuperAdmin, navContext, salesOrderNavItems],
+  );
+
+  const [expandedSections, setExpandedSections] = useState(() => {
+    const stored = readStoredSections();
+    if (stored) return new Set(stored);
+    return new Set(visibleSections.filter((s) => isNavSectionActive(s, pathname)).map((s) => s.id));
+  });
+
+  useEffect(() => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      for (const section of visibleSections) {
+        if (isNavSectionActive(section, pathname)) {
+          next.add(section.id);
+        }
+      }
+      return next;
+    });
+  }, [pathname, visibleSections]);
+
+  useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...expandedSections]));
+  }, [expandedSections]);
+
+  const toggleSection = useCallback((sectionId) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) {
+        next.delete(sectionId);
+      } else {
+        next.add(sectionId);
+      }
+      return next;
+    });
+  }, []);
 
   return (
     <aside className="app-sidebar flex h-full min-h-0 w-56 shrink-0 flex-col border-r">
@@ -164,33 +155,30 @@ export function Sidebar() {
           {capabilities?.profile_label ?? capabilities?.deployment_profile}
         </p>
       </div>
-      <nav className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-3">
+      <nav className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-3">
         {visibleSections.map((section) => (
-          <div key={section.label ?? "main"}>
-            {section.label && (
-              <p className="app-sidebar-section-label mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider">
-                {section.label}
-              </p>
-            )}
-            <div className="space-y-0.5">
-              {section.items.map((item) => {
-                const active = item.exact
-                  ? pathname === item.href
-                  : pathname === item.href || pathname.startsWith(`${item.href}/`);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`app-sidebar-link block rounded-lg px-3 py-2 text-sm font-medium transition ${
-                      active ? "app-sidebar-link-active" : ""
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
+          <CollapsibleNavSection
+            key={section.id}
+            section={section}
+            pathname={pathname}
+            expanded={expandedSections.has(section.id)}
+            onToggle={toggleSection}
+          >
+            {section.items.map((item) => {
+              const active = isNavItemActive(item, pathname);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`app-sidebar-link block rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    active ? "app-sidebar-link-active" : ""
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </CollapsibleNavSection>
         ))}
       </nav>
       <div className="app-sidebar-divider border-t p-4">
