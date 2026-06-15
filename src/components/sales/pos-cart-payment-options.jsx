@@ -197,6 +197,8 @@ export function PosCartPaymentOptions({
   }, [activeDialog]);
 
   const hasVoucher = Number(cart?.voucher_payment_amount ?? 0) > 0;
+  const hasDiscountVoucher =
+    Number(cart?.discount_voucher_id ?? 0) > 0 && Number(cart?.order_discount ?? 0) > 0;
   const hasPoints = Number(cart?.points_payment_amount ?? 0) > 0;
   const hasMpesaPayment = Number(cart?.mpesa_payment_amount ?? 0) > 0;
   const hasMpesaPhone = Boolean(String(cart?.mpesa_phone ?? "").trim());
@@ -222,8 +224,12 @@ export function PosCartPaymentOptions({
         id: "voucher",
         icon: "🎟",
         label: "Voucher",
-        sublabel: hasVoucher ? formatSaleKes(cart.voucher_payment_amount) : "Pay with code",
-        active: hasVoucher,
+        sublabel: hasVoucher
+          ? formatSaleKes(cart.voucher_payment_amount)
+          : Number(cart?.order_discount ?? 0) > 0 && Number(cart?.discount_voucher_id ?? 0) > 0
+            ? `−${formatSaleKes(cart.order_discount)}`
+            : "Pay with code",
+        active: hasVoucher || hasDiscountVoucher,
       });
     }
     if (enablePoints) {
@@ -245,10 +251,13 @@ export function PosCartPaymentOptions({
     hasMpesaPhone,
     hasMpesaPayment,
     hasVoucher,
+    hasDiscountVoucher,
     hasPoints,
     cart?.mpesa_phone,
     cart?.mpesa_payment_amount,
     cart?.voucher_payment_amount,
+    cart?.order_discount,
+    cart?.discount_voucher_id,
     cart?.points_redeemed,
   ]);
 
@@ -302,7 +311,12 @@ export function PosCartPaymentOptions({
       });
       onCartUpdated?.(res.cart);
       setVoucherCode(res.voucher?.voucher_code ?? voucherCode);
-      onMessage?.(`Voucher applied: ${formatSaleKes(res.voucher?.applied_amount ?? 0)}`);
+      const applied = formatSaleKes(res.voucher?.applied_amount ?? 0);
+      const label =
+        res.voucher?.voucher_kind === "discount"
+          ? `Discount applied: ${applied}`
+          : `Voucher applied: ${applied}`;
+      onMessage?.(label);
       closeDialog();
     } catch (e) {
       onMessage?.(e instanceof ApiError ? e.message : "Failed to apply voucher");

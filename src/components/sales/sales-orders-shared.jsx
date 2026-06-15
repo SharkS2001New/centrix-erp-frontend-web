@@ -360,6 +360,7 @@ export function buildOrderDetailActionItems({
   onRecordPayment,
   canRecordPayment,
   printLabel = "Print receipt",
+  onCreateReturn,
 }) {
   const items = [];
 
@@ -373,6 +374,15 @@ export function buildOrderDetailActionItems({
       label: "Record payment",
       icon: "advance",
       onClick: onRecordPayment,
+    });
+  }
+
+  if (sale?.status === "completed" && sale?.id && onCreateReturn) {
+    items.push({
+      key: "create-return",
+      label: "Create return",
+      icon: "advance",
+      onClick: onCreateReturn,
     });
   }
 
@@ -854,7 +864,7 @@ export function OrderFinancialSummary({ sale, payments, totalPaid, balanceDue })
   );
 }
 
-export function OrderLineItemsTable({ items }) {
+export function OrderLineItemsTable({ items, uomById }) {
   const rows = items ?? [];
 
   return (
@@ -886,7 +896,9 @@ export function OrderLineItemsTable({ items }) {
                       <p className="mt-0.5 text-xs text-slate-500">{line.product_code}</p>
                     ) : null}
                   </td>
-                  <td className="px-4 py-3 text-right text-slate-700">{line.quantity}</td>
+                  <td className="px-4 py-3 text-right text-slate-700">
+                    {uomById ? saleLineQtyLabel(line, uomById) : line.quantity}
+                  </td>
                   <td className="px-4 py-3 text-right text-slate-700">
                     {formatCustomerKes(line.selling_price)}
                   </td>

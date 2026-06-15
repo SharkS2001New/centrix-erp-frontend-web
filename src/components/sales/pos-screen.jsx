@@ -38,6 +38,7 @@ import {
   resolveSaveOrderStatus,
   resolveSaveOrderStatusLabel,
 } from "@/lib/sales-settings";
+import { shouldSubmitKraOnCheckout } from "@/lib/finance-settings";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import {
   canAdjustCartLineQuantity,
@@ -451,13 +452,14 @@ export function PosScreen() {
     const lineDiscounts = rows.reduce((sum, line) => sum + Number(line.discount_given ?? 0), 0);
     const net = rows.reduce((sum, line) => sum + Number(line.amount ?? 0), 0);
     const vat = rows.reduce((sum, line) => sum + Number(line.product_vat ?? 0), 0);
-    const orderDiscountRaw = enableOrderDiscount
-      ? orderDiscountDraft !== ""
-        ? Math.max(0, parseDecimalInput(orderDiscountDraft))
-        : Number(cart?.order_discount ?? 0)
-      : 0;
+    const orderDiscountRaw =
+      enableOrderDiscount || enableVouchers
+        ? orderDiscountDraft !== ""
+          ? Math.max(0, parseDecimalInput(orderDiscountDraft))
+          : Number(cart?.order_discount ?? 0)
+        : 0;
     const orderDiscount = Math.min(Math.max(0, orderDiscountRaw), net);
-    const grossTotal = Math.max(0, net - orderDiscount) + vat;
+    const grossTotal = Math.max(0, net - orderDiscount);
     const voucherPayment = Math.max(0, Number(cart?.voucher_payment_amount ?? 0));
     const pointsPayment = Math.max(0, Number(cart?.points_payment_amount ?? 0));
     const mpesaPayment = Math.max(0, Number(cart?.mpesa_payment_amount ?? 0));
@@ -1760,6 +1762,7 @@ export function PosScreen() {
         method: "POST",
         body: {
           ...body,
+          submit_kra: shouldSubmitKraOnCheckout(capabilities?.module_settings),
           ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
         },
       });
@@ -2594,7 +2597,7 @@ export function PosScreen() {
                     </span>
                   </div>
                 ) : null}
-                {enableOrderDiscount && cartSummary.orderDiscount > 0 ? (
+                {((enableOrderDiscount || enableVouchers) && cartSummary.orderDiscount > 0) ? (
                   <div className="flex justify-between text-slate-700">
                     <span>Order discount</span>
                     <span>−{formatSaleKes(cartSummary.orderDiscount)}</span>

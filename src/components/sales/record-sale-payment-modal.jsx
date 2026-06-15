@@ -36,14 +36,12 @@ export function RecordSalePaymentModal({ open, onClose, saleId, balanceDue, onSa
     setSaving(true);
     setError(null);
     try {
-      await apiRequest("/sale-payments", {
+      await apiRequest(`/sales/${saleId}/payments`, {
         method: "POST",
         body: {
-          sale_id: Number(saleId),
           payment_method_id: Number(paymentMethodId),
           amount: parseDecimalInput(amount),
           reference_number: reference.trim() || null,
-          paid_at: new Date().toISOString(),
         },
       });
       await onSaved?.();

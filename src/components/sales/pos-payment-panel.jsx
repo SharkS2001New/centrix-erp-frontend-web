@@ -6,6 +6,10 @@ import { apiRequest } from "@/lib/api";
 import { parseDecimalInput } from "@/components/catalog/catalog-shared";
 import { formatSaleKes } from "@/lib/sales";
 import { resolveCheckoutStatus } from "@/lib/sales-settings";
+import {
+  customerCreditSummary,
+  validateCustomerCreditSale,
+} from "@/lib/customer-credit";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 
 function PosField({ label, children }) {
@@ -220,6 +224,15 @@ export function PosPaymentPanel({
     ? customers.find((c) => String(c.customer_num) === customerNum)
     : null;
 
+  const creditCustomerSummary = useMemo(
+    () => customerCreditSummary(creditCustomer),
+    [creditCustomer],
+  );
+
+  const creditAmountDue = hasCreditCustomer
+    ? Math.max(0, checkoutTotal - amountPaid)
+    : 0;
+
   const creditCustomerOptions = useMemo(
     () =>
       customers.map((c) => {
@@ -334,7 +347,10 @@ export function PosPaymentPanel({
       return "Select a valid credit customer.";
     }
     if (hasCreditCustomer) {
-      return null;
+      return validateCustomerCreditSale({
+        customer: creditCustomer,
+        creditAmount: creditAmountDue,
+      });
     }
     if (cfg.allowPartialPayment && amountPaid > 0 && amountPaid + 0.01 < checkoutTotal) {
       return null;
@@ -422,8 +438,15 @@ export function PosPaymentPanel({
     return el.getAttribute("role") === "combobox" && el.getAttribute("aria-expanded") === "true";
   }
 
+  const creditValidationError = hasCreditCustomer
+    ? validateCustomerCreditSale({
+        customer: creditCustomer,
+        creditAmount: creditAmountDue,
+      })
+    : null;
+
   const canComplete =
-    hasCreditCustomer ||
+    (hasCreditCustomer && !creditValidationError) ||
     amountPaid + 0.01 >= checkoutTotal ||
     (cfg.allowPartialPayment && amountPaid > 0);
 
@@ -962,8 +985,24 @@ export function PosPaymentPanel({
               inputClassName={inputCls}
             />
           <span className="mt-1 block text-[11px] text-slate-600">
-            Select a customer to record the unpaid balance as accounts receivable.
+            Registered customers only — walk-ins cannot be charged to accounts receivable.
           </span>
+          {creditCustomer && creditCustomerSummary?.limit > 0 ? (
+            <span className="mt-1 block text-[11px] text-slate-600">
+              Limit {formatSaleKes(creditCustomerSummary.limit)} · Outstanding{" "}
+              {formatSaleKes(creditCustomerSummary.outstanding)} · Available{" "}
+              {formatSaleKes(creditCustomerSummary.available ?? 0)}
+              {creditAmountDue > 0.009 && creditCustomerSummary.available != null
+                ? creditAmountDue > creditCustomerSummary.available + 0.009
+                  ? " — exceeds available credit"
+                  : ` — ${formatSaleKes(creditAmountDue)} on credit`
+                : ""}
+            </span>
+          ) : creditCustomer ? (
+            <span className="mt-1 block text-[11px] text-slate-600">
+              No credit limit on this customer — unlimited credit allowed.
+            </span>
+          ) : null}
           </PosField>
         </div>
       ) : null}

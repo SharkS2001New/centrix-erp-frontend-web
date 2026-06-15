@@ -367,6 +367,14 @@ function movementTone(row) {
   return "neutral";
 }
 
+function movementHref(row) {
+  const refType = String(row.reference_type ?? "").toLowerCase();
+  if (refType === "customer_return" && row.reference_id) {
+    return `/sales/returns?return_id=${row.reference_id}`;
+  }
+  return null;
+}
+
 function ActivityRow({ date, label, subtitle, tone, href }) {
   const styles = {
     in: "bg-emerald-100 text-emerald-700",
@@ -996,6 +1004,7 @@ export default function ProductDetailPage() {
                         }
                         label={movementLabel(row, enriched.product_uom)}
                         tone={movementTone(row)}
+                        href={movementHref(row)}
                       />
                     ))}
                   </ul>

@@ -73,6 +73,7 @@ const navSections = [
       { href: "/sales/loyalty-cards", label: "Loyalty cards", module: "sales.backend" },
       { href: "/sales/reservations", label: "Reservations", module: "sales.backend" },
       { href: "/sales/returns", label: "Returns", module: "sales.backend" },
+      { href: "/sales/returns/new", label: "Create return", module: "sales.backend", exact: true },
     ],
   },
   {

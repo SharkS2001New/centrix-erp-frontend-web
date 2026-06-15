@@ -37,6 +37,8 @@ const TYPE_OPTIONS = [
   { value: "ADJUSTMENT", label: "Adjustment" },
   { value: "STOCK_TAKE", label: "Stock take" },
   { value: "TRANSFER", label: "Transfer" },
+  { value: "RETURN", label: "Customer return" },
+  { value: "SUPPLIER_RETURN", label: "Supplier return" },
 ];
 
 function groupMovementsByProduct(rows, productByCode) {
@@ -96,6 +98,7 @@ export default function InventoryTransactionsPage() {
   const initialRange = defaultDateRange(7);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState(searchParams.get("type") || "all");
+  const referenceIdFilter = searchParams.get("reference_id") || "";
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
   const [page, setPage] = useState(1);
@@ -147,6 +150,7 @@ export default function InventoryTransactionsPage() {
     return rows.filter((row) => {
       if (!rowInDateRange(row, fromDate, toDate, ["created_at"])) return false;
       if (typeFilter !== "all" && row.transaction_type !== typeFilter) return false;
+      if (referenceIdFilter && String(row.reference_id ?? "") !== referenceIdFilter) return false;
       if (!q) return true;
       const product = productByCode.get(row.product_code);
       return (
@@ -154,7 +158,7 @@ export default function InventoryTransactionsPage() {
         product?.product_name?.toLowerCase().includes(q)
       );
     });
-  }, [rows, search, typeFilter, fromDate, toDate, productByCode]);
+  }, [rows, search, typeFilter, fromDate, toDate, productByCode, referenceIdFilter]);
 
   const productGroups = useMemo(
     () => groupMovementsByProduct(filtered, productByCode),

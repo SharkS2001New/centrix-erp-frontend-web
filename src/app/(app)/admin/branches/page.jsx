@@ -27,6 +27,9 @@ const EMPTY_FORM = {
   branch_email: "",
   branch_address: "",
   manager_employee_id: "",
+  mpesa_shortcode: "",
+  mpesa_till_number: "",
+  mpesa_child_storecode: "",
   is_active: true,
 };
 
@@ -129,6 +132,9 @@ export default function AdminBranchesPage() {
       manager_employee_id: branch.settings?.manager_employee_id
         ? String(branch.settings.manager_employee_id)
         : "",
+      mpesa_shortcode: branch.settings?.mpesa?.shortcode ?? "",
+      mpesa_till_number: branch.settings?.mpesa?.till_number ?? "",
+      mpesa_child_storecode: branch.settings?.mpesa?.child_storecode ?? "",
       is_active: branch.is_active !== false,
     });
     setFormError(null);
@@ -172,6 +178,12 @@ export default function AdminBranchesPage() {
         settings: {
           ...(editing?.settings ?? {}),
           manager_employee_id: form.manager_employee_id ? Number(form.manager_employee_id) : null,
+          mpesa: {
+            ...(editing?.settings?.mpesa ?? {}),
+            shortcode: form.mpesa_shortcode.trim() || null,
+            till_number: form.mpesa_till_number.trim() || null,
+            child_storecode: form.mpesa_child_storecode.trim() || null,
+          },
         },
       };
       if (editing) {
@@ -324,6 +336,37 @@ export default function AdminBranchesPage() {
           />
           Active
         </label>
+
+        <div className="mt-4 border-t border-slate-200 pt-4">
+          <p className="text-sm font-medium text-slate-900">M-Pesa overrides (optional)</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Leave blank to use organization finance settings. Set when this branch uses its own till or paybill on
+            Daraja.
+          </p>
+          <div className="mt-3 space-y-3">
+            <Field label="Paybill shortcode override">
+              <input
+                className={inputClassName()}
+                value={form.mpesa_shortcode}
+                onChange={(e) => setForm((f) => ({ ...f, mpesa_shortcode: e.target.value }))}
+              />
+            </Field>
+            <Field label="Till number override">
+              <input
+                className={inputClassName()}
+                value={form.mpesa_till_number}
+                onChange={(e) => setForm((f) => ({ ...f, mpesa_till_number: e.target.value }))}
+              />
+            </Field>
+            <Field label="C2B shortcode override">
+              <input
+                className={inputClassName()}
+                value={form.mpesa_child_storecode}
+                onChange={(e) => setForm((f) => ({ ...f, mpesa_child_storecode: e.target.value }))}
+              />
+            </Field>
+          </div>
+        </div>
       </FormDrawer>
 
       <DetailDrawer

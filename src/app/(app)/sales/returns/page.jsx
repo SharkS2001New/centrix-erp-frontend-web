@@ -2,141 +2,315 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { apiRequest } from "@/lib/api";
+import { useRouter, useSearchParams } from "next/navigation";
+import { apiRequest, ApiError } from "@/lib/api";
 import {
-  CatalogPageShell,
+  FilterSelect,
   PaginationBar,
+  PrimaryLink,
   SearchInput,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
-import { formatReceiptNumber, formatSaleKes } from "@/components/sales/sales-shared";
+import { CustomerReturnDetailModal } from "@/components/sales/customer-return-detail-modal";
+import { printCreditNote } from "@/components/sales/credit-note-print";
+import { ReturnStatusBadge, isReturnPending } from "@/components/sales/customer-returns-shared";
+import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
+import { useAuth } from "@/contexts/auth-context";
 
-const PAGE_SIZE = 15;
-
-const SUPPLIER_RETURN_TYPES = new Set(["SUPPLIER"]);
+const PAGE_SIZE = 10;
 
 export default function SalesReturnsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { capabilities } = useAuth();
   const [rows, setRows] = useState([]);
-  const [salesById, setSalesById] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailRow, setDetailRow] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
 
   const loadData = useCallback(async () => {
     setError(null);
     try {
-      const res = await apiRequest("/returns", { searchParams: { per_page: 200 } });
-      const customerReturns = (res.data ?? []).filter(
-        (r) => !SUPPLIER_RETURN_TYPES.has(String(r.return_type ?? "").toUpperCase()),
-      );
-      setRows(customerReturns);
+      const params = { per_page: 200 };
+      if (statusFilter !== "all") params.status = statusFilter;
+      if (fromDate) params.from_date = fromDate;
+      if (toDate) params.to_date = toDate;
 
-      const saleIds = [...new Set(customerReturns.map((r) => r.sale_id).filter(Boolean))];
-      if (saleIds.length) {
-        const salesRes = await apiRequest("/sales", { searchParams: { per_page: 200 } });
-        const map = {};
-        for (const s of salesRes.data ?? []) {
-          if (saleIds.includes(s.id)) map[s.id] = s;
-        }
-        setSalesById(map);
-      }
+      const res = await apiRequest("/customer-returns", { searchParams: params });
+      setRows(res.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load returns");
+      setError(e instanceof ApiError ? e.message : "Failed to load returns");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [statusFilter, fromDate, toDate]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, fromDate, toDate]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter((r) => {
-      const sale = salesById[r.sale_id];
-      const receipt = sale ? formatReceiptNumber(sale).toLowerCase() : "";
+    return rows.filter((row) => {
+      const invoice = row.sale ? formatReceiptNumber(row.sale).toLowerCase() : "";
+      const customer = (row.customer?.customer_name ?? "").toLowerCase();
       return (
-        receipt.includes(q) ||
-        String(r.product_code ?? "").toLowerCase().includes(q) ||
-        String(r.reason ?? "").toLowerCase().includes(q)
+        String(row.return_no ?? "").toLowerCase().includes(q) ||
+        invoice.includes(q) ||
+        customer.includes(q)
       );
     });
-  }, [rows, search, salesById]);
+  }, [rows, search]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
+  const openDetail = useCallback(async (row) => {
+    setActionError(null);
+    try {
+      const full = await apiRequest(`/customer-returns/${row.id}`);
+      setDetailRow(full);
+      setDetailOpen(true);
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : "Could not load return");
+    }
+  }, []);
+
+  useEffect(() => {
+    const returnId = searchParams.get("return_id");
+    if (!returnId || loading) return;
+    openDetail({ id: returnId });
+  }, [searchParams, loading, openDetail]);
+
+  async function refreshDetail(id) {
+    await loadData();
+    if (!id) return;
+    const full = await apiRequest(`/customer-returns/${id}`);
+    setDetailRow(full);
+  }
+
+  async function handleApprove(row) {
+    if (!window.confirm(`Approve ${row.return_no}? Stock will be restocked.`)) return;
+    setActionBusy(true);
+    setActionError(null);
+    setSuccessMessage(null);
+    try {
+      await apiRequest(`/customer-returns/${row.id}/approve`, { method: "POST" });
+      setSuccessMessage(
+        `${row.return_no} approved. Stock restored, order adjusted, and credit note issued.`,
+      );
+      await refreshDetail(row.id);
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : "Approve failed");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleReject(row) {
+    const reason = window.prompt("Reject reason (optional):");
+    if (reason === null) return;
+    setActionBusy(true);
+    setActionError(null);
+    setSuccessMessage(null);
+    try {
+      await apiRequest(`/customer-returns/${row.id}/reject`, {
+        method: "POST",
+        body: { reason: reason.trim() || null },
+      });
+      setSuccessMessage(`${row.return_no} rejected.`);
+      await refreshDetail(row.id);
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : "Reject failed");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleDelete(row) {
+    const msg =
+      row.status === "approved"
+        ? `Delete ${row.return_no}? Restocked quantities will be reversed.`
+        : `Delete ${row.return_no}?`;
+    if (!window.confirm(msg)) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      await apiRequest(`/customer-returns/${row.id}`, { method: "DELETE" });
+      setDetailOpen(false);
+      setDetailRow(null);
+      await loadData();
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : "Delete failed");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   return (
-    <CatalogPageShell
-      title="Sales returns"
-      subtitle="Customer returns linked to sales receipts"
-      toolbar={
-        <div className="mb-4">
+    <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Returns</h1>
+          <p className="mt-1 text-sm text-slate-500">Manage product returns and refunds</p>
+        </div>
+        <PrimaryLink href="/sales/returns/new">Create return</PrimaryLink>
+      </div>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center">
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search receipt, product, reason…"
-            className="max-w-md"
+            placeholder="Search return no. or invoice…"
+            className="flex-1"
+          />
+          <FilterSelect
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            options={[
+              { value: "all", label: "Status: All" },
+              { value: "pending", label: "Pending" },
+              { value: "approved", label: "Approved" },
+              { value: "rejected", label: "Rejected" },
+            ]}
+          />
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-2.5 text-sm"
+            aria-label="From date"
+          />
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="rounded-lg border border-slate-200 px-3 py-2.5 text-sm"
+            aria-label="To date"
           />
         </div>
-      }
-      banner={
-        error ? (
-          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </p>
-        ) : null
-      }
-    >
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        {loading ? (
-          <p className="px-5 py-8 text-center text-sm text-slate-500">Loading returns…</p>
-        ) : pageSlice.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-slate-500">No sales returns recorded.</p>
-        ) : (
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
-                <th className="px-4 py-2.5">Receipt</th>
-                <th className="px-4 py-2.5">Product</th>
-                <th className="px-4 py-2.5 text-right">Amount</th>
-                <th className="px-4 py-2.5">Reason</th>
-                <th className="px-4 py-2.5">Date</th>
+
+        {error ? <p className="px-4 py-3 text-sm text-red-600">{error}</p> : null}
+        {actionError ? <p className="px-4 py-3 text-sm text-red-600">{actionError}</p> : null}
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[960px] text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50/80 text-xs font-medium uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Return no.</th>
+                <th className="px-4 py-3">Invoice no.</th>
+                <th className="px-4 py-3">Customer</th>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3 text-right">Amount</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {pageSlice.map((row) => {
-                const sale = salesById[row.sale_id];
-                return (
-                  <tr key={row.id} className="border-b border-slate-100 last:border-b-0">
-                    <td className="px-4 py-3">
-                      {sale ? (
-                        <Link
-                          href={`/sales/orders/${sale.id}`}
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
+                    Loading returns…
+                  </td>
+                </tr>
+              ) : pageSlice.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
+                    No returns match your filters.
+                  </td>
+                </tr>
+              ) : (
+                pageSlice.map((row) => {
+                  const customerName =
+                    row.customer?.customer_name ??
+                    row.sale?.customer_name_override ??
+                    "Walk-in";
+                  return (
+                    <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50/80">
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => openDetail(row)}
                           className="font-medium text-[#185FA5] hover:underline"
                         >
-                          {formatReceiptNumber(sale)}
-                        </Link>
-                      ) : (
-                        <span className="text-slate-500">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-slate-800">{row.product_code ?? "—"}</td>
-                    <td className="px-4 py-3 text-right font-medium text-slate-900">
-                      {formatSaleKes(row.amount)}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{row.reason ?? "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{formatShortDate(row.created_at)}</td>
-                  </tr>
-                );
-              })}
+                          {row.return_no}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3">
+                        {row.sale ? (
+                          <Link
+                            href={`/sales/orders/${row.sale_id}`}
+                            className="text-slate-700 hover:text-[#185FA5] hover:underline"
+                          >
+                            {formatReceiptNumber(row.sale)}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{customerName}</td>
+                      <td className="px-4 py-3 text-slate-600">{formatShortDate(row.return_date)}</td>
+                      <td className="px-4 py-3 text-right font-medium text-slate-900">
+                        {formatSaleKes(row.total_amount)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <ReturnStatusBadge status={row.status} />
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {isReturnPending(row.status) ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApprove(row)}
+                                disabled={actionBusy}
+                                className="text-sm font-medium text-emerald-700 hover:underline disabled:opacity-50"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleReject(row)}
+                                disabled={actionBusy}
+                                className="text-sm font-medium text-red-700 hover:underline disabled:opacity-50"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => openDetail(row)}
+                            className="text-sm font-medium text-[#185FA5] hover:underline"
+                          >
+                            View
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
-        )}
+        </div>
+
         <PaginationBar
           page={safePage}
           totalPages={totalPages}
@@ -144,7 +318,33 @@ export default function SalesReturnsPage() {
           pageSize={PAGE_SIZE}
           onChange={setPage}
         />
-      </div>
-    </CatalogPageShell>
+      </section>
+
+      <CustomerReturnDetailModal
+        open={detailOpen}
+        row={detailRow}
+        busy={actionBusy}
+        onClose={() => {
+          setDetailOpen(false);
+          setDetailRow(null);
+          setSuccessMessage(null);
+          setActionError(null);
+        }}
+        onApprove={handleApprove}
+        onReject={handleReject}
+        onEdit={(row) => {
+          setDetailOpen(false);
+          router.push(`/sales/returns/${row.id}/edit`);
+        }}
+        onDelete={handleDelete}
+        onPrint={(row) => {
+          printCreditNote(row, {
+            organizationName: capabilities?.profile_label ?? "POS / ERP",
+          });
+        }}
+        error={actionError}
+        successMessage={successMessage}
+      />
+    </div>
   );
 }

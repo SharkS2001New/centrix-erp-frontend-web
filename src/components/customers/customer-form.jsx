@@ -297,7 +297,12 @@ export function CustomerFormFields({
           min="0"
           step="0.01"
           className={inputClassName()}
+          placeholder="0 = no limit"
         />
+        <p className="mt-1 text-xs text-slate-500">
+          Leave 0 for unlimited credit at POS (registered customers only). Set a positive amount to cap
+          outstanding balance.
+        </p>
       </Field>
 
       <CustomerShopImageField

@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { getSaleTimestamp } from "@/components/catalog/catalog-shared";
+import { formatShortDate, getSaleTimestamp } from "@/components/catalog/catalog-shared";
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import {
   buildOrderWorkflowTimeline,
@@ -36,6 +37,7 @@ import {
   PaymentStatusBadge,
   SaleStatusBadge,
 } from "@/components/sales/sales-shared";
+import { ReturnStatusBadge } from "@/components/sales/customer-returns-shared";
 
 const ORDER_TABS = [
   { id: "summary", label: "Summary" },
@@ -101,6 +103,71 @@ function workflowStepDetail(sale, step, payments) {
     if (step.key === "pending_payment") return "Partial payment recorded on this order.";
   }
   return `Order marked as ${step.label.toLowerCase()}.`;
+}
+
+function OrderReturnsPanel({ returns, saleId, totalReturned }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-medium text-slate-900">Returns</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+            {returns.length
+              ? `${returns.length} return(s) linked to this order. Approved returns reduce line quantities and order total below.`
+              : "No returns recorded for this order yet"}
+          </p>
+        </div>
+        <Link
+          href={`/sales/returns/new?sale_id=${saleId}`}
+          className="text-sm font-medium text-[#185FA5] hover:underline"
+        >
+          Create return
+        </Link>
+      </div>
+      {returns.length ? (
+        <>
+          <div className="overflow-hidden rounded-lg border border-slate-200">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-xs text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Return no.</th>
+                  <th className="px-3 py-2">Date</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {returns.map((row) => (
+                  <tr key={row.id} className="border-t border-slate-100">
+                    <td className="px-3 py-2">
+                      <Link
+                        href={`/sales/returns?return_id=${row.id}`}
+                        className="font-medium text-[#185FA5] hover:underline"
+                      >
+                        {row.return_no}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 text-slate-600">
+                      {row.return_date ? formatShortDate(row.return_date) : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <ReturnStatusBadge status={row.status} />
+                    </td>
+                    <td className="px-3 py-2 text-right font-medium">{formatSaleKes(row.total_amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {totalReturned > 0 ? (
+            <p className="mt-3 text-xs text-slate-500">
+              Refunded amounts above are already deducted from the order line quantities and total.
+            </p>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
 }
 
 function SummaryInfoCard({ label, value, hint, hintClassName, href, linkLabel, onLinkClick }) {
@@ -381,6 +448,7 @@ function ChevronDownIcon() {
 }
 
 export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
+  const router = useRouter();
   const { capabilities, refreshCapabilities } = useAuth();
 
   const [sale, setSale] = useState(null);
@@ -399,6 +467,8 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const [actionsAnchor, setActionsAnchor] = useState({ x: 0, y: 0 });
   const [transitionBusy, setTransitionBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState(null);
+  const [orderReturns, setOrderReturns] = useState([]);
+  const [uoms, setUoms] = useState([]);
 
   useEffect(() => {
     refreshCapabilities().catch(() => {});
@@ -408,7 +478,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     setError(null);
     setLoading(true);
     try {
-      const [saleData, payRes, methodsRes, subRes, catRes] = await Promise.all([
+      const [saleData, payRes, methodsRes, subRes, catRes, returnsRes, uomRes] = await Promise.all([
         apiRequest(`/sales/${saleId}`),
         apiRequest("/sale-payments", {
           searchParams: { per_page: 50, "filter[sale_id]": saleId },
@@ -416,6 +486,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         apiRequest("/payment-methods", { searchParams: { per_page: 50 } }).catch(() => ({ data: [] })),
         apiRequest("/subcategories", { searchParams: { per_page: 500 } }).catch(() => ({ data: [] })),
         apiRequest("/categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+        apiRequest("/customer-returns", {
+          searchParams: { sale_id: saleId, per_page: 50 },
+        }).catch(() => ({ data: [] })),
+        apiRequest("/uoms", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
       ]);
 
       setSale(saleData);
@@ -423,6 +497,8 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       setPaymentMethods(methodsRes.data ?? []);
       setSubCategories(subRes.data ?? []);
       setCategories(catRes.data ?? []);
+      setOrderReturns(returnsRes.data ?? []);
+      setUoms(uomRes.data ?? []);
 
       const branchId = saleData.branch_id;
       if (branchId != null) {
@@ -467,6 +543,8 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   useEffect(() => {
     loadSale();
   }, [loadSale]);
+
+  const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
 
   const saleWorkflow = useMemo(
     () => getOrderWorkflow(capabilities, sale),
@@ -553,6 +631,15 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   }
 
   const printLabel = orderDocumentPrintLabel(capabilities?.module_settings);
+  const createReturnHref =
+    sale?.id && sale?.status === "completed" ? `/sales/returns/new?sale_id=${sale.id}` : null;
+  const totalReturned = useMemo(
+    () =>
+      orderReturns
+        .filter((row) => String(row.status).toLowerCase() === "approved")
+        .reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0),
+    [orderReturns],
+  );
 
   const actionMenuItems = useMemo(() => {
     if (!sale) return [];
@@ -569,8 +656,23 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         setActionsOpen(false);
         setPaymentModalOpen(true);
       },
+      onCreateReturn: createReturnHref
+        ? () => {
+            setActionsOpen(false);
+            router.push(createReturnHref);
+          }
+        : null,
     });
-  }, [sale, saleWorkflow, transitionBusy, canRecordPayment, handlePrint, printLabel]);
+  }, [
+    sale,
+    saleWorkflow,
+    transitionBusy,
+    canRecordPayment,
+    handlePrint,
+    printLabel,
+    createReturnHref,
+    router,
+  ]);
 
   const customerProfileHref = sale?.customer_num ? `/customers/${sale.customer_num}` : null;
   const customerCardName = customer?.customer_name ?? saleCustomerLabel(sale);
@@ -636,6 +738,14 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {createReturnHref ? (
+                <Link
+                  href={createReturnHref}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Create return
+                </Link>
+              ) : null}
               <button
                 type="button"
                 onClick={handlePrint}
@@ -734,6 +844,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                 onViewAll={() => setActiveTab("items")}
               />
               <OrderTotalsPanel sale={sale} totalPaid={totalPaid} balanceDue={balanceDue} />
+              <OrderReturnsPanel returns={orderReturns} saleId={sale.id} totalReturned={totalReturned} />
               <OrderTimelinePanel events={timelineEvents} />
               <CustomerOrderDetailsPanel
                 customer={customer}
@@ -746,7 +857,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
           ) : null}
 
           {activeTab === "items" ? (
-            <OrderLineItemsTable items={sale.items} />
+            <OrderLineItemsTable items={sale.items} uomById={uomById} />
           ) : null}
 
           {activeTab === "payments" ? (

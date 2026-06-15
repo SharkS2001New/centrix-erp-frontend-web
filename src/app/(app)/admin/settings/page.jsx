@@ -9,6 +9,7 @@ import {
   OrderWorkflowSettingsEditor,
   orderWorkflowFromApi,
 } from "@/components/admin/order-workflow-settings";
+import { FinanceSettingsPanel } from "@/components/admin/finance-settings-panel";
 import {
   CatalogPageShell,
   Field,
@@ -789,9 +790,11 @@ export default function AdminSettingsPage() {
             />
           ) : null}
           {tab === "finance" ? (
-            <PlaceholderPanel
-              title="Finance settings"
-              description="Accounting integration and payment defaults will be configured here."
+            <FinanceSettingsPanel
+              saving={saving}
+              setSaving={setSaving}
+              setError={setError}
+              setMessage={setMessage}
             />
           ) : null}
           {tab === "hr" ? (

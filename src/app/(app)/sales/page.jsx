@@ -90,7 +90,8 @@ export default function SalesDashboardPage() {
             <QuickLink href="/sales/pos" title="Point of sale" desc="Search products, cart, checkout" />
             <QuickLink href="/sales/orders" title="Orders" desc="Search and manage sales orders" />
             <QuickLink href="/sales/reservations" title="Reservations" desc="Stock held for pending orders" />
-            <QuickLink href="/sales/returns" title="Returns" desc="Customer sale returns" />
+            <QuickLink href="/sales/returns" title="Returns" desc="Manage customer sale returns" />
+            <QuickLink href="/sales/returns/new" title="Create return" desc="Start a new customer return" />
           </div>
         </div>
       )}

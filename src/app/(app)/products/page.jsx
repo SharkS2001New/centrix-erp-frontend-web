@@ -6,7 +6,13 @@ import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { DeleteProductDialog } from "@/components/products/delete-product-dialog";
 import { ProductImportExport } from "@/components/products/product-import-export";
+import {
+  KraProductUploadToolbar,
+  uploadProductsToKra,
+} from "@/components/products/kra-product-upload-bar";
 import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
+import { useAuth } from "@/contexts/auth-context";
+import { isKraDeviceEnabled } from "@/lib/finance-settings";
 
 const PAGE_SIZE = 10;
 const COLUMN_STORAGE_KEY = "pos-erp-products-visible-columns";
@@ -191,6 +197,9 @@ function groupProducts(products) {
 
 export default function ProductsPage() {
   const router = useRouter();
+  const { capabilities } = useAuth();
+  const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings);
+  const selectionEnabled = kraDeviceEnabled && kraSelectMode;
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
@@ -215,6 +224,10 @@ export default function ProductsPage() {
   const [activeFilter, setActiveFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(new Set());
+  const [kraSelectMode, setKraSelectMode] = useState(false);
+  const [kraUploadBusy, setKraUploadBusy] = useState(false);
+  const [kraUploadMessage, setKraUploadMessage] = useState(null);
+  const [kraUploadError, setKraUploadError] = useState(null);
   const [collapsed, setCollapsed] = useState(new Set());
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsOpen, setColumnsOpen] = useState(false);
@@ -235,7 +248,7 @@ export default function ProductsPage() {
     [visibleColumnIds],
   );
 
-  const tableColCount = 1 + visibleColumns.length;
+  const tableColCount = (selectionEnabled ? 1 : 0) + visibleColumns.length;
 
   const loadData = useCallback(async () => {
     setError(null);
@@ -438,6 +451,61 @@ export default function ProductsPage() {
     setVisibleColumnIds(defaultVisibleColumnIds());
   }
 
+  function enterKraSelectMode() {
+    setKraSelectMode(true);
+    setKraUploadMessage(null);
+    setKraUploadError(null);
+  }
+
+  function exitKraSelectMode() {
+    setKraSelectMode(false);
+    setSelected(new Set());
+    setKraUploadMessage(null);
+    setKraUploadError(null);
+  }
+
+  function clearKraSelection() {
+    setSelected(new Set());
+  }
+
+  async function handleKraUploadSelected() {
+    if (selected.size === 0) {
+      setKraUploadError("Select at least one product.");
+      return;
+    }
+    setKraUploadBusy(true);
+    setKraUploadMessage(null);
+    setKraUploadError(null);
+    try {
+      const res = await uploadProductsToKra({ productCodes: [...selected] });
+      setKraUploadMessage(
+        res.message ??
+          `Uploaded ${res.registered_count ?? selected.size} item(s) to KRA device.`,
+      );
+    } catch (e) {
+      setKraUploadError(e instanceof ApiError ? e.message : "KRA upload failed");
+    } finally {
+      setKraUploadBusy(false);
+    }
+  }
+
+  async function handleKraUploadAll() {
+    setKraUploadBusy(true);
+    setKraUploadMessage(null);
+    setKraUploadError(null);
+    try {
+      const res = await uploadProductsToKra({ all: true });
+      setKraUploadMessage(
+        res.message ??
+          `Uploaded ${res.registered_count ?? 0} item(s) to KRA device.`,
+      );
+    } catch (e) {
+      setKraUploadError(e instanceof ApiError ? e.message : "KRA upload failed");
+    } finally {
+      setKraUploadBusy(false);
+    }
+  }
+
   const allOnPageSelected =
     pageSlice.length > 0 && pageSlice.every((p) => selected.has(p.product_code));
 
@@ -463,8 +531,27 @@ export default function ProductsPage() {
         </div>
       </div>
 
+      {kraDeviceEnabled ? (
+        <div className={kraSelectMode ? "mt-4" : "mt-6"}>
+          <KraProductUploadToolbar
+            enabled={kraDeviceEnabled}
+            selectMode={kraSelectMode}
+            selectedCount={selected.size}
+            filteredCount={filtered.length}
+            busy={kraUploadBusy}
+            message={kraUploadMessage}
+            error={kraUploadError}
+            onEnterSelectMode={enterKraSelectMode}
+            onExitSelectMode={exitKraSelectMode}
+            onClearSelection={clearKraSelection}
+            onUploadSelected={handleKraUploadSelected}
+            onUploadAll={handleKraUploadAll}
+          />
+        </div>
+      ) : null}
+
       {/* Stats */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-4 ${kraDeviceEnabled ? "mt-4" : "mt-6"}`}>
         <StatCard label="Total products" value={stats.total} hint="across all categories" />
         <StatCard
           label="Active"
@@ -562,14 +649,17 @@ export default function ProductsPage() {
             <table className="w-full min-w-[960px] text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50/80 text-xs font-medium uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="w-10 px-3 py-3">
-                    <input
-                      type="checkbox"
-                      checked={allOnPageSelected}
-                      onChange={(e) => toggleAll(e.target.checked)}
-                      className="rounded border-slate-300"
-                    />
-                  </th>
+                  {selectionEnabled ? (
+                    <th className="w-10 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={allOnPageSelected}
+                        onChange={(e) => toggleAll(e.target.checked)}
+                        className="rounded border-slate-300"
+                        aria-label="Select all on this page"
+                      />
+                    </th>
+                  ) : null}
                   {visibleColumns.map((col) => (
                     <th key={col.id} className={`px-3 py-3 ${alignClass(col.align)}`}>
                       {col.sortable ? (
@@ -598,6 +688,7 @@ export default function ProductsPage() {
                       categoryName={categoryName}
                       subMap={subMap}
                       showCategoryHeader={showCategoryHeaders}
+                      selectionEnabled={selectionEnabled}
                       selected={selected}
                       onToggle={toggleOne}
                       isCollapsed={isCollapsed}
@@ -651,6 +742,7 @@ function CategoryGroup({
   categoryName,
   subMap,
   showCategoryHeader,
+  selectionEnabled,
   selected,
   onToggle,
   isCollapsed,
@@ -692,6 +784,7 @@ function CategoryGroup({
             categoryName={categoryName}
             subName={subName}
             items={items}
+            selectionEnabled={selectionEnabled}
             selected={selected}
             onToggle={onToggle}
             isCollapsed={isCollapsed}
@@ -713,6 +806,7 @@ function SubCategoryGroup({
   categoryName,
   subName,
   items,
+  selectionEnabled,
   selected,
   onToggle,
   isCollapsed,
@@ -748,6 +842,7 @@ function SubCategoryGroup({
           <ProductRow
             key={p.product_code}
             product={p}
+            selectionEnabled={selectionEnabled}
             checked={selected.has(p.product_code)}
             onToggle={() => onToggle(p.product_code)}
             visibleColumns={visibleColumns}
@@ -763,6 +858,7 @@ function SubCategoryGroup({
 
 function ProductRow({
   product,
+  selectionEnabled,
   checked,
   onToggle,
   visibleColumns,
@@ -773,14 +869,17 @@ function ProductRow({
 }) {
   return (
     <tr className="border-t border-slate-100 hover:bg-slate-50/80">
-      <td className="px-3 py-3">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={onToggle}
-          className="rounded border-slate-300"
-        />
-      </td>
+      {selectionEnabled ? (
+        <td className="px-3 py-3">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={onToggle}
+            className="rounded border-slate-300"
+            aria-label={`Select ${product.product_name}`}
+          />
+        </td>
+      ) : null}
       {visibleColumns.map((col) => (
         <td key={col.id} className={`px-3 py-3 ${alignClass(col.align)}`}>
           {col.id === "actions" ? (

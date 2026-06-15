@@ -25,6 +25,7 @@ export function printSaleReceipt(
       orderDiscountEnabled = false,
       customerNameEnabled = true,
       showBranchOnReceipt = true,
+      kraReceipt = null,
   } = {}) {
   if (!sale) return;
 
@@ -130,6 +131,19 @@ export function printSaleReceipt(
   const totalPaid = cashAmount + mpesaAmount + equityAmount + kcbAmount;
   const changeAmount = Math.max(0, totalPaid - orderTotal);
 
+  const kra = kraReceipt ?? sale?.kra_response ?? sale?.kraResponse ?? null;
+  const kraBlock =
+    kra?.receipt_signature || kra?.signature_link || kra?.invoice_number
+      ? `<div class="divider"></div>
+    <div class="kra-block" style="font-size:9px;text-align:center;line-height:1.4;">
+      <div style="font-weight:700;margin-bottom:4px;">KRA FISCAL RECEIPT</div>
+      ${kra.invoice_number ? `<div>CU Invoice: ${escapeHtml(String(kra.invoice_number))}</div>` : ""}
+      ${kra.serial_number ? `<div>SCU: ${escapeHtml(String(kra.serial_number))}</div>` : ""}
+      ${kra.receipt_signature ? `<div style="margin-top:4px;word-break:break-all;">${escapeHtml(String(kra.receipt_signature))}</div>` : ""}
+      ${kra.kra_timestamp ? `<div>${escapeHtml(String(kra.kra_timestamp))}</div>` : ""}
+    </div>`
+      : "";
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -209,6 +223,7 @@ export function printSaleReceipt(
       <div class="payment-row"><span><strong>Total paid</strong></span><span><strong>${escapeHtml(formatSaleKes(totalPaid))}</strong></span></div>
       <div class="payment-row"><span><strong>Change</strong></span><span><strong>${escapeHtml(formatSaleKes(changeAmount))}</strong></span></div>
     </div>
+    ${kraBlock}
     <div class="thanks">Thank you for shopping with us!</div>
     <div class="thanks">Goods once sold are not returnable.</div>
     <div class="barcode"></div>
