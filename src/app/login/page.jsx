@@ -1,94 +1,191 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { getToken } from "@/lib/auth-storage";
-import { ApiError } from "@/lib/api";
+import { ApiError, isSessionConflictError } from "@/lib/api";
+import {
+  clearStoredCompanyCode,
+  getDefaultCompanyCode,
+  getStoredCompanyCode,
+  hasStoredCompanyCode,
+} from "@/lib/tenant-config";
+import {
+  AuthError,
+  AuthField,
+  AuthNotice,
+  AuthShell,
+  AuthSubmitButton,
+  authInputClass,
+} from "@/components/auth/auth-shell";
 
 export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const sessionEnded = searchParams.get("reason") === "session";
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("password");
+  const reason = searchParams.get("reason");
+
+  const storedOrg = getStoredCompanyCode();
+  const [showOrgField, setShowOrgField] = useState(!hasStoredCompanyCode());
+  const [companyCode, setCompanyCode] = useState(storedOrg || getDefaultCompanyCode());
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
+  const [sessionConflict, setSessionConflict] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (getToken()) router.replace("/dashboard");
+    if (getToken()) {
+      router.replace("/dashboard");
+    }
   }, [router]);
 
-  async function onSubmit(e) {
-    e.preventDefault();
+  function useDifferentOrganization() {
+    clearStoredCompanyCode();
+    setShowOrgField(true);
+    setCompanyCode("");
+  }
+
+  async function attemptLogin(forceLogout = false) {
     setError(null);
+    if (!forceLogout) {
+      setSessionConflict(false);
+    }
     setSubmitting(true);
     try {
-      await login(username, password);
+      await login(companyCode, username, password, { forceLogout });
     } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : "Login failed. Is the API running on port 8000?",
-      );
+      if (isSessionConflictError(err)) {
+        setSessionConflict(true);
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "This account is already signed in on another device.",
+        );
+      } else {
+        setSessionConflict(false);
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "Login failed. Is the API running on port 8000?",
+        );
+      }
     } finally {
       setSubmitting(false);
     }
   }
 
+  async function onSubmit(e) {
+    e.preventDefault();
+    await attemptLogin(false);
+  }
+
+  async function onForceLogout() {
+    await attemptLogin(true);
+  }
+
+  const sessionMessage =
+    reason === "idle"
+      ? "Your session expired due to inactivity. Please sign in again."
+      : reason === "session"
+        ? "Your session ended because this account signed in on another device."
+        : null;
+
   return (
-    <div className="flex min-h-full items-center justify-center overflow-y-auto bg-slate-950 px-4 py-8">
-      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-xl">
-        <h1 className="text-2xl font-semibold text-white">POS / ERP</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Sign in with your username. Only one active login is allowed per account.
-        </p>
-        <form onSubmit={onSubmit} className="mt-8 space-y-4">
-          <label className="block">
-            <span className="text-xs font-medium text-slate-400">Username</span>
+    <AuthShell
+      title="POS / ERP"
+      subtitle={
+        showOrgField
+          ? "Sign in with your organization code, username, and password."
+          : "Sign in with your username and password."
+      }
+    >
+      <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        {showOrgField ? (
+          <AuthField label="Organization code">
             <input
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-emerald-500"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
+              className={authInputClass("uppercase")}
+              value={companyCode}
+              onChange={(e) => setCompanyCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ""))}
+              placeholder="e.g. DEMO"
+              autoComplete="organization"
               required
             />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-400">Password</span>
-            <input
-              type="password"
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-emerald-500"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </label>
-          {sessionEnded ? (
-            <p className="rounded-lg bg-amber-950/40 px-3 py-2 text-sm text-amber-200">
-              Your session ended because this account signed in elsewhere.
+          </AuthField>
+        ) : (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950/60">
+            <p className="text-slate-600 dark:text-slate-400">
+              Organization{" "}
+              <span className="font-mono font-semibold text-slate-900 dark:text-white">
+                {companyCode}
+              </span>
             </p>
-          ) : null}
-          {error && (
-            <p className="rounded-lg bg-red-950/50 px-3 py-2 text-sm text-red-300">
-              {error}
-            </p>
-          )}
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+            <button
+              type="button"
+              onClick={useDifferentOrganization}
+              className="mt-1 text-xs font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+            >
+              Use a different organization
+            </button>
+          </div>
+        )}
+
+        <AuthField label="Username">
+          <input
+            className={authInputClass()}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+            required
+          />
+        </AuthField>
+
+        <AuthField label="Password">
+          <input
+            type="password"
+            className={authInputClass()}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            required
+          />
+        </AuthField>
+
+        <div className="text-right">
+          <Link
+            href={`/forgot-password${companyCode ? `?org=${encodeURIComponent(companyCode)}` : ""}`}
+            className="text-xs font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-400"
           >
-            {submitting ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-        <p className="mt-6 text-center text-xs text-slate-500">
-          Demo: admin / password · API{" "}
-          {process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1"}
-        </p>
-      </div>
-    </div>
+            Forgot password?
+          </Link>
+        </div>
+
+        {sessionMessage ? <AuthNotice>{sessionMessage}</AuthNotice> : null}
+        <AuthError>{error}</AuthError>
+
+        {sessionConflict ? (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 dark:border-amber-800/60 dark:bg-amber-950/30">
+            <p className="text-sm text-amber-900 dark:text-amber-100">
+              You can sign out the other device and continue here. Any unsaved work on that device
+              may be lost.
+            </p>
+            <button
+              type="button"
+              onClick={onForceLogout}
+              disabled={submitting}
+              className="mt-3 w-full rounded-lg border border-amber-400/60 bg-amber-100 py-2.5 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-200 disabled:opacity-50 dark:border-amber-600/50 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900/60"
+            >
+              {submitting ? "Signing in…" : "Sign out other device and continue"}
+            </button>
+          </div>
+        ) : null}
+
+        <AuthSubmitButton disabled={submitting}>
+          {submitting ? "Signing in…" : "Sign in"}
+        </AuthSubmitButton>
+      </form>
+    </AuthShell>
   );
 }

@@ -12,17 +12,35 @@ import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import {
   clearSession,
+  getStoredMemberships,
+  getStoredOrganization,
   getStoredUser,
   getToken,
   setSession,
 } from "@/lib/auth-storage";
 import { clearStoredActiveSession } from "@/lib/pos-till";
+import { getCompanyCode, setStoredCompanyCode } from "@/lib/tenant-config";
+import { WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
+
+const CLIENT_ID_KEY = "pos_erp_client_id";
+
+function getClientId() {
+  if (typeof window === "undefined") return "";
+  let clientId = localStorage.getItem(CLIENT_ID_KEY);
+  if (!clientId) {
+    clientId = crypto.randomUUID();
+    localStorage.setItem(CLIENT_ID_KEY, clientId);
+  }
+  return clientId;
+}
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const router = useRouter();
   const [user, setUser] = useState(null);
+  const [organization, setOrganization] = useState(null);
+  const [memberships, setMemberships] = useState([]);
   const [capabilities, setCapabilities] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -30,6 +48,18 @@ export function AuthProvider({ children }) {
     const caps = await apiRequest("/erp/capabilities");
     setCapabilities(caps);
   }, []);
+
+  const applyAuthPayload = useCallback(
+    async (res) => {
+      setSession(res.token, res.user, res.organization, res.memberships ?? []);
+      setStoredCompanyCode(res.organization?.company_code);
+      setUser(res.user);
+      setOrganization(res.organization ?? null);
+      setMemberships(res.memberships ?? []);
+      await refreshCapabilities();
+    },
+    [refreshCapabilities],
+  );
 
   useEffect(() => {
     const token = getToken();
@@ -39,27 +69,53 @@ export function AuthProvider({ children }) {
       return;
     }
     setUser(stored);
+    setOrganization(getStoredOrganization());
+    setMemberships(getStoredMemberships());
     refreshCapabilities()
       .catch(() => {
         clearSession();
         setUser(null);
+        setOrganization(null);
+        setMemberships([]);
       })
       .finally(() => setLoading(false));
   }, [refreshCapabilities]);
 
   const login = useCallback(
-    async (username, password) => {
+    async (companyCode, username, password, options = {}) => {
+      const { forceLogout = false } = options;
       const res = await apiRequest("/auth/login", {
         method: "POST",
-        body: { username, password },
+        body: {
+          company_code: companyCode.trim().toUpperCase(),
+          username,
+          password,
+          client_id: getClientId(),
+          login_channel: WEB_LOGIN_CHANNEL,
+          ...(forceLogout ? { force_logout: true } : {}),
+        },
         token: null,
       });
-      setSession(res.token, res.user);
-      setUser(res.user);
-      await refreshCapabilities();
+      await applyAuthPayload(res);
       router.replace("/dashboard");
     },
-    [refreshCapabilities, router],
+    [applyAuthPayload, router],
+  );
+
+  const switchOrganization = useCallback(
+    async (companyCode) => {
+      const res = await apiRequest("/auth/switch-organization", {
+        method: "POST",
+        body: {
+          company_code: companyCode.trim().toUpperCase(),
+          client_id: getClientId(),
+          login_channel: WEB_LOGIN_CHANNEL,
+        },
+      });
+      await applyAuthPayload(res);
+      router.refresh();
+    },
+    [applyAuthPayload, router],
   );
 
   const logout = useCallback(async () => {
@@ -73,6 +129,8 @@ export function AuthProvider({ children }) {
     clearSession();
     clearStoredActiveSession();
     setUser(null);
+    setOrganization(null);
+    setMemberships([]);
     setCapabilities(null);
     router.replace("/login");
   }, [router]);
@@ -80,14 +138,28 @@ export function AuthProvider({ children }) {
   const value = useMemo(
     () => ({
       user,
+      organization,
+      memberships,
       capabilities,
       loading,
       login,
+      switchOrganization,
       logout,
       refreshCapabilities,
       isModuleEnabled: (key) => capabilities?.modules?.[key] ?? false,
+      isOrgWide: () => (capabilities?.access_scope ?? user?.access_scope) === "org" || user?.is_admin,
     }),
-    [user, capabilities, loading, login, logout, refreshCapabilities],
+    [
+      user,
+      organization,
+      memberships,
+      capabilities,
+      loading,
+      login,
+      switchOrganization,
+      logout,
+      refreshCapabilities,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

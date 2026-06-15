@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 @theme inline {
   --font-sans: var(--font-sans), system-ui, sans-serif;
 }
@@ -8,22 +10,366 @@ body {
   margin: 0;
 }
 
-/* Dark app chrome sets light default text; light panels must stay readable. */
-.bg-white,
-.bg-slate-50,
-.bg-slate-100 {
+/* ── Theme surfaces (explicit selectors — do not rely on CSS variables alone) ── */
+
+html[data-theme="light"] body.theme-body {
+  background-color: #f8fafc;
   color: #0f172a;
 }
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
-select,
-textarea {
-  color: #000;
+html[data-theme="dark"] body.theme-body {
+  background-color: #020617;
+  color: #f1f5f9;
+}
+
+html[data-theme="light"] .auth-page-bg {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+html[data-theme="dark"] .auth-page-bg {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
+html[data-theme="light"] .auth-card {
+  background-color: #ffffff;
+  border-color: #e2e8f0;
+  color: #0f172a;
+}
+
+html[data-theme="dark"] .auth-card {
+  background-color: #1e293b;
+  border-color: #334155;
+  color: #f1f5f9;
+}
+
+html[data-theme="light"] .app-shell-bg {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+html[data-theme="dark"] .app-shell-bg {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
+html[data-theme="light"] .app-main-bg {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+html[data-theme="dark"] .app-main-bg {
+  background-color: #020617;
+  color: #f1f5f9;
+}
+
+html[data-theme="light"] .theme-toggle-btn {
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+html[data-theme="light"] .theme-toggle-btn:hover {
+  background-color: #e2e8f0;
+}
+
+html[data-theme="dark"] .theme-toggle-btn {
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] .theme-toggle-btn:hover {
+  background-color: #334155;
+}
+
+html[data-theme="light"] .theme-muted {
+  color: #64748b;
+}
+
+html[data-theme="dark"] .theme-muted {
+  color: #94a3b8;
+}
+
+/* App sidebar — responds to theme toggle */
+html[data-theme="dark"] .app-sidebar {
+  background-color: #0f172a;
+  border-color: #1e293b;
+  color: #f1f5f9;
+}
+
+html[data-theme="light"] .app-sidebar {
+  background-color: #ffffff;
+  border-color: #e2e8f0;
+  color: #0f172a;
+}
+
+html[data-theme="dark"] .app-sidebar-divider {
+  border-color: #1e293b;
+}
+
+html[data-theme="light"] .app-sidebar-divider {
+  border-color: #e2e8f0;
+}
+
+html[data-theme="dark"] .app-sidebar-muted {
+  color: #94a3b8;
+}
+
+html[data-theme="light"] .app-sidebar-muted {
+  color: #64748b;
+}
+
+html[data-theme="dark"] .app-sidebar-title {
+  color: #ffffff;
+}
+
+html[data-theme="light"] .app-sidebar-title {
+  color: #0f172a;
+}
+
+html[data-theme="dark"] .app-sidebar-section-label {
+  color: #64748b;
+}
+
+html[data-theme="light"] .app-sidebar-section-label {
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .app-sidebar-link {
+  color: #cbd5e1;
+}
+
+html[data-theme="light"] .app-sidebar-link {
+  color: #475569;
+}
+
+html[data-theme="dark"] .app-sidebar-link:hover {
+  background-color: #1e293b;
+  color: #ffffff;
+}
+
+html[data-theme="light"] .app-sidebar-link:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+html[data-theme="dark"] .app-sidebar-link-active {
+  background-color: rgba(5, 150, 105, 0.2);
+  color: #6ee7b7;
+}
+
+html[data-theme="light"] .app-sidebar-link-active {
+  background-color: rgba(5, 150, 105, 0.12);
+  color: #047857;
+}
+
+html[data-theme="dark"] .app-sidebar-btn {
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+html[data-theme="light"] .app-sidebar-btn {
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+html[data-theme="dark"] .app-sidebar-btn:hover {
+  background-color: #1e293b;
+}
+
+html[data-theme="light"] .app-sidebar-btn:hover {
+  background-color: #f1f5f9;
+}
+
+html[data-theme="dark"] .app-sidebar-select {
+  border-color: #334155;
+  background-color: #020617;
+  color: #f8fafc;
+}
+
+html[data-theme="light"] .app-sidebar-select {
+  border-color: #cbd5e1;
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+html[data-theme="light"] {
+  --theme-page-bg: #f8fafc;
+  --theme-surface: #ffffff;
+  --theme-surface-muted: #f8fafc;
+  --theme-surface-subtle: #f1f5f9;
+  --theme-border: #e2e8f0;
+  --theme-text: #0f172a;
+  --theme-text-muted: #475569;
+  --theme-text-subtle: #64748b;
+  --theme-input-bg: #ffffff;
+  --theme-hover: #f1f5f9;
+}
+
+html[data-theme="dark"] {
+  --theme-page-bg: #020617;
+  --theme-surface: #1e293b;
+  --theme-surface-muted: #0f172a;
+  --theme-surface-subtle: #1e293b;
+  --theme-border: #334155;
+  --theme-text: #f1f5f9;
+  --theme-text-muted: #cbd5e1;
+  --theme-text-subtle: #94a3b8;
+  --theme-input-bg: #0f172a;
+  --theme-hover: #334155;
+}
+
+.theme-page {
+  background-color: var(--theme-page-bg);
+  color: var(--theme-text);
+}
+
+.theme-panel {
+  background-color: var(--theme-surface);
+  border-color: var(--theme-border);
+  color: var(--theme-text);
+}
+
+.theme-modal {
+  background-color: var(--theme-surface);
+  border-color: var(--theme-border);
+  color: var(--theme-text);
+}
+
+.theme-input {
+  border-color: var(--theme-border);
+  background-color: var(--theme-input-bg);
+  color: var(--theme-text);
+}
+
+.theme-input::placeholder {
+  color: var(--theme-text-subtle);
+}
+
+.theme-heading {
+  color: var(--theme-text);
+}
+
+.theme-subtext {
+  color: var(--theme-text-subtle);
+}
+
+.theme-btn-secondary {
+  border-color: var(--theme-border);
+  color: var(--theme-text-muted);
+  background-color: transparent;
+}
+
+.theme-btn-secondary:hover {
+  background-color: var(--theme-hover);
+}
+
+/* Dark mode: remap common Tailwind utilities app-wide (main workspace + portaled modals) */
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .bg-slate-50,
+html[data-theme="dark"] .bg-slate-100 {
+  background-color: var(--theme-surface) !important;
+  color: var(--theme-text) !important;
+}
+
+html[data-theme="dark"] .bg-slate-200 {
+  background-color: var(--theme-surface-subtle) !important;
+}
+
+html[data-theme="dark"] .border-slate-200,
+html[data-theme="dark"] .border-slate-100,
+html[data-theme="dark"] .border-slate-300 {
+  border-color: var(--theme-border) !important;
+}
+
+html[data-theme="dark"] .text-slate-900,
+html[data-theme="dark"] .text-slate-800,
+html[data-theme="dark"] .text-black {
+  color: var(--theme-text) !important;
+}
+
+html[data-theme="dark"] .text-slate-700,
+html[data-theme="dark"] .text-slate-600 {
+  color: var(--theme-text-muted) !important;
+}
+
+html[data-theme="dark"] .text-slate-500,
+html[data-theme="dark"] .text-slate-400,
+html[data-theme="dark"] .text-slate-300 {
+  color: var(--theme-text-subtle) !important;
+}
+
+html[data-theme="dark"] tr:hover,
+html[data-theme="dark"] .hover\:bg-slate-50:hover,
+html[data-theme="dark"] .hover\:bg-slate-50\/80:hover,
+html[data-theme="dark"] .hover\:bg-slate-100:hover {
+  background-color: var(--theme-hover) !important;
+}
+
+html[data-theme="dark"] .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+html[data-theme="dark"] .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--theme-border);
+}
+
+html[data-theme="dark"] thead.bg-slate-50,
+html[data-theme="dark"] .bg-slate-50\/80 {
+  background-color: var(--theme-surface-muted) !important;
+}
+
+html[data-theme="dark"] .shadow-sm,
+html[data-theme="dark"] .shadow,
+html[data-theme="dark"] .shadow-md,
+html[data-theme="dark"] .shadow-lg,
+html[data-theme="dark"] .shadow-xl {
+  --tw-shadow-color: rgb(0 0 0 / 0.35);
+}
+
+html[data-theme="dark"] .ring-slate-200,
+html[data-theme="dark"] .ring-slate-300 {
+  --tw-ring-color: var(--theme-border);
+}
+
+html[data-theme="light"] .bg-white,
+html[data-theme="light"] .bg-slate-50,
+html[data-theme="light"] .bg-slate-100 {
+  color: #0f172a;
+}
+
+html[data-theme="light"] .bg-white input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+html[data-theme="light"] .bg-white select,
+html[data-theme="light"] .bg-white textarea,
+html[data-theme="light"] .bg-slate-50 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+html[data-theme="light"] .bg-slate-50 select,
+html[data-theme="light"] .bg-slate-50 textarea,
+html[data-theme="light"] .bg-slate-100 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+html[data-theme="light"] .bg-slate-100 select,
+html[data-theme="light"] .bg-slate-100 textarea {
+  color: #0f172a;
+  background-color: #fff;
+}
+
+html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea {
+  color: #f8fafc;
+  background-color: #0f172a;
+}
+
+html[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+html[data-theme="light"] select,
+html[data-theme="light"] textarea {
+  color: #0f172a;
+  background-color: #fff;
 }
 
 select option {
-  color: #000;
+  color: #0f172a;
   background-color: #fff;
+}
+
+html[data-theme="dark"] select option {
+  color: #f8fafc;
+  background-color: #0f172a;
 }
 
 input::placeholder,

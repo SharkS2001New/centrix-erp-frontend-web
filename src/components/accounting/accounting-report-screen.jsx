@@ -12,45 +12,20 @@ import {
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
-
-const DATE_COLUMNS = {
-  "sales-by-product": "sale_date",
-  "sales-by-user": "sale_date",
-  "sales-by-channel": "sale_date",
-  "daily-sales": "sale_day",
-  "mobile-route-sales": "loading_date",
-  "sales-pipeline": "order_date",
-  "vat-collected": "sale_date",
-  "category-sales": "sale_date",
-  "discount-summary": "sale_date",
-  "payment-collection": "payment_date",
-  "credit-outstanding": "sale_date",
-  "stock-movement": "entry_date",
-  "returns": "return_date",
-  "expenses": "expense_date",
-  "journal-register": "entry_date",
-  "general-ledger": "entry_date",
-  "trial-balance": "entry_date",
-  "balance-sheet": "entry_date",
-  "profit-loss-gl": "entry_date",
-  "cash-flow": "entry_date",
-  "invoice-payments": "payment_date",
-  "kra-receipts": "receipt_date",
-  "till-sessions": "session_date",
-};
+import { accountOptionLabel, formatAccountingAmount } from "@/lib/accounting-shared";
 
 function formatCell(key, value) {
   if (value == null || value === "") return "—";
   if (typeof value === "number") {
-    if (/amount|total|paid|balance|vat|gross|net|price|cost|kes/i.test(key)) {
-      return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (/amount|total|paid|balance|debit|credit|cash|net|due|outstanding|revenue|expense|income|equity|assets|liabilities/i.test(key)) {
+      return formatAccountingAmount(value);
     }
     return String(value);
   }
+  if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
     return formatShortDate(value);
   }
-  if (typeof value === "boolean") return value ? "Yes" : "No";
   return String(value);
 }
 
@@ -58,25 +33,56 @@ function labelizeKey(key) {
   return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function GenericReportScreen({ reportKey, label, apiPath }) {
+const SUMMARY_LABELS = {
+  total_debit: "Total debit",
+  total_credit: "Total credit",
+  total_assets: "Total assets",
+  total_liabilities: "Total liabilities",
+  total_equity: "Total equity",
+  liabilities_and_equity: "Liabilities + equity",
+  total_revenue: "Total revenue",
+  total_expenses: "Total expenses",
+  net_income: "Net income",
+  cash_in: "Cash in",
+  cash_out: "Cash out",
+  net_change: "Net change",
+};
+
+export function AccountingReportScreen({
+  title,
+  subtitle,
+  apiPath,
+  showAccountFilter = false,
+  backHref = "/accounting",
+  emptyLabel = "No rows for this filter.",
+  intro = null,
+}) {
   const { user } = useAuth();
   const [rows, setRows] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [meta, setMeta] = useState(null);
+  const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [branchId, setBranchId] = useState("");
+  const [accountId, setAccountId] = useState("");
   const [branches, setBranches] = useState([]);
-
-  const dateColumn = DATE_COLUMNS[reportKey] ?? "sale_date";
 
   useEffect(() => {
     apiRequest("/branches", { searchParams: { per_page: 100 } })
       .then((res) => setBranches(res.data ?? []))
       .catch(() => setBranches([]));
   }, []);
+
+  useEffect(() => {
+    if (!showAccountFilter) return;
+    apiRequest("/chart-of-accounts", { searchParams: { per_page: 200 } })
+      .then((res) => setAccounts(res.data ?? []))
+      .catch(() => setAccounts([]));
+  }, [showAccountFilter]);
 
   useEffect(() => {
     if (user?.branch_id && !branchId) setBranchId(String(user.branch_id));
@@ -86,26 +92,25 @@ export function GenericReportScreen({ reportKey, label, apiPath }) {
     setLoading(true);
     setError(null);
     try {
-      const searchParams = {
-        per_page: 50,
-        page,
-        date_column: dateColumn,
-      };
+      const searchParams = { per_page: 50, page };
       if (fromDate) searchParams.from_date = fromDate;
       if (toDate) searchParams.to_date = toDate;
       if (branchId) searchParams.branch_id = branchId;
+      if (accountId) searchParams.account_id = accountId;
 
       const res = await apiRequest(apiPath, { searchParams });
       setRows(res.data ?? []);
+      setSummary(res.summary ?? null);
       setMeta(res.meta ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
       setRows([]);
+      setSummary(null);
       setMeta(null);
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, fromDate, toDate, branchId, dateColumn]);
+  }, [apiPath, page, fromDate, toDate, branchId, accountId]);
 
   useEffect(() => {
     loadReport();
@@ -113,7 +118,9 @@ export function GenericReportScreen({ reportKey, label, apiPath }) {
 
   const columns = useMemo(() => {
     if (!rows[0]) return [];
-    return Object.keys(rows[0]).filter((k) => !k.startsWith("_"));
+    return Object.keys(rows[0]).filter(
+      (k) => !k.startsWith("_") && !["is_header", "is_total"].includes(k),
+    );
   }, [rows]);
 
   const totalPages = meta?.last_page ?? 1;
@@ -121,12 +128,12 @@ export function GenericReportScreen({ reportKey, label, apiPath }) {
 
   return (
     <CatalogPageShell
-      title={label ?? "Report"}
-      subtitle={apiPath}
+      title={title}
+      subtitle={subtitle ?? `Accounting > ${title}`}
       toolbar={
         <div className="mb-4 flex flex-wrap items-end gap-3">
-          <Link href="/reports" className="text-sm text-[#185FA5] hover:underline">
-            ← All reports
+          <Link href={backHref} className="text-sm text-[#185FA5] hover:underline">
+            ← Accounting
           </Link>
           <Field label="From">
             <input
@@ -167,6 +174,25 @@ export function GenericReportScreen({ reportKey, label, apiPath }) {
               ))}
             </select>
           </Field>
+          {showAccountFilter ? (
+            <Field label="Account">
+              <select
+                className={inputClassName()}
+                value={accountId}
+                onChange={(e) => {
+                  setPage(1);
+                  setAccountId(e.target.value);
+                }}
+              >
+                <option value="">All accounts</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {accountOptionLabel(a)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
           <PrimaryButton type="button" showIcon={false} onClick={() => void loadReport()}>
             Refresh
           </PrimaryButton>
@@ -180,11 +206,27 @@ export function GenericReportScreen({ reportKey, label, apiPath }) {
         ) : null
       }
     >
+      {intro}
+      {summary ? (
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Object.entries(summary).map(([key, value]) => (
+            <div key={key} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                {SUMMARY_LABELS[key] ?? labelizeKey(key)}
+              </p>
+              <p className="mt-1 text-lg font-semibold text-slate-900">
+                {formatAccountingAmount(value)}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         {loading ? (
           <p className="px-5 py-8 text-center text-sm text-slate-500">Loading report…</p>
         ) : rows.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-slate-500">No rows for this filter.</p>
+          <p className="px-5 py-8 text-center text-sm text-slate-500">{emptyLabel}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-max border-collapse text-sm">
@@ -198,20 +240,35 @@ export function GenericReportScreen({ reportKey, label, apiPath }) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, idx) => (
-                  <tr key={row.id ?? idx} className="border-b border-slate-100 last:border-b-0">
-                    {columns.map((col) => (
-                      <td key={col} className="whitespace-nowrap px-4 py-2.5 text-slate-800">
-                        {formatCell(col, row[col])}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                {rows.map((row, idx) => {
+                  const isHeader = row.is_header;
+                  const isTotal = row.is_total;
+                  return (
+                    <tr
+                      key={row.id ?? idx}
+                      className={
+                        isHeader
+                          ? "bg-slate-100 font-semibold text-slate-900"
+                          : isTotal
+                            ? "border-t border-slate-200 bg-slate-50 font-semibold"
+                            : "border-b border-slate-100 last:border-b-0"
+                      }
+                    >
+                      {columns.map((col) => (
+                        <td key={col} className="whitespace-nowrap px-4 py-2.5 text-slate-800">
+                          {isHeader && col !== "section" ? "" : formatCell(col, row[col])}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
-        <PaginationBar page={page} totalPages={totalPages} total={total} pageSize={50} onChange={setPage} />
+        {meta ? (
+          <PaginationBar page={page} totalPages={totalPages} total={total} pageSize={50} onChange={setPage} />
+        ) : null}
       </div>
     </CatalogPageShell>
   );

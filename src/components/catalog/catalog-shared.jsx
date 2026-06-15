@@ -39,10 +39,10 @@ export function formatKesCompact(value) {
 
 export function StatCard({ label, value, hint }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p>
-      {hint ? <p className="mt-0.5 text-xs text-slate-400">{hint}</p> : null}
+    <div className="theme-panel rounded-xl border px-5 py-4 shadow-sm">
+      <p className="theme-subtext text-xs font-medium uppercase tracking-wide">{label}</p>
+      <p className="theme-heading mt-1 text-2xl font-semibold">{value}</p>
+      {hint ? <p className="theme-subtext mt-0.5 text-xs">{hint}</p> : null}
     </div>
   );
 }
@@ -101,11 +101,11 @@ export function buildPageNumbers(current, total) {
 
 export function CatalogPageShell({ title, subtitle, action, banner, toolbar, children }) {
   return (
-    <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
+    <div className="theme-page -m-6 min-h-[calc(100%+3rem)] p-6 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-medium text-slate-900">{title}</h1>
-          {subtitle && <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p>}
+          <h1 className="theme-heading text-xl font-medium">{title}</h1>
+          {subtitle && <p className="theme-subtext mt-0.5 text-sm">{subtitle}</p>}
         </div>
         {action}
       </div>
@@ -151,7 +151,7 @@ export function SearchInput({ value, onChange, placeholder, className = "" }) {
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
+        className="theme-input w-full rounded-lg border py-2 pl-9 pr-3 text-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
       />
     </div>
   );
@@ -292,24 +292,20 @@ export function FormModal({ title, open, onClose, onSubmit, saving, error, submi
         role="dialog"
         aria-modal="true"
         aria-labelledby="form-modal-title"
-        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 text-slate-900 shadow-xl"
+        className="theme-modal w-full max-w-md rounded-xl border p-5 shadow-xl"
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose();
         }}
       >
-        <h2 id="form-modal-title" className="text-[15px] font-medium text-slate-900">
+        <h2 id="form-modal-title" className="theme-heading text-[15px] font-medium">
           {title}
         </h2>
         <div className="mt-4 space-y-3">{children}</div>
         {error && (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         )}
-        <div className="mt-4 flex gap-2 border-t border-slate-200 pt-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-          >
+        <div className="mt-4 flex gap-2 border-t border-[var(--theme-border)] pt-3">
+          <button type="button" onClick={onClose} className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm">
             Cancel
           </button>
           <button
@@ -349,12 +345,12 @@ export function FormDrawer({
         onClick={onClose}
       />
       <aside
-        className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-slate-200 bg-white text-slate-900 shadow-xl ${
+        className={`theme-panel theme-modal fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l shadow-xl ${
           wide ? "max-w-lg" : "max-w-md"
         }`}
       >
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <h2 className="text-[15px] font-medium text-slate-900">{title}</h2>
+        <div className="flex items-center justify-between border-b border-[var(--theme-border)] px-5 py-4">
+          <h2 className="theme-heading text-[15px] font-medium">{title}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -371,7 +367,7 @@ export function FormDrawer({
           {error && (
             <p className="mx-5 mb-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
           )}
-          <div className="border-t border-slate-200 px-5 py-4">
+          <div className="border-t border-[var(--theme-border)] px-5 py-4">
             <button
               type="submit"
               disabled={saving}
@@ -406,15 +402,15 @@ export function DetailDrawer({
         onClick={onClose}
       />
       <aside
-        className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-slate-200 bg-white text-slate-900 shadow-xl ${
+        className={`theme-panel theme-modal fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l shadow-xl ${
           wide ? "max-w-lg" : "max-w-md"
         }`}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--theme-border)] px-5 py-4">
           <div className="min-w-0">
-            <h2 className="text-[15px] font-medium text-slate-900">{title}</h2>
+            <h2 className="theme-heading text-[15px] font-medium">{title}</h2>
             {subtitle ? (
-              <p className="mt-0.5 truncate text-sm text-slate-500">{subtitle}</p>
+              <p className="theme-subtext mt-0.5 truncate text-sm">{subtitle}</p>
             ) : null}
           </div>
           <button
@@ -454,17 +450,17 @@ function DrawerCloseIcon() {
 export function Field({ label, children }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-slate-500">{label}</span>
+      <span className="theme-subtext mb-1 block text-xs font-medium">{label}</span>
       {children}
     </label>
   );
 }
 
 export const INPUT_CLASS =
-  "w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600";
+  "theme-input w-full rounded-lg border px-2.5 py-2 text-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:opacity-60";
 
 export const SELECT_CLASS =
-  "rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-black outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600";
+  "theme-input rounded-lg border px-3 py-2 text-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:opacity-60";
 
 export function inputClassName() {
   return INPUT_CLASS;
@@ -487,6 +483,14 @@ export function TrashIcon() {
       <path d="M10 11v6" />
       <path d="M14 11v6" />
       <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
+  );
+}
+
+export function ShieldIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     </svg>
   );
 }

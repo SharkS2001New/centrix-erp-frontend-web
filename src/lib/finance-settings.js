@@ -6,6 +6,9 @@ const FINANCE_DEFAULTS = {
   kra_device_test_mode: false,
   kra_plu_register_path: "/api/register-plu",
   default_submit_kra: true,
+  accounting_mode: "native",
+  accounting_provider: null,
+  accounting_sync_direction: "export",
 };
 
 export const MPESA_DEFAULTS = {
@@ -54,6 +57,9 @@ export function financeFormFromApi(res) {
     kra_device_test_mode: Boolean(finance.kra_device_test_mode),
     kra_plu_register_path: String(finance.kra_plu_register_path ?? "/api/register-plu"),
     default_submit_kra: finance.default_submit_kra !== false,
+    accounting_mode: finance.accounting_mode === "external" ? "external" : "native",
+    accounting_provider: finance.accounting_provider ?? "",
+    accounting_sync_direction: finance.accounting_sync_direction ?? "export",
     mpesa: {
       env: mpesa.env === "live" ? "live" : "sandbox",
       consumer_key: String(mpesa.consumer_key ?? ""),
@@ -83,6 +89,9 @@ export function financePayloadFromForm(form) {
     kra_device_test_mode: Boolean(form.kra_device_test_mode),
     kra_plu_register_path: form.kra_plu_register_path.trim() || "/api/register-plu",
     default_submit_kra: Boolean(form.default_submit_kra),
+    accounting_mode: form.accounting_mode === "external" ? "external" : "native",
+    accounting_provider: form.accounting_mode === "external" ? form.accounting_provider || null : null,
+    accounting_sync_direction: form.accounting_sync_direction || "export",
     mpesa: {
       ...mpesa,
       consumer_key: mpesa.consumer_key.trim(),

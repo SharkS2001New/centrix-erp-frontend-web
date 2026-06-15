@@ -8,11 +8,11 @@ import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catal
 
 function Toggle({ checked, onChange, label, description }) {
   return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3">
       <input type="checkbox" className="mt-1" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span>
-        <span className="block text-sm font-medium text-slate-900">{label}</span>
-        {description ? <span className="mt-0.5 block text-xs text-slate-500">{description}</span> : null}
+        <span className="theme-heading block text-sm font-medium">{label}</span>
+        {description ? <span className="theme-subtext mt-0.5 block text-xs">{description}</span> : null}
       </span>
     </label>
   );
@@ -71,9 +71,9 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
   const mpesa = form.mpesa ?? {};
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-medium text-slate-900">Finance settings</h2>
-      <p className="mt-1 text-sm text-slate-500">Organization-level payment and fiscal configuration.</p>
+    <section className="theme-panel rounded-xl border p-6 shadow-sm">
+      <h2 className="theme-heading text-lg font-medium">Finance settings</h2>
+      <p className="theme-subtext mt-1 text-sm">Organization-level payment and fiscal configuration.</p>
       {loading ? (
         <p className="mt-4 text-sm text-slate-500">Loading…</p>
       ) : (
@@ -138,6 +138,66 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
                 checked={Boolean(form.default_submit_kra)}
                 onChange={(v) => setForm((f) => ({ ...f, default_submit_kra: v }))}
               />
+            </div>
+          </div>
+
+          <div className="border-t border-[var(--theme-border)] pt-6">
+            <h3 className="theme-heading text-sm font-medium">Accounting system</h3>
+            <p className="theme-subtext mt-1 text-sm">
+              Use the built-in general ledger, or connect an external system such as QuickBooks. When external mode is
+              selected, POS continues to record sales and inventory; journals are exported for your accountant&apos;s books.
+            </p>
+            <div className="mt-3 space-y-3">
+              <Field label="Accounting source">
+                <select
+                  className={inputClassName()}
+                  value={form.accounting_mode ?? "native"}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      accounting_mode: e.target.value,
+                      accounting_provider: e.target.value === "external" ? f.accounting_provider || "quickbooks" : "",
+                    }))
+                  }
+                >
+                  <option value="native">Built-in ledger (this system)</option>
+                  <option value="external">External accounting system</option>
+                </select>
+              </Field>
+              {form.accounting_mode === "external" ? (
+                <>
+                  <Field label="External provider">
+                    <select
+                      className={inputClassName()}
+                      value={form.accounting_provider || "quickbooks"}
+                      onChange={(e) => setForm((f) => ({ ...f, accounting_provider: e.target.value }))}
+                    >
+                      <option value="quickbooks">QuickBooks Online</option>
+                      <option value="xero">Xero</option>
+                      <option value="sage">Sage</option>
+                    </select>
+                  </Field>
+                  <Field label="Sync direction">
+                    <select
+                      className={inputClassName()}
+                      value={form.accounting_sync_direction ?? "export"}
+                      onChange={(e) => setForm((f) => ({ ...f, accounting_sync_direction: e.target.value }))}
+                    >
+                      <option value="export">Export journals from POS → external system</option>
+                      <option value="import">Import chart of accounts from external system</option>
+                      <option value="bidirectional">Two-way sync (planned)</option>
+                    </select>
+                  </Field>
+                  <p className="theme-subtext rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-3 py-2 text-xs">
+                    QuickBooks OAuth connection and automatic journal export are planned. This setting records your
+                    preference so we can enable the connector without changing your workflow later.
+                  </p>
+                </>
+              ) : (
+                <p className="theme-subtext text-xs">
+                  Sales and till variance can auto-post to your chart of accounts when the accounting module is enabled.
+                </p>
+              )}
             </div>
           </div>
 

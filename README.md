@@ -36,8 +36,10 @@ Login: **admin** / **password** (demo seeder).
 | Variable | Default |
 |----------|---------|
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000/api/v1` |
+| `NEXT_PUBLIC_COMPANY_CODE` | `DEMO` (organization for this install) |
+| `NEXT_PUBLIC_COMPANY_NAME` | Optional display name on login screen |
 
-CORS on the API allows browser calls (`config/cors.php`).
+Set the same organization on the API with `APP_COMPANY_CODE=DEMO` in `.env` so login can omit company code server-side.
 
 ## Pages
 

@@ -28,6 +28,15 @@ export class ApiError extends Error {
   }
 }
 
+export function isSessionConflictError(error) {
+  return (
+    error instanceof ApiError
+    && error.status === 403
+    && (error.body?.code === "session_active_elsewhere"
+      || String(error.message ?? "").toLowerCase().includes("another device"))
+  );
+}
+
 /** Prefer first Laravel validation message over generic text. */
 export function formatApiErrorMessage(data, fallback = "Request failed") {
   if (typeof data === "object" && data !== null) {
@@ -89,10 +98,17 @@ export async function apiRequest(path, options = {}) {
 
   if (!res.ok) {
     if (res.status === 401 && typeof window !== "undefined") {
+      const code = data?.code;
       clearSession();
       localStorage.removeItem("pos_erp_active_session");
       if (!window.location.pathname.startsWith("/login")) {
-        window.location.assign("/login?reason=session");
+        const reason =
+          code === "session_idle_timeout"
+            ? "idle"
+            : code === "session_active_elsewhere"
+              ? "session"
+              : "auth";
+        window.location.assign(`/login?reason=${reason}`);
       }
     }
     throw new ApiError(formatApiErrorMessage(data, res.statusText), res.status, data);

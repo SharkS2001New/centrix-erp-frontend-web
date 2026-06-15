@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { OrganizationSwitcher } from "@/components/layout/organization-switcher";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { getSalesOrderQueueWorkflow, salesOrderQueueNavItems } from "@/lib/order-workflow";
 import { isMobileOrdersEnabled, isPosTillFloatRequired } from "@/lib/sales-settings";
 
@@ -34,9 +36,22 @@ const navSections = [
     ],
   },
   {
-    label: "Finance",
+    label: "Accounting",
     module: "accounting",
-    items: [{ href: "/expenses", label: "Expenses", module: "accounting" }],
+    items: [
+      { href: "/accounting", label: "Dashboard", module: "accounting", exact: true },
+      { href: "/accounting/chart-of-accounts", label: "Chart of Accounts", module: "accounting" },
+      { href: "/accounting/journal-entries", label: "Journal Entries", module: "accounting" },
+      { href: "/accounting/general-ledger", label: "General Ledger", module: "accounting" },
+      { href: "/accounting/trial-balance", label: "Trial Balance", module: "accounting" },
+      { href: "/accounting/profit-loss", label: "Profit & Loss", module: "accounting" },
+      { href: "/accounting/balance-sheet", label: "Balance Sheet", module: "accounting" },
+      { href: "/accounting/cash-flow", label: "Cash Flow", module: "accounting" },
+      { href: "/accounting/accounts-receivable", label: "Accounts Receivable", module: "accounting" },
+      { href: "/accounting/accounts-payable", label: "Accounts Payable", module: "accounting" },
+      { href: "/expenses", label: "Expenses", module: "accounting" },
+      { href: "/admin/settings", label: "Settings", module: "admin" },
+    ],
   },
   {
     label: "HR & Payroll",
@@ -141,10 +156,11 @@ export function Sidebar() {
     .filter((section) => section.items.length > 0);
 
   return (
-    <aside className="flex h-full min-h-0 w-56 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
-      <div className="border-b border-slate-800 px-4 py-5">
-        <p className="text-sm font-semibold text-white">POS / ERP</p>
-        <p className="mt-1 truncate text-xs text-slate-400">
+    <aside className="app-sidebar flex h-full min-h-0 w-56 shrink-0 flex-col border-r">
+      <OrganizationSwitcher />
+      <div className="app-sidebar-divider border-b px-4 py-3">
+        <p className="app-sidebar-title text-sm font-semibold">POS / ERP</p>
+        <p className="app-sidebar-muted mt-1 truncate text-xs">
           {capabilities?.profile_label ?? capabilities?.deployment_profile}
         </p>
       </div>
@@ -152,7 +168,7 @@ export function Sidebar() {
         {visibleSections.map((section) => (
           <div key={section.label ?? "main"}>
             {section.label && (
-              <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              <p className="app-sidebar-section-label mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider">
                 {section.label}
               </p>
             )}
@@ -165,10 +181,8 @@ export function Sidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`block rounded-lg px-3 py-2 text-sm font-medium transition ${
-                      active
-                        ? "bg-emerald-600/20 text-emerald-300"
-                        : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                    className={`app-sidebar-link block rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      active ? "app-sidebar-link-active" : ""
                     }`}
                   >
                     {item.label}
@@ -179,12 +193,21 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
-      <div className="border-t border-slate-800 p-4">
-        <p className="truncate text-xs text-slate-400">{user?.full_name ?? user?.username}</p>
+      <div className="app-sidebar-divider border-t p-4">
+        <p className="app-sidebar-muted truncate text-xs">{user?.full_name ?? user?.username}</p>
+        <div className="mt-2 flex gap-2">
+          <Link
+            href="/profile"
+            className="app-sidebar-btn flex-1 rounded-lg border px-3 py-1.5 text-center text-xs transition"
+          >
+            Profile
+          </Link>
+          <ThemeToggle className="shrink-0" />
+        </div>
         <button
           type="button"
           onClick={() => logout()}
-          className="mt-2 w-full rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+          className="app-sidebar-btn mt-2 w-full rounded-lg border px-3 py-1.5 text-xs transition"
         >
           Sign out
         </button>

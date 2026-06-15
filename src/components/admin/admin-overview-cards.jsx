@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useAuth } from "@/contexts/auth-context";
 
 const CARDS = [
   {
@@ -39,10 +42,22 @@ const CARDS = [
   },
 ];
 
+const PROVISION_CARD = {
+  href: "/admin/organizations/new",
+  title: "Provision organization",
+  description: "Create a new organization and its manager login.",
+  icon: "➕",
+};
+
 export function AdminOverviewCards() {
+  const { capabilities } = useAuth();
+  const cards = capabilities?.allow_org_provisioning
+    ? [PROVISION_CARD, ...CARDS]
+    : CARDS;
+
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      {CARDS.map((card) => (
+      {cards.map((card) => (
         <Link
           key={card.href}
           href={card.href}
