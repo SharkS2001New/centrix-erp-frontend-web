@@ -81,6 +81,15 @@ export const P = {
     till_sessions: { view: "reports.till_sessions.view" },
     expenses: { view: "reports.expenses.view" },
     customer_statement: { view: "reports.customer_statement.view" },
+    builder: {
+      view: "reports.builder.view",
+      create: "reports.builder.create",
+      edit: "reports.builder.edit",
+      delete: "reports.builder.delete",
+    },
+  },
+  ai: {
+    assist: { create: "ai.assist.create" },
   },
   hr: {
     employees: { view: "hr.employees.view" },

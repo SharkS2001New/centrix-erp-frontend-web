@@ -39,7 +39,6 @@ export const REPORT_CATEGORY_DEFS = [
       "top-debtors",
       "accounts-receivable",
       "invoice-payments",
-      "sales-by-customer",
     ],
   },
   {
@@ -176,7 +175,14 @@ export function buildReportCategories(catalog) {
 }
 
 export function flattenReports(categories) {
-  return categories.flatMap((cat) =>
-    cat.reports.map((r) => ({ ...r, categoryId: cat.id, categoryTitle: cat.title })),
-  );
+  const seen = new Set();
+  const rows = [];
+  for (const cat of categories) {
+    for (const r of cat.reports) {
+      if (seen.has(r.key)) continue;
+      seen.add(r.key);
+      rows.push({ ...r, categoryId: cat.id, categoryTitle: cat.title });
+    }
+  }
+  return rows;
 }

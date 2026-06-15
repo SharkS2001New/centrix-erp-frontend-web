@@ -9,6 +9,7 @@ function reportNavLabel(key) {
 function buildReportNavItems() {
   return [
     { href: "/reports", label: "All reports", module: "reports", permission: P.reports.hub.view, exact: true },
+    { href: "/reports/builder", label: "Report builder", module: "reports", permission: P.reports.builder.view },
     ...FEATURED_REPORT_KEYS.map((key) => ({
       href: `/reports/${key}`,
       label: reportNavLabel(key),

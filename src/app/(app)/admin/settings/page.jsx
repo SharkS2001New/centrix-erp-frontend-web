@@ -10,6 +10,7 @@ import {
   orderWorkflowFromApi,
 } from "@/components/admin/order-workflow-settings";
 import { FinanceSettingsPanel } from "@/components/admin/finance-settings-panel";
+import { AiSettingsPanel } from "@/components/admin/ai-settings-panel";
 import { InventorySettingsPanel } from "@/components/admin/inventory-settings-panel";
 import {
   CatalogPageShell,
@@ -24,6 +25,7 @@ const TABS = [
   { id: "inventory", label: "Inventory" },
   { id: "procurement", label: "Procurement" },
   { id: "finance", label: "Finance" },
+  { id: "ai", label: "AI" },
   { id: "hr", label: "HR & Payroll" },
   { id: "notifications", label: "Notifications" },
   { id: "security", label: "Security" },
@@ -675,6 +677,14 @@ export default function AdminSettingsPage() {
           ) : null}
           {tab === "finance" ? (
             <FinanceSettingsPanel
+              saving={saving}
+              setSaving={setSaving}
+              setError={setError}
+              setMessage={setMessage}
+            />
+          ) : null}
+          {tab === "ai" ? (
+            <AiSettingsPanel
               saving={saving}
               setSaving={setSaving}
               setError={setError}

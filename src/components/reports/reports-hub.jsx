@@ -18,6 +18,8 @@ import {
   SalesTrendChart,
   channelLabel,
 } from "@/components/reports/report-charts";
+import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
+import { P } from "@/lib/permission-codes";
 
 const CATEGORY_ICONS = {
   sales: (
@@ -78,9 +80,10 @@ function defaultDateRange() {
 }
 
 export function ReportsHub() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const defaults = defaultDateRange();
   const [catalog, setCatalog] = useState(null);
+  const [customTemplates, setCustomTemplates] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [error, setError] = useState(null);
   const [dashLoading, setDashLoading] = useState(true);
@@ -97,6 +100,13 @@ export function ReportsHub() {
       .then(setCatalog)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load catalog"));
   }, []);
+
+  useEffect(() => {
+    if (!hasPermission(P.reports.builder.view)) return;
+    apiRequest("/reports/builder/templates")
+      .then((res) => setCustomTemplates(res.data ?? []))
+      .catch(() => setCustomTemplates([]));
+  }, [hasPermission]);
 
   useEffect(() => {
     apiRequest("/branches", { searchParams: { per_page: 100 } })
@@ -174,6 +184,33 @@ export function ReportsHub() {
       subtitle="Filter, export, and review operational and financial reports."
     >
       <AdminBreadcrumb items={[{ label: "Reports" }]} />
+
+      {hasPermission(P.reports.builder.view) ? (
+        <div className="mb-6 flex flex-wrap gap-3">
+          <Link
+            href="/reports/builder"
+            className="inline-flex items-center rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+          >
+            + Create custom report
+          </Link>
+        </div>
+      ) : null}
+
+      {customTemplates.length ? (
+        <section className="mb-8">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Your custom reports</h2>
+          <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {customTemplates.map((t) => (
+              <li key={t.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                <Link href={`/reports/custom/${t.id}`} className="font-medium text-slate-900 hover:text-indigo-600">
+                  {t.name}
+                </Link>
+                {t.description ? <p className="mt-1 text-xs text-slate-500">{t.description}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {error ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
@@ -298,7 +335,7 @@ export function ReportsHub() {
             ) : (
               <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 {filteredList.map((r) => (
-                  <li key={r.key} className="flex items-center justify-between gap-4 px-4 py-3">
+                  <li key={`${r.categoryId}:${r.key}`} className="flex items-center justify-between gap-4 px-4 py-3">
                     <div className="min-w-0">
                       <p className="font-medium text-slate-900">{r.label}</p>
                       <p className="text-xs text-slate-500">{r.categoryTitle}</p>
@@ -334,6 +371,8 @@ export function ReportsHub() {
           <DonutChart segments={channelSegments} loading={dashLoading} />
         </div>
       </section>
+
+      <AiAssistPanel context="reports" title="Reports assistant" />
     </CatalogPageShell>
   );
 }
