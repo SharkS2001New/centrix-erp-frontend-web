@@ -37,6 +37,7 @@ const DATE_COLUMNS = {
   "invoice-payments": "payment_date",
   "kra-receipts": "receipt_date",
   "till-sessions": "session_date",
+  "audit-trail": "created_at",
 };
 
 function formatCell(key, value) {

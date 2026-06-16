@@ -6,7 +6,55 @@ export const ACCOUNTING_AUTO_POST_DEFAULTS = {
   auto_post_payroll: true,
   auto_post_returns: true,
   post_till_variance: true,
+  account_codes: {
+    cash: "1000",
+    bank: "1100",
+    ar: "1200",
+    inventory: "1300",
+    ap: "2000",
+    vat_payable: "2100",
+    retained_earnings: "3100",
+    sales_revenue: "4000",
+    cogs: "5000",
+    till_variance: "5100",
+    payroll_expense: "5200",
+    operating_expense: "5300",
+  },
+  payment_method_accounts: {
+    CASH: "1000",
+    MPESA: "1100",
+    CARD: "1100",
+    BANK: "1100",
+    TRANSFER: "1100",
+    VOUCHER: "1000",
+    POINTS: "1000",
+  },
 };
+
+export const ACCOUNT_CODE_FIELDS = [
+  { key: "cash", label: "Cash" },
+  { key: "bank", label: "Bank" },
+  { key: "ar", label: "Accounts receivable" },
+  { key: "inventory", label: "Inventory" },
+  { key: "ap", label: "Accounts payable" },
+  { key: "vat_payable", label: "VAT payable" },
+  { key: "retained_earnings", label: "Retained earnings" },
+  { key: "sales_revenue", label: "Sales revenue" },
+  { key: "cogs", label: "Cost of goods sold" },
+  { key: "till_variance", label: "Till variance" },
+  { key: "payroll_expense", label: "Payroll expense" },
+  { key: "operating_expense", label: "Operating expense" },
+];
+
+export const PAYMENT_METHOD_ACCOUNT_FIELDS = [
+  { key: "CASH", label: "Cash" },
+  { key: "MPESA", label: "M-Pesa" },
+  { key: "CARD", label: "Card" },
+  { key: "BANK", label: "Bank" },
+  { key: "TRANSFER", label: "Transfer" },
+  { key: "VOUCHER", label: "Voucher" },
+  { key: "POINTS", label: "Points" },
+];
 
 export const AUTO_POST_TOGGLES = [
   {
@@ -47,7 +95,13 @@ export const AUTO_POST_TOGGLES = [
 ];
 
 export function accountingSettingsFromApi(res) {
-  const accounting = { ...ACCOUNTING_AUTO_POST_DEFAULTS, ...(res?.accounting ?? res ?? {}) };
+  const defaults = ACCOUNTING_AUTO_POST_DEFAULTS;
+  const accounting = { ...defaults, ...(res?.accounting ?? res ?? {}) };
+  accounting.account_codes = { ...defaults.account_codes, ...(accounting.account_codes ?? {}) };
+  accounting.payment_method_accounts = {
+    ...defaults.payment_method_accounts,
+    ...(accounting.payment_method_accounts ?? {}),
+  };
 
   return {
     ...accounting,
@@ -59,6 +113,12 @@ export function accountingSettingsPayload(form) {
   const payload = {};
   for (const toggle of AUTO_POST_TOGGLES) {
     payload[toggle.key] = Boolean(form[toggle.key]);
+  }
+  if (form.account_codes) {
+    payload.account_codes = { ...form.account_codes };
+  }
+  if (form.payment_method_accounts) {
+    payload.payment_method_accounts = { ...form.payment_method_accounts };
   }
   return payload;
 }

@@ -23,6 +23,7 @@ import {
   buildPaymentAccountApiBody,
   composeEmployeeDisplayName,
   createEmptyPaymentAccount,
+  createEmptyEmergencyContact,
   employeeToForm,
   isEmployeeTabComplete,
   previewNextEmployeeCode,
@@ -41,6 +42,8 @@ export {
   useEmployeeFormResources,
   resolveEmployeeBranchId,
   syncEmployeePaymentAccounts,
+  syncEmployeeEmergencyContacts,
+  syncEmployeeNextOfKin,
 };
 
 export function useEmployeeFormResources() {
@@ -140,6 +143,68 @@ export async function syncEmployeePaymentAccounts(employeeId, accounts, fullName
       });
     }
   }
+}
+
+export async function syncEmployeeEmergencyContacts(employeeId, contacts) {
+  const existing = await apiRequest(`/employees/${employeeId}/emergency-contacts`);
+  const existingList = Array.isArray(existing) ? existing : [];
+  const filled = (contacts ?? []).filter(
+    (c) => c.full_name?.trim() && c.phone?.trim(),
+  );
+  const keepIds = new Set(filled.filter((c) => c.id).map((c) => Number(c.id)));
+
+  for (const row of existingList) {
+    if (!keepIds.has(row.id)) {
+      await apiRequest(`/employees/${employeeId}/emergency-contacts/${row.id}`, {
+        method: "DELETE",
+      });
+    }
+  }
+
+  for (const contact of filled) {
+    const body = {
+      full_name: contact.full_name.trim(),
+      phone: contact.phone.trim(),
+      relationship: contact.relationship?.trim() || null,
+      email: contact.email?.trim() || null,
+      address: contact.address?.trim() || null,
+      is_primary: !!contact.is_primary,
+    };
+    if (contact.id) {
+      await apiRequest(`/employees/${employeeId}/emergency-contacts/${contact.id}`, {
+        method: "PUT",
+        body,
+      });
+    } else {
+      await apiRequest(`/employees/${employeeId}/emergency-contacts`, {
+        method: "POST",
+        body,
+      });
+    }
+  }
+}
+
+export async function syncEmployeeNextOfKin(employeeId, nextOfKin) {
+  const hasData = nextOfKin?.full_name?.trim() && nextOfKin?.phone?.trim();
+  if (!hasData) {
+    try {
+      await apiRequest(`/employees/${employeeId}/next-of-kin`, { method: "DELETE" });
+    } catch {
+      // No record yet — ignore.
+    }
+    return;
+  }
+
+  await apiRequest(`/employees/${employeeId}/next-of-kin`, {
+    method: "PUT",
+    body: {
+      full_name: nextOfKin.full_name.trim(),
+      phone: nextOfKin.phone.trim(),
+      relationship: nextOfKin.relationship?.trim() || null,
+      national_id: nextOfKin.national_id?.trim() || null,
+      address: nextOfKin.address?.trim() || null,
+    },
+  });
 }
 
 function LockedValue({ label, value, hint }) {
@@ -290,6 +355,64 @@ export function EmployeeFormWizard({
         is_primary: i === index,
       })),
     }));
+  }
+
+  function updateEmergencyContact(index, patch) {
+    setForm((prev) => {
+      const contacts = [...(prev.emergency_contacts ?? [])];
+      contacts[index] = { ...contacts[index], ...patch };
+      return { ...prev, emergency_contacts: contacts };
+    });
+    setTabErrors((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((k) => {
+        if (k.startsWith("emergency_") || k.startsWith("nok_")) delete next[k];
+      });
+      return next;
+    });
+  }
+
+  function addEmergencyContact() {
+    setForm((prev) => ({
+      ...prev,
+      emergency_contacts: [...(prev.emergency_contacts ?? []), createEmptyEmergencyContact()],
+    }));
+  }
+
+  function removeEmergencyContact(index) {
+    setForm((prev) => {
+      const contacts = (prev.emergency_contacts ?? []).filter((_, i) => i !== index);
+      if (contacts.length === 0) {
+        contacts.push(createEmptyEmergencyContact({ isPrimary: true }));
+      } else if (!contacts.some((c) => c.is_primary)) {
+        contacts[0] = { ...contacts[0], is_primary: true };
+      }
+      return { ...prev, emergency_contacts: contacts };
+    });
+  }
+
+  function setPrimaryEmergency(index) {
+    setForm((prev) => ({
+      ...prev,
+      emergency_contacts: (prev.emergency_contacts ?? []).map((c, i) => ({
+        ...c,
+        is_primary: i === index,
+      })),
+    }));
+  }
+
+  function updateNextOfKin(patch) {
+    setForm((prev) => ({
+      ...prev,
+      next_of_kin: { ...(prev.next_of_kin ?? {}), ...patch },
+    }));
+    setTabErrors((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((k) => {
+        if (k.startsWith("nok_")) delete next[k];
+      });
+      return next;
+    });
   }
 
   function validateCurrentTab() {
@@ -685,6 +808,11 @@ export function EmployeeFormWizard({
                   </option>
                 ))}
               </select>
+              {form.employment_status !== "active" ? (
+                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Non-active status marks the employee inactive and automatically disables login for any linked system user (tokens are revoked).
+                </p>
+              ) : null}
             </Field>
             <Field label="Date hired">
               <input
@@ -770,6 +898,90 @@ export function EmployeeFormWizard({
             >
               + Add another bank or payment method
             </button>
+          </div>
+        )}
+
+        {currentTab.id === "emergency" && (
+          <div className="space-y-6 md:col-span-2 xl:col-span-3">
+            <div>
+              <h3 className="text-sm font-medium text-slate-900">Emergency contacts</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                People to call in an emergency. Mark one as primary for payroll and HR records.
+              </p>
+              <div className="mt-4 space-y-4">
+                {(form.emergency_contacts ?? []).map((contact, index) => (
+                  <EmergencyContactCard
+                    key={contact._key ?? index}
+                    index={index}
+                    contact={contact}
+                    tabErrors={tabErrors}
+                    canRemove={(form.emergency_contacts?.length ?? 0) > 1}
+                    onUpdate={(patch) => updateEmergencyContact(index, patch)}
+                    onRemove={() => removeEmergencyContact(index)}
+                    onSetPrimary={() => setPrimaryEmergency(index)}
+                  />
+                ))}
+                <button
+                  type="button"
+                  onClick={addEmergencyContact}
+                  className="text-sm font-medium text-[#185FA5] hover:text-[#144f8a]"
+                >
+                  + Add emergency contact
+                </button>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200 pt-6">
+              <h3 className="text-sm font-medium text-slate-900">Next of kin</h3>
+              <p className="mt-1 text-xs text-slate-500">One beneficiary record per employee.</p>
+              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <Field label="Full name">
+                  <input
+                    type="text"
+                    value={form.next_of_kin?.full_name ?? ""}
+                    onChange={(e) => updateNextOfKin({ full_name: e.target.value })}
+                    className={inputClassName()}
+                  />
+                  <FieldError message={tabErrors.nok_full_name} />
+                </Field>
+                <Field label="Relationship">
+                  <input
+                    type="text"
+                    value={form.next_of_kin?.relationship ?? ""}
+                    onChange={(e) => updateNextOfKin({ relationship: e.target.value })}
+                    className={inputClassName()}
+                    placeholder="e.g. Spouse, Parent"
+                  />
+                </Field>
+                <Field label="Phone">
+                  <input
+                    type="tel"
+                    value={form.next_of_kin?.phone ?? ""}
+                    onChange={(e) => updateNextOfKin({ phone: e.target.value })}
+                    className={inputClassName()}
+                  />
+                  <FieldError message={tabErrors.nok_phone} />
+                </Field>
+                <Field label="National ID">
+                  <input
+                    type="text"
+                    value={form.next_of_kin?.national_id ?? ""}
+                    onChange={(e) => updateNextOfKin({ national_id: e.target.value })}
+                    className={inputClassName()}
+                  />
+                </Field>
+                <div className="md:col-span-2 xl:col-span-3">
+                  <Field label="Address">
+                    <input
+                      type="text"
+                      value={form.next_of_kin?.address ?? ""}
+                      onChange={(e) => updateNextOfKin({ address: e.target.value })}
+                      className={inputClassName()}
+                    />
+                  </Field>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1094,6 +1306,93 @@ function PaymentAccountCard({
             </p>
           </div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+function EmergencyContactCard({
+  index,
+  contact,
+  tabErrors,
+  canRemove,
+  onUpdate,
+  onRemove,
+  onSetPrimary,
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-medium text-slate-800">
+          Contact {index + 1}
+          {contact.is_primary ? (
+            <span className="ml-2 rounded-full bg-[#E6F1FB] px-2 py-0.5 text-[11px] font-medium text-[#0C447C]">
+              Primary
+            </span>
+          ) : null}
+        </span>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-xs text-slate-600">
+            <input
+              type="radio"
+              name="emergency_primary"
+              checked={!!contact.is_primary}
+              onChange={onSetPrimary}
+            />
+            Primary
+          </label>
+          {canRemove ? (
+            <button type="button" onClick={onRemove} className="text-xs text-red-600 hover:text-red-800">
+              Remove
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <Field label="Full name">
+          <input
+            type="text"
+            value={contact.full_name}
+            onChange={(e) => onUpdate({ full_name: e.target.value })}
+            className={inputClassName()}
+          />
+          <FieldError message={tabErrors[`emergency_${index}_full_name`]} />
+        </Field>
+        <Field label="Relationship">
+          <input
+            type="text"
+            value={contact.relationship}
+            onChange={(e) => onUpdate({ relationship: e.target.value })}
+            className={inputClassName()}
+          />
+        </Field>
+        <Field label="Phone">
+          <input
+            type="tel"
+            value={contact.phone}
+            onChange={(e) => onUpdate({ phone: e.target.value })}
+            className={inputClassName()}
+          />
+          <FieldError message={tabErrors[`emergency_${index}_phone`]} />
+        </Field>
+        <Field label="Email">
+          <input
+            type="email"
+            value={contact.email}
+            onChange={(e) => onUpdate({ email: e.target.value })}
+            className={inputClassName()}
+          />
+        </Field>
+        <div className="md:col-span-2 xl:col-span-3">
+          <Field label="Address">
+            <input
+              type="text"
+              value={contact.address}
+              onChange={(e) => onUpdate({ address: e.target.value })}
+              className={inputClassName()}
+            />
+          </Field>
+        </div>
       </div>
     </div>
   );

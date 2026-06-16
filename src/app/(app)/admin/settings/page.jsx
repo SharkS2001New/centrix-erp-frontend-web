@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { mergeSalesSettings, resolvePosOrderTypeMode } from "@/lib/sales-settings";
+import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import { useAuth } from "@/contexts/auth-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
@@ -12,6 +13,12 @@ import {
 import { FinanceSettingsPanel } from "@/components/admin/finance-settings-panel";
 import { AiSettingsPanel } from "@/components/admin/ai-settings-panel";
 import { InventorySettingsPanel } from "@/components/admin/inventory-settings-panel";
+import { DistributionSettingsPanel } from "@/components/admin/distribution-settings-panel";
+import { GeneralSettingsPanel } from "@/components/admin/general-settings-panel";
+import { NotificationsSettingsPanel } from "@/components/admin/notifications-settings-panel";
+import { ProcurementSettingsPanel } from "@/components/admin/procurement-settings-panel";
+import { HrSettingsPanel } from "@/components/admin/hr-settings-panel";
+import { SecuritySettingsPanel } from "@/components/admin/security-settings-panel";
 import {
   CatalogPageShell,
   Field,
@@ -22,6 +29,7 @@ import {
 const TABS = [
   { id: "general", label: "General" },
   { id: "sales", label: "Sales" },
+  { id: "distribution", label: "Distribution" },
   { id: "inventory", label: "Inventory" },
   { id: "procurement", label: "Procurement" },
   { id: "finance", label: "Finance" },
@@ -65,6 +73,7 @@ const EMPTY_SALES_FORM = {
   invoice_valid_days: "7",
   show_branch_on_receipt: true,
   receipt_copies: "1",
+  stock_deduct_on: "order_completed",
 };
 
 function salesFormFromApi(res) {
@@ -104,15 +113,9 @@ function salesFormFromApi(res) {
     invoice_valid_days: String(sales.invoice_valid_days ?? 7),
     show_branch_on_receipt: Boolean(sales.show_branch_on_receipt),
     receipt_copies: String(sales.receipt_copies ?? 1),
+    stock_deduct_on: sales.stock_deduct_on || "order_completed",
   };
 }
-
-const GENERAL_FORM = {
-  currency: "KES",
-  timezone: "Africa/Nairobi",
-  date_format: "DD/MM/YYYY",
-  language: "English",
-};
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -146,7 +149,7 @@ function PlaceholderPanel({ title, description }) {
 }
 
 export default function AdminSettingsPage() {
-  const { refreshCapabilities } = useAuth();
+  const { refreshCapabilities, capabilities } = useAuth();
   const [tab, setTab] = useState("sales");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -154,7 +157,6 @@ export default function AdminSettingsPage() {
   const [message, setMessage] = useState(null);
   const [salesForm, setSalesForm] = useState(EMPTY_SALES_FORM);
   const [orderWorkflow, setOrderWorkflow] = useState(null);
-  const [generalForm] = useState(GENERAL_FORM);
 
   const loadSalesSettings = useCallback(async () => {
     setError(null);
@@ -207,9 +209,9 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <CatalogPageShell title="System settings" subtitle="Configure organization-wide preferences.">
+    <CatalogPageShell title="Organization settings" subtitle="Tenant-wide preferences for this company (sales, finance, HR, inventory).">
       <AdminBreadcrumb
-        items={[{ label: "Administration", href: "/admin" }, { label: "System settings" }]}
+        items={[{ label: "Administration", href: "/admin" }, { label: "Organization settings" }]}
       />
 
       {error ? (
@@ -241,34 +243,12 @@ export default function AdminSettingsPage() {
 
         <div>
           {tab === "general" ? (
-            <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-medium text-slate-900">General settings</h2>
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                <Field label="Default currency">
-                  <select className={inputClassName()} value={generalForm.currency} disabled>
-                    <option value="KES">KES</option>
-                  </select>
-                </Field>
-                <Field label="Timezone">
-                  <select className={inputClassName()} value={generalForm.timezone} disabled>
-                    <option value="Africa/Nairobi">Africa/Nairobi</option>
-                  </select>
-                </Field>
-                <Field label="Date format">
-                  <select className={inputClassName()} value={generalForm.date_format} disabled>
-                    <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                  </select>
-                </Field>
-                <Field label="Language">
-                  <select className={inputClassName()} value={generalForm.language} disabled>
-                    <option value="English">English</option>
-                  </select>
-                </Field>
-              </div>
-              <p className="mt-4 text-xs text-slate-500">
-                General preferences will be editable in a future update.
-              </p>
-            </section>
+            <GeneralSettingsPanel
+              saving={saving}
+              setSaving={setSaving}
+              setError={setError}
+              setMessage={setMessage}
+            />
           ) : null}
 
           {tab === "sales" ? (
@@ -649,6 +629,11 @@ export default function AdminSettingsPage() {
                       workflow={orderWorkflow}
                       onChange={setOrderWorkflow}
                       showCheckoutOnCreate={salesForm.show_checkout_on_create_order}
+                      stockDeductOn={salesForm.stock_deduct_on}
+                      onStockDeductOnChange={(value) =>
+                        setSalesForm((f) => ({ ...f, stock_deduct_on: value }))
+                      }
+                      distributionOpsEnabled={isDistributionOpsEnabled(capabilities)}
                     />
                   </div>
                 ) : null}
@@ -661,6 +646,15 @@ export default function AdminSettingsPage() {
             </form>
           ) : null}
 
+          {tab === "distribution" ? (
+            <DistributionSettingsPanel
+              saving={saving}
+              setSaving={setSaving}
+              setError={setError}
+              setMessage={setMessage}
+            />
+          ) : null}
+
           {tab === "inventory" ? (
             <InventorySettingsPanel
               saving={saving}
@@ -670,9 +664,11 @@ export default function AdminSettingsPage() {
             />
           ) : null}
           {tab === "procurement" ? (
-            <PlaceholderPanel
-              title="Procurement settings"
-              description="LPO defaults and supplier workflow settings will be configured here."
+            <ProcurementSettingsPanel
+              saving={saving}
+              setSaving={setSaving}
+              setError={setError}
+              setMessage={setMessage}
             />
           ) : null}
           {tab === "finance" ? (
@@ -692,21 +688,27 @@ export default function AdminSettingsPage() {
             />
           ) : null}
           {tab === "hr" ? (
-            <PlaceholderPanel
-              title="HR & Payroll settings"
-              description="Leave policies, payroll cycles, and attendance rules will be configured here."
+            <HrSettingsPanel
+              saving={saving}
+              setSaving={setSaving}
+              setError={setError}
+              setMessage={setMessage}
             />
           ) : null}
           {tab === "notifications" ? (
-            <PlaceholderPanel
-              title="Notifications"
-              description="Email and SMS notification preferences will be configured here."
+            <NotificationsSettingsPanel
+              saving={saving}
+              setSaving={setSaving}
+              setError={setError}
+              setMessage={setMessage}
             />
           ) : null}
           {tab === "security" ? (
-            <PlaceholderPanel
-              title="Security"
-              description="Password policies and session settings will be configured here."
+            <SecuritySettingsPanel
+              saving={saving}
+              setSaving={setSaving}
+              setError={setError}
+              setMessage={setMessage}
             />
           ) : null}
         </div>

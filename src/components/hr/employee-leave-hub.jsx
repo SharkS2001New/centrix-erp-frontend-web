@@ -9,6 +9,7 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { useAuth } from "@/contexts/auth-context";
+import { P } from "@/lib/permission-codes";
 import {
   buildOffDayBody,
   buildOffDayEmptyForm,
@@ -50,8 +51,9 @@ export function EmployeeLeaveHub({
   refreshKey = 0,
   onSaved,
 }) {
-  const { user, capabilities } = useAuth();
+  const { user, capabilities, hasPermission } = useAuth();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
+  const canApproveLeave = hasPermission(P.hr.leave.approve);
 
   const [balances, setBalances] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -274,6 +276,7 @@ export function EmployeeLeaveHub({
                               <th className="px-3 py-2">Deducted from</th>
                               <th className="px-3 py-2">Days</th>
                               <th className="px-3 py-2">Duration</th>
+                              <th className="px-3 py-2">Approval</th>
                               <th className="px-3 py-2 text-right">Actions</th>
                             </tr>
                           </thead>
@@ -290,7 +293,34 @@ export function EmployeeLeaveHub({
                                     ? `Half day (${record.half_day_period ?? "—"})`
                                     : "Full day(s)"}
                                 </td>
+                                <td className="px-3 py-2 capitalize text-slate-600">
+                                  {record.approval_status ?? "approved"}
+                                </td>
                                 <td className="px-3 py-2 text-right">
+                                  {canApproveLeave && record.approval_status === "pending" ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="text-emerald-700 hover:underline"
+                                        onClick={async () => {
+                                          await apiRequest(`/employee-leave-days/${record.id}/approve`, { method: "POST" });
+                                          load();
+                                        }}
+                                      >
+                                        Approve
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="ml-3 text-red-600 hover:underline"
+                                        onClick={async () => {
+                                          await apiRequest(`/employee-leave-days/${record.id}/reject`, { method: "POST" });
+                                          load();
+                                        }}
+                                      >
+                                        Reject
+                                      </button>
+                                    </>
+                                  ) : null}
                                   <button
                                     type="button"
                                     onClick={() => openEdit(record)}

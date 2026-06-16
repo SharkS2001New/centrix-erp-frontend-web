@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { formatOrgCurrency, formatOrgCurrencyCompact } from "@/lib/format";
+import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 import {
   baseToDisplayQty,
   displayToBaseQty,
@@ -9,19 +11,13 @@ import {
   uomLabelFrom,
 } from "@/lib/stock-uom";
 
-export function formatInventoryKes(value) {
+export function formatInventoryKes(value, settings = GENERAL_DEFAULTS) {
   if (value == null || value === "") return "—";
-  return `KES ${Number(value).toLocaleString("en-KE", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })}`;
+  return formatOrgCurrency(value, settings);
 }
 
-export function formatInventoryKesCompact(value) {
-  const n = Number(value ?? 0);
-  if (n >= 1_000_000) return `KES ${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `KES ${(n / 1_000).toFixed(0)}K`;
-  return formatInventoryKes(n);
+export function formatInventoryKesCompact(value, settings = GENERAL_DEFAULTS) {
+  return formatOrgCurrencyCompact(value, settings);
 }
 
 export function formatQty(value) {

@@ -122,6 +122,7 @@ export function PosCartPaymentOptions({
   enableVouchers,
   enablePoints,
   enableMpesa,
+  enableStkPush = true,
   onCartUpdated,
   onMessage,
   onPaymentApplied,
@@ -203,6 +204,7 @@ export function PosCartPaymentOptions({
   const hasMpesaPayment = Number(cart?.mpesa_payment_amount ?? 0) > 0;
   const hasMpesaPhone = Boolean(String(cart?.mpesa_phone ?? "").trim());
   const showSection = enableVouchers || enablePoints || enableMpesa;
+  const stkPushAvailable = enableStkPush !== false;
 
   const payButtons = useMemo(() => {
     const items = [];
@@ -215,7 +217,9 @@ export function PosCartPaymentOptions({
           ? formatSaleKes(cart.mpesa_payment_amount)
           : hasMpesaPhone
             ? cart.mpesa_phone
-            : "STK push",
+            : stkPushAvailable
+              ? "STK push"
+              : "Check payment",
         active: hasMpesaPayment || hasMpesaPhone,
       });
     }
@@ -246,6 +250,7 @@ export function PosCartPaymentOptions({
     return items;
   }, [
     enableMpesa,
+    stkPushAvailable,
     enableVouchers,
     enablePoints,
     hasMpesaPhone,
@@ -285,6 +290,7 @@ export function PosCartPaymentOptions({
 
   function switchMpesaMode(mode) {
     if (mode === mpesaMode) return;
+    if (mode === "stk" && !stkPushAvailable) return;
     if (mode === "stk") {
       stopMpesaWatch();
       setMpesaInfo(null);
@@ -293,6 +299,12 @@ export function PosCartPaymentOptions({
     setMpesaError(null);
     setMpesaMode(mode);
   }
+
+  useEffect(() => {
+    if (!stkPushAvailable && mpesaMode === "stk") {
+      setMpesaMode("check");
+    }
+  }, [stkPushAvailable, mpesaMode]);
 
   useEffect(() => {
     return () => stopMpesaWatch();
@@ -713,7 +725,7 @@ export function PosCartPaymentOptions({
         onClose={closeDialog}
         footer={
           activeDialog === "mpesa" ? (
-            mpesaMode === "stk" ? (
+            mpesaMode === "stk" && stkPushAvailable ? (
               <>
                 <button
                   type="button"
@@ -815,32 +827,34 @@ export function PosCartPaymentOptions({
       >
         {activeDialog === "mpesa" ? (
           <>
-            <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => switchMpesaMode("stk")}
-                className={`rounded-md px-2 py-2 text-[10px] font-bold uppercase tracking-wide ${
-                  mpesaMode === "stk"
-                    ? "bg-white text-[#0C447C] shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                STK push
-              </button>
-              <button
-                type="button"
-                onClick={() => switchMpesaMode("check")}
-                className={`rounded-md px-2 py-2 text-[10px] font-bold uppercase tracking-wide ${
-                  mpesaMode === "check"
-                    ? "bg-white text-[#0C447C] shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Check payment
-              </button>
-            </div>
+            {stkPushAvailable ? (
+              <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => switchMpesaMode("stk")}
+                  className={`rounded-md px-2 py-2 text-[10px] font-bold uppercase tracking-wide ${
+                    mpesaMode === "stk"
+                      ? "bg-white text-[#0C447C] shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  STK push
+                </button>
+                <button
+                  type="button"
+                  onClick={() => switchMpesaMode("check")}
+                  className={`rounded-md px-2 py-2 text-[10px] font-bold uppercase tracking-wide ${
+                    mpesaMode === "check"
+                      ? "bg-white text-[#0C447C] shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Check payment
+                </button>
+              </div>
+            ) : null}
             <p className="mb-3 text-sm text-slate-600">
-              {mpesaMode === "stk" ? (
+              {mpesaMode === "stk" && stkPushAvailable ? (
                 <>
                   Send an STK push for any amount up to the balance due of{" "}
                   <strong>{formatSaleKes(Math.max(0, Number(amountDue) || 0))}</strong>. After they
@@ -886,7 +900,7 @@ export function PosCartPaymentOptions({
                 onKeyDown={(e) => {
                   if (e.key !== "Enter") return;
                   e.preventDefault();
-                  if (mpesaMode === "stk") void pushMpesaPayment();
+                  if (mpesaMode === "stk" && stkPushAvailable) void pushMpesaPayment();
                   else if (watchingMpesa) void checkMpesaPayments();
                   else startMpesaWatch();
                 }}
@@ -894,7 +908,7 @@ export function PosCartPaymentOptions({
                 className={inputCls}
               />
             </label>
-            {mpesaMode === "stk" ? (
+            {mpesaMode === "stk" && stkPushAvailable ? (
               <label className="mt-3 block">
                 <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#0C447C]">
                   STK amount (KES)

@@ -38,6 +38,12 @@ import {
   SaleStatusBadge,
 } from "@/components/sales/sales-shared";
 import { ReturnStatusBadge } from "@/components/sales/customer-returns-shared";
+import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
+import {
+  FulfillmentAssignmentDialog,
+  PodCaptureDialog,
+} from "@/components/fulfillment/fulfillment-assignment-dialog";
+import { getSaleDriverId, getSaleVehicleId } from "@/components/fulfillment/fulfillment-shared";
 
 const ORDER_TABS = [
   { id: "summary", label: "Summary" },
@@ -383,8 +389,18 @@ function OrderTimelinePanel({ events }) {
   );
 }
 
-function CustomerOrderDetailsPanel({ customer, sale, branchName, cashierName, workflow }) {
+function CustomerOrderDetailsPanel({
+  customer,
+  sale,
+  branchName,
+  cashierName,
+  workflow,
+  routeName,
+  driverName,
+  vehicleLabel,
+}) {
   const customerName = customer?.customer_name ?? saleCustomerLabel(sale);
+  const meta = sale?.fulfillment_meta;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -406,6 +422,15 @@ function CustomerOrderDetailsPanel({ customer, sale, branchName, cashierName, wo
             <DetailRow label="Cashier" value={cashierName ?? "—"} />
             <DetailRow label="Receipt no." value={formatReceiptNumber(sale)} />
             <DetailRow label="Status" value={saleStatusLabel(sale?.status, workflow)} />
+            {routeName ? <DetailRow label="Route" value={routeName} /> : null}
+            {driverName ? <DetailRow label="Driver" value={driverName} /> : null}
+            {vehicleLabel ? <DetailRow label="Vehicle" value={vehicleLabel} /> : null}
+            {sale?.delivery_date ? (
+              <DetailRow label="Delivered" value={formatShortDate(sale.delivery_date)} />
+            ) : null}
+            {meta?.pod_signer_name ? (
+              <DetailRow label="Received by" value={meta.pod_signer_name} />
+            ) : null}
           </dl>
         </div>
       </div>
@@ -469,6 +494,9 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const [actionMessage, setActionMessage] = useState(null);
   const [orderReturns, setOrderReturns] = useState([]);
   const [uoms, setUoms] = useState([]);
+  const [routes, setRoutes] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
 
   useEffect(() => {
     refreshCapabilities().catch(() => {});
@@ -478,7 +506,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     setError(null);
     setLoading(true);
     try {
-      const [saleData, payRes, methodsRes, subRes, catRes, returnsRes, uomRes] = await Promise.all([
+      const [saleData, payRes, methodsRes, subRes, catRes, returnsRes, uomRes, routeRes, driverRes, vehicleRes] = await Promise.all([
         apiRequest(`/sales/${saleId}`),
         apiRequest("/sale-payments", {
           searchParams: { per_page: 50, "filter[sale_id]": saleId },
@@ -490,6 +518,9 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
           searchParams: { sale_id: saleId, per_page: 50 },
         }).catch(() => ({ data: [] })),
         apiRequest("/uoms", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+        apiRequest("/routes", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+        apiRequest("/drivers", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+        apiRequest("/vehicles", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
       ]);
 
       setSale(saleData);
@@ -499,6 +530,9 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       setCategories(catRes.data ?? []);
       setOrderReturns(returnsRes.data ?? []);
       setUoms(uomRes.data ?? []);
+      setRoutes(routeRes.data ?? []);
+      setDrivers(driverRes.data ?? []);
+      setVehicles(vehicleRes.data ?? []);
 
       const branchId = saleData.branch_id;
       if (branchId != null) {
@@ -609,15 +643,17 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     setActionsOpen(true);
   }
 
-  async function transitionOrder(targetStatus) {
+  async function transitionOrder(targetStatus, fulfillmentMeta) {
     if (!sale?.id) return;
     if (targetStatus === "cancelled" && !window.confirm("Cancel this order?")) return;
     setTransitionBusy(true);
     setActionMessage(null);
     try {
+      const body = { status: targetStatus };
+      if (fulfillmentMeta) body.fulfillment_meta = fulfillmentMeta;
       const updated = await apiRequest(`/sales/orders/${sale.id}/transition`, {
         method: "POST",
-        body: { status: targetStatus },
+        body,
       });
       setSale((prev) => ({ ...prev, ...updated }));
       setActionMessage("Order updated.");
@@ -628,6 +664,26 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     } finally {
       setTransitionBusy(false);
     }
+  }
+
+  const fulfillment = useFulfillmentTransition({
+    capabilities,
+    onSuccess: async (updated) => {
+      setSale((prev) => ({ ...prev, ...updated }));
+      setActionMessage("Order updated.");
+      setActionsOpen(false);
+      await loadSale();
+    },
+    onError: (message) => setActionMessage(message),
+  });
+
+  function handleAdvance(targetStatus) {
+    if (targetStatus === "cancelled") {
+      void transitionOrder(targetStatus);
+      return;
+    }
+    if (!sale) return;
+    fulfillment.requestTransition(sale, targetStatus);
   }
 
   const printLabel = orderDocumentPrintLabel(capabilities?.module_settings);
@@ -641,6 +697,20 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     [orderReturns],
   );
 
+  const fulfillmentLabels = useMemo(() => {
+    if (!sale) return {};
+    const routeName = routes.find((r) => r.id === sale.route_id)?.route_name;
+    const driverId = getSaleDriverId(sale);
+    const vehicleId = getSaleVehicleId(sale);
+    const driver = drivers.find((d) => d.id === driverId);
+    const vehicle = vehicles.find((v) => v.id === vehicleId);
+    return {
+      routeName: routeName ?? null,
+      driverName: driver?.full_name ?? driver?.driver_code ?? null,
+      vehicleLabel: vehicle?.plate_number ?? vehicle?.vehicle_name ?? null,
+    };
+  }, [sale, routes, drivers, vehicles]);
+
   const actionMenuItems = useMemo(() => {
     if (!sale) return [];
     return buildOrderDetailActionItems({
@@ -648,8 +718,8 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       workflow: saleWorkflow,
       busy: transitionBusy,
       onPrint: handlePrint,
-      onAdvance: transitionOrder,
-      onCancel: () => transitionOrder("cancelled"),
+      onAdvance: handleAdvance,
+      onCancel: () => handleAdvance("cancelled"),
       canRecordPayment,
       printLabel,
       onRecordPayment: () => {
@@ -730,10 +800,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                   channel={sale.channel}
                   onAdvance={
                     sale.status !== "cancelled" && sale.status !== "completed"
-                      ? (status) => transitionOrder(status)
+                      ? (status) => handleAdvance(status)
                       : null
                   }
-                  busyStatus={transitionBusy ? sale.status : null}
+                  busyStatus={transitionBusy || fulfillment.busy ? sale.status : null}
                 />
               </div>
             </div>
@@ -852,6 +922,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                 branchName={branchName ?? saleBranchLabel(sale, new Map())}
                 cashierName={cashierName}
                 workflow={saleWorkflow}
+                {...fulfillmentLabels}
               />
             </div>
           ) : null}
@@ -881,6 +952,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                 branchName={branchName}
                 cashierName={cashierName}
                 workflow={saleWorkflow}
+                {...fulfillmentLabels}
               />
             </div>
           ) : null}
@@ -919,6 +991,31 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         saleId={saleId}
         balanceDue={balanceDue}
         onSaved={loadSale}
+      />
+
+      <FulfillmentAssignmentDialog
+        open={Boolean(fulfillment.assignDialog)}
+        sale={fulfillment.assignDialog?.sale}
+        targetStatus={fulfillment.assignDialog?.targetStatus}
+        drivers={fulfillment.drivers.length ? fulfillment.drivers : drivers}
+        vehicles={fulfillment.vehicles.length ? fulfillment.vehicles : vehicles}
+        routes={fulfillment.routes.length ? fulfillment.routes : routes}
+        busy={fulfillment.busy}
+        onClose={() => fulfillment.setAssignDialog(null)}
+        onConfirm={(meta) => {
+          const { sale: dialogSale, targetStatus } = fulfillment.assignDialog ?? {};
+          if (dialogSale) void fulfillment.runTransition(dialogSale, targetStatus, meta);
+        }}
+      />
+      <PodCaptureDialog
+        open={Boolean(fulfillment.podDialog)}
+        sale={fulfillment.podDialog?.sale}
+        busy={fulfillment.busy}
+        onClose={() => fulfillment.setPodDialog(null)}
+        onConfirm={(meta) => {
+          const { sale: dialogSale, targetStatus } = fulfillment.podDialog ?? {};
+          if (dialogSale) void fulfillment.runTransition(dialogSale, targetStatus, meta);
+        }}
       />
     </div>
   );

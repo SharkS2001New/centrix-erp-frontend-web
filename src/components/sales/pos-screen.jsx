@@ -38,7 +38,7 @@ import {
   resolveSaveOrderStatus,
   resolveSaveOrderStatusLabel,
 } from "@/lib/sales-settings";
-import { shouldSubmitKraOnCheckout } from "@/lib/finance-settings";
+import { isStkPushEnabled, shouldSubmitKraOnCheckout } from "@/lib/finance-settings";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import {
   canAdjustCartLineQuantity,
@@ -144,6 +144,7 @@ export function PosScreen() {
   const enableVouchers = posSalesConfig.enableVouchers;
   const enableRedeemablePoints = posSalesConfig.enableRedeemablePoints;
   const enableMpesaOnPos = posSalesConfig.payment?.enableMpesaAmount;
+  const enableStkPushOnPos = isStkPushEnabled(capabilities?.module_settings);
   const allowEditUnitPrice = posSalesConfig.allowEditUnitPrice;
   const enableBarcodeScanner = posSalesConfig.enableBarcodeScanner;
   const allowNegativeStock = posSalesConfig.allowNegativeStock;
@@ -2333,6 +2334,7 @@ export function PosScreen() {
             enableVouchers={enableVouchers}
             enablePoints={enableRedeemablePoints}
             enableMpesa={enableMpesaOnPos}
+            enableStkPush={enableStkPushOnPos}
             onCartUpdated={setCart}
             onMessage={setStatusMessage}
             onPaymentApplied={() => setPaymentOpen(true)}

@@ -1,3 +1,5 @@
+import { formatOrgCurrency } from "@/lib/format";
+import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 import { getSaleTimestamp, isSameCalendarDay } from "@/components/catalog/catalog-shared";
 import {
   DEFAULT_ORDER_WORKFLOW,
@@ -40,12 +42,9 @@ export const ORDER_PIPELINE_STEPS = workflowPipelineSteps();
 /** Allowed transitions (mirrors OrderWorkflowController). */
 export const SALE_TRANSITIONS = workflowTransitions();
 
-export function formatSaleKes(value) {
+export function formatSaleKes(value, settings = GENERAL_DEFAULTS) {
   if (value == null || value === "") return "—";
-  return `KES ${Number(value).toLocaleString("en-KE", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })}`;
+  return formatOrgCurrency(value, settings);
 }
 
 export function formatReceiptNumber(sale) {

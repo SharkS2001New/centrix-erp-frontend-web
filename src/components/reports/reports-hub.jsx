@@ -4,22 +4,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { CatalogPageShell, Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, inputClassName } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboard-section";
+import { DashboardErrorBanner, DashboardSection } from "@/components/dashboard/dashboard-shared";
 import {
   buildReportCategories,
   flattenReports,
   reportHref,
 } from "@/lib/reports/catalog-ui";
-import {
-  CHART_COLORS,
-  DonutChart,
-  HubKpiCard,
-  SalesTrendChart,
-  channelLabel,
-} from "@/components/reports/report-charts";
-import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
-import { P } from "@/lib/permission-codes";
+import { canViewReport, P } from "@/lib/permission-codes";
 
 const CATEGORY_ICONS = {
   sales: (
@@ -69,28 +63,12 @@ const CATEGORY_ICONS = {
   ),
 };
 
-function defaultDateRange() {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(to.getDate() - 29);
-  return {
-    from: from.toISOString().slice(0, 10),
-    to: to.toISOString().slice(0, 10),
-  };
-}
-
 export function ReportsHub() {
-  const { user, hasPermission } = useAuth();
-  const defaults = defaultDateRange();
+  const { hasPermission } = useAuth();
   const [catalog, setCatalog] = useState(null);
   const [customTemplates, setCustomTemplates] = useState([]);
-  const [dashboard, setDashboard] = useState(null);
   const [error, setError] = useState(null);
-  const [dashLoading, setDashLoading] = useState(true);
-  const [fromDate, setFromDate] = useState(defaults.from);
-  const [toDate, setToDate] = useState(defaults.to);
-  const [branchId, setBranchId] = useState("");
-  const [branches, setBranches] = useState([]);
+  const [dashError, setDashError] = useState(null);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState("cards");
   const [activeCategory, setActiveCategory] = useState("all");
@@ -108,27 +86,16 @@ export function ReportsHub() {
       .catch(() => setCustomTemplates([]));
   }, [hasPermission]);
 
-  useEffect(() => {
-    apiRequest("/branches", { searchParams: { per_page: 100 } })
-      .then((res) => setBranches(res.data ?? []))
-      .catch(() => setBranches([]));
-  }, []);
-
-  useEffect(() => {
-    if (user?.branch_id && !branchId) setBranchId(String(user.branch_id));
-  }, [user?.branch_id, branchId]);
-
-  useEffect(() => {
-    setDashLoading(true);
-    const searchParams = { from_date: fromDate, to_date: toDate };
-    if (branchId) searchParams.branch_id = branchId;
-    apiRequest("/reports/dashboard", { searchParams })
-      .then(setDashboard)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load dashboard"))
-      .finally(() => setDashLoading(false));
-  }, [fromDate, toDate, branchId]);
-
-  const categories = useMemo(() => buildReportCategories(catalog), [catalog]);
+  const categories = useMemo(() => {
+    const built = buildReportCategories(catalog);
+    return built
+      .map((cat) => ({
+        ...cat,
+        reports: cat.reports.filter((r) => canViewReport(r.key, hasPermission)),
+      }))
+      .filter((cat) => cat.reports.length > 0)
+      .map((cat) => ({ ...cat, count: cat.reports.length }));
+  }, [catalog, hasPermission]);
   const allReports = useMemo(() => flattenReports(categories), [categories]);
 
   const filteredCategories = useMemo(() => {
@@ -154,34 +121,12 @@ export function ReportsHub() {
     });
   }, [allReports, search, activeCategory]);
 
-  const topProductSegments = useMemo(
-    () =>
-      (dashboard?.top_products ?? []).map((p, i) => ({
-        label: p.product_name ?? p.product_code,
-        value: p.revenue,
-        sharePct: p.share_pct,
-        color: CHART_COLORS[i % CHART_COLORS.length],
-      })),
-    [dashboard],
-  );
-
-  const channelSegments = useMemo(
-    () =>
-      (dashboard?.sales_by_channel ?? []).map((c, i) => ({
-        label: channelLabel(c.channel),
-        value: c.revenue,
-        sharePct: c.share_pct,
-        color: CHART_COLORS[i % CHART_COLORS.length],
-      })),
-    [dashboard],
-  );
-
   const totalReportCount = allReports.length;
 
   return (
     <CatalogPageShell
       title="Reports"
-      subtitle="Filter, export, and review operational and financial reports."
+      subtitle="Analytics dashboard and full report catalog."
     >
       <AdminBreadcrumb items={[{ label: "Reports" }]} />
 
@@ -212,53 +157,11 @@ export function ReportsHub() {
         </section>
       ) : null}
 
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      ) : null}
+      <DashboardErrorBanner message={error ?? dashError} />
 
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <Field label="From">
-            <input type="date" className={inputClassName()} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-          </Field>
-          <Field label="To">
-            <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
-          </Field>
-          <Field label="Branch">
-            <select className={inputClassName()} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-              <option value="">All branches</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.branch_name}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-      </div>
-
-      <section className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <HubKpiCard
-          label="Total Sales"
-          value={dashboard?.kpis?.total_sales?.value}
-          changePct={dashboard?.kpis?.total_sales?.change_pct}
-        />
-        <HubKpiCard
-          label="Gross Profit"
-          value={dashboard?.kpis?.gross_profit?.value}
-          changePct={dashboard?.kpis?.gross_profit?.change_pct}
-        />
-        <HubKpiCard
-          label="Receivables"
-          value={dashboard?.kpis?.receivables?.value}
-          changePct={dashboard?.kpis?.receivables?.change_pct}
-        />
-        <HubKpiCard
-          label="Inventory Value"
-          value={dashboard?.kpis?.inventory_value?.value}
-          changePct={dashboard?.kpis?.inventory_value?.change_pct}
-        />
-      </section>
+      <DashboardSection title="Performance overview" subtitle="KPIs and charts for the selected period" className="mb-8">
+        <ReportsDashboardSection onError={setDashError} />
+      </DashboardSection>
 
       <section className="mb-8">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -353,26 +256,6 @@ export function ReportsHub() {
           </div>
         </div>
       </section>
-
-      <section className="grid gap-4 xl:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2">
-          <h3 className="text-sm font-semibold text-slate-900">Sales Trend</h3>
-          <p className="mb-4 text-xs text-slate-500">This period vs last period</p>
-          <SalesTrendChart points={dashboard?.sales_trend} loading={dashLoading} />
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-900">Top 5 Best Selling Products</h3>
-          <p className="mb-4 text-xs text-slate-500">By revenue in selected period</p>
-          <DonutChart segments={topProductSegments} loading={dashLoading} />
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-3 lg:col-span-1 xl:col-span-1">
-          <h3 className="text-sm font-semibold text-slate-900">Sales by Channel</h3>
-          <p className="mb-4 text-xs text-slate-500">Distribution across sales channels</p>
-          <DonutChart segments={channelSegments} loading={dashLoading} />
-        </div>
-      </section>
-
-      <AiAssistPanel context="reports" title="Reports assistant" />
     </CatalogPageShell>
   );
 }

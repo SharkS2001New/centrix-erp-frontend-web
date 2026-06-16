@@ -6,8 +6,6 @@ import { PrimaryButton } from "@/components/catalog/catalog-shared";
 
 const PROVIDER_LABELS = {
   quickbooks: "QuickBooks Online",
-  xero: "Xero",
-  sage: "Sage",
 };
 
 export function ExternalAccountingIntegrationPanel({ provider = "quickbooks", saving, setMessage, setError }) {
@@ -37,17 +35,10 @@ export function ExternalAccountingIntegrationPanel({ provider = "quickbooks", sa
     setWorking(true);
     setError(null);
     try {
-      if (provider === "quickbooks") {
-        const res = await apiRequest("/accounting/quickbooks/connect-url");
-        if (res.authorization_url) {
-          window.location.href = res.authorization_url;
-        }
-        return;
+      const res = await apiRequest("/accounting/quickbooks/connect-url");
+      if (res.authorization_url) {
+        window.location.href = res.authorization_url;
       }
-
-      await apiRequest(`/accounting/${provider}/connect-stub`, { method: "POST" });
-      setMessage(`${label} connected (demo stub).`);
-      await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : `Failed to connect ${label}`);
     } finally {
@@ -59,11 +50,7 @@ export function ExternalAccountingIntegrationPanel({ provider = "quickbooks", sa
     setWorking(true);
     setError(null);
     try {
-      const path =
-        provider === "quickbooks"
-          ? "/accounting/quickbooks/disconnect"
-          : `/accounting/${provider}/disconnect`;
-      await apiRequest(path, { method: "POST" });
+      await apiRequest("/accounting/quickbooks/disconnect", { method: "POST" });
       setMessage(`${label} disconnected.`);
       await load();
     } catch (e) {
@@ -106,10 +93,7 @@ export function ExternalAccountingIntegrationPanel({ provider = "quickbooks", sa
             ) : null}
           </p>
           {provider !== "quickbooks" ? (
-            <p className="text-xs">
-              {label} uses demo stub export until live API credentials are configured (
-              {provider === "xero" ? "XERO_CLIENT_ID" : "SAGE_CLIENT_ID"}).
-            </p>
+            <p className="text-xs">Only QuickBooks Online is supported for external accounting.</p>
           ) : null}
           <div className="flex flex-wrap gap-2">
             {connected ? (

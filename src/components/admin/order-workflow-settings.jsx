@@ -8,6 +8,7 @@ import {
   sanitizeWorkflowReferences,
   workflowPipelineSteps,
 } from "@/lib/order-workflow";
+import { STOCK_DEDUCT_TIMING_OPTIONS } from "@/lib/sales-settings";
 
 const CHANNELS = [
   { id: "pos", label: "POS" },
@@ -82,7 +83,14 @@ export function orderWorkflowFromApi(sales) {
   });
 }
 
-export function OrderWorkflowSettingsEditor({ workflow, onChange, showCheckoutOnCreate = true }) {
+export function OrderWorkflowSettingsEditor({
+  workflow,
+  onChange,
+  showCheckoutOnCreate = true,
+  stockDeductOn = "order_completed",
+  onStockDeductOnChange,
+  distributionOpsEnabled = false,
+}) {
   const wf = workflow ?? DEFAULT_ORDER_WORKFLOW;
   const saveOrderMode = !showCheckoutOnCreate;
   const [stepToAdd, setStepToAdd] = useState("");
@@ -348,6 +356,56 @@ export function OrderWorkflowSettingsEditor({ workflow, onChange, showCheckoutOn
               </Field>
             ))}
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stock deduction</p>
+        <p className="mt-1 text-xs text-slate-600">
+          Controls when inventory is reduced for POS checkout and order workflow transitions. Trip
+          options apply when distribution operations are enabled.
+        </p>
+        <div className="mt-3 space-y-3">
+          <Field label="Deduct stock when">
+            <select
+              className={inputClassName()}
+              value={stockDeductOn}
+              onChange={(e) => onStockDeductOnChange?.(e.target.value)}
+            >
+              {STOCK_DEDUCT_TIMING_OPTIONS.filter(
+                (opt) =>
+                  opt.value === "order_completed" ||
+                  (distributionOpsEnabled && opt.value !== "order_completed"),
+              ).map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {stockDeductOn === "order_completed" ? (
+            <Field label="Deduct at order status">
+              <select
+                className={inputClassName()}
+                value={wf.deduct_stock_on ?? "completed"}
+                onChange={(e) => patch({ deduct_stock_on: e.target.value })}
+              >
+                {CONFIGURABLE_STATUS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {stepLabel(wf, o.value)}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                POS checkout may deduct immediately unless the order is saved without payment.
+              </p>
+            </Field>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Stock is held until the loading list is locked or the trip departs. Order workflow
+              status transitions will not reduce inventory.
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { CatalogPageShell, Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
 
 function emptySpec(sourceKey) {
   return {
@@ -309,8 +308,6 @@ export function ReportBuilderScreen() {
           </section>
         </div>
       </div>
-
-      <AiAssistPanel context="report_builder" title="Report builder assistant" />
     </CatalogPageShell>
   );
 }

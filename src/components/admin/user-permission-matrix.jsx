@@ -1,5 +1,7 @@
 "use client";
 
+import { normalizePermissionId } from "@/lib/permission-ids";
+
 const ACTION_LABELS = {
   view: "View",
   create: "Create",
@@ -11,15 +13,18 @@ const ACTION_LABELS = {
 const ACTION_ORDER = ["view", "create", "edit", "delete", "approve"];
 
 function effectiveHas(roleIds, grantedIds, deniedIds, permId) {
-  if (deniedIds.has(permId)) return false;
-  return roleIds.has(permId) || grantedIds.has(permId);
+  const id = normalizePermissionId(permId);
+  if (id == null) return false;
+  if (deniedIds.has(id)) return false;
+  return roleIds.has(id) || grantedIds.has(id);
 }
 
 function cellState(roleIds, grantedIds, deniedIds, permId) {
-  if (!permId) return "none";
-  if (deniedIds.has(permId)) return "denied";
-  if (grantedIds.has(permId) && !roleIds.has(permId)) return "granted";
-  if (roleIds.has(permId)) return "role";
+  const id = normalizePermissionId(permId);
+  if (id == null) return "none";
+  if (deniedIds.has(id)) return "denied";
+  if (grantedIds.has(id) && !roleIds.has(id)) return "granted";
+  if (roleIds.has(id)) return "role";
   return "off";
 }
 
@@ -101,7 +106,7 @@ export function UserPermissionMatrix({
                                   type="checkbox"
                                   checked={checked}
                                   disabled={readOnly}
-                                  onChange={() => onToggle?.(perm.id)}
+                                  onChange={() => onToggle?.(normalizePermissionId(perm.id))}
                                   title={perm.permission_name}
                                   className={checkboxClass(state)}
                                 />
@@ -125,17 +130,22 @@ export function UserPermissionMatrix({
 }
 
 export function toggleUserPermissionOverride(permId, roleIds, grantedIds, deniedIds) {
+  const id = normalizePermissionId(permId);
+  if (id == null) {
+    return { grantedIds, deniedIds };
+  }
+
   const nextGranted = new Set(grantedIds);
   const nextDenied = new Set(deniedIds);
-  const fromRole = roleIds.has(permId);
+  const fromRole = roleIds.has(id);
 
   if (fromRole) {
-    if (nextDenied.has(permId)) nextDenied.delete(permId);
-    else nextDenied.add(permId);
-  } else if (nextGranted.has(permId)) {
-    nextGranted.delete(permId);
+    if (nextDenied.has(id)) nextDenied.delete(id);
+    else nextDenied.add(id);
+  } else if (nextGranted.has(id)) {
+    nextGranted.delete(id);
   } else {
-    nextGranted.add(permId);
+    nextGranted.add(id);
   }
 
   return { grantedIds: nextGranted, deniedIds: nextDenied };

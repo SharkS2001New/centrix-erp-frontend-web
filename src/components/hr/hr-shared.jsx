@@ -1,5 +1,8 @@
 "use client";
 
+import { formatOrgCurrency, formatOrgCurrencyCompact, formatOrgDate } from "@/lib/format";
+import { GENERAL_DEFAULTS } from "@/lib/general-settings";
+
 export const LOCKED_COUNTRY = "Kenya";
 export const LOCKED_NATIONALITY = "Kenyan";
 
@@ -100,7 +103,66 @@ export const EMPTY_EMPLOYEE_FORM = {
   housing_levy_number: "",
   is_active: true,
   payment_accounts: defaultPaymentAccountsForNewEmployee(),
+  emergency_contacts: [createEmptyEmergencyContact({ isPrimary: true })],
+  next_of_kin: createEmptyNextOfKin(),
 };
+
+export function createEmptyEmergencyContact({ isPrimary = false } = {}) {
+  return {
+    id: null,
+    _key: newPaymentAccountKey(),
+    full_name: "",
+    relationship: "",
+    phone: "",
+    email: "",
+    address: "",
+    is_primary: isPrimary,
+  };
+}
+
+export function createEmptyNextOfKin() {
+  return {
+    full_name: "",
+    relationship: "",
+    national_id: "",
+    phone: "",
+    address: "",
+  };
+}
+
+export function emergencyContactsToForm(contacts = []) {
+  const list = Array.isArray(contacts) ? contacts : [];
+  if (list.length === 0) {
+    return [createEmptyEmergencyContact({ isPrimary: true })];
+  }
+  const mapped = list.map((c) => ({
+    id: c.id ?? null,
+    _key: String(c.id ?? newPaymentAccountKey()),
+    full_name: c.full_name ?? "",
+    relationship: c.relationship ?? "",
+    phone: c.phone ?? "",
+    email: c.email ?? "",
+    address: c.address ?? "",
+    is_primary: !!c.is_primary,
+  }));
+  if (!mapped.some((c) => c.is_primary)) {
+    mapped[0] = { ...mapped[0], is_primary: true };
+  }
+  return mapped;
+}
+
+export function nextOfKinToForm(nextOfKin) {
+  if (!nextOfKin?.full_name && !nextOfKin?.phone) {
+    return createEmptyNextOfKin();
+  }
+  return {
+    full_name: nextOfKin.full_name ?? "",
+    relationship: nextOfKin.relationship ?? "",
+    national_id: nextOfKin.national_id ?? "",
+    phone: nextOfKin.phone ?? "",
+    address: nextOfKin.address ?? "",
+  };
+}
 
 export function employeeBankAccounts(employee) {
   return employee?.bank_accounts ?? employee?.bankAccounts ?? [];
@@ -245,6 +307,36 @@ export function validatePaymentAccounts(accounts) {
   return errors;
 }
 
+export function validateEmergencyContacts(contacts) {
+  const errors = {};
+  (contacts ?? []).forEach((contact, i) => {
+    const hasAny =
+      contact.full_name?.trim() ||
+      contact.phone?.trim() ||
+      contact.email?.trim() ||
+      contact.address?.trim() ||
+      contact.relationship?.trim();
+    if (!hasAny) return;
+    if (!contact.full_name?.trim()) errors[`emergency_${i}_full_name`] = "Contact name is required.";
+    if (!contact.phone?.trim()) errors[`emergency_${i}_phone`] = "Contact phone is required.";
+  });
+  return errors;
+}
+
+export function validateNextOfKin(nextOfKin) {
+  const errors = {};
+  const hasAny =
+    nextOfKin?.full_name?.trim() ||
+    nextOfKin?.phone?.trim() ||
+    nextOfKin?.national_id?.trim() ||
+    nextOfKin?.address?.trim() ||
+    nextOfKin?.relationship?.trim();
+  if (!hasAny) return errors;
+  if (!nextOfKin.full_name?.trim()) errors.nok_full_name = "Next of kin name is required.";
+  if (!nextOfKin.phone?.trim()) errors.nok_phone = "Next of kin phone is required.";
+  return errors;
+}
+
 export const EMPTY_DEPARTMENT_FORM = {
   department_code: "",
   department_name: "",
@@ -306,20 +398,13 @@ export const EMPLOYMENT_TYPE_OPTIONS = [
   { value: "intern", label: "Intern" },
 ];
 
-export function formatHrKes(value) {
-  if (value == null || value === "") return "—";
-  const n = Number(value);
-  if (n >= 1_000_000) return `KES ${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `KES ${(n / 1_000).toFixed(0)}K`;
-  return `KES ${n.toLocaleString("en-KE", { maximumFractionDigits: 0 })}`;
+export function formatHrKes(value, settings = GENERAL_DEFAULTS) {
+  return formatOrgCurrencyCompact(value, settings);
 }
 
-export function formatHrKesFull(value) {
+export function formatHrKesFull(value, settings = GENERAL_DEFAULTS) {
   if (value == null || value === "") return "—";
-  return `KES ${Number(value).toLocaleString("en-KE", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`;
+  return formatOrgCurrency(value, settings);
 }
 
 export function composeEmployeeDisplayName(source) {
@@ -382,6 +467,8 @@ export function employeeToForm(employee) {
     housing_levy_number: employee.housing_levy_number ?? "",
     is_active: employee.is_active !== false && employee.employment_status !== "terminated",
     payment_accounts: paymentAccountsToForm(bankAccounts, employee.employment_type ?? "permanent"),
+    emergency_contacts: emergencyContactsToForm(employee.emergency_contacts ?? employee.emergencyContacts),
+    next_of_kin: nextOfKinToForm(employee.next_of_kin ?? employee.nextOfKin),
   };
 }
 
@@ -420,6 +507,7 @@ export const EMPLOYEE_FORM_TABS = [
   { id: "contact", label: "Contact" },
   { id: "employment", label: "Employment" },
   { id: "payment", label: "Bank & payment" },
+  { id: "emergency", label: "Emergency & kin" },
   { id: "payroll", label: "Payroll & tax" },
 ];
 
@@ -445,6 +533,10 @@ export function validateEmployeeTab(tabId, form, { showBranchSelect = false } = 
   }
   if (tabId === "payment") {
     Object.assign(errors, validatePaymentAccounts(form.payment_accounts));
+  }
+  if (tabId === "emergency") {
+    Object.assign(errors, validateEmergencyContacts(form.emergency_contacts));
+    Object.assign(errors, validateNextOfKin(form.next_of_kin));
   }
   if (tabId === "payroll") {
     if (form.base_salary === "" || Number(form.base_salary) < 0) {
@@ -833,12 +925,16 @@ export function EmployeeStatusBadge({ active, status }) {
 export function PayrollRunStatusBadge({ status }) {
   const styles = {
     draft: "bg-slate-100 text-slate-700",
+    pending_approval: "bg-amber-50 text-amber-800",
+    approved: "bg-indigo-50 text-indigo-800",
     processed: "bg-[#E6F1FB] text-[#0C447C]",
     paid: "bg-[#EAF3DE] text-[#27500A]",
     void: "bg-red-50 text-red-800",
   };
   const labels = {
     draft: "Draft",
+    pending_approval: "Awaiting approval",
+    approved: "Approved",
     processed: "Processed",
     paid: "Completed",
     void: "Void",

@@ -171,12 +171,11 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
                   <Field label="External provider">
                     <select
                       className={inputClassName()}
-                      value={form.accounting_provider || "quickbooks"}
-                      onChange={(e) => setForm((f) => ({ ...f, accounting_provider: e.target.value }))}
+                      value="quickbooks"
+                      disabled
+                      onChange={() => {}}
                     >
                       <option value="quickbooks">QuickBooks Online</option>
-                      <option value="xero">Xero</option>
-                      <option value="sage">Sage</option>
                     </select>
                   </Field>
                   <Field label="Sync direction">
@@ -334,6 +333,15 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
                 </span>
               </div>
             ) : null}
+
+            <div className="mt-4">
+              <Toggle
+                label="Enable STK push at POS"
+                description="When enabled, cashiers can send Lipa na M-Pesa STK prompts from the POS payment dialog. When disabled, only manual paybill / check payment is available."
+                checked={mpesa.enable_stk_push !== false}
+                onChange={(v) => setMpesa("enable_stk_push", v)}
+              />
+            </div>
 
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <Field label="Environment">

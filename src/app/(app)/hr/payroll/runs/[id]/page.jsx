@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { DetailDrawer, IconButton, StatCard } from "@/components/catalog/catalog-shared";
+import { P } from "@/lib/permission-codes";
+import { DetailDrawer, IconButton, PrimaryButton, StatCard } from "@/components/catalog/catalog-shared";
 import {
   PayrollBreakdownPanel,
   PayrollRunStatusBadge,
@@ -20,8 +21,9 @@ import {
 export default function PayrollRunDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const admin = isAdminUser(user);
+  const canApprove = hasPermission(P.hr.payroll.approve);
   const runId = Number(params.id);
 
   const [run, setRun] = useState(null);
@@ -85,6 +87,37 @@ export default function PayrollRunDetailPage() {
     setLineDetail(null);
   }
 
+  async function approveRun() {
+    setError(null);
+    try {
+      await apiRequest(`/payroll/runs/${runId}/approve`, { method: "POST" });
+      await loadData();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Approve failed");
+    }
+  }
+
+  async function rejectRun() {
+    if (!confirm("Reject this payroll run?")) return;
+    setError(null);
+    try {
+      await apiRequest(`/payroll/runs/${runId}/reject`, { method: "POST" });
+      await loadData();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Reject failed");
+    }
+  }
+
+  async function processRun() {
+    setError(null);
+    try {
+      await apiRequest(`/payroll/runs/${runId}/process-auto`, { method: "POST", body: {} });
+      await loadData();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Process failed");
+    }
+  }
+
   async function deleteRun() {
     if (!payrollRunCanDelete(run)) {
       setError(payrollRunDeleteLockHint(run) ?? "This payroll run can no longer be deleted.");
@@ -141,19 +174,40 @@ export default function PayrollRunDetailPage() {
                 <PayrollRunStatusBadge status={run.status} />
               </div>
             </div>
-            {admin && payrollRunCanDelete(run) ? (
-              <button
-                type="button"
-                onClick={deleteRun}
-                className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-              >
-                Delete run
-              </button>
-            ) : admin ? (
-              <p className="max-w-xs text-right text-xs text-slate-500">
-                {payrollRunDeleteLockHint(run)}
-              </p>
-            ) : null}
+            <div className="flex flex-wrap gap-2">
+              {run.status === "pending_approval" && canApprove ? (
+                <>
+                  <PrimaryButton type="button" onClick={approveRun} showIcon={false}>
+                    Approve
+                  </PrimaryButton>
+                  <button
+                    type="button"
+                    onClick={rejectRun}
+                    className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                  >
+                    Reject
+                  </button>
+                </>
+              ) : null}
+              {run.status === "approved" ? (
+                <PrimaryButton type="button" onClick={processRun} showIcon={false}>
+                  Process payroll
+                </PrimaryButton>
+              ) : null}
+              {admin && payrollRunCanDelete(run) ? (
+                <button
+                  type="button"
+                  onClick={deleteRun}
+                  className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                >
+                  Delete run
+                </button>
+              ) : admin ? (
+                <p className="max-w-xs text-right text-xs text-slate-500">
+                  {payrollRunDeleteLockHint(run)}
+                </p>
+              ) : null}
+            </div>
           </div>
 
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -13,7 +13,6 @@ import {
 import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
 import { useAuth } from "@/contexts/auth-context";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
-import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
 
 const PAGE_SIZE = 10;
 const COLUMN_STORAGE_KEY = "pos-erp-products-visible-columns";
@@ -735,8 +734,6 @@ export default function ProductsPage() {
         }}
         onConfirm={confirmDelete}
       />
-
-      <AiAssistPanel context="products" title="Products assistant" />
     </div>
   );
 }

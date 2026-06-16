@@ -94,6 +94,14 @@ export default function VehicleProfilePage() {
                 <DetailRow label="Registration" value={vehicle.plate_number || "—"} mono />
                 <DetailRow label="Vehicle code" value={vehicle.vehicle_code} mono />
                 <DetailRow label="Name" value={vehicle.vehicle_name} />
+                <DetailRow
+                  label="Max weight"
+                  value={vehicle.max_weight_kg ? `${vehicle.max_weight_kg} kg` : "—"}
+                />
+                <DetailRow
+                  label="Max volume"
+                  value={vehicle.max_volume_m3 ? `${vehicle.max_volume_m3} m³` : "—"}
+                />
                 <DetailRow label="Branch" value={vehicle.branch?.branch_name ?? "—"} />
                 <DetailRow label="Created" value={formatShortDate(vehicle.created_at)} />
               </dl>

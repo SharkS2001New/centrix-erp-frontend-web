@@ -264,6 +264,28 @@ export default function VehiclesPage() {
             placeholder="KBX123A"
           />
         </Field>
+        <Field label="Max load weight (kg)">
+          <input
+            type="number"
+            min="0"
+            step="any"
+            value={form.max_weight_kg}
+            onChange={(e) => updateField("max_weight_kg", e.target.value)}
+            className={inputClassName()}
+            placeholder="e.g. 3500"
+          />
+        </Field>
+        <Field label="Max volume (m³)">
+          <input
+            type="number"
+            min="0"
+            step="any"
+            value={form.max_volume_m3}
+            onChange={(e) => updateField("max_volume_m3", e.target.value)}
+            className={inputClassName()}
+            placeholder="Optional"
+          />
+        </Field>
         <div className="flex items-center justify-between border-t border-slate-200 pt-3">
           <span className="text-sm text-slate-900">Status</span>
           <div className="flex gap-4 text-sm">

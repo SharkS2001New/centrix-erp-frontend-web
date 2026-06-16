@@ -19,6 +19,7 @@ export const QUICKBOOKS_DEFAULTS = {
 };
 
 export const MPESA_DEFAULTS = {
+  enable_stk_push: true,
   env: "sandbox",
   consumer_key: "",
   consumer_secret: "",
@@ -46,6 +47,11 @@ export function isKraDeviceEnabled(moduleSettings) {
   return Boolean(mergeFinanceSettings(moduleSettings).enable_kra_device);
 }
 
+export function isStkPushEnabled(moduleSettings) {
+  const mpesa = mergeFinanceSettings(moduleSettings).mpesa ?? MPESA_DEFAULTS;
+  return mpesa.enable_stk_push !== false;
+}
+
 export function shouldSubmitKraOnCheckout(moduleSettings) {
   const finance = mergeFinanceSettings(moduleSettings);
   if (!finance.enable_kra_device) {
@@ -67,9 +73,10 @@ export function financeFormFromApi(res) {
     kra_plu_register_path: String(finance.kra_plu_register_path ?? "/api/register-plu"),
     default_submit_kra: finance.default_submit_kra !== false,
     accounting_mode: finance.accounting_mode === "external" ? "external" : "native",
-    accounting_provider: finance.accounting_provider ?? "",
+    accounting_provider: finance.accounting_mode === "external" ? "quickbooks" : "",
     accounting_sync_direction: finance.accounting_sync_direction ?? "export",
     mpesa: {
+      enable_stk_push: mpesa.enable_stk_push !== false,
       env: mpesa.env === "live" ? "live" : "sandbox",
       consumer_key: String(mpesa.consumer_key ?? ""),
       consumer_secret: String(mpesa.consumer_secret ?? ""),
@@ -109,10 +116,11 @@ export function financePayloadFromForm(form) {
     kra_plu_register_path: form.kra_plu_register_path.trim() || "/api/register-plu",
     default_submit_kra: Boolean(form.default_submit_kra),
     accounting_mode: form.accounting_mode === "external" ? "external" : "native",
-    accounting_provider: form.accounting_mode === "external" ? form.accounting_provider || null : null,
+    accounting_provider: form.accounting_mode === "external" ? "quickbooks" : null,
     accounting_sync_direction: form.accounting_sync_direction || "export",
     mpesa: {
       ...mpesa,
+      enable_stk_push: Boolean(form.mpesa?.enable_stk_push),
       consumer_key: mpesa.consumer_key.trim(),
       shortcode: mpesa.shortcode.trim(),
       till_number: mpesa.till_number.trim(),

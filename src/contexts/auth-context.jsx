@@ -20,6 +20,8 @@ import {
 } from "@/lib/auth-storage";
 import { clearStoredActiveSession } from "@/lib/pos-till";
 import { getCompanyCode, setStoredCompanyCode } from "@/lib/tenant-config";
+import { resolveGeneralSettings } from "@/lib/format";
+import { isOrgScopedPermission, isPlatformOrganization } from "@/lib/admin-scope";
 import { WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
@@ -87,7 +89,7 @@ export function AuthProvider({ children }) {
       const res = await apiRequest("/auth/login", {
         method: "POST",
         body: {
-          company_code: companyCode.trim().toUpperCase(),
+          company_code: companyCode.trim() ? companyCode.trim().toUpperCase() : "",
           username,
           password,
           client_id: getClientId(),
@@ -149,12 +151,20 @@ export function AuthProvider({ children }) {
       isModuleEnabled: (key) => capabilities?.modules?.[key] ?? false,
       isSuperAdmin: () => Boolean(user?.is_super_admin || capabilities?.is_super_admin),
       hasPermission: (code) => {
-        if (user?.is_super_admin || capabilities?.is_super_admin) return true;
+        const superAdmin = Boolean(user?.is_super_admin || capabilities?.is_super_admin);
+        if (superAdmin) {
+          if (isPlatformOrganization(organization) && isOrgScopedPermission(code)) {
+            return false;
+          }
+          return true;
+        }
         if (user?.is_admin || capabilities?.is_admin) return true;
         if (!code) return true;
         return capabilities?.permissions?.[code] ?? false;
       },
       isOrgWide: () => (capabilities?.access_scope ?? user?.access_scope) === "org" || user?.is_admin,
+      generalSettings: () => resolveGeneralSettings(capabilities),
+      sessionIdleMinutes: () => capabilities?.session_idle_minutes ?? 30,
     }),
     [
       user,

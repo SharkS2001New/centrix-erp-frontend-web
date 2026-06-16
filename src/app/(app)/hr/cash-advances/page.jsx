@@ -1,6 +1,8 @@
 "use client";
 
 import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
+import { P } from "@/lib/permission-codes";
 import {
   Field,
   formatShortDate,
@@ -11,6 +13,9 @@ import { HrCrudPage, HrSelectField } from "@/components/hr/hr-crud-page";
 import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-shared";
 
 export default function HrCashAdvancesPage() {
+  const { hasPermission } = useAuth();
+  const canApprove = hasPermission(P.hr.cash_advances.approve);
+
   return (
     <HrCrudPage
       title="Cash advances"
@@ -50,6 +55,32 @@ export default function HrCashAdvancesPage() {
         },
         { key: "status", label: "Status" },
       ]}
+      renderRowActions={(row, { reload }) =>
+        canApprove && row.status === "pending" ? (
+          <>
+            <button
+              type="button"
+              className="text-emerald-700 hover:underline"
+              onClick={async () => {
+                await apiRequest(`/employee-cash-advances/${row.id}/approve`, { method: "POST" });
+                reload();
+              }}
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              className="ml-3 text-red-600 hover:underline"
+              onClick={async () => {
+                await apiRequest(`/employee-cash-advances/${row.id}/reject`, { method: "POST" });
+                reload();
+              }}
+            >
+              Reject
+            </button>
+          </>
+        ) : null
+      }
       buildEmptyForm={(_, row) => ({
         employee_id: row?.employee_id != null ? String(row.employee_id) : "",
         advance_date: row?.advance_date?.slice?.(0, 10) ?? new Date().toISOString().slice(0, 10),
@@ -153,6 +184,7 @@ export default function HrCashAdvancesPage() {
             value={form.status}
             onChange={(v) => setForm((p) => ({ ...p, status: v }))}
             options={[
+              { value: "pending", label: "Pending approval" },
               { value: "open", label: "Open" },
               { value: "repaid", label: "Repaid" },
               { value: "cancelled", label: "Cancelled" },

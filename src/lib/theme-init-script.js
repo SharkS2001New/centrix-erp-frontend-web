@@ -1,2 +1,0 @@
-/** Inline theme bootstrap — must run before paint. Used only from root layout <head>. */
-export const themeInitScript = `(function(){try{var k="pos_erp_theme",s=localStorage.getItem(k),t=s==="dark"||s==="light"?s:"light",r=document.documentElement;r.dataset.theme=t;r.classList.remove("light","dark");r.classList.add(t);r.style.colorScheme=t}catch(e){document.documentElement.dataset.theme="light";document.documentElement.classList.add("light")}})();`;

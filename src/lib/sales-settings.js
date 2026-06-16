@@ -37,7 +37,14 @@ const SALES_DEFAULTS = {
   invoice_valid_days: 7,
   receipt_copies: 1,
   show_branch_on_receipt: true,
+  stock_deduct_on: "order_completed",
 };
+
+export const STOCK_DEDUCT_TIMING_OPTIONS = [
+  { value: "order_completed", label: "When order reaches workflow status" },
+  { value: "trip_load", label: "When loading list is locked (distribution)" },
+  { value: "trip_depart", label: "When trip departs (distribution)" },
+];
 
 /** Whether Mobile Orders appears in the sales sidebar and queue routes. */
 export function isMobileOrdersEnabled(moduleSettings) {
@@ -116,6 +123,16 @@ export function mergeSalesSettings(moduleSettings) {
     sales.allow_sell_from_store = false;
   }
   return sales;
+}
+
+/** Stock deduction timing — lives on sales settings; legacy distribution key is fallback. */
+export function resolveStockDeductTiming(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  if (sales.stock_deduct_on) {
+    return sales.stock_deduct_on;
+  }
+  const legacy = moduleSettings?.distribution?.deduct_stock_on;
+  return legacy || "order_completed";
 }
 
 export function getPosSalesConfig(moduleSettings, options = {}) {

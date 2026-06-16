@@ -1,5 +1,7 @@
-import { redirect } from "next/navigation";
+"use client";
 
-export default function FulfillmentIndexPage() {
-  redirect("/fulfillment/drivers");
+import { FulfillmentDashboardContent } from "@/components/dashboard/fulfillment-dashboard-content";
+
+export default function FulfillmentDashboardPage() {
+  return <FulfillmentDashboardContent />;
 }

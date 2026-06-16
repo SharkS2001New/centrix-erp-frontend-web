@@ -35,6 +35,7 @@ export function HrCrudPage({
   drawerWide = false,
   addButtonLabel = "Add new",
   drawerCreateTitle,
+  renderRowActions,
 }) {
   const { user, capabilities } = useAuth();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
@@ -213,6 +214,7 @@ export function HrCrudPage({
                       </td>
                     ))}
                     <td className="px-4 py-3 text-right">
+                      {renderRowActions ? renderRowActions(row, { reload: load }) : null}
                       <button
                         type="button"
                         onClick={() => openEdit(row)}

@@ -10,7 +10,6 @@ import {
   clearStoredCompanyCode,
   getDefaultCompanyCode,
   getStoredCompanyCode,
-  hasStoredCompanyCode,
 } from "@/lib/tenant-config";
 import {
   AuthError,
@@ -27,14 +26,22 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
   const reason = searchParams.get("reason");
 
-  const storedOrg = getStoredCompanyCode();
-  const [showOrgField, setShowOrgField] = useState(!hasStoredCompanyCode());
-  const [companyCode, setCompanyCode] = useState(storedOrg || getDefaultCompanyCode());
+  // SSR and first client paint must match — read localStorage only after mount.
+  const [showOrgField, setShowOrgField] = useState(true);
+  const [companyCode, setCompanyCode] = useState(() => getDefaultCompanyCode());
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
   const [sessionConflict, setSessionConflict] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const stored = getStoredCompanyCode();
+    if (stored) {
+      setCompanyCode(stored);
+      setShowOrgField(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (getToken()) {
@@ -69,7 +76,9 @@ export default function LoginPage() {
         setError(
           err instanceof ApiError
             ? err.message
-            : "Login failed. Is the API running on port 8000?",
+            : err instanceof Error
+              ? err.message
+              : "Login failed. Check that the API is reachable and try again.",
         );
       }
     } finally {
@@ -79,6 +88,11 @@ export default function LoginPage() {
 
   async function onSubmit(e) {
     e.preventDefault();
+    setError(null);
+    if (!companyCode.trim() && !username.includes("@")) {
+      setError("Organization code is required unless signing in with a platform admin email.");
+      return;
+    }
     await attemptLogin(false);
   }
 
@@ -98,8 +112,8 @@ export default function LoginPage() {
       title="POS / ERP"
       subtitle={
         showOrgField
-          ? "Sign in with your organization code, username, and password."
-          : "Sign in with your username and password."
+          ? "Sign in with your organization code and email or username. Platform admins can leave the org code blank and use their email."
+          : "Sign in with your email or username and password."
       }
     >
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
@@ -109,9 +123,8 @@ export default function LoginPage() {
               className={authInputClass("uppercase")}
               value={companyCode}
               onChange={(e) => setCompanyCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ""))}
-              placeholder="e.g. DEMO"
+              placeholder="e.g. DEMO (optional for platform admin)"
               autoComplete="organization"
-              required
             />
           </AuthField>
         ) : (
@@ -132,12 +145,13 @@ export default function LoginPage() {
           </div>
         )}
 
-        <AuthField label="Username">
+        <AuthField label="Email or username">
           <input
             className={authInputClass()}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
+            placeholder="you@company.com or username"
             required
           />
         </AuthField>

@@ -20,6 +20,8 @@ import {
   sumEmployeeYtd,
 } from "@/components/hr/hr-shared";
 import { EmployeeDocuments } from "@/components/hr/employee-documents";
+import { EmployeeEmergencyContactsPanel } from "@/components/hr/employee-emergency-contacts-panel";
+import { EmployeeKpisPanel } from "@/components/hr/employee-kpis-panel";
 import {
   EntityPhotoDisplay,
   employeePhotoFileUrl,
@@ -103,8 +105,6 @@ export default function EmployeeProfilePage() {
 
   const bankAccounts = employee ? employeeBankAccounts(employee) : [];
   const primaryBank = bankAccounts.find((b) => b.is_primary) ?? bankAccounts[0];
-  const primaryEmergency =
-    employee?.emergency_contacts?.find((c) => c.is_primary) ?? employee?.emergency_contacts?.[0];
 
   return (
     <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
@@ -160,6 +160,20 @@ export default function EmployeeProfilePage() {
               Edit employee
             </Link>
           </div>
+
+          {employee.employment_status !== "active" || employee.is_active === false ? (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              This employee is <strong>{employee.employment_status ?? "inactive"}</strong>
+              {employee.user ? (
+                <>
+                  {" "}
+                  — linked user <strong>{employee.user.username}</strong> cannot log in while the employee record is not active.
+                </>
+              ) : (
+                " — no linked system user."
+              )}
+            </div>
+          ) : null}
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -262,7 +276,7 @@ export default function EmployeeProfilePage() {
             )}
 
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-[15px] font-medium text-slate-900">Payment & contacts</h2>
+              <h2 className="text-[15px] font-medium text-slate-900">Payment methods</h2>
               <dl className="mt-4 space-y-3 text-sm">
                 <DetailRow
                   label="Primary payment"
@@ -287,26 +301,18 @@ export default function EmployeeProfilePage() {
                     </dd>
                   </div>
                 ) : null}
-                <DetailRow
-                  label="Emergency"
-                  value={
-                    primaryEmergency
-                      ? `${primaryEmergency.full_name} (${primaryEmergency.phone})`
-                      : "—"
-                  }
-                />
-                <DetailRow
-                  label="Next of kin"
-                  value={
-                    employee.next_of_kin?.full_name
-                      ? `${employee.next_of_kin.full_name} (${employee.next_of_kin.phone})`
-                      : "—"
-                  }
-                />
               </dl>
             </div>
 
+            <EmployeeEmergencyContactsPanel
+              employeeId={employeeId}
+              employee={employee}
+              onUpdated={setEmployee}
+            />
+
             <EmployeeDocuments employeeId={employee.id} />
+
+            <EmployeeKpisPanel employeeId={employee.id} />
 
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
               <div className="flex flex-wrap items-center justify-between gap-2">

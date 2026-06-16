@@ -36,6 +36,11 @@ import {
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { saleCustomerLabel } from "@/lib/sales";
 import { isMobileOrdersEnabled, isPosOrdersEnabled, orderDocumentPrintLabel } from "@/lib/sales-settings";
+import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
+import {
+  FulfillmentAssignmentDialog,
+  PodCaptureDialog,
+} from "@/components/fulfillment/fulfillment-assignment-dialog";
 
 const PAGE_SIZE = 15;
 const FILTER_CONTROL_CLASS = "h-[38px] w-full min-w-[10.5rem] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-black outline-none focus:border-[#185FA5]";
@@ -300,14 +305,19 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
     }));
   }
 
-  async function transitionOrder(sale, targetStatus) {
+  async function transitionOrder(sale, targetStatus, fulfillmentMeta) {
     if (!sale?.id) return;
+    if (targetStatus === "cancelled") {
+      if (!window.confirm("Cancel this order?")) return;
+    }
     setTransitionBusyId(sale.id);
     setActionMessage(null);
     try {
+      const body = { status: targetStatus };
+      if (fulfillmentMeta) body.fulfillment_meta = fulfillmentMeta;
       const updated = await apiRequest(`/sales/orders/${sale.id}/transition`, {
         method: "POST",
-        body: { status: targetStatus },
+        body,
       });
       patchSaleInState(updated);
       setActionMessage(`Order ${sale.order_num ?? sale.id} updated.`);
@@ -319,6 +329,26 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
     } finally {
       setTransitionBusyId(null);
     }
+  }
+
+  const fulfillment = useFulfillmentTransition({
+    capabilities,
+    onSuccess: (updated) => {
+      patchSaleInState(updated);
+      setActionMessage(`Order ${updated.order_num ?? updated.id} updated.`);
+      if (queueConfig?.lockStatusFilter && updated.status !== queueConfig.fixedStatusFilter) {
+        setRows((prev) => prev.filter((s) => s.id !== updated.id));
+      }
+    },
+    onError: (message) => setActionMessage(message),
+  });
+
+  function handleAdvance(sale, targetStatus) {
+    if (targetStatus === "cancelled") {
+      void transitionOrder(sale, targetStatus);
+      return;
+    }
+    fulfillment.requestTransition(sale, targetStatus);
   }
 
   function applyDateFilter() {
@@ -406,13 +436,13 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
     return buildOrderContextMenuItems({
       sale,
       workflow,
-      busy: transitionBusyId === sale.id,
+      busy: transitionBusyId === sale.id || fulfillment.busy,
       includePrint: contextMenu.includePrint !== false,
       printLabel,
       onView: () => viewOrder(sale),
       onPrint: () => void printOrder(sale),
-      onAdvance: (status) => void transitionOrder(sale, status),
-      onCancel: () => void transitionOrder(sale, "cancelled"),
+      onAdvance: (status) => void handleAdvance(sale, status),
+      onCancel: () => void handleAdvance(sale, "cancelled"),
     });
   }, [contextMenu, capabilities, transitionBusyId, printLabel]);
 
@@ -631,6 +661,31 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
           />
         </div>
       </div>
+
+      <FulfillmentAssignmentDialog
+        open={Boolean(fulfillment.assignDialog)}
+        sale={fulfillment.assignDialog?.sale}
+        targetStatus={fulfillment.assignDialog?.targetStatus}
+        drivers={fulfillment.drivers}
+        vehicles={fulfillment.vehicles}
+        routes={[...routeById.values()]}
+        busy={fulfillment.busy}
+        onClose={() => fulfillment.setAssignDialog(null)}
+        onConfirm={(meta) => {
+          const { sale, targetStatus } = fulfillment.assignDialog ?? {};
+          if (sale) void fulfillment.runTransition(sale, targetStatus, meta);
+        }}
+      />
+      <PodCaptureDialog
+        open={Boolean(fulfillment.podDialog)}
+        sale={fulfillment.podDialog?.sale}
+        busy={fulfillment.busy}
+        onClose={() => fulfillment.setPodDialog(null)}
+        onConfirm={(meta) => {
+          const { sale, targetStatus } = fulfillment.podDialog ?? {};
+          if (sale) void fulfillment.runTransition(sale, targetStatus, meta);
+        }}
+      />
     </CatalogPageShell>
   );
 }

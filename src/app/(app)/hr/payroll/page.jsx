@@ -250,11 +250,16 @@ export default function PayrollPage() {
         body: {
           pay_period_id: Number(runForm.pay_period_id),
           run_date: runForm.run_date,
-          status: "draft",
           total_gross: 0,
           total_net: 0,
         },
       });
+      if (created.status === "pending_approval") {
+        setRunDrawerOpen(false);
+        setRunForm(EMPTY_PAYROLL_RUN_FORM);
+        router.push(`/hr/payroll/runs/${created.id}`);
+        return;
+      }
       await apiRequest(`/payroll/runs/${created.id}/process-auto`, {
         method: "POST",
         body: {

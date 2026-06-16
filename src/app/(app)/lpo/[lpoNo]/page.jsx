@@ -17,6 +17,7 @@ import {
 } from "@/components/lpo/lpo-shared";
 import { LpoDetailOrderItemsTable } from "@/components/lpo/lpo-detail-order-items";
 import { LpoDetailActions, LpoWorkflowPanel } from "@/components/lpo/lpo-workflow";
+import { LpoAttachmentsPanel } from "@/components/lpo/lpo-attachments-panel";
 import { PaymentStatusBadge } from "@/components/suppliers/suppliers-shared";
 
 export default function LpoDetailPage() {
@@ -141,6 +142,7 @@ export default function LpoDetailPage() {
       ) : lpo ? (
         <div className="space-y-6">
           <LpoWorkflowPanel lpo={lpo} lpoNo={lpoNo} onUpdated={load} />
+          <LpoAttachmentsPanel lpoNo={lpoNo} />
 
           {!lpo.can_edit ? (
             <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">

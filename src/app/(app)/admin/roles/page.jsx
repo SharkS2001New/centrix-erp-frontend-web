@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { PermissionMatrix } from "@/components/admin/permission-matrix";
@@ -13,13 +13,13 @@ import {
   TrashIcon,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { normalizeRoleId, permissionIdSet } from "@/lib/permission-ids";
 
 export default function AdminRolesPage() {
   const [roles, setRoles] = useState([]);
-  const [permissions, setPermissions] = useState([]);
   const [permissionGroups, setPermissionGroups] = useState([]);
   const [selectedRoleId, setSelectedRoleId] = useState(null);
-  const [assignedIds, setAssignedIds] = useState(new Set());
+  const [assignedIds, setAssignedIds] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -27,62 +27,78 @@ export default function AdminRolesPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [roleName, setRoleName] = useState("");
   const [formError, setFormError] = useState(null);
+  const initialRolePicked = useRef(false);
 
   const selectedRole = useMemo(
-    () => roles.find((r) => r.id === selectedRoleId) ?? null,
+    () => roles.find((r) => normalizeRoleId(r.id) === selectedRoleId) ?? null,
     [roles, selectedRoleId],
   );
 
-  const matrix = permissionGroups;
-
   const loadRoles = useCallback(async () => {
     const res = await apiRequest("/roles", { searchParams: { per_page: 200 } });
-    const list = res.data ?? [];
-    setRoles(list);
-    if (!selectedRoleId && list.length) setSelectedRoleId(list[0].id);
-    return list;
-  }, [selectedRoleId]);
+    return res.data ?? [];
+  }, []);
 
   const loadPermissionsCatalog = useCallback(async () => {
     const res = await apiRequest("/roles/permissions/matrix");
-    setPermissions(res.permissions ?? []);
     setPermissionGroups(res.groups ?? []);
   }, []);
 
   const loadRolePermissions = useCallback(async (roleId) => {
-    if (!roleId) return;
-    const res = await apiRequest(`/roles/${roleId}/permissions`);
-    setAssignedIds(new Set(res.permission_ids ?? []));
+    const id = normalizeRoleId(roleId);
+    if (id == null) {
+      setAssignedIds(new Set());
+      return;
+    }
+    const res = await apiRequest(`/roles/${id}/permissions`);
+    setAssignedIds(permissionIdSet(res.permission_ids));
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const list = await loadRoles();
-      await loadPermissionsCatalog();
-      if (list[0]?.id) await loadRolePermissions(list[0].id);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load roles");
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    let cancelled = false;
+
+    async function bootstrap() {
+      setLoading(true);
+      setError(null);
+      try {
+        const list = await loadRoles();
+        if (cancelled) return;
+        setRoles(list);
+        await loadPermissionsCatalog();
+        if (cancelled) return;
+        if (!initialRolePicked.current && list.length > 0) {
+          initialRolePicked.current = true;
+          setSelectedRoleId(normalizeRoleId(list[0].id));
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof ApiError ? e.message : "Failed to load roles");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
-  }, [loadRoles, loadPermissionsCatalog, loadRolePermissions]);
+
+    bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadRoles, loadPermissionsCatalog]);
 
   useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    if (!selectedRoleId) return;
-    loadRolePermissions(selectedRoleId).catch(() => {});
+    if (selectedRoleId == null) return;
+    loadRolePermissions(selectedRoleId).catch((e) => {
+      setError(e instanceof ApiError ? e.message : "Failed to load role permissions");
+    });
   }, [selectedRoleId, loadRolePermissions]);
 
   function togglePermission(permissionId) {
+    const id = Number(permissionId);
+    if (!Number.isFinite(id)) return;
     setAssignedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(permissionId)) next.delete(permissionId);
-      else next.add(permissionId);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
@@ -90,7 +106,9 @@ export default function AdminRolesPage() {
   function toggleManyPermissionIds(permissionIds, checked) {
     setAssignedIds((prev) => {
       const next = new Set(prev);
-      for (const id of permissionIds) {
+      for (const raw of permissionIds) {
+        const id = Number(raw);
+        if (!Number.isFinite(id)) continue;
         if (checked) next.add(id);
         else next.delete(id);
       }
@@ -99,15 +117,17 @@ export default function AdminRolesPage() {
   }
 
   async function savePermissions() {
-    if (!selectedRoleId) return;
+    const roleId = normalizeRoleId(selectedRoleId);
+    if (roleId == null) return;
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
-      await apiRequest(`/roles/${selectedRoleId}/permissions`, {
+      const res = await apiRequest(`/roles/${roleId}/permissions`, {
         method: "PUT",
         body: { permission_ids: [...assignedIds] },
       });
+      setAssignedIds(permissionIdSet(res.permission_ids));
       setMessage("Permissions saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save permissions");
@@ -116,28 +136,31 @@ export default function AdminRolesPage() {
     }
   }
 
-  async function deleteRole(role = selectedRole) {
-    if (!role) return;
-    const count = role.users_count ?? 0;
+  async function deleteRole(role) {
+    const target = role ?? selectedRole;
+    if (!target) return;
+    const roleId = normalizeRoleId(target.id);
+    if (roleId == null) return;
+
+    const count = target.users_count ?? 0;
     if (count > 0) {
-      setError(`Cannot delete "${role.role_name}" — ${count} user(s) are still assigned. Reassign them first.`);
+      setError(`Cannot delete "${target.role_name}" — ${count} user(s) are still assigned. Reassign them first.`);
       return;
     }
-    const ok = window.confirm(`Delete role "${role.role_name}"? This cannot be undone.`);
+    const ok = window.confirm(`Delete role "${target.role_name}"? This cannot be undone.`);
     if (!ok) return;
 
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
-      await apiRequest(`/roles/${role.id}`, { method: "DELETE" });
-      const res = await apiRequest("/roles", { searchParams: { per_page: 200 } });
-      const list = res.data ?? [];
+      await apiRequest(`/roles/${roleId}`, { method: "DELETE" });
+      const list = await loadRoles();
       setRoles(list);
-      setSelectedRoleId(list[0]?.id ?? null);
-      if (list[0]?.id) await loadRolePermissions(list[0].id);
-      else setAssignedIds(new Set());
-      setMessage(`Role "${role.role_name}" deleted.`);
+      const nextId = list[0] ? normalizeRoleId(list[0].id) : null;
+      setSelectedRoleId(nextId);
+      if (nextId == null) setAssignedIds(new Set());
+      setMessage(`Role "${target.role_name}" deleted.`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to delete role");
     } finally {
@@ -160,8 +183,9 @@ export default function AdminRolesPage() {
       });
       setDrawerOpen(false);
       setRoleName("");
-      await loadRoles();
-      setSelectedRoleId(role.id);
+      const list = await loadRoles();
+      setRoles(list);
+      setSelectedRoleId(normalizeRoleId(role.id));
       setAssignedIds(new Set());
     } catch (e) {
       setFormError(e instanceof ApiError ? e.message : "Failed to create role");
@@ -202,29 +226,32 @@ export default function AdminRolesPage() {
             {loading ? (
               <li className="px-4 py-6 text-sm text-slate-500">Loading…</li>
             ) : (
-              roles.map((role) => (
-                <li key={role.id} className="flex items-center">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRoleId(role.id)}
-                    className={`min-w-0 flex-1 px-4 py-3 text-left text-sm transition ${
-                      selectedRoleId === role.id
-                        ? "bg-[#E6F1FB] font-medium text-[#185FA5]"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    {role.role_name}
-                  </button>
-                  <IconButton
-                    label="Delete role"
-                    danger
-                    onClick={() => deleteRole(role)}
-                    disabled={(role.users_count ?? 0) > 0 || saving}
-                  >
-                    <TrashIcon />
-                  </IconButton>
-                </li>
-              ))
+              roles.map((role) => {
+                const roleId = normalizeRoleId(role.id);
+                return (
+                  <li key={roleId ?? role.id} className="flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRoleId(roleId)}
+                      className={`min-w-0 flex-1 px-4 py-3 text-left text-sm transition ${
+                        selectedRoleId === roleId
+                          ? "bg-[#E6F1FB] font-medium text-[#185FA5]"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      {role.role_name}
+                    </button>
+                    <IconButton
+                      label="Delete role"
+                      danger
+                      onClick={() => deleteRole(role)}
+                      disabled={(role.users_count ?? 0) > 0 || saving}
+                    >
+                      <TrashIcon />
+                    </IconButton>
+                  </li>
+                );
+              })
             )}
           </ul>
         </div>
@@ -242,7 +269,7 @@ export default function AdminRolesPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={deleteRole}
+                    onClick={() => deleteRole()}
                     disabled={saving || (selectedRole.users_count ?? 0) > 0}
                     title={
                       (selectedRole.users_count ?? 0) > 0
@@ -264,7 +291,7 @@ export default function AdminRolesPage() {
                   Permissions by module & feature
                 </p>
                 <PermissionMatrix
-                  groups={matrix}
+                  groups={permissionGroups}
                   assignedIds={assignedIds}
                   onToggle={togglePermission}
                   onToggleMany={toggleManyPermissionIds}

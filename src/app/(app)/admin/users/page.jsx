@@ -7,6 +7,7 @@ import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { AdminGuard } from "@/components/admin/admin-guard";
 import { UserDetailModal } from "@/components/admin/user-detail-modal";
 import { toggleUserPermissionOverride } from "@/components/admin/user-permission-matrix";
+import { permissionIdSet } from "@/lib/permission-ids";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import {
   ActiveBadge,
@@ -98,9 +99,9 @@ export default function AdminUsersPage() {
     setPermError(null);
     try {
       const res = await apiRequest(`/users/${userId}/permissions`);
-      setRolePermissionIds(new Set(res.role_permission_ids ?? []));
-      setGrantedIds(new Set(res.granted_permission_ids ?? []));
-      setDeniedIds(new Set(res.denied_permission_ids ?? []));
+      setRolePermissionIds(permissionIdSet(res.role_permission_ids));
+      setGrantedIds(permissionIdSet(res.granted_permission_ids));
+      setDeniedIds(permissionIdSet(res.denied_permission_ids));
     } catch (e) {
       setPermError(e instanceof ApiError ? e.message : "Failed to load permissions");
     } finally {

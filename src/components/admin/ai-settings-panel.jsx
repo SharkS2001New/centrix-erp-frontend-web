@@ -65,7 +65,7 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage }) {
             checked={form.enabled}
             onChange={(enabled) => setForm((f) => ({ ...f, enabled }))}
             label="Enable AI assistant"
-            description="When off, users in this organization will not see the AI chat button."
+            description="When on, users see a floating assistant on every screen — it can guide navigation, answer system questions, and create orders, employees, or reports (with permission). Off-topic questions are declined."
           />
 
           {form.enabled ? (

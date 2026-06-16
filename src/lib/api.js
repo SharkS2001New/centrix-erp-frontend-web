@@ -185,8 +185,59 @@ export function employeeDocumentFilePath(employeeId, documentId) {
   return `/employees/${employeeId}/documents/${documentId}/file`;
 }
 
+export function lpoAttachmentFilePath(attachmentId) {
+  return `/lpo-attachments/${attachmentId}/file`;
+}
+
 export async function uploadEmployeePhoto(employeeId, file) {
   return apiUpload(`/employees/${employeeId}/photo`, file);
+}
+
+export async function capturePodDelivery(saleId, payload) {
+  const url = new URL(`${baseUrl()}/sales/orders/${saleId}/pod`);
+  const token = getToken();
+  const formData = new FormData();
+
+  const recipient = payload.recipient_name ?? payload.pod_signer_name;
+  if (recipient) formData.append("recipient_name", recipient);
+  if (payload.notes ?? payload.pod_notes) formData.append("notes", payload.notes ?? payload.pod_notes);
+  if (payload.trip_id) formData.append("trip_id", String(payload.trip_id));
+  if (payload.status) formData.append("status", payload.status);
+  if (payload.gps_lat != null) formData.append("gps_lat", String(payload.gps_lat));
+  if (payload.gps_lng != null) formData.append("gps_lng", String(payload.gps_lng));
+  if (payload.lines?.length) formData.append("lines", JSON.stringify(payload.lines));
+  if (payload.photo instanceof File) formData.append("photo", payload.photo);
+  if (payload.signature instanceof File) formData.append("signature", payload.signature);
+
+  const headers = { Accept: "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(url.toString(), { method: "POST", headers, body: formData });
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+  if (!res.ok) {
+    const msg =
+      typeof data === "object" && data !== null && typeof data.message === "string"
+        ? data.message
+        : res.statusText || "POD capture failed";
+    throw new ApiError(msg, res.status, data);
+  }
+  return data;
+}
+
+export function podRecordPhotoPath(podRecordId) {
+  return `/pod-records/${podRecordId}/photo/file`;
+}
+
+export function podRecordSignaturePath(podRecordId) {
+  return `/pod-records/${podRecordId}/signature/file`;
 }
 
 /** Multipart with extra fields (e.g. employee documents). */

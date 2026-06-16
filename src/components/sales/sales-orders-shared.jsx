@@ -26,6 +26,7 @@ import {
   salePaymentMethodDisplay,
   saleStatusLabel,
 } from "@/lib/sales";
+import { getSaleDriverId, getSaleVehicleId } from "@/components/fulfillment/fulfillment-shared";
 import {
   saleRouteCell,
   saleDeliveryDateCell,
@@ -982,8 +983,18 @@ export function OrderPaymentsSection({
   );
 }
 
-export function OrderMetaPanel({ sale, workflow }) {
+export function OrderMetaPanel({ sale, workflow, routeById, driverById, vehicleById }) {
   if (!sale) return null;
+
+  const driverId = getSaleDriverId(sale);
+  const vehicleId = getSaleVehicleId(sale);
+  const routeName = sale.route_id != null ? routeById?.get?.(sale.route_id)?.route_name : null;
+  const driverName = driverId != null ? driverById?.get?.(driverId)?.full_name : null;
+  const vehicleLabel =
+    vehicleId != null
+      ? vehicleById?.get?.(vehicleId)?.plate_number ?? vehicleById?.get?.(vehicleId)?.vehicle_name
+      : null;
+  const meta = sale.fulfillment_meta;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -993,11 +1004,17 @@ export function OrderMetaPanel({ sale, workflow }) {
         <SummaryRow label="Payment status" value={PAYMENT_STATUS_LABELS[sale.payment_status] ?? sale.payment_status ?? "—"} />
         <SummaryRow label="Channel" value={String(sale.channel ?? "—").toUpperCase()} />
         <SummaryRow label="Created via" value={orderSourceLabel(sale.order_source, sale.channel)} />
+        {routeName ? <SummaryRow label="Route" value={routeName} /> : null}
+        {driverName ? <SummaryRow label="Driver" value={driverName} /> : null}
+        {vehicleLabel ? <SummaryRow label="Vehicle" value={vehicleLabel} /> : null}
         {sale.required_date ? (
           <SummaryRow label="Required date" value={formatShortDate(sale.required_date)} />
         ) : null}
         {sale.delivery_date ? (
           <SummaryRow label="Delivery date" value={formatShortDate(sale.delivery_date)} />
+        ) : null}
+        {meta?.pod_signer_name ? (
+          <SummaryRow label="Received by" value={meta.pod_signer_name} />
         ) : null}
         {sale.completed_at ? (
           <SummaryRow label="Completed" value={formatShortDate(sale.completed_at)} />

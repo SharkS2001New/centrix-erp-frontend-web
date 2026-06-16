@@ -108,7 +108,7 @@ export default function AccountMappingsPage() {
   return (
     <CatalogPageShell
       title="Account Mappings"
-      subtitle={`Accounting > Map local GL to ${provider === "quickbooks" ? "QuickBooks" : provider === "xero" ? "Xero" : "Sage"}`}
+      subtitle="Accounting > Map local GL to QuickBooks"
       actions={
         <PrimaryButton type="button" showIcon={false} disabled={saving} onClick={() => void save()}>
           {saving ? "Saving…" : "Save mappings"}
@@ -126,13 +126,11 @@ export default function AccountMappingsPage() {
 
       {!qboConnected ? (
         <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Connect {provider === "quickbooks" ? "QuickBooks" : provider === "xero" ? "Xero" : "Sage"} under{" "}
+          Connect QuickBooks under{" "}
           <Link href="/admin/settings" className="font-medium underline">
             Admin → Settings → Finance
           </Link>{" "}
-          {provider === "quickbooks"
-            ? "to load external accounts for mapping."
-            : "then enter external account IDs manually below (live account sync is QuickBooks only for now)."}
+          to load external accounts for mapping.
         </p>
       ) : null}
 

@@ -121,6 +121,12 @@ export default function CustomerDetailPage() {
         {customer && (
           <div className="flex flex-wrap items-center gap-2">
             <Link
+              href={`/accounting/customer-invoices?customer=${customer.customer_num}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Invoices
+            </Link>
+            <Link
               href={`/reports/customer-statement?customer=${customer.customer_num}`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#185FA5] px-4 py-2 text-sm font-medium text-[#185FA5] hover:bg-[#E6F1FB]"
             >

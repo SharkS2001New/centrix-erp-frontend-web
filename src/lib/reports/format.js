@@ -1,36 +1,35 @@
 import { formatShortDate } from "@/components/catalog/catalog-shared";
+import { formatOrgCurrency, formatOrgNumber } from "@/lib/format";
+import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 
-export function formatReportKes(value) {
+export function formatReportKes(value, settings = GENERAL_DEFAULTS) {
   if (value == null || value === "") return "—";
   const n = Number(value);
   if (Number.isNaN(n)) return String(value);
-  return `KES ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatOrgCurrency(n, settings);
 }
 
-export function formatReportNumber(value, decimals = 2) {
+export function formatReportNumber(value, decimals = 2, settings = GENERAL_DEFAULTS) {
   if (value == null || value === "") return "—";
   const n = Number(value);
   if (Number.isNaN(n)) return String(value);
-  return n.toLocaleString(undefined, {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
+  return formatOrgNumber(n, settings, { decimals });
 }
 
-export function formatReportCell(key, value) {
+export function formatReportCell(key, value, settings = GENERAL_DEFAULTS) {
   if (value == null || value === "") return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") {
     if (/amount|total|paid|balance|vat|gross|net|price|cost|kes|value|float|variance|expected|actual|sales|revenue|profit|expense|debit|credit|collected|outstanding|due/i.test(key)) {
-      return formatReportKes(value);
+      return formatReportKes(value, settings);
     }
     if (/qty|quantity|count|orders|transactions/i.test(key)) {
-      return formatReportNumber(value, 0);
+      return formatReportNumber(value, 0, settings);
     }
-    return formatReportNumber(value);
+    return formatReportNumber(value, 2, settings);
   }
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
-    return formatShortDate(value);
+    return formatShortDate(value, settings);
   }
   return String(value);
 }

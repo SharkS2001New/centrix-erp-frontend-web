@@ -1,0 +1,59 @@
+export const HR_PAYROLL_DEFAULTS = {
+  pay_frequency: "monthly",
+  grace_days_after_month_end: 7,
+  payroll_run_delete_lock_minutes: 20,
+  auto_calculate_statutory: true,
+  close_cycle_on_process: true,
+  include_overtime_in_payroll: true,
+  include_other_deductions_in_payroll: true,
+  require_payroll_approval: false,
+  require_attendance_for_payroll: false,
+  standard_work_hours_per_day: 8,
+  overtime_rate_multiplier: 1.5,
+  default_probation_months: 3,
+  enable_cash_advance_deductions: true,
+  deduct_cash_advances_on_payroll: true,
+};
+
+export function mergeHrPayrollSettings(moduleSettings) {
+  return { ...HR_PAYROLL_DEFAULTS, ...(moduleSettings?.hr_payroll ?? {}) };
+}
+
+export function hrPayrollFormFromApi(res) {
+  const hr = mergeHrPayrollSettings({ hr_payroll: res?.hr_payroll ?? res });
+  return {
+    pay_frequency: hr.pay_frequency || "monthly",
+    grace_days_after_month_end: String(hr.grace_days_after_month_end ?? 7),
+    payroll_run_delete_lock_minutes: String(hr.payroll_run_delete_lock_minutes ?? 20),
+    auto_calculate_statutory: Boolean(hr.auto_calculate_statutory),
+    close_cycle_on_process: Boolean(hr.close_cycle_on_process),
+    include_overtime_in_payroll: Boolean(hr.include_overtime_in_payroll),
+    include_other_deductions_in_payroll: Boolean(hr.include_other_deductions_in_payroll),
+    require_payroll_approval: Boolean(hr.require_payroll_approval),
+    require_attendance_for_payroll: Boolean(hr.require_attendance_for_payroll),
+    standard_work_hours_per_day: String(hr.standard_work_hours_per_day ?? 8),
+    overtime_rate_multiplier: String(hr.overtime_rate_multiplier ?? 1.5),
+    default_probation_months: String(hr.default_probation_months ?? 3),
+    enable_cash_advance_deductions: Boolean(hr.enable_cash_advance_deductions),
+    deduct_cash_advances_on_payroll: Boolean(hr.deduct_cash_advances_on_payroll),
+  };
+}
+
+export function hrPayrollPayloadFromForm(form) {
+  return {
+    pay_frequency: form.pay_frequency || "monthly",
+    grace_days_after_month_end: Number(form.grace_days_after_month_end) || 7,
+    payroll_run_delete_lock_minutes: Number(form.payroll_run_delete_lock_minutes) || 20,
+    auto_calculate_statutory: Boolean(form.auto_calculate_statutory),
+    close_cycle_on_process: Boolean(form.close_cycle_on_process),
+    include_overtime_in_payroll: Boolean(form.include_overtime_in_payroll),
+    include_other_deductions_in_payroll: Boolean(form.include_other_deductions_in_payroll),
+    require_payroll_approval: Boolean(form.require_payroll_approval),
+    require_attendance_for_payroll: Boolean(form.require_attendance_for_payroll),
+    standard_work_hours_per_day: Number(form.standard_work_hours_per_day) || 8,
+    overtime_rate_multiplier: Number(form.overtime_rate_multiplier) || 1.5,
+    default_probation_months: Number(form.default_probation_months) || 0,
+    enable_cash_advance_deductions: Boolean(form.enable_cash_advance_deductions),
+    deduct_cash_advances_on_payroll: Boolean(form.deduct_cash_advances_on_payroll),
+  };
+}

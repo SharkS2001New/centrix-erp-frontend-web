@@ -11,14 +11,16 @@ import {
 
 const ThemeContext = createContext(null);
 
+/** Apply saved theme as soon as this client bundle loads (no <script> in React tree). */
+if (typeof window !== "undefined") {
+  applyTheme(readStoredTheme());
+}
+
 export function ThemeProvider({ children }) {
-  const theme = useSyncExternalStore(subscribeTheme, getTheme, () => "dark");
+  const theme = useSyncExternalStore(subscribeTheme, getTheme, () => "light");
 
   useLayoutEffect(() => {
-    const fromDom = document.documentElement.dataset.theme;
-    const initial =
-      fromDom === "dark" || fromDom === "light" ? fromDom : readStoredTheme();
-    applyTheme(initial);
+    applyTheme(readStoredTheme());
   }, []);
 
   const value = useMemo(

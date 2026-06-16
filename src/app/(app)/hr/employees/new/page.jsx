@@ -10,6 +10,8 @@ import {
   buildEmployeeBody,
   resolveEmployeeBranchId,
   syncEmployeePaymentAccounts,
+  syncEmployeeEmergencyContacts,
+  syncEmployeeNextOfKin,
   useEmployeeFormResources,
 } from "@/components/hr/employee-form";
 import { composeEmployeeDisplayName } from "@/components/hr/hr-shared";
@@ -73,6 +75,8 @@ export default function NewEmployeePage() {
         form.payment_accounts ?? [],
         composeEmployeeDisplayName(form),
       );
+      await syncEmployeeEmergencyContacts(created.id, form.emergency_contacts ?? []);
+      await syncEmployeeNextOfKin(created.id, form.next_of_kin);
       if (photoFile) {
         await uploadEmployeePhoto(created.id, photoFile);
       }

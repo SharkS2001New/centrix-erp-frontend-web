@@ -21,9 +21,14 @@ export const P = {
     customers: { view: "customers.customers.view" },
     statements: { view: "customers.statements.view" },
   },
+  payments: {
+    sale_payments: { view: "payments.sale_payments.view", manage: "payments.sale_payments.manage" },
+    customer_invoices: { view: "payments.customer_invoices.view", manage: "payments.customer_invoices.manage" },
+    customer_payments: { view: "payments.customer_payments.view", manage: "payments.customer_payments.manage" },
+  },
   sales: {
     dashboard: { view: "sales.dashboard.view" },
-    orders: { view: "sales.orders.view" },
+    orders: { view: "sales.orders.view", create: "sales.orders.create", edit: "sales.orders.edit", approve: "sales.orders.approve" },
     vouchers: { view: "sales.vouchers.view" },
     loyalty_cards: { view: "sales.loyalty_cards.view" },
     reservations: { view: "sales.reservations.view" },
@@ -43,7 +48,7 @@ export const P = {
     stock_take: { view: "inventory.stock_take.view" },
   },
   purchasing: {
-    lpo: { view: "purchasing.lpo.view" },
+    lpo: { view: "purchasing.lpo.view", approve: "purchasing.lpo.approve" },
     suppliers: { view: "purchasing.suppliers.view" },
     supplier_payments: { view: "purchasing.supplier_payments.view" },
     supplier_returns: { view: "purchasing.supplier_returns.view" },
@@ -92,16 +97,24 @@ export const P = {
     assist: { create: "ai.assist.create" },
   },
   hr: {
-    employees: { view: "hr.employees.view" },
+    manage: "hr.manage",
+    employees: { view: "hr.employees.view", edit: "hr.manage" },
+    departments: { view: "hr.departments.view" },
     positions: { view: "hr.positions.view" },
+    kpis: {
+      view: "hr.kpis.view",
+      create: "hr.kpis.create",
+      edit: "hr.kpis.edit",
+      delete: "hr.kpis.delete",
+    },
     shifts: { view: "hr.shifts.view" },
     allowances: { view: "hr.allowances.view" },
     deductions: { view: "hr.deductions.view" },
     overtime: { view: "hr.overtime.view" },
-    cash_advances: { view: "hr.cash_advances.view" },
+    cash_advances: { view: "hr.cash_advances.view", approve: "hr.cash_advances.approve" },
     attendance: { view: "hr.attendance.view" },
-    leave: { view: "hr.leave.view" },
-    payroll: { view: "hr.payroll.view" },
+    leave: { view: "hr.leave.view", approve: "hr.leave.approve" },
+    payroll: { view: "hr.payroll.view", create: "hr.payroll.create", approve: "hr.payroll.approve" },
   },
   admin: {
     overview: { view: "admin.overview.view" },
@@ -111,6 +124,12 @@ export const P = {
     roles: { view: "admin.roles.view" },
     audit: { view: "admin.audit.view" },
     settings: { view: "admin.settings.view" },
+    payment_methods: {
+      view: "admin.payment_methods.view",
+      create: "admin.payment_methods.create",
+      edit: "admin.payment_methods.edit",
+      delete: "admin.payment_methods.delete",
+    },
   },
 };
 
@@ -125,6 +144,50 @@ export function reportPermissionCode(reportKey) {
     "vat-collected": P.reports.vat_collected.view,
     "till-sessions": P.reports.till_sessions.view,
     expenses: P.reports.expenses.view,
+    "payroll-summary": P.hr.payroll.view,
+    "general-ledger": P.accounting.general_ledger.view,
+    "trial-balance": P.accounting.trial_balance.view,
+    "balance-sheet": P.accounting.balance_sheet.view,
+    "profit-loss-gl": P.accounting.profit_loss.view,
+    "cash-flow": P.accounting.cash_flow.view,
+    "accounts-receivable": P.accounting.accounts_receivable.view,
+    "accounts-payable": P.accounting.accounts_payable.view,
+    "journal-register": P.accounting.journal_entries.view,
+    "subledger-reconciliation": P.accounting.general_ledger.view,
+    "customer-statement": P.reports.customer_statement.view,
+    "audit-trail": P.admin.audit.view,
   };
   return map[reportKey] ?? P.reports.hub.view;
+}
+
+const ACCOUNTING_REPORT_KEYS = new Set([
+  "general-ledger",
+  "trial-balance",
+  "balance-sheet",
+  "profit-loss-gl",
+  "cash-flow",
+  "accounts-receivable",
+  "accounts-payable",
+  "journal-register",
+]);
+
+/** @param {(code: string) => boolean} hasPermission */
+export function canViewReport(reportKey, hasPermission) {
+  if (reportKey === "payroll-summary") {
+    return hasPermission(P.hr.payroll.view) || hasPermission(P.reports.hub.view);
+  }
+  if (reportKey === "customer-statement") {
+    return (
+      hasPermission(P.reports.customer_statement.view) ||
+      hasPermission(P.customers.customers.view) ||
+      hasPermission(P.reports.hub.view)
+    );
+  }
+  if (reportKey === "audit-trail") {
+    return hasPermission(P.admin.audit.view) || hasPermission(P.reports.hub.view);
+  }
+  if (ACCOUNTING_REPORT_KEYS.has(reportKey)) {
+    return hasPermission(reportPermissionCode(reportKey)) || hasPermission(P.reports.hub.view);
+  }
+  return hasPermission(reportPermissionCode(reportKey));
 }

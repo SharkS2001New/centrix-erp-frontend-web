@@ -3,6 +3,7 @@ export const REPORT_UI_ROUTES = {
   "eod-report": "/sales/end-of-day",
   "eod-cashier": "/sales/end-of-day",
   "customer-statement": "/reports/customer-statement",
+  "subledger-reconciliation": "/reports/subledger-reconciliation",
 };
 
 export function reportHref(key, path) {
@@ -100,6 +101,7 @@ export const REPORT_CATEGORY_DEFS = [
       "accounts-payable",
       "expenses",
       "journal-register",
+      "subledger-reconciliation",
     ],
   },
   {

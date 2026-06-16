@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { OrganizationSwitcher } from "@/components/layout/organization-switcher";
@@ -10,13 +10,13 @@ import { getSalesOrderQueueWorkflow, salesOrderQueueNavItems } from "@/lib/order
 import { isMobileOrdersEnabled, isPosTillFloatRequired } from "@/lib/sales-settings";
 import { isNavItemActive, isNavSectionActive, isNavItemVisible, navSections } from "@/lib/nav-config";
 
-const STORAGE_KEY = "sidebar-expanded-sections";
+const STORAGE_KEY = "sidebar-expanded-sections-v2";
 
 function ChevronIcon({ open }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+      className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
@@ -39,9 +39,16 @@ function readStoredSections() {
   }
 }
 
+function NavGroupLabel({ label }) {
+  return (
+    <p className="app-sidebar-group-label px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400 first:pt-0">
+      {label}
+    </p>
+  );
+}
+
 function CollapsibleNavSection({ section, pathname, expanded, onToggle, children }) {
   const active = isNavSectionActive(section, pathname);
-  const open = expanded || active;
 
   if (!section.collapsible || !section.label) {
     return <div className="space-y-0.5">{children}</div>;
@@ -52,22 +59,51 @@ function CollapsibleNavSection({ section, pathname, expanded, onToggle, children
       <button
         type="button"
         onClick={() => onToggle(section.id)}
-        className={`app-sidebar-section-label app-sidebar-section-toggle flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider transition ${
+        className={`app-sidebar-section-label app-sidebar-section-toggle flex w-full items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider transition ${
           active ? "text-[var(--sidebar-accent,#185FA5)]" : ""
         }`}
-        aria-expanded={open}
+        aria-expanded={expanded}
       >
-        <span>{section.label}</span>
-        <ChevronIcon open={open} />
+        <span className="flex min-w-0 items-center gap-1.5">
+          {section.icon ? <span className="text-sm leading-none">{section.icon}</span> : null}
+          <span className="truncate">{section.label}</span>
+        </span>
+        <ChevronIcon open={expanded} />
       </button>
-      {open ? <div className="mt-0.5 space-y-0.5">{children}</div> : null}
+      {expanded ? <div className="mt-0.5 space-y-0.5">{children}</div> : null}
     </div>
   );
 }
 
+function SectionNavItems({ items, pathname }) {
+  let lastGroup = null;
+
+  return items.map((item) => {
+    const active = isNavItemActive(item, pathname);
+    const showGroup = item.group && item.group !== lastGroup;
+    if (showGroup) {
+      lastGroup = item.group;
+    }
+
+    return (
+      <Fragment key={item.href}>
+        {showGroup ? <NavGroupLabel label={item.group} /> : null}
+        <Link
+          href={item.href}
+          className={`app-sidebar-link block rounded-lg px-3 py-2 text-sm font-medium transition ${
+            active ? "app-sidebar-link-active" : ""
+          }`}
+        >
+          {item.label}
+        </Link>
+      </Fragment>
+    );
+  });
+}
+
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, capabilities, logout, isModuleEnabled, hasPermission, isSuperAdmin } = useAuth();
+  const { user, organization, capabilities, logout, isModuleEnabled, hasPermission, isSuperAdmin } = useAuth();
 
   const requireTillFloat = isPosTillFloatRequired(capabilities?.module_settings);
 
@@ -80,6 +116,7 @@ export function Sidebar() {
       module: "sales.backend",
       permission: "sales.orders.view",
       exact: item.slug === "all",
+      group: "Sales orders",
     }));
   }, [capabilities]);
 
@@ -90,9 +127,10 @@ export function Sidebar() {
       isSuperAdmin,
       requireTillFloat,
       user,
+      organization,
       capabilities,
     }),
-    [capabilities, hasPermission, isModuleEnabled, isSuperAdmin, requireTillFloat, user],
+    [capabilities, hasPermission, isModuleEnabled, isSuperAdmin, organization, requireTillFloat, user],
   );
 
   const visibleSections = useMemo(
@@ -114,8 +152,15 @@ export function Sidebar() {
 
   const [expandedSections, setExpandedSections] = useState(() => {
     const stored = readStoredSections();
-    if (stored) return new Set(stored);
-    return new Set(visibleSections.filter((s) => isNavSectionActive(s, pathname)).map((s) => s.id));
+    const validIds = new Set(navSections.map((s) => s.id));
+    if (stored) {
+      return new Set(stored.filter((id) => validIds.has(id)));
+    }
+    return new Set(
+      visibleSections
+        .filter((s) => s.id === "dashboard" || isNavSectionActive(s, pathname))
+        .map((s) => s.id),
+    );
   });
 
   useEffect(() => {
@@ -164,20 +209,7 @@ export function Sidebar() {
             expanded={expandedSections.has(section.id)}
             onToggle={toggleSection}
           >
-            {section.items.map((item) => {
-              const active = isNavItemActive(item, pathname);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`app-sidebar-link block rounded-lg px-3 py-2 text-sm font-medium transition ${
-                    active ? "app-sidebar-link-active" : ""
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
+            <SectionNavItems items={section.items} pathname={pathname} />
           </CollapsibleNavSection>
         ))}
       </nav>

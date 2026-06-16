@@ -1,5 +1,7 @@
-import { redirect } from "next/navigation";
+"use client";
 
-export default function InventoryIndexPage() {
-  redirect("/inventory/stock");
+import { InventoryDashboardContent } from "@/components/dashboard/inventory-dashboard-content";
+
+export default function InventoryDashboardPage() {
+  return <InventoryDashboardContent />;
 }

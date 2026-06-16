@@ -1,5 +1,7 @@
 "use client";
 
+import { normalizePermissionId } from "@/lib/permission-ids";
+
 const ACTION_LABELS = {
   view: "View",
   create: "Create",
@@ -11,7 +13,14 @@ const ACTION_LABELS = {
 const ACTION_ORDER = ["view", "create", "edit", "delete", "approve"];
 
 function modulePermissionIds(group) {
-  return group.features.flatMap((feature) => feature.permissions.map((p) => p.id));
+  return group.features.flatMap((feature) =>
+    feature.permissions.map((p) => normalizePermissionId(p.id)).filter((id) => id != null),
+  );
+}
+
+function isAssigned(assignedIds, permId) {
+  const id = normalizePermissionId(permId);
+  return id != null && assignedIds.has(id);
 }
 
 function moduleSelectionState(group, assignedIds) {
@@ -69,7 +78,9 @@ export function PermissionMatrix({ groups, assignedIds, onToggle, onToggleMany }
                     const byAction = Object.fromEntries(
                       feature.permissions.map((p) => [p.action, p]),
                     );
-                    const featureIds = feature.permissions.map((p) => p.id);
+                    const featureIds = feature.permissions
+                      .map((p) => normalizePermissionId(p.id))
+                      .filter((id) => id != null);
                     const featureSelected = featureIds.filter((id) => assignedIds.has(id)).length;
 
                     return (
@@ -100,8 +111,8 @@ export function PermissionMatrix({ groups, assignedIds, onToggle, onToggleMany }
                               {perm ? (
                                 <input
                                   type="checkbox"
-                                  checked={assignedIds.has(perm.id)}
-                                  onChange={() => onToggle(perm.id)}
+                                  checked={isAssigned(assignedIds, perm.id)}
+                                  onChange={() => onToggle(normalizePermissionId(perm.id))}
                                   title={perm.permission_name}
                                 />
                               ) : (

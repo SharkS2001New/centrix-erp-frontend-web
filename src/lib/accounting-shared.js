@@ -10,12 +10,12 @@ export function accountTypeLabel(type) {
   return ACCOUNT_TYPES.find((t) => t.value === type)?.label ?? type ?? "—";
 }
 
-export function formatAccountingAmount(value) {
+import { formatOrgNumber } from "@/lib/format";
+import { GENERAL_DEFAULTS } from "@/lib/general-settings";
+
+export function formatAccountingAmount(value, settings = GENERAL_DEFAULTS) {
   if (value == null || value === "") return "—";
-  return Number(value).toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  return formatOrgNumber(value, settings);
 }
 
 export function journalStatusLabel(status) {

@@ -3,20 +3,16 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { formatOrgCurrency, formatOrgCurrencyCompact, formatOrgDate, formatOrgNumber } from "@/lib/format";
+import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 
-export function formatShortDate(value) {
-  if (!value) return "—";
-  return new Date(value).toLocaleDateString("en-KE", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+export function formatShortDate(value, settings = GENERAL_DEFAULTS) {
+  return formatOrgDate(value, settings);
 }
 
-export function formatKesMarkup(value) {
-  const n = Number(value ?? 0);
-  const formatted = n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `+ KES ${formatted}`;
+export function formatKesMarkup(value, settings = GENERAL_DEFAULTS) {
+  const currency = settings?.currency ?? GENERAL_DEFAULTS.currency ?? "KES";
+  return `+ ${currency} ${formatOrgNumber(value, settings)}`;
 }
 
 /** Parse money/decimal fields from forms (handles "2500", "2,500.50", spaces). */
@@ -30,11 +26,8 @@ export function parseDecimalInput(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-export function formatKesCompact(value) {
-  const n = Number(value ?? 0);
-  if (n >= 1_000_000) return `KES ${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `KES ${(n / 1_000).toFixed(0)}K`;
-  return `KES ${n.toLocaleString("en-KE", { maximumFractionDigits: 0 })}`;
+export function formatKesCompact(value, settings = GENERAL_DEFAULTS) {
+  return formatOrgCurrencyCompact(value, settings);
 }
 
 export function StatCard({ label, value, hint }) {

@@ -1,5 +1,115 @@
-import { redirect } from "next/navigation";
+"use client";
 
-export default function InventoryTransfersRedirectPage() {
-  redirect("/inventory/transfers/new");
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { apiRequest, ApiError } from "@/lib/api";
+import { useOrgFormat } from "@/lib/org-format";
+import {
+  CatalogPageShell,
+  Field,
+  PrimaryButton,
+  SearchInput,
+  inputClassName,
+} from "@/components/catalog/catalog-shared";
+import { defaultDateRange } from "@/components/inventory/inventory-shared";
+
+export default function InventoryTransfersPage() {
+  const { date } = useOrgFormat();
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState("");
+  const initialRange = defaultDateRange(30);
+  const [fromDate, setFromDate] = useState(initialRange.from);
+  const [toDate, setToDate] = useState(initialRange.to);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiRequest("/reports/stock-transfers", {
+        searchParams: { from_date: fromDate, to_date: toDate, per_page: 200 },
+      });
+      setRows(res.data ?? []);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to load transfers");
+    } finally {
+      setLoading(false);
+    }
+  }, [fromDate, toDate]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const filtered = rows.filter((r) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [r.product_code, r.product_name, r.from_location, r.to_location].join(" ").toLowerCase().includes(q);
+  });
+
+  return (
+    <CatalogPageShell title="Stock transfers" subtitle="History of shop ↔ store transfers">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="From">
+            <input type="date" className={inputClassName()} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          </Field>
+          <Field label="To">
+            <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          </Field>
+          <SearchInput value={search} onChange={setSearch} placeholder="Product…" />
+        </div>
+        <Link href="/inventory/transfers/new">
+          <PrimaryButton type="button" showIcon={false}>
+            New transfer
+          </PrimaryButton>
+        </Link>
+      </div>
+
+      {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
+
+      <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+            <tr>
+              <th className="px-4 py-3">Date</th>
+              <th className="px-4 py-3">Product</th>
+              <th className="px-4 py-3">From</th>
+              <th className="px-4 py-3">To</th>
+              <th className="px-4 py-3 text-right">Qty moved</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                  Loading…
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                  No transfers in this period.
+                </td>
+              </tr>
+            ) : (
+              filtered.map((r, i) => (
+                <tr key={`${r.transfer_date}-${r.product_code}-${i}`} className="border-t border-slate-100">
+                  <td className="px-4 py-3">{date(r.transfer_date)}</td>
+                  <td className="px-4 py-3">
+                    <span className="font-medium">{r.product_name ?? r.product_code}</span>
+                    <span className="ml-2 font-mono text-xs text-slate-500">{r.product_code}</span>
+                  </td>
+                  <td className="px-4 py-3 capitalize">{r.from_location}</td>
+                  <td className="px-4 py-3 capitalize">{r.to_location}</td>
+                  <td className="px-4 py-3 text-right">{r.total_moved}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </CatalogPageShell>
+  );
 }

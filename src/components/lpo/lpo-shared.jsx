@@ -1,14 +1,15 @@
 "use client";
 
+import { formatOrgCurrency } from "@/lib/format";
+import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 import {
   formatLpoPackagingLabel,
   formatPackQtyString,
   orderCountsObjectFromPackQty,
 } from "./lpo-product-utils";
 
-export function formatLpoKes(value) {
-  const n = Number(value ?? 0);
-  return `KES ${n.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+export function formatLpoKes(value, settings = GENERAL_DEFAULTS) {
+  return formatOrgCurrency(value, settings);
 }
 
 /** Cost per pack: whole numbers only (no decimals). */
