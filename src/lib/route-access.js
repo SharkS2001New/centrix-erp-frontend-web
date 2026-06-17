@@ -1,6 +1,10 @@
 import { isNavItemVisible, navSections } from "@/lib/nav-config";
 import { canViewReport, P } from "@/lib/permission-codes";
 import { isOrgAdminSettingsPath, shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
+import { isPlatformShellRoute, isPlatformShellUser } from "@/lib/access-control";
+import { anyReportsModuleEnabled, reportModuleForSlug } from "@/lib/module-registry";
+import { getStoredWorkspace } from "@/lib/auth-storage";
+import { defaultWorkspaceId, pathBelongsToWorkspace } from "@/lib/workspaces";
 
 function flattenNavItems() {
   const items = [];
@@ -24,12 +28,26 @@ const REPORT_ROUTE_RULES = [
   { prefix: "/reports", permission: P.reports.hub.view, exact: true },
 ];
 
+const POS_ROUTE_RULES = [
+  { prefix: "/pos", permission: P.pos.terminal.view },
+  { prefix: "/sales/pos", permission: P.pos.checkout.create },
+];
+
 /**
  * @param {string} pathname
  * @param {{ hasPermission: (code: string) => boolean, isModuleEnabled: (key: string) => boolean, user?: object, organization?: object, capabilities?: object, requireTillFloat?: boolean, isSuperAdmin?: () => boolean }} ctx
  */
 export function canAccessRoute(pathname, ctx) {
   if (!pathname || pathname === "/login") return true;
+
+  if (isPlatformShellUser(ctx)) {
+    return isPlatformShellRoute(pathname);
+  }
+
+  const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(ctx.capabilities, ctx);
+  if (workspaceId && !pathBelongsToWorkspace(pathname, workspaceId)) {
+    return false;
+  }
 
   if (
     isOrgAdminSettingsPath(pathname) &&
@@ -41,6 +59,12 @@ export function canAccessRoute(pathname, ctx) {
     return false;
   }
 
+  for (const rule of POS_ROUTE_RULES) {
+    if (pathname === rule.prefix || pathname.startsWith(`${rule.prefix}/`)) {
+      return ctx.hasPermission(rule.permission);
+    }
+  }
+
   for (const rule of REPORT_ROUTE_RULES) {
     const matches = rule.exact
       ? pathname === rule.prefix
@@ -48,7 +72,7 @@ export function canAccessRoute(pathname, ctx) {
     if (!matches) continue;
 
     if (rule.prefix === "/reports" && rule.exact) {
-      return ctx.hasPermission(rule.permission);
+      return ctx.hasPermission(rule.permission) && anyReportsModuleEnabled(ctx.capabilities?.modules);
     }
 
     if (rule.prefix === "/reports/customer-statement") {
@@ -66,7 +90,12 @@ export function canAccessRoute(pathname, ctx) {
 
   const reportMatch = pathname.match(/^\/reports\/([^/]+)$/);
   if (reportMatch) {
-    return canViewReport(reportMatch[1], ctx.hasPermission);
+    const slug = reportMatch[1];
+    const reportModule = reportModuleForSlug(slug);
+    if (reportModule && !ctx.isModuleEnabled(reportModule)) {
+      return false;
+    }
+    return canViewReport(slug, ctx.hasPermission);
   }
 
   const item = NAV_ROUTE_RULES.find((rule) =>

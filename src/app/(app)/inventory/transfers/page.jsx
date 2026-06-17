@@ -1,16 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useOrgFormat } from "@/lib/org-format";
 import {
   CatalogPageShell,
   Field,
-  PrimaryButton,
+  PrimaryLink,
   SearchInput,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { P } from "@/lib/permission-codes";
 import { defaultDateRange } from "@/components/inventory/inventory-shared";
 
 export default function InventoryTransfersPage() {
@@ -60,11 +60,9 @@ export default function InventoryTransfersPage() {
           </Field>
           <SearchInput value={search} onChange={setSearch} placeholder="Product…" />
         </div>
-        <Link href="/inventory/transfers/new">
-          <PrimaryButton type="button" showIcon={false}>
-            New transfer
-          </PrimaryButton>
-        </Link>
+        <PrimaryLink href="/inventory/transfers/new" permission={P.inventory.transfers.create} showIcon={false}>
+          New transfer
+        </PrimaryLink>
       </div>
 
       {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}

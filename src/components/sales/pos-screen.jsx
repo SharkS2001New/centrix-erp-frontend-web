@@ -60,8 +60,16 @@ import { PosCartPaymentOptions } from "./pos-cart-payment-options";
 import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
 import { PosSaveOrderDialog } from "./pos-save-order-dialog";
 import { PosLeaveGuardDialog } from "./pos-leave-guard-dialog";
+import { PosActionButton } from "./pos-action-button";
 import { CloseSessionModal, XReportModal, ZReportModal } from "@/components/pos/pos-session-modals";
 import { FloatBreakdownModal, OpenSessionModal } from "@/components/pos/till-session-ui";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { PosStatusFooter } from "./pos-status-footer";
+import {
+  PosCalculatorModal,
+  PosKeyboardShortcutsModal,
+  PosPriceCheckerModal,
+} from "./pos-utility-modals";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import {
   createBranchTill,
@@ -71,7 +79,10 @@ import {
 } from "@/lib/pos-till";
 
 const cartToolbarBtnClassName =
-  "inline-flex items-center gap-1.5 rounded-lg border border-[#185FA5]/30 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#0C447C] shadow-sm hover:bg-[#E6F1FB] disabled:opacity-50";
+  "inline-flex items-center gap-1.5 rounded-lg border border-[#185FA5]/30 bg-white px-3.5 py-2 text-xs font-bold uppercase tracking-wide text-[#0C447C] shadow-sm hover:bg-[#E6F1FB] disabled:opacity-50";
+
+const posHeaderBtnClassName =
+  "inline-flex items-center gap-1.5 rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-white/20 disabled:opacity-40";
 
 const fieldInput =
   "w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-black shadow-sm outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600";
@@ -81,7 +92,7 @@ const compactAmountInput =
 
 function PosLabel({ children }) {
   return (
-    <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-[#0C447C]">
+    <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#0C447C]">
       {children}
     </span>
   );
@@ -105,9 +116,9 @@ function sameLineId(a, b) {
   return String(a) === String(b);
 }
 
-export function PosScreen() {
+export function PosScreen({ standalone = false }) {
   const router = useRouter();
-  const { user, capabilities, refreshCapabilities } = useAuth();
+  const { user, capabilities, refreshCapabilities, logout, organization } = useAuth();
   const {
     activeSession,
     tillId,
@@ -427,26 +438,23 @@ export function PosScreen() {
   const [saveOrderError, setSaveOrderError] = useState(null);
   const [paymentError, setPaymentError] = useState(null);
   const [completedSale, setCompletedSale] = useState(null);
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [priceCheckerOpen, setPriceCheckerOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [leaveGuardOpen, setLeaveGuardOpen] = useState(false);
   const [leaveGuardBusy, setLeaveGuardBusy] = useState(false);
   const pendingLeaveHrefRef = useRef(null);
-
-  useEffect(() => {
-    if (!posSalesConfig.enableRetailPricing) return undefined;
-    function onKeyDown(e) {
-      if (e.key !== "F12") return;
-      if (paymentOpen || saveOrderOpen) return;
-      e.preventDefault();
-      setSellWholesale((prev) => !prev);
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [posSalesConfig.enableRetailPricing, paymentOpen, saveOrderOpen]);
 
   const [orderDiscountDraft, setOrderDiscountDraft] = useState("");
 
   const cartLineCount = cart?.lines?.length ?? 0;
   const cartHasReservedItems = cartLineCount > 0;
+
+  const activeOrderNum = useMemo(() => {
+    if (cart?.held_order_num) return cart.held_order_num;
+    if (cart?.next_order_num) return cart.next_order_num;
+    return null;
+  }, [cart?.held_order_num, cart?.next_order_num]);
 
   const cartSummary = useMemo(() => {
     const rows = cart?.lines ?? [];
@@ -575,7 +583,7 @@ export function PosScreen() {
 
   const loadCashierCart = useCallback(async () => {
     if (!user?.branch_id) return null;
-    const body = { channel, order_source: "backoffice", branch_id: user.branch_id };
+    const body = { channel, order_source: "pos", branch_id: user.branch_id };
     if (tillId) body.till_id = tillId;
     if (usesRouteMarkup) {
       body.route_id = Number(selectedRouteId);
@@ -662,9 +670,12 @@ export function PosScreen() {
           for (const p of list) next[p.product_code] = p;
           return next;
         });
-      } catch {
+      } catch (err) {
         if (seq !== searchSeq.current) return;
         setSearchResults([]);
+        if (err instanceof ApiError && err.status === 403) {
+          setStatusMessage("You do not have permission to search products.");
+        }
       } finally {
         if (seq === searchSeq.current) setSearching(false);
       }
@@ -1634,7 +1645,14 @@ export function PosScreen() {
       } catch {
         return;
       }
-      if (pathname === "/sales/pos" || pathname.startsWith("/sales/pos/")) return;
+      if (
+        pathname === "/sales/pos"
+        || pathname.startsWith("/sales/pos/")
+        || pathname === "/pos"
+        || pathname.startsWith("/pos/")
+      ) {
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       pendingLeaveHrefRef.current = href.startsWith("/") ? href : pathname;
@@ -1923,34 +1941,302 @@ export function PosScreen() {
     setSaveOrderOpen(true);
   }
 
+  const focusProductSearch = useCallback(() => {
+    clearLineEntry();
+    window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus({ preventScroll: true });
+      searchInputRef.current?.select?.();
+    });
+  }, []);
+
+  async function handleNewOrder() {
+    if (busy) return;
+    if (cart?.lines?.length) {
+      const ok = window.confirm("Start a new order? The current cart will be cleared.");
+      if (!ok) return;
+      setBusy(true);
+      try {
+        await apiRequest(`/sales/carts/${cart.id}/lines`, { method: "DELETE" });
+        await refreshCart(cart.id);
+      } catch (e) {
+        setStatusMessage(e instanceof ApiError ? e.message : "Failed to clear cart");
+        setBusy(false);
+        return;
+      }
+    }
+    setPaymentOpen(false);
+    setPaymentError(null);
+    setCompletedSale(null);
+    clearLineEntry();
+    setSelectedLineId(null);
+    setBusy(true);
+    try {
+      await loadCashierCart();
+      setStatusMessage("New order started.");
+      focusProductSearch();
+    } catch (e) {
+      setStatusMessage(e instanceof ApiError ? e.message : "Failed to start new order");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handlePrintReceipt() {
+    const sale = completedSale;
+    if (!sale?.id) {
+      setStatusMessage("No completed order to print. Complete payment first (F10).");
+      return;
+    }
+    try {
+      const copies = Number(posSalesConfig.receiptCopies ?? 1) || 1;
+      for (let i = 0; i < copies; i++) {
+        printSaleOrder(sale, {
+          moduleSettings: capabilities?.module_settings,
+          organizationName: capabilities?.profile_label,
+          uomById,
+        });
+      }
+      setStatusMessage(`Reprinting order #${sale.order_num}.`);
+    } catch {
+      setStatusMessage("Receipt print failed.");
+    }
+  }
+
+  function openCompletePayment() {
+    if (!cart?.lines?.length || cartStockBlocked) return;
+    setPaymentError(null);
+    setPaymentOpen(true);
+  }
+
+  useEffect(() => {
+    function isModalOpen() {
+      return (
+        paymentOpen
+        || saveOrderOpen
+        || heldOrdersOpen
+        || leaveGuardOpen
+        || calculatorOpen
+        || priceCheckerOpen
+        || shortcutsOpen
+        || floatModalOpen
+        || floatDetailsOpen
+        || xReportOpen
+        || closeSessionOpen
+        || zReportOpen
+      );
+    }
+
+    function isTypingTarget(el) {
+      if (!el || !(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+      return el.isContentEditable;
+    }
+
+    function onKeyDown(e) {
+      if (isModalOpen()) {
+        if (e.key === "Escape") {
+          if (shortcutsOpen) setShortcutsOpen(false);
+          else if (calculatorOpen) setCalculatorOpen(false);
+          else if (priceCheckerOpen) setPriceCheckerOpen(false);
+        }
+        return;
+      }
+
+      if (e.key === "F1") {
+        e.preventDefault();
+        setShortcutsOpen(true);
+        return;
+      }
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        focusProductSearch();
+        return;
+      }
+
+      if (isTypingTarget(e.target)) return;
+
+      if (e.key === "F5") {
+        e.preventDefault();
+        setCalculatorOpen(true);
+        return;
+      }
+      if (e.key === "F8") {
+        e.preventDefault();
+        void handleNewOrder();
+        return;
+      }
+      if (e.key === "F9") {
+        e.preventDefault();
+        setPriceCheckerOpen(true);
+        return;
+      }
+      if (e.key === "F10") {
+        e.preventDefault();
+        if (posSalesConfig.showCheckoutOnCreate) openCompletePayment();
+        return;
+      }
+      if (e.key === "F12" && posSalesConfig.enableRetailPricing) {
+        e.preventDefault();
+        setSellWholesale((prev) => !prev);
+        return;
+      }
+      if (e.altKey && (e.key === "h" || e.key === "H")) {
+        e.preventDefault();
+        if (cart?.lines?.length && !cartStockBlocked) openSaveOrderDialog("hold");
+        return;
+      }
+      if (e.altKey && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        if (activeSession) setFloatDetailsOpen(true);
+        return;
+      }
+      if (e.altKey && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        void handlePrintReceipt();
+        return;
+      }
+      if (e.key === "Delete") {
+        e.preventDefault();
+        if (selectedLineId) void removeSelectedLine();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [
+    paymentOpen,
+    saveOrderOpen,
+    heldOrdersOpen,
+    leaveGuardOpen,
+    calculatorOpen,
+    priceCheckerOpen,
+    shortcutsOpen,
+    floatModalOpen,
+    floatDetailsOpen,
+    xReportOpen,
+    closeSessionOpen,
+    zReportOpen,
+    posSalesConfig.enableRetailPricing,
+    posSalesConfig.showCheckoutOnCreate,
+    focusProductSearch,
+    cart?.lines?.length,
+    cartStockBlocked,
+    activeSession,
+    selectedLineId,
+    cart?.id,
+    busy,
+    completedSale,
+    capabilities?.module_settings,
+    capabilities?.profile_label,
+    uomById,
+    posSalesConfig.receiptCopies,
+  ]);
+
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-slate-100 text-slate-900">
       {/* Title bar */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-[#144f8a] bg-[#185FA5] px-4 py-2.5 text-white shadow-sm">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <Link href="/sales" className="text-xs text-blue-100 hover:text-white hover:underline">
-            ← Dashboard
-          </Link>
-          <h1 className="text-sm font-semibold tracking-wide">CREATE NEW ORDER</h1>
-          {completedSale ? (
-            <Link
-              href={`/sales/orders/${completedSale.id}`}
-              data-pos-leave-ignore="true"
-              className="text-xs font-medium text-emerald-200 hover:text-white hover:underline"
-            >
-              View #{completedSale.order_num}
-            </Link>
-          ) : null}
-        </div>
-        <div className="flex items-center">
-          <div className="text-right text-[10px] text-blue-100">
-            <p>{capabilities?.profile_label ?? "POS"} · {channel.toUpperCase()}</p>
-            <p className="mt-0.5 min-h-[1.125rem] normal-case text-white">
-              {statusMessage || "\u00a0"}
-            </p>
+      <div className="shrink-0 border-b border-[#144f8a] bg-[#185FA5] text-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {standalone ? null : (
+              <Link href="/sales" className="text-xs text-blue-100 hover:text-white hover:underline">
+                ← Dashboard
+              </Link>
+            )}
+            <h1 className="text-base font-semibold tracking-wide">CREATE NEW ORDER</h1>
+            {activeOrderNum ? (
+              <span className="rounded-md bg-white/15 px-2.5 py-1 font-mono text-sm font-semibold text-white">
+                Order #{activeOrderNum}
+              </span>
+            ) : null}
+            {!standalone && completedSale ? (
+              <Link
+                href={`/sales/orders/${completedSale.id}`}
+                data-pos-leave-ignore="true"
+                className="text-xs font-medium text-emerald-200 hover:text-white hover:underline"
+              >
+                View #{completedSale.order_num}
+              </Link>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-3">
+            <ThemeToggle className="!border-white/25 !text-white hover:!bg-white/10" />
+            <div className="hidden max-w-md text-right text-xs text-blue-100 md:block">
+              <p className="min-h-[1.25rem] normal-case text-white">
+                {statusMessage || "\u00a0"}
+              </p>
+            </div>
+            {standalone ? (
+              <button
+                type="button"
+                onClick={() => void logout()}
+                className="rounded-lg border border-white/25 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10"
+              >
+                Sign out
+              </button>
+            ) : null}
           </div>
         </div>
+        {standalone ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-white/15 px-4 py-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setHeldOrdersOpen(true)}
+              className={posHeaderBtnClassName}
+            >
+              Held
+              {heldOrdersCount > 0 ? (
+                <span className="inline-flex min-w-[1rem] items-center justify-center rounded-full bg-white/25 px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                  {heldOrdersCount > 99 ? "99+" : heldOrdersCount}
+                </span>
+              ) : null}
+            </button>
+            {requirePosTillFloat && activeSession ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setSessionError(null);
+                  setFloatDetailsOpen(true);
+                }}
+                className={posHeaderBtnClassName}
+              >
+                Float
+              </button>
+            ) : null}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setPriceCheckerOpen(true)}
+              className={posHeaderBtnClassName}
+            >
+              Price check
+            </button>
+            <button
+              type="button"
+              disabled={busy || !completedSale?.id}
+              title={
+                completedSale?.order_num
+                  ? `Reprint order #${completedSale.order_num}`
+                  : "Complete an order first"
+              }
+              onClick={() => void handlePrintReceipt()}
+              className={posHeaderBtnClassName}
+            >
+              Reprint last receipt
+            </button>
+          </div>
+        ) : null}
       </div>
+
+      {statusMessage ? (
+        <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-700 md:hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+          {statusMessage}
+        </div>
+      ) : null}
 
       {!requirePosTillFloat || activeSession ? null : suspendedSession ? (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-3 py-2">
@@ -2064,12 +2350,14 @@ export function PosScreen() {
         fallbackCashierName={posCashierName}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        {/* Left — product info + search */}
-        <div className="flex w-full shrink-0 flex-col border-b border-slate-200 bg-white lg:w-[42%] lg:border-b-0 lg:border-r">
-          <div className="border-b border-slate-200 bg-slate-50/80 px-3 py-2">
-            <p className="text-center text-xs font-bold uppercase tracking-wide text-[#0C447C]">Product info</p>
-            <div className="mt-2 flex flex-wrap gap-4 text-xs">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+        {/* Left — line entry + payment options */}
+        <div className="flex min-h-0 w-full flex-col border-b border-slate-200 bg-white lg:w-[min(100%,28rem)] lg:shrink-0 lg:border-b-0 lg:border-r xl:w-[32rem]">
+          <div className="shrink-0 border-b border-slate-200 bg-slate-50/80 px-4 py-3">
+            <p className="text-left text-sm font-bold uppercase tracking-wide text-[#0C447C]">
+              Scan or search items
+            </p>
+            <div className="mt-3 flex flex-col gap-2 text-sm">
               {posSalesConfig.perLineStockRouting ? (
                 <span className="text-slate-600">
                   Stock routing:{" "}
@@ -2170,9 +2458,10 @@ export function PosScreen() {
             </div>
           </div>
 
+          <div className="min-h-0 flex-1 overflow-y-auto">
           {/* Line entry form */}
-          <div className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-3 border-b border-slate-200 p-3 text-sm">
-            <div className="col-span-2 space-y-3">
+          <div className="grid shrink-0 grid-cols-2 gap-x-4 gap-y-4 border-b border-slate-200 p-4 text-sm">
+            <div className="col-span-2 space-y-4">
               <PosProductSearch
                 inputRef={searchInputRef}
                 query={searchQuery}
@@ -2293,12 +2582,12 @@ export function PosScreen() {
                 onKeyDown={allowEditUnitPrice ? handleUnitPriceEnter : undefined}
               />
             </div>
-            <div className="col-span-2 mt-1 flex flex-wrap gap-2">
+            <div className="col-span-2 mt-2 flex flex-wrap gap-3">
               <button
                 type="button"
                 disabled={busy || lineBusy || addLineBlocked}
                 onClick={handleAddLine}
-                className="flex min-w-[7rem] flex-1 items-center justify-center gap-1 rounded-lg border border-[#144f8a] bg-[#185FA5] py-2 text-xs font-bold uppercase text-white shadow-sm hover:bg-[#144f8a] disabled:opacity-50"
+                className="flex min-w-[8rem] flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#144f8a] bg-[#185FA5] px-4 py-2.5 text-sm font-bold uppercase text-white shadow-sm hover:bg-[#144f8a] disabled:opacity-50"
               >
                 <span className="text-base">{editingLineId ? "✓" : "+"}</span>
                 {editingLineId ? "Update" : "Add"}
@@ -2340,36 +2629,42 @@ export function PosScreen() {
             onPaymentApplied={() => setPaymentOpen(true)}
             onCompleteOrder={(updatedCart) => void handleMpesaOrderComplete(updatedCart)}
           />
+          </div>
         </div>
 
         {/* Right — cart grid */}
         <div className="flex min-h-0 flex-1 flex-col bg-white">
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-[#E6F1FB] px-3 py-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setHeldOrdersOpen(true)}
-              className={cartToolbarBtnClassName}
-            >
-              Held orders
-              {heldOrdersCount > 0 ? (
-                <span className="inline-flex min-w-[1rem] items-center justify-center rounded-full bg-[#185FA5] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
-                  {heldOrdersCount > 99 ? "99+" : heldOrdersCount}
-                </span>
-              ) : null}
-            </button>
-            {requirePosTillFloat && activeSession ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  setSessionError(null);
-                  setFloatDetailsOpen(true);
-                }}
-                className={cartToolbarBtnClassName}
-              >
-                Float details
-              </button>
+          {!standalone || (requirePosTillFloat && activeSession && hasPosTill) ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-[#E6F1FB] px-4 py-3">
+            {!standalone ? (
+              <>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setHeldOrdersOpen(true)}
+                  className={cartToolbarBtnClassName}
+                >
+                  Held orders
+                  {heldOrdersCount > 0 ? (
+                    <span className="inline-flex min-w-[1rem] items-center justify-center rounded-full bg-[#185FA5] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                      {heldOrdersCount > 99 ? "99+" : heldOrdersCount}
+                    </span>
+                  ) : null}
+                </button>
+                {requirePosTillFloat && activeSession ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setSessionError(null);
+                      setFloatDetailsOpen(true);
+                    }}
+                    className={cartToolbarBtnClassName}
+                  >
+                    Float details
+                  </button>
+                ) : null}
+              </>
             ) : null}
             {requirePosTillFloat && activeSession && hasPosTill ? (
               <>
@@ -2400,22 +2695,23 @@ export function PosScreen() {
               </>
             ) : null}
           </div>
-          <div className="min-h-0 flex-1 overflow-auto p-2">
-            <table className="w-full border-collapse text-xs">
+          ) : null}
+          <div className="min-h-0 flex-1 overflow-auto p-3">
+            <table className="w-full border-collapse text-sm">
               <thead className="sticky top-0 z-10 bg-slate-50">
-                <tr className="border-b border-slate-200 text-left text-[10px] font-bold uppercase tracking-wide text-slate-600">
-                  <th className="px-2 py-2">Scan code</th>
-                  <th className="px-2 py-2">Description</th>
+                <tr className="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-wide text-slate-600">
+                  <th className="px-3 py-2.5">Scan code</th>
+                  <th className="px-3 py-2.5">Description</th>
                   {showCartLineType ? (
-                    <th className="px-2 py-2">Type</th>
+                    <th className="px-3 py-2.5">Type</th>
                   ) : null}
-                  <th className="px-2 py-2">Package</th>
-                  <th className="px-2 py-2 text-center">Qty</th>
-                  <th className="px-2 py-2 text-right">Unit price</th>
+                  <th className="px-3 py-2.5">Package</th>
+                  <th className="px-3 py-2.5 text-center">Qty</th>
+                  <th className="px-3 py-2.5 text-right">Unit price</th>
                   {allowDiscounts ? (
-                    <th className="px-2 py-2 text-right">Discount</th>
+                    <th className="px-3 py-2.5 text-right">Discount</th>
                   ) : null}
-                  <th className="px-2 py-2 text-right">Amount</th>
+                  <th className="px-3 py-2.5 text-right">Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -2448,15 +2744,15 @@ export function PosScreen() {
                               : "hover:bg-slate-50"
                         }`}
                       >
-                        <td className="px-2 py-1.5 font-mono text-[11px]">
+                        <td className="px-3 py-2 font-mono text-xs">
                           {line.product_code}
                           <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
                             #{line.line_no ?? line.id}
                           </span>
                         </td>
-                        <td className="px-2 py-1.5">{line.product_name}</td>
+                        <td className="px-3 py-2">{line.product_name}</td>
                         {showCartLineType ? (
-                          <td className="px-2 py-1.5 text-[11px]">
+                          <td className="px-3 py-2 text-xs">
                             <span
                               className={`rounded px-1.5 py-0.5 font-semibold ${
                                 isRetailLine
@@ -2468,12 +2764,12 @@ export function PosScreen() {
                             </span>
                           </td>
                         ) : null}
-                        <td className="px-2 py-1.5 text-[11px]">
+                        <td className="px-3 py-2 text-xs">
                           {uom
                             ? uomWholesaleConversionExample(uom)
                             : (line.uom ?? productMeta?.packaging_label ?? "—")}
                         </td>
-                        <td className="px-2 py-1.5 text-center">
+                        <td className="px-3 py-2 text-center">
                           <div
                             className="flex items-center justify-center gap-1"
                             onClick={(e) => e.stopPropagation()}
@@ -2508,17 +2804,17 @@ export function PosScreen() {
                             </button>
                           </div>
                         </td>
-                        <td className="px-2 py-1.5 text-right">
+                        <td className="px-3 py-2 text-right">
                           {Number(
                             cartLineDisplayUnitPrice(line, uom, isRetailLine),
                           ).toLocaleString()}
                         </td>
                         {allowDiscounts ? (
-                          <td className="px-2 py-1.5 text-right">
+                          <td className="px-3 py-2 text-right">
                             {Number(line.discount_given ?? 0).toLocaleString()}
                           </td>
                         ) : null}
-                        <td className="px-2 py-1.5 text-right font-medium">
+                        <td className="px-3 py-2 text-right font-medium">
                           {Number(line.amount).toLocaleString()}
                         </td>
                       </tr>
@@ -2529,8 +2825,8 @@ export function PosScreen() {
             </table>
           </div>
 
-          <div className="shrink-0 border-t border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="mb-2 border-b border-slate-200 pb-2 text-sm">
+          <div className="shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-4">
+            <div className="mb-3 border-b border-slate-200 pb-3 text-sm">
               {enableOrderDiscount ? (
                 <div className="mb-2.5 rounded-lg border border-[#185FA5]/20 bg-gradient-to-r from-[#E6F1FB] via-white to-[#E6F1FB]/40 px-3 py-2.5 shadow-sm">
                   <div className="grid grid-cols-12 items-center gap-3">
@@ -2645,16 +2941,18 @@ export function PosScreen() {
                 </div>
               ) : null}
             </div>
-            <div className="flex flex-wrap gap-2 pt-2">
+            <div className="grid grid-cols-3 gap-1.5 pt-2 sm:grid-cols-6">
               <PosActionButton
-                label="Edit item"
+                label="Edit"
+                title="Edit selected line"
                 icon="✎"
                 iconClass="text-[#185FA5]"
                 disabled={busy || !selectedLineId}
                 onClick={() => handleEditSelectedLine()}
               />
               <PosActionButton
-                label="Remove item"
+                label="Remove"
+                title="Void selected line (Delete)"
                 icon="−"
                 iconClass="text-[#185FA5]"
                 disabled={busy || !selectedLineId}
@@ -2662,6 +2960,7 @@ export function PosScreen() {
               />
               <PosActionButton
                 label="Clear all"
+                title="Clear all lines from cart"
                 icon="⌫"
                 iconClass="text-amber-700"
                 disabled={busy || !cart?.lines?.length}
@@ -2669,6 +2968,7 @@ export function PosScreen() {
               />
               <PosActionButton
                 label="Hold"
+                title="Hold order (Alt+H)"
                 icon="⏸"
                 iconClass="text-amber-700"
                 disabled={busy || !cart?.lines?.length || cartStockBlocked}
@@ -2677,6 +2977,7 @@ export function PosScreen() {
               {posSalesConfig.showCheckoutOnCreate ? (
                 <PosActionButton
                   label="Complete"
+                  title="Complete payment (F10)"
                   icon="🛒"
                   iconClass="text-red-600"
                   disabled={busy || !cart?.lines?.length || cartStockBlocked}
@@ -2687,7 +2988,8 @@ export function PosScreen() {
                 />
               ) : (
                 <PosActionButton
-                  label="Save order"
+                  label="Save"
+                  title="Save order"
                   icon="💾"
                   iconClass="text-[#185FA5]"
                   disabled={busy || !cart?.lines?.length || cartStockBlocked}
@@ -2763,31 +3065,24 @@ export function PosScreen() {
         onLeaveKeepReservation={() => completeLeaveNavigation()}
         onClearAndLeave={() => void clearCartAndLeave()}
       />
-    </div>
-  );
-}
 
-function PosActionButton({ label, icon, iconClass, disabled, onClick, badge = 0 }) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={(e) => {
-        e.preventDefault();
-        onClick?.(e);
-      }}
-      className="relative flex flex-col items-center gap-0.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase text-slate-700 shadow-sm hover:border-[#185FA5]/30 hover:bg-[#E6F1FB]/50 disabled:opacity-40"
-    >
-      <span className={`relative text-lg leading-none ${iconClass}`}>
-        {icon}
-        {badge > 0 ? (
-          <span className="absolute -right-2.5 -top-2 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#185FA5] px-1 text-[9px] font-bold leading-none text-white">
-            {badge > 99 ? "99+" : badge}
-          </span>
-        ) : null}
-      </span>
-      {label}
-    </button>
+      <PosCalculatorModal open={calculatorOpen} onClose={() => setCalculatorOpen(false)} />
+      <PosPriceCheckerModal
+        open={priceCheckerOpen}
+        onClose={() => setPriceCheckerOpen(false)}
+        sellWholesale={sellWholesale}
+        retailByCode={retailByCode}
+        uomById={uomById}
+        vatById={vatById}
+      />
+      <PosKeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      <PosStatusFooter
+        user={user}
+        organization={organization ?? capabilities?.organization}
+        onShowShortcuts={() => setShortcutsOpen(true)}
+      />
+    </div>
   );
 }
 

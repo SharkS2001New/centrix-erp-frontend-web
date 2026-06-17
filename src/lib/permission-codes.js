@@ -14,7 +14,12 @@ export const P = {
     categories: { view: "catalogue.categories.view" },
     uoms: { view: "catalogue.uoms.view" },
     retail_packages: { view: "catalogue.retail_packages.view" },
-    vat_rates: { view: "catalogue.vat_rates.view" },
+    vat_rates: {
+      view: "catalogue.vat_rates.view",
+      create: "catalogue.vat_rates.create",
+      edit: "catalogue.vat_rates.edit",
+      delete: "catalogue.vat_rates.delete",
+    },
     price_history: { view: "catalogue.price_history.view" },
   },
   customers: {
@@ -37,6 +42,7 @@ export const P = {
   pos: {
     till_management: { view: "pos.till_management.view" },
     checkout: { create: "pos.checkout.create" },
+    terminal: { view: "pos.terminal.view" },
     end_of_day: { view: "pos.end_of_day.view" },
   },
   inventory: {
@@ -49,7 +55,12 @@ export const P = {
   },
   purchasing: {
     lpo: { view: "purchasing.lpo.view", approve: "purchasing.lpo.approve" },
-    suppliers: { view: "purchasing.suppliers.view" },
+    suppliers: {
+      view: "purchasing.suppliers.view",
+      create: "purchasing.suppliers.create",
+      edit: "purchasing.suppliers.edit",
+      delete: "purchasing.suppliers.delete",
+    },
     supplier_payments: { view: "purchasing.supplier_payments.view" },
     supplier_returns: { view: "purchasing.supplier_returns.view" },
   },

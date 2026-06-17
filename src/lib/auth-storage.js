@@ -2,19 +2,52 @@ const TOKEN_KEY = "pos_erp_token";
 const USER_KEY = "pos_erp_user";
 const ORG_KEY = "pos_erp_organization";
 const MEMBERSHIPS_KEY = "pos_erp_memberships";
+const LOGIN_CHANNEL_KEY = "pos_erp_login_channel";
+const WORKSPACE_KEY = "pos_erp_workspace";
 
 export function getToken() {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
 }
 
-export function setSession(token, user, organization = null, memberships = []) {
+export function setSession(token, user, organization = null, memberships = [], loginChannel = null) {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
   if (organization) {
     localStorage.setItem(ORG_KEY, JSON.stringify(organization));
   }
   localStorage.setItem(MEMBERSHIPS_KEY, JSON.stringify(memberships ?? []));
+  if (loginChannel) {
+    localStorage.setItem(LOGIN_CHANNEL_KEY, loginChannel);
+  }
+}
+
+export function getStoredWorkspace() {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(WORKSPACE_KEY);
+}
+
+export function setStoredWorkspace(workspaceId) {
+  if (typeof window === "undefined") return;
+  if (workspaceId) {
+    localStorage.setItem(WORKSPACE_KEY, workspaceId);
+  } else {
+    localStorage.removeItem(WORKSPACE_KEY);
+  }
+}
+
+export function getStoredLoginChannel() {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(LOGIN_CHANNEL_KEY);
+}
+
+export function setStoredLoginChannel(channel) {
+  if (typeof window === "undefined") return;
+  if (channel) {
+    localStorage.setItem(LOGIN_CHANNEL_KEY, channel);
+  } else {
+    localStorage.removeItem(LOGIN_CHANNEL_KEY);
+  }
 }
 
 export function getStoredUser() {
@@ -55,4 +88,6 @@ export function clearSession() {
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(ORG_KEY);
   localStorage.removeItem(MEMBERSHIPS_KEY);
+  localStorage.removeItem(LOGIN_CHANNEL_KEY);
+  localStorage.removeItem(WORKSPACE_KEY);
 }

@@ -10,11 +10,13 @@ import {
   IconButton,
   PaginationBar,
   PencilIcon,
+  PrimaryLink,
   TrashIcon,
   SearchInput,
   StatCard,
   formatKesCompact,
 } from "@/components/catalog/catalog-shared";
+import { P } from "@/lib/permission-codes";
 import {
   COLUMN_STORAGE_KEY,
   SUPPLIER_COLUMNS,
@@ -192,13 +194,9 @@ export default function SuppliersPage() {
       title="Suppliers"
       subtitle="Supplier accounts and amount owing from purchases"
       action={
-        <Link
-          href="/suppliers/new"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
-        >
-          <PlusIcon />
+        <PrimaryLink href="/suppliers/new" permission={P.purchasing.suppliers.create}>
           Add Supplier
-        </Link>
+        </PrimaryLink>
       }
       banner={
         !loading && dashboard ? (

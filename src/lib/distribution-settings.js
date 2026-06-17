@@ -42,6 +42,9 @@ export function mergeDistributionModuleSettings(moduleSettings) {
 }
 
 export function isDistributionOpsEnabled(capabilities) {
+  if (!capabilities?.modules?.distribution) {
+    return false;
+  }
   if (capabilities?.distribution_ops_enabled != null) {
     return Boolean(capabilities.distribution_ops_enabled);
   }
@@ -49,7 +52,7 @@ export function isDistributionOpsEnabled(capabilities) {
   if (distribution.enable_distribution_ops != null) {
     return Boolean(distribution.enable_distribution_ops);
   }
-  return capabilities?.deployment_profile === "distribution";
+  return true;
 }
 
 export function mergeDistributionSettings(capabilities) {

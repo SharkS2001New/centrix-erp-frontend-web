@@ -7,7 +7,9 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
   OrganizationModuleToggles,
+  OrganizationPlatformSalesSettings,
   modulesForProfile,
+  salesPlatformFromApi,
 } from "@/components/admin/organization-register-form";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 
@@ -22,9 +24,11 @@ export default function ManageOrganizationPage() {
   const [organization, setOrganization] = useState(null);
   const [effectiveModules, setEffectiveModules] = useState({});
   const [moduleOptions, setModuleOptions] = useState([]);
+  const [navGroups, setNavGroups] = useState([]);
   const [profilePresets, setProfilePresets] = useState([]);
   const [deploymentProfile, setDeploymentProfile] = useState("wholesale_retail");
   const [enabledModules, setEnabledModules] = useState({});
+  const [salesPlatform, setSalesPlatform] = useState(null);
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -37,12 +41,13 @@ export default function ManageOrganizationPage() {
       ]);
       setProfilePresets(optionsRes.profiles ?? []);
       setModuleOptions(optionsRes.modules ?? []);
+      setNavGroups(optionsRes.nav_groups ?? []);
       setOrganization(orgRes.organization ?? null);
       setEffectiveModules(orgRes.effective_modules ?? {});
       const org = orgRes.organization ?? {};
       setDeploymentProfile(org.deployment_profile ?? "wholesale_retail");
-      const profileModules = modulesForProfile(optionsRes.profiles ?? [], org.deployment_profile);
-      setEnabledModules({ ...profileModules, ...(org.enabled_modules ?? {}) });
+      setEnabledModules(orgRes.effective_modules ?? {});
+      setSalesPlatform(salesPlatformFromApi(orgRes.sales_platform));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load organization.");
     } finally {
@@ -63,6 +68,10 @@ export default function ManageOrganizationPage() {
     setEnabledModules((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
+  function setModules(partial) {
+    setEnabledModules((prev) => ({ ...prev, ...partial }));
+  }
+
   async function onSave(e) {
     e.preventDefault();
     setSaving(true);
@@ -74,11 +83,13 @@ export default function ManageOrganizationPage() {
         body: {
           deployment_profile: deploymentProfile,
           enabled_modules: enabledModules,
+          sales_platform: salesPlatform,
         },
       });
       setOrganization(res.organization ?? null);
       setEffectiveModules(res.effective_modules ?? {});
-      setMessage("Organization modules updated. Users may need to refresh or sign in again to see changes.");
+      setSalesPlatform(salesPlatformFromApi(res.sales_platform));
+      setMessage("Organization configuration updated. Users may need to refresh or sign in again.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not save organization.");
     } finally {
@@ -89,7 +100,7 @@ export default function ManageOrganizationPage() {
   return (
     <CatalogPageShell
       title={organization ? organization.org_name : "Organization"}
-      subtitle="Platform super admin — enable or disable ERP modules for this tenant."
+      subtitle="Platform super admin — sidebar modules, sales checkout mode, and order workflow for this tenant."
     >
       <AdminBreadcrumb
         items={[
@@ -116,12 +127,23 @@ export default function ManageOrganizationPage() {
 
           <OrganizationModuleToggles
             moduleOptions={moduleOptions}
+            navGroups={navGroups}
             enabledModules={enabledModules}
             onToggle={toggleModule}
+            onSetModules={setModules}
             onProfileChange={onProfileChange}
             profilePresets={profilePresets}
             deploymentProfile={deploymentProfile}
           />
+
+          {salesPlatform ? (
+            <OrganizationPlatformSalesSettings
+              salesPlatform={salesPlatform}
+              onChange={setSalesPlatform}
+              deploymentProfile={deploymentProfile}
+              enabledModules={enabledModules}
+            />
+          ) : null}
 
           {Object.keys(effectiveModules).length > 0 ? (
             <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
@@ -146,7 +168,7 @@ export default function ManageOrganizationPage() {
 
           <div className="flex gap-3">
             <PrimaryButton type="submit" disabled={saving}>
-              {saving ? "Saving…" : "Save module access"}
+              {saving ? "Saving…" : "Save organization configuration"}
             </PrimaryButton>
             <Link
               href="/platform"

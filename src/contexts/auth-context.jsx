@@ -12,16 +12,21 @@ import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import {
   clearSession,
+  getStoredLoginChannel,
   getStoredMemberships,
   getStoredOrganization,
   getStoredUser,
+  getStoredWorkspace,
   getToken,
   setSession,
+  setStoredWorkspace,
 } from "@/lib/auth-storage";
 import { clearStoredActiveSession } from "@/lib/pos-till";
-import { getCompanyCode, setStoredCompanyCode } from "@/lib/tenant-config";
+import { setStoredCompanyCode } from "@/lib/tenant-config";
 import { resolveGeneralSettings } from "@/lib/format";
-import { isOrgScopedPermission, isPlatformOrganization } from "@/lib/admin-scope";
+import { buildAccessContext, resolveHasPermission } from "@/lib/access-control";
+import { resolvePostLoginPath, workspaceLoginChannel, workspacesFromCapabilities } from "@/lib/workspaces";
+import { applyWorkspaceSession } from "@/lib/workspace-session";
 import { WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
@@ -36,6 +41,17 @@ function getClientId() {
   return clientId;
 }
 
+function syncStoredWorkspace(workspaces) {
+  const stored = getStoredWorkspace();
+  if (stored && !workspaces.some((w) => w.id === stored)) {
+    setStoredWorkspace(workspaces.length === 1 ? workspaces[0].id : null);
+    return;
+  }
+  if (workspaces.length === 1 && !stored) {
+    setStoredWorkspace(workspaces[0].id);
+  }
+}
+
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
@@ -44,6 +60,7 @@ export function AuthProvider({ children }) {
   const [organization, setOrganization] = useState(null);
   const [memberships, setMemberships] = useState([]);
   const [capabilities, setCapabilities] = useState(null);
+  const [loginChannel, setLoginChannel] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const refreshCapabilities = useCallback(async () => {
@@ -51,17 +68,17 @@ export function AuthProvider({ children }) {
     setCapabilities(caps);
   }, []);
 
-  const applyAuthPayload = useCallback(
-    async (res) => {
-      setSession(res.token, res.user, res.organization, res.memberships ?? []);
-      setStoredCompanyCode(res.organization?.company_code);
-      setUser(res.user);
-      setOrganization(res.organization ?? null);
-      setMemberships(res.memberships ?? []);
-      await refreshCapabilities();
-    },
-    [refreshCapabilities],
-  );
+  const applyAuthPayload = useCallback(async (res, channel = WEB_LOGIN_CHANNEL) => {
+    setSession(res.token, res.user, res.organization, res.memberships ?? [], channel);
+    setStoredCompanyCode(res.organization?.company_code);
+    setUser(res.user);
+    setOrganization(res.organization ?? null);
+    setMemberships(res.memberships ?? []);
+    setLoginChannel(channel);
+    const caps = await apiRequest("/erp/capabilities");
+    setCapabilities(caps);
+    return caps;
+  }, []);
 
   useEffect(() => {
     const token = getToken();
@@ -73,7 +90,11 @@ export function AuthProvider({ children }) {
     setUser(stored);
     setOrganization(getStoredOrganization());
     setMemberships(getStoredMemberships());
+    setLoginChannel(getStoredLoginChannel() ?? WEB_LOGIN_CHANNEL);
     refreshCapabilities()
+      .then((caps) => {
+        syncStoredWorkspace(caps?.workspaces ?? []);
+      })
       .catch(() => {
         clearSession();
         setUser(null);
@@ -82,6 +103,15 @@ export function AuthProvider({ children }) {
       })
       .finally(() => setLoading(false));
   }, [refreshCapabilities]);
+
+  const switchWorkspace = useCallback(async (workspaceId) => {
+    const res = await applyWorkspaceSession(workspaceId);
+    setUser(res.user);
+    setOrganization(res.organization ?? null);
+    setMemberships(res.memberships ?? []);
+    setLoginChannel(workspaceLoginChannel(workspaceId));
+    return res;
+  }, []);
 
   const login = useCallback(
     async (companyCode, username, password, options = {}) => {
@@ -98,10 +128,22 @@ export function AuthProvider({ children }) {
         },
         token: null,
       });
-      await applyAuthPayload(res);
-      router.replace("/dashboard");
+      const caps = await applyAuthPayload(res, WEB_LOGIN_CHANNEL);
+      const ctx = buildAccessContext({
+        user: res.user,
+        organization: res.organization,
+        capabilities: caps,
+        requireTillFloat: caps?.require_till_float,
+      });
+      const workspaces = workspacesFromCapabilities(caps);
+      if (workspaces.length === 1) {
+        await switchWorkspace(workspaces[0].id);
+      } else if (workspaces.length > 1) {
+        setStoredWorkspace(null);
+      }
+      router.replace(resolvePostLoginPath(ctx, caps));
     },
-    [applyAuthPayload, router],
+    [applyAuthPayload, router, switchWorkspace],
   );
 
   const switchOrganization = useCallback(
@@ -114,7 +156,19 @@ export function AuthProvider({ children }) {
           login_channel: WEB_LOGIN_CHANNEL,
         },
       });
-      await applyAuthPayload(res);
+      const caps = await applyAuthPayload(res, WEB_LOGIN_CHANNEL);
+      const ctx = buildAccessContext({
+        user: res.user,
+        organization: res.organization,
+        capabilities: caps,
+        requireTillFloat: caps?.require_till_float,
+      });
+      const workspaces = workspacesFromCapabilities(caps);
+      const stored = getStoredWorkspace();
+      if (!workspaces.some((w) => w.id === stored)) {
+        setStoredWorkspace(workspaces.length === 1 ? workspaces[0].id : null);
+      }
+      router.replace(resolvePostLoginPath(ctx, caps));
       router.refresh();
     },
     [applyAuthPayload, router],
@@ -134,6 +188,7 @@ export function AuthProvider({ children }) {
     setOrganization(null);
     setMemberships([]);
     setCapabilities(null);
+    setLoginChannel(null);
     router.replace("/login");
   }, [router]);
 
@@ -145,23 +200,21 @@ export function AuthProvider({ children }) {
       capabilities,
       loading,
       login,
+      loginChannel,
       switchOrganization,
+      switchWorkspace,
       logout,
       refreshCapabilities,
       isModuleEnabled: (key) => capabilities?.modules?.[key] ?? false,
       isSuperAdmin: () => Boolean(user?.is_super_admin || capabilities?.is_super_admin),
-      hasPermission: (code) => {
-        const superAdmin = Boolean(user?.is_super_admin || capabilities?.is_super_admin);
-        if (superAdmin) {
-          if (isPlatformOrganization(organization) && isOrgScopedPermission(code)) {
-            return false;
-          }
-          return true;
-        }
-        if (user?.is_admin || capabilities?.is_admin) return true;
-        if (!code) return true;
-        return capabilities?.permissions?.[code] ?? false;
-      },
+      hasPermission: (code) =>
+        resolveHasPermission({
+          user,
+          organization,
+          capabilities,
+          code,
+          isSuperAdmin: () => Boolean(user?.is_super_admin || capabilities?.is_super_admin),
+        }),
       isOrgWide: () => (capabilities?.access_scope ?? user?.access_scope) === "org" || user?.is_admin,
       generalSettings: () => resolveGeneralSettings(capabilities),
       sessionIdleMinutes: () => capabilities?.session_idle_minutes ?? 30,
@@ -173,7 +226,9 @@ export function AuthProvider({ children }) {
       capabilities,
       loading,
       login,
+      loginChannel,
       switchOrganization,
+      switchWorkspace,
       logout,
       refreshCapabilities,
     ],

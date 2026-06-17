@@ -101,14 +101,15 @@ export async function apiRequest(path, options = {}) {
       const code = data?.code;
       clearSession();
       localStorage.removeItem("pos_erp_active_session");
-      if (!window.location.pathname.startsWith("/login")) {
+      const loginPath = "/login";
+      if (!window.location.pathname.startsWith(loginPath)) {
         const reason =
           code === "session_idle_timeout"
             ? "idle"
             : code === "session_active_elsewhere"
               ? "session"
               : "auth";
-        window.location.assign(`/login?reason=${reason}`);
+        window.location.assign(`${loginPath}?reason=${reason}`);
       }
     }
     throw new ApiError(formatApiErrorMessage(data, res.statusText), res.status, data);

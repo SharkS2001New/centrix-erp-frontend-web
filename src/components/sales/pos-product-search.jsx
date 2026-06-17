@@ -6,7 +6,7 @@ import { posListUnitPrice } from "@/lib/pos-line";
 import { isExactProductCodeQuery } from "@/lib/pos-cart-merge";
 
 const fieldInput =
-  "w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-black shadow-sm outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20";
+  "theme-input w-full rounded-lg border px-2 py-1.5 text-sm shadow-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20";
 
 function formatStockQty(baseQty, product) {
   const { text } = formatMixedStockDisplay(
@@ -169,7 +169,7 @@ export function PosProductSearch({
           id={listId}
           ref={listRef}
           role="listbox"
-          className="absolute left-0 right-0 z-50 mt-1 max-h-[min(50vh,320px)] overflow-auto rounded border border-[#b8a88a] bg-white shadow-lg"
+          className="absolute left-0 right-0 z-[100] mt-1 max-h-[min(50vh,320px)] overflow-auto rounded border border-[#b8a88a] bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800"
         >
           <table className="w-full border-collapse text-[11px]">
             <thead className="sticky top-0 z-10 bg-slate-100">

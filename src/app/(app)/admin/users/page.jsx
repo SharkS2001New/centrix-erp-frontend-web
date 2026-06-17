@@ -5,6 +5,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { AdminGuard } from "@/components/admin/admin-guard";
+import { PasswordInput } from "@/components/auth/password-input";
 import { UserDetailModal } from "@/components/admin/user-detail-modal";
 import { toggleUserPermissionOverride } from "@/components/admin/user-permission-matrix";
 import { permissionIdSet } from "@/lib/permission-ids";
@@ -29,6 +30,10 @@ import {
   formatLoginChannels,
   normalizeLoginChannels,
 } from "@/lib/login-channels";
+
+function isProtectedUserAccount(row, currentUserId) {
+  return row.id === currentUserId || Boolean(row.is_admin);
+}
 
 const EMPTY_FORM = {
   full_name: "",
@@ -160,8 +165,12 @@ export default function AdminUsersPage() {
   }
 
   async function deactivateUser(row) {
-    if (row.id === user?.id) {
-      setError("You cannot disable your own login.");
+    if (isProtectedUserAccount(row, user?.id)) {
+      setError(
+        row.id === user?.id
+          ? "You cannot disable your own login."
+          : "Organization administrator accounts cannot have login disabled.",
+      );
       return;
     }
     if (row.is_active === false) return;
@@ -182,8 +191,12 @@ export default function AdminUsersPage() {
   }
 
   async function softDeleteUser(row) {
-    if (row.id === user?.id) {
-      setError("You cannot delete your own account.");
+    if (isProtectedUserAccount(row, user?.id)) {
+      setError(
+        row.id === user?.id
+          ? "You cannot delete your own account."
+          : "Organization administrator accounts cannot be deleted.",
+      );
       return;
     }
     if (
@@ -271,8 +284,10 @@ export default function AdminUsersPage() {
         role_id: Number(form.role_id),
         access_scope: form.access_scope,
         login_channels: normalizeLoginChannels(form.login_channels),
-        is_active: form.is_active,
       };
+      if (!editing || !isProtectedUserAccount(editing, user?.id)) {
+        body.is_active = form.is_active;
+      }
       if (form.password.trim()) body.password = form.password;
       if (editing) {
         await apiRequest(`/users/${editing.id}`, { method: "PUT", body });
@@ -361,12 +376,11 @@ export default function AdminUsersPage() {
                         <IconButton label="Edit" onClick={() => openEdit(row)}>
                           <PencilIcon />
                         </IconButton>
-                        {row.is_active !== false ? (
+                        {row.is_active !== false && !isProtectedUserAccount(row, user?.id) ? (
                           <button
                             type="button"
                             onClick={() => deactivateUser(row)}
-                            disabled={row.id === user?.id}
-                            className="rounded-md px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-md px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50"
                           >
                             Disable login
                           </button>
@@ -375,7 +389,7 @@ export default function AdminUsersPage() {
                           label="Archive user"
                           danger
                           onClick={() => softDeleteUser(row)}
-                          disabled={row.id === user?.id}
+                          disabled={isProtectedUserAccount(row, user?.id)}
                         >
                           <TrashIcon />
                         </IconButton>
@@ -495,8 +509,7 @@ export default function AdminUsersPage() {
             </p>
           </Field>
           <Field label={editing ? "New password (optional)" : "Password"}>
-            <input
-              type="password"
+            <PasswordInput
               className={inputClassName()}
               value={form.password}
               onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
@@ -509,11 +522,16 @@ export default function AdminUsersPage() {
               type="checkbox"
               checked={form.is_active}
               onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
+              disabled={Boolean(editing && isProtectedUserAccount(editing, user?.id))}
             />
             Login enabled
           </label>
           <p className="text-xs text-slate-500">
-            Disable login to block sign-in. Use Archive to soft-delete while keeping all history.
+            {editing && isProtectedUserAccount(editing, user?.id)
+              ? editing.id === user?.id
+                ? "You cannot disable login on your own account."
+                : "Organization administrator accounts must stay enabled."
+              : "Disable login to block sign-in. Use Archive to soft-delete while keeping all history."}
           </p>
         </FormDrawer>
       </CatalogPageShell>

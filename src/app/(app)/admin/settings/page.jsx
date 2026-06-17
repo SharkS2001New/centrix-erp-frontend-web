@@ -1,15 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { mergeSalesSettings, resolvePosOrderTypeMode } from "@/lib/sales-settings";
-import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import { useAuth } from "@/contexts/auth-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import {
-  OrderWorkflowSettingsEditor,
-  orderWorkflowFromApi,
-} from "@/components/admin/order-workflow-settings";
 import { FinanceSettingsPanel } from "@/components/admin/finance-settings-panel";
 import { AiSettingsPanel } from "@/components/admin/ai-settings-panel";
 import { InventorySettingsPanel } from "@/components/admin/inventory-settings-panel";
@@ -19,6 +14,8 @@ import { NotificationsSettingsPanel } from "@/components/admin/notifications-set
 import { ProcurementSettingsPanel } from "@/components/admin/procurement-settings-panel";
 import { HrSettingsPanel } from "@/components/admin/hr-settings-panel";
 import { SecuritySettingsPanel } from "@/components/admin/security-settings-panel";
+import { visibleOrgSettingsTabs } from "@/lib/org-settings-tabs";
+import { PlatformConfiguredSalesSummary } from "@/components/admin/platform-configured-summary";
 import {
   CatalogPageShell,
   Field,
@@ -50,7 +47,7 @@ const EMPTY_SALES_FORM = {
   allow_edit_unit_price: true,
   default_tax_rate: "16",
   enable_mpesa_amount: true,
-  enable_mpesa_code: true,
+  enable_mpesa_code: false,
   enable_bank_select: false,
   enable_equity_bank: true,
   enable_kcb_bank: true,
@@ -58,7 +55,8 @@ const EMPTY_SALES_FORM = {
   other_bank_name: "Other bank",
   enable_bank_amount: true,
   enable_cheque: true,
-  enable_payment_date: true,
+  enable_cheque_number: false,
+  enable_payment_date: false,
   enable_credit_payment: true,
   allow_credit_pay_now: false,
   show_checkout_on_create_order: true,
@@ -98,6 +96,7 @@ function salesFormFromApi(res) {
     other_bank_name: String(sales.other_bank_name ?? "Other bank"),
     enable_bank_amount: Boolean(sales.enable_bank_amount),
     enable_cheque: Boolean(sales.enable_cheque),
+    enable_cheque_number: Boolean(sales.enable_cheque_number),
     enable_payment_date: Boolean(sales.enable_payment_date),
     enable_credit_payment: Boolean(sales.enable_credit_payment),
     allow_credit_pay_now: Boolean(sales.allow_credit_pay_now),
@@ -156,7 +155,19 @@ export default function AdminSettingsPage() {
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
   const [salesForm, setSalesForm] = useState(EMPTY_SALES_FORM);
-  const [orderWorkflow, setOrderWorkflow] = useState(null);
+
+  const modules = capabilities?.modules ?? {};
+  const hasPosSales = Boolean(modules["sales.pos"]);
+  const hasCustomers = Boolean(modules.customers_suppliers);
+
+  const visibleTabs = useMemo(() => visibleOrgSettingsTabs(TABS, capabilities), [capabilities]);
+
+  useEffect(() => {
+    if (visibleTabs.length === 0) return;
+    if (!visibleTabs.some((item) => item.id === tab)) {
+      setTab(visibleTabs[0].id);
+    }
+  }, [visibleTabs, tab]);
 
   const loadSalesSettings = useCallback(async () => {
     setError(null);
@@ -164,7 +175,6 @@ export default function AdminSettingsPage() {
     try {
       const res = await apiRequest("/erp/settings/sales");
       setSalesForm(salesFormFromApi(res));
-      setOrderWorkflow(orderWorkflowFromApi(res.sales));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load settings");
     } finally {
@@ -189,18 +199,14 @@ export default function AdminSettingsPage() {
         points_earn_per_kes: Number(salesForm.points_earn_per_kes) || 0,
         invoice_valid_days: Number(salesForm.invoice_valid_days) || 0,
       };
-      const payload = {
-        ...salesPayload,
-        order_workflow: orderWorkflow,
-      };
       await apiRequest("/erp/settings/sales", {
         method: "PATCH",
-        body: payload,
+        body: salesPayload,
       });
       const res = await apiRequest("/erp/settings/sales");
-      setOrderWorkflow(orderWorkflowFromApi(res.sales));
+      setSalesForm(salesFormFromApi(res));
       await refreshCapabilities();
-      setMessage("Sales settings saved. POS will use this workflow after refresh.");
+      setMessage("Sales settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save settings");
     } finally {
@@ -209,7 +215,10 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <CatalogPageShell title="Organization settings" subtitle="Tenant-wide preferences for this company (sales, finance, HR, inventory).">
+    <CatalogPageShell
+      title="Organization settings"
+      subtitle="Operational preferences for this company (checkout, finance, HR, inventory). Module access is set by the platform administrator at registration."
+    >
       <AdminBreadcrumb
         items={[{ label: "Administration", href: "/admin" }, { label: "Organization settings" }]}
       />
@@ -225,7 +234,7 @@ export default function AdminSettingsPage() {
 
       <div className="grid gap-6 lg:grid-cols-[200px_1fr]">
         <nav className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
-          {TABS.map((item) => (
+          {visibleTabs.map((item) => (
             <button
               key={item.id}
               type="button"
@@ -255,24 +264,30 @@ export default function AdminSettingsPage() {
             <form onSubmit={handleSaveSales}>
               <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-medium text-slate-900">Sales settings</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Day-to-day POS and checkout preferences. Module access and order workflow are platform-controlled.
+                </p>
                 {loading ? (
                   <p className="mt-4 text-sm text-slate-500">Loading…</p>
                 ) : (
                   <div className="mt-5 space-y-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Checkout</p>
-                    <Toggle
-                      label="Add route markup prices"
-                      description="Enables route markup on sales. Choose whether cashiers always use normal pricing, always select a route for markup, or can toggle below."
-                      checked={salesForm.add_route_markup_prices}
-                      onChange={(v) =>
-                        setSalesForm((f) => ({
-                          ...f,
-                          add_route_markup_prices: v,
-                          pos_order_type_mode: v ? f.pos_order_type_mode : "normal",
-                        }))
-                      }
-                    />
-                    {salesForm.add_route_markup_prices ? (
+                    <PlatformConfiguredSalesSummary />
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Checkout & pricing</p>
+                    {hasCustomers ? (
+                      <Toggle
+                        label="Add route markup prices"
+                        description="Enables route markup on sales. Choose whether cashiers always use normal pricing, always select a route for markup, or can toggle below."
+                        checked={salesForm.add_route_markup_prices}
+                        onChange={(v) =>
+                          setSalesForm((f) => ({
+                            ...f,
+                            add_route_markup_prices: v,
+                            pos_order_type_mode: v ? f.pos_order_type_mode : "normal",
+                          }))
+                        }
+                      />
+                    ) : null}
+                    {hasPosSales && salesForm.add_route_markup_prices ? (
                       <fieldset className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                         <legend className="px-1 text-sm font-medium text-slate-900">
                           POS order type
@@ -345,13 +360,15 @@ export default function AdminSettingsPage() {
                         }))
                       }
                     />
-                    <Toggle
-                      label="Allow manual line discount at POS"
-                      description="Lets cashiers type a discount when adding a line instead of relying only on product discount settings."
-                      checked={salesForm.allow_edit_line_discount}
-                      disabled={!salesForm.allow_discounts}
-                      onChange={(v) => setSalesForm((f) => ({ ...f, allow_edit_line_discount: v }))}
-                    />
+                    {hasPosSales ? (
+                      <Toggle
+                        label="Allow manual line discount at POS"
+                        description="Lets cashiers type a discount when adding a line instead of relying only on product discount settings."
+                        checked={salesForm.allow_edit_line_discount}
+                        disabled={!salesForm.allow_discounts}
+                        onChange={(v) => setSalesForm((f) => ({ ...f, allow_edit_line_discount: v }))}
+                      />
+                    ) : null}
                     <Toggle
                       label="Enable full order discount"
                       description="Shows a discount field on the cart total so cashiers can reduce the whole order before checkout."
@@ -402,12 +419,14 @@ export default function AdminSettingsPage() {
                         How much each point is worth as payment at checkout.
                       </p>
                     </Field>
-                    <Toggle
-                      label="Editable unit price on POS"
-                      description="When off, unit price is fixed and Enter on quantity adds the line to the cart."
-                      checked={salesForm.allow_edit_unit_price}
-                      onChange={(v) => setSalesForm((f) => ({ ...f, allow_edit_unit_price: v }))}
-                    />
+                    {hasPosSales ? (
+                      <Toggle
+                        label="Editable unit price on POS"
+                        description="When off, unit price is fixed and Enter on quantity adds the line to the cart."
+                        checked={salesForm.allow_edit_unit_price}
+                        onChange={(v) => setSalesForm((f) => ({ ...f, allow_edit_unit_price: v }))}
+                      />
+                    ) : null}
                     <Field label="Default tax rate (%)">
                       <input
                         type="number"
@@ -422,15 +441,11 @@ export default function AdminSettingsPage() {
                       />
                     </Field>
 
+                    {hasPosSales ? (
+                      <>
                     <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Payment fields (POS checkout)
                     </p>
-                    <Toggle
-                      label="Show checkout on create order"
-                      description="When off, POS uses Save order (no checkout) and the save-order workflow settings below apply."
-                      checked={salesForm.show_checkout_on_create_order}
-                      onChange={(v) => setSalesForm((f) => ({ ...f, show_checkout_on_create_order: v }))}
-                    />
                     <Toggle
                       label="Request customer name on checkout"
                       description="When enabled, POS prompts for a customer on save order, hold order, and checkout (skipped for credit sales with a selected customer). When off, orders save immediately with no name prompt."
@@ -540,10 +555,18 @@ export default function AdminSettingsPage() {
                     />
                     <Toggle
                       label="Cheque amount field"
-                      description="Cheque number field is shown automatically; required when a cheque amount is entered."
                       checked={salesForm.enable_cheque}
                       onChange={(v) => setSalesForm((f) => ({ ...f, enable_cheque: v }))}
                     />
+                    <Toggle
+                      label="Cheque number field"
+                      description="Required when a cheque amount is entered."
+                      checked={salesForm.enable_cheque_number}
+                      disabled={!salesForm.enable_cheque}
+                      onChange={(v) => setSalesForm((f) => ({ ...f, enable_cheque_number: v }))}
+                    />
+                      </>
+                    ) : null}
                   </div>
                 )}
                 <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -597,19 +620,8 @@ export default function AdminSettingsPage() {
                     />
                   </Field>
                 ) : null}
+                {hasPosSales ? (
                 <div className="mt-4 space-y-3">
-                  <Toggle
-                    label="Enable mobile orders"
-                    description="When on, Mobile Orders appears in the Sales sidebar for orders placed via the mobile channel."
-                    checked={salesForm.enable_mobile_orders}
-                    onChange={(v) => setSalesForm((f) => ({ ...f, enable_mobile_orders: v }))}
-                  />
-                  <Toggle
-                    label="Enable point of sale orders"
-                    description="When on, Point of sale appears as a source option in the orders list." 
-                    checked={salesForm.enable_pos_orders}
-                    onChange={(v) => setSalesForm((f) => ({ ...f, enable_pos_orders: v }))}
-                  />
                   <Toggle
                     label="Require operating till float at POS"
                     description="When on, cashiers must open a till session and declare the operating float (any amount) before POS sales. X reports, Z reports, and end-of-day sales include the float breakdown. When off, POS sells without a session; reports still run but omit float."
@@ -623,19 +635,6 @@ export default function AdminSettingsPage() {
                     onChange={(v) => setSalesForm((f) => ({ ...f, blind_till_close: v }))}
                   />
                 </div>
-                {orderWorkflow ? (
-                  <div className="mt-4">
-                    <OrderWorkflowSettingsEditor
-                      workflow={orderWorkflow}
-                      onChange={setOrderWorkflow}
-                      showCheckoutOnCreate={salesForm.show_checkout_on_create_order}
-                      stockDeductOn={salesForm.stock_deduct_on}
-                      onStockDeductOnChange={(value) =>
-                        setSalesForm((f) => ({ ...f, stock_deduct_on: value }))
-                      }
-                      distributionOpsEnabled={isDistributionOpsEnabled(capabilities)}
-                    />
-                  </div>
                 ) : null}
                 <div className="mt-6">
                   <PrimaryButton type="submit" disabled={loading || saving} showIcon={false}>

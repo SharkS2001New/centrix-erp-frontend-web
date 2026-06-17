@@ -1,6 +1,7 @@
 import { FEATURED_REPORT_KEYS, REPORT_DEFINITIONS } from "@/lib/reports/definitions";
 import { canViewReport, P, reportPermissionCode } from "@/lib/permission-codes";
 import { shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
+import { reportModuleForSlug, anyReportsModuleEnabled } from "@/lib/module-registry";
 
 function reportNavLabel(key) {
   const title = REPORT_DEFINITIONS[key]?.title ?? key;
@@ -20,22 +21,24 @@ function buildReportNavItems() {
     {
       href: "/reports",
       label: "All reports",
-      module: "reports",
+      module: null,
       permission: P.reports.hub.view,
       exact: true,
       group: "Overview",
+      requireAnyReportsModule: true,
     },
     {
       href: "/reports/builder",
       label: "Report builder",
-      module: "reports",
+      module: null,
       permission: P.reports.builder.view,
       group: "Custom Reports",
+      requireAnyReportsModule: true,
     },
     {
       href: "/reports/customer-statement",
       label: "Customer statement",
-      module: "reports",
+      module: "accounting.reports",
       permission: P.reports.customer_statement.view,
       group: "Custom Reports",
     },
@@ -46,7 +49,7 @@ function buildReportNavItems() {
     items.push({
       href: `/reports/${key}`,
       label: reportNavLabel(key),
-      module: "reports",
+      module: reportModuleForSlug(key),
       permission: reportPermissionCode(key),
       reportKey: key,
       group: REPORT_GROUP_MAP[section] ?? "Financial Reports",
@@ -56,7 +59,7 @@ function buildReportNavItems() {
   items.push({
     href: "/reports/payroll-summary",
     label: "Payroll summary",
-    module: "reports",
+    module: "hr_payroll.reports",
     permission: reportPermissionCode("payroll-summary"),
     reportKey: "payroll-summary",
     group: "HR Reports",
@@ -65,7 +68,7 @@ function buildReportNavItems() {
   return items;
 }
 
-/** @typedef {{ href: string, label: string, module?: string | null, permission?: string, exact?: boolean, ordersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireDistributionOps?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, group?: string, reportKey?: string }} NavItem */
+/** @typedef {{ href: string, label: string, module?: string | null, permission?: string, exact?: boolean, ordersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, group?: string, reportKey?: string }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, items: NavItem[] }} NavSection */
 
@@ -79,7 +82,7 @@ export const navSections = [
     collapsible: true,
     items: [
       { href: "/platform", label: "Overview", exact: true, superAdminOnly: true },
-      { href: "/admin/organizations/new", label: "Provision organization", superAdminOnly: true },
+      { href: "/platform/organizations/new", label: "Register organization", superAdminOnly: true },
     ],
   },
   {
@@ -98,7 +101,7 @@ export const navSections = [
       {
         href: "/sales",
         label: "Sales",
-        module: "sales.backend",
+        module: "sales.dashboard",
         permission: P.sales.dashboard.view,
         group: "Analytics",
         exact: true,
@@ -106,7 +109,7 @@ export const navSections = [
       {
         href: "/inventory",
         label: "Inventory",
-        module: "inventory",
+        module: "inventory.dashboard",
         permission: P.inventory.stock.view,
         group: "Analytics",
         exact: true,
@@ -114,7 +117,7 @@ export const navSections = [
       {
         href: "/accounting",
         label: "Accounting",
-        module: "accounting",
+        module: "accounting.dashboard",
         permission: P.accounting.dashboard.view,
         group: "Analytics",
         exact: true,
@@ -122,7 +125,7 @@ export const navSections = [
       {
         href: "/hr",
         label: "Human resources",
-        module: "hr_payroll",
+        module: "hr_payroll.dashboard",
         permission: P.hr.employees.view,
         group: "Analytics",
         exact: true,
@@ -130,18 +133,9 @@ export const navSections = [
       {
         href: "/fulfillment",
         label: "Logistics",
-        module: "customers_suppliers",
+        module: "distribution.dashboard",
         permission: P.fulfillment.drivers.view,
         group: "Analytics",
-        exact: true,
-        requireDistributionOps: true,
-      },
-      {
-        href: "/reports",
-        label: "Reports hub",
-        module: "reports",
-        permission: P.reports.hub.view,
-        group: "Reports",
         exact: true,
       },
     ],
@@ -154,10 +148,10 @@ export const navSections = [
     items: [
       {
         href: "/sales/pos",
-        label: "Point of sale",
+        label: "Create order",
         module: "sales.pos",
         permission: P.pos.checkout.create,
-        group: "POS",
+        group: "Sales POS",
       },
       {
         href: "/sales/till-management",
@@ -202,6 +196,22 @@ export const navSections = [
         module: "sales.backend",
         permission: P.sales.returns.view,
         group: "Credit notes",
+      },
+      {
+        href: "/reports/daily-sales",
+        label: "Daily sales report",
+        module: "sales.reports",
+        permission: P.reports.daily_sales.view,
+        reportKey: "daily-sales",
+        group: "Sales reports",
+      },
+      {
+        href: "/reports/till-sessions",
+        label: "Till sessions report",
+        module: "sales.reports",
+        permission: P.reports.till_sessions.view,
+        reportKey: "till-sessions",
+        group: "Sales reports",
       },
       {
         href: "/customers",
@@ -305,7 +315,7 @@ export const navSections = [
       {
         href: "/reports/stock-on-hand",
         label: "Stock on hand",
-        module: "reports",
+        module: "inventory.reports",
         permission: P.reports.stock_on_hand.view,
         reportKey: "stock-on-hand",
         group: "Stock reports",
@@ -313,7 +323,7 @@ export const navSections = [
       {
         href: "/reports/stock-movement",
         label: "Stock movement",
-        module: "reports",
+        module: "inventory.reports",
         permission: P.reports.stock_movement.view,
         reportKey: "stock-movement",
         group: "Stock reports",
@@ -563,54 +573,47 @@ export const navSections = [
       {
         href: "/fulfillment/dispatch",
         label: "Dispatch",
-        module: "customers_suppliers",
+        module: "distribution",
         permission: P.fulfillment.drivers.view,
-        requireDistributionOps: true,
       },
       {
         href: "/fulfillment/trips",
         label: "Shipment tracking",
-        module: "customers_suppliers",
+        module: "distribution",
         permission: P.fulfillment.drivers.view,
-        requireDistributionOps: true,
       },
       {
         href: "/fulfillment/pod-records",
         label: "Deliveries",
-        module: "customers_suppliers",
+        module: "distribution",
         permission: P.fulfillment.drivers.view,
-        requireDistributionOps: true,
       },
       {
         href: "/fulfillment/drivers",
         label: "Drivers",
-        module: "customers_suppliers",
+        module: "distribution",
         permission: P.fulfillment.drivers.view,
-        requireDistributionOps: true,
         group: "Fleet management",
       },
       {
         href: "/fulfillment/vehicles",
         label: "Vehicles",
-        module: "customers_suppliers",
+        module: "distribution",
         permission: P.fulfillment.vehicles.view,
-        requireDistributionOps: true,
         group: "Fleet management",
       },
       {
         href: "/fulfillment/routes",
         label: "Routes",
-        module: "customers_suppliers",
+        module: "distribution",
         permission: P.fulfillment.routes.view,
-        requireDistributionOps: true,
         group: "Fleet management",
       },
       {
         href: "/fulfillment/schedules",
         label: "Route schedules",
-        module: "customers_suppliers",
+        module: "distribution",
         permission: P.fulfillment.routes.view,
-        requireDistributionOps: true,
         group: "Fleet management",
       },
     ],
@@ -619,7 +622,6 @@ export const navSections = [
     id: "reports",
     label: "Reports",
     icon: "📈",
-    module: "reports",
     collapsible: true,
     items: buildReportNavItems(),
   },
@@ -729,14 +731,20 @@ export function isNavSectionActive(section, pathname) {
 export function isNavItemVisible(item, { isModuleEnabled, hasPermission, requireTillFloat, user, capabilities, isSuperAdmin, organization }) {
   if (item.superAdminOnly && !isSuperAdmin?.()) return false;
   if (
+    shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin }) &&
+    !item.superAdminOnly
+  ) {
+    return false;
+  }
+  if (
     item.orgAdminOnly &&
     shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin })
   ) {
     return false;
   }
   if (item.requireTillFloat && !requireTillFloat) return false;
-  if (item.requireDistributionOps && !capabilities?.distribution_ops_enabled) return false;
   if (item.requireAdmin && !user?.is_admin && !capabilities?.is_admin) return false;
+  if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;
   if (item.module && !isModuleEnabled(item.module)) return false;
   if (item.reportKey && !canViewReport(item.reportKey, hasPermission)) return false;
   else if (item.permission && !hasPermission(item.permission)) return false;

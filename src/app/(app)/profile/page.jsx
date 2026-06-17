@@ -4,6 +4,7 @@ import { useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { PasswordInput } from "@/components/auth/password-input";
 import {
   CatalogPageShell,
   Field,
@@ -97,8 +98,7 @@ export default function ProfilePage() {
           </h2>
           <form onSubmit={onSubmit} className="mt-4 space-y-4">
             <Field label="Current password">
-              <input
-                type="password"
+              <PasswordInput
                 className={inputClassName()}
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
@@ -106,8 +106,7 @@ export default function ProfilePage() {
               />
             </Field>
             <Field label="New password">
-              <input
-                type="password"
+              <PasswordInput
                 className={inputClassName()}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -116,8 +115,7 @@ export default function ProfilePage() {
               />
             </Field>
             <Field label="Confirm new password">
-              <input
-                type="password"
+              <PasswordInput
                 className={inputClassName()}
                 value={passwordConfirmation}
                 onChange={(e) => setPasswordConfirmation(e.target.value)}

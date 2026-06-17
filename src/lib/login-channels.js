@@ -26,5 +26,11 @@ export function isMobileOnlyLogin(channels) {
   return normalized.length === 1 && normalized[0] === "mobile";
 }
 
-/** Web ERP sign-in always uses the backoffice channel. */
+/** Web ERP sign-in always uses the backoffice API channel (workspace picker routes users after login). */
 export const WEB_LOGIN_CHANNEL = "backoffice";
+
+/** @deprecated POS is a workspace, not a separate login. Kept for API/mobile channel labels. */
+export const POS_LOGIN_CHANNEL = "pos";
+
+/** Default home for the POS workspace. */
+export const POS_HOME_PATH = "/pos";

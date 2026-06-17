@@ -5,13 +5,13 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 const inputClass =
   "theme-input mt-1 w-full rounded-lg border px-3 py-2 outline-none focus:border-emerald-500";
 
-export function AuthShell({ title, subtitle, children }) {
+export function AuthShell({ title, subtitle, children, maxWidthClass = "max-w-md" }) {
   return (
     <div className="auth-page-bg relative flex min-h-screen items-center justify-center overflow-y-auto px-4 py-8">
       <div className="absolute right-4 top-4 z-10">
         <ThemeToggle />
       </div>
-      <div className="auth-card w-full max-w-md rounded-2xl border p-8 shadow-xl">
+      <div className={`auth-card w-full ${maxWidthClass} rounded-2xl border p-8 shadow-xl`}>
         <h1 className="text-2xl font-semibold">{title}</h1>
         {subtitle ? <p className="theme-muted mt-1 text-sm">{subtitle}</p> : null}
         {children}

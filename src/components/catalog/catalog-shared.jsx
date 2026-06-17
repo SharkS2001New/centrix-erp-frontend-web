@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useCanAccess } from "@/components/permission-gate";
 import { formatOrgCurrency, formatOrgCurrencyCompact, formatOrgDate, formatOrgNumber } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 
@@ -109,13 +110,25 @@ export function CatalogPageShell({ title, subtitle, action, banner, toolbar, chi
   );
 }
 
-export function PrimaryButton({ children, onClick, type = "button", showIcon = true, disabled }) {
+export function PrimaryButton({
+  children,
+  onClick,
+  type = "button",
+  showIcon = true,
+  disabled,
+  permission,
+  module,
+  className = "",
+}) {
+  const allowed = useCanAccess({ permission, module });
+  if ((permission || module) && !allowed) return null;
+
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
+      className={`inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50 ${className}`}
     >
       {showIcon ? <PlusIcon /> : null}
       {children}
@@ -123,7 +136,10 @@ export function PrimaryButton({ children, onClick, type = "button", showIcon = t
   );
 }
 
-export function PrimaryLink({ href, children, showIcon = true }) {
+export function PrimaryLink({ href, children, showIcon = true, permission, module }) {
+  const allowed = useCanAccess({ permission, module });
+  if ((permission || module) && !allowed) return null;
+
   return (
     <Link
       href={href}

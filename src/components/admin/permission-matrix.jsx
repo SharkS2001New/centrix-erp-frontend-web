@@ -57,7 +57,6 @@ export function PermissionMatrix({ groups, assignedIds, onToggle, onToggleMany }
               />
               <div>
                 <p className="text-sm font-semibold text-slate-900">{group.label}</p>
-                <p className="text-xs text-slate-500">{group.module}</p>
               </div>
             </div>
 

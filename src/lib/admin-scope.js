@@ -51,9 +51,6 @@ export function canAccessOrgAdminSettings({ organization, isSuperAdmin, hasPermi
   if (shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin })) {
     return false;
   }
-  if (isSuperAdmin?.()) {
-    return true;
-  }
   if (isOrgAdministrator(user, capabilities)) {
     return true;
   }

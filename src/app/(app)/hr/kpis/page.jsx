@@ -200,11 +200,7 @@ export default function HrKpisPage() {
   }
 
   if (!canView) {
-    return (
-      <div className="p-6">
-        <p className="text-sm text-slate-600">You do not have permission to view employee KPIs.</p>
-      </div>
-    );
+    return null;
   }
 
   return (

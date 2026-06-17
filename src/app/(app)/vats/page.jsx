@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { P } from "@/lib/permission-codes";
 import {
   CatalogPageShell,
   Field,
@@ -145,7 +146,11 @@ export default function VatsPage() {
     <CatalogPageShell
       title="VAT rates"
       subtitle="Configure tax codes and percentages for products"
-      action={<PrimaryButton onClick={openCreateDrawer}>Add VAT rate</PrimaryButton>}
+      action={
+        <PrimaryButton onClick={openCreateDrawer} permission={P.catalogue.vat_rates.create}>
+          Add VAT rate
+        </PrimaryButton>
+      }
     >
       {error && (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

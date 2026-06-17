@@ -26,7 +26,7 @@ import {
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 
 const SALES_LINKS = [
-  { href: "/sales/pos", title: "Point of sale", desc: "Search products, cart, checkout" },
+  { href: "/sales/pos", title: "Backoffice POS", desc: "Search products, cart, checkout in ERP" },
   { href: "/sales/orders", title: "Orders", desc: "Search and manage sales orders" },
   { href: "/sales/reservations", title: "Reservations", desc: "Stock held for pending orders" },
   { href: "/sales/returns", title: "Returns", desc: "Manage customer sale returns" },

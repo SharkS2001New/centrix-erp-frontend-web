@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
+import { P } from "@/lib/permission-codes";
 import {
   DashboardErrorBanner,
   DashboardLoading,
@@ -16,18 +17,18 @@ import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboar
 import { formatReportKes } from "@/lib/reports/format";
 
 const MODULE_LINKS = [
-  { key: "sales.backend", href: "/sales", title: "Sales", desc: "Orders, POS, and today's performance" },
-  { key: "sales.pos", href: "/sales/pos", title: "Point of sale", desc: "Checkout and till operations" },
-  { key: "inventory", href: "/inventory", title: "Inventory", desc: "Stock levels, receipts, and movements" },
-  { key: "customers_suppliers", href: "/customers", title: "Customers", desc: "Debtors, routes, and credit" },
-  { key: "accounting", href: "/accounting", title: "Accounting", desc: "GL, P&L, and financial position" },
-  { key: "reports", href: "/reports", title: "Reports", desc: "Operational and financial reports" },
-  { key: "hr_payroll", href: "/hr", title: "HR & Payroll", desc: "Employees, attendance, and payroll" },
-  { key: "admin", href: "/admin", title: "Administration", desc: "Users, branches, and settings" },
+  { key: "sales.backend", href: "/sales", title: "Sales", desc: "Orders, POS, and today's performance", permission: P.sales.dashboard.view },
+  { key: "sales.pos", href: "/sales/pos", title: "Backoffice POS", desc: "Checkout and till operations in ERP", permission: P.pos.checkout.create },
+  { key: "inventory", href: "/inventory", title: "Inventory", desc: "Stock levels, receipts, and movements", permission: P.inventory.stock.view },
+  { key: "customers_suppliers", href: "/customers", title: "Customers", desc: "Debtors, routes, and credit", permission: P.customers.customers.view },
+  { key: "accounting", href: "/accounting", title: "Accounting", desc: "GL, P&L, and financial position", permission: P.accounting.dashboard.view },
+  { key: "reports", href: "/reports", title: "Reports", desc: "Operational and financial reports", permission: P.reports.hub.view },
+  { key: "hr_payroll", href: "/hr", title: "HR & Payroll", desc: "Employees, attendance, and payroll", permission: P.hr.employees.view },
+  { key: "admin", href: "/admin", title: "Administration", desc: "Users, branches, and settings", permission: P.admin.overview.view },
 ];
 
 export function OverviewDashboard() {
-  const { user, capabilities, isModuleEnabled } = useAuth();
+  const { user, capabilities, isModuleEnabled, hasPermission } = useAuth();
   const [topDebtors, setTopDebtors] = useState([]);
   const [debtorsLoading, setDebtorsLoading] = useState(true);
   const [dashError, setDashError] = useState(null);
@@ -38,8 +39,13 @@ export function OverviewDashboard() {
   );
 
   const quickLinks = useMemo(
-    () => MODULE_LINKS.filter((link) => !link.key || isModuleEnabled(link.key)),
-    [isModuleEnabled],
+    () =>
+      MODULE_LINKS.filter(
+        (link) =>
+          (!link.key || isModuleEnabled(link.key)) &&
+          (!link.permission || hasPermission(link.permission)),
+      ),
+    [hasPermission, isModuleEnabled],
   );
 
   useEffect(() => {
@@ -54,12 +60,14 @@ export function OverviewDashboard() {
       title="Dashboard"
       subtitle={`Welcome back, ${user?.full_name ?? user?.username ?? "there"}`}
       action={
-        <Link
-          href="/reports"
-          className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-        >
-          All reports
-        </Link>
+        hasPermission(P.reports.hub.view) ? (
+          <Link
+            href="/reports"
+            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          >
+            All reports
+          </Link>
+        ) : null
       }
     >
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

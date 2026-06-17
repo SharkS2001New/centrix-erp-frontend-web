@@ -13,6 +13,7 @@ import {
   AuthSuccess,
   authInputClass,
 } from "@/components/auth/auth-shell";
+import { PasswordInput } from "@/components/auth/password-input";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -76,8 +77,7 @@ export default function ResetPasswordPage() {
           </AuthField>
         ) : null}
         <AuthField label="New password">
-          <input
-            type="password"
+          <PasswordInput
             className={authInputClass()}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -86,8 +86,7 @@ export default function ResetPasswordPage() {
           />
         </AuthField>
         <AuthField label="Confirm new password">
-          <input
-            type="password"
+          <PasswordInput
             className={authInputClass()}
             value={passwordConfirmation}
             onChange={(e) => setPasswordConfirmation(e.target.value)}

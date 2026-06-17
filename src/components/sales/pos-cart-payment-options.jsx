@@ -78,18 +78,18 @@ function PayOptionButton({ icon, label, sublabel, active, disabled, onClick }) {
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`flex min-h-[4.5rem] flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2.5 text-center disabled:opacity-40 ${
+      className={`flex min-h-[3.25rem] flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2 text-center disabled:opacity-40 ${
         active
           ? "border-[#185FA5] bg-[#E6F1FB] text-[#0C447C]"
           : "border-slate-200 bg-white text-slate-700 hover:border-[#185FA5]/40 hover:bg-slate-50"
       }`}
     >
-      <span className="text-2xl leading-none" aria-hidden>
+      <span className="text-lg leading-none" aria-hidden>
         {icon}
       </span>
       <span className="text-[10px] font-bold uppercase tracking-wide">{label}</span>
       {sublabel ? (
-        <span className="line-clamp-1 text-[9px] font-medium normal-case text-slate-500">
+        <span className="line-clamp-1 text-[10px] font-medium normal-case text-slate-500">
           {sublabel}
         </span>
       ) : null}
@@ -678,9 +678,9 @@ export function PosCartPaymentOptions({
 
   return (
     <>
-      <div className="shrink-0 border-t border-slate-200 bg-slate-50/80 p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#0C447C]">
+      <div className="shrink-0 border-t border-slate-200 bg-slate-50/80 p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold uppercase tracking-wide text-[#0C447C]">
             Pay with
           </p>
           {hasVoucher || hasPoints || hasMpesaPhone || hasMpesaPayment ? (

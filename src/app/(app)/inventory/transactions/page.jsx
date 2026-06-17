@@ -12,6 +12,7 @@ import {
   SearchInput,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { P } from "@/lib/permission-codes";
 import {
   defaultDateRange,
   formatMovementDate,
@@ -191,7 +192,11 @@ export default function InventoryTransactionsPage() {
     <InventoryPageShell
       title="Inventory movements"
       subtitle="Stock changes grouped by product — expand to see each movement"
-      action={<PrimaryLink href="/inventory/transfers/new">Transfer stock</PrimaryLink>}
+      action={
+        <PrimaryLink href="/inventory/transfers/new" permission={P.inventory.transfers.create}>
+          Transfer stock
+        </PrimaryLink>
+      }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Field label="From">

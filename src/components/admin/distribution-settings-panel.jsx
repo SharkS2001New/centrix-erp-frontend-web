@@ -79,9 +79,10 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
           <div className="mt-5 space-y-3">
             <Toggle
               label="Enable distribution operations"
-              description="Shows fulfillment nav, dispatch board, and delivery assignment on order workflow."
+              description="Set by the platform administrator when this organization was registered. Operational routing rules below apply when distribution is enabled."
               checked={form.enable_distribution_ops}
-              onChange={(v) => setForm((f) => ({ ...f, enable_distribution_ops: v }))}
+              onChange={() => {}}
+              disabled
             />
             <Toggle
               label="Inherit customer route at checkout"

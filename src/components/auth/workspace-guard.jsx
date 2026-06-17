@@ -1,0 +1,82 @@
+"use client";
+
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/auth-context";
+import { getStoredWorkspace } from "@/lib/auth-storage";
+import { buildAccessContext, isPlatformShellUser } from "@/lib/access-control";
+import {
+  defaultWorkspaceId,
+  isPosWorkspace,
+  needsWorkspaceSelection,
+  pathBelongsToWorkspace,
+  workspaceHomePath,
+} from "@/lib/workspaces";
+
+export function WorkspaceGuard({ children }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { user, organization, capabilities, loading, isSuperAdmin } = useAuth();
+
+  const ctx = buildAccessContext({
+    user,
+    organization,
+    capabilities,
+    requireTillFloat: capabilities?.require_till_float,
+    isSuperAdmin,
+  });
+
+  const storedWorkspace = getStoredWorkspace();
+  const platformUser = isPlatformShellUser(ctx);
+
+  useEffect(() => {
+    if (loading || platformUser) return;
+
+    if (needsWorkspaceSelection(capabilities, storedWorkspace, ctx)) {
+      if (pathname !== "/choose-workspace") {
+        router.replace("/choose-workspace");
+      }
+      return;
+    }
+
+    const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
+    if (!workspaceId) return;
+
+    if (isPosWorkspace(workspaceId)) {
+      router.replace(workspaceHomePath(workspaceId, capabilities));
+      return;
+    }
+
+    if (!pathBelongsToWorkspace(pathname, workspaceId)) {
+      router.replace(workspaceHomePath(workspaceId, capabilities));
+    }
+  }, [capabilities, ctx, loading, pathname, platformUser, router, storedWorkspace]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-slate-500">Loading…</div>
+    );
+  }
+  if (platformUser) return <>{children}</>;
+
+  if (needsWorkspaceSelection(capabilities, storedWorkspace, ctx)) {
+    return pathname === "/choose-workspace" ? <>{children}</> : (
+      <div className="flex min-h-screen items-center justify-center text-slate-500">Loading…</div>
+    );
+  }
+
+  const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
+  if (isPosWorkspace(workspaceId)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-slate-500">Loading…</div>
+    );
+  }
+
+  if (workspaceId && !pathBelongsToWorkspace(pathname, workspaceId)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-slate-500">Loading…</div>
+    );
+  }
+
+  return <>{children}</>;
+}

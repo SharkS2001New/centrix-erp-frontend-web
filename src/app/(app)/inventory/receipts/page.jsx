@@ -5,6 +5,7 @@ import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PaginationBar, PrimaryLink, inputClassName } from "@/components/catalog/catalog-shared";
+import { P } from "@/lib/permission-codes";
 import {
   defaultDateRange,
   formatReceiptDate,
@@ -79,7 +80,11 @@ export default function StockReceiptsPage() {
     <InventoryPageShell
       title="Stock receipts"
       subtitle="Goods received from suppliers into your stock"
-      action={<PrimaryLink href="/inventory/receipts/receive">Receive stock</PrimaryLink>}
+      action={
+        <PrimaryLink href="/inventory/receipts/receive" permission={P.inventory.receipts.view}>
+          Receive stock
+        </PrimaryLink>
+      }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Field label="From">

@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { apiRequest } from "@/lib/api";
 import { parseDecimalInput } from "@/components/catalog/catalog-shared";
 import { formatSaleKes } from "@/lib/sales";
 import { resolveCheckoutStatus } from "@/lib/sales-settings";
@@ -10,6 +9,10 @@ import {
   customerCreditSummary,
   validateCustomerCreditSale,
 } from "@/lib/customer-credit";
+import {
+  creditCustomerToOption,
+  searchCreditCustomers,
+} from "@/lib/credit-customer-search";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 
 function PosField({ label, children }) {
@@ -129,14 +132,19 @@ export function PosPaymentPanel({
   const [confirmSummary, setConfirmSummary] = useState(null);
   const [localError, setLocalError] = useState(null);
 
-  const [customers, setCustomers] = useState([]);
+  const [creditSearchOptions, setCreditSearchOptions] = useState([]);
+  const [selectedCreditCustomer, setSelectedCreditCustomer] = useState(null);
   const [customerNum, setCustomerNum] = useState("");
-  const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [completedOrder, setCompletedOrder] = useState(null);
   const confirmYesRef = useRef(null);
   const walkInNameRef = useRef(null);
   const completeOkRef = useRef(null);
   const cashAmountRef = useRef(null);
+  const mpesaAmountRef = useRef(null);
+  const equityAmountRef = useRef(null);
+  const kcbAmountRef = useRef(null);
+  const bankAmountRef = useRef(null);
+  const creditTriggerRef = useRef(null);
   const enterActionRef = useRef(() => {});
   const prevOpenRef = useRef(false);
 
@@ -155,6 +163,8 @@ export function PosPaymentPanel({
     setConfirmSummary(null);
     setLocalError(null);
     setCustomerNum("");
+    setSelectedCreditCustomer(null);
+    setCreditSearchOptions([]);
     setSessionBillTotal(total);
     setPaymentDate(todayDateString());
     setCashAmount("0");
@@ -172,14 +182,11 @@ export function PosPaymentPanel({
     setWalkInCustomerName("");
   }, [open, billTotal, prefillMpesaAmount, prefillMpesaCode]);
 
-  useEffect(() => {
-    if (!open || !cfg.enableCreditPayment) return;
-    setLoadingCustomers(true);
-    apiRequest("/customers", { searchParams: { per_page: 200 } })
-      .then((res) => setCustomers(res.data ?? []))
-      .catch(() => setLocalError("Failed to load customers."))
-      .finally(() => setLoadingCustomers(false));
-  }, [open, cfg.enableCreditPayment]);
+  const searchCreditCustomersForSelect = useCallback(async (query) => {
+    const rows = await searchCreditCustomers(query);
+    setCreditSearchOptions(rows);
+    return rows;
+  }, []);
 
   const amountPaid = useMemo(() => {
     let bankTotal = 0;
@@ -220,9 +227,7 @@ export function PosPaymentPanel({
     return cfg.enableCheckoutCustomerName && !hasCreditCustomer;
   }
 
-  const creditCustomer = hasCreditCustomer
-    ? customers.find((c) => String(c.customer_num) === customerNum)
-    : null;
+  const creditCustomer = hasCreditCustomer ? selectedCreditCustomer : null;
 
   const creditCustomerSummary = useMemo(
     () => customerCreditSummary(creditCustomer),
@@ -233,18 +238,16 @@ export function PosPaymentPanel({
     ? Math.max(0, checkoutTotal - amountPaid)
     : 0;
 
-  const creditCustomerOptions = useMemo(
-    () =>
-      customers.map((c) => {
-        const name = c.customer_name?.trim() || `Customer #${c.customer_num}`;
-        return {
-          value: String(c.customer_num),
-          label: `${name} (#${c.customer_num})`,
-          searchText: `${name} ${c.customer_num} ${c.customer_code ?? ""} ${c.phone ?? ""}`,
-        };
-      }),
-    [customers],
-  );
+  const creditCustomerOptions = useMemo(() => {
+    const pinned =
+      selectedCreditCustomer &&
+      !creditSearchOptions.some(
+        (o) => String(o.value) === String(selectedCreditCustomer.customer_num),
+      )
+        ? [creditCustomerToOption(selectedCreditCustomer)]
+        : [];
+    return [...pinned, ...creditSearchOptions];
+  }, [creditSearchOptions, selectedCreditCustomer]);
 
   function todayDateString() {
     return new Date().toISOString().slice(0, 10);
@@ -503,11 +506,12 @@ export function PosPaymentPanel({
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e) {
+      if (step === "payment" && handlePaymentNavigationKey(e)) return;
       enterActionRef.current(e);
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  }, [open, step, saving, cfg, showCreditPaymentField, canComplete, checkoutTotal, amountPaid]);
 
   function formatPaymentFillAmount(amount, { ceil = false } = {}) {
     if (amount <= 0) return "0";
@@ -521,26 +525,111 @@ export function PosPaymentPanel({
     return Math.max(0, checkoutTotal - (amountPaid - current));
   }
 
+  function activateInvoiceMode() {
+    setCashAmount("0");
+    setMpesaAmount("0");
+    setEquityAmount("0");
+    setKcbAmount("0");
+    setOtherBankAmount("0");
+    setBankAmount("0");
+    setChequeAmount("0");
+    setLocalError(null);
+    window.requestAnimationFrame(() => {
+      creditTriggerRef.current?.focus();
+      creditTriggerRef.current?.click();
+    });
+  }
+
+  function focusPaymentField(ref) {
+    if (!ref?.current) return;
+    ref.current.focus();
+    ref.current.select?.();
+  }
+
+  function shouldAllowPaymentLetterShortcut() {
+    const el = document.activeElement;
+    if (!el) return true;
+    if (el.getAttribute("role") === "combobox" && el.getAttribute("aria-expanded") === "true") {
+      return false;
+    }
+    if (el.tagName === "INPUT") {
+      const type = el.type?.toLowerCase() ?? "text";
+      if (type === "number") return true;
+      return false;
+    }
+    if (el.tagName === "TEXTAREA" || el.tagName === "SELECT") return false;
+    return true;
+  }
+
+  function handlePaymentNavigationKey(e) {
+    if (step !== "payment" || saving) return false;
+
+    if (e.altKey || e.ctrlKey || e.metaKey) return false;
+
+    const key = e.key.length === 1 ? e.key.toLowerCase() : "";
+    if (!key || !shouldAllowPaymentLetterShortcut()) return false;
+
+    if (key === "c") {
+      e.preventDefault();
+      focusPaymentField(cashAmountRef);
+      return true;
+    }
+    if (key === "m" && cfg.enableMpesaAmount) {
+      e.preventDefault();
+      focusPaymentField(mpesaAmountRef);
+      return true;
+    }
+    if (key === "e" && !cfg.useBankSelect && cfg.showEquityBank) {
+      e.preventDefault();
+      focusPaymentField(equityAmountRef);
+      return true;
+    }
+    if (key === "k" && !cfg.useBankSelect && cfg.showKcbBank) {
+      e.preventDefault();
+      focusPaymentField(kcbAmountRef);
+      return true;
+    }
+    if (key === "i" && showCreditPaymentField) {
+      e.preventDefault();
+      activateInvoiceMode();
+      return true;
+    }
+
+    return false;
+  }
+
   function handlePaymentAmountKeyDown(e, currentAmount, setAmount, { ceil = false } = {}) {
-    if (e.key !== "Enter" || step !== "payment" || saving) return;
-    e.preventDefault();
+    if (step !== "payment" || saving) return;
 
-    const current = parseDecimalInput(currentAmount);
-    const remaining = remainingForPaymentField(currentAmount);
-
-    if (current <= 0 && remaining > 0.009) {
-      setAmount(formatPaymentFillAmount(remaining, { ceil }));
-      setLocalError(null);
+    if (e.key === "PageDown") {
+      e.preventDefault();
+      handleRequestComplete();
       return;
     }
 
-    if (current > 0 && canComplete) {
-      handleRequestComplete();
+    if (handlePaymentNavigationKey(e)) return;
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+
+      const current = parseDecimalInput(currentAmount);
+      const remaining = remainingForPaymentField(currentAmount);
+
+      if (current <= 0 && remaining > 0.009) {
+        setAmount(formatPaymentFillAmount(remaining, { ceil }));
+        setLocalError(null);
+        return;
+      }
+
+      if (current > 0 && canComplete) {
+        handleRequestComplete();
+      }
     }
   }
 
-  function handleCreditCustomerChange(value) {
+  function handleCreditCustomerChange(value, option) {
     setCustomerNum(value);
+    setSelectedCreditCustomer(option?.customer ?? null);
     setLocalError(null);
   }
 
@@ -822,7 +911,7 @@ export function PosPaymentPanel({
               />
             </PosField>
           ) : null}
-          <PosField label="Cash amount">
+          <PosField label="Cash amount (C)">
             <input
               ref={cashAmountRef}
               type="number"
@@ -835,8 +924,9 @@ export function PosPaymentPanel({
             />
           </PosField>
           {cfg.enableMpesaAmount ? (
-            <PosField label="M-Pesa amount">
+            <PosField label="M-Pesa amount (M)">
               <input
+                ref={mpesaAmountRef}
                 type="number"
                 min="0"
                 step="any"
@@ -881,6 +971,7 @@ export function PosPaymentPanel({
                 <>
                   <PosField label="Bank amount">
                     <input
+                      ref={bankAmountRef}
                       type="number"
                       min="0"
                       step="any"
@@ -904,8 +995,9 @@ export function PosPaymentPanel({
           ) : null}
 
           {!cfg.useBankSelect && cfg.showEquityBank ? (
-            <PosField label="Equity Bank amount">
+            <PosField label="Equity Bank amount (E)">
               <input
+                ref={equityAmountRef}
                 type="number"
                 min="0"
                 step="any"
@@ -917,8 +1009,9 @@ export function PosPaymentPanel({
             </PosField>
           ) : null}
           {!cfg.useBankSelect && cfg.showKcbBank ? (
-            <PosField label="KCB amount">
+            <PosField label="KCB amount (K)">
               <input
+                ref={kcbAmountRef}
                 type="number"
                 min="0"
                 step="any"
@@ -973,16 +1066,31 @@ export function PosPaymentPanel({
 
       {showCreditPaymentField ? (
         <div className="mt-3">
-          <PosField label="Credit payment">
+          <PosField label="Credit / invoice customer (I)">
             <PosSearchableSelect
+              triggerRef={creditTriggerRef}
               value={customerNum}
               onChange={handleCreditCustomerChange}
               options={creditCustomerOptions}
-              loading={loadingCustomers}
-              placeholder="— Select customer for credit —"
-              searchPlaceholder="Search customers…"
+              loadOptions={searchCreditCustomersForSelect}
+              minSearchLength={1}
+              placeholder="Search customer by name, phone, or #"
+              searchPlaceholder="Search by name, phone, or customer #…"
+              idleSearchLabel="Type a name, phone number, or customer #"
               emptyLabel="No matching customers"
               inputClassName={inputCls}
+              onTriggerKeyDown={(e) => {
+                if (e.key === "PageDown") {
+                  e.preventDefault();
+                  handleRequestComplete();
+                  return;
+                }
+                if (handlePaymentNavigationKey(e)) return;
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  activateInvoiceMode();
+                }
+              }}
             />
           <span className="mt-1 block text-[11px] text-slate-600">
             Registered customers only — walk-ins cannot be charged to accounts receivable.

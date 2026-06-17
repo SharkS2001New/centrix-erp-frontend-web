@@ -13,6 +13,7 @@ import {
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { P } from "@/lib/permission-codes";
 import {
   defaultDateRange,
   formatStockQty,
@@ -133,7 +134,11 @@ export default function DamagesPage() {
     <InventoryPageShell
       title="Damages"
       subtitle="Stock written off due to damage, expiry, or loss"
-      action={<PrimaryLink href="/inventory/damages/new">Record damage</PrimaryLink>}
+      action={
+        <PrimaryLink href="/inventory/damages/new" permission={P.inventory.damages.view}>
+          Record damage
+        </PrimaryLink>
+      }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Field label="From">

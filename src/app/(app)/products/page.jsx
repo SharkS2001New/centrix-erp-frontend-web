@@ -12,6 +12,8 @@ import {
 } from "@/components/products/kra-product-upload-bar";
 import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
 import { useAuth } from "@/contexts/auth-context";
+import { PermissionGate } from "@/components/permission-gate";
+import { P } from "@/lib/permission-codes";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
 
 const PAGE_SIZE = 10;
@@ -521,13 +523,15 @@ export default function ProductsPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <ProductImportExport products={filtered} onImported={loadData} />
-          <Link
-            href="/products/new"
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500"
-          >
-            <PlusIcon />
-            Add product
-          </Link>
+          <PermissionGate permission={P.catalogue.products.create}>
+            <Link
+              href="/products/new"
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500"
+            >
+              <PlusIcon />
+              Add product
+            </Link>
+          </PermissionGate>
         </div>
       </div>
 

@@ -19,6 +19,7 @@ import {
   AuthSubmitButton,
   authInputClass,
 } from "@/components/auth/auth-shell";
+import { PasswordInput } from "@/components/auth/password-input";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -157,8 +158,7 @@ export default function LoginPage() {
         </AuthField>
 
         <AuthField label="Password">
-          <input
-            type="password"
+          <PasswordInput
             className={authInputClass()}
             value={password}
             onChange={(e) => setPassword(e.target.value)}

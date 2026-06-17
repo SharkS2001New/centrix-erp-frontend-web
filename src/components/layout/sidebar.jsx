@@ -6,9 +6,11 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { OrganizationSwitcher } from "@/components/layout/organization-switcher";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { getStoredWorkspace } from "@/lib/auth-storage";
 import { getSalesOrderQueueWorkflow, salesOrderQueueNavItems } from "@/lib/order-workflow";
 import { isMobileOrdersEnabled, isPosTillFloatRequired } from "@/lib/sales-settings";
 import { isNavItemActive, isNavSectionActive, isNavItemVisible, navSections } from "@/lib/nav-config";
+import { filterNavSectionsForWorkspace, defaultWorkspaceId } from "@/lib/workspaces";
 
 const STORAGE_KEY = "sidebar-expanded-sections-v2";
 
@@ -133,9 +135,12 @@ export function Sidebar() {
     [capabilities, hasPermission, isModuleEnabled, isSuperAdmin, organization, requireTillFloat, user],
   );
 
+  const workspaceId =
+    getStoredWorkspace() ?? defaultWorkspaceId(capabilities, navContext);
+
   const visibleSections = useMemo(
-    () =>
-      navSections
+    () => {
+      const withOrders = navSections
         .filter((section) => !section.superAdminOnly || isSuperAdmin())
         .map((section) => ({
           ...section,
@@ -146,8 +151,15 @@ export function Sidebar() {
             return isNavItemVisible(item, navContext) ? [item] : [];
           }),
         }))
-        .filter((section) => section.items.length > 0),
-    [isSuperAdmin, navContext, salesOrderNavItems],
+        .filter((section) => section.items.length > 0);
+
+      if (!workspaceId || isSuperAdmin()) {
+        return withOrders;
+      }
+
+      return filterNavSectionsForWorkspace(withOrders, workspaceId, navContext);
+    },
+    [capabilities, isSuperAdmin, navContext, salesOrderNavItems, workspaceId],
   );
 
   const [expandedSections, setExpandedSections] = useState(() => {

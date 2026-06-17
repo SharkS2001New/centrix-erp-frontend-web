@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 const defaultInputCls =
@@ -13,27 +13,40 @@ const PANEL_MAX_HEIGHT = LIST_MAX_HEIGHT + SEARCH_HEADER_HEIGHT;
 
 /**
  * Select-style dropdown with an in-panel search field (credit customers, etc.).
+ * Pass `loadOptions` for server-side search; otherwise filters `options` locally.
  */
 export function PosSearchableSelect({
   value,
   onChange,
-  options,
+  options = [],
   placeholder = "— Select —",
   searchPlaceholder = "Search…",
   required = false,
   disabled = false,
   loading = false,
   emptyLabel = "No matches",
+  idleSearchLabel = "Type to search…",
+  minSearchLength = 1,
+  loadOptions,
+  searchError = null,
   inputClassName = defaultInputCls,
+  triggerRef,
+  onTriggerKeyDown,
 }) {
   const listId = useId();
   const rootRef = useRef(null);
   const panelRef = useRef(null);
   const searchRef = useRef(null);
+  const searchSeq = useRef(0);
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [menuStyle, setMenuStyle] = useState(null);
+  const [asyncOptions, setAsyncOptions] = useState([]);
+  const [asyncLoading, setAsyncLoading] = useState(false);
+  const [asyncError, setAsyncError] = useState(null);
+
+  const asyncSearch = typeof loadOptions === "function";
 
   const selected = useMemo(
     () => options.find((o) => String(o.value) === String(value)),
@@ -41,24 +54,65 @@ export function PosSearchableSelect({
   );
 
   const filtered = useMemo(() => {
+    if (asyncSearch) return asyncOptions;
     const q = query.trim().toLowerCase();
     if (!q) return options;
     return options.filter((o) => {
       const text = (o.searchText ?? o.label).toLowerCase();
       return text.includes(q);
     });
-  }, [options, query]);
+  }, [asyncOptions, asyncSearch, options, query]);
+
+  const runSearch = useCallback(
+    async (term) => {
+      if (!asyncSearch) return;
+      const q = term.trim();
+      if (q.length < minSearchLength) {
+        setAsyncOptions([]);
+        setAsyncLoading(false);
+        setAsyncError(null);
+        return;
+      }
+
+      const seq = ++searchSeq.current;
+      setAsyncLoading(true);
+      setAsyncError(null);
+      try {
+        const rows = await loadOptions(q);
+        if (seq !== searchSeq.current) return;
+        setAsyncOptions(Array.isArray(rows) ? rows : []);
+      } catch (err) {
+        if (seq !== searchSeq.current) return;
+        setAsyncOptions([]);
+        setAsyncError(err instanceof Error ? err.message : "Search failed");
+      } finally {
+        if (seq === searchSeq.current) setAsyncLoading(false);
+      }
+    },
+    [asyncSearch, loadOptions, minSearchLength],
+  );
 
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) {
       setQuery("");
+      setAsyncOptions([]);
+      setAsyncLoading(false);
+      setAsyncError(null);
       return;
     }
     const t = window.setTimeout(() => searchRef.current?.focus(), 0);
     return () => window.clearTimeout(t);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !asyncSearch) return undefined;
+    const t = window.setTimeout(() => {
+      void runSearch(query);
+    }, 280);
+    return () => window.clearTimeout(t);
+  }, [asyncSearch, open, query, runSearch]);
 
   useEffect(() => {
     if (!open || !rootRef.current) {
@@ -102,7 +156,7 @@ export function PosSearchableSelect({
       window.removeEventListener("resize", updateMenuPosition);
       window.removeEventListener("scroll", updateMenuPosition, true);
     };
-  }, [open, filtered.length]);
+  }, [open, filtered.length, asyncLoading, asyncError, searchError]);
 
   useEffect(() => {
     function onDocClick(e) {
@@ -115,27 +169,37 @@ export function PosSearchableSelect({
   }, []);
 
   function pick(option) {
-    onChange(String(option.value));
+    onChange(String(option.value), option);
     setOpen(false);
   }
 
   function clearSelection(e) {
     e.stopPropagation();
-    onChange("");
+    onChange("", null);
     setOpen(false);
   }
 
   function toggleOpen() {
-    if (disabled || loading) return;
+    if (disabled) return;
     setOpen((prev) => !prev);
   }
+
+  const listBusy = loading || asyncLoading;
+  const listError = searchError || asyncError;
+  const trimmedQuery = query.trim();
+  const queryTooShort = asyncSearch && trimmedQuery.length < minSearchLength;
+
+  let listMessage = emptyLabel;
+  if (queryTooShort) listMessage = idleSearchLabel;
+  else if (listBusy) listMessage = "Searching…";
+  else if (listError) listMessage = listError;
 
   const triggerLabel = loading
     ? "Loading…"
     : selected?.label ?? placeholder;
 
   const panel =
-    open && !disabled && !loading && menuStyle ? (
+    open && !disabled && menuStyle ? (
       <div
         ref={panelRef}
         style={{
@@ -172,7 +236,9 @@ export function PosSearchableSelect({
           className="min-h-0 flex-1 overflow-auto py-1"
         >
           {filtered.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-500">{emptyLabel}</li>
+            <li className={`px-3 py-2 text-sm ${listError ? "text-red-600" : "text-slate-500"}`}>
+              {listMessage}
+            </li>
           ) : (
             filtered.map((o) => (
               <li key={o.value}>
@@ -199,12 +265,14 @@ export function PosSearchableSelect({
   return (
     <div ref={rootRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         role="combobox"
         aria-expanded={open}
         aria-controls={listId}
         disabled={disabled || loading}
         onClick={toggleOpen}
+        onKeyDown={onTriggerKeyDown}
         className={`${inputClassName} flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60`}
       >
         <span className={`min-w-0 flex-1 truncate ${selected ? "text-black" : "text-slate-500"}`}>
