@@ -1,6 +1,6 @@
-# POS / ERP Web
+# Centrix ERP Web
 
-Next.js frontend for [pos-erp-api](../pos-erp-api). Uses **Laravel Sanctum** bearer tokens against `/api/v1`.
+Next.js frontend for **Centrix ERP** by Alpac Software Solutions. Connects to [pos-erp-api](../pos-erp-api) and uses **Laravel Sanctum** bearer tokens against `/api/v1`.
 
 ## Stack
 
@@ -62,9 +62,11 @@ src/
   app/           # routes
   components/    # shell, sidebar, auth guard
   contexts/      # auth + capabilities
-  lib/           # api client, token storage
+  lib/           # api client, token storage, branding
   types/         # API types
 ```
+
+Branding constants live in `src/lib/branding.js` (`Centrix ERP`, `Alpac Software Solutions`).
 
 ## Build
 

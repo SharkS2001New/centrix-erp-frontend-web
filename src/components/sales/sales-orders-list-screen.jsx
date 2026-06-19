@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import {
   getOrderWorkflow,
@@ -43,7 +44,7 @@ import {
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
 
 const PAGE_SIZE = 15;
-const FILTER_CONTROL_CLASS = "h-[38px] w-full min-w-[10.5rem] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-black outline-none focus:border-[#185FA5]";
+const FILTER_CONTROL_CLASS = "theme-input theme-input-focus h-[38px] w-full min-w-[10.5rem] rounded-lg border px-3 py-2 text-sm outline-none";
 
 function indexPaymentRefs(payments) {
   const map = new Map();
@@ -288,7 +289,7 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
       if (loaded) detail = loaded;
     }
     await printSaleOrder(detail, {
-      organizationName: capabilities?.profile_label ?? "POS / ERP",
+      organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
       moduleSettings: capabilities?.module_settings,
       capabilities,
       uomById,
@@ -463,7 +464,7 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
     return (
       <CatalogPageShell title="Orders" subtitle="Queue not found">
         <p className="text-sm text-slate-500">This order queue is not part of your workflow.</p>
-        <Link href="/sales/orders" className="mt-3 inline-block text-sm text-[#185FA5] hover:underline">
+        <Link href="/sales/orders" className="mt-3 inline-block text-sm text-[var(--theme-primary)] hover:underline">
           View all sales orders
         </Link>
       </CatalogPageShell>
@@ -483,7 +484,7 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/sales/pos"
-            className="inline-flex items-center rounded-lg bg-[#185FA5] px-3 py-2 text-sm font-medium text-white hover:bg-[#144f8a]"
+            className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
           >
             + New sale
           </Link>
@@ -523,7 +524,7 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
             <button
               type="button"
               onClick={applyDateFilter}
-              className="inline-flex h-[38px] shrink-0 items-center justify-center self-end rounded-lg border border-[#185FA5]/30 bg-[#E6F1FB] px-3 text-sm font-medium text-[#185FA5] hover:bg-[#d4e8f9]"
+              className="inline-flex h-[38px] shrink-0 items-center justify-center self-end rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
             >
               Filter
             </button>
@@ -595,7 +596,7 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
                   className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
                     allPageExpanded
                       ? "border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200"
-                      : "border-[#185FA5]/30 bg-[#E6F1FB] text-[#185FA5] hover:bg-[#d4e8f9]"
+                      : "border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
                   }`}
                 >
                   {allPageExpanded ? "Collapse all" : "Expand all"}

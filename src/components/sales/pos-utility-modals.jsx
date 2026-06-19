@@ -137,7 +137,7 @@ export function PosCalculatorModal({ open, onClose }) {
               type="button"
               onClick={() => onKey(label)}
               className={`rounded-lg border border-slate-200 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-700 ${
-                label === "=" ? "col-span-1 row-span-1 bg-[#185FA5] text-white hover:bg-[#144f8a]" : "bg-white dark:bg-slate-800"
+                label === "=" ? "col-span-1 row-span-1 bg-[var(--theme-primary)] text-white hover:bg-[var(--theme-primary-hover)]" : "bg-white dark:bg-slate-800"
               } ${label === "0" ? "col-span-2" : ""}`}
             >
               {label}
@@ -290,7 +290,7 @@ export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCod
           type="button"
           disabled={loading || !query.trim()}
           onClick={() => void lookupExact()}
-          className="shrink-0 rounded-lg bg-[#185FA5] px-3 py-2 text-xs font-semibold text-white hover:bg-[#144f8a] disabled:opacity-50"
+          className="shrink-0 rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-xs font-semibold text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
         >
           {loading ? "…" : "Check"}
         </button>
@@ -317,7 +317,7 @@ export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCod
               <button
                 type="button"
                 onClick={() => selectProduct(item)}
-                className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left hover:bg-[#E6F1FB]/60 dark:hover:bg-slate-700/60"
+                className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left hover:bg-[var(--theme-primary-muted)]/60 dark:hover:bg-slate-700/60"
               >
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium text-slate-900 dark:text-white">
@@ -325,7 +325,7 @@ export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCod
                   </span>
                   <span className="font-mono text-xs text-slate-500">{item.product_code}</span>
                 </span>
-                <span className="shrink-0 text-sm font-semibold tabular-nums text-[#0C447C] dark:text-blue-200">
+                <span className="shrink-0 text-sm font-semibold tabular-nums text-[var(--theme-accent-text)] dark:text-blue-200">
                   {formatSaleKes(
                     posListUnitPrice(item, sellWholesale, retailByCode?.[item.product_code]),
                   )}
@@ -346,7 +346,7 @@ export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCod
             <button
               type="button"
               onClick={() => setSelected(null)}
-              className="text-xs font-medium text-[#185FA5] hover:underline dark:text-blue-300"
+              className="text-xs font-medium text-[var(--theme-primary)] hover:underline dark:text-blue-300"
             >
               Clear
             </button>

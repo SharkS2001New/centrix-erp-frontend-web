@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-const defaultInputCls =
-  "w-full rounded border border-[#c4b89a] bg-white px-2 py-1.5 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5]";
+import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
+
+const defaultInputCls = INPUT_CLASS;
 
 const LIST_MAX_HEIGHT = 200;
 const SEARCH_HEADER_HEIGHT = 44;
@@ -211,9 +212,9 @@ export function PosSearchableSelect({
           ...(menuStyle.top != null ? { top: menuStyle.top } : {}),
           ...(menuStyle.bottom != null ? { bottom: menuStyle.bottom } : {}),
         }}
-        className="flex flex-col overflow-hidden rounded-lg border border-[#c4b89a] bg-white shadow-lg"
+        className="theme-panel flex flex-col overflow-hidden rounded-lg border shadow-lg"
       >
-        <div className="shrink-0 border-b border-[#e8dfd0] p-2">
+        <div className="shrink-0 border-b border-[var(--theme-border)] p-2">
           <input
             ref={searchRef}
             type="search"
@@ -226,7 +227,7 @@ export function PosSearchableSelect({
                 setOpen(false);
               }
             }}
-            className="w-full rounded border border-[#c4b89a] bg-white px-2 py-1.5 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5]"
+            className={defaultInputCls}
           />
         </div>
         <ul
@@ -249,7 +250,7 @@ export function PosSearchableSelect({
                   onClick={() => pick(o)}
                   className={`block w-full px-3 py-2 text-left text-sm hover:bg-[#f3ebe0] ${
                     String(o.value) === String(value)
-                      ? "bg-[#E6F1FB] font-medium text-[#185FA5]"
+                      ? "bg-[var(--theme-primary-muted)] font-medium text-[var(--theme-primary)]"
                       : "text-slate-800"
                   }`}
                 >

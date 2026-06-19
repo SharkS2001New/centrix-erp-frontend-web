@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { formatShortDate, formatKesCompact, getSaleTimestamp, StatCard } from "@/components/catalog/catalog-shared";
+import { formatShortDate, formatKesCompact, getSaleTimestamp, StatCard, TABLE_HEAD_ROW_CLASS } from "@/components/catalog/catalog-shared";
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import {
   saleLineDisplayUnitPrice,
@@ -135,8 +135,8 @@ export function OrderSummaryStats({ summary, hint = "Today" }) {
 
 export function OrderDateGroupRow({ dateLabel, colSpan = 8 }) {
   return (
-    <tr className="border-b border-slate-200 bg-slate-100/80">
-      <td colSpan={colSpan} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+    <tr className="border-b border-[var(--theme-border)] bg-[var(--theme-surface-muted)]">
+      <td colSpan={colSpan} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--theme-text-subtle)]">
         {dateLabel}
       </td>
     </tr>
@@ -173,7 +173,7 @@ export function OrderMiniPipeline({ status, workflow, showLabel = true }) {
           <span
             key={step.key}
             className={`h-1.5 flex-1 rounded-full ${
-              stepIdx <= activeIdx ? "bg-[#185FA5]" : "bg-slate-200"
+              stepIdx <= activeIdx ? "bg-[var(--theme-primary)]" : "bg-slate-200"
             }`}
             title={step.label}
           />
@@ -190,7 +190,7 @@ export function OrderExpandButton({ expanded, onClick, label = "Toggle line item
       onClick={onClick}
       aria-expanded={expanded}
       aria-label={label}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#E6F1FB] text-[#185FA5] hover:bg-[#d4e8f9]"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--theme-primary-muted)] text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
     >
       {expanded ? (
         <svg
@@ -224,7 +224,7 @@ export function OrderExpandButton({ expanded, onClick, label = "Toggle line item
 export function OrderExpandIcon() {
   return (
     <span
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#E6F1FB] text-[#185FA5]"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--theme-primary-muted)] text-[var(--theme-primary)]"
       aria-hidden
     >
       <svg
@@ -262,7 +262,7 @@ export function OrderInlineItems({ items, loading, uomById }) {
   return (
     <table className="w-full border-collapse text-sm">
       <thead>
-        <tr className="border-b border-slate-200 bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+        <tr className={`${TABLE_HEAD_ROW_CLASS} text-[10px] font-semibold`}>
           <th className="px-4 py-2">Product</th>
           <th className="px-4 py-2 text-center">Qty</th>
           <th className="px-4 py-2 text-right">Price</th>
@@ -635,7 +635,7 @@ export function OrderListTableHead({
   showSourceColumn = true,
 }) {
   return (
-    <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+    <tr className={TABLE_HEAD_ROW_CLASS}>
       <th className="w-12 px-4 py-2.5" aria-label="Expand" />
       <th className="px-4 py-2.5">Receipt</th>
       <th className="px-4 py-2.5">Customer</th>
@@ -696,7 +696,7 @@ export function OrderListTableRow({
           />
         </td>
         <td className="px-4 py-3">
-          <Link href={href} className="font-medium text-[#185FA5] hover:underline">
+          <Link href={href} className="font-medium text-[var(--theme-primary)] hover:underline">
             {formatReceiptNumber(sale)}
           </Link>
           <p className="mt-0.5 text-xs text-slate-500">#{sale.order_num}</p>
@@ -880,7 +880,7 @@ export function OrderLineItemsTable({ items, uomById }) {
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+              <tr className={TABLE_HEAD_ROW_CLASS}>
                 <th className="px-4 py-2.5">Product</th>
                 <th className="px-4 py-2.5 text-right">Qty</th>
                 <th className="px-4 py-2.5 text-right">Unit price</th>
@@ -941,7 +941,7 @@ export function OrderPaymentsSection({
           <button
             type="button"
             onClick={onRecordPayment}
-            className="shrink-0 rounded-lg bg-[#185FA5] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#144f8a]"
+            className="shrink-0 rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--theme-primary-hover)]"
           >
             + Record payment
           </button>

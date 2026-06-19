@@ -26,7 +26,7 @@ import {
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 
 const SALES_LINKS = [
-  { href: "/sales/pos", title: "Backoffice POS", desc: "Search products, cart, checkout in ERP" },
+  { href: "/sales/pos", title: "Create order", desc: "Search products, build a cart, and checkout" },
   { href: "/sales/orders", title: "Orders", desc: "Search and manage sales orders" },
   { href: "/sales/reservations", title: "Reservations", desc: "Stock held for pending orders" },
   { href: "/sales/returns", title: "Returns", desc: "Manage customer sale returns" },
@@ -82,11 +82,11 @@ export default function SalesDashboardPage() {
       action={
         <div className="flex flex-wrap gap-2">
           <PrimaryLink href="/sales/pos" showIcon={false}>
-            Open POS
+            Create order
           </PrimaryLink>
           <Link
             href="/sales/orders"
-            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            className="theme-secondary-btn inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium"
           >
             View all orders
           </Link>
@@ -101,7 +101,7 @@ export default function SalesDashboardPage() {
       }
     >
       {loading ? (
-        <p className="text-sm text-slate-500">Loading dashboard…</p>
+        <p className="theme-subtext text-sm">Loading dashboard…</p>
       ) : (
         <div className="space-y-8">
           <DashboardSection title="Today's orders" subtitle="Excluding held orders">
@@ -112,12 +112,12 @@ export default function SalesDashboardPage() {
             <HourlySalesChart points={hourly} />
           </DashboardPanel>
 
-          <ReportsDashboardSection compact showFilters />
+          <ReportsDashboardSection compact showFilters workspaceScope="sales" />
 
           <DashboardSection
             title="Recent orders today"
             action={
-              <Link href="/sales/orders" className="text-sm text-[#185FA5] hover:underline">
+              <Link href="/sales/orders" className="theme-link text-sm">
                 View all
               </Link>
             }

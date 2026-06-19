@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 
-export function OrganizationSwitcher() {
+export function OrganizationSwitcher({ collapsed = false }) {
   const { organization, memberships, switchOrganization } = useAuth();
   const [switching, setSwitching] = useState(false);
 
@@ -19,15 +19,23 @@ export function OrganizationSwitcher() {
         ]
       : [];
 
-  if (options.length <= 1) {
-    if (!organization) return null;
+  if (!organization) return null;
+
+  if (collapsed) {
     return (
-      <div className="app-sidebar-divider border-b px-4 py-3">
-        <p className="app-sidebar-section-label text-[10px] font-bold uppercase tracking-wider">
-          Organization
-        </p>
-        <p className="app-sidebar-title mt-0.5 truncate text-sm font-medium">{organization.org_name}</p>
-        <p className="app-sidebar-muted text-xs">{organization.company_code}</p>
+      <div className="flex justify-center pb-2" title={organization.org_name}>
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-sm text-white">
+          {(organization.org_name?.[0] ?? "O").toUpperCase()}
+        </span>
+      </div>
+    );
+  }
+
+  if (options.length <= 1) {
+    return (
+      <div className="app-sidebar-org px-[22px] pb-3">
+        <p className="truncate text-[13px] font-medium text-white/95">{organization.org_name}</p>
+        <p className="truncate text-[11px] text-[#abb9e8]">{organization.company_code}</p>
       </div>
     );
   }
@@ -44,13 +52,13 @@ export function OrganizationSwitcher() {
   }
 
   return (
-    <div className="app-sidebar-divider border-b px-4 py-3">
+    <div className="app-sidebar-org px-[22px] pb-3">
       <label className="block">
-        <span className="app-sidebar-section-label text-[10px] font-bold uppercase tracking-wider">
+        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.1em] text-[#abb9e8]">
           Organization
         </span>
         <select
-          className="app-sidebar-select mt-1 w-full rounded-md border px-2 py-1.5 text-sm outline-none focus:border-emerald-500"
+          className="app-sidebar-select w-full rounded-md border px-2 py-1.5 text-[13px] outline-none"
           value={organization?.company_code ?? ""}
           onChange={onChange}
           disabled={switching}

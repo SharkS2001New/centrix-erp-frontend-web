@@ -12,6 +12,7 @@ import {
   PrimaryButton,
   TrashIcon,
   inputClassName,
+  workspaceCardClassName,
 } from "@/components/catalog/catalog-shared";
 import { normalizeRoleId, permissionIdSet } from "@/lib/permission-ids";
 
@@ -218,13 +219,13 @@ export default function AdminRolesPage() {
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <p className="border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <div className={workspaceCardClassName}>
+          <p className="theme-subtext border-b border-[var(--theme-border)] px-4 py-3 text-xs font-semibold uppercase tracking-wide">
             Roles
           </p>
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-[var(--theme-border)]">
             {loading ? (
-              <li className="px-4 py-6 text-sm text-slate-500">Loading…</li>
+              <li className="theme-subtext px-4 py-6 text-sm">Loading…</li>
             ) : (
               roles.map((role) => {
                 const roleId = normalizeRoleId(role.id);
@@ -234,9 +235,7 @@ export default function AdminRolesPage() {
                       type="button"
                       onClick={() => setSelectedRoleId(roleId)}
                       className={`min-w-0 flex-1 px-4 py-3 text-left text-sm transition ${
-                        selectedRoleId === roleId
-                          ? "bg-[#E6F1FB] font-medium text-[#185FA5]"
-                          : "text-slate-700 hover:bg-slate-50"
+                        selectedRoleId === roleId ? "theme-list-item-active" : "theme-list-item"
                       }`}
                     >
                       {role.role_name}
@@ -256,13 +255,13 @@ export default function AdminRolesPage() {
           </ul>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className={workspaceCardClassName}>
           {selectedRole ? (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-border)] px-5 py-4">
                 <div>
-                  <h2 className="text-[15px] font-medium text-slate-900">Role: {selectedRole.role_name}</h2>
-                  <p className="mt-0.5 text-sm text-slate-500">
+                  <h2 className="theme-heading text-[15px] font-medium">Role: {selectedRole.role_name}</h2>
+                  <p className="theme-subtext mt-0.5 text-sm">
                     Users assigned: {selectedRole.users_count ?? 0}
                   </p>
                 </div>
@@ -287,7 +286,7 @@ export default function AdminRolesPage() {
               </div>
 
               <div className="overflow-x-auto p-5">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <p className="theme-subtext mb-3 text-xs font-semibold uppercase tracking-wide">
                   Permissions by module & feature
                 </p>
                 <PermissionMatrix
@@ -299,7 +298,7 @@ export default function AdminRolesPage() {
               </div>
             </>
           ) : (
-            <p className="px-5 py-8 text-sm text-slate-500">Select a role to manage permissions.</p>
+            <p className="theme-subtext px-5 py-8 text-sm">Select a role to manage permissions.</p>
           )}
         </div>
       </div>

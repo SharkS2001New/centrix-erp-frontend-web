@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { REPORT_DEFINITIONS } from "@/lib/reports/definitions";
+import { hrReportSubtitle } from "@/lib/reports/hr-reports";
 import { StructuredReportScreen } from "@/components/reports/structured-report-screen";
 import { GenericReportScreen } from "@/components/reports/generic-report-screen";
 import { useEffect, useState } from "react";
@@ -45,6 +46,11 @@ export default function ReportViewerPage() {
   }
 
   return (
-    <GenericReportScreen reportKey={reportKey} label={meta.label} apiPath={meta.path} />
+    <GenericReportScreen
+      reportKey={reportKey}
+      label={meta.label}
+      apiPath={meta.path}
+      subtitle={hrReportSubtitle(reportKey) ?? undefined}
+    />
   );
 }

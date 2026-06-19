@@ -1,3 +1,4 @@
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { saleLineProductLabel, saleLineQtyLabel } from "@/lib/sale-line-items";
 import { openPrintWindow } from "@/lib/open-print-window";
 import {
@@ -17,7 +18,7 @@ function escapeHtml(value) {
 export function printSaleReceipt(
   sale,
   {
-    organizationName = "POS / ERP",
+    organizationName = DEFAULT_PRINT_ORG_NAME,
     uomById = null,
     seller = null,
     branch = null,

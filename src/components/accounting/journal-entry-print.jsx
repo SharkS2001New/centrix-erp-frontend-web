@@ -1,3 +1,4 @@
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { accountOptionLabel, formatAccountingAmount, journalStatusLabel } from "@/lib/accounting-shared";
 import { openPrintWindow } from "@/lib/open-print-window";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
@@ -10,7 +11,7 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-export function printJournalEntry(entry, { organizationName = "POS / ERP" } = {}) {
+export function printJournalEntry(entry, { organizationName = DEFAULT_PRINT_ORG_NAME } = {}) {
   if (!entry) return;
 
   const lines = entry.lines ?? [];

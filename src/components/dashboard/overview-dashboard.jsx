@@ -1,36 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { useMemo, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { P } from "@/lib/permission-codes";
 import {
   DashboardErrorBanner,
-  DashboardLoading,
   DashboardQuickLinks,
   DashboardSection,
-  DashboardSummaryTable,
 } from "@/components/dashboard/dashboard-shared";
 import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboard-section";
-import { formatReportKes } from "@/lib/reports/format";
 
 const MODULE_LINKS = [
-  { key: "sales.backend", href: "/sales", title: "Sales", desc: "Orders, POS, and today's performance", permission: P.sales.dashboard.view },
-  { key: "sales.pos", href: "/sales/pos", title: "Backoffice POS", desc: "Checkout and till operations in ERP", permission: P.pos.checkout.create },
+  { key: "sales.backend", href: "/sales", title: "Sales", desc: "Orders and today's performance", permission: P.sales.dashboard.view },
+  { key: "sales.pos", href: "/sales/pos", title: "Create order", desc: "Search products, build a cart, and checkout", permission: P.pos.checkout.create },
   { key: "inventory", href: "/inventory", title: "Inventory", desc: "Stock levels, receipts, and movements", permission: P.inventory.stock.view },
   { key: "customers_suppliers", href: "/customers", title: "Customers", desc: "Debtors, routes, and credit", permission: P.customers.customers.view },
-  { key: "accounting", href: "/accounting", title: "Accounting", desc: "GL, P&L, and financial position", permission: P.accounting.dashboard.view },
-  { key: "reports", href: "/reports", title: "Reports", desc: "Operational and financial reports", permission: P.reports.hub.view },
-  { key: "hr_payroll", href: "/hr", title: "HR & Payroll", desc: "Employees, attendance, and payroll", permission: P.hr.employees.view },
-  { key: "admin", href: "/admin", title: "Administration", desc: "Users, branches, and settings", permission: P.admin.overview.view },
+  { key: "distribution", href: "/fulfillment", title: "Logistics", desc: "Routes, trips, and dispatch", permission: P.fulfillment.drivers.view },
+  { key: "customers_suppliers", href: "/suppliers", title: "Suppliers", desc: "Purchasing and payables", permission: P.purchasing.suppliers.view },
+  { key: "sales.reports", href: "/reports", title: "Reports", desc: "Sales, inventory, and operations reports", permission: P.reports.hub.view },
 ];
 
 export function OverviewDashboard() {
   const { user, capabilities, isModuleEnabled, hasPermission } = useAuth();
-  const [topDebtors, setTopDebtors] = useState([]);
-  const [debtorsLoading, setDebtorsLoading] = useState(true);
   const [dashError, setDashError] = useState(null);
 
   const enabledModules = useMemo(
@@ -47,13 +40,6 @@ export function OverviewDashboard() {
       ),
     [hasPermission, isModuleEnabled],
   );
-
-  useEffect(() => {
-    apiRequest("/reports/top-debtors", { searchParams: { per_page: 5 } })
-      .then((res) => setTopDebtors(res.data ?? []))
-      .catch(() => setTopDebtors([]))
-      .finally(() => setDebtorsLoading(false));
-  }, []);
 
   return (
     <CatalogPageShell
@@ -104,34 +90,7 @@ export function OverviewDashboard() {
 
       <DashboardErrorBanner message={dashError} />
 
-      <ReportsDashboardSection onError={setDashError} />
-
-      <DashboardSection
-        title="Top debtors"
-        subtitle="Customers with the highest outstanding balances"
-        className="mt-8"
-        action={
-          <Link href="/reports/top-debtors" className="text-sm font-medium text-[#185FA5] hover:underline">
-            Full report
-          </Link>
-        }
-      >
-        {debtorsLoading ? (
-          <DashboardLoading label="Loading receivables…" />
-        ) : (
-          <DashboardSummaryTable
-            columns={[
-              { key: "customer_name", label: "Customer" },
-              { key: "route_name", label: "Route" },
-              { key: "total_outstanding", label: "Outstanding", align: "right" },
-            ]}
-            rows={topDebtors}
-            formatValue={(key, value) => (key === "total_outstanding" ? formatReportKes(value) : value)}
-            viewAllHref="/reports/top-debtors"
-            viewAllLabel="View top debtors report →"
-          />
-        )}
-      </DashboardSection>
+      <ReportsDashboardSection workspaceScope="backoffice" onError={setDashError} />
 
       <DashboardSection title="Quick access" subtitle="Jump to a module dashboard" className="mt-8">
         <DashboardQuickLinks links={quickLinks} />

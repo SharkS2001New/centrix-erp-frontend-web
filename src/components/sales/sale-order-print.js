@@ -1,3 +1,4 @@
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { apiRequest } from "@/lib/api";
 import { getOrderDocumentType, mergeSalesSettings } from "@/lib/sales-settings";
 import { printSaleInvoice } from "@/components/sales/sale-invoice-print";
@@ -67,7 +68,7 @@ export async function printSaleOrder(sale, options = {}) {
   if (documentType === "invoice") {
     printSaleInvoice(sale, {
       ...options,
-      seller: seller ?? { name: options.organizationName ?? "POS / ERP" },
+      seller: seller ?? { name: options.organizationName ?? DEFAULT_PRINT_ORG_NAME },
       branch,
       customer,
       invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
@@ -77,7 +78,7 @@ export async function printSaleOrder(sale, options = {}) {
 
   printSaleReceipt(sale, {
     ...options,
-    seller: seller ?? { name: options.organizationName ?? "POS / ERP" },
+    seller: seller ?? { name: options.organizationName ?? DEFAULT_PRINT_ORG_NAME },
     branch,
     customer,
     productDiscountsEnabled: Boolean(sales.allow_discounts),

@@ -68,7 +68,7 @@ export function PosLeaveGuardDialog({
             type="button"
             disabled={busy}
             onClick={onClearAndLeave}
-            className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#144f8a] disabled:opacity-50"
+            className="rounded-lg bg-[var(--theme-primary)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
           >
             {busy ? "Clearing…" : "Clear sale & leave"}
           </button>

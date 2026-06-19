@@ -24,7 +24,14 @@ const HR_LINKS = [
   { href: "/hr/overtime", title: "Overtime", desc: "Overtime entries" },
   { href: "/hr/allowances", title: "Allowances", desc: "Recurring allowances" },
   { href: "/hr/deductions", title: "Deductions", desc: "Statutory and other deductions" },
-  { href: "/reports/payroll-summary", title: "Payroll report", desc: "Payroll runs summary" },
+  { href: "/reports/leave-balance", title: "Leave balance", desc: "Annual, sick, and off-day balances" },
+  { href: "/reports/payroll-summary", title: "Payroll summary", desc: "Payroll runs summary" },
+  { href: "/reports/statutory-deductions", title: "Statutory deductions", desc: "NSSF, SHIF, PAYE, and levies" },
+  { href: "/reports/bank-transfer", title: "Bank transfer", desc: "Net pay bank payment file" },
+  { href: "/reports/headcount", title: "Headcount", desc: "Workforce by department and branch" },
+  { href: "/reports/contract-expiry", title: "Contract expiry", desc: "Upcoming contract end dates" },
+  { href: "/reports/staff-turnover", title: "Staff turnover", desc: "Turnover rate by department" },
+  { href: "/reports/hr-dashboard-kpi", title: "HR dashboard KPIs", desc: "Organization workforce metrics" },
 ];
 
 export function HrDashboardContent() {

@@ -54,7 +54,9 @@ export function AiSettingsPanel({ saving, setSaving, setError, setMessage }) {
     <section className="theme-panel rounded-xl border p-6 shadow-sm">
       <h2 className="theme-heading text-lg font-medium">AI assistant</h2>
       <p className="theme-subtext mt-1 text-sm">
-        Each organization manages its own OpenAI credentials. Keys are stored per organization and never shared across tenants.
+        Each organization manages its own OpenAI credentials. Keys are stored per organization and never shared
+        across tenants. Grant the Use AI assistant permission on a role to show the floating assistant icon for
+        those users — they can open it whenever they want.
       </p>
 
       {loading ? (

@@ -93,9 +93,12 @@ export function buildPageNumbers(current, total) {
   return pages;
 }
 
+/** Flat workspace card — matches page canvas, not elevated surface. */
+export const workspaceCardClassName = "theme-panel rounded-xl border shadow-sm";
+
 export function CatalogPageShell({ title, subtitle, action, banner, toolbar, children }) {
   return (
-    <div className="theme-page -m-6 min-h-[calc(100%+3rem)] p-6 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
+    <div className="theme-workspace min-h-full">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="theme-heading text-xl font-medium">{title}</h1>
@@ -128,7 +131,7 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50 ${className}`}
+      className={`theme-primary-btn inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${className}`}
     >
       {showIcon ? <PlusIcon /> : null}
       {children}
@@ -143,7 +146,7 @@ export function PrimaryLink({ href, children, showIcon = true, permission, modul
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
+      className="theme-primary-btn inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium"
     >
       {showIcon ? <PlusIcon /> : null}
       {children}
@@ -154,13 +157,13 @@ export function PrimaryLink({ href, children, showIcon = true, permission, modul
 export function SearchInput({ value, onChange, placeholder, className = "" }) {
   return (
     <div className={`relative min-w-[200px] flex-1 max-w-xs ${className}`}>
-      <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+      <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 theme-subtext" />
       <input
         type="search"
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        className="theme-input w-full rounded-lg border py-2 pl-9 pr-3 text-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
+        className="theme-input theme-input-focus w-full rounded-lg border py-2 pl-9 pr-3 text-sm outline-none"
       />
     </div>
   );
@@ -188,7 +191,7 @@ export function PaginationBar({ page, totalPages, total, pageSize, onChange }) {
   const pages = buildPageNumbers(page, totalPages);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
+    <div className="theme-pagination-bar flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs">
       <span>
         Showing {from}–{to} of {total}
       </span>
@@ -198,7 +201,7 @@ export function PaginationBar({ page, totalPages, total, pageSize, onChange }) {
         </PagBtn>
         {pages.map((p, i) =>
           p === "…" ? (
-            <span key={`e-${i}`} className="px-1 text-slate-400">
+            <span key={`e-${i}`} className="theme-subtext px-1">
               …
             </span>
           ) : (
@@ -221,10 +224,8 @@ function PagBtn({ children, onClick, disabled, active }) {
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`rounded-md border px-2.5 py-1 text-xs disabled:opacity-40 ${
-        active
-          ? "border-[#185FA5] bg-[#185FA5] text-[#E6F1FB]"
-          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+      className={`theme-pag-btn rounded-md px-2.5 py-1 text-xs disabled:opacity-40 ${
+        active ? "theme-pag-btn-active" : ""
       }`}
     >
       {children}
@@ -239,8 +240,8 @@ export function IconButton({ label, onClick, danger, disabled, children }) {
       aria-label={label}
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex rounded-md p-1 text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${
-        danger ? "hover:bg-red-50 hover:text-red-700" : "hover:text-slate-700"
+      className={`inline-flex rounded-md p-1 theme-subtext hover:bg-[var(--theme-hover)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${
+        danger ? "hover:bg-red-50 hover:text-red-700" : "hover:text-[var(--theme-text)]"
       }`}
     >
       {children}
@@ -254,7 +255,7 @@ export function ActiveBadge({ active = true }) {
       Active
     </span>
   ) : (
-    <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-500">
+    <span className="inline-flex rounded-full bg-[var(--theme-primary-subtle)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--theme-accent-text)]">
       Inactive
     </span>
   );
@@ -262,7 +263,7 @@ export function ActiveBadge({ active = true }) {
 
 export function ParentChip({ label }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
+    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-2 py-0.5 text-[11px] theme-subtext">
       <FolderIcon />
       {label}
     </span>
@@ -272,8 +273,8 @@ export function ParentChip({ label }) {
 export function UomBadge({ label, variant = "blue" }) {
   const styles =
     variant === "purple"
-      ? "bg-[#EEEDFE] text-[#3C3489]"
-      : "bg-[#E6F1FB] text-[#0C447C]";
+      ? "bg-[var(--theme-primary-subtle)] text-[var(--theme-accent-text)]"
+      : "bg-[var(--theme-primary-muted)] text-[var(--theme-accent-text)]";
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium capitalize ${styles}`}>
       {label || "—"}
@@ -321,7 +322,7 @@ export function FormModal({ title, open, onClose, onSubmit, saving, error, submi
             type="button"
             disabled={saving}
             onClick={handleSubmit}
-            className="flex-1 rounded-lg bg-[#185FA5] py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
+            className="theme-primary-btn flex-1 rounded-lg py-2 text-sm font-medium disabled:opacity-50"
           >
             {saving ? "Saving…" : submitLabel}
           </button>
@@ -363,7 +364,7 @@ export function FormDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            className="theme-subtext rounded-lg p-1 hover:bg-[var(--theme-hover)] hover:text-[var(--theme-text)]"
             aria-label="Close"
           >
             <DrawerCloseIcon />
@@ -380,7 +381,7 @@ export function FormDrawer({
             <button
               type="submit"
               disabled={saving}
-              className="w-full rounded-lg bg-[#185FA5] py-2.5 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
+              className="theme-primary-btn w-full rounded-lg py-2.5 text-sm font-medium disabled:opacity-50"
             >
               {saving ? "Saving…" : submitLabel}
             </button>
@@ -466,10 +467,22 @@ export function Field({ label, children }) {
 }
 
 export const INPUT_CLASS =
-  "theme-input w-full rounded-lg border px-2.5 py-2 text-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:opacity-60";
+  "theme-input theme-input-focus w-full rounded-lg border px-2.5 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60";
 
 export const SELECT_CLASS =
-  "theme-input rounded-lg border px-3 py-2 text-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:opacity-60";
+  "theme-input theme-input-focus rounded-lg border px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60";
+
+export const INPUT_READONLY_CLASS =
+  "theme-input theme-input-readonly w-full rounded-lg border px-2.5 py-2 text-sm shadow-sm outline-none cursor-not-allowed";
+
+export const COMPACT_INPUT_CLASS =
+  "theme-input theme-input-focus w-full rounded-lg border px-2 py-1.5 text-sm shadow-sm outline-none disabled:cursor-not-allowed disabled:opacity-60";
+
+export const TABLE_HEAD_ROW_CLASS =
+  "theme-table-head-row text-left text-xs font-medium uppercase tracking-wide";
+
+export const SECONDARY_BTN_CLASS =
+  "theme-secondary-btn inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed";
 
 export function inputClassName() {
   return INPUT_CLASS;

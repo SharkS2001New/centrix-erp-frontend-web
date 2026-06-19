@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiRequest } from "@/lib/api";
-import { formatShortDate } from "@/components/catalog/catalog-shared";
+import { formatShortDate, INPUT_CLASS, TABLE_HEAD_ROW_CLASS, workspaceCardClassName } from "@/components/catalog/catalog-shared";
 import {
   saleLineDisplayUnitPrice,
   saleLineProductLabel,
@@ -230,7 +230,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
         className="flex h-[min(88vh,860px)] w-[min(98vw,72rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="shrink-0 border-b border-[#144f8a] bg-[#185FA5] px-4 py-3 text-white">
+        <header className="shrink-0 border-b border-[var(--theme-primary-hover)] bg-[var(--theme-primary)] px-4 py-3 text-white">
           <div className="flex items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
@@ -264,7 +264,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search order #, customer…"
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-black shadow-sm outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
+            className={INPUT_CLASS}
           />
         </div>
 
@@ -311,7 +311,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
                           {formatShortDate(order.created_at)}
                         </span>
                       </span>
-                      <span className="shrink-0 text-sm font-semibold text-[#0C447C]">
+                      <span className="shrink-0 text-sm font-semibold text-[var(--theme-accent-text)]">
                         {formatSaleKes(order.order_total)}
                       </span>
                     </summary>
@@ -324,7 +324,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
                       ) : (
                         <table className="w-full border-collapse text-sm">
                           <thead>
-                            <tr className="border-b border-slate-200 bg-slate-50 text-left text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                            <tr className={`${TABLE_HEAD_ROW_CLASS} text-[10px] font-semibold`}>
                               <th className="px-4 py-2">Product</th>
                               <th className="px-4 py-2 text-center">Qty</th>
                               <th className="px-4 py-2 text-right">Price</th>
@@ -369,7 +369,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
                           e.preventDefault();
                           void handleRestore(order, false);
                         }}
-                        className="rounded-md bg-[#185FA5] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-[#144f8a] disabled:opacity-50"
+                        className="rounded-md bg-[var(--theme-primary)] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
                       >
                         {isBusy ? "…" : "Restore"}
                       </button>

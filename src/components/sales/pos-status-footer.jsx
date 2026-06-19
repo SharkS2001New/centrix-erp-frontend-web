@@ -79,10 +79,10 @@ export function PosStatusFooter({
     .join(" · ");
 
   return (
-    <footer className="grid shrink-0 grid-cols-1 gap-3 border-t border-slate-200 bg-white px-5 py-4 text-sm text-slate-600 sm:grid-cols-[1fr_auto] sm:items-center dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+    <footer className="grid shrink-0 grid-cols-1 gap-3 border-t border-[var(--theme-border)] bg-[var(--theme-surface)] px-5 py-4 text-sm text-[var(--theme-text-muted)] sm:grid-cols-[1fr_auto] sm:items-center">
       <div className="min-w-0">
         <span
-          className="block truncate text-base font-medium text-slate-800 dark:text-slate-100"
+          className="block truncate text-base font-medium text-[var(--theme-text)]"
           title={loginLabel}
         >
           {loginLabel || "Signed in"}
@@ -106,7 +106,7 @@ export function PosStatusFooter({
         <button
           type="button"
           onClick={onShowShortcuts}
-          className="text-sm font-medium text-[#185FA5] hover:underline dark:text-sky-300"
+          className="text-sm font-medium text-[var(--theme-primary)] hover:underline dark:text-sky-300"
         >
           Shortcuts (F1)
         </button>

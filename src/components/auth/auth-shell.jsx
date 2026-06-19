@@ -1,21 +1,35 @@
 "use client";
 
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { CentrixLogoFull } from "@/components/branding/centrix-logo";
+import { COMPANY_NAME } from "@/lib/branding";
 
 const inputClass =
   "theme-input mt-1 w-full rounded-lg border px-3 py-2 outline-none focus:border-emerald-500";
 
-export function AuthShell({ title, subtitle, children, maxWidthClass = "max-w-md" }) {
+export function AuthShell({ title, subtitle, children, maxWidthClass = "max-w-md", showLogo = true }) {
   return (
     <div className="auth-page-bg relative flex min-h-screen items-center justify-center overflow-y-auto px-4 py-8">
       <div className="absolute right-4 top-4 z-10">
         <ThemeToggle />
       </div>
       <div className={`auth-card w-full ${maxWidthClass} rounded-2xl border p-8 shadow-xl`}>
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        {subtitle ? <p className="theme-muted mt-1 text-sm">{subtitle}</p> : null}
+        {showLogo ? (
+          <div className="mb-6 flex justify-center">
+            <CentrixLogoFull />
+          </div>
+        ) : null}
+        {title ? (
+          <h1 className="text-2xl font-semibold text-[var(--theme-text)]">{title}</h1>
+        ) : null}
+        {subtitle ? (
+          <p className={`theme-muted text-sm ${title ? "mt-1" : "mt-0"}`}>{subtitle}</p>
+        ) : null}
         {children}
       </div>
+      <p className="pointer-events-none absolute bottom-4 left-0 right-0 text-center text-xs text-slate-500/80 dark:text-slate-400/70">
+        © {COMPANY_NAME}
+      </p>
     </div>
   );
 }

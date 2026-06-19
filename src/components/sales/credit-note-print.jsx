@@ -1,3 +1,4 @@
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { customerReturnLineQtyLabel } from "@/components/sales/customer-returns-shared";
 import { openPrintWindow } from "@/lib/open-print-window";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
@@ -22,7 +23,7 @@ const KRA_REFUND_REASONS = {
 export function printCreditNote(
   customerReturn,
   {
-    organizationName = "POS / ERP",
+    organizationName = DEFAULT_PRINT_ORG_NAME,
     branch = null,
     uomById = null,
   } = {},

@@ -1,12 +1,19 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
+import { PRODUCT_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import { usePosSession } from "@/contexts/pos-session-context";
-import { parseDecimalInput } from "@/components/catalog/catalog-shared";
+import {
+  parseDecimalInput,
+  INPUT_CLASS,
+  SELECT_CLASS,
+  INPUT_READONLY_CLASS,
+  COMPACT_INPUT_CLASS,
+} from "@/components/catalog/catalog-shared";
 import { enrichProductForLpo } from "@/components/lpo/lpo-product-utils";
 import { formatMixedStockDisplay, formatPosCartQty } from "@/lib/stock-uom";
 import { uomWholesaleConversionExample } from "@/lib/uom-packaging";
@@ -64,6 +71,7 @@ import { PosActionButton } from "./pos-action-button";
 import { CloseSessionModal, XReportModal, ZReportModal } from "@/components/pos/pos-session-modals";
 import { FloatBreakdownModal, OpenSessionModal } from "@/components/pos/till-session-ui";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { PosStatusFooter } from "./pos-status-footer";
 import {
   PosCalculatorModal,
@@ -79,20 +87,17 @@ import {
 } from "@/lib/pos-till";
 
 const cartToolbarBtnClassName =
-  "inline-flex items-center gap-1.5 rounded-lg border border-[#185FA5]/30 bg-white px-3.5 py-2 text-xs font-bold uppercase tracking-wide text-[#0C447C] shadow-sm hover:bg-[#E6F1FB] disabled:opacity-50";
+  "theme-secondary-btn inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold uppercase tracking-wide shadow-sm disabled:opacity-50";
 
-const posHeaderBtnClassName =
-  "inline-flex items-center gap-1.5 rounded-lg border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-white/20 disabled:opacity-40";
+const posHeaderBtnClassName = "pos-header-action-btn";
 
-const fieldInput =
-  "w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-black shadow-sm outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600";
+const fieldInput = INPUT_CLASS;
 
-const compactAmountInput =
-  "w-[4.5rem] shrink-0 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-right text-xs text-black shadow-sm outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600";
+const compactAmountInput = `${COMPACT_INPUT_CLASS} w-[4.5rem] shrink-0 text-right text-xs`;
 
 function PosLabel({ children }) {
   return (
-    <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#0C447C]">
+    <span className="theme-accent-label mb-1 block text-xs font-bold uppercase tracking-wide">
       {children}
     </span>
   );
@@ -343,7 +348,7 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
-  const organizationName = capabilities?.profile_label ?? "POS / ERP";
+  const organizationName = capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME;
   const posCashierName = user?.full_name ?? user?.username ?? null;
   const channel = posChannelFromStockSource(sellFromShop, posSalesConfig);
   const channelWorkflow = useMemo(
@@ -914,7 +919,7 @@ export function PosScreen({ standalone = false }) {
         computed,
         incrementBaseQty: computed.baseQty,
         mergeTarget,
-        successMessage: mergeTarget ? "Quantity increased." : "Line added.",
+        successMessage: null,
       });
     } catch (e) {
       setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
@@ -1335,11 +1340,7 @@ export function PosScreen({ standalone = false }) {
         editingRef: editingLineRef ?? cartLineRef(editingLine),
         discount,
         override,
-        successMessage: wasEditing
-          ? "Line updated."
-          : mergeTarget
-            ? "Quantity increased."
-            : "Line added.",
+        successMessage: null,
       });
       if (!ok) return;
     } catch (e) {
@@ -1844,9 +1845,13 @@ export function PosScreen({ standalone = false }) {
     if (sale) {
       clearLineEntry();
       await loadCashierCart();
-      setStatusMessage(
-        `Order #${sale.order_num} completed — M-Pesa ${formatSaleKes(payNow)} received. Ready for next order.`,
-      );
+      if (!standalone) {
+        setStatusMessage(
+          `Order #${sale.order_num} completed — M-Pesa ${formatSaleKes(payNow)} received. Ready for next order.`,
+        );
+      } else {
+        setStatusMessage(null);
+      }
       window.requestAnimationFrame(() => {
         searchInputRef.current?.focus();
       });
@@ -1860,11 +1865,15 @@ export function PosScreen({ standalone = false }) {
     setBusy(true);
     try {
       await loadCashierCart();
-      setStatusMessage(
-        completedSale?.order_num
-          ? `Ready for next order — previous order #${completedSale.order_num}.`
-          : "Ready for next order.",
-      );
+      if (!standalone) {
+        setStatusMessage(
+          completedSale?.order_num
+            ? `Ready for next order — previous order #${completedSale.order_num}.`
+            : "Ready for next order.",
+        );
+      } else {
+        setStatusMessage(null);
+      }
       window.requestAnimationFrame(() => {
         searchInputRef.current?.focus();
       });
@@ -2135,107 +2144,81 @@ export function PosScreen({ standalone = false }) {
   ]);
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-slate-100 text-slate-900">
-      {/* Title bar */}
-      <div className="shrink-0 border-b border-[#144f8a] bg-[#185FA5] text-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
-          <div className="flex flex-wrap items-center gap-3">
-            {standalone ? null : (
-              <Link href="/sales" className="text-xs text-blue-100 hover:text-white hover:underline">
-                ← Dashboard
-              </Link>
-            )}
-            <h1 className="text-base font-semibold tracking-wide">CREATE NEW ORDER</h1>
-            {activeOrderNum ? (
-              <span className="rounded-md bg-white/15 px-2.5 py-1 font-mono text-sm font-semibold text-white">
-                Order #{activeOrderNum}
-              </span>
-            ) : null}
-            {!standalone && completedSale ? (
-              <Link
-                href={`/sales/orders/${completedSale.id}`}
-                data-pos-leave-ignore="true"
-                className="text-xs font-medium text-emerald-200 hover:text-white hover:underline"
-              >
-                View #{completedSale.order_num}
-              </Link>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-3">
-            <ThemeToggle className="!border-white/25 !text-white hover:!bg-white/10" />
-            <div className="hidden max-w-md text-right text-xs text-blue-100 md:block">
-              <p className="min-h-[1.25rem] normal-case text-white">
-                {statusMessage || "\u00a0"}
-              </p>
+    <div
+      className={`pos-workspace relative flex h-full min-h-0 flex-col${
+        standalone ? " pos-workspace-standalone" : " pos-workspace-backoffice"
+      }`}
+    >
+      {standalone ? (
+        <>
+          <div className="pos-header shrink-0 shadow-sm">
+            <div className="pos-header-bar flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 lg:px-5">
+              <div className="shrink-0">
+                <CentrixLogoHeader markSize={28} title={PRODUCT_NAME} />
+              </div>
+              <div className="flex min-w-0 flex-1 items-center justify-center gap-2 overflow-x-auto px-1">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setHeldOrdersOpen(true)}
+                  className={posHeaderBtnClassName}
+                >
+                  Held orders
+                  {heldOrdersCount > 0 ? (
+                    <span className="pos-header-action-badge">
+                      {heldOrdersCount > 99 ? "99+" : heldOrdersCount}
+                    </span>
+                  ) : null}
+                </button>
+                {requirePosTillFloat && activeSession ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setSessionError(null);
+                      setFloatDetailsOpen(true);
+                    }}
+                    className={posHeaderBtnClassName}
+                  >
+                    Float
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setPriceCheckerOpen(true)}
+                  className={posHeaderBtnClassName}
+                >
+                  Price checker
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || !completedSale?.id}
+                  title={
+                    completedSale?.order_num
+                      ? `Reprint order #${completedSale.order_num}`
+                      : "Complete an order first"
+                  }
+                  onClick={() => void handlePrintReceipt()}
+                  className={posHeaderBtnClassName}
+                >
+                  Reprint last receipt
+                </button>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                <WorkspaceSwitcher />
+                <ThemeToggle showLabel className="pos-header-theme-btn" />
+                <button
+                  type="button"
+                  onClick={() => void logout()}
+                  className={`${posHeaderBtnClassName} normal-case`}
+                >
+                  Sign out
+                </button>
+              </div>
             </div>
-            {standalone ? (
-              <button
-                type="button"
-                onClick={() => void logout()}
-                className="rounded-lg border border-white/25 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10"
-              >
-                Sign out
-              </button>
-            ) : null}
           </div>
-        </div>
-        {standalone ? (
-          <div className="flex flex-wrap items-center gap-2 border-t border-white/15 px-4 py-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setHeldOrdersOpen(true)}
-              className={posHeaderBtnClassName}
-            >
-              Held
-              {heldOrdersCount > 0 ? (
-                <span className="inline-flex min-w-[1rem] items-center justify-center rounded-full bg-white/25 px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
-                  {heldOrdersCount > 99 ? "99+" : heldOrdersCount}
-                </span>
-              ) : null}
-            </button>
-            {requirePosTillFloat && activeSession ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  setSessionError(null);
-                  setFloatDetailsOpen(true);
-                }}
-                className={posHeaderBtnClassName}
-              >
-                Float
-              </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setPriceCheckerOpen(true)}
-              className={posHeaderBtnClassName}
-            >
-              Price check
-            </button>
-            <button
-              type="button"
-              disabled={busy || !completedSale?.id}
-              title={
-                completedSale?.order_num
-                  ? `Reprint order #${completedSale.order_num}`
-                  : "Complete an order first"
-              }
-              onClick={() => void handlePrintReceipt()}
-              className={posHeaderBtnClassName}
-            >
-              Reprint last receipt
-            </button>
-          </div>
-        ) : null}
-      </div>
-
-      {statusMessage ? (
-        <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-700 md:hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-          {statusMessage}
-        </div>
+        </>
       ) : null}
 
       {!requirePosTillFloat || activeSession ? null : suspendedSession ? (
@@ -2350,16 +2333,30 @@ export function PosScreen({ standalone = false }) {
         fallbackCashierName={posCashierName}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+      <div
+        className={`flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row${
+          standalone ? " pos-standalone-frame" : " pos-backoffice-frame"
+        }`}
+      >
         {/* Left — line entry + payment options */}
-        <div className="flex min-h-0 w-full flex-col border-b border-slate-200 bg-white lg:w-[min(100%,28rem)] lg:shrink-0 lg:border-b-0 lg:border-r xl:w-[32rem]">
-          <div className="shrink-0 border-b border-slate-200 bg-slate-50/80 px-4 py-3">
-            <p className="text-left text-sm font-bold uppercase tracking-wide text-[#0C447C]">
-              Scan or search items
-            </p>
+        <div className="pos-left-panel flex min-h-0 w-full flex-col border-b border-[var(--theme-border)] bg-[var(--theme-page-bg)] lg:w-[min(100%,28rem)] lg:shrink-0 lg:border-b-0 lg:border-r xl:w-[32rem]">
+          <div className="pos-search-panel shrink-0 border-b border-[var(--theme-border)] px-4 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-left text-sm font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
+                Scan or search items
+              </p>
+              {activeOrderNum ? (
+                <span className="shrink-0 rounded-md border border-[var(--theme-border)] bg-[var(--theme-page-bg)] px-2.5 py-0.5 font-mono text-xs font-semibold text-[var(--theme-text)]">
+                  Order #{activeOrderNum}
+                </span>
+              ) : null}
+            </div>
+            {!standalone && statusMessage ? (
+              <p className="theme-subtext mt-2 truncate text-xs">{statusMessage}</p>
+            ) : null}
             <div className="mt-3 flex flex-col gap-2 text-sm">
               {posSalesConfig.perLineStockRouting ? (
-                <span className="text-slate-600">
+                <span className="text-[var(--theme-text-muted)]">
                   Stock routing:{" "}
                   <strong>{posSalesConfig.stockSourceLabel}</strong>
                 </span>
@@ -2385,21 +2382,21 @@ export function PosScreen({ standalone = false }) {
                   </label>
                 </>
               ) : posSalesConfig.stockSourceLabel ? (
-                <span className="text-slate-600">
+                <span className="text-[var(--theme-text-muted)]">
                   Stock source: <strong>{posSalesConfig.stockSourceLabel}</strong>
                 </span>
               ) : null}
               {posSalesConfig.enableRetailPricing ? (
-                <label className="flex cursor-pointer items-center gap-1.5 font-medium text-[#0C447C]">
+                <label className="flex cursor-pointer items-center gap-1.5 font-medium text-[var(--theme-accent-text)]">
                   <input
                     type="checkbox"
                     checked={!sellWholesale}
                     onChange={(e) => setSellWholesale(!e.target.checked)}
                   />
                   Sell at retail prices
-                  <span className="text-[10px] font-normal text-slate-500">(F12)</span>
+                  <span className="theme-subtext text-[10px] font-normal">(F12)</span>
                   {retailPricingSession ? (
-                    <span className="rounded bg-[#E6F1FB] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                    <span className="rounded bg-[var(--theme-primary-subtle)] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--theme-text)]">
                       Retail
                     </span>
                   ) : null}
@@ -2431,13 +2428,13 @@ export function PosScreen({ standalone = false }) {
                       </label>
                     </>
                   ) : lockedToRouteOrder ? (
-                    <span className="text-xs font-medium text-[#0C447C]">
+                    <span className="text-xs font-medium text-[var(--theme-accent-text)]">
                       Select Route to Apply Markup
                     </span>
                   ) : null}
                   {lockedToRouteOrder || isRouteOrder ? (
                     <select
-                      className="min-w-[10rem] rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-black shadow-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
+                      className={`${SELECT_CLASS} min-w-[10rem] px-2 py-1 text-xs`}
                       value={selectedRouteId}
                       disabled={busy}
                       onChange={(e) => void handleRouteChange(e.target.value)}
@@ -2460,7 +2457,7 @@ export function PosScreen({ standalone = false }) {
 
           <div className="min-h-0 flex-1 overflow-y-auto">
           {/* Line entry form */}
-          <div className="grid shrink-0 grid-cols-2 gap-x-4 gap-y-4 border-b border-slate-200 p-4 text-sm">
+          <div className="pos-line-entry grid shrink-0 grid-cols-2 gap-x-4 gap-y-4 border-b border-[var(--theme-border)] p-4 text-sm">
             <div className="col-span-2 space-y-4">
               <PosProductSearch
                 inputRef={searchInputRef}
@@ -2490,13 +2487,13 @@ export function PosScreen({ standalone = false }) {
             <div className="col-span-2 space-y-1">
               <PosLabel>Package</PosLabel>
               <input
-                className={`${fieldInput} cursor-not-allowed bg-slate-100 text-slate-700`}
+                className={`${INPUT_READONLY_CLASS} px-2 py-1.5`}
                 value={lineForm.package}
                 readOnly
                 placeholder="Set from product UOM"
               />
               {selectedProduct && lineForm.package ? (
-                <p className="mt-0.5 text-[10px] text-slate-600">
+                <p className="theme-subtext mt-0.5 text-[10px]">
                   Set automatically from UOM and retail package tiers
                 </p>
               ) : null}
@@ -2522,10 +2519,10 @@ export function PosScreen({ standalone = false }) {
                 }}
               />
               {selectedProduct && qtyFieldMeta?.hint ? (
-                <p className="mt-0.5 text-[10px] text-slate-600">{qtyFieldMeta.hint}</p>
+                <p className="theme-subtext mt-0.5 text-[10px]">{qtyFieldMeta.hint}</p>
               ) : null}
               {stockDeductionHint ? (
-                <p className="mt-0.5 text-[10px] font-medium text-[#0C447C]">
+                <p className="mt-0.5 text-[10px] font-medium text-[var(--theme-accent-text)]">
                   {stockDeductionHint}
                 </p>
               ) : null}
@@ -2538,7 +2535,7 @@ export function PosScreen({ standalone = false }) {
                 <PosLabel>Discount</PosLabel>
                 <input
                   ref={discountInputRef}
-                  className={`${fieldInput} font-semibold text-[#185FA5] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600`}
+                  className={`${fieldInput} font-semibold text-[var(--theme-primary)] disabled:cursor-not-allowed theme-input-readonly`}
                   type="number"
                   min="0"
                   step="any"
@@ -2549,15 +2546,15 @@ export function PosScreen({ standalone = false }) {
                   onKeyDown={canEditManualLineDiscount() ? handleDiscountEnter : undefined}
                 />
                 {productHasConfiguredDiscount(selectedProduct) ? (
-                  <p className="mt-0.5 text-[10px] text-slate-600">
+                  <p className="theme-subtext mt-0.5 text-[10px]">
                     From product: {formatProductDiscountLabel(selectedProduct)}
                   </p>
                 ) : allowEditLineDiscount ? (
-                  <p className="mt-0.5 text-[10px] text-slate-600">
+                  <p className="theme-subtext mt-0.5 text-[10px]">
                     Enter a manual discount for this line. Press Enter to continue.
                   </p>
                 ) : (
-                  <p className="mt-0.5 text-[10px] text-slate-600">
+                  <p className="theme-subtext mt-0.5 text-[10px]">
                     Applied automatically from product settings.
                   </p>
                 )}
@@ -2567,7 +2564,7 @@ export function PosScreen({ standalone = false }) {
               <PosLabel>{unitPriceLabel}</PosLabel>
               <input
                 ref={unitPriceRef}
-                className={`${fieldInput} ${!allowEditUnitPrice ? "cursor-not-allowed bg-slate-100 text-slate-700" : ""}`}
+                className={`${fieldInput} ${!allowEditUnitPrice ? "theme-input-readonly cursor-not-allowed" : ""}`}
                 type="number"
                 min="0"
                 step="any"
@@ -2587,7 +2584,7 @@ export function PosScreen({ standalone = false }) {
                 type="button"
                 disabled={busy || lineBusy || addLineBlocked}
                 onClick={handleAddLine}
-                className="flex min-w-[8rem] flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#144f8a] bg-[#185FA5] px-4 py-2.5 text-sm font-bold uppercase text-white shadow-sm hover:bg-[#144f8a] disabled:opacity-50"
+                className="theme-primary-btn pos-add-line-btn flex min-w-[8rem] flex-1 items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-bold uppercase shadow-sm disabled:opacity-50"
               >
                 <span className="text-base">{editingLineId ? "✓" : "+"}</span>
                 {editingLineId ? "Update" : "Add"}
@@ -2597,7 +2594,7 @@ export function PosScreen({ standalone = false }) {
                   type="button"
                   disabled={busy}
                   onClick={handleCancelEdit}
-                  className="flex min-w-[7rem] flex-1 items-center justify-center gap-1 rounded border border-slate-300 bg-white py-2 text-xs font-bold uppercase text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  className="theme-secondary-btn flex min-w-[7rem] flex-1 items-center justify-center gap-1 rounded py-2 text-xs font-bold uppercase disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -2609,13 +2606,17 @@ export function PosScreen({ standalone = false }) {
                   e.preventDefault();
                   void handleRefresh();
                 }}
-                className="flex min-w-[7rem] flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white py-2 text-xs font-bold uppercase text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+                className="theme-secondary-btn pos-refresh-btn flex min-w-[7rem] flex-1 items-center justify-center gap-1 rounded-lg py-2 text-xs font-bold uppercase shadow-sm disabled:opacity-50"
               >
-                <span className="text-base text-[#185FA5]">↻</span> Refresh
+                <span className="text-base leading-none" aria-hidden>
+                  ↻
+                </span>{" "}
+                Refresh
               </button>
             </div>
           </div>
 
+          <div className="pos-payment-panel shrink-0 px-4 pb-4">
           <PosCartPaymentOptions
             cart={cart}
             busy={busy}
@@ -2630,12 +2631,13 @@ export function PosScreen({ standalone = false }) {
             onCompleteOrder={(updatedCart) => void handleMpesaOrderComplete(updatedCart)}
           />
           </div>
+          </div>
         </div>
 
         {/* Right — cart grid */}
-        <div className="flex min-h-0 flex-1 flex-col bg-white">
+        <div className="pos-cart-panel flex min-h-0 flex-1 flex-col bg-[var(--theme-page-bg)]">
           {!standalone || (requirePosTillFloat && activeSession && hasPosTill) ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-[#E6F1FB] px-4 py-3">
+          <div className="pos-cart-toolbar flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--theme-border)] px-4 py-2.5">
             {!standalone ? (
               <>
                 <button
@@ -2646,7 +2648,7 @@ export function PosScreen({ standalone = false }) {
                 >
                   Held orders
                   {heldOrdersCount > 0 ? (
-                    <span className="inline-flex min-w-[1rem] items-center justify-center rounded-full bg-[#185FA5] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
+                    <span className="inline-flex min-w-[1rem] items-center justify-center rounded-full bg-[var(--theme-primary)] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
                       {heldOrdersCount > 99 ? "99+" : heldOrdersCount}
                     </span>
                   ) : null}
@@ -2696,10 +2698,10 @@ export function PosScreen({ standalone = false }) {
             ) : null}
           </div>
           ) : null}
-          <div className="min-h-0 flex-1 overflow-auto p-3">
+          <div className="pos-cart-table-wrap min-h-0 flex-1 overflow-auto p-3">
             <table className="w-full border-collapse text-sm">
-              <thead className="sticky top-0 z-10 bg-slate-50">
-                <tr className="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-wide text-slate-600">
+              <thead className="sticky top-0 z-10 bg-[var(--theme-page-bg)]">
+                <tr className="theme-table-head-row border-b border-[var(--theme-border)] text-left text-xs font-bold uppercase tracking-wide">
                   <th className="px-3 py-2.5">Scan code</th>
                   <th className="px-3 py-2.5">Description</th>
                   {showCartLineType ? (
@@ -2717,7 +2719,7 @@ export function PosScreen({ standalone = false }) {
               <tbody>
                 {!cart?.lines?.length ? (
                   <tr>
-                    <td colSpan={cartTableColSpan} className="py-12 text-center text-slate-500">
+                    <td colSpan={cartTableColSpan} className="theme-subtext py-12 text-center">
                       No items in cart
                     </td>
                   </tr>
@@ -2736,17 +2738,17 @@ export function PosScreen({ standalone = false }) {
                         key={line.id}
                         onClick={() => setSelectedLineId(line.id)}
                         onDoubleClick={() => handleEditSelectedLine(line.id)}
-                        className={`cursor-pointer border-b border-slate-100 ${
+                        className={`cursor-pointer border-b border-[var(--theme-border)] ${
                           editing
                             ? "bg-amber-50 ring-1 ring-inset ring-amber-300"
                             : selected
-                              ? "bg-[#E6F1FB]"
-                              : "hover:bg-slate-50"
+                              ? "bg-[var(--theme-primary-subtle)]"
+                              : "hover:bg-[var(--theme-hover)]"
                         }`}
                       >
                         <td className="px-3 py-2 font-mono text-xs">
                           {line.product_code}
-                          <span className="mt-0.5 block text-[10px] font-normal text-slate-500">
+                          <span className="theme-subtext mt-0.5 block text-[10px] font-normal">
                             #{line.line_no ?? line.id}
                           </span>
                         </td>
@@ -2778,12 +2780,12 @@ export function PosScreen({ standalone = false }) {
                               type="button"
                               disabled={busy || lineBusy || !qtyAdjust.canDecrease}
                               onClick={() => void adjustCartLineQuantity(line, -1)}
-                              className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                              className="theme-secondary-btn flex h-6 w-6 items-center justify-center rounded text-sm font-bold disabled:opacity-40"
                               aria-label="Decrease quantity"
                             >
                               −
                             </button>
-                            <span className="min-w-[3.5rem] text-center text-[11px] font-medium text-slate-800">
+                            <span className="theme-heading min-w-[3.5rem] text-center text-[11px] font-medium">
                               {uom
                                 ? formatPosCartQty(line.quantity, uom)
                                 : formatMixedStockDisplay(line.quantity, 1).text}
@@ -2792,7 +2794,7 @@ export function PosScreen({ standalone = false }) {
                               type="button"
                               disabled={busy || lineBusy || !qtyAdjust.canIncrease}
                               onClick={() => void adjustCartLineQuantity(line, 1)}
-                              className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                              className="theme-secondary-btn flex h-6 w-6 items-center justify-center rounded text-sm font-bold disabled:opacity-40"
                               aria-label="Increase quantity"
                               title={
                                 !qtyAdjust.canIncrease && !allowNegativeStock
@@ -2825,17 +2827,17 @@ export function PosScreen({ standalone = false }) {
             </table>
           </div>
 
-          <div className="shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-4">
-            <div className="mb-3 border-b border-slate-200 pb-3 text-sm">
+          <div className="pos-cart-summary shrink-0 border-t border-[var(--theme-border)] px-4 py-4">
+            <div className="mb-3 border-b border-[var(--theme-border)] pb-3 text-sm">
               {enableOrderDiscount ? (
-                <div className="mb-2.5 rounded-lg border border-[#185FA5]/20 bg-gradient-to-r from-[#E6F1FB] via-white to-[#E6F1FB]/40 px-3 py-2.5 shadow-sm">
+                <div className="theme-panel mb-2.5 rounded-lg border border-[var(--theme-primary)]/20 px-3 py-2.5">
                   <div className="grid grid-cols-12 items-center gap-3">
                     <label
                       htmlFor="pos-order-discount"
                       className="col-span-8 flex items-center gap-2.5"
                     >
                       <span
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#185FA5]/20 bg-white text-[#185FA5] shadow-sm"
+                        className="theme-secondary-btn flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/20 text-[var(--theme-primary)] shadow-sm"
                         aria-hidden="true"
                       >
                         <svg
@@ -2852,7 +2854,7 @@ export function PosScreen({ standalone = false }) {
                           <circle cx="7.5" cy="7.5" r=".5" fill="currentColor" />
                         </svg>
                       </span>
-                      <span className="text-sm font-bold leading-tight tracking-tight text-[#0C447C]">
+                      <span className="theme-heading text-sm font-bold leading-tight tracking-tight">
                         Give Full Order Discount
                       </span>
                     </label>
@@ -2874,19 +2876,19 @@ export function PosScreen({ standalone = false }) {
                         }}
                         placeholder="0.00"
                         aria-label="Full order discount amount"
-                        className="w-full rounded-lg border border-[#185FA5]/25 bg-white px-2.5 py-1.5 text-right text-sm font-bold text-[#0C447C] shadow-sm outline-none placeholder:font-medium placeholder:text-slate-400 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/25 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                        className={`${compactAmountInput} theme-heading font-bold placeholder:font-medium disabled:cursor-not-allowed theme-input-readonly`}
                       />
                     </div>
                   </div>
                 </div>
               ) : null}
               <div className="space-y-3 pt-1">
-                <div className="flex justify-between text-slate-700">
+                <div className="theme-text-muted flex justify-between">
                   <span>Subtotal</span>
                   <span>{formatSaleKes(cartSummary.subtotal)}</span>
                 </div>
                 {allowDiscounts || enableOrderDiscount ? (
-                  <div className="flex justify-between text-slate-700">
+                  <div className="theme-text-muted flex justify-between">
                     <span>Line discounts</span>
                     <span>
                       {cartSummary.lineDiscounts > 0
@@ -2896,34 +2898,34 @@ export function PosScreen({ standalone = false }) {
                   </div>
                 ) : null}
                 {((enableOrderDiscount || enableVouchers) && cartSummary.orderDiscount > 0) ? (
-                  <div className="flex justify-between text-slate-700">
+                  <div className="theme-text-muted flex justify-between">
                     <span>Order discount</span>
                     <span>−{formatSaleKes(cartSummary.orderDiscount)}</span>
                   </div>
                 ) : null}
                 {cartSummary.voucherPayment > 0 ? (
-                  <div className="flex justify-between text-slate-700">
+                  <div className="theme-text-muted flex justify-between">
                     <span>Voucher payment</span>
                     <span>−{formatSaleKes(cartSummary.voucherPayment)}</span>
                   </div>
                 ) : null}
                 {cartSummary.pointsPayment > 0 ? (
-                  <div className="flex justify-between text-slate-700">
+                  <div className="theme-text-muted flex justify-between">
                     <span>Points redeemed</span>
                     <span>−{formatSaleKes(cartSummary.pointsPayment)}</span>
                   </div>
                 ) : null}
                 {cartSummary.mpesaPayment > 0 ? (
-                  <div className="flex justify-between text-slate-700">
+                  <div className="theme-text-muted flex justify-between">
                     <span>M-Pesa payment</span>
                     <span>−{formatSaleKes(cartSummary.mpesaPayment)}</span>
                   </div>
                 ) : null}
-                <div className="flex justify-between text-slate-700">
+                <div className="theme-text-muted flex justify-between">
                   <span>VAT</span>
                   <span>{formatSaleKes(cartSummary.vat)}</span>
                 </div>
-                <div className="flex justify-between border-t border-slate-200 pt-3 text-base font-bold text-[#0C447C]">
+                <div className="flex justify-between border-t border-[var(--theme-border)] pt-3 text-base font-bold text-[var(--theme-accent-text)]">
                   <span>{cartSummary.amountDue < cartSummary.total ? "Amount due" : "Total"}</span>
                   <span>
                     {formatSaleKes(
@@ -2935,7 +2937,7 @@ export function PosScreen({ standalone = false }) {
                 </div>
               </div>
               {cartSummary.amountDue < cartSummary.total ? (
-                <div className="flex justify-between text-xs text-slate-500">
+                <div className="theme-subtext flex justify-between text-xs">
                   <span>Order total</span>
                   <span>{formatSaleKes(cartSummary.total)}</span>
                 </div>
@@ -2946,7 +2948,7 @@ export function PosScreen({ standalone = false }) {
                 label="Edit"
                 title="Edit selected line"
                 icon="✎"
-                iconClass="text-[#185FA5]"
+                iconClass="text-[var(--theme-primary)]"
                 disabled={busy || !selectedLineId}
                 onClick={() => handleEditSelectedLine()}
               />
@@ -2954,7 +2956,7 @@ export function PosScreen({ standalone = false }) {
                 label="Remove"
                 title="Void selected line (Delete)"
                 icon="−"
-                iconClass="text-[#185FA5]"
+                iconClass="text-[var(--theme-primary)]"
                 disabled={busy || !selectedLineId}
                 onClick={removeSelectedLine}
               />
@@ -2991,7 +2993,7 @@ export function PosScreen({ standalone = false }) {
                   label="Save"
                   title="Save order"
                   icon="💾"
-                  iconClass="text-[#185FA5]"
+                  iconClass="text-[var(--theme-primary)]"
                   disabled={busy || !cart?.lines?.length || cartStockBlocked}
                   onClick={() => openSaveOrderDialog("save")}
                 />
@@ -3077,11 +3079,13 @@ export function PosScreen({ standalone = false }) {
       />
       <PosKeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
-      <PosStatusFooter
-        user={user}
-        organization={organization ?? capabilities?.organization}
-        onShowShortcuts={() => setShortcutsOpen(true)}
-      />
+      {standalone ? (
+        <PosStatusFooter
+          user={user}
+          organization={organization ?? capabilities?.organization}
+          onShowShortcuts={() => setShortcutsOpen(true)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiRequest } from "@/lib/api";
 
-const inputCls =
-  "w-full rounded border border-[#c4b89a] bg-white px-2 py-1.5 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5]";
+import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
+
+const inputCls = INPUT_CLASS;
 
 export function PosSaveOrderDialog({
   open,
@@ -79,9 +80,9 @@ export function PosSaveOrderDialog({
       <div
         role="dialog"
         aria-modal="true"
-        className="flex w-full max-w-md flex-col overflow-hidden rounded-lg border border-[#8a7a5c] bg-[#f3ebe0] shadow-2xl"
+        className="theme-modal flex w-full max-w-md flex-col overflow-hidden rounded-lg border shadow-2xl"
       >
-        <div className={`px-4 py-3 text-white ${isHold ? "bg-amber-700" : "bg-[#1e3a5f]"}`}>
+        <div className={`px-4 py-3 text-white ${isHold ? "bg-amber-700" : "bg-[var(--theme-primary)]"}`}>
           <h2 className="text-center text-sm font-bold tracking-wide">
             {isHold ? "HOLD ORDER" : "SAVE ORDER"}
           </h2>
@@ -99,14 +100,14 @@ export function PosSaveOrderDialog({
         </div>
         <div className="p-4">
           {!isHold && workflowPipeline.length > 0 ? (
-            <p className="mb-3 rounded border border-[#c4b89a]/60 bg-white/60 px-2.5 py-2 text-[11px] text-slate-700">
-              <span className="font-semibold text-[#0C447C]">Order flow: </span>
+            <p className="theme-panel mb-3 rounded border px-2.5 py-2 text-[11px] text-[var(--theme-text-muted)]">
+              <span className="font-semibold text-[var(--theme-accent-text)]">Order flow: </span>
               {workflowPipeline.map((s) => s.label).join(" → ")}
             </p>
           ) : null}
           {!isWalkIn ? (
             <label className="block">
-              <span className="mb-0.5 block text-[11px] font-bold uppercase tracking-wide text-[#4a5d23]">
+              <span className="theme-accent-label mb-0.5 block text-[11px] font-bold uppercase tracking-wide">
                 Customer
               </span>
               <select
@@ -128,7 +129,7 @@ export function PosSaveOrderDialog({
             </label>
           ) : (
             <label className="block">
-              <span className="mb-0.5 block text-[11px] font-bold uppercase tracking-wide text-[#4a5d23]">
+              <span className="theme-accent-label mb-0.5 block text-[11px] font-bold uppercase tracking-wide">
                 Walk-in customer name
               </span>
               <input

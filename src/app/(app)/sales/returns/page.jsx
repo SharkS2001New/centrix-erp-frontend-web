@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import {
   FilterSelect,
   PaginationBar,
@@ -163,7 +164,7 @@ export default function SalesReturnsPage() {
   }
 
   return (
-    <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
+    <div className="theme-workspace min-h-full">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Returns</h1>
@@ -339,7 +340,7 @@ export default function SalesReturnsPage() {
         onDelete={handleDelete}
         onPrint={(row) => {
           printCreditNote(row, {
-            organizationName: capabilities?.profile_label ?? "POS / ERP",
+            organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
           });
         }}
         error={actionError}

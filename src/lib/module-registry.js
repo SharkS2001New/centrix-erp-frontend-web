@@ -43,12 +43,20 @@ export const REPORT_MODULE_BY_SLUG = {
   "accounts-payable": "accounting.reports",
   "subledger-reconciliation": "accounting.reports",
   "kra-receipts": "accounting.reports",
+  "customer-statement": "accounting.reports",
 
   "purchases-by-supplier": "customers_suppliers.reports",
   "open-lpo": "customers_suppliers.reports",
   "supplier-returns": "customers_suppliers.reports",
 
   "payroll-summary": "hr_payroll.reports",
+  "leave-balance": "hr_payroll.reports",
+  "statutory-deductions": "hr_payroll.reports",
+  "bank-transfer": "hr_payroll.reports",
+  "staff-turnover": "hr_payroll.reports",
+  headcount: "hr_payroll.reports",
+  "contract-expiry": "hr_payroll.reports",
+  "hr-dashboard-kpi": "hr_payroll.reports",
 };
 
 /** @param {string} slug */

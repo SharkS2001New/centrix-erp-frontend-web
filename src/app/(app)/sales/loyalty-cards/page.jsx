@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { mergeSalesSettings } from "@/lib/sales-settings";
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { printLoyaltyCard } from "@/components/sales/loyalty-card-print";
 import {
   CatalogPageShell,
@@ -157,7 +158,7 @@ export default function LoyaltyCardsPage() {
   }
 
   function handlePrint(card) {
-    printLoyaltyCard(card, capabilities?.profile_label ?? "POS / ERP");
+    printLoyaltyCard(card, capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME);
   }
 
   return (

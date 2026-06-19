@@ -7,9 +7,11 @@ const dmSans = DM_Sans({
   variable: "--font-sans",
 });
 
+import { APP_DESCRIPTION, APP_TITLE } from "@/lib/branding";
+
 export const metadata = {
-  title: "POS / ERP",
-  description: "ERP frontend for POS-ERP-API",
+  title: APP_TITLE,
+  description: APP_DESCRIPTION,
 };
 
 export default function RootLayout({ children }) {

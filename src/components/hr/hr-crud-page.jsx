@@ -9,6 +9,7 @@ import {
   FormDrawer,
   PrimaryButton,
   SearchInput,
+  TABLE_HEAD_ROW_CLASS,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
@@ -188,7 +189,7 @@ export function HrCrudPage({
           }`}
         >
           <table className="min-w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+            <thead className={TABLE_HEAD_ROW_CLASS}>
               <tr>
                 {columns.map((c) => (
                   <th key={c.key} className="px-4 py-3">

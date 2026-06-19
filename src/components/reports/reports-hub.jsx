@@ -4,6 +4,13 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { getStoredWorkspace } from "@/lib/auth-storage";
+import { defaultWorkspaceId } from "@/lib/workspaces";
+import {
+  WORKSPACE_DASHBOARD_SCOPES,
+  WORKSPACE_REPORTS_LABEL,
+  filterReportCategoriesForWorkspace,
+} from "@/lib/workspace-reports";
 import { CatalogPageShell, inputClassName } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboard-section";
@@ -64,7 +71,9 @@ const CATEGORY_ICONS = {
 };
 
 export function ReportsHub() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, capabilities } = useAuth();
+  const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(capabilities, {});
+  const workspaceLabel = WORKSPACE_REPORTS_LABEL[workspaceId] ?? "Reports";
   const [catalog, setCatalog] = useState(null);
   const [customTemplates, setCustomTemplates] = useState([]);
   const [error, setError] = useState(null);
@@ -81,21 +90,22 @@ export function ReportsHub() {
 
   useEffect(() => {
     if (!hasPermission(P.reports.builder.view)) return;
-    apiRequest("/reports/builder/templates")
+    apiRequest("/reports/builder/templates", { searchParams: { workspace_id: workspaceId } })
       .then((res) => setCustomTemplates(res.data ?? []))
       .catch(() => setCustomTemplates([]));
-  }, [hasPermission]);
+  }, [hasPermission, workspaceId]);
 
   const categories = useMemo(() => {
     const built = buildReportCategories(catalog);
-    return built
+    const permitted = built
       .map((cat) => ({
         ...cat,
         reports: cat.reports.filter((r) => canViewReport(r.key, hasPermission)),
       }))
       .filter((cat) => cat.reports.length > 0)
       .map((cat) => ({ ...cat, count: cat.reports.length }));
-  }, [catalog, hasPermission]);
+    return filterReportCategoriesForWorkspace(permitted, workspaceId);
+  }, [catalog, hasPermission, workspaceId]);
   const allReports = useMemo(() => flattenReports(categories), [categories]);
 
   const filteredCategories = useMemo(() => {
@@ -126,9 +136,9 @@ export function ReportsHub() {
   return (
     <CatalogPageShell
       title="Reports"
-      subtitle="Analytics dashboard and full report catalog."
+      subtitle={workspaceLabel}
     >
-      <AdminBreadcrumb items={[{ label: "Reports" }]} />
+      <AdminBreadcrumb items={[{ label: workspaceLabel }]} />
 
       {hasPermission(P.reports.builder.view) ? (
         <div className="mb-6 flex flex-wrap gap-3">
@@ -159,15 +169,19 @@ export function ReportsHub() {
 
       <DashboardErrorBanner message={error ?? dashError} />
 
-      <DashboardSection title="Performance overview" subtitle="KPIs and charts for the selected period" className="mb-8">
-        <ReportsDashboardSection onError={setDashError} />
-      </DashboardSection>
+      {WORKSPACE_DASHBOARD_SCOPES[workspaceId]?.kpis?.length ? (
+        <DashboardSection title="Performance overview" subtitle="KPIs for this module" className="mb-8">
+          <ReportsDashboardSection workspaceScope={workspaceId} onError={setDashError} />
+        </DashboardSection>
+      ) : null}
 
       <section className="mb-8">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">All Reports</h2>
-            <p className="text-sm text-slate-500">{totalReportCount} reports across {categories.length} categories</p>
+            <h2 className="text-lg font-semibold text-slate-900">All reports</h2>
+            <p className="text-sm text-slate-500">
+              {totalReportCount} reports in {workspaceLabel.toLowerCase()}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input

@@ -1,4 +1,5 @@
 import { FEATURED_REPORT_KEYS, REPORT_DEFINITIONS } from "@/lib/reports/definitions";
+import { HR_REPORT_DEFS } from "@/lib/reports/hr-reports";
 import { canViewReport, P, reportPermissionCode } from "@/lib/permission-codes";
 import { shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
 import { reportModuleForSlug, anyReportsModuleEnabled } from "@/lib/module-registry";
@@ -56,14 +57,16 @@ function buildReportNavItems() {
     });
   }
 
-  items.push({
-    href: "/reports/payroll-summary",
-    label: "Payroll summary",
-    module: "hr_payroll.reports",
-    permission: reportPermissionCode("payroll-summary"),
-    reportKey: "payroll-summary",
-    group: "HR Reports",
-  });
+  for (const report of HR_REPORT_DEFS) {
+    items.push({
+      href: `/reports/${report.key}`,
+      label: report.label,
+      module: "hr_payroll.reports",
+      permission: reportPermissionCode(report.key),
+      reportKey: report.key,
+      group: "HR Reports",
+    });
+  }
 
   return items;
 }

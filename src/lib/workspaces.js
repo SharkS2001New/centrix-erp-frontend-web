@@ -1,6 +1,12 @@
-import { reportModuleForSlug } from "@/lib/module-registry";
 import { isNavItemVisible } from "@/lib/nav-config";
 import { POS_LOGIN_CHANNEL, WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
+import {
+  WORKSPACE_ANALYTICS_HREFS,
+  WORKSPACE_REPORT_MODULES,
+  reportNavItemBelongsToWorkspace,
+  reportSlugBelongsToWorkspace,
+  workspaceHasEnabledReports,
+} from "@/lib/workspace-reports";
 
 export const WORKSPACE_ICONS = {
   building: "🏢",
@@ -20,11 +26,7 @@ export const WORKSPACE_SECTION_IDS = {
 };
 
 /** Dashboard analytics links allowed per workspace. */
-export const WORKSPACE_DASHBOARD_HREFS = {
-  backoffice: ["/dashboard", "/sales", "/inventory", "/fulfillment"],
-  accounting: ["/accounting"],
-  hr: ["/hr"],
-};
+export const WORKSPACE_DASHBOARD_HREFS = WORKSPACE_ANALYTICS_HREFS;
 
 /** Route prefixes owned by each workspace (reports handled separately). */
 export const WORKSPACE_PATH_PREFIXES = {
@@ -80,46 +82,47 @@ export function workspaceHomePath(workspaceId, capabilities) {
   return workspaceDefinition(workspaceId, capabilities)?.home_path ?? "/dashboard";
 }
 
-function reportItemWorkspace(item) {
-  const mod = item.module ?? (item.reportKey ? reportModuleForSlug(item.reportKey) : null);
-  if (mod === "accounting.reports") return "accounting";
-  if (mod === "hr_payroll.reports") return "hr";
-  return "backoffice";
-}
-
 /** @param {import("@/lib/nav-config").NavItem} item */
 export function navItemBelongsToWorkspace(item, workspaceId) {
   if (workspaceId === "pos") {
     return false;
   }
 
-  if (workspaceId === "backoffice") {
-    if (item.href === "/dashboard") return true;
-    if (WORKSPACE_DASHBOARD_HREFS.backoffice.includes(item.href)) return true;
-    if (item.href?.startsWith("/reports")) {
-      return reportItemWorkspace(item) === "backoffice";
-    }
+  if (workspaceId === "admin") {
+    return item.href?.startsWith("/admin") ?? false;
+  }
+
+  if (item.href?.startsWith("/reports") || item.reportKey) {
+    return reportNavItemBelongsToWorkspace(item, workspaceId);
+  }
+
+  if (item.href === "/dashboard") {
+    return workspaceId === "backoffice";
+  }
+
+  const analytics = WORKSPACE_ANALYTICS_HREFS[workspaceId] ?? [];
+  if (analytics.includes(item.href)) {
     return true;
   }
 
-  if (workspaceId === "accounting") {
-    if (WORKSPACE_DASHBOARD_HREFS.accounting.includes(item.href)) return true;
-    if (item.href?.startsWith("/reports")) {
-      return reportItemWorkspace(item) === "accounting";
-    }
+  if (item.group === "Analytics") {
     return false;
   }
 
-  if (workspaceId === "admin") {
-    return item.href?.startsWith("/admin");
+  if (workspaceId === "accounting") {
+    return (
+      item.href?.startsWith("/accounting") ||
+      item.href?.startsWith("/expenses") ||
+      item.href?.startsWith("/finance")
+    );
   }
 
   if (workspaceId === "hr") {
-    if (WORKSPACE_DASHBOARD_HREFS.hr.includes(item.href)) return true;
-    if (item.href?.startsWith("/reports")) {
-      return reportItemWorkspace(item) === "hr";
-    }
-    return false;
+    return item.href?.startsWith("/hr") || item.href?.startsWith("/employees");
+  }
+
+  if (workspaceId === "backoffice") {
+    return pathBelongsToWorkspace(item.href, "backoffice");
   }
 
   return false;
@@ -150,15 +153,16 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
   }
 
   if (pathname === "/reports" || pathname.startsWith("/reports/")) {
+    if (pathname === "/reports" || pathname === "/reports/builder") {
+      return Object.hasOwn(WORKSPACE_REPORT_MODULES, workspaceId);
+    }
     const slugMatch = pathname.match(/^\/reports\/([^/]+)/);
     if (!slugMatch) {
       return workspaceId === "backoffice";
     }
     const slug = slugMatch[1];
-    const mod = reportModuleForSlug(slug);
-    if (mod === "accounting.reports") return workspaceId === "accounting";
-    if (mod === "hr_payroll.reports") return workspaceId === "hr";
-    return workspaceId === "backoffice";
+    if (slug === "custom") return workspaceId === "backoffice";
+    return reportSlugBelongsToWorkspace(slug, workspaceId);
   }
 
   return false;
@@ -202,13 +206,10 @@ export function filterNavSectionsForWorkspace(sections, workspaceId, navContext)
     .map((section) => ({
       ...section,
       items: section.items.filter((item) => {
-        if (section.id === "dashboard") {
-          if (item.href === "/dashboard") return workspaceId === "backoffice";
-          return navItemBelongsToWorkspace(item, workspaceId);
+        if (item.href === "/reports" && !workspaceHasEnabledReports(workspaceId, navContext?.capabilities?.modules)) {
+          return false;
         }
-        if (section.id === "reports") {
-          return navItemBelongsToWorkspace(item, workspaceId);
-        }
+        if (!navItemBelongsToWorkspace(item, workspaceId)) return false;
         return isNavItemVisible(item, navContext);
       }),
     }))

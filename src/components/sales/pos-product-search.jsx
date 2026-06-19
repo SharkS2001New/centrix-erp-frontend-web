@@ -5,8 +5,9 @@ import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { posListUnitPrice } from "@/lib/pos-line";
 import { isExactProductCodeQuery } from "@/lib/pos-cart-merge";
 
-const fieldInput =
-  "theme-input w-full rounded-lg border px-2 py-1.5 text-sm shadow-sm outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20";
+import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
+
+const fieldInput = INPUT_CLASS;
 
 function formatStockQty(baseQty, product) {
   const { text } = formatMixedStockDisplay(
@@ -140,7 +141,7 @@ export function PosProductSearch({
 
   return (
     <div ref={rootRef} className="relative space-y-1">
-      <label className="block text-[10px] font-bold uppercase tracking-wide text-[#0C447C]">
+      <label className="block text-[10px] font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
         {searchLabel}
       </label>
       <input
@@ -169,11 +170,11 @@ export function PosProductSearch({
           id={listId}
           ref={listRef}
           role="listbox"
-          className="absolute left-0 right-0 z-[100] mt-1 max-h-[min(50vh,320px)] overflow-auto rounded border border-[#b8a88a] bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800"
+          className="theme-panel absolute left-0 right-0 z-[100] mt-1 max-h-[min(50vh,320px)] overflow-auto rounded-lg border shadow-lg"
         >
-          <table className="w-full border-collapse text-[11px]">
-            <thead className="sticky top-0 z-10 bg-slate-100">
-              <tr className="text-left font-bold text-slate-600">
+          <table className="theme-table w-full border-collapse text-[11px]">
+            <thead className="theme-table-head sticky top-0 z-10">
+              <tr className="theme-table-head-row text-left font-bold">
                 <th className="px-2 py-1.5">Product name</th>
                 <th className="px-2 py-1.5 text-right">Unit price</th>
                 {showShopStock ? (
@@ -187,19 +188,19 @@ export function PosProductSearch({
             <tbody>
               {searching ? (
                 <tr>
-                  <td colSpan={tableColSpan} className="px-2 py-4 text-center text-slate-500">
+                  <td colSpan={tableColSpan} className="theme-subtext px-2 py-4 text-center">
                     Searching…
                   </td>
                 </tr>
               ) : !query.trim() ? (
                 <tr>
-                  <td colSpan={tableColSpan} className="px-2 py-4 text-center text-slate-500">
+                  <td colSpan={tableColSpan} className="theme-subtext px-2 py-4 text-center">
                     {barcodeEnabled ? "Scan a barcode or type a product name" : "Type a product name or code"}
                   </td>
                 </tr>
               ) : results.length === 0 ? (
                 <tr>
-                  <td colSpan={tableColSpan} className="px-2 py-4 text-center text-slate-500">
+                  <td colSpan={tableColSpan} className="theme-subtext px-2 py-4 text-center">
                     No products found
                   </td>
                 </tr>
@@ -223,12 +224,12 @@ export function PosProductSearch({
                       aria-selected={keyboardActive || selected}
                       onMouseEnter={() => setHighlight(index)}
                       onClick={() => pick(product)}
-                      className={`cursor-pointer border-b border-slate-100 ${
+                      className={`theme-table-row cursor-pointer border-b border-[var(--theme-border)] ${
                         keyboardActive
-                          ? "bg-red-100 ring-1 ring-inset ring-red-300"
+                          ? "bg-[var(--theme-primary-subtle)] ring-1 ring-inset ring-[var(--theme-primary)]"
                           : selected
-                            ? "bg-amber-50"
-                            : "hover:bg-amber-50"
+                            ? "bg-[var(--theme-primary-muted)]"
+                            : "hover:bg-[var(--theme-hover)]"
                       }`}
                     >
                       <td className="px-2 py-1.5 font-medium text-slate-900">

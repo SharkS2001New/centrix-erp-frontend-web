@@ -109,7 +109,7 @@ export function CustomerReturnDetailModal({
               row.sale_id ? (
                 <Link
                   href={`/sales/orders/${row.sale_id}`}
-                  className="font-medium text-[#185FA5] hover:underline"
+                  className="font-medium text-[var(--theme-primary)] hover:underline"
                 >
                   {row.sale ? formatReceiptNumber(row.sale) : `#${row.sale_id}`}
                 </Link>
@@ -124,7 +124,7 @@ export function CustomerReturnDetailModal({
               row.customer_num ? (
                 <Link
                   href={`/customers/${row.customer_num}`}
-                  className="font-medium text-[#185FA5] hover:underline"
+                  className="font-medium text-[var(--theme-primary)] hover:underline"
                 >
                   {customerName}
                 </Link>
@@ -203,7 +203,7 @@ export function CustomerReturnDetailModal({
                 value={
                   <Link
                     href={`/inventory/transactions?type=RETURN&reference_id=${row.id}`}
-                    className="font-medium text-[#185FA5] hover:underline"
+                    className="font-medium text-[var(--theme-primary)] hover:underline"
                   >
                     View inventory movements
                   </Link>

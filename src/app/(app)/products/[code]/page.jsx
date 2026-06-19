@@ -699,7 +699,7 @@ export default function ProductDetailPage() {
 
   if (loading) {
     return (
-      <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 md:-m-8 md:p-8">
+      <div className="theme-workspace min-h-full">
         <div className="animate-pulse space-y-4">
           <div className="h-4 w-32 rounded bg-slate-200" />
           <div className="h-28 rounded-xl bg-white shadow-sm" />
@@ -741,7 +741,7 @@ export default function ProductDetailPage() {
         : stockRows.length;
 
   return (
-    <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
+    <div className="theme-workspace min-h-full">
       <div className="mb-6">
         <Link href="/products" className="text-sm text-[#185FA5] hover:text-[#144f8a]">
           ← Back to products

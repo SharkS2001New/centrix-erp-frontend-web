@@ -80,7 +80,7 @@ export function OrderSourceBadge({ source, channel, className = "" }) {
 export function HourlySalesChart({ points }) {
   if (!points?.length) {
     return (
-      <div className="flex h-44 items-center justify-center text-sm text-slate-500">
+      <div className="theme-subtext flex h-44 items-center justify-center text-sm">
         No sales recorded today yet.
       </div>
     );
@@ -95,11 +95,11 @@ export function HourlySalesChart({ points }) {
         return (
           <div key={p.label} className="flex min-w-0 flex-1 flex-col items-center gap-1">
             <div
-              className="w-full rounded-t bg-[#185FA5]/80 transition-all"
+              className="w-full rounded-t bg-[var(--theme-primary)]/80 transition-all"
               style={{ height: `${Math.max(6, (val / max) * 100)}%` }}
               title={`${p.label}:00 — ${formatSaleKes(val)} (${p.value ?? 0} orders)`}
             />
-            <span className="truncate text-[9px] text-slate-500">
+            <span className="theme-subtext truncate text-[9px]">
               {Number(p.label) % 3 === 0 ? p.label : ""}
             </span>
           </div>
@@ -141,8 +141,8 @@ export function OrderWorkflowPipeline({ status, onAdvance, busyStatus, workflow,
                   <div className="flex flex-col items-center gap-1">
                     <span
                       className={`flex h-3 w-3 shrink-0 rounded-full ${
-                        done || active ? "bg-[#185FA5]" : "bg-slate-200"
-                      } ${active ? "ring-2 ring-[#185FA5]/30" : ""}`}
+                        done || active ? "bg-[var(--theme-primary)]" : "bg-slate-200"
+                      } ${active ? "ring-2 ring-[var(--theme-primary)]/30" : ""}`}
                     />
                     <span
                       className={`truncate text-center text-[10px] ${
@@ -155,7 +155,7 @@ export function OrderWorkflowPipeline({ status, onAdvance, busyStatus, workflow,
                   {idx < steps.length - 1 ? (
                     <div
                       className={`mx-0.5 mb-4 h-0.5 flex-1 ${
-                        idx < displayIdx ? "bg-[#185FA5]" : "bg-slate-200"
+                        idx < displayIdx ? "bg-[var(--theme-primary)]" : "bg-slate-200"
                       }`}
                     />
                   ) : null}
@@ -180,7 +180,7 @@ export function OrderWorkflowPipeline({ status, onAdvance, busyStatus, workflow,
                   type="button"
                   disabled={!!busyStatus}
                   onClick={() => onAdvance(nextStep.key)}
-                  className="rounded-lg bg-[#185FA5] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#144f8a] disabled:opacity-50"
+                  className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
                 >
                   {busyStatus ? "Updating…" : `${nextStep.label} →`}
                 </button>
@@ -190,7 +190,7 @@ export function OrderWorkflowPipeline({ status, onAdvance, busyStatus, workflow,
                   type="button"
                   disabled={!!busyStatus}
                   onClick={() => onAdvance(firstStep.key)}
-                  className="rounded-lg bg-[#185FA5] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#144f8a] disabled:opacity-50"
+                  className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
                 >
                   {busyStatus ? "Updating…" : `${firstStep.label} →`}
                 </button>
@@ -220,12 +220,12 @@ export function ProductTile({ product, onSelect, disabled }) {
       type="button"
       disabled={disabled}
       onClick={() => onSelect?.(product)}
-      className="flex flex-col rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-[#185FA5]/40 hover:shadow disabled:opacity-50"
+      className="flex flex-col rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-[var(--theme-primary)]/40 hover:shadow disabled:opacity-50"
     >
       <p className="line-clamp-2 text-sm font-medium text-slate-900">
         {product.product_name}
       </p>
-      <p className="mt-2 text-sm font-semibold text-[#185FA5]">{formatSaleKes(price)}</p>
+      <p className="mt-2 text-sm font-semibold text-[var(--theme-primary)]">{formatSaleKes(price)}</p>
     </button>
   );
 }

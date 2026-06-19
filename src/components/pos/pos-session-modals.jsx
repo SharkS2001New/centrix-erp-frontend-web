@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/api";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { PosReportView } from "@/components/pos/pos-report-view";
 import { PosStatusBadge, printPosTillReport } from "@/components/pos/pos-shared";
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { CLOSE_REASONS, formatTillKesExact, tillDisplayName, varianceLabel } from "@/lib/pos-till";
 
 const CLOSE_DENOMINATIONS = [1000, 500, 200, 100, 50, 40, 20, 10, 5, 1];
@@ -56,7 +57,7 @@ export function XReportModal({
   tillName,
   cashierName,
   showFloatBreakdown = false,
-  organizationName = "POS / ERP",
+  organizationName = DEFAULT_PRINT_ORG_NAME,
   loading = false,
   error = null,
 }) {
@@ -342,7 +343,7 @@ export function ZReportModal({
   onClose,
   payload = null,
   sessionId = null,
-  organizationName = "POS / ERP",
+  organizationName = DEFAULT_PRINT_ORG_NAME,
   showFloatBreakdown = false,
   fallbackCashierName = null,
 }) {

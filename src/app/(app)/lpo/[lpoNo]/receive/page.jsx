@@ -152,7 +152,7 @@ export default function LpoReceivePage() {
   const orderDate = lpo ? lpoOrderDate(lpo) : null;
 
   return (
-    <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-base text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
+    <div className="theme-workspace min-h-full">
       <div className="mb-6">
         <Link href={`/lpo/${lpoNo}`} className="text-base text-[#185FA5] hover:text-[#144f8a]">
           ← Back to {lpo ? formatPoNumber(lpo.lpo_no) : "PO"}

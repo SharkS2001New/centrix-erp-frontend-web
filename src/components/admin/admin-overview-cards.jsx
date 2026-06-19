@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
+import { workspaceCardClassName } from "@/components/catalog/catalog-shared";
 import { canAccessOrgAdminSettings } from "@/lib/admin-scope";
 import { P } from "@/lib/permission-codes";
 
@@ -75,17 +76,17 @@ export function AdminOverviewCards() {
         <Link
           key={card.href}
           href={card.href}
-          className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-[#185FA5]/30 hover:shadow-md"
+          className={`group ${workspaceCardClassName} p-5 transition hover:border-[color-mix(in_srgb,var(--theme-primary)_30%,var(--theme-border))] hover:shadow-md`}
         >
           <div className="flex items-start gap-3">
             <span className="text-2xl" aria-hidden>
               {card.icon}
             </span>
             <div>
-              <h2 className="text-[15px] font-medium text-slate-900 group-hover:text-[#185FA5]">
+              <h2 className="theme-heading text-[15px] font-medium group-hover:text-[var(--theme-accent-text)]">
                 {card.title}
               </h2>
-              <p className="mt-1 text-sm text-slate-500">{card.description}</p>
+              <p className="theme-subtext mt-1 text-sm">{card.description}</p>
             </div>
           </div>
         </Link>

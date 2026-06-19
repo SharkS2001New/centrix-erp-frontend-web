@@ -38,6 +38,10 @@ const DATE_COLUMNS = {
   "kra-receipts": "receipt_date",
   "till-sessions": "session_date",
   "audit-trail": "created_at",
+  "statutory-deductions": "run_date",
+  "bank-transfer": "run_date",
+  headcount: "hire_date",
+  "contract-expiry": "contract_end_date",
 };
 
 function formatCell(key, value) {
@@ -59,7 +63,7 @@ function labelizeKey(key) {
   return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function GenericReportScreen({ reportKey, label, apiPath }) {
+export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState(null);
@@ -123,7 +127,7 @@ export function GenericReportScreen({ reportKey, label, apiPath }) {
   return (
     <CatalogPageShell
       title={label ?? "Report"}
-      subtitle={apiPath}
+      subtitle={subtitle ?? undefined}
       toolbar={
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <Link href="/reports" className="text-sm text-[#185FA5] hover:underline">

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import { formatShortDate, getSaleTimestamp } from "@/components/catalog/catalog-shared";
 import { formatCustomerKes } from "@/components/customers/customer-form";
@@ -113,11 +114,11 @@ function workflowStepDetail(sale, step, payments) {
 
 function OrderReturnsPanel({ returns, saleId, totalReturned }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm lg:col-span-2">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-medium text-slate-900">Returns</h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+          <h2 className="theme-heading text-sm font-medium">Returns</h2>
+            <p className="theme-subtext mt-0.5 text-xs">
             {returns.length
               ? `${returns.length} return(s) linked to this order. Approved returns reduce line quantities and order total below.`
               : "No returns recorded for this order yet"}
@@ -125,16 +126,16 @@ function OrderReturnsPanel({ returns, saleId, totalReturned }) {
         </div>
         <Link
           href={`/sales/returns/new?sale_id=${saleId}`}
-          className="text-sm font-medium text-[#185FA5] hover:underline"
+          className="text-sm font-medium text-[var(--theme-primary)] hover:underline"
         >
           Create return
         </Link>
       </div>
       {returns.length ? (
         <>
-          <div className="overflow-hidden rounded-lg border border-slate-200">
+          <div className="theme-table-shell overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs text-slate-500">
+              <thead className="theme-table-head-row text-left text-xs">
                 <tr>
                   <th className="px-3 py-2">Return no.</th>
                   <th className="px-3 py-2">Date</th>
@@ -144,11 +145,11 @@ function OrderReturnsPanel({ returns, saleId, totalReturned }) {
               </thead>
               <tbody>
                 {returns.map((row) => (
-                  <tr key={row.id} className="border-t border-slate-100">
+                  <tr key={row.id} className="theme-table-body-row">
                     <td className="px-3 py-2">
                       <Link
                         href={`/sales/returns?return_id=${row.id}`}
-                        className="font-medium text-[#185FA5] hover:underline"
+                        className="font-medium text-[var(--theme-primary)] hover:underline"
                       >
                         {row.return_no}
                       </Link>
@@ -178,17 +179,17 @@ function OrderReturnsPanel({ returns, saleId, totalReturned }) {
 
 function SummaryInfoCard({ label, value, hint, hintClassName, href, linkLabel, onLinkClick }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <div className="mt-1 text-base font-semibold text-slate-900">{value}</div>
+    <div className="theme-panel rounded-xl border px-5 py-4 shadow-sm">
+      <p className="theme-subtext text-xs font-medium uppercase tracking-wide">{label}</p>
+      <div className="theme-heading mt-1 text-base font-semibold">{value}</div>
       {hint ? (
-        <p className={`mt-0.5 text-xs ${hintClassName ?? "text-slate-400"}`}>{hint}</p>
+        <p className={`theme-subtext mt-0.5 text-xs ${hintClassName ?? ""}`}>{hint}</p>
       ) : null}
       {linkLabel ? (
         href ? (
           <Link
             href={href}
-            className="mt-2 inline-block text-xs font-medium text-[#185FA5] hover:text-[#144f8a]"
+            className="mt-2 inline-block text-xs font-medium text-[var(--theme-primary)] hover:text-[var(--theme-primary-hover)]"
           >
             {linkLabel} →
           </Link>
@@ -196,7 +197,7 @@ function SummaryInfoCard({ label, value, hint, hintClassName, href, linkLabel, o
           <button
             type="button"
             onClick={onLinkClick}
-            className="mt-2 inline-block text-xs font-medium text-[#185FA5] hover:text-[#144f8a]"
+            className="mt-2 inline-block text-xs font-medium text-[var(--theme-primary)] hover:text-[var(--theme-primary-hover)]"
           >
             {linkLabel} →
           </button>
@@ -210,12 +211,12 @@ function OrderSummaryItemsTable({ items, subById, catById, limit, onViewAll }) {
   const rows = limit ? (items ?? []).slice(0, limit) : (items ?? []);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-5 py-4">
-        <h2 className="text-sm font-medium text-slate-900">Order items</h2>
+    <div className="theme-panel overflow-hidden rounded-xl border shadow-sm">
+      <div className="border-b border-[var(--theme-border)] px-5 py-4">
+        <h2 className="theme-heading text-sm font-medium">Order items</h2>
       </div>
       {rows.length === 0 ? (
-        <p className="px-5 py-8 text-center text-sm text-slate-500">No line items on this order.</p>
+        <p className="theme-subtext px-5 py-8 text-center text-sm">No line items on this order.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
@@ -273,7 +274,7 @@ function OrderSummaryItemsTable({ items, subById, catById, limit, onViewAll }) {
           <button
             type="button"
             onClick={onViewAll}
-            className="text-sm font-medium text-[#185FA5] hover:text-[#144f8a]"
+            className="text-sm font-medium text-[var(--theme-primary)] hover:text-[var(--theme-primary-hover)]"
           >
             View all items
           </button>
@@ -358,7 +359,7 @@ function OrderTimelinePanel({ events }) {
               : event.complete
                 ? "bg-emerald-500 ring-emerald-100"
                 : event.current
-                  ? "bg-[#185FA5] ring-blue-100"
+                  ? "bg-[var(--theme-primary)] ring-blue-100"
                   : "bg-slate-300 ring-slate-100";
             return (
               <li key={event.key} className="relative flex gap-3 pb-6 last:pb-0">
@@ -626,7 +627,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
 
   const handlePrint = useCallback(() => {
     void printSaleOrder(sale, {
-      organizationName: capabilities?.profile_label ?? "POS / ERP",
+      organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
       moduleSettings: capabilities?.module_settings,
       capabilities,
       customer,
@@ -749,13 +750,13 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const orderDateRaw = sale?.completed_at ?? sale?.created_at;
 
   return (
-    <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
-      <nav className="mb-4 text-sm text-slate-500" aria-label="Breadcrumb">
-        <Link href={backHref} className="hover:text-[#185FA5]">
+    <div className="theme-workspace min-h-full">
+      <nav className="theme-subtext mb-4 text-sm" aria-label="Breadcrumb">
+        <Link href={backHref} className="theme-link">
           Sales orders
         </Link>
-        <span className="mx-2 text-slate-300">›</span>
-        <span className="font-medium text-slate-700">
+        <span className="mx-2 opacity-40">›</span>
+        <span className="theme-heading font-medium">
           Order #{sale ? formatReceiptNumber(sale) : "…"}
         </span>
       </nav>
@@ -773,13 +774,13 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-slate-500">Loading order…</p>
+        <p className="theme-subtext text-sm">Loading order…</p>
       ) : sale ? (
         <>
           <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl font-semibold text-slate-900">
+                <h1 className="theme-heading text-2xl font-semibold">
                   Order #{formatReceiptNumber(sale)}
                 </h1>
                 <SaleStatusBadge status={sale.status} workflow={saleWorkflow} />
@@ -787,7 +788,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                   <PaymentStatusBadge status={sale.payment_status} />
                 ) : null}
               </div>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="theme-subtext mt-1 text-sm">
                 Placed on {formatOrderDateTime(orderDateRaw)}
                 {branchName ? ` · ${branchName}` : ""}
                 {cashierName ? ` · Cashier: ${cashierName}` : ""}
@@ -811,7 +812,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               {createReturnHref ? (
                 <Link
                   href={createReturnHref}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  className="theme-secondary-btn inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
                 >
                   Create return
                 </Link>
@@ -819,7 +820,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               <button
                 type="button"
                 onClick={handlePrint}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                className="theme-secondary-btn inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
               >
                 <PrintIcon />
                 {printLabel}
@@ -827,7 +828,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               <button
                 type="button"
                 onClick={handlePrint}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                className="theme-secondary-btn inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
               >
                 <DownloadIcon />
                 Download
@@ -835,7 +836,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               <button
                 type="button"
                 onClick={openActionsMenu}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-3 py-2 text-sm font-medium text-white hover:bg-[#144f8a]"
+                className="inline-flex items-center gap-2 rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
               >
                 Actions
                 <ChevronDownIcon />
@@ -880,7 +881,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
             />
           </div>
 
-          <div className="mb-6 border-b border-slate-200">
+          <div className="mb-6 border-b border-[var(--theme-border)]">
             <div className="flex flex-wrap gap-1">
               {ORDER_TABS.map((tab) => {
                 const count = tab.countKey ? tabCounts[tab.countKey] : null;
@@ -893,8 +894,8 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                     onClick={() => setActiveTab(tab.id)}
                     className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition ${
                       active
-                        ? "border-[#185FA5] text-[#185FA5]"
-                        : "border-transparent text-slate-500 hover:text-slate-800"
+                        ? "border-[var(--theme-primary)] text-[var(--theme-primary)]"
+                        : "border-transparent theme-subtext hover:text-[var(--theme-text)]"
                     }`}
                   >
                     {label}

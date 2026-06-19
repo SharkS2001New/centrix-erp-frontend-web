@@ -1,23 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { isAiAssistantAvailable } from "@/lib/ai-settings";
-import { P } from "@/lib/permission-codes";
-import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
-
-const GLOBAL_STARTERS = [
-  "Help me create a new product",
-  "Create a sales order for a customer",
-  "Who are our top debtors?",
-  "Record a partial payment for a customer invoice",
-  "Where do I manage employees?",
-  "Which products are low on stock?",
-  "How do I run a payroll report?",
-  "Where is purchase orders (LPO)?",
-];
+import { getStoredWorkspace } from "@/lib/auth-storage";
+import {
+  canShowAiAssistant,
+  isAiAssistantAvailable,
+  isAiAssistantEnabledForOrg,
+} from "@/lib/ai-settings";
+import { aiStartersForWorkspace, aiWorkspaceLabel } from "@/lib/ai-workspace";
+import { AI_ASSISTANT_TITLE } from "@/lib/branding";
+import { defaultWorkspaceId } from "@/lib/workspaces";
 
 function closePanel(setOpen, setExpanded) {
   setExpanded(false);
@@ -44,8 +40,18 @@ function MinimizeIcon({ className }) {
   );
 }
 
-export function AiAssistPanel({ title = "ERP assistant" }) {
-  const { hasPermission, capabilities } = useAuth();
+export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
+  const pathname = usePathname();
+  const { hasPermission, capabilities, user, organization, isSuperAdmin } = useAuth();
+  const workspaceId = useMemo(
+    () => getStoredWorkspace() ?? defaultWorkspaceId(capabilities, { user, organization, isSuperAdmin }),
+    [capabilities, organization, user, isSuperAdmin],
+  );
+  const workspaceLabel = useMemo(
+    () => aiWorkspaceLabel(workspaceId, capabilities),
+    [capabilities, workspaceId],
+  );
+  const starters = useMemo(() => aiStartersForWorkspace(workspaceId), [workspaceId]);
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [status, setStatus] = useState(null);
@@ -59,15 +65,16 @@ export function AiAssistPanel({ title = "ERP assistant" }) {
   const [actionResult, setActionResult] = useState(null);
   const bottomRef = useRef(null);
 
-  const canUse = hasPermission(P.ai.assist.create);
+  const canUse = canShowAiAssistant(hasPermission);
   const orgAvailable = isAiAssistantAvailable(capabilities);
+  const orgEnabled = isAiAssistantEnabledForOrg(capabilities);
 
   useEffect(() => {
-    if (!canUse || !orgAvailable) return;
+    if (!canUse) return;
     apiRequest("/ai/status")
       .then(setStatus)
       .catch(() => setStatus({ enabled: false }));
-  }, [canUse, orgAvailable]);
+  }, [canUse]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -127,6 +134,8 @@ export function AiAssistPanel({ title = "ERP assistant" }) {
           method: "POST",
           body: {
             context: "erp",
+            workspace_id: workspaceId,
+            pathname,
             message,
             history,
             pending_action: pendingAction ?? undefined,
@@ -143,7 +152,7 @@ export function AiAssistPanel({ title = "ERP assistant" }) {
         setLoading(false);
       }
     },
-    [loading, messages, pendingAction, formValues, applyChatResponse],
+    [loading, messages, pendingAction, formValues, applyChatResponse, workspaceId, pathname],
   );
 
   const submitForm = useCallback(() => {
@@ -151,7 +160,16 @@ export function AiAssistPanel({ title = "ERP assistant" }) {
     send("confirm", { confirm: true, formValuesOverride: formValues });
   }, [pendingAction, formValues, send]);
 
-  if (!canUse || !orgAvailable) return null;
+  if (!canUse) return null;
+
+  const statusHint =
+    orgAvailable && status?.enabled !== false
+      ? expanded
+        ? `${workspaceLabel} · expanded view`
+        : `${workspaceLabel} only · switch workspace for other modules`
+      : orgEnabled
+        ? "Finish AI setup under Admin → Settings → AI (API key required)."
+        : "Not configured — enable under Admin → Settings → AI.";
 
   return (
     <>
@@ -160,7 +178,7 @@ export function AiAssistPanel({ title = "ERP assistant" }) {
         onClick={() => setOpen(true)}
         className="fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg transition hover:bg-indigo-700"
         title={title}
-        aria-label="Open ERP assistant"
+        aria-label={`Open ${AI_ASSISTANT_TITLE}`}
       >
         <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
           <path
@@ -193,13 +211,7 @@ export function AiAssistPanel({ title = "ERP assistant" }) {
             <div className="flex items-start justify-between border-b border-slate-200 px-4 py-3">
               <div className="min-w-0 pr-3">
                 <h2 className="font-semibold text-slate-900">{title}</h2>
-                <p className="text-xs text-slate-500">
-                  {status?.enabled === false
-                    ? "Not configured — enable under Admin → Settings → AI."
-                    : expanded
-                      ? "Expanded view · click outside to close"
-                      : "Click outside to minimize · fill forms to create records"}
-                </p>
+                <p className="text-xs text-slate-500">{statusHint}</p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <button
@@ -228,10 +240,11 @@ export function AiAssistPanel({ title = "ERP assistant" }) {
               {messages.length === 0 ? (
                 <div className="space-y-2">
                   <p className="text-sm text-slate-600">
-                    Ask about any module, get navigation help, or let me create records for you.
+                    Ask about <span className="font-medium text-slate-800">{workspaceLabel}</span> — navigation,
+                    workflows, or creating records in this module.
                   </p>
                   <div className={expanded ? "grid gap-2 sm:grid-cols-2" : "space-y-2"}>
-                    {GLOBAL_STARTERS.map((q) => (
+                    {starters.map((q) => (
                       <button
                         key={q}
                         type="button"
@@ -325,7 +338,7 @@ export function AiAssistPanel({ title = "ERP assistant" }) {
               <textarea
                 rows={expanded ? 5 : 4}
                 className="min-h-[120px] w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400"
-                placeholder="Ask about the system or request an action…"
+                placeholder={`Ask about ${workspaceLabel}…`}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {

@@ -229,7 +229,7 @@ function FieldError({ message }) {
 
 export function EmployeeFormPageShell({ backHref, backLabel, title, subtitle, children }) {
   return (
-    <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
+    <div className="theme-workspace min-h-full">
       <div className="flex w-full min-h-[calc(100vh-8rem)] flex-col">
         <div className="mb-6 shrink-0">
           <Link href={backHref} className="text-sm text-[#185FA5] hover:text-[#144f8a]">

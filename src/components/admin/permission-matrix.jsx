@@ -34,7 +34,7 @@ function moduleSelectionState(group, assignedIds) {
 
 export function PermissionMatrix({ groups, assignedIds, onToggle, onToggleMany }) {
   if (!groups?.length) {
-    return <p className="text-sm text-slate-500">No permissions defined.</p>;
+    return <p className="theme-subtext text-sm">No permissions defined.</p>;
   }
 
   return (
@@ -44,8 +44,8 @@ export function PermissionMatrix({ groups, assignedIds, onToggle, onToggleMany }
         const moduleIds = modulePermissionIds(group);
 
         return (
-          <div key={group.module} className="rounded-lg border border-slate-200">
-            <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <div key={group.module} className="theme-panel rounded-lg border">
+            <div className="flex items-center gap-3 border-b border-[var(--theme-border)] px-4 py-3">
               <input
                 type="checkbox"
                 ref={(el) => {
@@ -56,13 +56,13 @@ export function PermissionMatrix({ groups, assignedIds, onToggle, onToggleMany }
                 title={`Select all ${group.label} permissions`}
               />
               <div>
-                <p className="text-sm font-semibold text-slate-900">{group.label}</p>
+                <p className="theme-heading text-sm font-semibold">{group.label}</p>
               </div>
             </div>
 
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                <thead className="theme-table-head-row border-b text-left text-xs font-medium uppercase tracking-wide">
                   <tr>
                     <th className="px-4 py-2">Feature / link</th>
                     {ACTION_ORDER.map((action) => (
@@ -72,7 +72,7 @@ export function PermissionMatrix({ groups, assignedIds, onToggle, onToggleMany }
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-[var(--theme-border)]">
                   {group.features.map((feature) => {
                     const byAction = Object.fromEntries(
                       feature.permissions.map((p) => [p.action, p]),
@@ -83,9 +83,9 @@ export function PermissionMatrix({ groups, assignedIds, onToggle, onToggleMany }
                     const featureSelected = featureIds.filter((id) => assignedIds.has(id)).length;
 
                     return (
-                      <tr key={feature.key}>
+                      <tr key={feature.key} className="theme-table-body-row">
                         <td className="px-4 py-2">
-                          <label className="flex items-center gap-2 font-medium text-slate-800">
+                          <label className="theme-heading flex items-center gap-2 font-medium">
                             <input
                               type="checkbox"
                               checked={featureSelected === featureIds.length && featureIds.length > 0}
@@ -115,7 +115,7 @@ export function PermissionMatrix({ groups, assignedIds, onToggle, onToggleMany }
                                   title={perm.permission_name}
                                 />
                               ) : (
-                                <span className="text-slate-300">—</span>
+                                <span className="theme-subtext opacity-50">—</span>
                               )}
                             </td>
                           );

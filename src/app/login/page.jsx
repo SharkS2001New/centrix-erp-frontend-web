@@ -109,14 +109,7 @@ export default function LoginPage() {
         : null;
 
   return (
-    <AuthShell
-      title="POS / ERP"
-      subtitle={
-        showOrgField
-          ? "Sign in with your organization code and email or username. Platform admins can leave the org code blank and use their email."
-          : "Sign in with your email or username and password."
-      }
-    >
+    <AuthShell subtitle="Sign in with your email or username and password.">
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
         {showOrgField ? (
           <AuthField label="Organization code">
@@ -191,13 +184,13 @@ export default function LoginPage() {
               disabled={submitting}
               className="mt-3 w-full rounded-lg border border-amber-400/60 bg-amber-100 py-2.5 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-200 disabled:opacity-50 dark:border-amber-600/50 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900/60"
             >
-              {submitting ? "Signing in…" : "Sign out other device and continue"}
+              {submitting ? "Please wait…" : "Sign out other device and continue"}
             </button>
           </div>
         ) : null}
 
         <AuthSubmitButton disabled={submitting}>
-          {submitting ? "Signing in…" : "Sign in"}
+          {submitting ? "Please wait…" : "Continue"}
         </AuthSubmitButton>
       </form>
     </AuthShell>

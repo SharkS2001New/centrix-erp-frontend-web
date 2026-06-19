@@ -149,7 +149,7 @@ export function RecordSupplierReturnForm({
     "Record damaged or rejected goods from this LPO. Stock is removed and the payable amount for received items is reduced.";
 
   return (
-    <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
+    <div className="theme-workspace min-h-full">
       <div className="mx-auto max-w-xl">
         <Link href={backHref} className="text-sm text-[#185FA5] hover:text-[#144f8a]">
           {backLabel}

@@ -1,7 +1,8 @@
 "use client";
 
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { openPrintWindow } from "@/lib/open-print-window";
-export function printLoyaltyCard(card, organizationName = "POS / ERP") {
+export function printLoyaltyCard(card, organizationName = DEFAULT_PRINT_ORG_NAME) {
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -9,15 +10,15 @@ export function printLoyaltyCard(card, organizationName = "POS / ERP") {
   <style>
     body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; }
     .card {
-      width: 340px; border: 2px solid #185FA5; border-radius: 16px;
-      padding: 20px; background: linear-gradient(135deg, #E6F1FB 0%, #fff 60%);
+      width: 340px; border: 2px solid var(--theme-primary); border-radius: 16px;
+      padding: 20px; background: linear-gradient(135deg, var(--theme-primary-muted) 0%, #fff 60%);
       box-shadow: 0 8px 24px rgba(0,0,0,.12);
     }
-    .org { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: #0C447C; }
-    h1 { margin: 8px 0 4px; font-size: 18px; color: #0C447C; }
-    .num { font-family: ui-monospace, monospace; font-size: 22px; font-weight: 700; color: #185FA5; }
+    .org { font-size: 11px; text-transform: uppercase; letter-spacing: .12em; color: var(--theme-accent-text); }
+    h1 { margin: 8px 0 4px; font-size: 18px; color: var(--theme-accent-text); }
+    .num { font-family: ui-monospace, monospace; font-size: 22px; font-weight: 700; color: var(--theme-primary); }
     .meta { margin-top: 16px; font-size: 13px; color: #334155; line-height: 1.5; }
-    .pts { margin-top: 12px; font-size: 28px; font-weight: 700; color: #185FA5; }
+    .pts { margin-top: 12px; font-size: 28px; font-weight: 700; color: var(--theme-primary); }
   </style>
 </head>
 <body>

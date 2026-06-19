@@ -11,17 +11,16 @@ import { toggleUserPermissionOverride } from "@/components/admin/user-permission
 import { permissionIdSet } from "@/lib/permission-ids";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import {
-  ActiveBadge,
   CatalogPageShell,
   Field,
   FormDrawer,
   IconButton,
-  PencilIcon,
   PrimaryButton,
-  ShieldIcon,
   TrashIcon,
   SearchInput,
+  TABLE_HEAD_ROW_CLASS,
   inputClassName,
+  workspaceCardClassName,
 } from "@/components/catalog/catalog-shared";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import {
@@ -325,9 +324,9 @@ export default function AdminUsersPage() {
           <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
         ) : null}
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className={`${workspaceCardClassName} overflow-x-auto`}>
           <table className="min-w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+            <thead className={TABLE_HEAD_ROW_CLASS}>
               <tr>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Email</th>

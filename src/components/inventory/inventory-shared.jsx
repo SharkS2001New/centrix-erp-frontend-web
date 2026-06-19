@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { workspaceCardClassName } from "@/components/catalog/catalog-shared";
 import { formatOrgCurrency, formatOrgCurrencyCompact } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 import {
@@ -117,7 +118,7 @@ export function InventoryTrendChart({ points }) {
 
 export function InventoryPageShell({ title, subtitle, action, toolbar, children }) {
   return (
-    <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
+    <div className="theme-workspace min-h-full">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
@@ -132,11 +133,7 @@ export function InventoryPageShell({ title, subtitle, action, toolbar, children 
 }
 
 export function InventoryTableShell({ children }) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      {children}
-    </div>
-  );
+  return <div className={`${workspaceCardClassName} overflow-hidden`}>{children}</div>;
 }
 
 export function ProductCodeLink({ code }) {

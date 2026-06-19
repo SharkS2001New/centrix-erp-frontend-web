@@ -1,5 +1,5 @@
 const NOMINATIM_REVERSE = "https://nominatim.openstreetmap.org/reverse";
-const USER_AGENT = "pos-erp-web/1.0 (customer-location; contact: admin@local)";
+const USER_AGENT = "centrix-erp-web/1.0 (customer-location; contact: admin@local)";
 
 let lastRequestAt = 0;
 

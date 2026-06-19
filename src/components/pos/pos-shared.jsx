@@ -1,3 +1,4 @@
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { formatTillKes, formatTillKesExact, tillDisplayName, normalizeFloatEntries, formatFloatEntryDate } from "@/lib/pos-till";
 import { openPrintWindow } from "@/lib/open-print-window";
 
@@ -17,7 +18,7 @@ function line(label, value) {
  */
 export function printPosTillReport({
   type = "X",
-  organizationName = "POS / ERP",
+  organizationName = DEFAULT_PRINT_ORG_NAME,
   tillName,
   cashierName,
   report,

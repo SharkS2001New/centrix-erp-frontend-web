@@ -16,6 +16,7 @@ import {
   DashboardKpiGrid,
   DashboardPanel,
 } from "@/components/dashboard/dashboard-shared";
+import { WORKSPACE_DASHBOARD_SCOPES } from "@/lib/workspace-reports";
 
 export function useReportsDashboard({ fromDate, toDate, branchId, enabled = true }) {
   const [dashboard, setDashboard] = useState(null);
@@ -44,6 +45,7 @@ export function ReportsDashboardSection({
   showKpis = true,
   showCharts = true,
   compact = false,
+  workspaceScope = "backoffice",
   onError,
 }) {
   const { user } = useAuth();
@@ -101,6 +103,8 @@ export function ReportsDashboardSection({
     [dashboard],
   );
 
+  const scope = WORKSPACE_DASHBOARD_SCOPES[workspaceScope] ?? WORKSPACE_DASHBOARD_SCOPES.backoffice;
+
   const kpiItems = [
     {
       id: "total_sales",
@@ -126,7 +130,15 @@ export function ReportsDashboardSection({
       value: dashboard?.kpis?.inventory_value?.value,
       changePct: dashboard?.kpis?.inventory_value?.change_pct,
     },
-  ];
+  ].filter((item) => scope.kpis.includes(item.id));
+
+  const showSalesTrend = scope.charts.includes("sales_trend");
+  const showTopProducts = scope.charts.includes("top_products");
+  const showSalesByChannel = scope.charts.includes("sales_by_channel");
+
+  if (!kpiItems.length && !showSalesTrend && !showTopProducts && !showSalesByChannel) {
+    return null;
+  }
 
   return (
     <div className={compact ? "space-y-4" : "space-y-6"}>
@@ -142,10 +154,11 @@ export function ReportsDashboardSection({
         />
       ) : null}
 
-      {showKpis ? <DashboardKpiGrid items={kpiItems} variant="hub" /> : null}
+      {showKpis && kpiItems.length ? <DashboardKpiGrid items={kpiItems} variant="hub" /> : null}
 
-      {showCharts ? (
+      {showCharts && (showSalesTrend || showTopProducts || showSalesByChannel) ? (
         <DashboardChartsGrid>
+          {showSalesTrend ? (
           <DashboardPanel
             title="Sales trend"
             subtitle="This period vs last period"
@@ -153,12 +166,17 @@ export function ReportsDashboardSection({
           >
             <SalesTrendChart points={dashboard?.sales_trend} loading={loading} />
           </DashboardPanel>
+          ) : null}
+          {showTopProducts ? (
           <DashboardPanel title="Top products" subtitle="By revenue in selected period">
             <DonutChart segments={topProductSegments} loading={loading} />
           </DashboardPanel>
+          ) : null}
+          {showSalesByChannel ? (
           <DashboardPanel title="Sales by channel" subtitle="Revenue distribution" className="xl:col-span-3 lg:col-span-1">
             <DonutChart segments={channelSegments} loading={loading} emptyMessage="No channel sales in this period." />
           </DashboardPanel>
+          ) : null}
         </DashboardChartsGrid>
       ) : null}
     </div>

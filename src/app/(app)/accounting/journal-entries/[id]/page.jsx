@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
@@ -191,7 +192,7 @@ export default function JournalEntryDetailPage() {
           type="button"
           onClick={() =>
             printJournalEntry(entry, {
-              organizationName: capabilities?.profile_label ?? "POS / ERP",
+              organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
             })
           }
           className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"

@@ -290,7 +290,7 @@ export function SupplierFormFields({ form, onChange, supplierCode = null }) {
 
 export function SupplierFormPageShell({ backHref, backLabel, title, subtitle, children }) {
   return (
-    <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
+    <div className="theme-workspace min-h-full">
       <div className="w-full">
         <div className="mb-6">
           <Link href={backHref} className="text-sm text-[#185FA5] hover:text-[#144f8a]">

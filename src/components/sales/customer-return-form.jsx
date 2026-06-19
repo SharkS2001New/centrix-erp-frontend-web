@@ -262,7 +262,7 @@ export function CustomerReturnForm({
     <form onSubmit={handleSubmit} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link href={backHref} className="text-sm text-[#185FA5] hover:underline">
+          <Link href={backHref} className="text-sm text-[var(--theme-primary)] hover:underline">
             {backLabel}
           </Link>
           <h2 className="mt-2 text-xl font-semibold text-slate-900">
@@ -314,7 +314,7 @@ export function CustomerReturnForm({
                 key={sale.id}
                 type="button"
                 onClick={() => loadSale(sale.id)}
-                className="text-xs font-medium text-[#185FA5] hover:underline"
+                className="text-xs font-medium text-[var(--theme-primary)] hover:underline"
               >
                 {formatReceiptNumber(sale)}
               </button>

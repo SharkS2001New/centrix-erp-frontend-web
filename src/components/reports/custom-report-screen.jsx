@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { getStoredWorkspace } from "@/lib/auth-storage";
+import { defaultWorkspaceId } from "@/lib/workspaces";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { exportRowsToCsv, formatReportCell, formatReportKes, sumField } from "@/lib/reports/format";
 import {
@@ -16,7 +18,8 @@ import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/r
 const PAGE_SIZE = 25;
 
 export function CustomReportScreen({ templateId }) {
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
+  const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(capabilities, {});
   const [definition, setDefinition] = useState(null);
   const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,10 +32,12 @@ export function CustomReportScreen({ templateId }) {
   const [applied, setApplied] = useState({ fromDate: "", toDate: "", branchId: "" });
 
   useEffect(() => {
-    apiRequest(`/reports/builder/templates/${templateId}`)
+    apiRequest(`/reports/builder/templates/${templateId}`, {
+      searchParams: { workspace_id: workspaceId },
+    })
       .then((res) => setDefinition(res.definition))
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load report"));
-  }, [templateId]);
+  }, [templateId, workspaceId]);
 
   useEffect(() => {
     apiRequest("/branches", { searchParams: { per_page: 100 } })
@@ -49,7 +54,7 @@ export function CustomReportScreen({ templateId }) {
     setLoading(true);
     setError(null);
     try {
-      const searchParams = { per_page: 200, page: 1 };
+      const searchParams = { per_page: 200, page: 1, workspace_id: workspaceId };
       if (definition.showDateRange) {
         if (applied.fromDate) searchParams.from_date = applied.fromDate;
         if (applied.toDate) searchParams.to_date = applied.toDate;
@@ -64,7 +69,7 @@ export function CustomReportScreen({ templateId }) {
     } finally {
       setLoading(false);
     }
-  }, [definition, applied]);
+  }, [definition, applied, workspaceId]);
 
   useEffect(() => {
     loadReport();

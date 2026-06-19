@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import { usePosSession } from "@/contexts/pos-session-context";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
@@ -270,7 +271,7 @@ export function TillManagementScreen() {
   const [handoverError, setHandoverError] = useState(null);
 
   const showFloatBreakdown = isPosTillFloatRequired(capabilities?.module_settings);
-  const organizationName = capabilities?.profile_label ?? "POS / ERP";
+  const organizationName = capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME;
   const canHandoverSession = Boolean(
     user?.is_admin ||
       capabilities?.permissions?.["sales.orders.approve"] ||
@@ -710,7 +711,7 @@ export function TillManagementScreen() {
                             <div className="flex justify-end gap-1">
                               {isOpen ? (
                                 <>
-                                  <IconLink href="/sales/pos" label="Open POS">
+                                  <IconLink href="/sales/pos" label="Create order">
                                     <OpenPosIcon />
                                   </IconLink>
                                   {canHandoverSession ? (

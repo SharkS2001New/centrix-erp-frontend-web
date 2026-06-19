@@ -5,8 +5,12 @@ import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatSaleKes } from "@/lib/sales";
 
-const inputCls =
-  "w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-black shadow-sm outline-none placeholder:text-slate-500 focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20";
+import { INPUT_CLASS, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
+
+const inputCls = INPUT_CLASS;
+const cancelBtnClass = `${SECONDARY_BTN_CLASS} px-3 py-2.5 text-xs font-bold uppercase`;
+const primaryBtnClass =
+  "theme-primary-btn rounded-lg px-3 py-2.5 text-xs font-bold uppercase disabled:opacity-50";
 
 function lockBodyScroll() {
   const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
@@ -53,16 +57,16 @@ function PayOptionDialog({ open, title, onClose, children, footer }) {
       <div
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-sm overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl"
+        className="theme-modal w-full max-w-sm overflow-hidden rounded-lg border shadow-2xl"
       >
-        <div className="border-b border-slate-200 bg-[#E6F1FB] px-4 py-3">
-          <h3 className="text-center text-sm font-bold uppercase tracking-wide text-[#0C447C]">
+        <div className="border-b border-[var(--theme-border)] bg-[var(--theme-primary)] px-4 py-3">
+          <h3 className="text-center text-sm font-bold uppercase tracking-wide text-white">
             {title}
           </h3>
         </div>
         <div className="p-4">{children}</div>
         {footer ? (
-          <div className="grid grid-cols-2 gap-2 border-t border-slate-200 bg-slate-50 p-3">
+          <div className="grid grid-cols-2 gap-2 border-t border-[var(--theme-border)] bg-[var(--theme-page-bg)] p-3">
             {footer}
           </div>
         ) : null}
@@ -80,8 +84,8 @@ function PayOptionButton({ icon, label, sublabel, active, disabled, onClick }) {
       onClick={onClick}
       className={`flex min-h-[3.25rem] flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2 text-center disabled:opacity-40 ${
         active
-          ? "border-[#185FA5] bg-[#E6F1FB] text-[#0C447C]"
-          : "border-slate-200 bg-white text-slate-700 hover:border-[#185FA5]/40 hover:bg-slate-50"
+          ? "border-[var(--theme-primary)] bg-[var(--theme-primary-subtle)] text-[var(--theme-text)]"
+          : `${SECONDARY_BTN_CLASS} min-h-[3.25rem] flex-col px-2 py-2 text-[10px] font-bold uppercase tracking-wide`
       }`}
     >
       <span className="text-lg leading-none" aria-hidden>
@@ -89,7 +93,7 @@ function PayOptionButton({ icon, label, sublabel, active, disabled, onClick }) {
       </span>
       <span className="text-[10px] font-bold uppercase tracking-wide">{label}</span>
       {sublabel ? (
-        <span className="line-clamp-1 text-[10px] font-medium normal-case text-slate-500">
+        <span className="theme-subtext line-clamp-1 text-[10px] font-medium normal-case">
           {sublabel}
         </span>
       ) : null}
@@ -678,9 +682,9 @@ export function PosCartPaymentOptions({
 
   return (
     <>
-      <div className="shrink-0 border-t border-slate-200 bg-slate-50/80 p-4">
+      <div className="shrink-0 border-t border-[var(--theme-border)] bg-[var(--theme-page-bg)] p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold uppercase tracking-wide text-[#0C447C]">
+          <p className="theme-heading text-sm font-semibold uppercase tracking-wide">
             Pay with
           </p>
           {hasVoucher || hasPoints || hasMpesaPhone || hasMpesaPayment ? (
@@ -688,7 +692,7 @@ export function PosCartPaymentOptions({
               type="button"
               disabled={disabled}
               onClick={() => void clearPayments()}
-              className="text-[10px] font-semibold uppercase text-slate-500 hover:text-red-600 disabled:opacity-50"
+              className="theme-subtext text-[10px] font-semibold uppercase hover:text-red-500 disabled:opacity-50"
             >
               Clear
             </button>
@@ -731,7 +735,7 @@ export function PosCartPaymentOptions({
                   type="button"
                   disabled={disabled}
                   onClick={closeDialog}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold uppercase text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  className={cancelBtnClass}
                 >
                   Cancel
                 </button>
@@ -739,7 +743,7 @@ export function PosCartPaymentOptions({
                   type="button"
                   disabled={disabled || !mpesaPhone.trim() || !stkAmount.trim()}
                   onClick={() => void pushMpesaPayment()}
-                  className="rounded-lg bg-[#185FA5] px-3 py-2.5 text-xs font-bold uppercase text-white hover:bg-[#144f8a] disabled:opacity-50"
+                  className={primaryBtnClass}
                 >
                   Push STK
                 </button>
@@ -750,7 +754,7 @@ export function PosCartPaymentOptions({
                   type="button"
                   disabled={disabled}
                   onClick={closeDialog}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold uppercase text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  className={cancelBtnClass}
                 >
                   Cancel
                 </button>
@@ -764,7 +768,7 @@ export function PosCartPaymentOptions({
                       !lastStkPayAmountRef.current)
                   }
                   onClick={() => (watchingMpesa ? void checkMpesaPayments() : startMpesaWatch())}
-                  className="rounded-lg border border-[#185FA5]/30 bg-white px-3 py-2.5 text-xs font-bold uppercase text-[#0C447C] hover:bg-[#E6F1FB] disabled:opacity-50"
+                  className={`${SECONDARY_BTN_CLASS} border-[var(--theme-primary)]/30 px-3 py-2.5 text-xs font-bold uppercase text-[var(--theme-accent-text)]`}
                 >
                   {watchingMpesa ? "Refresh" : "Check payment"}
                 </button>
@@ -777,7 +781,7 @@ export function PosCartPaymentOptions({
                       closeDialog();
                       onPaymentApplied?.();
                     }}
-                    className="col-span-2 rounded-lg bg-[#185FA5] px-3 py-2.5 text-xs font-bold uppercase text-white hover:bg-[#144f8a] disabled:opacity-50"
+                    className="col-span-2 rounded-lg bg-[var(--theme-primary)] px-3 py-2.5 text-xs font-bold uppercase text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
                   >
                     Collect balance ({formatSaleKes(amountDue)})
                   </button>
@@ -790,7 +794,7 @@ export function PosCartPaymentOptions({
                 type="button"
                 disabled={disabled}
                 onClick={closeDialog}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold uppercase text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                className={cancelBtnClass}
               >
                 Cancel
               </button>
@@ -798,7 +802,7 @@ export function PosCartPaymentOptions({
                 type="button"
                 disabled={disabled || !voucherCode.trim()}
                 onClick={() => void applyVoucher()}
-                className="rounded-lg bg-[#185FA5] px-3 py-2.5 text-xs font-bold uppercase text-white hover:bg-[#144f8a] disabled:opacity-50"
+                className={primaryBtnClass}
               >
                 Apply voucher
               </button>
@@ -809,7 +813,7 @@ export function PosCartPaymentOptions({
                 type="button"
                 disabled={disabled}
                 onClick={closeDialog}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold uppercase text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                className={cancelBtnClass}
               >
                 Cancel
               </button>
@@ -817,7 +821,7 @@ export function PosCartPaymentOptions({
                 type="button"
                 disabled={disabled || !pointsPhone.trim()}
                 onClick={() => void applyPoints()}
-                className="rounded-lg bg-[#185FA5] px-3 py-2.5 text-xs font-bold uppercase text-white hover:bg-[#144f8a] disabled:opacity-50"
+                className={primaryBtnClass}
               >
                 Redeem points
               </button>
@@ -828,14 +832,14 @@ export function PosCartPaymentOptions({
         {activeDialog === "mpesa" ? (
           <>
             {stkPushAvailable ? (
-              <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1">
+              <div className="theme-panel mb-3 grid grid-cols-2 gap-1 rounded-lg border p-1">
                 <button
                   type="button"
                   onClick={() => switchMpesaMode("stk")}
                   className={`rounded-md px-2 py-2 text-[10px] font-bold uppercase tracking-wide ${
                     mpesaMode === "stk"
-                      ? "bg-white text-[#0C447C] shadow-sm"
-                      : "text-slate-600 hover:text-slate-900"
+                      ? "theme-secondary-btn bg-[var(--theme-primary-subtle)] text-[var(--theme-text)] shadow-sm"
+                      : "theme-subtext hover:text-[var(--theme-text)]"
                   }`}
                 >
                   STK push
@@ -845,8 +849,8 @@ export function PosCartPaymentOptions({
                   onClick={() => switchMpesaMode("check")}
                   className={`rounded-md px-2 py-2 text-[10px] font-bold uppercase tracking-wide ${
                     mpesaMode === "check"
-                      ? "bg-white text-[#0C447C] shadow-sm"
-                      : "text-slate-600 hover:text-slate-900"
+                      ? "theme-secondary-btn bg-[var(--theme-primary-subtle)] text-[var(--theme-text)] shadow-sm"
+                      : "theme-subtext hover:text-[var(--theme-text)]"
                   }`}
                 >
                   Check payment
@@ -877,7 +881,7 @@ export function PosCartPaymentOptions({
               </p>
             ) : null}
             {mpesaInfo ? (
-              <p className="mb-3 rounded-lg border border-[#185FA5]/20 bg-[#E6F1FB] px-2.5 py-2 text-xs text-[#0C447C]">
+              <p className="mb-3 rounded-lg border border-[var(--theme-primary)]/20 bg-[var(--theme-primary-muted)] px-2.5 py-2 text-xs text-[var(--theme-accent-text)]">
                 {mpesaInfo}
               </p>
             ) : null}
@@ -888,7 +892,7 @@ export function PosCartPaymentOptions({
               </p>
             ) : null}
             <label className="block">
-              <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#0C447C]">
+              <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
                 Mobile number
               </span>
               <input
@@ -910,7 +914,7 @@ export function PosCartPaymentOptions({
             </label>
             {mpesaMode === "stk" && stkPushAvailable ? (
               <label className="mt-3 block">
-                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#0C447C]">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
                   STK amount (KES)
                 </span>
                 <input
@@ -938,7 +942,7 @@ export function PosCartPaymentOptions({
             ) : null}
             {mpesaMode === "check" ? (
               <label className="mt-3 block">
-                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#0C447C]">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
                   Amount paid (KES)
                 </span>
                 <input
@@ -972,13 +976,13 @@ export function PosCartPaymentOptions({
             ) : null}
             {mpesaMode === "check" && mpesaCandidates.length > 0 ? (
               <div className="mt-4 space-y-2">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-[#0C447C]">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
                   Payments found
                 </p>
                 {mpesaCandidates.map((payment) => (
                   <div
                     key={payment.id}
-                    className="rounded-lg border border-slate-200 bg-slate-50 p-2.5"
+                    className="theme-panel rounded-lg border p-2.5"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -997,7 +1001,7 @@ export function PosCartPaymentOptions({
                         type="button"
                         disabled={disabled}
                         onClick={() => void skipMpesaCandidate(payment.id)}
-                        className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[10px] font-bold uppercase text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+                        className={`${SECONDARY_BTN_CLASS} px-2 py-1.5 text-[10px] font-bold uppercase`}
                       >
                         Skip
                       </button>
@@ -1005,7 +1009,7 @@ export function PosCartPaymentOptions({
                         type="button"
                         disabled={disabled || !mpesaApplyAmountForPayment(payment.amount)}
                         onClick={() => void applyMpesaCandidate(payment.id, payment.amount)}
-                        className="rounded-md bg-[#185FA5] px-2 py-1.5 text-[10px] font-bold uppercase text-white hover:bg-[#144f8a] disabled:opacity-50"
+                        className="rounded-md bg-[var(--theme-primary)] px-2 py-1.5 text-[10px] font-bold uppercase text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
                       >
                         Use {formatSaleKes(mpesaApplyAmountForPayment(payment.amount) ?? 0)}
                       </button>
@@ -1025,7 +1029,7 @@ export function PosCartPaymentOptions({
             </p>
             <div className="space-y-3">
               <label className="block">
-                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#0C447C]">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
                   Voucher code
                 </span>
                 <input
@@ -1039,7 +1043,7 @@ export function PosCartPaymentOptions({
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#0C447C]">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
                   Amount <span className="font-normal normal-case text-slate-500">(optional)</span>
                 </span>
                 <input
@@ -1054,7 +1058,7 @@ export function PosCartPaymentOptions({
                 />
               </label>
               {hasVoucher ? (
-                <p className="text-xs font-medium text-[#0C447C]">
+                <p className="text-xs font-medium text-[var(--theme-accent-text)]">
                   Already applied: {formatSaleKes(cart.voucher_payment_amount)}
                 </p>
               ) : null}
@@ -1081,13 +1085,13 @@ export function PosCartPaymentOptions({
                   type="button"
                   disabled={disabled || !pointsPhone.trim()}
                   onClick={() => void lookupPoints()}
-                  className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  className={`${SECONDARY_BTN_CLASS} shrink-0 px-3 py-1.5 text-[10px] font-bold uppercase`}
                 >
                   Find
                 </button>
               </div>
               {loyaltyPreview ? (
-                <p className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-700">
+                <p className="theme-panel rounded-lg border px-2.5 py-2 text-xs text-[var(--theme-text-muted)]">
                   <span className="font-semibold">{loyaltyPreview.customer_name}</span>
                   <br />
                   {loyaltyPreview.card_number} · {loyaltyPreview.points_balance} pts (
@@ -1095,7 +1099,7 @@ export function PosCartPaymentOptions({
                 </p>
               ) : null}
               <label className="block">
-                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#0C447C]">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
                   Points to redeem
                 </span>
                 <input
@@ -1110,7 +1114,7 @@ export function PosCartPaymentOptions({
                 />
               </label>
               {hasPoints ? (
-                <p className="text-xs font-medium text-[#0C447C]">
+                <p className="text-xs font-medium text-[var(--theme-accent-text)]">
                   Already applied: {formatSaleKes(cart.points_payment_amount)} (
                   {cart.points_redeemed} pts)
                 </p>

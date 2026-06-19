@@ -54,7 +54,7 @@ export default function EditCustomerReturnPage() {
   }
 
   return (
-    <div className="-m-6 min-h-[calc(100%+3rem)] bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
+    <div className="theme-workspace min-h-full">
       <CustomerReturnForm
         editing={row}
         backHref="/sales/returns"

@@ -7,8 +7,9 @@ import {
 } from "@/components/inventory/stock-take-count-inputs";
 import { formatMixedStockDisplay, stockTakeCountsToBase } from "@/lib/stock-uom";
 
-const inputCls =
-  "w-full rounded border border-[#b8a88a] bg-white px-2 py-1 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5]";
+import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
+
+const inputCls = INPUT_CLASS;
 
 /**
  * UOM-aware quantity entry for POS (full / middle / small counts).

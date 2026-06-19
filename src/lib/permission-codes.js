@@ -1,5 +1,7 @@
 /** Feature permission codes — aligned with API config/permission_registry.php */
 
+import { HR_REPORT_KEYS } from "@/lib/reports/hr-reports";
+
 export const P = {
   dashboard: {
     overview: { view: "dashboard.overview.view" },
@@ -156,6 +158,13 @@ export function reportPermissionCode(reportKey) {
     "till-sessions": P.reports.till_sessions.view,
     expenses: P.reports.expenses.view,
     "payroll-summary": P.hr.payroll.view,
+    "leave-balance": P.hr.leave.view,
+    "statutory-deductions": P.hr.payroll.view,
+    "bank-transfer": P.hr.payroll.view,
+    "staff-turnover": P.hr.employees.view,
+    headcount: P.hr.employees.view,
+    "contract-expiry": P.hr.employees.view,
+    "hr-dashboard-kpi": P.hr.employees.view,
     "general-ledger": P.accounting.general_ledger.view,
     "trial-balance": P.accounting.trial_balance.view,
     "balance-sheet": P.accounting.balance_sheet.view,
@@ -182,10 +191,23 @@ const ACCOUNTING_REPORT_KEYS = new Set([
   "journal-register",
 ]);
 
+const HR_REPORT_KEY_SET = new Set(HR_REPORT_KEYS);
+
+function canViewHrReport(reportKey, hasPermission) {
+  const code = reportPermissionCode(reportKey);
+  return (
+    hasPermission(code) ||
+    hasPermission(P.hr.payroll.view) ||
+    hasPermission(P.hr.leave.view) ||
+    hasPermission(P.hr.employees.view) ||
+    hasPermission(P.reports.hub.view)
+  );
+}
+
 /** @param {(code: string) => boolean} hasPermission */
 export function canViewReport(reportKey, hasPermission) {
-  if (reportKey === "payroll-summary") {
-    return hasPermission(P.hr.payroll.view) || hasPermission(P.reports.hub.view);
+  if (HR_REPORT_KEY_SET.has(reportKey)) {
+    return canViewHrReport(reportKey, hasPermission);
   }
   if (reportKey === "customer-statement") {
     return (

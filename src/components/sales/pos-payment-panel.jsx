@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { parseDecimalInput } from "@/components/catalog/catalog-shared";
+import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
 import { formatSaleKes } from "@/lib/sales";
 import { resolveCheckoutStatus } from "@/lib/sales-settings";
 import {
@@ -18,7 +18,7 @@ import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 function PosField({ label, children }) {
   return (
     <label className="block">
-      <span className="mb-0.5 block text-[11px] font-bold uppercase tracking-wide text-[#4a5d23]">
+      <span className="theme-accent-label mb-0.5 block text-[11px] font-bold uppercase tracking-wide">
         {label}
       </span>
       {children}
@@ -26,8 +26,7 @@ function PosField({ label, children }) {
   );
 }
 
-const inputCls =
-  "w-full rounded border border-[#c4b89a] bg-white px-2 py-1.5 text-sm text-black outline-none placeholder:text-slate-500 focus:border-[#185FA5]";
+const inputCls = INPUT_CLASS;
 
 function buildConfirmPaymentMessage({ billTotal, payNow, balanceDue, isCredit }) {
   if (billTotal <= 0.01) {
@@ -800,7 +799,7 @@ export function PosPaymentPanel({
           </div>
           <div className="flex flex-col items-center px-6 py-8 text-center">
             <div
-              className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[#c4b89a] border-t-[#185FA5]"
+              className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[#c4b89a] border-t-[var(--theme-primary)]"
               aria-hidden
             />
             <p className="text-sm font-semibold text-slate-800">Saving…</p>

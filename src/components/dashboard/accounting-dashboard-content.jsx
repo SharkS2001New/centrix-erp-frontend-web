@@ -27,7 +27,7 @@ const ACCOUNTING_LINKS = [
   { href: "/accounting/accounts-receivable", title: "Accounts receivable", desc: "Customer balances" },
   { href: "/accounting/accounts-payable", title: "Accounts payable", desc: "Supplier payables" },
   { href: "/expenses", title: "Expenses", desc: "Operational expenses" },
-  { href: "/reports", title: "All reports", desc: "Finance and operations" },
+  { href: "/reports", title: "All reports", desc: "Financial and compliance reports" },
 ];
 
 export function AccountingDashboardContent() {

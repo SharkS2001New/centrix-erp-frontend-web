@@ -112,11 +112,20 @@ export const REPORT_CATEGORY_DEFS = [
     keys: ["kra-receipts", "audit-trail"],
   },
   {
-    id: "payroll",
-    title: "Payroll Reports",
-    description: "Payroll runs and summaries",
+    id: "hr",
+    title: "HR Reports",
+    description: "Leave, payroll, headcount, and workforce analytics",
     icon: "payroll",
-    keys: ["payroll-summary"],
+    keys: [
+      "leave-balance",
+      "payroll-summary",
+      "statutory-deductions",
+      "bank-transfer",
+      "staff-turnover",
+      "headcount",
+      "contract-expiry",
+      "hr-dashboard-kpi",
+    ],
   },
 ];
 

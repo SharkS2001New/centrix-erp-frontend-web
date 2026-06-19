@@ -15,7 +15,7 @@ export function DashboardErrorBanner({ message }) {
 }
 
 export function DashboardLoading({ label = "Loading dashboard…" }) {
-  return <p className="text-sm text-slate-500">{label}</p>;
+  return <p className="theme-subtext text-sm">{label}</p>;
 }
 
 export function DashboardSection({ title, subtitle, action, children, className = "" }) {
@@ -24,8 +24,8 @@ export function DashboardSection({ title, subtitle, action, children, className 
       {(title || action) && (
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
-            {title ? <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{title}</h2> : null}
-            {subtitle ? <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p> : null}
+            {title ? <h2 className="theme-heading text-lg font-semibold">{title}</h2> : null}
+            {subtitle ? <p className="theme-subtext mt-0.5 text-sm">{subtitle}</p> : null}
           </div>
           {action}
         </div>
@@ -41,8 +41,8 @@ export function DashboardPanel({ title, subtitle, children, className = "", head
       {(title || headerAction) && (
         <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
           <div>
-            {title ? <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h3> : null}
-            {subtitle ? <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p> : null}
+            {title ? <h3 className="theme-heading text-sm font-semibold">{title}</h3> : null}
+            {subtitle ? <p className="theme-subtext mt-0.5 text-xs">{subtitle}</p> : null}
           </div>
           {headerAction}
         </div>
@@ -129,12 +129,12 @@ export function DashboardQuickLinks({ links }) {
         <Link
           key={link.href}
           href={link.href}
-          className="theme-panel group rounded-xl border p-4 shadow-sm transition hover:border-[#185FA5]/40 hover:shadow-md"
+          className="theme-panel group rounded-xl border p-4 shadow-sm transition hover:border-[var(--theme-primary)]/40 hover:shadow-md"
         >
-          <p className="text-sm font-medium text-slate-900 group-hover:text-[#185FA5] dark:text-slate-100">
+          <p className="theme-heading text-sm font-medium group-hover:text-[var(--theme-primary)]">
             {link.title}
           </p>
-          {link.desc ? <p className="mt-1 text-xs text-slate-500">{link.desc}</p> : null}
+          {link.desc ? <p className="theme-subtext mt-1 text-xs">{link.desc}</p> : null}
         </Link>
       ))}
     </div>
@@ -152,11 +152,11 @@ export function DashboardSummaryTable({
   const format = formatValue ?? ((_, value) => (value == null || value === "" ? "—" : String(value)));
 
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+    <div className="theme-table-shell overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[480px] border-collapse text-sm">
+        <table className="theme-table w-full min-w-[480px] border-collapse text-sm">
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-800/60">
+            <tr className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide">
               {columns.map((col) => (
                 <th key={col.key} className={`px-4 py-2.5 ${col.align === "right" ? "text-right" : "text-left"}`}>
                   {col.label}
@@ -167,7 +167,7 @@ export function DashboardSummaryTable({
           <tbody>
             {!rows?.length ? (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={columns.length} className="theme-subtext px-4 py-8 text-center">
                   {emptyMessage}
                 </td>
               </tr>
@@ -175,12 +175,12 @@ export function DashboardSummaryTable({
               rows.map((row, index) => (
                 <tr
                   key={row.id ?? row.key ?? index}
-                  className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/80 dark:border-slate-800 dark:hover:bg-slate-800/40"
+                  className="theme-table-body-row"
                 >
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={`px-4 py-3 text-slate-700 dark:text-slate-200 ${col.align === "right" ? "text-right tabular-nums" : ""} ${col.mono ? "font-mono text-xs" : ""}`}
+                      className={`px-4 py-3 ${col.align === "right" ? "text-right tabular-nums" : ""} ${col.mono ? "font-mono text-xs" : ""}`}
                     >
                       {col.render ? col.render(row) : format(col.key, row[col.key], row)}
                     </td>
@@ -192,8 +192,8 @@ export function DashboardSummaryTable({
         </table>
       </div>
       {viewAllHref && rows?.length ? (
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-right dark:border-slate-700 dark:bg-slate-800/40">
-          <Link href={viewAllHref} className="text-xs font-medium text-[#185FA5] hover:underline">
+        <div className="theme-table-footer px-4 py-2 text-right">
+          <Link href={viewAllHref} className="theme-link text-xs font-medium">
             {viewAllLabel}
           </Link>
         </div>

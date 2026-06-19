@@ -8,6 +8,15 @@ export function isAiAssistantEnabledForOrg(capabilities) {
   return Boolean(capabilities?.ai_assistant?.enabled);
 }
 
+/**
+ * True when the signed-in user may open the floating ERP assistant.
+ * Org AI settings control whether chat is fully configured; permission controls visibility.
+ */
+export function canShowAiAssistant(hasPermission) {
+  if (typeof hasPermission !== "function") return false;
+  return hasPermission("ai.assist.create") || hasPermission("ai.assist");
+}
+
 export function aiFormFromApi(res) {
   const settings = res?.settings ?? res?.ai ?? {};
   return {
