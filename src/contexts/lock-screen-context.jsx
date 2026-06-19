@@ -84,8 +84,12 @@ export function LockScreenProvider({ children }) {
       setLocked(false);
       setError(null);
     } catch (e) {
-      const body = e instanceof ApiError ? e.body : null;
-      setError(formatApiErrorMessage(body, e instanceof Error ? e.message : "Incorrect password."));
+      if (e instanceof ApiError && e.status === 401) {
+        setError("Your session ended. Use Sign out below, then sign in again.");
+      } else {
+        const body = e instanceof ApiError ? e.body : null;
+        setError(formatApiErrorMessage(body, e instanceof Error ? e.message : "Incorrect password."));
+      }
     } finally {
       setUnlocking(false);
     }

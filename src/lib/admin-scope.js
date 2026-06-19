@@ -16,6 +16,7 @@ export const ORG_ADMIN_SETTINGS_PATH_PREFIXES = [
   "/admin/audit",
   "/admin/payment-methods",
   "/admin/kra-responses",
+  "/vats",
 ];
 
 export function isPlatformOrganization(organization) {

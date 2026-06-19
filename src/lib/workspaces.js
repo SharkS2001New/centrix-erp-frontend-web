@@ -19,10 +19,19 @@ export const WORKSPACE_ICONS = {
 /** Nav sections shown per workspace (reports filtered further by report module). */
 export const WORKSPACE_SECTION_IDS = {
   pos: [],
-  backoffice: ["dashboard", "sales", "inventory", "purchases", "logistics", "reports"],
+  backoffice: [
+    "dashboard",
+    "sales",
+    "customers",
+    "catalogue",
+    "inventory",
+    "purchases",
+    "logistics",
+    "reports",
+  ],
   admin: ["users", "settings"],
-  accounting: ["accounting", "reports"],
-  hr: ["hr", "reports"],
+  accounting: ["dashboard", "accounting", "reports"],
+  hr: ["dashboard", "hr", "reports"],
 };
 
 /** Dashboard analytics links allowed per workspace. */
@@ -51,7 +60,7 @@ export const WORKSPACE_PATH_PREFIXES = {
     "/till-management",
     "/platform",
   ],
-  admin: ["/admin"],
+  admin: ["/admin", "/vats"],
   accounting: ["/accounting", "/expenses", "/finance", "/vats"],
   hr: ["/hr", "/employees"],
 };
@@ -89,7 +98,7 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
   }
 
   if (workspaceId === "admin") {
-    return item.href?.startsWith("/admin") ?? false;
+    return item.href?.startsWith("/admin") || item.href === "/vats";
   }
 
   if (item.href?.startsWith("/reports") || item.reportKey) {

@@ -52,12 +52,12 @@ function readStoredSections() {
   }
 }
 
-function NavGroupLabel({ label, inFlyout = false }) {
+function NavGroupLabel({ label, inFlyout = false, isFirst = false }) {
   return (
     <p
-      className={`app-sidebar-group-label pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.08em] first:pt-1 ${
-        inFlyout ? "px-4" : "px-[22px]"
-      }`}
+      className={`app-sidebar-group-label pb-1 text-[10.5px] font-semibold uppercase tracking-[0.1em] ${
+        isFirst ? "pt-1" : "mt-1 border-t border-white/[0.08] pt-3"
+      } ${inFlyout ? "mx-4 px-0" : "mx-[18px] px-1"}`}
     >
       {label}
     </p>
@@ -66,21 +66,26 @@ function NavGroupLabel({ label, inFlyout = false }) {
 
 function SectionNavItems({ items, pathname, onNavigate, inFlyout = false }) {
   let lastGroup = null;
+  let groupCount = 0;
 
   return items.map((item) => {
     const active = isNavItemActive(item, pathname);
     const showGroup = item.group && item.group !== lastGroup;
+    const isFirstGroup = showGroup && groupCount === 0;
     if (showGroup) {
       lastGroup = item.group;
+      groupCount += 1;
     }
 
     return (
       <Fragment key={item.href}>
-        {showGroup ? <NavGroupLabel label={item.group} inFlyout={inFlyout} /> : null}
+        {showGroup ? (
+          <NavGroupLabel label={item.group} inFlyout={inFlyout} isFirst={isFirstGroup} />
+        ) : null}
         <Link
           href={item.href}
           onClick={onNavigate}
-          className={`app-sidebar-link block py-2 text-[13.5px] transition ${
+          className={`app-sidebar-link block py-2 text-[13.5px] leading-snug transition ${
             inFlyout ? "px-4" : "pl-[52px] pr-[18px]"
           } ${active ? "app-sidebar-link-active" : ""}`}
         >
@@ -147,11 +152,11 @@ function CollapsibleNavSection({
   );
 
   if (!section.collapsible || !section.label) {
-    return <div className="space-y-0.5">{children}</div>;
+    return <div className="app-sidebar-section-block">{children}</div>;
   }
 
   return (
-    <div>
+    <div className="app-sidebar-section-block">
       <button
         type="button"
         onClick={() => onToggle(section.id)}
@@ -165,7 +170,7 @@ function CollapsibleNavSection({
         <ChevronIcon open={expanded} />
       </button>
       {expanded ? (
-        <div className="app-sidebar-submenu space-y-0.5 pb-1">{children}</div>
+        <div className="app-sidebar-submenu pb-2 pt-0.5">{children}</div>
       ) : null}
     </div>
   );
@@ -349,19 +354,23 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
           </div>
         ) : null}
 
-        <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-4">
-          {visibleSections.map((section) => (
-            <CollapsibleNavSection
+        <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-4 pt-1">
+          {visibleSections.map((section, index) => (
+            <div
               key={section.id}
-              section={section}
-              pathname={pathname}
-              expanded={expandedSections.has(section.id)}
-              onToggle={toggleSection}
-              iconOnly={iconOnly}
-              isFlyoutOpen={activeFlyoutId === section.id}
-              onIconClick={toggleFlyout}
-              onNavigate={handleNavigate}
-            />
+              className={index > 0 ? "border-t border-white/[0.08]" : undefined}
+            >
+              <CollapsibleNavSection
+                section={section}
+                pathname={pathname}
+                expanded={expandedSections.has(section.id)}
+                onToggle={toggleSection}
+                iconOnly={iconOnly}
+                isFlyoutOpen={activeFlyoutId === section.id}
+                onIconClick={toggleFlyout}
+                onNavigate={handleNavigate}
+              />
+            </div>
           ))}
         </nav>
       </aside>

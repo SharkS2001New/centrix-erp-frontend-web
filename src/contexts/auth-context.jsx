@@ -18,6 +18,7 @@ import {
   getStoredUser,
   getStoredWorkspace,
   getToken,
+  isScreenLocked,
   setSession,
   setStoredWorkspace,
 } from "@/lib/auth-storage";
@@ -96,6 +97,7 @@ export function AuthProvider({ children }) {
         syncStoredWorkspace(caps?.workspaces ?? []);
       })
       .catch(() => {
+        if (isScreenLocked()) return;
         clearSession();
         setUser(null);
         setOrganization(null);

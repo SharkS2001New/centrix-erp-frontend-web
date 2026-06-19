@@ -21,7 +21,7 @@ export function buildWorkspaceNavSections({
     module: "sales.backend",
     permission: "sales.orders.view",
     exact: item.slug === "all",
-    group: "Sales orders",
+    group: "Orders",
     ordersNav: false,
   }));
 

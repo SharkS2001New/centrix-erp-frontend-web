@@ -30,12 +30,11 @@ const SALES_DEFAULTS = {
   retail_shop_wholesale_store_stock: false,
   add_route_markup_prices: false,
   pos_order_type_mode: "normal",
-  enable_mobile_orders: false,
+  enable_mobile_orders: true,
   mobile_enable_checkout_location_verification: false,
   mobile_allow_offline_orders: false,
   mobile_checkout_location_radius_metres: 5,
   mobile_enable_field_attendance: false,
-  enable_pos_orders: false,
   require_pos_till_float: false,
   blind_till_close: false,
   order_document_type: "receipt",
@@ -130,7 +129,6 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   enable_checkout_customer_name: false,
   add_route_markup_prices: false,
   pos_order_type_mode: "normal",
-  enable_pos_orders: false,
   require_pos_till_float: false,
   blind_till_close: false,
   order_document_type: "receipt",
@@ -169,7 +167,6 @@ export function salesOrganizationFormFromApi(res) {
     enable_checkout_customer_name: Boolean(sales.enable_checkout_customer_name),
     add_route_markup_prices: Boolean(sales.add_route_markup_prices),
     pos_order_type_mode: resolvePosOrderTypeMode(sales),
-    enable_pos_orders: Boolean(sales.enable_pos_orders),
     require_pos_till_float: Boolean(sales.require_pos_till_float),
     blind_till_close: Boolean(sales.blind_till_close),
     order_document_type: sales.order_document_type === "invoice" ? "invoice" : "receipt",
@@ -207,10 +204,6 @@ export function shouldShowMobileFieldAttendance(capabilities) {
   if (!capabilities?.modules?.["sales.mobile"]) return false;
   const sales = mergeSalesSettings(capabilities?.module_settings);
   return Boolean(sales.mobile_enable_field_attendance);
-}
-
-export function isPosOrdersEnabled(moduleSettings) {
-  return Boolean(mergeSalesSettings(moduleSettings).enable_pos_orders);
 }
 
 /** When true, cashiers must open a till session with operating float before POS sales. */

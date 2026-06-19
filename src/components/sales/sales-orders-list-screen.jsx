@@ -36,7 +36,7 @@ import {
 } from "@/components/sales/sales-orders-shared";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { saleCustomerLabel } from "@/lib/sales";
-import { isMobileOrdersEnabled, isPosOrdersEnabled, orderDocumentPrintLabel } from "@/lib/sales-settings";
+import { isMobileOrdersEnabled, orderDocumentPrintLabel } from "@/lib/sales-settings";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
 import {
   FulfillmentAssignmentDialog,
@@ -67,7 +67,6 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
     [capabilities],
   );
   const includeMobileOrders = isMobileOrdersEnabled(capabilities?.module_settings);
-  const includePosOrders = isPosOrdersEnabled(capabilities?.module_settings);
   const queueConfig = useMemo(
     () => resolveSalesOrderQueue(queueSlug, orgWorkflow, { includeMobile: includeMobileOrders }),
     [queueSlug, orgWorkflow, includeMobileOrders],
@@ -77,8 +76,8 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
     [orgWorkflow],
   );
   const sourceOptions = useMemo(
-    () => orderSourceFilterOptions(includeMobileOrders, includePosOrders),
-    [includeMobileOrders, includePosOrders],
+    () => orderSourceFilterOptions(includeMobileOrders, true),
+    [includeMobileOrders],
   );
 
   const [rows, setRows] = useState([]);
@@ -115,10 +114,7 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
     if (!includeMobileOrders && sourceFilter === "mobile") {
       setSourceFilter("all");
     }
-    if (!includePosOrders && sourceFilter === "pos") {
-      setSourceFilter("all");
-    }
-  }, [includeMobileOrders, includePosOrders, sourceFilter]);
+  }, [includeMobileOrders, sourceFilter]);
 
   useEffect(() => {
     refreshCapabilities().catch(() => {});

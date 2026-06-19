@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { UserPermissionMatrix } from "@/components/admin/user-permission-matrix";
 import { ActiveBadge, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { formatLoginChannels } from "@/lib/login-channels";
-import { formatMobileOrderScope, userHasMobileChannel } from "@/lib/mobile-order-scope";
+import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 
 export function UserDetailModal({
   open,
@@ -89,9 +89,11 @@ export function UserDetailModal({
             </div>
             {userHasMobileChannel(user.login_channels) ? (
               <div>
-                <dt className="text-xs uppercase text-slate-500">Mobile order scope</dt>
+                <dt className="text-xs uppercase text-slate-500">Assigned route</dt>
                 <dd className="mt-0.5 text-slate-900">
-                  {formatMobileOrderScope(user.mobile_order_scope)}
+                  {user.assigned_route_id
+                    ? `Route #${user.assigned_route_id} (locked)`
+                    : "Any route"}
                 </dd>
               </div>
             ) : null}

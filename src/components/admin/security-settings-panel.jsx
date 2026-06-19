@@ -66,7 +66,11 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage 
                 value={form.session_idle_minutes}
                 onChange={(e) => setForm((f) => ({ ...f, session_idle_minutes: e.target.value }))}
               />
-              <p className="mt-1 text-xs text-slate-500">Users are signed out after this period of inactivity.</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Used for stale session cleanup and detecting active sign-ins on other devices. Screen
+                inactivity is handled by the app lock — users unlock with their password instead of
+                signing in again.
+              </p>
             </Field>
             <Toggle
               label="Require strong passwords"

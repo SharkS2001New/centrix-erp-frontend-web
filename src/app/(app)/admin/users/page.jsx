@@ -33,8 +33,6 @@ import {
   normalizeLoginChannels,
 } from "@/lib/login-channels";
 import {
-  DEFAULT_MOBILE_ORDER_SCOPE,
-  MOBILE_ORDER_SCOPES,
   userHasMobileChannel,
 } from "@/lib/mobile-order-scope";
 
@@ -51,7 +49,6 @@ const EMPTY_FORM = {
   password: "",
   access_scope: "branch",
   login_channels: [...DEFAULT_LOGIN_CHANNELS],
-  mobile_order_scope: DEFAULT_MOBILE_ORDER_SCOPE,
   assigned_route_id: "",
   is_active: true,
 };
@@ -166,7 +163,6 @@ export default function AdminUsersPage() {
       password: "",
       access_scope: row.access_scope ?? "branch",
       login_channels: normalizeLoginChannels(row.login_channels),
-      mobile_order_scope: row.mobile_order_scope ?? DEFAULT_MOBILE_ORDER_SCOPE,
       assigned_route_id: row.assigned_route_id ? String(row.assigned_route_id) : "",
       is_active: row.is_active !== false,
     });
@@ -300,11 +296,9 @@ export default function AdminUsersPage() {
         login_channels: normalizeLoginChannels(form.login_channels),
       };
       if (userHasMobileChannel(form.login_channels)) {
-        body.mobile_order_scope = form.mobile_order_scope || DEFAULT_MOBILE_ORDER_SCOPE;
-        body.assigned_route_id =
-          form.mobile_order_scope === "route_only" && form.assigned_route_id
-            ? Number(form.assigned_route_id)
-            : null;
+        body.assigned_route_id = form.assigned_route_id
+          ? Number(form.assigned_route_id)
+          : null;
       }
       if (!editing || !isProtectedUserAccount(editing, user?.id)) {
         body.is_active = form.is_active;
@@ -530,50 +524,20 @@ export default function AdminUsersPage() {
             </p>
           </Field>
           {userHasMobileChannel(form.login_channels) ? (
-            <>
-              <Field label="Mobile order scope">
-                <select
-                  className={inputClassName()}
-                  value={form.mobile_order_scope}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      mobile_order_scope: e.target.value,
-                      assigned_route_id:
-                        e.target.value === "route_only" ? f.assigned_route_id : "",
-                    }))
-                  }
-                >
-                  {MOBILE_ORDER_SCOPES.map((scope) => (
-                    <option key={scope.value} value={scope.value}>
-                      {scope.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-slate-500">
-                  {
-                    MOBILE_ORDER_SCOPES.find((scope) => scope.value === form.mobile_order_scope)
-                      ?.description
-                  }
-                </p>
-              </Field>
-              {form.mobile_order_scope === "route_only" ? (
-                <Field label="Assigned route (optional)">
-                  <HrSearchableSelect
-                    value={form.assigned_route_id}
-                    onChange={(v) => setForm((f) => ({ ...f, assigned_route_id: v }))}
-                    options={routes.map((route) => ({
-                      value: String(route.id),
-                      label: route.route_name ?? `Route #${route.id}`,
-                    }))}
-                    placeholder="Any route — rep picks in the app"
-                  />
-                  <p className="mt-1 text-xs text-slate-500">
-                    When set, the rep only sees and creates orders for this route.
-                  </p>
-                </Field>
-              ) : null}
-            </>
+            <Field label="Assigned route (optional)">
+              <HrSearchableSelect
+                value={form.assigned_route_id}
+                onChange={(v) => setForm((f) => ({ ...f, assigned_route_id: v }))}
+                options={routes.map((route) => ({
+                  value: String(route.id),
+                  label: route.route_name ?? `Route #${route.id}`,
+                }))}
+                placeholder="Any route — rep chooses in the app"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Leave empty to let the rep work on multiple routes. When set, the rep is locked to that route only.
+              </p>
+            </Field>
           ) : null}
           <Field label={editing ? "New password (optional)" : "Password"}>
             <PasswordInput

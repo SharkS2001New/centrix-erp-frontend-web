@@ -32,6 +32,7 @@ import {
   saleDeliveryDateCell,
   saleVatCell,
   salePaymentReferenceLabel,
+  saleCreatedByLabel,
 } from "@/components/sales/sales-orders-columns";
 import {
   OrderSourceBadge,
@@ -645,9 +646,9 @@ export function OrderListTableHead({
       <th className="px-4 py-2.5 text-right">Amount</th>
       <th className="px-4 py-2.5 text-right">VAT</th>
       <th className="px-4 py-2.5">Status</th>
-      <th className="px-4 py-2.5">Payment</th>
       <th className="px-4 py-2.5">Method</th>
       {showSourceColumn ? <th className="px-4 py-2.5">Source</th> : null}
+      <th className="px-4 py-2.5">Created by</th>
       <th className="w-28 px-4 py-2.5 text-right">Actions</th>
     </tr>
   );
@@ -722,9 +723,6 @@ export function OrderListTableRow({
           </div>
         </td>
         <td className="px-4 py-3">
-          <PaymentStatusBadge status={sale.payment_status} />
-        </td>
-        <td className="px-4 py-3">
           <OrderPaymentMethodCell sale={sale} paymentRefsBySaleId={paymentRefsBySaleId} />
         </td>
         {showSourceColumn ? (
@@ -732,6 +730,7 @@ export function OrderListTableRow({
             <OrderSourceBadge source={sale.order_source} channel={sale.channel} />
           </td>
         ) : null}
+        <td className="px-4 py-3 text-slate-700">{saleCreatedByLabel(sale)}</td>
         <td className="px-4 py-3">
           <OrderRowActions
             busy={actionBusy}

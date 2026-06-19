@@ -122,6 +122,7 @@ export function PrimaryButton({
   permission,
   module,
   className = "",
+  ...rest
 }) {
   const allowed = useCanAccess({ permission, module });
   if ((permission || module) && !allowed) return null;
@@ -132,6 +133,7 @@ export function PrimaryButton({
       onClick={onClick}
       disabled={disabled}
       className={`theme-primary-btn inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${className}`}
+      {...rest}
     >
       {showIcon ? <PlusIcon /> : null}
       {children}

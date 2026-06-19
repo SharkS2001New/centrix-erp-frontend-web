@@ -35,8 +35,7 @@ function Toggle({ checked, onChange, label, description }) {
 export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail") {
   return {
     show_checkout_on_create_order: true,
-    enable_mobile_orders: ["wholesale_retail", "distribution"].includes(deploymentProfile),
-    enable_pos_orders: deploymentProfile === "wholesale_retail",
+    enable_mobile_orders: true,
     stock_deduct_on: "order_completed",
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
   };
@@ -46,8 +45,7 @@ export function salesPlatformFromApi(apiPayload) {
   if (!apiPayload) return defaultSalesPlatformState();
   return {
     show_checkout_on_create_order: Boolean(apiPayload.show_checkout_on_create_order ?? true),
-    enable_mobile_orders: Boolean(apiPayload.enable_mobile_orders),
-    enable_pos_orders: Boolean(apiPayload.enable_pos_orders),
+    enable_mobile_orders: apiPayload.enable_mobile_orders !== false,
     stock_deduct_on: apiPayload.stock_deduct_on ?? "order_completed",
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
   };
@@ -89,18 +87,10 @@ export function OrganizationPlatformSalesSettings({
         ) : null}
         {mobileEnabled ? (
           <Toggle
-            label="Enable mobile orders in sidebar"
-            description="Shows mobile order queues when the Mobile sales module is enabled."
-            checked={Boolean(salesPlatform?.enable_mobile_orders)}
+            label="Show mobile orders in sidebar"
+            description="On by default when the Mobile sales module is enabled. Turn off if this organization does not use mobile orders."
+            checked={salesPlatform?.enable_mobile_orders !== false}
             onChange={(v) => patch({ enable_mobile_orders: v })}
-          />
-        ) : null}
-        {posEnabled ? (
-          <Toggle
-            label="Enable POS orders in sidebar"
-            description="Shows point-of-sale order lists alongside backend sales."
-            checked={Boolean(salesPlatform?.enable_pos_orders)}
-            onChange={(v) => patch({ enable_pos_orders: v })}
           />
         ) : null}
         {!posEnabled && !mobileEnabled ? (

@@ -1,4 +1,4 @@
-import { getToken, clearSession } from "./auth-storage";
+import { getToken, clearSession, isScreenLocked } from "./auth-storage";
 
 const baseUrl = () =>
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
@@ -99,17 +99,23 @@ export async function apiRequest(path, options = {}) {
   if (!res.ok) {
     if (res.status === 401 && typeof window !== "undefined") {
       const code = data?.code;
-      clearSession();
-      localStorage.removeItem("pos_erp_active_session");
-      const loginPath = "/login";
-      if (!window.location.pathname.startsWith(loginPath)) {
-        const reason =
-          code === "session_idle_timeout"
-            ? "idle"
-            : code === "session_active_elsewhere"
-              ? "session"
-              : "auth";
-        window.location.assign(`${loginPath}?reason=${reason}`);
+      const locked = isScreenLocked();
+      const stayOnPageWhileLocked =
+        locked && code !== "session_active_elsewhere";
+
+      if (!stayOnPageWhileLocked) {
+        clearSession();
+        localStorage.removeItem("pos_erp_active_session");
+        const loginPath = "/login";
+        if (!window.location.pathname.startsWith(loginPath)) {
+          const reason =
+            code === "session_idle_timeout"
+              ? "idle"
+              : code === "session_active_elsewhere"
+                ? "session"
+                : "auth";
+          window.location.assign(`${loginPath}?reason=${reason}`);
+        }
       }
     }
     throw new ApiError(formatApiErrorMessage(data, res.statusText), res.status, data);

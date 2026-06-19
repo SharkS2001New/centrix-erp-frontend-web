@@ -43,7 +43,8 @@ function PlatformMobileSummary() {
       <p className="font-medium text-slate-900">Configured by platform administrator</p>
       <p className="mt-1 text-xs text-slate-500">
         Mobile module access and whether mobile orders appear in the backoffice sidebar are set at
-        organization registration. Contact your platform administrator to change them.
+        organization registration (mobile orders in the sidebar are on by default). Contact your
+        platform administrator to change them.
       </p>
       <ul className="mt-3 space-y-1 text-xs">
         <li>

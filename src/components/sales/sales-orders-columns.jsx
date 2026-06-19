@@ -41,3 +41,10 @@ export function saleDeliveryDateCell(sale) {
 export function saleVatCell(sale) {
   return formatSaleKes(sale.total_vat);
 }
+
+export function saleCreatedByLabel(sale) {
+  const cashier = sale?.cashier;
+  if (cashier?.full_name) return cashier.full_name;
+  if (cashier?.username) return cashier.username;
+  return "—";
+}
