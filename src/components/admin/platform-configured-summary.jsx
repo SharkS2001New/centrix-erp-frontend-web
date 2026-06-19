@@ -31,10 +31,6 @@ export function PlatformConfiguredSalesSummary() {
           {sales.show_checkout_on_create_order !== false ? "Checkout" : "Save order (no checkout)"}
         </li>
         <li>
-          <span className="font-medium">Mobile orders in sidebar:</span>{" "}
-          {sales.enable_mobile_orders ? "Enabled" : "Disabled"}
-        </li>
-        <li>
           <span className="font-medium">POS orders in sidebar:</span>{" "}
           {sales.enable_pos_orders ? "Enabled" : "Disabled"}
         </li>

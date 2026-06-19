@@ -54,6 +54,25 @@ html[data-theme="dark"] .app-shell-bg {
   color: #e9ecef;
 }
 
+/* Lock screen — fully opaque, above all app chrome and modals */
+html.screen-locked body {
+  overflow: hidden;
+}
+
+html[data-theme="light"] .lock-screen-overlay {
+  background-color: #f3f6f9;
+}
+
+html[data-theme="dark"] .lock-screen-overlay {
+  background-color: #1a1d21;
+}
+
+html.screen-locked #lock-screen-root ~ *,
+html.screen-locked body > :not(#lock-screen-root) {
+  pointer-events: none;
+  user-select: none;
+}
+
 /* Content column — canvas behind topbar + pages (matches Sales dashboard) */
 html[data-theme="light"] .app-content-column {
   background-color: #f3f6f9;
@@ -626,12 +645,15 @@ html[data-theme="light"] .app-sidebar-select {
 
 html[data-theme="light"] {
   /* Velzon workspace — aligned with sidebar chrome */
-  --theme-primary: #405189;
-  --theme-primary-hover: #364574;
+  --theme-primary: #4c5ba4;
+  --theme-primary-hover: #434f91;
   --theme-primary-fg: #ffffff;
-  --theme-primary-subtle: rgba(64, 81, 137, 0.1);
+  --theme-primary-subtle: rgba(76, 91, 164, 0.12);
   --theme-primary-muted: #eef0f8;
-  --theme-accent-text: #405189;
+  --theme-accent-text: #4c5ba4;
+  --theme-accent-orange: #c4784a;
+  --theme-accent-orange-fg: #ffffff;
+  --theme-accent-orange-hover: #b06a40;
   --theme-page-bg: #f3f6f9;
   --theme-surface: #ffffff;
   --theme-surface-muted: #f3f6f9;
@@ -646,23 +668,26 @@ html[data-theme="light"] {
 }
 
 html[data-theme="dark"] {
-  --theme-primary: #405189;
-  --theme-primary-hover: #4c5d95;
+  --theme-primary: #4c5ba4;
+  --theme-primary-hover: #5d6ab0;
   --theme-primary-fg: #ffffff;
-  --theme-primary-subtle: rgba(64, 81, 137, 0.18);
-  --theme-primary-muted: #252a2f;
+  --theme-primary-subtle: rgba(76, 91, 164, 0.22);
+  --theme-primary-muted: #252a35;
   --theme-accent-text: #dee2e6;
+  --theme-accent-orange: #c4784a;
+  --theme-accent-orange-fg: #f1f3f5;
+  --theme-accent-orange-hover: #d48958;
   --theme-page-bg: #1a1d21;
   --theme-surface: #1a1d21;
-  --theme-surface-muted: #1a1d21;
+  --theme-surface-muted: #1e2126;
   --theme-surface-subtle: #22262b;
-  --theme-border: #3d4349;
-  --theme-border-strong: #525960;
+  --theme-border: #2d323e;
+  --theme-border-strong: #3d4349;
   --theme-text: #e9ecef;
   --theme-text-muted: #ced4da;
   --theme-text-subtle: #878a99;
-  --theme-input-bg: #1a1d21;
-  --theme-hover: #22262b;
+  --theme-input-bg: #212529;
+  --theme-hover: #2a2f36;
 }
 
 .theme-page {
@@ -781,11 +806,78 @@ html[data-theme="light"] .theme-input:focus {
 .theme-primary-btn {
   background-color: var(--theme-primary);
   color: var(--theme-primary-fg);
-  transition: background-color 0.15s ease;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .theme-primary-btn:hover:not(:disabled) {
   background-color: var(--theme-primary-hover);
+}
+
+.theme-accent-btn {
+  background-color: var(--theme-accent-orange);
+  color: var(--theme-accent-orange-fg);
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  transition: background-color 0.15s ease;
+}
+
+.theme-accent-btn:hover:not(:disabled) {
+  background-color: var(--theme-accent-orange-hover);
+}
+
+.theme-dialog-header {
+  background-color: var(--theme-primary);
+  color: var(--theme-primary-fg);
+}
+
+.theme-dialog-footer {
+  border-top: 1px solid var(--theme-border);
+  background-color: var(--theme-surface-subtle);
+}
+
+.theme-fieldset {
+  border: 1px solid var(--theme-border);
+  background-color: var(--theme-surface-subtle);
+  color: var(--theme-text);
+}
+
+.theme-fieldset legend {
+  color: var(--theme-accent-text);
+}
+
+.theme-alert-error {
+  border: 1px solid color-mix(in srgb, #ef4444 35%, var(--theme-border));
+  background-color: color-mix(in srgb, #ef4444 12%, var(--theme-page-bg));
+  color: color-mix(in srgb, #ef4444 75%, var(--theme-text));
+}
+
+.pos-search-select-panel {
+  background-color: var(--theme-page-bg);
+  border-color: var(--theme-border);
+  color: var(--theme-text);
+}
+
+.pos-search-select-search {
+  background-color: var(--theme-surface-subtle) !important;
+  border-color: var(--theme-border) !important;
+  color: var(--theme-text) !important;
+}
+
+.pos-search-select-option {
+  color: var(--theme-text);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.pos-search-select-option:hover {
+  background-color: var(--theme-hover);
+}
+
+.pos-search-select-option-active {
+  background-color: var(--theme-primary-subtle);
+  color: var(--theme-accent-text);
+  font-weight: 500;
 }
 
 .theme-secondary-btn {
@@ -913,6 +1005,21 @@ html[data-theme="dark"] .pos-workspace-backoffice .pos-backoffice-frame {
 
 .pos-header-brand-light {
   color: var(--theme-text-muted);
+}
+
+/* POS / sales workspace — elevated control surfaces (light & dark) */
+html[data-theme="light"] .pos-workspace {
+  --pos-btn-fill: #ffffff;
+  --pos-btn-border: #94a3b8;
+  --pos-btn-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
+  --pos-btn-primary-shadow: 0 1px 3px rgba(76, 91, 164, 0.35);
+}
+
+html[data-theme="dark"] .pos-workspace {
+  --pos-btn-fill: #2d333b;
+  --pos-btn-border: #4b5563;
+  --pos-btn-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  --pos-btn-primary-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
 }
 
 /* External POS — elevated control surfaces (visible in light & dark) */
@@ -1148,6 +1255,74 @@ html[data-theme="dark"] .pos-workspace-standalone .pos-header-order-badge {
   background-color: var(--theme-page-bg);
 }
 
+.pos-workspace .pos-cart-table-wrap--flush,
+.pos-workspace-backoffice .pos-cart-table-wrap--flush,
+.pos-workspace-standalone .pos-cart-table-wrap--flush {
+  border-top: none;
+  padding: 0;
+}
+
+.pos-workspace .pos-cart-table-wrap--flush thead th:first-child,
+.pos-workspace .pos-cart-table-wrap--flush thead th:last-child {
+  padding-top: 0.625rem;
+}
+
+.pos-cart-action-btn {
+  border: 1px solid var(--pos-btn-border, var(--theme-border-strong, var(--theme-border)));
+  background-color: var(--pos-btn-fill, var(--theme-surface));
+  color: var(--theme-text);
+  box-shadow: var(--pos-btn-shadow, none);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pos-cart-action-btn:hover:not(:disabled) {
+  background-color: var(--theme-hover);
+  border-color: var(--theme-primary);
+  color: var(--theme-text);
+}
+
+.pos-cart-action-btn:disabled {
+  opacity: 0.5;
+  color: var(--theme-text-subtle);
+  background-color: var(--theme-surface-subtle);
+  border-color: var(--theme-border);
+  box-shadow: none;
+}
+
+.pos-cart-action-btn:disabled .pos-cart-action-icon,
+.pos-cart-action-btn:disabled .pos-cart-action-label {
+  opacity: 0.85;
+}
+
+.pos-cart-action-label {
+  color: var(--theme-text);
+  letter-spacing: 0.04em;
+}
+
+.pos-cart-action-icon {
+  color: var(--theme-primary);
+}
+
+.pos-cart-action-icon--warn {
+  color: #b45309;
+}
+
+.pos-cart-action-icon--complete {
+  color: #dc2626;
+}
+
+html[data-theme="dark"] .pos-cart-action-icon--warn {
+  color: #fcd34d;
+}
+
+html[data-theme="dark"] .pos-cart-action-icon--complete {
+  color: #fca5a5;
+}
+
+.pos-workspace .pos-cart-action-btn:not(:disabled) {
+  min-height: 2.75rem;
+}
+
 .pos-workspace-standalone .pos-cart-summary {
   margin: 0;
   border: none;
@@ -1180,6 +1355,50 @@ html[data-theme="light"] .pos-workspace-standalone .theme-table-head-row,
 html[data-theme="light"] .pos-workspace-standalone .theme-table-body-row,
 html[data-theme="light"] .pos-workspace-standalone tbody tr {
   border-color: var(--theme-border-strong) !important;
+}
+
+/* POS — primary/secondary buttons with elevated contrast */
+.pos-workspace .theme-primary-btn,
+.pos-workspace .pos-add-line-btn {
+  background-color: var(--theme-primary) !important;
+  color: var(--theme-primary-fg) !important;
+  border: 1px solid var(--theme-primary-hover) !important;
+  box-shadow: var(--pos-btn-primary-shadow, 0 1px 3px rgba(76, 91, 164, 0.35));
+}
+
+.pos-workspace .theme-primary-btn:hover:not(:disabled),
+.pos-workspace .pos-add-line-btn:hover:not(:disabled) {
+  background-color: var(--theme-primary-hover) !important;
+  color: var(--theme-primary-fg) !important;
+  border-color: var(--theme-primary-hover) !important;
+}
+
+.pos-workspace .theme-secondary-btn:not(:disabled) {
+  background-color: var(--pos-btn-fill, var(--theme-surface));
+  color: var(--theme-text);
+  border: 1px solid var(--pos-btn-border, var(--theme-border-strong, var(--theme-border)));
+  box-shadow: var(--pos-btn-shadow, none);
+}
+
+.pos-workspace .theme-secondary-btn:hover:not(:disabled) {
+  background-color: var(--theme-hover);
+  color: var(--theme-text);
+  border-color: var(--theme-primary);
+}
+
+.pos-workspace .theme-secondary-btn:disabled {
+  opacity: 0.55;
+  color: var(--theme-text-subtle);
+  background-color: var(--theme-surface-subtle);
+  border-color: var(--theme-border);
+  box-shadow: none;
+}
+
+.pos-workspace .theme-primary-btn:not(:disabled),
+.pos-workspace .pos-add-line-btn:not(:disabled),
+.pos-workspace .theme-secondary-btn:not(:disabled),
+.pos-workspace .pos-header-action-btn:not(:disabled) {
+  min-height: 2.375rem;
 }
 
 /* External POS — primary/secondary buttons with elevated contrast */

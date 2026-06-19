@@ -2,6 +2,7 @@
 export const ORG_SETTINGS_TAB_MODULES = {
   general: ["admin"],
   sales: ["sales"],
+  mobile: ["sales.mobile"],
   distribution: ["distribution"],
   inventory: ["inventory"],
   procurement: ["customers_suppliers"],

@@ -1,5 +1,5 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
-import { formatTillKes, formatTillKesExact, tillDisplayName, normalizeFloatEntries, formatFloatEntryDate } from "@/lib/pos-till";
+import { formatTillKes, formatTillKesExact, tillDisplayName, normalizeFloatEntries, formatFloatEntryDate, resolveTillReportBundle } from "@/lib/pos-till";
 import { openPrintWindow } from "@/lib/open-print-window";
 
 function escapeHtml(value) {
@@ -13,6 +13,28 @@ function line(label, value) {
   return `<div class="row"><span>${escapeHtml(label)}</span><span>${escapeHtml(value)}</span></div>`;
 }
 
+function paymentPrintLines(report) {
+  const sales = report?.sales ?? {};
+  const payments = Array.isArray(report?.payments) ? report.payments : [];
+
+  if (payments.length > 0) {
+    return payments
+      .map((row) =>
+        line(
+          row.method_name ?? row.method_code ?? "Payment",
+          formatTillKes(row.total).replace(/^KES\s*/, ""),
+        ),
+      )
+      .join("");
+  }
+
+  return [
+    line("Cash", formatTillKes(sales.cash).replace(/^KES\s*/, "")),
+    line("M-Pesa", formatTillKes(sales.mpesa).replace(/^KES\s*/, "")),
+    line("Bank", formatTillKes(sales.bank).replace(/^KES\s*/, "")),
+  ].join("");
+}
+
 /**
  * Print X or Z till report (80mm thermal-style).
  */
@@ -21,12 +43,20 @@ export function printPosTillReport({
   organizationName = DEFAULT_PRINT_ORG_NAME,
   tillName,
   cashierName,
-  report,
-  session,
+  report: reportPayload,
+  session: sessionOverride,
   variance = null,
   showFloatBreakdown = false,
 }) {
-  const sales = report?.sales ?? {};
+  const bundle = resolveTillReportBundle({
+    ...(reportPayload && typeof reportPayload === "object" ? reportPayload : {}),
+    session: sessionOverride ?? reportPayload?.session,
+    variance,
+  });
+  const session = sessionOverride ?? bundle.session;
+  const report = bundle.report ?? {};
+  const printVariance = variance ?? bundle.variance;
+  const sales = report.sales ?? {};
   const opened = session?.opened_at;
   const closed = session?.closed_at;
   const dateStr = opened
@@ -45,11 +75,7 @@ export function printPosTillReport({
     line("Net Sales", formatTillKes(sales.net).replace(/^KES\s*/, "")),
   ].join("");
 
-  const payments = [
-    line("Cash", formatTillKes(sales.cash).replace(/^KES\s*/, "")),
-    line("M-Pesa", formatTillKes(sales.mpesa).replace(/^KES\s*/, "")),
-    line("Bank", formatTillKes(sales.bank).replace(/^KES\s*/, "")),
-  ].join("");
+  const payments = paymentPrintLines(report);
 
   const isZ = type === "Z";
   const floatEntries =
@@ -81,8 +107,8 @@ export function printPosTillReport({
         line("Actual Cash", formatTillKesExact(session?.closing_amount).replace(/^KES\s*/, "")),
         line(
           "Variance",
-          variance != null
-            ? Number(variance).toLocaleString("en-KE", { maximumFractionDigits: 0 })
+          printVariance != null
+            ? Number(printVariance).toLocaleString("en-KE", { maximumFractionDigits: 0 })
             : "—",
         ),
       ].join("")
@@ -123,7 +149,7 @@ export function printPosTillReport({
     <div class="section">Sales</div>
     ${rows}
     <hr />
-    <div class="section">Payments</div>
+    <div class="section">Payment summary</div>
     ${payments}
     <hr />
     ${cashBlock}

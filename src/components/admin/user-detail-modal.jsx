@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { UserPermissionMatrix } from "@/components/admin/user-permission-matrix";
 import { ActiveBadge, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { formatLoginChannels } from "@/lib/login-channels";
+import { formatMobileOrderScope, userHasMobileChannel } from "@/lib/mobile-order-scope";
 
 export function UserDetailModal({
   open,
@@ -86,6 +87,14 @@ export function UserDetailModal({
               <dt className="text-xs uppercase text-slate-500">Login channels</dt>
               <dd className="mt-0.5 text-slate-900">{formatLoginChannels(user.login_channels)}</dd>
             </div>
+            {userHasMobileChannel(user.login_channels) ? (
+              <div>
+                <dt className="text-xs uppercase text-slate-500">Mobile order scope</dt>
+                <dd className="mt-0.5 text-slate-900">
+                  {formatMobileOrderScope(user.mobile_order_scope)}
+                </dd>
+              </div>
+            ) : null}
             <div>
               <dt className="text-xs uppercase text-slate-500">Branch</dt>
               <dd className="text-slate-800">{branchName ?? "—"}</dd>

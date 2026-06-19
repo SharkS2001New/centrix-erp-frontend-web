@@ -112,7 +112,7 @@ export default function PaymentMethodsPage() {
 
   return (
     <CatalogPageShell title="Payment methods" subtitle="Tender types used at checkout, expenses, and supplier payments">
-      <AdminBreadcrumb items={[{ label: "Admin", href: "/admin" }, { label: "Payment methods" }]} />
+      <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Payment methods" }]} />
 
       <div className="mb-4 flex justify-end">
         {canCreate ? (

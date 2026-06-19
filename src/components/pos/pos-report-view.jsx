@@ -3,6 +3,24 @@
 import { formatTillKes, formatTillKesExact, formatSessionDateTime, formatSessionTime, normalizeFloatEntries, formatFloatEntryDate } from "@/lib/pos-till";
 import { ReportStatGrid } from "@/components/pos/pos-shared";
 
+function paymentSummaryItems(report) {
+  const sales = report?.sales ?? {};
+  const payments = Array.isArray(report?.payments) ? report.payments : [];
+
+  if (payments.length > 0) {
+    return payments.map((row) => ({
+      label: row.method_name ?? row.method_code ?? "Payment",
+      value: formatTillKes(row.total),
+    }));
+  }
+
+  return [
+    { label: "Cash", value: formatTillKes(sales.cash) },
+    { label: "M-Pesa", value: formatTillKes(sales.mpesa) },
+    { label: "Bank", value: formatTillKes(sales.bank) },
+  ];
+}
+
 function FloatBreakdownSection({ session, report, showFloatBreakdown }) {
   if (!showFloatBreakdown) return null;
 
@@ -85,11 +103,7 @@ export function PosReportView({ report, session, tillName, cashierName, showCash
     { label: "Net sales", value: formatTillKes(sales.net) },
   ];
 
-  const paymentItems = [
-    { label: "Cash", value: formatTillKes(sales.cash) },
-    { label: "M-Pesa", value: formatTillKes(sales.mpesa) },
-    { label: "Bank", value: formatTillKes(sales.bank) },
-  ];
+  const paymentItems = paymentSummaryItems(report);
 
   return (
     <div className="space-y-6">

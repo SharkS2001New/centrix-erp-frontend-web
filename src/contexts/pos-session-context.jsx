@@ -13,6 +13,7 @@ import {
   clearStoredActiveSession,
   getStoredActiveSession,
   setStoredActiveSession,
+  resolveTillReportBundle,
 } from "@/lib/pos-till";
 import { useAuth } from "@/contexts/auth-context";
 
@@ -281,7 +282,9 @@ export function PosSessionProvider({ children }) {
           body: {
             closing_amount: Number(closing_amount),
             expected_amount:
-              expected_amount != null ? Number(expected_amount) : sessionReport?.expected_cash,
+              expected_amount != null
+                ? Number(expected_amount)
+                : resolveTillReportBundle(sessionReport).report?.expected_cash,
             notes: notes?.trim() || null,
             closing_denominations: closing_denominations ?? null,
           },
@@ -299,7 +302,7 @@ export function PosSessionProvider({ children }) {
         setBusy(false);
       }
     },
-    [activeSession?.id, sessionReport?.expected_cash],
+    [activeSession?.id, sessionReport],
   );
 
   const clearSession = useCallback(() => {

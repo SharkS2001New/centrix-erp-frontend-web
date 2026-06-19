@@ -59,16 +59,12 @@ function PayOptionDialog({ open, title, onClose, children, footer }) {
         aria-modal="true"
         className="theme-modal w-full max-w-sm overflow-hidden rounded-lg border shadow-2xl"
       >
-        <div className="border-b border-[var(--theme-border)] bg-[var(--theme-primary)] px-4 py-3">
-          <h3 className="text-center text-sm font-bold uppercase tracking-wide text-white">
-            {title}
-          </h3>
+        <div className="theme-dialog-header px-4 py-3">
+          <h3 className="text-center text-sm font-bold uppercase tracking-wide">{title}</h3>
         </div>
         <div className="p-4">{children}</div>
         {footer ? (
-          <div className="grid grid-cols-2 gap-2 border-t border-[var(--theme-border)] bg-[var(--theme-page-bg)] p-3">
-            {footer}
-          </div>
+          <div className="theme-dialog-footer grid grid-cols-2 gap-2 p-3">{footer}</div>
         ) : null}
       </div>
     </div>,
@@ -126,7 +122,7 @@ export function PosCartPaymentOptions({
   enableVouchers,
   enablePoints,
   enableMpesa,
-  enableStkPush = true,
+  enableStkPush = false,
   onCartUpdated,
   onMessage,
   onPaymentApplied,
@@ -154,6 +150,7 @@ export function PosCartPaymentOptions({
   const stkAmountRef = useRef(null);
   const voucherCodeRef = useRef(null);
   const pointsPhoneRef = useRef(null);
+  const stkPushAvailable = Boolean(enableStkPush);
 
   useEffect(() => {
     setMpesaPhone(cart?.mpesa_phone ?? "");
@@ -181,8 +178,9 @@ export function PosCartPaymentOptions({
       const dueStr = due > 0 ? String(due) : "";
       setStkAmount(dueStr);
       setCheckAmount(dueStr);
+      if (!stkPushAvailable) setMpesaMode("check");
     }
-  }, [activeDialog, amountDue]);
+  }, [activeDialog, amountDue, stkPushAvailable]);
 
   useEffect(() => {
     if (activeDialog !== "mpesa" || mpesaMode !== "check") return;
@@ -208,7 +206,6 @@ export function PosCartPaymentOptions({
   const hasMpesaPayment = Number(cart?.mpesa_payment_amount ?? 0) > 0;
   const hasMpesaPhone = Boolean(String(cart?.mpesa_phone ?? "").trim());
   const showSection = enableVouchers || enablePoints || enableMpesa;
-  const stkPushAvailable = enableStkPush !== false;
 
   const payButtons = useMemo(() => {
     const items = [];
@@ -620,6 +617,7 @@ export function PosCartPaymentOptions({
   }
 
   async function pushMpesaPayment() {
+    if (!stkPushAvailable) return;
     const phone = normalizeKenyanPhoneInput(mpesaPhone);
     if (!phone || !cart?.id) return;
     if (!/^(0?7\d{8}|2547\d{8})$/.test(phone)) {

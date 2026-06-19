@@ -212,7 +212,7 @@ export function PosSearchableSelect({
           ...(menuStyle.top != null ? { top: menuStyle.top } : {}),
           ...(menuStyle.bottom != null ? { bottom: menuStyle.bottom } : {}),
         }}
-        className="theme-panel flex flex-col overflow-hidden rounded-lg border shadow-lg"
+        className="pos-search-select-panel flex flex-col overflow-hidden rounded-lg border shadow-lg"
       >
         <div className="shrink-0 border-b border-[var(--theme-border)] p-2">
           <input
@@ -227,7 +227,7 @@ export function PosSearchableSelect({
                 setOpen(false);
               }
             }}
-            className={defaultInputCls}
+            className={`${defaultInputCls} pos-search-select-search`}
           />
         </div>
         <ul
@@ -237,7 +237,7 @@ export function PosSearchableSelect({
           className="min-h-0 flex-1 overflow-auto py-1"
         >
           {filtered.length === 0 ? (
-            <li className={`px-3 py-2 text-sm ${listError ? "text-red-600" : "text-slate-500"}`}>
+            <li className={`px-3 py-2 text-sm ${listError ? "text-red-500" : "theme-text-muted"}`}>
               {listMessage}
             </li>
           ) : (
@@ -248,10 +248,8 @@ export function PosSearchableSelect({
                   role="option"
                   aria-selected={String(o.value) === String(value)}
                   onClick={() => pick(o)}
-                  className={`block w-full px-3 py-2 text-left text-sm hover:bg-[#f3ebe0] ${
-                    String(o.value) === String(value)
-                      ? "bg-[var(--theme-primary-muted)] font-medium text-[var(--theme-primary)]"
-                      : "text-slate-800"
+                  className={`pos-search-select-option block w-full px-3 py-2 text-left text-sm ${
+                    String(o.value) === String(value) ? "pos-search-select-option-active" : ""
                   }`}
                 >
                   {o.label}
@@ -276,10 +274,12 @@ export function PosSearchableSelect({
         onKeyDown={onTriggerKeyDown}
         className={`${inputClassName} flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60`}
       >
-        <span className={`min-w-0 flex-1 truncate ${selected ? "text-black" : "text-slate-500"}`}>
+        <span
+          className={`min-w-0 flex-1 truncate ${selected ? "text-[var(--theme-text)]" : "theme-text-muted"}`}
+        >
           {triggerLabel}
         </span>
-        <span aria-hidden className="shrink-0 text-xs text-slate-500">
+        <span aria-hidden className="theme-text-muted shrink-0 text-xs">
           {open ? "▲" : "▼"}
         </span>
       </button>
@@ -287,7 +287,7 @@ export function PosSearchableSelect({
         <button
           type="button"
           onClick={clearSelection}
-          className="absolute right-7 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+          className="theme-text-muted absolute right-7 top-1/2 -translate-y-1/2 hover:text-[var(--theme-text)]"
           aria-label="Clear selection"
         >
           ×

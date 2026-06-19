@@ -164,9 +164,38 @@ export function openingFloatAmount(session) {
   return Number(session.working_amount ?? 0);
 }
 
+/** Normalize X/Z/close-session API payloads into { session, report, variance }. */
+export function resolveTillReportBundle(source) {
+  if (!source) {
+    return { session: null, report: null, variance: null };
+  }
+
+  const nested =
+    source.report && typeof source.report === "object" && !Array.isArray(source.report)
+      ? source.report
+      : null;
+  const session = source.session ?? nested?.session ?? null;
+  const report = {
+    ...(nested ?? {}),
+    sales: nested?.sales ?? source.sales ?? {},
+    payments: nested?.payments ?? source.payments ?? [],
+    expected_cash: nested?.expected_cash ?? source.expected_cash,
+    float_entries: nested?.float_entries ?? source.float_entries,
+    cash_movements: nested?.cash_movements ?? source.cash_movements,
+    session_expenses: nested?.session_expenses ?? source.session_expenses,
+  };
+
+  return {
+    session,
+    report,
+    variance: source.variance ?? null,
+  };
+}
+
 /** Live cash position for an active session; 0 when closed or no session. */
-export function currentFloatAmount(session, report) {
+export function currentFloatAmount(session, reportPayload) {
   if (!session || String(session.status).toLowerCase() !== "open") return 0;
+  const { report } = resolveTillReportBundle(reportPayload);
   if (report?.expected_cash != null) return Number(report.expected_cash);
   return Number(session.working_amount ?? 0);
 }
@@ -256,9 +285,11 @@ export function clearStoredActiveSession() {
   setStoredActiveSession(null);
 }
 
+export const DEFAULT_CLOSE_REASON = "End of shift";
+
 export const CLOSE_REASONS = [
-  "Cash discrepancy",
   "End of shift",
+  "Cash discrepancy",
   "Till handover",
   "System reconciliation",
   "Other",

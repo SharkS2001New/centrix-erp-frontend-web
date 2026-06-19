@@ -62,10 +62,10 @@ export default function KraResponsesPage() {
 
   return (
     <CatalogPageShell
-      title="KRA receipts"
+      title="KRA device log"
       subtitle="Fiscal receipt submissions from checkout and credit notes"
     >
-      <AdminBreadcrumb items={[{ label: "Admin", href: "/admin" }, { label: "KRA receipts" }]} />
+      <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "KRA device log" }]} />
 
       <div className="mb-4 space-y-2">
         {kraEnabled ? (

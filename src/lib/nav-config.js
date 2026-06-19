@@ -3,6 +3,60 @@ import { HR_REPORT_DEFS } from "@/lib/reports/hr-reports";
 import { canViewReport, P, reportPermissionCode } from "@/lib/permission-codes";
 import { shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
 import { reportModuleForSlug, anyReportsModuleEnabled } from "@/lib/module-registry";
+import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance } from "@/lib/sales-settings";
+
+function backofficeFinanceReportNavItems(group) {
+  return [
+    {
+      href: "/reports/profit-loss",
+      label: "Profit & loss",
+      moduleAny: ["sales.reports", "accounting.reports"],
+      permission: P.reports.profit_loss.view,
+      reportKey: "profit-loss",
+      group,
+    },
+    {
+      href: "/reports/top-debtors",
+      label: "Top debtors",
+      moduleAny: ["sales.reports", "accounting.reports"],
+      permission: P.reports.top_debtors.view,
+      reportKey: "top-debtors",
+      group,
+    },
+    {
+      href: "/reports/ar-aging",
+      label: "AR aging",
+      moduleAny: ["sales.reports", "accounting.reports"],
+      permission: P.reports.hub.view,
+      reportKey: "ar-aging",
+      group,
+    },
+    {
+      href: "/reports/expenses",
+      label: "Expenses",
+      moduleAny: ["sales.reports", "accounting.reports"],
+      permission: P.reports.expenses.view,
+      reportKey: "expenses",
+      group,
+    },
+    {
+      href: "/reports/invoice-payments",
+      label: "Invoice payments",
+      moduleAny: ["sales.reports", "accounting.reports"],
+      permission: P.reports.hub.view,
+      reportKey: "invoice-payments",
+      group,
+    },
+    {
+      href: "/reports/kra-receipts",
+      label: "KRA receipts",
+      moduleAny: ["sales.reports", "accounting.reports"],
+      permission: P.reports.hub.view,
+      reportKey: "kra-receipts",
+      group,
+    },
+  ];
+}
 
 function reportNavLabel(key) {
   const title = REPORT_DEFINITIONS[key]?.title ?? key;
@@ -173,6 +227,22 @@ export const navSections = [
       },
       { href: "/sales/orders", label: "All orders", module: "sales.backend", permission: P.sales.orders.view, ordersNav: true },
       {
+        href: "/sales/loading-sheets",
+        label: "Loading sheets",
+        module: "sales.backend",
+        permission: P.sales.orders.view,
+        requireMobileLoadingSheets: true,
+        group: "Sales orders",
+      },
+      {
+        href: "/sales/field-attendance",
+        label: "Field attendance",
+        module: "sales.backend",
+        permission: P.sales.orders.view,
+        requireMobileFieldAttendance: true,
+        group: "Sales orders",
+      },
+      {
         href: "/sales/vouchers",
         label: "Vouchers",
         module: "sales.backend",
@@ -223,6 +293,7 @@ export const navSections = [
         permission: P.customers.customers.view,
         group: "Customers",
       },
+      ...backofficeFinanceReportNavItems("Finance & compliance"),
     ],
   },
   {
@@ -480,6 +551,61 @@ export const navSections = [
         permission: P.accounting.settings.view,
         group: "Setup",
       },
+      {
+        href: "/vats",
+        label: "Tax settings",
+        module: null,
+        permission: P.catalogue.vat_rates.view,
+        group: "Tax & compliance",
+      },
+      {
+        href: "/reports/kra-receipts",
+        label: "KRA receipts",
+        moduleAny: ["sales.reports", "accounting.reports"],
+        permission: P.reports.hub.view,
+        reportKey: "kra-receipts",
+        group: "Tax & compliance",
+      },
+      {
+        href: "/reports/profit-loss",
+        label: "Profit & loss (operational)",
+        moduleAny: ["sales.reports", "accounting.reports"],
+        permission: P.reports.profit_loss.view,
+        reportKey: "profit-loss",
+        group: "Operational reports",
+      },
+      {
+        href: "/reports/top-debtors",
+        label: "Top debtors",
+        moduleAny: ["sales.reports", "accounting.reports"],
+        permission: P.reports.top_debtors.view,
+        reportKey: "top-debtors",
+        group: "Operational reports",
+      },
+      {
+        href: "/reports/ar-aging",
+        label: "AR aging",
+        moduleAny: ["sales.reports", "accounting.reports"],
+        permission: P.reports.hub.view,
+        reportKey: "ar-aging",
+        group: "Operational reports",
+      },
+      {
+        href: "/reports/expenses",
+        label: "Expenses report",
+        moduleAny: ["sales.reports", "accounting.reports"],
+        permission: P.reports.expenses.view,
+        reportKey: "expenses",
+        group: "Operational reports",
+      },
+      {
+        href: "/reports/invoice-payments",
+        label: "Invoice payments",
+        moduleAny: ["sales.reports", "accounting.reports"],
+        permission: P.reports.hub.view,
+        reportKey: "invoice-payments",
+        group: "Operational reports",
+      },
     ],
   },
   {
@@ -687,13 +813,6 @@ export const navSections = [
         orgAdminOnly: true,
       },
       {
-        href: "/vats",
-        label: "Tax settings",
-        module: null,
-        permission: P.catalogue.vat_rates.view,
-        group: "Tax & payments",
-      },
-      {
         href: "/admin/settings",
         label: "System preferences",
         module: "admin",
@@ -706,15 +825,13 @@ export const navSections = [
         module: "admin",
         permission: P.admin.payment_methods.view,
         orgAdminOnly: true,
-        group: "Tax & payments",
       },
       {
         href: "/admin/kra-responses",
-        label: "KRA receipts",
+        label: "KRA device log",
         module: "admin",
         permission: P.admin.settings.view,
         orgAdminOnly: true,
-        group: "Tax & payments",
       },
     ],
   },
@@ -746,9 +863,13 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
     return false;
   }
   if (item.requireTillFloat && !requireTillFloat) return false;
+  if (item.requireMobileLoadingSheets && !shouldShowMobileLoadingSheets(capabilities)) return false;
+  if (item.requireMobileFieldAttendance && !shouldShowMobileFieldAttendance(capabilities)) return false;
   if (item.requireAdmin && !user?.is_admin && !capabilities?.is_admin) return false;
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;
-  if (item.module && !isModuleEnabled(item.module)) return false;
+  if (item.moduleAny?.length) {
+    if (!item.moduleAny.some((key) => isModuleEnabled(key))) return false;
+  } else if (item.module && !isModuleEnabled(item.module)) return false;
   if (item.reportKey && !canViewReport(item.reportKey, hasPermission)) return false;
   else if (item.permission && !hasPermission(item.permission)) return false;
   return true;

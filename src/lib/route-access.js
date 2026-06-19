@@ -2,7 +2,8 @@ import { isNavItemVisible, navSections } from "@/lib/nav-config";
 import { canViewReport, P } from "@/lib/permission-codes";
 import { isOrgAdminSettingsPath, shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
 import { isPlatformShellRoute, isPlatformShellUser } from "@/lib/access-control";
-import { anyReportsModuleEnabled, reportModuleForSlug } from "@/lib/module-registry";
+import { isReportModuleEnabled } from "@/lib/backoffice-finance-reports";
+import { anyReportsModuleEnabled } from "@/lib/module-registry";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { defaultWorkspaceId, pathBelongsToWorkspace } from "@/lib/workspaces";
 
@@ -91,8 +92,7 @@ export function canAccessRoute(pathname, ctx) {
   const reportMatch = pathname.match(/^\/reports\/([^/]+)$/);
   if (reportMatch) {
     const slug = reportMatch[1];
-    const reportModule = reportModuleForSlug(slug);
-    if (reportModule && !ctx.isModuleEnabled(reportModule)) {
+    if (!isReportModuleEnabled(slug, ctx.isModuleEnabled)) {
       return false;
     }
     return canViewReport(slug, ctx.hasPermission);

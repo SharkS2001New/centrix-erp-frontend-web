@@ -310,6 +310,28 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
+  function promptStandaloneSessionForReports() {
+    setSessionError(null);
+    setFloatModalOpen(true);
+    loadPosTillMeta();
+  }
+
+  function handleStandaloneXReport() {
+    if (!activeSession?.id) {
+      promptStandaloneSessionForReports();
+      return;
+    }
+    void handleOpenXReport();
+  }
+
+  function handleStandaloneZReport() {
+    if (!activeSession?.id) {
+      promptStandaloneSessionForReports();
+      return;
+    }
+    void handleOpenCloseSession();
+  }
+
   async function handleOpenCloseSession() {
     if (!activeSession?.id) return;
     setSessionError(null);
@@ -460,6 +482,12 @@ export function PosScreen({ standalone = false }) {
     if (cart?.next_order_num) return cart.next_order_num;
     return null;
   }, [cart?.held_order_num, cart?.next_order_num]);
+
+  const showStandaloneTillActions = standalone;
+  const canUseSessionReports = Boolean(activeSession?.id);
+  const showCartToolbar =
+    !standalone &&
+    (heldOrdersCount > 0 || (requirePosTillFloat && activeSession));
 
   const cartSummary = useMemo(() => {
     const rows = cart?.lines ?? [];
@@ -1783,7 +1811,7 @@ export function PosScreen({ standalone = false }) {
         body: {
           ...body,
           submit_kra: shouldSubmitKraOnCheckout(capabilities?.module_settings),
-          ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
+          ...(requirePosTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
         },
       });
       setCompletedSale(sale);
@@ -1911,7 +1939,7 @@ export function PosScreen({ standalone = false }) {
         method: "POST",
         body: {
           ...body,
-          ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
+          ...(requirePosTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
         },
       });
       setCompletedSale(sale);
@@ -2204,6 +2232,48 @@ export function PosScreen({ standalone = false }) {
                 >
                   Reprint last receipt
                 </button>
+                {showStandaloneTillActions ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy || sessionBusy}
+                      title={
+                        canUseSessionReports
+                          ? "Interim session report (session stays open)"
+                          : requirePosTillFloat
+                            ? "Declare your operating float to print an X report"
+                            : "Open a till session to print an X report"
+                      }
+                      onClick={handleStandaloneXReport}
+                      className={posHeaderBtnClassName}
+                    >
+                      X report
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || sessionBusy}
+                      onClick={handleStandaloneZReport}
+                      title={
+                        canUseSessionReports
+                          ? "Close session and print Z report"
+                          : requirePosTillFloat
+                            ? "Declare your operating float to print a Z report"
+                            : "Open a till session to print a Z report"
+                      }
+                      className={posHeaderBtnClassName}
+                    >
+                      Z report
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || sessionBusy || !canUseSessionReports}
+                      onClick={() => void handleSuspendSession()}
+                      className={posHeaderBtnClassName}
+                    >
+                      Suspend
+                    </button>
+                  </>
+                ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <WorkspaceSwitcher />
@@ -2252,7 +2322,14 @@ export function PosScreen({ standalone = false }) {
       )}
 
       <OpenSessionModal
-        open={requirePosTillFloat && !activeSession && !suspendedSession && !sessionLoading && floatModalOpen}
+        open={
+          hasPosTill &&
+          !activeSession &&
+          !suspendedSession &&
+          !sessionLoading &&
+          floatModalOpen &&
+          (requirePosTillFloat || standalone)
+        }
         onClose={() => {
           setSessionError(null);
           setFloatModalOpen(false);
@@ -2264,11 +2341,16 @@ export function PosScreen({ standalone = false }) {
         preferredTillId={preferredTillId}
         pendingTillLabel={pendingTillSuggestion?.till_name ?? pendingTillSuggestion?.till_number ?? null}
         autoAssignTill
+        requireTillFloat={requirePosTillFloat}
         onOpen={handlePosOpenSession}
         busy={sessionBusy || posTillMetaLoading}
         error={sessionError}
-        title="Declare operating float"
-        subtitle="Your till is assigned automatically (Till01, Till02, …). Each till belongs to one cashier. Enter the cash you are starting with."
+        title={requirePosTillFloat ? "Declare operating float" : "Open till session"}
+        subtitle={
+          requirePosTillFloat
+            ? "Your till is assigned automatically (Till01, Till02, …). Each till belongs to one cashier. Enter the cash you are starting with."
+            : "Start a till session without operating float. Use this for X/Z reports and shift tracking."
+        }
       />
 
       <FloatBreakdownModal
@@ -2280,7 +2362,7 @@ export function PosScreen({ standalone = false }) {
         session={activeSession}
         tillName={activeTill ? tillDisplayName(activeTill) : null}
         cashierName={user?.full_name ?? user?.username ?? null}
-        canAddFloat
+        canAddFloat={requirePosTillFloat}
         onAddFloat={handlePosAddFloat}
         addFloatBusy={sessionBusy}
         addFloatError={sessionError}
@@ -2636,23 +2718,23 @@ export function PosScreen({ standalone = false }) {
 
         {/* Right — cart grid */}
         <div className="pos-cart-panel flex min-h-0 flex-1 flex-col bg-[var(--theme-page-bg)]">
-          {!standalone || (requirePosTillFloat && activeSession && hasPosTill) ? (
+          {showCartToolbar ? (
           <div className="pos-cart-toolbar flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--theme-border)] px-4 py-2.5">
             {!standalone ? (
               <>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setHeldOrdersOpen(true)}
-                  className={cartToolbarBtnClassName}
-                >
-                  Held orders
-                  {heldOrdersCount > 0 ? (
+                {heldOrdersCount > 0 ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setHeldOrdersOpen(true)}
+                    className={cartToolbarBtnClassName}
+                  >
+                    Held orders
                     <span className="inline-flex min-w-[1rem] items-center justify-center rounded-full bg-[var(--theme-primary)] px-1.5 py-0.5 text-[9px] font-bold leading-none text-white">
                       {heldOrdersCount > 99 ? "99+" : heldOrdersCount}
                     </span>
-                  ) : null}
-                </button>
+                  </button>
+                ) : null}
                 {requirePosTillFloat && activeSession ? (
                   <button
                     type="button"
@@ -2668,7 +2750,7 @@ export function PosScreen({ standalone = false }) {
                 ) : null}
               </>
             ) : null}
-            {requirePosTillFloat && activeSession && hasPosTill ? (
+            {!standalone && activeSession && hasPosTill ? (
               <>
                 <button
                   type="button"
@@ -2698,7 +2780,11 @@ export function PosScreen({ standalone = false }) {
             ) : null}
           </div>
           ) : null}
-          <div className="pos-cart-table-wrap min-h-0 flex-1 overflow-auto p-3">
+          <div
+            className={`pos-cart-table-wrap min-h-0 flex-1 overflow-auto${
+              showCartToolbar ? " p-3" : " pos-cart-table-wrap--flush"
+            }`}
+          >
             <table className="w-full border-collapse text-sm">
               <thead className="sticky top-0 z-10 bg-[var(--theme-page-bg)]">
                 <tr className="theme-table-head-row border-b border-[var(--theme-border)] text-left text-xs font-bold uppercase tracking-wide">
@@ -2943,12 +3029,11 @@ export function PosScreen({ standalone = false }) {
                 </div>
               ) : null}
             </div>
-            <div className="grid grid-cols-3 gap-1.5 pt-2 sm:grid-cols-6">
+            <div className="pos-cart-actions grid grid-cols-3 gap-2 pt-2 sm:grid-cols-6">
               <PosActionButton
                 label="Edit"
                 title="Edit selected line"
                 icon="✎"
-                iconClass="text-[var(--theme-primary)]"
                 disabled={busy || !selectedLineId}
                 onClick={() => handleEditSelectedLine()}
               />
@@ -2956,7 +3041,6 @@ export function PosScreen({ standalone = false }) {
                 label="Remove"
                 title="Void selected line (Delete)"
                 icon="−"
-                iconClass="text-[var(--theme-primary)]"
                 disabled={busy || !selectedLineId}
                 onClick={removeSelectedLine}
               />
@@ -2964,7 +3048,7 @@ export function PosScreen({ standalone = false }) {
                 label="Clear all"
                 title="Clear all lines from cart"
                 icon="⌫"
-                iconClass="text-amber-700"
+                iconClass="pos-cart-action-icon--warn"
                 disabled={busy || !cart?.lines?.length}
                 onClick={clearAllLines}
               />
@@ -2972,7 +3056,7 @@ export function PosScreen({ standalone = false }) {
                 label="Hold"
                 title="Hold order (Alt+H)"
                 icon="⏸"
-                iconClass="text-amber-700"
+                iconClass="pos-cart-action-icon--warn"
                 disabled={busy || !cart?.lines?.length || cartStockBlocked}
                 onClick={() => openSaveOrderDialog("hold")}
               />
@@ -2981,7 +3065,7 @@ export function PosScreen({ standalone = false }) {
                   label="Complete"
                   title="Complete payment (F10)"
                   icon="🛒"
-                  iconClass="text-red-600"
+                  iconClass="pos-cart-action-icon--complete"
                   disabled={busy || !cart?.lines?.length || cartStockBlocked}
                   onClick={() => {
                     setPaymentError(null);
@@ -2993,7 +3077,6 @@ export function PosScreen({ standalone = false }) {
                   label="Save"
                   title="Save order"
                   icon="💾"
-                  iconClass="text-[var(--theme-primary)]"
                   disabled={busy || !cart?.lines?.length || cartStockBlocked}
                   onClick={() => openSaveOrderDialog("save")}
                 />

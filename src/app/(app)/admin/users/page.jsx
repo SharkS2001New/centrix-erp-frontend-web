@@ -11,11 +11,14 @@ import { toggleUserPermissionOverride } from "@/components/admin/user-permission
 import { permissionIdSet } from "@/lib/permission-ids";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import {
+  ActiveBadge,
   CatalogPageShell,
   Field,
   FormDrawer,
   IconButton,
+  PencilIcon,
   PrimaryButton,
+  ShieldIcon,
   TrashIcon,
   SearchInput,
   TABLE_HEAD_ROW_CLASS,
@@ -29,6 +32,11 @@ import {
   formatLoginChannels,
   normalizeLoginChannels,
 } from "@/lib/login-channels";
+import {
+  DEFAULT_MOBILE_ORDER_SCOPE,
+  MOBILE_ORDER_SCOPES,
+  userHasMobileChannel,
+} from "@/lib/mobile-order-scope";
 
 function isProtectedUserAccount(row, currentUserId) {
   return row.id === currentUserId || Boolean(row.is_admin);
@@ -43,6 +51,8 @@ const EMPTY_FORM = {
   password: "",
   access_scope: "branch",
   login_channels: [...DEFAULT_LOGIN_CHANNELS],
+  mobile_order_scope: DEFAULT_MOBILE_ORDER_SCOPE,
+  assigned_route_id: "",
   is_active: true,
 };
 
@@ -53,6 +63,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState([]);
   const [branches, setBranches] = useState([]);
   const [roles, setRoles] = useState([]);
+  const [routes, setRoutes] = useState([]);
   const [permissions, setPermissions] = useState([]);
   const [permissionGroups, setPermissionGroups] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -80,15 +91,17 @@ export default function AdminUsersPage() {
     setLoading(true);
     setError(null);
     try {
-      const [userRes, branchRes, roleRes, matrixRes] = await Promise.all([
+      const [userRes, branchRes, roleRes, routeRes, matrixRes] = await Promise.all([
         apiRequest("/users", { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
         apiRequest("/branches", { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
         apiRequest("/roles", { searchParams: { per_page: 200 } }),
+        apiRequest("/routes", { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
         apiRequest("/roles/permissions/matrix"),
       ]);
       setUsers(filterByOrganization(userRes.data, organizationId));
       setBranches(filterByOrganization(branchRes.data, organizationId));
       setRoles(roleRes.data ?? []);
+      setRoutes(filterByOrganization(routeRes.data ?? [], organizationId));
       setPermissions(matrixRes.permissions ?? []);
       setPermissionGroups(matrixRes.groups ?? []);
     } catch (e) {
@@ -153,6 +166,8 @@ export default function AdminUsersPage() {
       password: "",
       access_scope: row.access_scope ?? "branch",
       login_channels: normalizeLoginChannels(row.login_channels),
+      mobile_order_scope: row.mobile_order_scope ?? DEFAULT_MOBILE_ORDER_SCOPE,
+      assigned_route_id: row.assigned_route_id ? String(row.assigned_route_id) : "",
       is_active: row.is_active !== false,
     });
     setFormError(null);
@@ -284,6 +299,13 @@ export default function AdminUsersPage() {
         access_scope: form.access_scope,
         login_channels: normalizeLoginChannels(form.login_channels),
       };
+      if (userHasMobileChannel(form.login_channels)) {
+        body.mobile_order_scope = form.mobile_order_scope || DEFAULT_MOBILE_ORDER_SCOPE;
+        body.assigned_route_id =
+          form.mobile_order_scope === "route_only" && form.assigned_route_id
+            ? Number(form.assigned_route_id)
+            : null;
+      }
       if (!editing || !isProtectedUserAccount(editing, user?.id)) {
         body.is_active = form.is_active;
       }
@@ -507,6 +529,52 @@ export default function AdminUsersPage() {
               Mobile-only users can sign in from the mobile app but not the web backoffice or POS.
             </p>
           </Field>
+          {userHasMobileChannel(form.login_channels) ? (
+            <>
+              <Field label="Mobile order scope">
+                <select
+                  className={inputClassName()}
+                  value={form.mobile_order_scope}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      mobile_order_scope: e.target.value,
+                      assigned_route_id:
+                        e.target.value === "route_only" ? f.assigned_route_id : "",
+                    }))
+                  }
+                >
+                  {MOBILE_ORDER_SCOPES.map((scope) => (
+                    <option key={scope.value} value={scope.value}>
+                      {scope.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  {
+                    MOBILE_ORDER_SCOPES.find((scope) => scope.value === form.mobile_order_scope)
+                      ?.description
+                  }
+                </p>
+              </Field>
+              {form.mobile_order_scope === "route_only" ? (
+                <Field label="Assigned route (optional)">
+                  <HrSearchableSelect
+                    value={form.assigned_route_id}
+                    onChange={(v) => setForm((f) => ({ ...f, assigned_route_id: v }))}
+                    options={routes.map((route) => ({
+                      value: String(route.id),
+                      label: route.route_name ?? `Route #${route.id}`,
+                    }))}
+                    placeholder="Any route — rep picks in the app"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    When set, the rep only sees and creates orders for this route.
+                  </p>
+                </Field>
+              ) : null}
+            </>
+          ) : null}
           <Field label={editing ? "New password (optional)" : "Password"}>
             <PasswordInput
               className={inputClassName()}

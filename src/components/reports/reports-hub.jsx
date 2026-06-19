@@ -20,6 +20,10 @@ import {
   flattenReports,
   reportHref,
 } from "@/lib/reports/catalog-ui";
+import {
+  customReportBelongsToWorkspace,
+  mergeCustomReportsIntoCategories,
+} from "@/lib/reports/custom-reports";
 import { canViewReport, P } from "@/lib/permission-codes";
 
 const CATEGORY_ICONS = {
@@ -104,8 +108,14 @@ export function ReportsHub() {
       }))
       .filter((cat) => cat.reports.length > 0)
       .map((cat) => ({ ...cat, count: cat.reports.length }));
-    return filterReportCategoriesForWorkspace(permitted, workspaceId);
-  }, [catalog, hasPermission, workspaceId]);
+
+    const workspaceTemplates = customTemplates.filter((template) =>
+      customReportBelongsToWorkspace(template, workspaceId),
+    );
+    const withCustom = mergeCustomReportsIntoCategories(permitted, workspaceTemplates);
+
+    return filterReportCategoriesForWorkspace(withCustom, workspaceId, capabilities?.modules);
+  }, [catalog, customTemplates, hasPermission, workspaceId, capabilities?.modules]);
   const allReports = useMemo(() => flattenReports(categories), [categories]);
 
   const filteredCategories = useMemo(() => {
@@ -149,22 +159,6 @@ export function ReportsHub() {
             + Create custom report
           </Link>
         </div>
-      ) : null}
-
-      {customTemplates.length ? (
-        <section className="mb-8">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Your custom reports</h2>
-          <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {customTemplates.map((t) => (
-              <li key={t.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                <Link href={`/reports/custom/${t.id}`} className="font-medium text-slate-900 hover:text-indigo-600">
-                  {t.name}
-                </Link>
-                {t.description ? <p className="mt-1 text-xs text-slate-500">{t.description}</p> : null}
-              </li>
-            ))}
-          </ul>
-        </section>
       ) : null}
 
       <DashboardErrorBanner message={error ?? dashError} />
@@ -254,7 +248,14 @@ export function ReportsHub() {
                 {filteredList.map((r) => (
                   <li key={`${r.categoryId}:${r.key}`} className="flex items-center justify-between gap-4 px-4 py-3">
                     <div className="min-w-0">
-                      <p className="font-medium text-slate-900">{r.label}</p>
+                      <p className="font-medium text-slate-900">
+                        {r.label}
+                        {r.isCustom ? (
+                          <span className="ml-2 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600">
+                            Custom
+                          </span>
+                        ) : null}
+                      </p>
                       <p className="text-xs text-slate-500">{r.categoryTitle}</p>
                     </div>
                     <Link href={r.href} className="shrink-0 text-xs font-medium text-indigo-600 hover:underline">
@@ -309,6 +310,7 @@ function CategoryCard({ category, onViewAll }) {
           <li key={r.key}>
             <Link href={r.href} className="text-slate-700 hover:text-indigo-600 hover:underline">
               {r.label}
+              {r.isCustom ? <span className="ml-1 text-[10px] uppercase text-indigo-500">Custom</span> : null}
             </Link>
           </li>
         ))}

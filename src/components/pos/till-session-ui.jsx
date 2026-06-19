@@ -199,6 +199,7 @@ export function OpenSessionModal({
   preferredTillId,
   pendingTillLabel = null,
   autoAssignTill = false,
+  requireTillFloat = true,
   title = "Open POS session",
   subtitle = "Start your shift before taking sales on the till.",
 }) {
@@ -307,8 +308,8 @@ export function OpenSessionModal({
               className={inputClassName()}
               value={paymentType}
               onChange={(e) => setPaymentType(e.target.value)}
-              required
-              disabled={canResume}
+              required={requireTillFloat}
+              disabled={canResume || !requireTillFloat}
             >
               {FLOAT_PAYMENT_TYPES.map((type) => (
                 <option key={type} value={type}>
@@ -317,26 +318,34 @@ export function OpenSessionModal({
               ))}
             </select>
           </Field>
-          <Field label="Operating float (KES)">
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              className={inputClassName()}
-              value={floatAmount}
-              onChange={(e) => setFloatAmount(e.target.value)}
-              placeholder="Enter the cash amount you are starting with"
-              required={!canResume}
-              disabled={canResume}
-            />
-          </Field>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-            <p className="text-slate-500">Declared operating float</p>
-            <p className="text-lg font-semibold text-slate-900">
-              KES {Number(floatAmount || 0).toLocaleString("en-KE")}
+          {requireTillFloat ? (
+            <>
+              <Field label="Operating float (KES)">
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  className={inputClassName()}
+                  value={floatAmount}
+                  onChange={(e) => setFloatAmount(e.target.value)}
+                  placeholder="Enter the cash amount you are starting with"
+                  required={!canResume}
+                  disabled={canResume}
+                />
+              </Field>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                <p className="text-slate-500">Declared operating float</p>
+                <p className="text-lg font-semibold text-slate-900">
+                  KES {Number(floatAmount || 0).toLocaleString("en-KE")}
+                </p>
+                <p className="mt-1 text-xs text-slate-400">Branch: {branchName}</p>
+              </div>
+            </>
+          ) : (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Operating float is not required for this organization. A till session will open with zero float so you can run X/Z reports and track sales.
             </p>
-            <p className="mt-1 text-xs text-slate-400">Branch: {branchName}</p>
-          </div>
+          )}
         </div>
 
         <div className="mt-6 flex justify-end gap-2">
@@ -355,18 +364,22 @@ export function OpenSessionModal({
               blockedByOtherCashier ||
               blockedByAssignment ||
               (!autoAssignTill && !tillId) ||
-              (!canResume && (floatAmount === "" || Number(floatAmount) <= 0))
+              (requireTillFloat && !canResume && (floatAmount === "" || Number(floatAmount) <= 0))
             }
             onClick={() =>
               onOpen({
                 till_id: tillId ? Number(tillId) : null,
                 branch_id: selectedTill?.branch_id ?? user?.branch_id,
-                working_amount: canResume ? Number(existingOpen?.working_amount ?? 0) : Number(floatAmount) || 0,
+                working_amount: canResume
+                  ? Number(existingOpen?.working_amount ?? 0)
+                  : requireTillFloat
+                    ? Number(floatAmount) || 0
+                    : 0,
                 payment_type: paymentType,
               })
             }
           >
-            {busy ? "Opening…" : canResume ? "Resume session" : "Open session"}
+            {busy ? "Opening…" : canResume ? "Resume session" : requireTillFloat ? "Open session" : "Start session"}
           </PrimaryButton>
         </div>
       </div>

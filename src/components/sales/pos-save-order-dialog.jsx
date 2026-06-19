@@ -147,7 +147,7 @@ export function PosSaveOrderDialog({
             </label>
           )}
 
-          <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-slate-800">
+          <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm">
             <input
               type="checkbox"
               checked={isWalkIn}
@@ -166,18 +166,18 @@ export function PosSaveOrderDialog({
           </label>
 
           {error || localError ? (
-            <p className="mt-3 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">
               {error || localError}
             </p>
           ) : null}
         </div>
-        <div className="grid grid-cols-2 gap-2 border-t border-[#c4b89a] bg-[#ebe3d4] p-3">
+        <div className="theme-dialog-footer grid grid-cols-2 gap-2 p-3">
           {isHold ? (
             <button
               type="button"
               disabled={saving || loading}
               onClick={() => handleSave("hold")}
-              className="rounded border border-amber-400 bg-amber-100 px-3 py-3 text-xs font-bold uppercase text-amber-900 hover:bg-amber-200 disabled:opacity-50"
+              className="theme-accent-btn rounded-lg px-3 py-3 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? "Holding…" : "Hold order"}
             </button>
@@ -186,7 +186,7 @@ export function PosSaveOrderDialog({
               type="button"
               disabled={saving || loading}
               onClick={() => handleSave("save")}
-              className="rounded border border-[#6b8f3c] bg-[#e8f5d8] px-3 py-3 text-xs font-bold uppercase text-[#2d5016] hover:bg-[#d4edc0] disabled:opacity-50"
+              className="theme-primary-btn rounded-lg px-3 py-3 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? "Saving…" : "Save order"}
             </button>
@@ -195,7 +195,7 @@ export function PosSaveOrderDialog({
             type="button"
             disabled={saving}
             onClick={onClose}
-            className="rounded border border-[#a04040] bg-[#fde8e8] px-3 py-3 text-xs font-bold uppercase text-[#7a2020] hover:bg-[#fcd4d4] disabled:opacity-50"
+            className="theme-secondary-btn rounded-lg px-3 py-3 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>

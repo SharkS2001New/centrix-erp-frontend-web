@@ -4,6 +4,7 @@ const ORG_KEY = "pos_erp_organization";
 const MEMBERSHIPS_KEY = "pos_erp_memberships";
 const LOGIN_CHANNEL_KEY = "pos_erp_login_channel";
 const WORKSPACE_KEY = "pos_erp_workspace";
+const SCREEN_LOCKED_KEY = "pos_erp_screen_locked";
 
 export function getToken() {
   if (typeof window === "undefined") return null;
@@ -90,4 +91,24 @@ export function clearSession() {
   localStorage.removeItem(MEMBERSHIPS_KEY);
   localStorage.removeItem(LOGIN_CHANNEL_KEY);
   localStorage.removeItem(WORKSPACE_KEY);
+  clearScreenLocked();
+}
+
+export function isScreenLocked() {
+  if (typeof window === "undefined") return false;
+  return sessionStorage.getItem(SCREEN_LOCKED_KEY) === "1";
+}
+
+export function setScreenLocked(locked) {
+  if (typeof window === "undefined") return;
+  if (locked) {
+    sessionStorage.setItem(SCREEN_LOCKED_KEY, "1");
+  } else {
+    sessionStorage.removeItem(SCREEN_LOCKED_KEY);
+  }
+}
+
+export function clearScreenLocked() {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem(SCREEN_LOCKED_KEY);
 }

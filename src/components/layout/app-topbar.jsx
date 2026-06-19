@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
+import { useLockScreen } from "@/contexts/lock-screen-context";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { ProfileModal } from "@/components/layout/profile-modal";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
@@ -35,6 +36,7 @@ function accessSubtitle(user, capabilities) {
 
 export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSidebarOpen = false }) {
   const { user, organization, capabilities, logout, memberships } = useAuth();
+  const { lockScreen } = useLockScreen();
   const [profileOpen, setProfileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -133,6 +135,17 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
                       <ThemeToggle className="w-full justify-center" />
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="velzon-user-dropdown-item flex w-full px-4 py-2 text-left text-sm"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      lockScreen();
+                    }}
+                  >
+                    Lock screen
+                  </button>
                   <button
                     type="button"
                     role="menuitem"

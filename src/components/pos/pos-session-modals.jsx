@@ -6,9 +6,7 @@ import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catal
 import { PosReportView } from "@/components/pos/pos-report-view";
 import { PosStatusBadge, printPosTillReport } from "@/components/pos/pos-shared";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
-import { CLOSE_REASONS, formatTillKesExact, tillDisplayName, varianceLabel } from "@/lib/pos-till";
-
-const CLOSE_DENOMINATIONS = [1000, 500, 200, 100, 50, 40, 20, 10, 5, 1];
+import { CLOSE_REASONS, DEFAULT_CLOSE_REASON, formatTillKesExact, tillDisplayName, varianceLabel, resolveTillReportBundle } from "@/lib/pos-till";
 
 function PosSessionDialogShell({ open, onClose, title, subtitle, children, footer, wide = false }) {
   if (!open) return null;
@@ -53,7 +51,7 @@ export function XReportModal({
   open,
   onClose,
   session,
-  report,
+  report: reportPayload,
   tillName,
   cashierName,
   showFloatBreakdown = false,
@@ -61,13 +59,19 @@ export function XReportModal({
   loading = false,
   error = null,
 }) {
+  const { report: resolvedReport } = useMemo(
+    () => resolveTillReportBundle({ ...(reportPayload ?? {}), session: session ?? reportPayload?.session }),
+    [reportPayload, session],
+  );
+  const hasReport = Boolean(resolvedReport?.sales || resolvedReport?.expected_cash != null);
+
   function handlePrint() {
     printPosTillReport({
       type: "X",
       organizationName,
       tillName,
       cashierName,
-      report,
+      report: reportPayload,
       session,
       showFloatBreakdown,
     });
@@ -81,7 +85,7 @@ export function XReportModal({
       title="X report"
       subtitle="Interim snapshot — session remains open"
       footer={
-        report ? (
+        hasReport ? (
           <ReportModalFooter onClose={onClose} onPrint={handlePrint} printLabel="Print X report" />
         ) : (
           <div className="flex justify-end">
@@ -99,12 +103,12 @@ export function XReportModal({
       {error ? (
         <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
-      {loading || !report ? (
+      {loading || !hasReport ? (
         <p className="text-sm text-slate-500">{loading ? "Loading report…" : "No report data."}</p>
       ) : (
         <>
           <PosReportView
-            report={report}
+            report={resolvedReport}
             session={session}
             tillName={tillName}
             cashierName={cashierName}
@@ -132,51 +136,41 @@ export function CloseSessionModal({
   onClosed,
 }) {
   const [actualCash, setActualCash] = useState("");
-  const [reason, setReason] = useState(CLOSE_REASONS[0]);
+  const [reason, setReason] = useState(DEFAULT_CLOSE_REASON);
   const [notes, setNotes] = useState("");
-  const [denomCounts, setDenomCounts] = useState(() =>
-    Object.fromEntries(CLOSE_DENOMINATIONS.map((value) => [value, ""])),
-  );
 
   useEffect(() => {
     if (!open) return;
     setActualCash("");
-    setReason(CLOSE_REASONS[0]);
+    setReason(DEFAULT_CLOSE_REASON);
     setNotes("");
-    setDenomCounts(Object.fromEntries(CLOSE_DENOMINATIONS.map((value) => [value, ""])));
   }, [open, session?.id]);
 
-  const denomTotal = useMemo(
-    () =>
-      CLOSE_DENOMINATIONS.reduce(
-        (sum, value) => sum + value * (Number(denomCounts[value]) || 0),
-        0,
-      ),
-    [denomCounts],
-  );
-
-  const closingDenominations = useMemo(
-    () =>
-      CLOSE_DENOMINATIONS.filter((value) => Number(denomCounts[value]) > 0).map((value) => ({
-        denomination: value,
-        count: Number(denomCounts[value]),
-      })),
-    [denomCounts],
-  );
-
-  const expected = sessionReport?.expected_cash ?? 0;
+  const expected = resolveTillReportBundle(sessionReport).report?.expected_cash ?? 0;
   const actual = Number(actualCash.replace(/[\s,]/g, "")) || 0;
   const variance = actual - Number(expected);
   const varianceMeta = varianceLabel(variance);
+  const isBalanced = actualCash !== "" && Math.abs(variance) < 0.01;
+
+  useEffect(() => {
+    if (!open || blindTillClose || expected <= 0) return;
+    setActualCash((current) => (current === "" ? String(expected) : current));
+  }, [open, blindTillClose, expected]);
+
+  useEffect(() => {
+    if (!open || !isBalanced) return;
+    setReason(DEFAULT_CLOSE_REASON);
+  }, [open, isBalanced]);
 
   async function handleClose(e) {
     e.preventDefault();
+    if (actualCash === "" || Number.isNaN(actual)) return;
     try {
       const res = await closeSession({
         closing_amount: actual,
         expected_amount: expected,
         notes: notes.trim() ? `${reason}: ${notes.trim()}` : reason,
-        closing_denominations: closingDenominations.length ? closingDenominations : null,
+        closing_denominations: null,
       });
       onClosed?.(res);
     } catch {
@@ -250,49 +244,10 @@ export function CloseSessionModal({
             className={inputClassName()}
             value={actualCash}
             onChange={(e) => setActualCash(e.target.value)}
-            placeholder={denomTotal > 0 ? String(denomTotal) : "184000"}
+            placeholder="184000"
             disabled={busy}
           />
-          {denomTotal > 0 ? (
-            <button
-              type="button"
-              className="mt-2 text-xs font-medium text-[#185FA5] hover:underline"
-              onClick={() => setActualCash(String(denomTotal))}
-              disabled={busy}
-            >
-              Use denomination total ({formatTillKesExact(denomTotal)})
-            </button>
-          ) : null}
         </Field>
-
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Denomination count (optional)
-          </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {CLOSE_DENOMINATIONS.map((value) => (
-              <label key={value} className="flex items-center gap-2 text-sm text-slate-700">
-                <span className="w-10 shrink-0 text-right text-xs text-slate-500">{value}</span>
-                <input
-                  type="number"
-                  min={0}
-                  step="1"
-                  className={`${inputClassName()} py-1`}
-                  value={denomCounts[value]}
-                  onChange={(e) =>
-                    setDenomCounts((rows) => ({ ...rows, [value]: e.target.value }))
-                  }
-                  disabled={busy}
-                />
-              </label>
-            ))}
-          </div>
-          {denomTotal > 0 ? (
-            <p className="mt-2 text-sm font-medium text-slate-900">
-              Counted total: {formatTillKesExact(denomTotal)}
-            </p>
-          ) : null}
-        </div>
 
         {!blindTillClose ? (
           <div
@@ -403,9 +358,10 @@ export function ZReportModal({
       .finally(() => setLoading(false));
   }, [open, payload, sessionId, fallbackCashierName]);
 
-  const session = loaded?.session ?? loaded?.report?.session;
-  const report = loaded?.report ?? loaded;
-  const variance = loaded?.variance;
+  const bundle = useMemo(() => resolveTillReportBundle(loaded), [loaded]);
+  const session = bundle.session;
+  const report = bundle.report;
+  const variance = bundle.variance;
   const tillName = useMemo(() => tillDisplayName(till), [till]);
   const resolvedCashier = cashierName ?? fallbackCashierName;
 
@@ -415,7 +371,7 @@ export function ZReportModal({
       organizationName,
       tillName,
       cashierName: resolvedCashier,
-      report,
+      report: loaded,
       session,
       variance,
       showFloatBreakdown,
@@ -430,7 +386,7 @@ export function ZReportModal({
       title="Z report"
       subtitle="End-of-day report for the closed session"
       footer={
-        report ? (
+        report?.sales || report?.expected_cash != null ? (
           <ReportModalFooter onClose={onClose} onPrint={handlePrint} printLabel="Print Z report" />
         ) : (
           <div className="flex justify-end">
@@ -448,9 +404,9 @@ export function ZReportModal({
       {error ? (
         <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
-      {loading || (!report && !error) ? (
+      {loading || (!report?.sales && report?.expected_cash == null && !error) ? (
         <p className="text-sm text-slate-500">{loading ? "Loading Z report…" : "No report data."}</p>
-      ) : report ? (
+      ) : report?.sales || report?.expected_cash != null ? (
         <>
           <div className="mb-4">
             <PosStatusBadge label="Session closed" tone="closed" />

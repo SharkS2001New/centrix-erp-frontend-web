@@ -28,6 +28,17 @@ function PosField({ label, children }) {
 
 const inputCls = INPUT_CLASS;
 
+const POS_DIALOG_SHELL =
+  "theme-modal relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border shadow-2xl";
+const POS_DIALOG_CARD = "theme-modal w-full max-w-sm overflow-hidden rounded-lg border shadow-2xl";
+const POS_DIALOG_HEADER = "theme-dialog-header px-4 py-3";
+const POS_DIALOG_FOOTER = "theme-dialog-footer grid grid-cols-2 gap-2 p-3";
+const POS_DIALOG_FOOTER_SINGLE = "theme-dialog-footer p-3";
+const POS_DIALOG_PRIMARY_BTN =
+  "theme-primary-btn flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50";
+const POS_DIALOG_SECONDARY_BTN =
+  "theme-secondary-btn flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50";
+
 function buildConfirmPaymentMessage({ billTotal, payNow, balanceDue, isCredit }) {
   if (billTotal <= 0.01) {
     return "Complete this order?";
@@ -77,12 +88,8 @@ function PosDialogShell({ title, children, footer, overlay, onClose, saving }) {
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-[#8a7a5c] bg-[#f3ebe0] shadow-2xl"
-      >
-        <div className="bg-[#1e3a5f] px-4 py-3 text-white">
+      <div role="dialog" aria-modal="true" className={POS_DIALOG_SHELL}>
+        <div className={POS_DIALOG_HEADER}>
           <h2 className="text-center text-sm font-bold tracking-wide">{title}</h2>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
@@ -91,6 +98,29 @@ function PosDialogShell({ title, children, footer, overlay, onClose, saving }) {
       </div>
     </div>,
     document.body,
+  );
+}
+
+function PosNestedDialog({ title, titleId, children, footer, role = "dialog", ariaLive }) {
+  return (
+    <div
+      role={role}
+      aria-modal={role === "dialog" ? "true" : undefined}
+      aria-labelledby={titleId}
+      aria-live={ariaLive}
+      aria-busy={role === "status" ? "true" : undefined}
+      className="absolute inset-0 z-20 flex items-center justify-center bg-black/45 p-4"
+    >
+      <div className={POS_DIALOG_CARD}>
+        <div className={POS_DIALOG_HEADER}>
+          <h3 id={titleId} className="text-center text-sm font-bold tracking-wide">
+            {title}
+          </h3>
+        </div>
+        <div className="p-4">{children}</div>
+        {footer}
+      </div>
+    </div>
   );
 }
 
@@ -650,58 +680,17 @@ export function PosPaymentPanel({
 
   const confirmOverlay =
     step === "confirm" ? (
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="confirm-payment-title"
-        className="absolute inset-0 z-20 flex items-center justify-center bg-black/45 p-4"
-      >
-        <div className="w-full max-w-sm overflow-hidden rounded-lg border border-[#8a7a5c] bg-[#f3ebe0] shadow-2xl">
-          <div className="bg-[#1e3a5f] px-4 py-3 text-white">
-            <h3 id="confirm-payment-title" className="text-center text-sm font-bold tracking-wide">
-              CONFIRM PAYMENT
-            </h3>
-          </div>
-          <div className="p-4">
-            <p className="text-sm text-slate-800">
-              {confirmSummary
-                ? buildConfirmPaymentMessage(confirmSummary)
-                : buildConfirmPaymentMessage({
-                    billTotal: checkoutTotal,
-                    payNow: Math.min(amountPaid, checkoutTotal),
-                    balanceDue,
-                    isCredit: hasCreditCustomer,
-                  })}
-            </p>
-            {confirmSummary && confirmSummary.balanceDue > 0.01 ? (
-              <p className="mt-2 text-sm text-amber-800">
-                Balance due: {formatSaleKes(confirmSummary.balanceDue)}
-                {confirmSummary.isCredit
-                  ? " — recorded as debtor for the selected customer."
-                  : cfg.allowPartialPayment
-                    ? " — partial payment; balance remains on this order."
-                    : ""}
-              </p>
-            ) : null}
-            {confirmSummary && confirmSummary.changeDue > 0 ? (
-              <p className="mt-2 text-sm text-slate-600">
-                Change: {formatSaleKes(confirmSummary.changeDue)}
-              </p>
-            ) : null}
-            <p className="mt-3 text-xs text-slate-500">Press Enter to complete payment.</p>
-            {(error || localError) ? (
-              <p className="mt-3 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {error || localError}
-              </p>
-            ) : null}
-          </div>
-          <div className="grid grid-cols-2 gap-2 border-t border-[#c4b89a] bg-[#ebe3d4] p-3">
+      <PosNestedDialog
+        title="CONFIRM PAYMENT"
+        titleId="confirm-payment-title"
+        footer={
+          <div className={POS_DIALOG_FOOTER}>
             <button
               ref={confirmYesRef}
               type="button"
               disabled={isCheckoutProcessing(saving, step)}
               onClick={handleConfirmYes}
-              className="rounded border border-[#6b8f3c] bg-[#e8f5d8] px-3 py-3 text-xs font-bold uppercase text-[#2d5016] hover:bg-[#d4edc0] disabled:opacity-50"
+              className={POS_DIALOG_PRIMARY_BTN}
             >
               Yes, complete
             </button>
@@ -709,65 +698,53 @@ export function PosPaymentPanel({
               type="button"
               disabled={isCheckoutProcessing(saving, step)}
               onClick={() => setStep("payment")}
-              className="rounded border border-[#a04040] bg-[#fde8e8] px-3 py-3 text-xs font-bold uppercase text-[#7a2020] hover:bg-[#fcd4d4] disabled:opacity-50"
+              className={POS_DIALOG_SECONDARY_BTN}
             >
               No, go back
             </button>
           </div>
-        </div>
-      </div>
+        }
+      >
+        <p className="text-sm">
+          {confirmSummary
+            ? buildConfirmPaymentMessage(confirmSummary)
+            : buildConfirmPaymentMessage({
+                billTotal: checkoutTotal,
+                payNow: Math.min(amountPaid, checkoutTotal),
+                balanceDue,
+                isCredit: hasCreditCustomer,
+              })}
+        </p>
+        {confirmSummary && confirmSummary.balanceDue > 0.01 ? (
+          <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
+            Balance due: {formatSaleKes(confirmSummary.balanceDue)}
+            {confirmSummary.isCredit
+              ? " — recorded as debtor for the selected customer."
+              : cfg.allowPartialPayment
+                ? " — partial payment; balance remains on this order."
+                : ""}
+          </p>
+        ) : null}
+        {confirmSummary && confirmSummary.changeDue > 0 ? (
+          <p className="theme-text-muted mt-2 text-sm">
+            Change: {formatSaleKes(confirmSummary.changeDue)}
+          </p>
+        ) : null}
+        <p className="theme-text-muted mt-3 text-xs">Press Enter to complete payment.</p>
+        {(error || localError) ? (
+          <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">{error || localError}</p>
+        ) : null}
+      </PosNestedDialog>
     ) : null;
 
   const customerNameOverlay =
     step === "customerName" ? (
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="customer-name-title"
-        className="absolute inset-0 z-20 flex items-center justify-center bg-black/45 p-4"
-      >
-        <div className="w-full max-w-sm overflow-hidden rounded-lg border border-[#8a7a5c] bg-[#f3ebe0] shadow-2xl">
-          <div className="bg-[#1e3a5f] px-4 py-3 text-white">
-            <h3 id="customer-name-title" className="text-center text-sm font-bold tracking-wide">
-              CUSTOMER NAME
-            </h3>
-          </div>
-          <div className="p-4">
-            <p className="mb-3 text-sm text-slate-800">
-              Enter the walk-in customer name for this order.
-            </p>
-            <PosField label="Customer name">
-              <input
-                ref={walkInNameRef}
-                type="text"
-                className={inputCls}
-                value={walkInCustomerName}
-                onChange={(e) => {
-                  setWalkInCustomerName(e.target.value);
-                  setLocalError(null);
-                }}
-                placeholder="Walk-in customer name"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleCustomerNameContinue();
-                  }
-                }}
-              />
-            </PosField>
-            {(error || localError) ? (
-              <p className="mt-3 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {error || localError}
-              </p>
-            ) : null}
-            <p className="mt-3 text-xs text-slate-500">Press Enter to continue.</p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 border-t border-[#c4b89a] bg-[#ebe3d4] p-3">
-            <button
-              type="button"
-              onClick={handleCustomerNameContinue}
-              className="rounded border border-[#6b8f3c] bg-[#e8f5d8] px-3 py-3 text-xs font-bold uppercase text-[#2d5016] hover:bg-[#d4edc0]"
-            >
+      <PosNestedDialog
+        title="CUSTOMER NAME"
+        titleId="customer-name-title"
+        footer={
+          <div className={POS_DIALOG_FOOTER}>
+            <button type="button" onClick={handleCustomerNameContinue} className={POS_DIALOG_PRIMARY_BTN}>
               Continue
             </button>
             <button
@@ -776,74 +753,85 @@ export function PosPaymentPanel({
                 setStep("confirm");
                 setLocalError(null);
               }}
-              className="rounded border border-[#a04040] bg-[#fde8e8] px-3 py-3 text-xs font-bold uppercase text-[#7a2020] hover:bg-[#fcd4d4]"
+              className={POS_DIALOG_SECONDARY_BTN}
             >
               Back
             </button>
           </div>
-        </div>
-      </div>
+        }
+      >
+        <p className="mb-3 text-sm">Enter the walk-in customer name for this order.</p>
+        <PosField label="Customer name">
+          <input
+            ref={walkInNameRef}
+            type="text"
+            className={inputCls}
+            value={walkInCustomerName}
+            onChange={(e) => {
+              setWalkInCustomerName(e.target.value);
+              setLocalError(null);
+            }}
+            placeholder="Walk-in customer name"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleCustomerNameContinue();
+              }
+            }}
+          />
+        </PosField>
+        {(error || localError) ? (
+          <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">{error || localError}</p>
+        ) : null}
+        <p className="theme-text-muted mt-3 text-xs">Press Enter to continue.</p>
+      </PosNestedDialog>
     ) : null;
 
   const savingOverlay =
     step === "saving" ? (
-      <div
+      <PosNestedDialog
+        title="COMPLETING ORDER"
+        titleId="saving-order-title"
         role="status"
-        aria-live="polite"
-        aria-busy="true"
-        className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 p-4"
+        ariaLive="polite"
       >
-        <div className="w-full max-w-sm overflow-hidden rounded-lg border border-[#8a7a5c] bg-[#f3ebe0] shadow-2xl">
-          <div className="bg-[#1e3a5f] px-4 py-3 text-white">
-            <h3 className="text-center text-sm font-bold tracking-wide">COMPLETING ORDER</h3>
-          </div>
-          <div className="flex flex-col items-center px-6 py-8 text-center">
-            <div
-              className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[#c4b89a] border-t-[var(--theme-primary)]"
-              aria-hidden
-            />
-            <p className="text-sm font-semibold text-slate-800">Saving…</p>
-            <p className="mt-2 text-sm text-slate-600">Please wait.</p>
-          </div>
+        <div className="flex flex-col items-center px-2 py-4 text-center">
+          <div
+            className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[var(--theme-border)] border-t-[var(--theme-primary)]"
+            aria-hidden
+          />
+          <p className="text-sm font-semibold">Saving…</p>
+          <p className="theme-text-muted mt-2 text-sm">Please wait.</p>
         </div>
-      </div>
+      </PosNestedDialog>
     ) : null;
 
   const completeOverlay =
     step === "complete" ? (
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="order-complete-title"
-        className="absolute inset-0 z-20 flex items-center justify-center bg-black/45 p-4"
-      >
-        <div className="w-full max-w-sm overflow-hidden rounded-lg border border-[#8a7a5c] bg-[#f3ebe0] shadow-2xl">
-          <div className="bg-[#1e3a5f] px-4 py-3 text-white">
-            <h3 id="order-complete-title" className="text-center text-sm font-bold tracking-wide">
-              ORDER COMPLETE
-            </h3>
-          </div>
-          <div className="p-4 text-sm text-slate-800">
-            {completedOrder?.orderNum ? (
-              <p>
-                Order <strong>#{completedOrder.orderNum}</strong>
-                {completedOrder.statusLabel ? ` — ${completedOrder.statusLabel}` : ""}.
-              </p>
-            ) : null}
-            <p className="mt-2">Press Enter or OK to continue to the next order.</p>
-          </div>
-          <div className="border-t border-[#c4b89a] bg-[#ebe3d4] p-3">
+      <PosNestedDialog
+        title="ORDER COMPLETE"
+        titleId="order-complete-title"
+        footer={
+          <div className={POS_DIALOG_FOOTER_SINGLE}>
             <button
               ref={completeOkRef}
               type="button"
               onClick={handleOrderCompleteOk}
-              className="w-full rounded border border-[#6b8f3c] bg-[#e8f5d8] px-3 py-3 text-xs font-bold uppercase text-[#2d5016] hover:bg-[#d4edc0]"
+              className={`${POS_DIALOG_PRIMARY_BTN} w-full`}
             >
               OK
             </button>
           </div>
-        </div>
-      </div>
+        }
+      >
+        {completedOrder?.orderNum ? (
+          <p>
+            Order <strong>#{completedOrder.orderNum}</strong>
+            {completedOrder.statusLabel ? ` — ${completedOrder.statusLabel}` : ""}.
+          </p>
+        ) : null}
+        <p className="mt-2 text-sm">Press Enter or OK to continue to the next order.</p>
+      </PosNestedDialog>
     ) : null;
 
   const dialogOverlay =
@@ -856,29 +844,29 @@ export function PosPaymentPanel({
       onClose={handleShellClose}
       overlay={dialogOverlay}
       footer={
-        <div className="relative z-10 grid grid-cols-2 gap-2 border-t border-[#c4b89a] bg-[#ebe3d4] p-3">
+        <div className={`relative z-10 ${POS_DIALOG_FOOTER}`}>
           <button
             type="button"
             disabled={isCheckoutProcessing(saving, step) || !canComplete || step !== "payment"}
             onClick={handleRequestComplete}
-            className="flex items-center justify-center gap-2 rounded border border-[#6b8f3c] bg-[#e8f5d8] px-3 py-3 text-xs font-bold uppercase text-[#2d5016] hover:bg-[#d4edc0] disabled:opacity-50"
+            className={POS_DIALOG_PRIMARY_BTN}
           >
-            <span className="text-lg text-emerald-600">✓</span>
+            <span className="text-lg">✓</span>
             Complete payment
           </button>
           <button
             type="button"
             disabled={isCheckoutProcessing(saving, step) || step !== "payment"}
             onClick={onClose}
-            className="flex items-center justify-center gap-2 rounded border border-[#a04040] bg-[#fde8e8] px-3 py-3 text-xs font-bold uppercase text-[#7a2020] hover:bg-[#fcd4d4] disabled:opacity-50"
+            className={POS_DIALOG_SECONDARY_BTN}
           >
-            <span className="text-lg text-red-600">✕</span>
+            <span className="text-lg">✕</span>
             Cancel payment
           </button>
         </div>
       }
     >
-      <dl className="mb-4 space-y-1 text-xs text-slate-800">
+      <dl className="mb-4 space-y-1 text-xs">
         <div className="flex justify-between">
           <dt>Bill Total</dt>
           <dd className="font-bold">{formatSaleKes(checkoutTotal)}</dd>
@@ -897,8 +885,8 @@ export function PosPaymentPanel({
         </div>
       </dl>
 
-      <fieldset className="mt-3 rounded border-2 border-[#8a7a5c] bg-[#faf6ef] p-3">
-        <legend className="px-1 text-xs font-bold uppercase text-[#4a5d23]">Payment methods</legend>
+      <fieldset className="theme-fieldset mt-3 rounded-lg border p-3">
+        <legend className="px-1 text-xs font-bold uppercase">Payment methods</legend>
         <div className="space-y-3">
           {cfg.enablePaymentDate ? (
             <PosField label="Payment date">
@@ -929,7 +917,7 @@ export function PosPaymentPanel({
                 type="number"
                 min="0"
                 step="any"
-                className={`${inputCls} ${lockMpesaFields ? "cursor-not-allowed bg-slate-100" : ""}`}
+                className={`${inputCls} ${lockMpesaFields ? "theme-input-readonly cursor-not-allowed" : ""}`}
                 value={mpesaAmount}
                 readOnly={lockMpesaFields}
                 disabled={lockMpesaFields}
@@ -941,7 +929,7 @@ export function PosPaymentPanel({
           {cfg.enableMpesaAmount && cfg.enableMpesaCode ? (
             <PosField label="M-Pesa code">
               <input
-                className={`${inputCls} ${lockMpesaFields ? "cursor-not-allowed bg-slate-100" : ""}`}
+                className={`${inputCls} ${lockMpesaFields ? "theme-input-readonly cursor-not-allowed" : ""}`}
                 value={mpesaCode}
                 readOnly={lockMpesaFields}
                 disabled={lockMpesaFields}
@@ -1115,7 +1103,7 @@ export function PosPaymentPanel({
       ) : null}
 
       {(error || localError) ? (
-        <p className="mt-3 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">
           {error || localError}
         </p>
       ) : null}

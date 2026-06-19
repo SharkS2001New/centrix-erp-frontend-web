@@ -52,7 +52,7 @@ export const WORKSPACE_PATH_PREFIXES = {
     "/platform",
   ],
   admin: ["/admin"],
-  accounting: ["/accounting", "/expenses", "/finance"],
+  accounting: ["/accounting", "/expenses", "/finance", "/vats"],
   hr: ["/hr", "/employees"],
 };
 
@@ -113,7 +113,8 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
     return (
       item.href?.startsWith("/accounting") ||
       item.href?.startsWith("/expenses") ||
-      item.href?.startsWith("/finance")
+      item.href?.startsWith("/finance") ||
+      item.href === "/vats"
     );
   }
 

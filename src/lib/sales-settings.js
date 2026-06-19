@@ -31,6 +31,10 @@ const SALES_DEFAULTS = {
   add_route_markup_prices: false,
   pos_order_type_mode: "normal",
   enable_mobile_orders: false,
+  mobile_enable_checkout_location_verification: false,
+  mobile_allow_offline_orders: false,
+  mobile_checkout_location_radius_metres: 5,
+  mobile_enable_field_attendance: false,
   enable_pos_orders: false,
   require_pos_till_float: false,
   blind_till_close: false,
@@ -50,6 +54,159 @@ export const STOCK_DEDUCT_TIMING_OPTIONS = [
 /** Whether Mobile Orders appears in the sales sidebar and queue routes. */
 export function isMobileOrdersEnabled(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).enable_mobile_orders);
+}
+
+/** Mobile checkout GPS verification settings for the field sales app. */
+export function getMobileCheckoutLocationConfig(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  const enabled = Boolean(sales.mobile_enable_checkout_location_verification);
+  const radius = Number(sales.mobile_checkout_location_radius_metres ?? 5);
+
+  return {
+    enabled,
+    allowOfflineOrders: enabled && Boolean(sales.mobile_allow_offline_orders),
+    radiusMetres: Number.isFinite(radius) ? Math.min(500, Math.max(1, radius)) : 5,
+  };
+}
+
+export const EMPTY_MOBILE_APPLICATION_FORM = {
+  mobile_enable_checkout_location_verification: false,
+  mobile_allow_offline_orders: false,
+  mobile_checkout_location_radius_metres: "5",
+  mobile_enable_field_attendance: false,
+};
+
+export function mobileApplicationFormFromApi(res) {
+  const sales = mergeSalesSettings({ sales: res?.sales ?? res });
+  return {
+    mobile_enable_checkout_location_verification: Boolean(
+      sales.mobile_enable_checkout_location_verification,
+    ),
+    mobile_allow_offline_orders: Boolean(sales.mobile_allow_offline_orders),
+    mobile_checkout_location_radius_metres: String(
+      sales.mobile_checkout_location_radius_metres ?? 5,
+    ),
+    mobile_enable_field_attendance: Boolean(sales.mobile_enable_field_attendance),
+  };
+}
+
+export function mobileApplicationPayloadFromForm(form) {
+  return {
+    mobile_enable_checkout_location_verification: Boolean(
+      form.mobile_enable_checkout_location_verification,
+    ),
+    mobile_allow_offline_orders: Boolean(form.mobile_allow_offline_orders),
+    mobile_checkout_location_radius_metres:
+      Number(form.mobile_checkout_location_radius_metres) || 5,
+    mobile_enable_field_attendance: Boolean(form.mobile_enable_field_attendance),
+  };
+}
+
+/** Org-admin sales settings form (excludes mobile application keys — see Mobile application tab). */
+export const EMPTY_SALES_ORGANIZATION_FORM = {
+  allow_discounts: true,
+  allow_edit_line_discount: false,
+  enable_order_discount: false,
+  enable_vouchers: false,
+  enable_redeemable_points: false,
+  point_cash_value: "1",
+  points_earn_per_kes: "1000",
+  allow_edit_unit_price: true,
+  default_tax_rate: "16",
+  enable_mpesa_amount: true,
+  enable_mpesa_code: false,
+  enable_bank_select: false,
+  enable_equity_bank: true,
+  enable_kcb_bank: true,
+  enable_other_bank: false,
+  other_bank_name: "Other bank",
+  enable_bank_amount: true,
+  enable_cheque: true,
+  enable_cheque_number: false,
+  enable_payment_date: false,
+  enable_credit_payment: true,
+  allow_credit_pay_now: false,
+  show_checkout_on_create_order: true,
+  enable_checkout_customer_name: false,
+  add_route_markup_prices: false,
+  pos_order_type_mode: "normal",
+  enable_pos_orders: false,
+  require_pos_till_float: false,
+  blind_till_close: false,
+  order_document_type: "receipt",
+  invoice_valid_days: "7",
+  show_branch_on_receipt: true,
+  receipt_copies: "1",
+  stock_deduct_on: "order_completed",
+};
+
+export function salesOrganizationFormFromApi(res) {
+  const sales = mergeSalesSettings({ sales: res?.sales ?? res });
+  return {
+    allow_discounts: Boolean(sales.allow_discounts),
+    allow_edit_line_discount: Boolean(sales.allow_edit_line_discount),
+    enable_order_discount: Boolean(sales.enable_order_discount),
+    enable_vouchers: Boolean(sales.enable_vouchers),
+    enable_redeemable_points: Boolean(sales.enable_redeemable_points),
+    point_cash_value: String(sales.point_cash_value ?? 1),
+    points_earn_per_kes: String(sales.points_earn_per_kes ?? 1000),
+    allow_edit_unit_price: Boolean(sales.allow_edit_unit_price),
+    default_tax_rate: String(sales.default_tax_rate ?? 16),
+    enable_mpesa_amount: Boolean(sales.enable_mpesa_amount),
+    enable_mpesa_code: Boolean(sales.enable_mpesa_code),
+    enable_bank_select: Boolean(sales.enable_bank_select),
+    enable_equity_bank: Boolean(sales.enable_equity_bank),
+    enable_kcb_bank: Boolean(sales.enable_kcb_bank),
+    enable_other_bank: Boolean(sales.enable_other_bank),
+    other_bank_name: String(sales.other_bank_name ?? "Other bank"),
+    enable_bank_amount: Boolean(sales.enable_bank_amount),
+    enable_cheque: Boolean(sales.enable_cheque),
+    enable_cheque_number: Boolean(sales.enable_cheque_number),
+    enable_payment_date: Boolean(sales.enable_payment_date),
+    enable_credit_payment: Boolean(sales.enable_credit_payment),
+    allow_credit_pay_now: Boolean(sales.allow_credit_pay_now),
+    show_checkout_on_create_order: Boolean(sales.show_checkout_on_create_order),
+    enable_checkout_customer_name: Boolean(sales.enable_checkout_customer_name),
+    add_route_markup_prices: Boolean(sales.add_route_markup_prices),
+    pos_order_type_mode: resolvePosOrderTypeMode(sales),
+    enable_pos_orders: Boolean(sales.enable_pos_orders),
+    require_pos_till_float: Boolean(sales.require_pos_till_float),
+    blind_till_close: Boolean(sales.blind_till_close),
+    order_document_type: sales.order_document_type === "invoice" ? "invoice" : "receipt",
+    invoice_valid_days: String(sales.invoice_valid_days ?? 7),
+    show_branch_on_receipt: Boolean(sales.show_branch_on_receipt),
+    receipt_copies: String(sales.receipt_copies ?? 1),
+    stock_deduct_on: sales.stock_deduct_on || "order_completed",
+  };
+}
+
+export function salesOrganizationPayloadFromForm(form) {
+  return {
+    ...form,
+    default_tax_rate: Number(form.default_tax_rate) || 0,
+    point_cash_value: Number(form.point_cash_value) || 0,
+    points_earn_per_kes: Number(form.points_earn_per_kes) || 0,
+    invoice_valid_days: Number(form.invoice_valid_days) || 0,
+    receipt_copies: Number(form.receipt_copies) || 1,
+  };
+}
+
+/**
+ * Standalone loading sheets for mobile orders when Distribution is not enabled.
+ * When Distribution is on, loading lists live under Logistics → Shipment tracking.
+ */
+export function shouldShowMobileLoadingSheets(capabilities) {
+  if (!capabilities?.modules?.["sales.mobile"]) return false;
+  if (!isMobileOrdersEnabled(capabilities?.module_settings)) return false;
+  if (capabilities?.modules?.distribution) return false;
+  return true;
+}
+
+/** Field attendance sessions for mobile sales reps (sign-in photo + GPS). */
+export function shouldShowMobileFieldAttendance(capabilities) {
+  if (!capabilities?.modules?.["sales.mobile"]) return false;
+  const sales = mergeSalesSettings(capabilities?.module_settings);
+  return Boolean(sales.mobile_enable_field_attendance);
 }
 
 export function isPosOrdersEnabled(moduleSettings) {

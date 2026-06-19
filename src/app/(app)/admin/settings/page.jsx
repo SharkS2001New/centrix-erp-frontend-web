@@ -2,13 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { mergeSalesSettings, resolvePosOrderTypeMode } from "@/lib/sales-settings";
+import {
+  EMPTY_SALES_ORGANIZATION_FORM,
+  salesOrganizationFormFromApi,
+  salesOrganizationPayloadFromForm,
+} from "@/lib/sales-settings";
 import { useAuth } from "@/contexts/auth-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { FinanceSettingsPanel } from "@/components/admin/finance-settings-panel";
 import { AiSettingsPanel } from "@/components/admin/ai-settings-panel";
 import { InventorySettingsPanel } from "@/components/admin/inventory-settings-panel";
 import { DistributionSettingsPanel } from "@/components/admin/distribution-settings-panel";
+import { MobileApplicationSettingsPanel } from "@/components/admin/mobile-application-settings-panel";
 import { GeneralSettingsPanel } from "@/components/admin/general-settings-panel";
 import { NotificationsSettingsPanel } from "@/components/admin/notifications-settings-panel";
 import { ProcurementSettingsPanel } from "@/components/admin/procurement-settings-panel";
@@ -26,6 +31,7 @@ import {
 const TABS = [
   { id: "general", label: "General" },
   { id: "sales", label: "Sales" },
+  { id: "mobile", label: "Mobile application" },
   { id: "distribution", label: "Distribution" },
   { id: "inventory", label: "Inventory" },
   { id: "procurement", label: "Procurement" },
@@ -35,86 +41,6 @@ const TABS = [
   { id: "notifications", label: "Notifications" },
   { id: "security", label: "Security" },
 ];
-
-const EMPTY_SALES_FORM = {
-  allow_discounts: true,
-  allow_edit_line_discount: false,
-  enable_order_discount: false,
-  enable_vouchers: false,
-  enable_redeemable_points: false,
-  point_cash_value: "1",
-  points_earn_per_kes: "1000",
-  allow_edit_unit_price: true,
-  default_tax_rate: "16",
-  enable_mpesa_amount: true,
-  enable_mpesa_code: false,
-  enable_bank_select: false,
-  enable_equity_bank: true,
-  enable_kcb_bank: true,
-  enable_other_bank: false,
-  other_bank_name: "Other bank",
-  enable_bank_amount: true,
-  enable_cheque: true,
-  enable_cheque_number: false,
-  enable_payment_date: false,
-  enable_credit_payment: true,
-  allow_credit_pay_now: false,
-  show_checkout_on_create_order: true,
-  enable_checkout_customer_name: false,
-  add_route_markup_prices: false,
-  pos_order_type_mode: "normal",
-  enable_mobile_orders: false,
-  enable_pos_orders: false,
-  require_pos_till_float: false,
-  blind_till_close: false,
-  order_document_type: "receipt",
-  invoice_valid_days: "7",
-  show_branch_on_receipt: true,
-  receipt_copies: "1",
-  stock_deduct_on: "order_completed",
-};
-
-function salesFormFromApi(res) {
-  const source = res?.sales ?? res;
-  const sales = mergeSalesSettings({ sales: source });
-  return {
-    allow_discounts: Boolean(sales.allow_discounts),
-    allow_edit_line_discount: Boolean(sales.allow_edit_line_discount),
-    enable_order_discount: Boolean(sales.enable_order_discount),
-    enable_vouchers: Boolean(sales.enable_vouchers),
-    enable_redeemable_points: Boolean(sales.enable_redeemable_points),
-    point_cash_value: String(sales.point_cash_value ?? 1),
-    points_earn_per_kes: String(sales.points_earn_per_kes ?? 1000),
-    allow_edit_unit_price: Boolean(sales.allow_edit_unit_price),
-    default_tax_rate: String(sales.default_tax_rate ?? 16),
-    enable_mpesa_amount: Boolean(sales.enable_mpesa_amount),
-    enable_mpesa_code: Boolean(sales.enable_mpesa_code),
-    enable_bank_select: Boolean(sales.enable_bank_select),
-    enable_equity_bank: Boolean(sales.enable_equity_bank),
-    enable_kcb_bank: Boolean(sales.enable_kcb_bank),
-    enable_other_bank: Boolean(sales.enable_other_bank),
-    other_bank_name: String(sales.other_bank_name ?? "Other bank"),
-    enable_bank_amount: Boolean(sales.enable_bank_amount),
-    enable_cheque: Boolean(sales.enable_cheque),
-    enable_cheque_number: Boolean(sales.enable_cheque_number),
-    enable_payment_date: Boolean(sales.enable_payment_date),
-    enable_credit_payment: Boolean(sales.enable_credit_payment),
-    allow_credit_pay_now: Boolean(sales.allow_credit_pay_now),
-    show_checkout_on_create_order: Boolean(sales.show_checkout_on_create_order),
-    enable_checkout_customer_name: Boolean(sales.enable_checkout_customer_name),
-    add_route_markup_prices: Boolean(sales.add_route_markup_prices),
-    pos_order_type_mode: resolvePosOrderTypeMode(sales),
-    enable_mobile_orders: Boolean(sales.enable_mobile_orders),
-    enable_pos_orders: Boolean(sales.enable_pos_orders),
-    require_pos_till_float: Boolean(sales.require_pos_till_float),
-    blind_till_close: Boolean(sales.blind_till_close),
-    order_document_type: sales.order_document_type === "invoice" ? "invoice" : "receipt",
-    invoice_valid_days: String(sales.invoice_valid_days ?? 7),
-    show_branch_on_receipt: Boolean(sales.show_branch_on_receipt),
-    receipt_copies: String(sales.receipt_copies ?? 1),
-    stock_deduct_on: sales.stock_deduct_on || "order_completed",
-  };
-}
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -154,7 +80,7 @@ export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
-  const [salesForm, setSalesForm] = useState(EMPTY_SALES_FORM);
+  const [salesForm, setSalesForm] = useState(EMPTY_SALES_ORGANIZATION_FORM);
 
   const modules = capabilities?.modules ?? {};
   const hasPosSales = Boolean(modules["sales.pos"]);
@@ -174,7 +100,7 @@ export default function AdminSettingsPage() {
     setLoading(true);
     try {
       const res = await apiRequest("/erp/settings/sales");
-      setSalesForm(salesFormFromApi(res));
+      setSalesForm(salesOrganizationFormFromApi(res));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load settings");
     } finally {
@@ -192,19 +118,12 @@ export default function AdminSettingsPage() {
     setError(null);
     setMessage(null);
     try {
-      const salesPayload = {
-        ...salesForm,
-        default_tax_rate: Number(salesForm.default_tax_rate) || 0,
-        point_cash_value: Number(salesForm.point_cash_value) || 0,
-        points_earn_per_kes: Number(salesForm.points_earn_per_kes) || 0,
-        invoice_valid_days: Number(salesForm.invoice_valid_days) || 0,
-      };
       await apiRequest("/erp/settings/sales", {
         method: "PATCH",
-        body: salesPayload,
+        body: salesOrganizationPayloadFromForm(salesForm),
       });
       const res = await apiRequest("/erp/settings/sales");
-      setSalesForm(salesFormFromApi(res));
+      setSalesForm(salesOrganizationFormFromApi(res));
       await refreshCapabilities();
       setMessage("Sales settings saved.");
     } catch (e) {
@@ -643,6 +562,15 @@ export default function AdminSettingsPage() {
                 </div>
               </section>
             </form>
+          ) : null}
+
+          {tab === "mobile" ? (
+            <MobileApplicationSettingsPanel
+              saving={saving}
+              setSaving={setSaving}
+              setError={setError}
+              setMessage={setMessage}
+            />
           ) : null}
 
           {tab === "distribution" ? (

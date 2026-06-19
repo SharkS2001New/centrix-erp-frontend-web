@@ -481,20 +481,12 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
       title={queueConfig?.title ?? "View All Orders"}
       subtitle={queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"}
       action={
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/sales/pos"
-            className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
-          >
-            + New sale
-          </Link>
-          <Link
-            href="/sales/pos"
-            className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
-          >
-            Held orders
-          </Link>
-        </div>
+        <Link
+          href="/sales/pos"
+          className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
+        >
+          + New sale
+        </Link>
       }
       toolbar={
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:gap-4">

@@ -6,13 +6,20 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { OrganizationSwitcher } from "@/components/layout/organization-switcher";
 import { getStoredWorkspace } from "@/lib/auth-storage";
-import { isNavItemActive, isNavSectionActive } from "@/lib/nav-config";
+import { isNavItemActive, isNavSectionActive, isNavItemVisible } from "@/lib/nav-config";
 import { defaultWorkspaceId } from "@/lib/workspaces";
 import { buildWorkspaceNavSections } from "@/lib/workspace-nav";
 import { isPosTillFloatRequired } from "@/lib/sales-settings";
 import { CentrixLogo } from "@/components/branding/centrix-logo";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { NavSectionIcon } from "@/lib/nav-icons";
+import { apiRequest } from "@/lib/api";
+import { P } from "@/lib/permission-codes";
+import {
+  buildCustomReportNavItems,
+  customReportBelongsToWorkspace,
+  injectCustomReportsIntoNavSections,
+} from "@/lib/reports/custom-reports";
 
 const STORAGE_KEY = "sidebar-expanded-sections-v2";
 
@@ -168,6 +175,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
   const pathname = usePathname();
   const { user, organization, capabilities, isModuleEnabled, hasPermission, isSuperAdmin } = useAuth();
   const [activeFlyoutId, setActiveFlyoutId] = useState(null);
+  const [customReportTemplates, setCustomReportTemplates] = useState([]);
 
   const navContext = useMemo(
     () => ({
@@ -185,15 +193,37 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
   const workspaceId =
     getStoredWorkspace() ?? defaultWorkspaceId(capabilities, navContext);
 
+  useEffect(() => {
+    if (!hasPermission(P.reports.builder.view)) {
+      setCustomReportTemplates([]);
+      return;
+    }
+
+    apiRequest("/reports/builder/templates", { searchParams: { workspace_id: workspaceId } })
+      .then((res) => setCustomReportTemplates(res.data ?? []))
+      .catch(() => setCustomReportTemplates([]));
+  }, [hasPermission, workspaceId]);
+
+  const customReportNavItems = useMemo(
+    () =>
+      buildCustomReportNavItems(
+        customReportTemplates.filter((template) => customReportBelongsToWorkspace(template, workspaceId)),
+      ).filter((item) => isNavItemVisible(item, navContext)),
+    [customReportTemplates, navContext, workspaceId],
+  );
+
   const visibleSections = useMemo(
     () =>
-      buildWorkspaceNavSections({
-        capabilities,
-        navContext,
-        workspaceId,
-        isSuperAdmin,
-      }),
-    [capabilities, isSuperAdmin, navContext, workspaceId],
+      injectCustomReportsIntoNavSections(
+        buildWorkspaceNavSections({
+          capabilities,
+          navContext,
+          workspaceId,
+          isSuperAdmin,
+        }),
+        customReportNavItems,
+      ),
+    [capabilities, customReportNavItems, isSuperAdmin, navContext, workspaceId],
   );
 
   const [expandedSections, setExpandedSections] = useState(() => {

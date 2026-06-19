@@ -47,9 +47,19 @@ export function isKraDeviceEnabled(moduleSettings) {
   return Boolean(mergeFinanceSettings(moduleSettings).enable_kra_device);
 }
 
+function parseBooleanSetting(value, defaultValue = true) {
+  if (value === true || value === 1 || value === "1" || value === "true") return true;
+  if (value === false || value === 0 || value === "0" || value === "false" || value === "") {
+    return false;
+  }
+  if (value === undefined || value === null) return defaultValue;
+  return Boolean(value);
+}
+
 export function isStkPushEnabled(moduleSettings) {
+  if (moduleSettings == null) return false;
   const mpesa = mergeFinanceSettings(moduleSettings).mpesa ?? MPESA_DEFAULTS;
-  return mpesa.enable_stk_push !== false;
+  return parseBooleanSetting(mpesa.enable_stk_push, true);
 }
 
 export function shouldSubmitKraOnCheckout(moduleSettings) {
