@@ -1,4 +1,4 @@
-const STORAGE_KEY = "pos-erp-workspace-picker-layout";
+const STORAGE_KEY = "centrix-erp-workspace-picker-layout";
 
 /** @typedef {"horizontal" | "vertical"} WorkspacePickerLayout */
 

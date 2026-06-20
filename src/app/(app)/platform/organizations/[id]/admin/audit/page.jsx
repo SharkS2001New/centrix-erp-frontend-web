@@ -5,7 +5,7 @@ import { PlatformAdminScreen } from "@/components/platform/platform-admin-screen
 
 export default function PlatformAdminAuditPage() {
   return (
-    <PlatformAdminScreen>
+    <PlatformAdminScreen breadcrumbTail={[{ label: "Audit log" }]}>
       <AdminAuditPage />
     </PlatformAdminScreen>
   );

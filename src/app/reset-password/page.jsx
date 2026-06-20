@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -15,7 +15,7 @@ import {
 } from "@/components/auth/auth-shell";
 import { PasswordInput } from "@/components/auth/password-input";
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tokenFromUrl = searchParams.get("token") ?? "";
@@ -34,6 +34,10 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    if (password !== passwordConfirmation) {
+      setError("Passwords do not match.");
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await apiRequest("/auth/reset-password", {
@@ -46,8 +50,8 @@ export default function ResetPasswordPage() {
         },
         token: null,
       });
-      setSuccess(res.message);
-      setTimeout(() => router.replace("/login"), 1500);
+      setSuccess(res.message ?? "Password updated. You can sign in now.");
+      setTimeout(() => router.replace("/login"), 2000);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reset password.");
     } finally {
@@ -106,5 +110,13 @@ export default function ResetPasswordPage() {
         </Link>
       </p>
     </AuthShell>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ResetPasswordForm />
+    </Suspense>
   );
 }

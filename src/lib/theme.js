@@ -1,5 +1,5 @@
 export const THEME_STORAGE_KEY = "pos_erp_theme";
-const THEME_CHANGE_EVENT = "pos-erp-theme-change";
+const THEME_CHANGE_EVENT = "centrix-erp-theme-change";
 
 export function readStoredTheme() {
   if (typeof window === "undefined") return "light";

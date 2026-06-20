@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -14,7 +14,7 @@ import {
   authInputClass,
 } from "@/components/auth/auth-shell";
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordForm() {
   const searchParams = useSearchParams();
   const initialOrg =
     searchParams.get("org")?.toUpperCase() || getStoredCompanyCode() || getDefaultCompanyCode();
@@ -94,5 +94,13 @@ export default function ForgotPasswordPage() {
         </Link>
       </p>
     </AuthShell>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ForgotPasswordForm />
+    </Suspense>
   );
 }

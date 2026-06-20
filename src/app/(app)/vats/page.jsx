@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useAdminApi } from "@/contexts/admin-api-context";
 import { P } from "@/lib/permission-codes";
 import {
   CatalogPageShell,
@@ -22,6 +23,7 @@ const EMPTY_FORM = {
 };
 
 export default function VatsPage() {
+  const { adminPath, isPlatformManaged } = useAdminApi();
   const [vats, setVats] = useState([]);
   const [products, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
@@ -39,9 +41,9 @@ export default function VatsPage() {
     setError(null);
     try {
       const [vatRes, prodRes, userRes] = await Promise.all([
-        apiRequest("/vats", { searchParams: { per_page: 100 } }),
-        apiRequest("/products", { searchParams: { per_page: 200 } }),
-        apiRequest("/users", { searchParams: { per_page: 200 } }),
+        apiRequest(adminPath("/vats"), { searchParams: { per_page: 100 } }),
+        apiRequest(adminPath("/products"), { searchParams: { per_page: 200 } }),
+        apiRequest(adminPath("/users"), { searchParams: { per_page: 200 } }),
       ]);
       setVats(vatRes.data ?? vatRes ?? []);
       setProducts(prodRes.data ?? []);
@@ -51,7 +53,7 @@ export default function VatsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [adminPath]);
 
   useEffect(() => {
     loadData();
@@ -113,9 +115,9 @@ export default function VatsPage() {
     };
     try {
       if (drawerMode === "create") {
-        await apiRequest("/vats", { method: "POST", body });
+        await apiRequest(adminPath("/vats"), { method: "POST", body });
       } else {
-        await apiRequest(`/vats/${editingId}`, { method: "PUT", body });
+        await apiRequest(adminPath(`/vats/${editingId}`), { method: "PUT", body });
       }
       await loadData();
       closeDrawer();
@@ -134,7 +136,7 @@ export default function VatsPage() {
         : `Delete VAT rate "${vat.vat_name}"?`;
     if (!window.confirm(msg)) return;
     try {
-      await apiRequest(`/vats/${vat.id}`, { method: "DELETE" });
+      await apiRequest(adminPath(`/vats/${vat.id}`), { method: "DELETE" });
       if (editingId === vat.id) closeDrawer();
       await loadData();
     } catch (err) {
@@ -147,7 +149,10 @@ export default function VatsPage() {
       title="VAT rates"
       subtitle="Configure tax codes and percentages for products"
       action={
-        <PrimaryButton onClick={openCreateDrawer} permission={P.catalogue.vat_rates.create}>
+        <PrimaryButton
+          onClick={openCreateDrawer}
+          permission={isPlatformManaged ? null : P.catalogue.vat_rates.create}
+        >
           Add VAT rate
         </PrimaryButton>
       }

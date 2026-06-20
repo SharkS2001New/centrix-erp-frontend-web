@@ -2,16 +2,8 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { OrganizationUsersPanel } from "@/components/admin/organization-platform-config";
 import { PlatformAdminShell } from "@/components/platform/platform-admin-shell";
-
-const ADMIN_LINKS = [
-  { href: "branches", label: "Branches", description: "Store locations, M-Pesa tills, and branch managers." },
-  { href: "roles", label: "Roles & permissions", description: "Role templates and permission assignments." },
-  { href: "payment-methods", label: "Payment methods", description: "Cash, M-Pesa, bank, and other tender types." },
-  { href: "company", label: "Company profile & logo", description: "Legal identity and branding shown on documents." },
-  { href: "audit", label: "Audit log", description: "Who changed what across this organization." },
-];
+import { PLATFORM_ADMIN_LINKS, platformAdminHref, platformOrgSettingsHref } from "@/lib/platform-admin-nav";
 
 export default function PlatformOrganizationAdminPage() {
   const params = useParams();
@@ -24,20 +16,25 @@ export default function PlatformOrganizationAdminPage() {
       breadcrumbTail={[{ label: "Admin hub" }]}
     >
       <div className="grid gap-4 lg:grid-cols-2">
-        {ADMIN_LINKS.map((item) => (
+        {PLATFORM_ADMIN_LINKS.map((item) => (
           <Link
             key={item.href}
-            href={`/platform/organizations/${orgId}/admin/${item.href}`}
+            href={platformAdminHref(orgId, item.href)}
             className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 shadow-sm transition hover:border-[#185FA5]/40"
           >
             <p className="theme-heading text-sm font-medium">{item.label}</p>
             <p className="theme-subtext mt-1 text-xs">{item.description}</p>
           </Link>
         ))}
-      </div>
-
-      <div className="mt-8">
-        <OrganizationUsersPanel organizationId={orgId} detailed />
+        <Link
+          href={platformOrgSettingsHref(orgId)}
+          className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 shadow-sm transition hover:border-[#185FA5]/40"
+        >
+          <p className="theme-heading text-sm font-medium">Organization settings</p>
+          <p className="theme-subtext mt-1 text-xs">
+            Sales, finance, distribution, notifications, and other operational preferences.
+          </p>
+        </Link>
       </div>
     </PlatformAdminShell>
   );

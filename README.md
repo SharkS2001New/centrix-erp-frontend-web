@@ -1,6 +1,6 @@
 # Centrix ERP Web
 
-Next.js frontend for **Centrix ERP** by Alpac Software Solutions. Connects to [pos-erp-api](../pos-erp-api) and uses **Laravel Sanctum** bearer tokens against `/api/v1`.
+Next.js frontend for **Centrix ERP** by Alpac Software Solutions. Connects to [centrix-erp-backend-api](../centrix-erp-backend-api) and uses **Laravel Sanctum** bearer tokens against `/api/v1`.
 
 ## Stack
 
@@ -11,7 +11,7 @@ Next.js frontend for **Centrix ERP** by Alpac Software Solutions. Connects to [p
 ## Setup
 
 ```bash
-cd pos-erp-web
+cd centrix-erp-frontend-web
 cp .env.local.example .env.local
 npm install
 ```
@@ -19,7 +19,7 @@ npm install
 Start the API (sibling project):
 
 ```bash
-cd ../pos-erp-api
+cd ../centrix-erp-backend-api
 php artisan serve   # http://localhost:8000
 ```
 
@@ -74,3 +74,19 @@ Branding constants live in `src/lib/branding.js` (`Centrix ERP`, `Alpac Software
 npm run build
 npm start
 ```
+
+## Docker
+
+Build and run locally (set your API URL at build time — Next.js bakes `NEXT_PUBLIC_*` into the bundle):
+
+```bash
+docker build \
+  --build-arg NEXT_PUBLIC_API_URL=https://your-api.example.com/api/v1 \
+  --build-arg NEXT_PUBLIC_COMPANY_CODE=DEMO \
+  -t centrix-erp-frontend-web .
+docker run --rm -p 3000:3000 centrix-erp-frontend-web
+```
+
+Images are published to `ghcr.io/<owner>/centrix-erp-frontend-web` on push to `main`/`master` via `.github/workflows/docker-publish.yml`.
+
+Optional GitOps: set repository variable `K8S_SETUP_REPO` (e.g. `centrix-erp-setup`) and secret `PERSONAL_ACCESS_TOKEN` to auto-update Helm `values.yaml` tags (same pattern as pitchpredictionswebsite → pitchpredk3ssetup).

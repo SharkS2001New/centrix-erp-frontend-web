@@ -10,6 +10,7 @@ import { UserDetailModal } from "@/components/admin/user-detail-modal";
 import { toggleUserPermissionOverride } from "@/components/admin/user-permission-matrix";
 import { permissionIdSet } from "@/lib/permission-ids";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
+import { useAdminApi } from "@/contexts/admin-api-context";
 import {
   ActiveBadge,
   CatalogPageShell,
@@ -54,7 +55,9 @@ const EMPTY_FORM = {
 
 export default function AdminUsersPage() {
   const { user, capabilities } = useAuth();
-  const organizationId = user?.organization_id ?? capabilities?.organization_id;
+  const { adminPath, organizationId: platformOrgId, isPlatformManaged, tenantCapabilities } = useAdminApi();
+  const organizationId = platformOrgId ?? user?.organization_id ?? capabilities?.organization_id;
+  const effectiveCapabilities = isPlatformManaged ? tenantCapabilities ?? capabilities : capabilities;
 
   const [users, setUsers] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -78,7 +81,7 @@ export default function AdminUsersPage() {
   const [grantedIds, setGrantedIds] = useState(new Set());
   const [deniedIds, setDeniedIds] = useState(new Set());
 
-  const mobileOrdersEnabled = isOrgMobileSalesEnabled(capabilities);
+  const mobileOrdersEnabled = isOrgMobileSalesEnabled(effectiveCapabilities);
   const availableLoginChannels = useMemo(
     () =>
       mobileOrdersEnabled
@@ -96,11 +99,11 @@ export default function AdminUsersPage() {
     setError(null);
     try {
       const [userRes, branchRes, roleRes, routeRes, matrixRes] = await Promise.all([
-        apiRequest("/users", { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
-        apiRequest("/branches", { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
-        apiRequest("/roles", { searchParams: { per_page: 200 } }),
-        apiRequest("/routes", { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
-        apiRequest("/roles/permissions/matrix"),
+        apiRequest(adminPath("/users"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
+        apiRequest(adminPath("/branches"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
+        apiRequest(adminPath("/roles"), { searchParams: { per_page: 200 } }),
+        apiRequest(adminPath("/routes"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
+        apiRequest(adminPath("/roles/permissions/matrix")),
       ]);
       setUsers(filterByOrganization(userRes.data, organizationId));
       setBranches(filterByOrganization(branchRes.data, organizationId));
@@ -113,13 +116,13 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [organizationId]);
+  }, [organizationId, adminPath]);
 
   const loadUserPermissions = useCallback(async (userId) => {
     setPermLoading(true);
     setPermError(null);
     try {
-      const res = await apiRequest(`/users/${userId}/permissions`);
+      const res = await apiRequest(adminPath(`/users/${userId}/permissions`));
       setRolePermissionIds(permissionIdSet(res.role_permission_ids));
       setGrantedIds(permissionIdSet(res.granted_permission_ids));
       setDeniedIds(permissionIdSet(res.denied_permission_ids));
@@ -128,7 +131,7 @@ export default function AdminUsersPage() {
     } finally {
       setPermLoading(false);
     }
-  }, []);
+  }, [adminPath]);
 
   useEffect(() => {
     load();
@@ -199,7 +202,7 @@ export default function AdminUsersPage() {
       return;
     }
     try {
-      await apiRequest(`/users/${row.id}`, { method: "PUT", body: { is_active: false } });
+      await apiRequest(adminPath(`/users/${row.id}`), { method: "PUT", body: { is_active: false } });
       await load();
       if (viewUser?.id === row.id) setViewUser((u) => ({ ...u, is_active: false }));
     } catch (e) {
@@ -224,7 +227,7 @@ export default function AdminUsersPage() {
       return;
     }
     try {
-      await apiRequest(`/users/${row.id}`, { method: "DELETE" });
+      await apiRequest(adminPath(`/users/${row.id}`), { method: "DELETE" });
       setViewUser(null);
       await load();
     } catch (e) {
@@ -248,7 +251,7 @@ export default function AdminUsersPage() {
     setPermSaving(true);
     setPermError(null);
     try {
-      await apiRequest(`/users/${viewUser.id}/permissions`, {
+      await apiRequest(adminPath(`/users/${viewUser.id}/permissions`), {
         method: "PUT",
         body: {
           granted_permission_ids: [...grantedIds],
@@ -312,9 +315,9 @@ export default function AdminUsersPage() {
       }
       if (form.password.trim()) body.password = form.password;
       if (editing) {
-        await apiRequest(`/users/${editing.id}`, { method: "PUT", body });
+        await apiRequest(adminPath(`/users/${editing.id}`), { method: "PUT", body });
       } else {
-        await apiRequest("/users", { method: "POST", body });
+        await apiRequest(adminPath("/users"), { method: "POST", body });
       }
       setDrawerOpen(false);
       await load();
@@ -327,21 +330,22 @@ export default function AdminUsersPage() {
 
   const viewRoleName = viewUser ? roleById.get(viewUser.role_id)?.role_name : null;
 
-  return (
-    <AdminGuard strict>
-      <CatalogPageShell
-        title="Users"
-        subtitle="Manage system users, branches, roles, and per-user permission overrides."
-        action={
-          <PrimaryButton type="button" onClick={openCreate}>
-            Create user
-          </PrimaryButton>
-        }
-        toolbar={
-          <SearchInput value={search} onChange={setSearch} placeholder="Search user…" className="max-w-sm" />
-        }
-      >
+  const page = (
+    <CatalogPageShell
+      title="Users"
+      subtitle="Manage system users, branches, roles, and per-user permission overrides."
+      action={
+        <PrimaryButton type="button" onClick={openCreate}>
+          Create user
+        </PrimaryButton>
+      }
+      toolbar={
+        <SearchInput value={search} onChange={setSearch} placeholder="Search user…" className="max-w-sm" />
+      }
+    >
+      {!isPlatformManaged ? (
         <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Users" }]} />
+      ) : null}
 
         {error ? (
           <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
@@ -580,6 +584,9 @@ export default function AdminUsersPage() {
           </p>
         </FormDrawer>
       </CatalogPageShell>
-    </AdminGuard>
   );
+
+  if (isPlatformManaged) return page;
+
+  return <AdminGuard strict>{page}</AdminGuard>;
 }

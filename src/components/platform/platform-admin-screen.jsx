@@ -1,16 +1,12 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { AdminApiProvider } from "@/contexts/admin-api-context";
+import { PlatformAdminShell } from "@/components/platform/platform-admin-shell";
 
-/** Wraps tenant admin screens with platform org-scoped API paths. */
-export function PlatformAdminScreen({ children }) {
-  const orgId = useParams()?.id;
-  const apiPrefix = orgId ? `/admin/organizations/${orgId}` : "";
-
+/** Wraps tenant admin screens with platform org-scoped API paths, guard, and nav. */
+export function PlatformAdminScreen({ children, breadcrumbTail = [] }) {
   return (
-    <AdminApiProvider apiPrefix={apiPrefix} organizationId={orgId}>
+    <PlatformAdminShell embedded breadcrumbTail={breadcrumbTail}>
       {children}
-    </AdminApiProvider>
+    </PlatformAdminShell>
   );
 }

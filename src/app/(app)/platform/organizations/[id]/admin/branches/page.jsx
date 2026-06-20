@@ -5,7 +5,7 @@ import { PlatformAdminScreen } from "@/components/platform/platform-admin-screen
 
 export default function PlatformAdminBranchesPage() {
   return (
-    <PlatformAdminScreen>
+    <PlatformAdminScreen breadcrumbTail={[{ label: "Branches" }]}>
       <AdminBranchesPage />
     </PlatformAdminScreen>
   );

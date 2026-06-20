@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useOrgFormat } from "@/lib/org-format";
 import { useAuth } from "@/contexts/auth-context";
+import { useAdminApi } from "@/contexts/admin-api-context";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
+import { platformOrgSettingsHref } from "@/lib/platform-admin-nav";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { P } from "@/lib/permission-codes";
@@ -13,6 +16,8 @@ import { P } from "@/lib/permission-codes";
 export default function KraResponsesPage() {
   const { dateTime } = useOrgFormat();
   const { capabilities, hasPermission } = useAuth();
+  const { adminPath, isPlatformManaged, organizationId: platformOrgId, tenantCapabilities } = useAdminApi();
+  const params = useParams();
   const [rows, setRows] = useState([]);
   const [deviceStatus, setDeviceStatus] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -21,15 +26,20 @@ export default function KraResponsesPage() {
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
 
-  const kraEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
+  const effectiveCapabilities = isPlatformManaged ? tenantCapabilities ?? capabilities : capabilities;
+
+  const kraEnabled = isKraDeviceEnabled(effectiveCapabilities?.module_settings, effectiveCapabilities);
+  const settingsHref = isPlatformManaged
+    ? platformOrgSettingsHref(platformOrgId ?? params?.id)
+    : "/admin/settings";
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const [res, statusRes] = await Promise.all([
-        apiRequest("/kra-responses", { searchParams: { per_page: 100 } }),
-        apiRequest("/kra/device-status").catch(() => null),
+        apiRequest(adminPath("/kra-responses"), { searchParams: { per_page: 100 } }),
+        apiRequest(adminPath("/kra/device-status")).catch(() => null),
       ]);
       setRows(res.data ?? []);
       setDeviceStatus(statusRes);
@@ -38,7 +48,7 @@ export default function KraResponsesPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [adminPath]);
 
   useEffect(() => {
     load();
@@ -49,7 +59,7 @@ export default function KraResponsesPage() {
     setMessage(null);
     setError(null);
     try {
-      const res = await apiRequest(`/kra-responses/${row.id}/retry`, { method: "POST" });
+      const res = await apiRequest(adminPath(`/kra-responses/${row.id}/retry`), { method: "POST" });
       setMessage(res.message ?? "Retry succeeded.");
       await load();
       if (res.kra_response) setSelected(res.kra_response);
@@ -65,7 +75,9 @@ export default function KraResponsesPage() {
       title="KRA device log"
       subtitle="Fiscal receipt submissions from checkout and credit notes"
     >
-      <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "KRA device log" }]} />
+      {!isPlatformManaged ? (
+        <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "KRA device log" }]} />
+      ) : null}
 
       <div className="mb-4 space-y-2">
         {kraEnabled ? (
@@ -84,8 +96,8 @@ export default function KraResponsesPage() {
         ) : (
           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
             KRA device is <strong>disabled</strong>. Enable it under{" "}
-            <Link href="/admin/settings" className="font-medium text-[#185FA5] hover:underline">
-              Admin → Settings → Finance
+            <Link href={settingsHref} className="font-medium text-[#185FA5] hover:underline">
+              {isPlatformManaged ? "Organization settings → Finance" : "Admin → Settings → Finance"}
             </Link>{" "}
             (device IP, serial, PIN) before checkout can submit fiscal receipts.
           </p>
@@ -140,7 +152,9 @@ export default function KraResponsesPage() {
                     >
                       Details
                     </button>
-                    {hasPermission(P.admin.settings.view) && r.status !== "success" && r.sale_id ? (
+                    {(hasPermission(P.admin.settings.view) || isPlatformManaged) &&
+                    r.status !== "success" &&
+                    r.sale_id ? (
                       <>
                         {" · "}
                         <button

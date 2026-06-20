@@ -18,7 +18,7 @@ import { P } from "@/lib/permission-codes";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
 
 const PAGE_SIZE = 10;
-const COLUMN_STORAGE_KEY = "pos-erp-products-visible-columns";
+const COLUMN_STORAGE_KEY = "centrix-erp-products-visible-columns";
 
 const PRODUCT_COLUMNS = [
   { id: "product", label: "Product name", defaultVisible: true, required: true },

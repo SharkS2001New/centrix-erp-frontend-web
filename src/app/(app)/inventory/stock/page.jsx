@@ -26,7 +26,7 @@ import {
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 
 const PAGE_SIZE = 15;
-const COLUMN_STORAGE_KEY = "pos-erp-inventory-stock-columns";
+const COLUMN_STORAGE_KEY = "centrix-erp-inventory-stock-columns";
 
 const STOCK_COLUMNS = [
   { id: "product", label: "Product", defaultVisible: true, required: true },

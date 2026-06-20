@@ -4,7 +4,7 @@ import Link from "next/link";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
 import { SupplierStatusBadge, formatSupplierKes } from "./suppliers-shared";
 
-export const COLUMN_STORAGE_KEY = "pos-erp-suppliers-visible-columns";
+export const COLUMN_STORAGE_KEY = "centrix-erp-suppliers-visible-columns";
 
 const REMOVED_COLUMN_IDS = new Set([
   "supplier_code",

@@ -2,7 +2,7 @@
 
 > **Purpose:** Read this document to understand how the web app is organized — routes, workspaces, sidebar links, permissions, and modules. Upload it to an AI assistant when you want help reorganizing navigation or simplifying information architecture.
 >
-> **Repos:** `pos-erp-web` (Next.js frontend) + `pos-erp-api` (Laravel API). This doc focuses on the web app; module/permission truth lives in the API config files.
+> **Repos:** `centrix-erp-frontend-web` (Next.js frontend) + `centrix-erp-backend-api` (Laravel API). This doc focuses on the web app; module/permission truth lives in the API config files.
 
 ---
 
@@ -621,4 +621,4 @@ Constraints:
 
 ---
 
-*Generated from codebase analysis of pos-erp-web. Update when nav-config.js or erp_workspaces.php changes.*
+*Generated from codebase analysis of centrix-erp-frontend-web. Update when nav-config.js or erp_workspaces.php changes.*

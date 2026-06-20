@@ -5,7 +5,7 @@ import { PlatformAdminScreen } from "@/components/platform/platform-admin-screen
 
 export default function PlatformAdminRolesPage() {
   return (
-    <PlatformAdminScreen>
+    <PlatformAdminScreen breadcrumbTail={[{ label: "Roles & permissions" }]}>
       <AdminRolesPage />
     </PlatformAdminScreen>
   );

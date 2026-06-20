@@ -20,7 +20,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 
 const PAGE_SIZE = 10;
-const COLUMN_STORAGE_KEY = "pos-erp-customers-visible-columns";
+const COLUMN_STORAGE_KEY = "centrix-erp-customers-visible-columns";
 
 const CUSTOMER_COLUMNS = [
   {

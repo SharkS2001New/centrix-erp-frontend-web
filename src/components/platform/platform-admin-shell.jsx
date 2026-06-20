@@ -6,9 +6,17 @@ import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminApiProvider } from "@/contexts/admin-api-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { PlatformAdminNav } from "@/components/platform/platform-admin-nav";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
+import { platformOrgSettingsHref } from "@/lib/platform-admin-nav";
 
-export function PlatformAdminShell({ title, subtitle, children, breadcrumbTail = [] }) {
+export function PlatformAdminShell({
+  title,
+  subtitle,
+  children,
+  breadcrumbTail = [],
+  embedded = false,
+}) {
   const params = useParams();
   const router = useRouter();
   const orgId = params?.id;
@@ -16,6 +24,7 @@ export function PlatformAdminShell({ title, subtitle, children, breadcrumbTail =
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [organization, setOrganization] = useState(null);
+  const [orgPayload, setOrgPayload] = useState(null);
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -28,6 +37,7 @@ export function PlatformAdminShell({ title, subtitle, children, breadcrumbTail =
         return;
       }
       setOrganization(res.organization ?? null);
+      setOrgPayload(res);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load organization.");
     } finally {
@@ -41,11 +51,8 @@ export function PlatformAdminShell({ title, subtitle, children, breadcrumbTail =
 
   const apiPrefix = orgId ? `/admin/organizations/${orgId}` : "";
 
-  return (
-    <CatalogPageShell
-      title={organization ? `${organization.org_name} — ${title}` : title}
-      subtitle={subtitle}
-    >
+  const frame = (
+    <>
       <AdminBreadcrumb
         items={[
           { label: "Platform", href: "/platform" },
@@ -73,17 +80,32 @@ export function PlatformAdminShell({ title, subtitle, children, breadcrumbTail =
               <Link href={`/platform/organizations/${orgId}/admin`} className="text-[#185FA5] hover:underline">
                 Admin hub
               </Link>
-              <Link href={`/platform/organizations/${orgId}/settings`} className="text-[#185FA5] hover:underline">
+              <Link href={platformOrgSettingsHref(orgId)} className="text-[#185FA5] hover:underline">
                 Organization settings
               </Link>
             </div>
           </div>
 
-          <AdminApiProvider apiPrefix={apiPrefix} organizationId={orgId}>
+          <PlatformAdminNav />
+
+          <AdminApiProvider apiPrefix={apiPrefix} organizationId={orgId} orgPayload={orgPayload}>
             {children}
           </AdminApiProvider>
         </>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return frame;
+  }
+
+  return (
+    <CatalogPageShell
+      title={organization ? `${organization.org_name} — ${title}` : title}
+      subtitle={subtitle}
+    >
+      {frame}
     </CatalogPageShell>
   );
 }
