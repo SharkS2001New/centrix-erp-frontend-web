@@ -1,6 +1,8 @@
-import { getSalesOrderQueueWorkflow, salesOrderQueueNavItems } from "@/lib/order-workflow";
+import { getSalesOrderQueueWorkflow, salesOrderSidebarNavItems } from "@/lib/order-workflow";
 import { isMobileOrdersEnabled, isPosTillFloatRequired } from "@/lib/sales-settings";
-import { isNavItemVisible, navSections } from "@/lib/nav-config";
+import { userHasMobileChannel } from "@/lib/mobile-order-scope";
+import { isNavItemVisible, isNavSectionVisible, navSections } from "@/lib/nav-config";
+import { withNavItemIcon } from "@/lib/nav-item-icons";
 import { filterNavSectionsForWorkspace, defaultWorkspaceId } from "@/lib/workspaces";
 
 /**
@@ -14,16 +16,30 @@ export function buildWorkspaceNavSections({
 }) {
   const requireTillFloat = isPosTillFloatRequired(capabilities?.module_settings);
   const workflow = getSalesOrderQueueWorkflow(capabilities, "backend");
-  const includeMobile = isMobileOrdersEnabled(capabilities?.module_settings);
-  const salesOrderNavItems = salesOrderQueueNavItems(workflow, { includeMobile }).map((item) => ({
-    href: item.href,
-    label: item.label,
-    module: "sales.backend",
-    permission: "sales.orders.view",
-    exact: item.slug === "all",
-    group: "Orders",
-    ordersNav: false,
-  }));
+  const includeMobile =
+    isMobileOrdersEnabled(capabilities?.module_settings) &&
+    userHasMobileChannel(navContext.user?.login_channels);
+  const salesOrderNavItems = salesOrderSidebarNavItems(workflow, { excludeMobile: true }).map((item) =>
+    withNavItemIcon({
+      href: item.href,
+      label: item.label,
+      module: "sales.backend",
+      permission: "sales.orders.view",
+      exact: item.slug === "all",
+      ordersNav: false,
+    }),
+  );
+  const mobileOrderNavItems = includeMobile
+    ? [
+        withNavItemIcon({
+          href: "/sales/orders/queues/mobile",
+          label: "Mobile orders",
+          module: "sales.backend",
+          permission: "sales.orders.view",
+          ordersNav: false,
+        }),
+      ]
+    : [];
 
   const withOrders = navSections
     .filter((section) => !section.superAdminOnly || isSuperAdmin?.())
@@ -33,9 +49,13 @@ export function buildWorkspaceNavSections({
         if (item.ordersNav) {
           return salesOrderNavItems.filter((navItem) => isNavItemVisible(navItem, navContext));
         }
+        if (item.mobileOrdersNav) {
+          return mobileOrderNavItems.filter((navItem) => isNavItemVisible(navItem, navContext));
+        }
         return isNavItemVisible(item, navContext) ? [item] : [];
       }),
     }))
+    .filter((section) => isNavSectionVisible(section, navContext))
     .filter((section) => section.items.length > 0);
 
   const resolvedWorkspaceId = workspaceId ?? defaultWorkspaceId(capabilities, navContext);

@@ -23,9 +23,21 @@ export const REPORT_CATEGORY_DEFS = [
       "sales-by-customer",
       "sales-by-channel",
       "daily-sales",
-      "mobile-route-sales",
       "sales-pipeline",
       "category-sales",
+    ],
+  },
+  {
+    id: "distribution",
+    title: "Distribution Reports",
+    description: "Route sales, trips, and delivery performance",
+    icon: "logistics",
+    keys: [
+      "mobile-route-sales",
+      "dispatch-trips",
+      "trip-cash-settlement",
+      "pod-compliance",
+      "driver-deliveries",
     ],
   },
   {
@@ -113,7 +125,7 @@ export const REPORT_CATEGORY_DEFS = [
   },
   {
     id: "hr",
-    title: "HR Reports",
+    title: "Payroll & workforce",
     description: "Leave, payroll, headcount, and workforce analytics",
     icon: "payroll",
     keys: [

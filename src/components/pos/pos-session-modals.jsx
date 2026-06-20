@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { PosReportView } from "@/components/pos/pos-report-view";
@@ -8,16 +8,39 @@ import { PosStatusBadge, printPosTillReport } from "@/components/pos/pos-shared"
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { CLOSE_REASONS, DEFAULT_CLOSE_REASON, formatTillKesExact, tillDisplayName, varianceLabel, resolveTillReportBundle } from "@/lib/pos-till";
 
-function PosSessionDialogShell({ open, onClose, title, subtitle, children, footer, wide = false }) {
+function PosSessionDialogShell({
+  open,
+  onClose,
+  title,
+  subtitle,
+  children,
+  footer,
+  wide = false,
+  closeOnBackdrop = true,
+  layerClassName = "z-50",
+}) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
+    <div className={`fixed inset-0 flex items-center justify-center p-4 ${layerClassName}`}>
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/40"
+        aria-label="Close"
+        onMouseDown={
+          closeOnBackdrop
+            ? (e) => {
+                e.preventDefault();
+                onClose();
+              }
+            : undefined
+        }
+      />
       <div
         role="dialog"
         aria-modal="true"
-        className={`relative flex max-h-[90vh] w-full flex-col rounded-xl border border-slate-200 bg-white text-slate-900 shadow-xl ${wide ? "max-w-3xl" : "max-w-lg"}`}
+        className={`relative z-10 flex max-h-[90vh] w-full flex-col rounded-xl border border-slate-200 bg-white text-slate-900 shadow-xl ${wide ? "max-w-3xl" : "max-w-lg"}`}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="shrink-0 border-b border-slate-200 px-6 py-4">
           <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
@@ -30,17 +53,33 @@ function PosSessionDialogShell({ open, onClose, title, subtitle, children, foote
   );
 }
 
+function deferModalAction(fn) {
+  window.setTimeout(() => fn(), 0);
+}
+
 function ReportModalFooter({ onClose, onPrint, printLabel = "Print report" }) {
   return (
     <div className="flex justify-end gap-2">
       <button
         type="button"
-        onClick={onClose}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          deferModalAction(onClose);
+        }}
         className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
       >
         Close
       </button>
-      <PrimaryButton type="button" showIcon={false} onClick={onPrint}>
+      <PrimaryButton
+        type="button"
+        showIcon={false}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onPrint();
+        }}
+      >
         {printLabel}
       </PrimaryButton>
     </div>
@@ -135,6 +174,7 @@ export function CloseSessionModal({
   blindTillClose = false,
   onClosed,
 }) {
+  const formRef = useRef(null);
   const [actualCash, setActualCash] = useState("");
   const [reason, setReason] = useState(DEFAULT_CLOSE_REASON);
   const [notes, setNotes] = useState("");
@@ -153,7 +193,7 @@ export function CloseSessionModal({
   const isBalanced = actualCash !== "" && Math.abs(variance) < 0.01;
 
   useEffect(() => {
-    if (!open || blindTillClose || expected <= 0) return;
+    if (!open || blindTillClose) return;
     setActualCash((current) => (current === "" ? String(expected) : current));
   }, [open, blindTillClose, expected]);
 
@@ -182,6 +222,7 @@ export function CloseSessionModal({
     <PosSessionDialogShell
       open={open}
       onClose={onClose}
+      layerClassName="z-[90]"
       title="Close POS session"
       subtitle={
         blindTillClose
@@ -199,10 +240,10 @@ export function CloseSessionModal({
             Cancel
           </button>
           <PrimaryButton
-            type="submit"
-            form="close-session-form"
+            type="button"
             showIcon={false}
             disabled={busy || !actualCash}
+            onClick={() => formRef.current?.requestSubmit()}
           >
             {busy ? "Closing…" : "Close session"}
           </PrimaryButton>
@@ -213,7 +254,7 @@ export function CloseSessionModal({
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
 
-      <form id="close-session-form" onSubmit={handleClose} className="space-y-4">
+      <form ref={formRef} id="close-session-form" onSubmit={handleClose} className="space-y-4">
         {!blindTillClose ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <dl className="space-y-2 text-sm">
@@ -301,6 +342,7 @@ export function ZReportModal({
   organizationName = DEFAULT_PRINT_ORG_NAME,
   showFloatBreakdown = false,
   fallbackCashierName = null,
+  fallbackTillName = null,
 }) {
   const [loaded, setLoaded] = useState(null);
   const [till, setTill] = useState(null);
@@ -319,18 +361,20 @@ export function ZReportModal({
 
     if (payload) {
       setLoaded(payload);
+      setCashierName(fallbackCashierName);
+      setTill(null);
+      if (fallbackTillName) return;
+
       const session = payload.session ?? payload.report?.session;
       if (session?.till_id) {
         apiRequest(`/tills/${session.till_id}`)
           .then(setTill)
           .catch(() => setTill(null));
       }
-      if (session?.cashier_id) {
+      if (session?.cashier_id && !fallbackCashierName) {
         apiRequest(`/users/${session.cashier_id}`)
           .then((u) => setCashierName(u.full_name ?? u.username ?? null))
           .catch(() => setCashierName(fallbackCashierName));
-      } else {
-        setCashierName(fallbackCashierName);
       }
       return;
     }
@@ -356,13 +400,16 @@ export function ZReportModal({
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load Z report"))
       .finally(() => setLoading(false));
-  }, [open, payload, sessionId, fallbackCashierName]);
+  }, [open, payload, sessionId, fallbackCashierName, fallbackTillName]);
 
   const bundle = useMemo(() => resolveTillReportBundle(loaded), [loaded]);
   const session = bundle.session;
   const report = bundle.report;
   const variance = bundle.variance;
-  const tillName = useMemo(() => tillDisplayName(till), [till]);
+  const tillName = useMemo(
+    () => fallbackTillName ?? tillDisplayName(till),
+    [fallbackTillName, till],
+  );
   const resolvedCashier = cashierName ?? fallbackCashierName;
 
   function handlePrint() {
@@ -383,8 +430,10 @@ export function ZReportModal({
       open={open}
       onClose={onClose}
       wide
+      closeOnBackdrop={false}
+      layerClassName="z-[100]"
       title="Z report"
-      subtitle="End-of-day report for the closed session"
+      subtitle="End-of-day report for the closed session — print before closing"
       footer={
         report?.sales || report?.expected_cash != null ? (
           <ReportModalFooter onClose={onClose} onPrint={handlePrint} printLabel="Print Z report" />
@@ -437,6 +486,7 @@ export function HandoverSessionModal({
   busy = false,
   error = null,
 }) {
+  const formRef = useRef(null);
   const [toCashierId, setToCashierId] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -478,10 +528,10 @@ export function HandoverSessionModal({
             Cancel
           </button>
           <PrimaryButton
-            type="submit"
-            form="handover-session-form"
+            type="button"
             showIcon={false}
             disabled={busy || !toCashierId}
+            onClick={() => formRef.current?.requestSubmit()}
           >
             {busy ? "Handing over…" : "Hand over"}
           </PrimaryButton>
@@ -491,7 +541,7 @@ export function HandoverSessionModal({
       {error ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       ) : null}
-      <form id="handover-session-form" onSubmit={handleSubmit} className="space-y-4">
+      <form ref={formRef} id="handover-session-form" onSubmit={handleSubmit} className="space-y-4">
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
           <p className="text-slate-500">Till · current cashier</p>
           <p className="font-medium text-slate-900">

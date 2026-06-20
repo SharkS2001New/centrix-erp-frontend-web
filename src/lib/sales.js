@@ -36,6 +36,13 @@ export function orderSourceLabel(source, fallbackChannel) {
   return ORDER_SOURCE_LABELS[key] ?? key ?? "—";
 }
 
+/** Mobile field sales or POS route-order mode (route assigned, channel mobile|pos). */
+export function isRouteOrderSale(sale) {
+  if (!sale?.route_id) return false;
+  const channel = String(sale.channel ?? sale.order_source ?? "").toLowerCase();
+  return channel === "mobile" || channel === "pos";
+}
+
 /** Visual pipeline steps for backend/mobile orders. */
 export const ORDER_PIPELINE_STEPS = workflowPipelineSteps();
 

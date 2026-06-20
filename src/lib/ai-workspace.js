@@ -26,6 +26,14 @@ export const AI_WORKSPACE_STARTERS = {
     "How do I run a payroll report?",
     "Where are leave requests?",
   ],
+  distribution: [
+    "How do I dispatch orders to a trip?",
+    "Where do I assign a driver to an order?",
+    "How do I record proof of delivery?",
+    "Where are delivery routes managed?",
+    "Which orders are ready for dispatch today?",
+    "Where is the mobile route sales report?",
+  ],
   admin: [
     "How do I add a new user?",
     "Where are roles and permissions?",
@@ -55,6 +63,7 @@ export function aiWorkspaceLabel(workspaceId, capabilities) {
     backoffice: "Backoffice",
     accounting: "Accounting",
     hr: "Human Resources",
+    distribution: "Distribution",
     admin: "Administration",
     pos: "External POS",
   };

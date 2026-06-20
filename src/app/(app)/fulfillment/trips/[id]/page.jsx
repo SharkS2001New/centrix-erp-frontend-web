@@ -96,9 +96,14 @@ export default function TripDetailPage() {
   }
 
   const lines = loadingList?.lines ?? [];
-  const canLock = trip.status === "draft" && lines.length > 0;
-  const canStart = ["draft", "loading"].includes(trip.status) && (trip.sales?.length ?? 0) > 0;
+  const loadingLocked = loadingList?.status && loadingList.status !== "open";
+  const canLock = trip.status === "draft" && lines.length > 0 && !loadingLocked;
+  const canStart =
+    ["draft", "loading"].includes(trip.status) &&
+    (trip.sales?.length ?? 0) > 0 &&
+    (lines.length === 0 || loadingLocked);
   const canComplete = trip.status === "in_transit";
+  const showCloseReconciliation = ["in_transit", "completed"].includes(trip.status);
   const canReorder = !["completed", "cancelled"].includes(trip.status);
   const showCashSettlement =
     trip.expected_cash != null &&
@@ -160,6 +165,16 @@ export default function TripDetailPage() {
     <CatalogPageShell
       title={trip.trip_code}
       subtitle={`${trip.route?.route_name ?? "Route TBD"} · ${trip.scheduled_date}`}
+      action={
+        showCloseReconciliation ? (
+          <Link
+            href={`/fulfillment/trips/${id}/close`}
+            className="inline-flex items-center rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#144f8a]"
+          >
+            Close trip
+          </Link>
+        ) : null
+      }
     >
       <AdminBreadcrumb
         items={[
@@ -241,22 +256,21 @@ export default function TripDetailPage() {
         {canStart ? (
           <button
             type="button"
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50"
-            disabled={busy}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+            disabled={busy || (lines.length > 0 && !loadingLocked)}
+            title={lines.length > 0 && !loadingLocked ? "Lock the loading list first" : undefined}
             onClick={() => runAction(`/dispatch-trips/${id}/start`)}
           >
             Start trip
           </button>
         ) : null}
         {canComplete ? (
-          <button
-            type="button"
+          <Link
+            href={`/fulfillment/trips/${id}/close`}
             className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 hover:bg-emerald-100"
-            disabled={busy}
-            onClick={() => runAction(`/dispatch-trips/${id}/complete`)}
           >
-            Complete trip
-          </button>
+            Close trip…
+          </Link>
         ) : null}
         {trip.status !== "completed" && trip.status !== "cancelled" ? (
           <button
@@ -329,6 +343,12 @@ export default function TripDetailPage() {
         <h2 className="text-lg font-medium text-slate-900">Loading list</h2>
         <p className="mt-1 text-sm text-slate-500">
           Aggregated products for this trip · Total {formatSaleKes(loadingList?.total_amount ?? 0)}
+          {loadingList?.status ? (
+            <>
+              {" "}
+              · Status <span className="capitalize font-medium">{loadingList.status}</span>
+            </>
+          ) : null}
         </p>
         <div className="mt-4">
           <DashboardSummaryTable

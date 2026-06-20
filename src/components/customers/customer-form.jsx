@@ -96,7 +96,7 @@ export function validateCustomerLocationFields(form) {
 
 export function updateCustomerFormField(form, key, value) {
   const next = { ...form, [key]: value };
-  if (key === "customer_type" && value === "debtor") {
+  if (key === "customer_type" && (value === "debtor" || value === "regular")) {
     next.route_id = "";
   }
   if (key === "route_id" && value) {
@@ -193,7 +193,12 @@ export function CustomerFormFields({
         >
           <option value="debtor">Debtor</option>
           <option value="route">Route</option>
+          <option value="regular">Regular customer</option>
         </select>
+        <p className="mt-1 text-xs text-slate-500">
+          Debtors are on account. Route customers belong to a delivery route. Regular customers are
+          for records that are not on credit.
+        </p>
       </Field>
 
       {showBranchSelect && (

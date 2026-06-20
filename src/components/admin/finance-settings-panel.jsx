@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { financeFormFromApi, financePayloadFromForm } from "@/lib/finance-settings";
+import { financeFormFromApi, financePayloadFromForm, isPlatformKraIntegrationEnabled, isPlatformMpesaStkEnabled } from "@/lib/finance-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { ExternalAccountingIntegrationPanel } from "@/components/admin/external-accounting-integration-panel";
 import { AccountingAutoPostPanel } from "@/components/admin/accounting-auto-post-panel";
@@ -34,7 +34,7 @@ function UrlField({ label, value, onChange, placeholder }) {
 }
 
 export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }) {
-  const { refreshCapabilities } = useAuth();
+  const { refreshCapabilities, capabilities } = useAuth();
   const [form, setForm] = useState(financeFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
@@ -71,6 +71,8 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
 
   const mpesaStatus = form.mpesa_status;
   const mpesa = form.mpesa ?? {};
+  const kraAllowed = isPlatformKraIntegrationEnabled({ finance: form }, capabilities);
+  const mpesaAllowed = isPlatformMpesaStkEnabled({ finance: form }, capabilities);
 
   return (
     <section className="theme-panel rounded-xl border p-6 shadow-sm">
@@ -80,6 +82,7 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
         <p className="mt-4 text-sm text-slate-500">Loading…</p>
       ) : (
         <div className="mt-5 space-y-6">
+          {kraAllowed ? (
           <div>
             <h3 className="text-sm font-medium text-slate-900">KRA fiscal device</h3>
             <p className="mt-1 text-sm text-slate-500">
@@ -142,6 +145,11 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
               />
             </div>
           </div>
+          ) : (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              KRA integration is disabled for this organization by the platform administrator.
+            </p>
+          )}
 
           <div className="border-t border-[var(--theme-border)] pt-6">
             <h3 className="theme-heading text-sm font-medium">Accounting system</h3>
@@ -305,6 +313,7 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
             </div>
           </div>
 
+          {mpesaAllowed ? (
           <div className="border-t border-slate-200 pt-6">
             <h3 className="text-sm font-medium text-slate-900">M-Pesa (paybill / till)</h3>
             <p className="mt-1 text-sm text-slate-500">
@@ -437,6 +446,11 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
               organization by paybill or till number.
             </p>
           </div>
+          ) : (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              M-Pesa STK Push is disabled for this organization by the platform administrator.
+            </p>
+          )}
 
           <PrimaryButton type="button" showIcon={false} disabled={saving} onClick={() => void saveFinanceSettings()}>
             {saving ? "Saving…" : "Save finance settings"}

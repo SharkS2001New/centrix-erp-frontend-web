@@ -7,13 +7,13 @@ import { useAuth } from "@/contexts/auth-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { defaultWorkspaceId } from "@/lib/workspaces";
 import {
-  WORKSPACE_DASHBOARD_SCOPES,
+  WORKSPACE_REPORT_OVERVIEW_LABEL,
   WORKSPACE_REPORTS_LABEL,
   filterReportCategoriesForWorkspace,
 } from "@/lib/workspace-reports";
 import { CatalogPageShell, inputClassName } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboard-section";
+import { ReportsOverviewSummary } from "@/components/reports/reports-overview-summary";
 import { DashboardErrorBanner, DashboardSection } from "@/components/dashboard/dashboard-shared";
 import {
   buildReportCategories,
@@ -142,13 +142,14 @@ export function ReportsHub() {
   }, [allReports, search, activeCategory]);
 
   const totalReportCount = allReports.length;
+  const customReportCount = allReports.filter((r) => r.isCustom).length;
 
   return (
     <CatalogPageShell
-      title="Reports"
+      title={WORKSPACE_REPORT_OVERVIEW_LABEL}
       subtitle={workspaceLabel}
     >
-      <AdminBreadcrumb items={[{ label: workspaceLabel }]} />
+      <AdminBreadcrumb items={[{ label: WORKSPACE_REPORT_OVERVIEW_LABEL }]} />
 
       {hasPermission(P.reports.builder.view) ? (
         <div className="mb-6 flex flex-wrap gap-3">
@@ -163,44 +164,38 @@ export function ReportsHub() {
 
       <DashboardErrorBanner message={error ?? dashError} />
 
-      {WORKSPACE_DASHBOARD_SCOPES[workspaceId]?.kpis?.length ? (
-        <DashboardSection title="Performance overview" subtitle="KPIs for this module" className="mb-8">
-          <ReportsDashboardSection workspaceScope={workspaceId} onError={setDashError} />
-        </DashboardSection>
-      ) : null}
+      <ReportsOverviewSummary
+        workspaceId={workspaceId}
+        totalReports={totalReportCount}
+        categoryCount={categories.length}
+        customReportCount={customReportCount}
+        onError={setDashError}
+      />
 
-      <section className="mb-8">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">All reports</h2>
-            <p className="text-sm text-slate-500">
-              {totalReportCount} reports in {workspaceLabel.toLowerCase()}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="search"
-              placeholder="Search reports…"
-              className={`${inputClassName()} w-56`}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setViewMode("cards")}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium ${viewMode === "cards" ? "bg-indigo-50 text-indigo-700" : "text-slate-600"}`}
-              >
-                Card view
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("list")}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium ${viewMode === "list" ? "bg-indigo-50 text-indigo-700" : "text-slate-600"}`}
-              >
-                List view
-              </button>
-            </div>
+      <DashboardSection title="All reports" subtitle={`Browse ${totalReportCount} reports in this module`}>
+        <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+          <input
+            type="search"
+            placeholder="Search reports…"
+            className={`${inputClassName()} w-56`}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
+            <button
+              type="button"
+              onClick={() => setViewMode("cards")}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium ${viewMode === "cards" ? "bg-indigo-50 text-indigo-700" : "text-slate-600"}`}
+            >
+              Card view
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium ${viewMode === "list" ? "bg-indigo-50 text-indigo-700" : "text-slate-600"}`}
+            >
+              List view
+            </button>
           </div>
         </div>
 
@@ -270,7 +265,7 @@ export function ReportsHub() {
             )}
           </div>
         </div>
-      </section>
+      </DashboardSection>
     </CatalogPageShell>
   );
 }

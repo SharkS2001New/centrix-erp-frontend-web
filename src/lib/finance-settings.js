@@ -43,7 +43,20 @@ export function mergeFinanceSettings(moduleSettings) {
   return finance;
 }
 
-export function isKraDeviceEnabled(moduleSettings) {
+export function isPlatformMpesaStkEnabled(moduleSettings, capabilities) {
+  if (capabilities?.platform_mpesa_stk_enabled === false) return false;
+  const finance = mergeFinanceSettings(moduleSettings);
+  return finance.enable_mpesa_stk !== false;
+}
+
+export function isPlatformKraIntegrationEnabled(moduleSettings, capabilities) {
+  if (capabilities?.platform_kra_integration_enabled === false) return false;
+  const finance = mergeFinanceSettings(moduleSettings);
+  return finance.enable_kra_integration !== false;
+}
+
+export function isKraDeviceEnabled(moduleSettings, capabilities) {
+  if (!isPlatformKraIntegrationEnabled(moduleSettings, capabilities)) return false;
   return Boolean(mergeFinanceSettings(moduleSettings).enable_kra_device);
 }
 
@@ -56,14 +69,18 @@ function parseBooleanSetting(value, defaultValue = true) {
   return Boolean(value);
 }
 
-export function isStkPushEnabled(moduleSettings) {
+export function isStkPushEnabled(moduleSettings, capabilities = null) {
   if (moduleSettings == null) return false;
+  if (!isPlatformMpesaStkEnabled(moduleSettings, capabilities)) return false;
   const mpesa = mergeFinanceSettings(moduleSettings).mpesa ?? MPESA_DEFAULTS;
   return parseBooleanSetting(mpesa.enable_stk_push, true);
 }
 
-export function shouldSubmitKraOnCheckout(moduleSettings) {
+export function shouldSubmitKraOnCheckout(moduleSettings, capabilities = null) {
   const finance = mergeFinanceSettings(moduleSettings);
+  if (!isPlatformKraIntegrationEnabled(moduleSettings, capabilities)) {
+    return false;
+  }
   if (!finance.enable_kra_device) {
     return false;
   }

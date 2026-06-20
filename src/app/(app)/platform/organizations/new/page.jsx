@@ -1,20 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
-  OrgRegisterField,
-  inputClass,
-  OrganizationModuleToggles,
-  OrganizationPlatformSalesSettings,
-  ManagerAccountFields,
+  OrganizationConfigTabs,
+  InitialAdministratorFields,
   modulesForProfile,
   defaultSalesPlatformState,
 } from "@/components/admin/organization-register-form";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { buildDomainChildrenMap, patchEnabledModules } from "@/lib/module-registry";
 
 export default function RegisterOrganizationPage() {
   const { capabilities } = useAuth();
@@ -28,7 +26,6 @@ export default function RegisterOrganizationPage() {
   const [vatRegno, setVatRegno] = useState("");
   const [deploymentProfile, setDeploymentProfile] = useState("wholesale_retail");
   const [moduleOptions, setModuleOptions] = useState([]);
-  const [navGroups, setNavGroups] = useState([]);
   const [profilePresets, setProfilePresets] = useState([]);
   const [enabledModules, setEnabledModules] = useState({});
   const [salesPlatform, setSalesPlatform] = useState(() => defaultSalesPlatformState());
@@ -41,6 +38,18 @@ export default function RegisterOrganizationPage() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
 
+  const domainChildrenMap = useMemo(() => buildDomainChildrenMap(moduleOptions), [moduleOptions]);
+
+  const tenantValues = {
+    company_code: companyCode,
+    org_name: orgName,
+    org_email: orgEmail,
+    primary_tel: primaryTel,
+    org_address: orgAddress,
+    org_pin: orgPin,
+    vat_regno: vatRegno,
+  };
+
   useEffect(() => {
     apiRequest("/admin/organizations/provision-options")
       .then((res) => {
@@ -48,13 +57,12 @@ export default function RegisterOrganizationPage() {
         const modules = res.modules ?? [];
         setProfilePresets(profiles);
         setModuleOptions(modules);
-        setNavGroups(res.nav_groups ?? []);
         const initialProfile = profiles.find((p) => p.key === "wholesale_retail")
           ? "wholesale_retail"
           : profiles[0]?.key;
         if (initialProfile) {
           setDeploymentProfile(initialProfile);
-          setEnabledModules(modulesForProfile(profiles, initialProfile));
+          setEnabledModules(modulesForProfile(profiles, initialProfile, modules));
           setSalesPlatform(defaultSalesPlatformState(initialProfile));
         }
       })
@@ -65,18 +73,31 @@ export default function RegisterOrganizationPage() {
       });
   }, []);
 
+  function onTenantChange(field, value) {
+    const map = {
+      company_code: setCompanyCode,
+      org_name: setOrgName,
+      org_email: setOrgEmail,
+      primary_tel: setPrimaryTel,
+      org_address: setOrgAddress,
+      org_pin: setOrgPin,
+      vat_regno: setVatRegno,
+    };
+    map[field]?.(value);
+  }
+
   function onProfileChange(nextProfile) {
     setDeploymentProfile(nextProfile);
-    setEnabledModules(modulesForProfile(profilePresets, nextProfile));
+    setEnabledModules(modulesForProfile(profilePresets, nextProfile, moduleOptions));
     setSalesPlatform(defaultSalesPlatformState(nextProfile));
   }
 
   function toggleModule(key) {
-    setEnabledModules((prev) => ({ ...prev, [key]: !prev[key] }));
+    setEnabledModules((prev) => patchEnabledModules(prev, { [key]: !prev[key] }, domainChildrenMap));
   }
 
   function setModules(partial) {
-    setEnabledModules((prev) => ({ ...prev, ...partial }));
+    setEnabledModules((prev) => patchEnabledModules(prev, partial, domainChildrenMap));
   }
 
   function updateManager(field, value) {
@@ -126,7 +147,7 @@ export default function RegisterOrganizationPage() {
   return (
     <CatalogPageShell
       title="Register organization"
-      subtitle="Register a tenant, choose sidebar modules (Sales, HR, Inventory, etc.), configure sales checkout & workflow, and create the manager account."
+      subtitle="Configure tenant profile, sales behaviour, modules, and the first administrator."
     >
       <AdminBreadcrumb
         items={[
@@ -149,14 +170,13 @@ export default function RegisterOrganizationPage() {
               <dd>{result.organization?.org_name}</dd>
             </div>
             <div>
-              <dt className="font-medium">Manager username</dt>
+              <dt className="font-medium">Administrator username</dt>
               <dd className="font-mono">{result.manager?.username}</dd>
             </div>
           </dl>
           <p className="mt-4 text-emerald-800">
-            Share the manager username and password securely. They sign in with organization code{" "}
-            <strong>{result.organization?.company_code}</strong> on the same application URL, then configure
-            company profile, branches, users, roles, and system preferences under Administration.
+            Share the administrator username and password securely. They sign in with organization code{" "}
+            <strong>{result.organization?.company_code}</strong> on the same application URL.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <PrimaryButton type="button" onClick={() => setResult(null)}>
@@ -166,7 +186,7 @@ export default function RegisterOrganizationPage() {
               href={`/platform/organizations/${result.organization?.id}`}
               className="inline-flex items-center rounded-lg border border-emerald-300 px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100"
             >
-              Manage modules
+              Manage organization
             </Link>
             <Link
               href="/platform"
@@ -177,7 +197,7 @@ export default function RegisterOrganizationPage() {
           </div>
         </div>
       ) : (
-        <form onSubmit={onSubmit} className="mt-6 max-w-3xl space-y-8">
+        <form onSubmit={onSubmit} className="mt-6 max-w-3xl space-y-6">
           {!provisioningEnabled ? (
             <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               Organization registration is disabled on this server. Set{" "}
@@ -191,70 +211,25 @@ export default function RegisterOrganizationPage() {
             </p>
           ) : null}
 
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[#185FA5]">Organization details</h2>
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <OrgRegisterField label="Company code *">
-                <input
-                  className={`${inputClass} uppercase`}
-                  value={companyCode}
-                  onChange={(e) => setCompanyCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ""))}
-                  placeholder="e.g. ACME"
-                  required
-                />
-              </OrgRegisterField>
-              <OrgRegisterField label="Company name *">
-                <input className={inputClass} value={orgName} onChange={(e) => setOrgName(e.target.value)} required />
-              </OrgRegisterField>
-              <OrgRegisterField label="Email *">
-                <input
-                  type="email"
-                  className={inputClass}
-                  value={orgEmail}
-                  onChange={(e) => setOrgEmail(e.target.value)}
-                  required
-                />
-              </OrgRegisterField>
-              <OrgRegisterField label="Telephone *">
-                <input className={inputClass} value={primaryTel} onChange={(e) => setPrimaryTel(e.target.value)} required />
-              </OrgRegisterField>
-              <OrgRegisterField label="Physical address *" className="sm:col-span-2">
-                <input className={inputClass} value={orgAddress} onChange={(e) => setOrgAddress(e.target.value)} required />
-              </OrgRegisterField>
-              <OrgRegisterField label="KRA PIN (optional)">
-                <input
-                  className={`${inputClass} uppercase`}
-                  value={orgPin}
-                  onChange={(e) => setOrgPin(e.target.value)}
-                />
-              </OrgRegisterField>
-              <OrgRegisterField label="VAT reg no (optional)">
-                <input className={inputClass} value={vatRegno} onChange={(e) => setVatRegno(e.target.value)} />
-              </OrgRegisterField>
-            </div>
-          </section>
-
-          <OrganizationModuleToggles
-            moduleOptions={moduleOptions}
-            navGroups={navGroups}
-            enabledModules={enabledModules}
-            onToggle={toggleModule}
-            onSetModules={setModules}
-            onProfileChange={onProfileChange}
+          <OrganizationConfigTabs
+            mode="register"
+            tenantValues={tenantValues}
+            onTenantChange={onTenantChange}
             profilePresets={profilePresets}
             deploymentProfile={deploymentProfile}
-          />
-
-          <OrganizationPlatformSalesSettings
+            onProfileChange={onProfileChange}
             salesPlatform={salesPlatform}
-            onChange={setSalesPlatform}
-            deploymentProfile={deploymentProfile}
+            onSalesChange={setSalesPlatform}
             enabledModules={enabledModules}
-          />
-
-          <ManagerAccountFields
-            values={{ managerFullName, managerUsername, managerEmail, managerPassword }}
-            onChange={updateManager}
+            moduleOptions={moduleOptions}
+            onToggleModule={toggleModule}
+            onSetModules={setModules}
+            adminPanel={
+              <InitialAdministratorFields
+                values={{ managerFullName, managerUsername, managerEmail, managerPassword }}
+                onChange={updateManager}
+              />
+            }
           />
 
           {error ? (

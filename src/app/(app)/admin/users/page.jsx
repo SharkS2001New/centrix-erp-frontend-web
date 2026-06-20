@@ -32,9 +32,8 @@ import {
   formatLoginChannels,
   normalizeLoginChannels,
 } from "@/lib/login-channels";
-import {
-  userHasMobileChannel,
-} from "@/lib/mobile-order-scope";
+import { isOrgMobileSalesEnabled } from "@/lib/sales-settings";
+import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 
 function isProtectedUserAccount(row, currentUserId) {
   return row.id === currentUserId || Boolean(row.is_admin);
@@ -79,6 +78,14 @@ export default function AdminUsersPage() {
   const [grantedIds, setGrantedIds] = useState(new Set());
   const [deniedIds, setDeniedIds] = useState(new Set());
 
+  const mobileOrdersEnabled = isOrgMobileSalesEnabled(capabilities);
+  const availableLoginChannels = useMemo(
+    () =>
+      mobileOrdersEnabled
+        ? LOGIN_CHANNELS
+        : LOGIN_CHANNELS.filter((channel) => channel.value !== "mobile"),
+    [mobileOrdersEnabled],
+  );
   const matrix = permissionGroups;
   const branchById = useMemo(() => new Map(branches.map((b) => [b.id, b])), [branches]);
   const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
@@ -497,7 +504,7 @@ export default function AdminUsersPage() {
           </Field>
           <Field label="Allowed login channels">
             <div className="space-y-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3">
-              {LOGIN_CHANNELS.map((channel) => (
+              {availableLoginChannels.map((channel) => (
                 <label key={channel.value} className="flex items-start gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -520,10 +527,12 @@ export default function AdminUsersPage() {
               ))}
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              Mobile-only users can sign in from the mobile app but not the web backoffice or POS.
+              {mobileOrdersEnabled
+                ? "Mobile-only users can sign in from the mobile app but not the web backoffice or POS."
+                : "Mobile orders are disabled for this organization — only backoffice and POS channels are available."}
             </p>
           </Field>
-          {userHasMobileChannel(form.login_channels) ? (
+          {mobileOrdersEnabled && userHasMobileChannel(form.login_channels) ? (
             <Field label="Assigned route (optional)">
               <HrSearchableSelect
                 value={form.assigned_route_id}
@@ -539,7 +548,7 @@ export default function AdminUsersPage() {
               </p>
             </Field>
           ) : null}
-          <Field label={editing ? "New password (optional)" : "Password"}>
+          <Field label={editing ? "Reset password" : "Password"}>
             <PasswordInput
               className={inputClassName()}
               value={form.password}
@@ -547,6 +556,11 @@ export default function AdminUsersPage() {
               required={!editing}
               minLength={6}
             />
+            {editing ? (
+              <p className="mt-1 text-xs text-slate-500">
+                User must change this password on next sign-in.
+              </p>
+            ) : null}
           </Field>
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input

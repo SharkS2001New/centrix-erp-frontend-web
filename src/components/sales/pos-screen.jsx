@@ -160,7 +160,7 @@ export function PosScreen({ standalone = false }) {
   const enableVouchers = posSalesConfig.enableVouchers;
   const enableRedeemablePoints = posSalesConfig.enableRedeemablePoints;
   const enableMpesaOnPos = posSalesConfig.payment?.enableMpesaAmount;
-  const enableStkPushOnPos = isStkPushEnabled(capabilities?.module_settings);
+  const enableStkPushOnPos = isStkPushEnabled(capabilities?.module_settings, capabilities);
   const allowEditUnitPrice = posSalesConfig.allowEditUnitPrice;
   const enableBarcodeScanner = posSalesConfig.enableBarcodeScanner;
   const allowNegativeStock = posSalesConfig.allowNegativeStock;
@@ -192,6 +192,7 @@ export function PosScreen({ standalone = false }) {
   const [closeSessionOpen, setCloseSessionOpen] = useState(false);
   const [zReportOpen, setZReportOpen] = useState(false);
   const [zReportPayload, setZReportPayload] = useState(null);
+  const [zReportTillName, setZReportTillName] = useState(null);
   const [preferredTillId, setPreferredTillId] = useState(null);
   const [pendingTillSuggestion, setPendingTillSuggestion] = useState(null);
   const [posTillMetaLoading, setPosTillMetaLoading] = useState(false);
@@ -253,10 +254,10 @@ export function PosScreen({ standalone = false }) {
   );
 
   useEffect(() => {
-    if (!requirePosTillFloat || activeSession || suspendedSession || sessionLoading) return;
+    if (!requirePosTillFloat || activeSession || suspendedSession || sessionLoading || zReportOpen) return;
     setFloatModalOpen(true);
     loadPosTillMeta();
-  }, [requirePosTillFloat, activeSession, suspendedSession, sessionLoading, loadPosTillMeta]);
+  }, [requirePosTillFloat, activeSession, suspendedSession, sessionLoading, zReportOpen, loadPosTillMeta]);
 
   async function handlePosOpenSession(payload) {
     try {
@@ -344,9 +345,24 @@ export function PosScreen({ standalone = false }) {
   }
 
   function handleSessionClosed(res) {
+    const closedTillId = res?.session?.till_id;
+    const closedTill = closedTillId
+      ? posTills.find((t) => String(t.id) === String(closedTillId))
+      : activeTill;
+    setZReportTillName(closedTill ? tillDisplayName(closedTill) : null);
     setCloseSessionOpen(false);
     setZReportPayload(res);
     setZReportOpen(true);
+  }
+
+  function handleZReportClose() {
+    setZReportPayload(null);
+    setZReportOpen(false);
+    setZReportTillName(null);
+    if (requirePosTillFloat && !suspendedSession) {
+      setFloatModalOpen(true);
+      loadPosTillMeta();
+    }
   }
 
   async function handleSuspendSession() {
@@ -1810,7 +1826,7 @@ export function PosScreen({ standalone = false }) {
         method: "POST",
         body: {
           ...body,
-          submit_kra: shouldSubmitKraOnCheckout(capabilities?.module_settings),
+          submit_kra: shouldSubmitKraOnCheckout(capabilities?.module_settings, capabilities),
           ...(requirePosTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
         },
       });
@@ -2327,6 +2343,7 @@ export function PosScreen({ standalone = false }) {
           !activeSession &&
           !suspendedSession &&
           !sessionLoading &&
+          !zReportOpen &&
           floatModalOpen &&
           (requirePosTillFloat || standalone)
         }
@@ -2405,14 +2422,12 @@ export function PosScreen({ standalone = false }) {
 
       <ZReportModal
         open={zReportOpen}
-        onClose={() => {
-          setZReportPayload(null);
-          setZReportOpen(false);
-        }}
+        onClose={handleZReportClose}
         payload={zReportPayload}
         organizationName={organizationName}
         showFloatBreakdown={requirePosTillFloat}
         fallbackCashierName={posCashierName}
+        fallbackTillName={zReportTillName}
       />
 
       <div

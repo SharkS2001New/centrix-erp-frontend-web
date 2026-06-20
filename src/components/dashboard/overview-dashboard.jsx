@@ -17,7 +17,6 @@ const MODULE_LINKS = [
   { key: "sales.pos", href: "/sales/pos", title: "Create order", desc: "Search products, build a cart, and checkout", permission: P.pos.checkout.create },
   { key: "inventory", href: "/inventory", title: "Inventory", desc: "Stock levels, receipts, and movements", permission: P.inventory.stock.view },
   { key: "customers_suppliers", href: "/customers", title: "Customers", desc: "Debtors, routes, and credit", permission: P.customers.customers.view },
-  { key: "distribution", href: "/fulfillment", title: "Fulfillment", desc: "Routes, trips, and dispatch", permission: P.fulfillment.drivers.view },
   { key: "customers_suppliers", href: "/suppliers", title: "Suppliers", desc: "Purchasing and payables", permission: P.purchasing.suppliers.view },
   { key: "sales.reports", href: "/reports", title: "Reports", desc: "Sales, inventory, and operations reports", permission: P.reports.hub.view },
 ];

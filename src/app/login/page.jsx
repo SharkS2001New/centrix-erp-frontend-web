@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { getToken } from "@/lib/auth-storage";
@@ -20,6 +19,7 @@ import {
   authInputClass,
 } from "@/components/auth/auth-shell";
 import { PasswordInput } from "@/components/auth/password-input";
+import { ForgotPasswordHelpDialog } from "@/components/auth/forgot-password-help-dialog";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -35,6 +35,7 @@ export default function LoginPage() {
   const [error, setError] = useState(null);
   const [sessionConflict, setSessionConflict] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
 
   useEffect(() => {
     const stored = getStoredCompanyCode();
@@ -158,16 +159,21 @@ export default function LoginPage() {
             autoComplete="current-password"
             required
           />
+          <div className="mt-1.5 text-right">
+            <button
+              type="button"
+              onClick={() => setForgotPasswordOpen(true)}
+              className="text-xs font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+            >
+              Forgot password?
+            </button>
+          </div>
         </AuthField>
 
-        <div className="text-right">
-          <Link
-            href={`/forgot-password${companyCode ? `?org=${encodeURIComponent(companyCode)}` : ""}`}
-            className="text-xs font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-400"
-          >
-            Forgot password?
-          </Link>
-        </div>
+        <ForgotPasswordHelpDialog
+          open={forgotPasswordOpen}
+          onClose={() => setForgotPasswordOpen(false)}
+        />
 
         {sessionMessage ? <AuthNotice>{sessionMessage}</AuthNotice> : null}
         <AuthError>{error}</AuthError>

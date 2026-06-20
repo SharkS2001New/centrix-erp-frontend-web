@@ -90,6 +90,7 @@ export function OrderWorkflowSettingsEditor({
   stockDeductOn = "order_completed",
   onStockDeductOnChange,
   distributionOpsEnabled = false,
+  embedded = false,
 }) {
   const wf = workflow ?? DEFAULT_ORDER_WORKFLOW;
   const saveOrderMode = !showCheckoutOnCreate;
@@ -130,24 +131,28 @@ export function OrderWorkflowSettingsEditor({
       .map((s) => ({ key: s.status, label: s.label })),
   });
 
-  return (
-    <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <div>
-        <h3 className="text-sm font-semibold text-slate-900">Order workflow</h3>
-        <p className="mt-1 text-xs text-slate-500">
-          Define the order pipeline for this client. Stages can be inserted, edited, reordered, or
-          deleted. Status moves follow this pipeline — one step up or down only. Enabled stages
-          appear as sidebar order pages in this order (View All, then each stage).
-          {saveOrderMode
-            ? " POS uses Save order (no checkout) — configure the initial save status below. Payment rules apply to all orders."
-            : " POS opens checkout on create order. Payment rules below apply to all orders."}
+  const intro = (
+    <>
+      {!embedded ? <h3 className="text-sm font-semibold text-slate-900">Order workflow</h3> : null}
+      <p className={embedded ? "text-sm text-slate-500" : "mt-1 text-xs text-slate-500"}>
+        Define the order pipeline for this client. Stages can be inserted, edited, reordered, or
+        deleted. Status moves follow this pipeline — one step up or down only. Enabled stages
+        appear as sidebar order pages in this order (View All, then each stage).
+        {saveOrderMode
+          ? " POS uses Save order (no checkout) — configure the initial save status below. Payment rules apply to all orders."
+          : " POS opens checkout on create order. Payment rules below apply to all orders."}
+      </p>
+      {pipelinePreview.length > 0 ? (
+        <p className={`${embedded ? "mt-2" : "mt-2"} text-xs text-[#0C447C]`}>
+          Pipeline: {pipelinePreview.map((s) => s.label).join(" → ")}
         </p>
-        {pipelinePreview.length > 0 ? (
-          <p className="mt-2 text-xs text-[#0C447C]">
-            Pipeline: {pipelinePreview.map((s) => s.label).join(" → ")}
-          </p>
-        ) : null}
-      </div>
+      ) : null}
+    </>
+  );
+
+  const body = (
+    <>
+      <div>{intro}</div>
 
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pipeline stages</p>
@@ -408,6 +413,14 @@ export function OrderWorkflowSettingsEditor({
           )}
         </div>
       </div>
-    </div>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="space-y-4">{body}</div>;
+  }
+
+  return (
+    <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">{body}</div>
   );
 }

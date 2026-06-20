@@ -26,6 +26,7 @@ const REPORT_ROUTE_RULES = [
   { prefix: "/reports/builder", permission: P.reports.builder.view },
   { prefix: "/reports/custom", permission: P.reports.builder.view },
   { prefix: "/reports/customer-statement", permission: P.reports.customer_statement.view },
+  { prefix: "/reports/supplier-statement", permission: P.purchasing.suppliers.view },
   { prefix: "/reports", permission: P.reports.hub.view, exact: true },
 ];
 
@@ -80,6 +81,13 @@ export function canAccessRoute(pathname, ctx) {
       return (
         ctx.hasPermission(P.reports.customer_statement.view) ||
         ctx.hasPermission(P.customers.customers.view) ||
+        ctx.hasPermission(P.reports.hub.view)
+      );
+    }
+
+    if (rule.prefix === "/reports/supplier-statement") {
+      return (
+        ctx.hasPermission(P.purchasing.suppliers.view) ||
         ctx.hasPermission(P.reports.hub.view)
       );
     }

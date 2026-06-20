@@ -436,7 +436,22 @@ export function salesOrderQueueTitle(pageName) {
   return `${trimmed} Orders`;
 }
 
-/** Sidebar + queue routes derived from the org workflow pipeline. */
+/** Sidebar order links — shorter labels; mobile queue is injected under Field sales. */
+export function salesOrderSidebarNavItems(workflow, { excludeMobile = true } = {}) {
+  return salesOrderQueueNavItems(workflow, { includeMobile: !excludeMobile })
+    .filter((item) => (excludeMobile ? item.slug !== "mobile" : true))
+    .map((item) => ({
+      ...item,
+      label:
+        item.slug === "all"
+          ? "All orders"
+          : item.slug === "mobile"
+            ? "Mobile orders"
+            : String(item.label).replace(/ Orders$/i, ""),
+    }));
+}
+
+/** Full order queue list (filters, routes, search). */
 export function salesOrderQueueNavItems(workflow, { includeMobile = false } = {}) {
   const items = [
     { slug: "all", label: salesOrderQueueTitle("View All"), href: "/sales/orders" },

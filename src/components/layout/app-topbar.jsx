@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { useLockScreen } from "@/contexts/lock-screen-context";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { SignOutButton } from "@/components/layout/sign-out-button";
 import { ProfileModal } from "@/components/layout/profile-modal";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { GlobalModuleSearch } from "@/components/layout/global-module-search";
 import { getStoredWorkspace } from "@/lib/auth-storage";
+import { isPlatformShellUser } from "@/lib/access-control";
 import { workspaceDefinition } from "@/lib/workspaces";
 
 function MenuIcon({ className }) {
@@ -35,7 +37,7 @@ function accessSubtitle(user, capabilities) {
 }
 
 export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSidebarOpen = false }) {
-  const { user, organization, capabilities, logout, memberships } = useAuth();
+  const { user, organization, capabilities, logout, memberships, isSuperAdmin } = useAuth();
   const { lockScreen } = useLockScreen();
   const [profileOpen, setProfileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -44,6 +46,10 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
   const workspace = workspaceId ? workspaceDefinition(workspaceId, capabilities) : null;
   const displayName = user?.full_name ?? user?.username ?? "User";
   const roleLabel = useMemo(() => accessSubtitle(user, capabilities), [capabilities, user]);
+  const platformShell = useMemo(
+    () => isPlatformShellUser({ user, organization, capabilities, isSuperAdmin }),
+    [capabilities, isSuperAdmin, organization, user],
+  );
 
   return (
     <>
@@ -73,6 +79,12 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <WorkspaceSwitcher />
           <ThemeToggle compact className="hidden sm:inline-flex" />
+          {!platformShell ? (
+            <SignOutButton
+              className="hidden sm:inline-flex"
+              onClick={() => void logout()}
+            />
+          ) : null}
 
           <div className="relative">
             <button
@@ -131,8 +143,19 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
                     </Link>
                   ) : null}
                   <div className="my-1 border-t sm:hidden">
-                    <div className="px-3 py-2">
-                      <ThemeToggle className="w-full justify-center" />
+                    <div className="flex items-center gap-2 px-3 py-2">
+                      <ThemeToggle
+                        className={platformShell ? "w-full justify-center" : "min-w-0 flex-1 justify-center"}
+                      />
+                      {!platformShell ? (
+                        <SignOutButton
+                          className="min-w-0 flex-1 justify-center"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            void logout();
+                          }}
+                        />
+                      ) : null}
                     </div>
                   </div>
                   <button
@@ -146,17 +169,19 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
                   >
                     Lock screen
                   </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="velzon-user-dropdown-item flex w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      logout();
-                    }}
-                  >
-                    Sign out
-                  </button>
+                  {platformShell ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="velzon-user-dropdown-item flex w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void logout();
+                      }}
+                    >
+                      Sign out
+                    </button>
+                  ) : null}
                 </div>
               </>
             ) : null}

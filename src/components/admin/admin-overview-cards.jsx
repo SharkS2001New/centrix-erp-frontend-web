@@ -44,8 +44,8 @@ const CARDS = [
   },
   {
     href: "/admin/settings",
-    title: "System settings",
-    description: "Configure sales, inventory, and organization preferences.",
+    title: "Organization settings",
+    description: "Configure sales, inventory, HR, and other org-wide preferences.",
     icon: "⚙️",
     permission: P.admin.settings.view,
   },

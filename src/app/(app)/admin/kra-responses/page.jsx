@@ -21,7 +21,7 @@ export default function KraResponsesPage() {
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
 
-  const kraEnabled = isKraDeviceEnabled(capabilities?.module_settings);
+  const kraEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
 
   const load = useCallback(async () => {
     setLoading(true);

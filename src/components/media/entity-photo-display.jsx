@@ -77,3 +77,7 @@ export function customerPhotoFileUrl(customerNum) {
 export function employeePhotoFileUrl(employeeId) {
   return `${apiBaseOrigin()}/api/v1/employees/${employeeId}/photo/file`;
 }
+
+export function organizationLogoFileUrl(organizationId) {
+  return `${apiBaseOrigin()}/api/v1/organizations/${organizationId}/logo/file`;
+}

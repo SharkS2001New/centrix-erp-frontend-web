@@ -31,11 +31,18 @@ export default function PlatformOverviewPage() {
   return (
     <CatalogPageShell
       title="Platform administration"
-      subtitle="Register and manage tenant organizations. Each organization gets its own manager account."
+      subtitle="Register and manage tenant organizations — profile, sales behaviour, modules, and users."
       action={
-        <Link href="/platform/organizations/new">
-          <PrimaryButton type="button">Register organization</PrimaryButton>
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/platform/active-users">
+            <PrimaryButton type="button" showIcon={false} className="!bg-amber-500 hover:!bg-amber-600">
+              Active users
+            </PrimaryButton>
+          </Link>
+          <Link href="/platform/organizations/new">
+            <PrimaryButton type="button">Register organization</PrimaryButton>
+          </Link>
+        </div>
       }
     >
       <AdminBreadcrumb items={[{ label: "Platform" }]} />
@@ -49,7 +56,7 @@ export default function PlatformOverviewPage() {
           <h2 className="text-sm font-semibold text-slate-900">Tenant organizations</h2>
           <p className="mt-1 text-sm text-slate-500">
             Registered organizations. Managers sign in with their company code and credentials. Use Manage to
-            enable or disable ERP modules for a tenant.
+            configure sales behaviour, ERP modules, and users.
           </p>
         </div>
         {loading ? (
@@ -65,6 +72,7 @@ export default function PlatformOverviewPage() {
                   <th className="px-5 py-3">Organization</th>
                   <th className="px-5 py-3">Profile</th>
                   <th className="px-5 py-3">Created</th>
+                  <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3" />
                 </tr>
               </thead>
@@ -77,12 +85,19 @@ export default function PlatformOverviewPage() {
                     <td className="px-5 py-3 text-slate-600">
                       {org.created_at ? new Date(org.created_at).toLocaleDateString() : "—"}
                     </td>
+                    <td className="px-5 py-3">
+                      {org.is_active === false ? (
+                        <span className="text-amber-700">Disabled</span>
+                      ) : (
+                        <span className="text-emerald-700">Active</span>
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-right">
                       <Link
                         href={`/platform/organizations/${org.id}`}
                         className="text-sm font-medium text-[#185FA5] hover:underline"
                       >
-                        Manage modules
+                        Manage organization
                       </Link>
                     </td>
                   </tr>

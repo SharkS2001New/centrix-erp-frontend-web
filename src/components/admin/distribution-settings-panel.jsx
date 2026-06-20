@@ -79,7 +79,7 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
           <div className="mt-5 space-y-3">
             <Toggle
               label="Enable distribution operations"
-              description="Set by the platform administrator when this organization was registered. Operational routing rules below apply when distribution is enabled."
+              description="On by default when the platform administrator enables Distribution for this organization. Operational routing rules below apply when distribution is enabled."
               checked={form.enable_distribution_ops}
               onChange={() => {}}
               disabled

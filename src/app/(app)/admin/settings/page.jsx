@@ -209,8 +209,11 @@ export default function AdminSettingsPage() {
                     {hasPosSales && salesForm.add_route_markup_prices ? (
                       <fieldset className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                         <legend className="px-1 text-sm font-medium text-slate-900">
-                          POS order type
+                          POS order type (route orders)
                         </legend>
+                        <p className="text-xs text-slate-500">
+                          Route orders appear in the Distribution workspace. Enable route markup prices above first.
+                        </p>
                         <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-800">
                           <input
                             type="radio"
@@ -223,9 +226,9 @@ export default function AdminSettingsPage() {
                             }
                           />
                           <span>
-                            <span className="font-medium">Lock to Normal order</span>
+                            <span className="font-medium">Normal orders only</span>
                             <span className="mt-0.5 block text-xs text-slate-500">
-                              Hide the order-type choice; all sales use normal pricing without route markup.
+                              POS sells shop/counter orders only. Route orders come from the mobile app.
                             </span>
                           </span>
                         </label>
@@ -241,9 +244,9 @@ export default function AdminSettingsPage() {
                             }
                           />
                           <span>
-                            <span className="font-medium">Lock to route markup selection</span>
+                            <span className="font-medium">Route orders only</span>
                             <span className="mt-0.5 block text-xs text-slate-500">
-                              Cashiers always select a route to apply markup; the Normal / route choice is hidden.
+                              Cashiers always select a route. Orders count as route orders in Distribution.
                             </span>
                           </span>
                         </label>
@@ -259,9 +262,9 @@ export default function AdminSettingsPage() {
                             }
                           />
                           <span>
-                            <span className="font-medium">Allow Normal / route markup toggle</span>
+                            <span className="font-medium">Allow normal or route order toggle</span>
                             <span className="mt-0.5 block text-xs text-slate-500">
-                              Cashiers can choose Normal order or select a route to apply markup on each sale.
+                              Cashier chooses normal shop sale or route order with markup per transaction.
                             </span>
                           </span>
                         </label>

@@ -27,8 +27,13 @@ export function ReportKpiGrid({ items }) {
   if (!items?.length) return null;
   return (
     <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {items.map((item) => (
-        <StatCard key={item.id} label={item.label} value={item.value} hint={item.hint} />
+      {items.map((item, index) => (
+        <StatCard
+          key={item.id ?? item.label ?? index}
+          label={item.label}
+          value={item.value}
+          hint={item.hint}
+        />
       ))}
     </div>
   );

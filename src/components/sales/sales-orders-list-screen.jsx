@@ -35,7 +35,7 @@ import {
   summarizeOrders,
 } from "@/components/sales/sales-orders-shared";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
-import { saleCustomerLabel } from "@/lib/sales";
+import { saleCustomerLabel, isRouteOrderSale } from "@/lib/sales";
 import { isMobileOrdersEnabled, orderDocumentPrintLabel } from "@/lib/sales-settings";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
 import {
@@ -59,7 +59,7 @@ function indexPaymentRefs(payments) {
   return map;
 }
 
-export default function SalesOrdersListScreen({ queueSlug = null }) {
+export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnly = false }) {
   const router = useRouter();
   const { user, capabilities, refreshCapabilities } = useAuth();
   const orgWorkflow = useMemo(
@@ -159,10 +159,10 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
   }, []);
 
   const showBranchColumn = branches.length > 1;
-  const showRouteColumn = Boolean(queueConfig?.showRouteColumn);
-  const showDeliveryDateColumn = Boolean(queueConfig?.showDeliveryDateColumn);
-  const showSourceColumn = sourceOptions.length > 2;
-  const showSourceFilter = sourceOptions.length > 2;
+  const showRouteColumn = routeOrdersOnly || Boolean(queueConfig?.showRouteColumn);
+  const showDeliveryDateColumn = routeOrdersOnly || Boolean(queueConfig?.showDeliveryDateColumn);
+  const showSourceColumn = !routeOrdersOnly && sourceOptions.length > 2;
+  const showSourceFilter = !routeOrdersOnly && sourceOptions.length > 2;
   const branchById = useMemo(
     () => new Map(branches.map((branch) => [branch.id, branch])),
     [branches],
@@ -180,6 +180,7 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
     try {
       const params = { per_page: 200, exclude_status: "held", with_items: 1 };
       if (apiStatusFilter) params["filter[status]"] = apiStatusFilter;
+      if (routeOrdersOnly) params.route_orders = 1;
       const res = await apiRequest("/sales", { searchParams: params });
       const list = res.data ?? [];
       setRows(list);
@@ -203,7 +204,7 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
     } finally {
       setLoading(false);
     }
-  }, [apiStatusFilter]);
+  }, [apiStatusFilter, routeOrdersOnly]);
 
   useEffect(() => {
     loadData();
@@ -272,7 +273,11 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
 
   function viewOrder(sale) {
     if (!sale?.id) return;
-    const from = queueSlug ? `/sales/orders/queues/${queueSlug}` : "/sales/orders";
+    const from = routeOrdersOnly
+      ? "/fulfillment/orders"
+      : queueSlug
+        ? `/sales/orders/queues/${queueSlug}`
+        : "/sales/orders";
     router.push(`/sales/orders/${sale.id}?from=${encodeURIComponent(from)}`);
   }
 
@@ -379,7 +384,11 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
     list = list.filter((s) =>
       matchesWorkflowStatusFilter(s, effectiveStatusFilter ?? "all", orgWorkflow),
     );
-    list = list.filter((s) => matchesOrderSourceFilter(s, effectiveSourceFilter ?? "all"));
+    if (routeOrdersOnly) {
+      list = list.filter((s) => isRouteOrderSale(s));
+    } else {
+      list = list.filter((s) => matchesOrderSourceFilter(s, effectiveSourceFilter ?? "all"));
+    }
     return list.sort((a, b) => {
       const da = new Date(a.completed_at ?? a.created_at ?? 0).getTime();
       const db = new Date(b.completed_at ?? b.created_at ?? 0).getTime();
@@ -393,6 +402,7 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
     effectiveSourceFilter,
     effectiveStatusFilter,
     orgWorkflow,
+    routeOrdersOnly,
   ]);
 
   const summary = useMemo(() => summarizeOrders(filtered), [filtered]);
@@ -474,15 +484,25 @@ export default function SalesOrdersListScreen({ queueSlug = null }) {
 
   return (
     <CatalogPageShell
-      title={queueConfig?.title ?? "View All Orders"}
-      subtitle={queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"}
+      title={
+        routeOrdersOnly
+          ? "Route orders"
+          : queueConfig?.title ?? "View All Orders"
+      }
+      subtitle={
+        routeOrdersOnly
+          ? "Mobile field sales and POS route orders awaiting dispatch and delivery"
+          : queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"
+      }
       action={
-        <Link
-          href="/sales/pos"
-          className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
-        >
-          + New sale
-        </Link>
+        routeOrdersOnly ? null : (
+          <Link
+            href="/sales/pos"
+            className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
+          >
+            + New sale
+          </Link>
+        )
       }
       toolbar={
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:gap-4">

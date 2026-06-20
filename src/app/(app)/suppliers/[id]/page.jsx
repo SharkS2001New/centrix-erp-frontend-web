@@ -91,6 +91,12 @@ export default function SupplierProfilePage() {
         {supplier && (
           <div className="flex flex-wrap gap-2">
             <Link
+              href={`/reports/supplier-statement?supplier_id=${supplier.id}`}
+              className="inline-flex items-center rounded-lg border border-[#185FA5] px-4 py-2 text-sm font-medium text-[#185FA5] hover:bg-[#E6F1FB]"
+            >
+              Supplier Statement
+            </Link>
+            <Link
               href={`/lpo/new?supplier_id=${supplier.id}`}
               className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-[#185FA5] hover:bg-slate-50"
             >

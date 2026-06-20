@@ -109,7 +109,7 @@ export default function MobileLoadingSheetsScreen() {
   if (!allowed) {
     return (
       <CatalogPageShell
-        title="Loading sheets"
+        title="Loading list"
         subtitle="Aggregated pick lists for mobile route orders"
       >
         <div className="theme-panel rounded-xl border p-6 text-sm">
@@ -117,12 +117,12 @@ export default function MobileLoadingSheetsScreen() {
             <p>
               Loading lists are managed under{" "}
               <Link href="/fulfillment/trips" className="theme-link font-medium">
-                Logistics → Shipment tracking
+                Distribution → Trips
               </Link>{" "}
               when Distribution is enabled.
             </p>
           ) : (
-            <p>Enable mobile orders in platform settings to use loading sheets.</p>
+            <p>Enable the mobile application for this organization to use the loading list.</p>
           )}
         </div>
       </CatalogPageShell>
@@ -134,7 +134,7 @@ export default function MobileLoadingSheetsScreen() {
 
   return (
     <CatalogPageShell
-      title="Loading sheets"
+      title="Loading list"
       subtitle="Print aggregated pick lists from mobile orders by route and delivery date"
     >
       {error ? <DashboardErrorBanner message={error} className="mb-4" /> : null}

@@ -3,6 +3,8 @@ import {
   BACKOFFICE_FINANCE_REPORT_MODULES,
   isBackofficeFinanceReport,
   isReportModuleEnabled,
+  isStatementReportSlug,
+  statementReportBelongsToWorkspace,
 } from "@/lib/backoffice-finance-reports";
 
 /** Report module keys owned by each product workspace. */
@@ -10,13 +12,18 @@ export const WORKSPACE_REPORT_MODULES = {
   backoffice: ["sales.reports", "inventory.reports", "customers_suppliers.reports"],
   accounting: ["accounting.reports"],
   hr: ["hr_payroll.reports"],
+  distribution: ["distribution.reports"],
 };
+
+/** All product workspaces expose /reports as Report overview. */
+export const WORKSPACE_HIDE_REPORTS_HUB = new Set([]);
 
 /** Analytics dashboard routes per workspace (sidebar Dashboard section). */
 export const WORKSPACE_ANALYTICS_HREFS = {
-  backoffice: ["/sales", "/inventory", "/fulfillment"],
+  backoffice: ["/sales", "/inventory"],
   accounting: ["/accounting"],
   hr: ["/hr"],
+  distribution: ["/fulfillment"],
 };
 
 /** KPI / chart scopes for embedded analytics sections. */
@@ -37,19 +44,27 @@ export const WORKSPACE_DASHBOARD_SCOPES = {
     kpis: [],
     charts: [],
   },
+  distribution: {
+    kpis: [],
+    charts: [],
+  },
 };
 
 export const WORKSPACE_REPORTS_LABEL = {
   backoffice: "Sales, finance & operations reports",
   accounting: "Accounting reports",
-  hr: "HR & payroll reports",
+  hr: "Leave, payroll, and workforce reporting",
+  distribution: "Route sales and logistics reporting",
 };
+
+export const WORKSPACE_REPORT_OVERVIEW_LABEL = "Report overview";
 
 /** Report builder data source scope per workspace (matches API config). */
 export const WORKSPACE_BUILDER_LABEL = {
   backoffice: "Sales, inventory & purchasing data",
   accounting: "Accounting data",
-  hr: "HR & payroll data",
+  hr: "Workforce and payroll data",
+  distribution: "Sales orders and distribution data",
   admin: "All modules",
 };
 
@@ -71,9 +86,21 @@ export function reportSlugBelongsToWorkspace(slug, workspaceId) {
     return true;
   }
 
+  if (statementReportBelongsToWorkspace(slug, workspaceId)) {
+    return true;
+  }
+
   const mod = reportModuleForSlug(slug);
   if (!mod) return workspaceId === "backoffice";
   return (WORKSPACE_REPORT_MODULES[workspaceId] ?? []).includes(mod);
+}
+
+function statementSlugFromNavItem(item) {
+  if (item.reportKey && isStatementReportSlug(item.reportKey)) {
+    return item.reportKey;
+  }
+  const fromHref = item.href?.match(/^\/reports\/([^/]+)/)?.[1];
+  return fromHref && isStatementReportSlug(fromHref) ? fromHref : null;
 }
 
 /** @param {import("@/lib/nav-config").NavItem} item */
@@ -82,6 +109,14 @@ export function reportNavItemBelongsToWorkspace(item, workspaceId) {
   if (!modules?.length) return false;
 
   if (item.href === "/reports" || item.href === "/reports/builder") {
+    return true;
+  }
+
+  const statementSlug = statementSlugFromNavItem(item);
+  if (statementSlug && statementReportBelongsToWorkspace(statementSlug, workspaceId)) {
+    if (workspaceId === "backoffice") {
+      return item.module === "customers_suppliers";
+    }
     return true;
   }
 

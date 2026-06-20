@@ -251,6 +251,9 @@ function renderCell(colId, customer, handlers) {
           <IconButton label="View" onClick={() => handlers.onView(customer)}>
             <ViewIcon />
           </IconButton>
+          <IconButton label="Statement" onClick={() => handlers.onStatement(customer)}>
+            <StatementIcon />
+          </IconButton>
           <IconButton label="Edit" onClick={() => handlers.onEdit(customer)}>
             <PencilIcon />
           </IconButton>
@@ -413,6 +416,8 @@ export default function CustomersPage() {
   const handlers = {
     onView: (customer) => router.push(`/customers/${customer.customer_num}`),
     onEdit: (customer) => router.push(`/customers/${customer.customer_num}/edit`),
+    onStatement: (customer) =>
+      router.push(`/reports/customer-statement?customer=${customer.customer_num}`),
     onDelete: deleteCustomer,
   };
 
@@ -421,13 +426,22 @@ export default function CustomersPage() {
       title="Customers"
       subtitle="Manage debtors and route customers"
       action={
-        <Link
-          href="/customers/new"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
-        >
-          <PlusIcon />
-          Add Customer
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/reports/customer-statement"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <StatementIcon />
+            Customer Statement
+          </Link>
+          <Link
+            href="/customers/new"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
+          >
+            <PlusIcon />
+            Add Customer
+          </Link>
+        </div>
       }
       banner={
         !loading ? (
@@ -605,14 +619,18 @@ function ColumnPicker({ open, onToggle, onClose, visibleColumnIds, onToggleColum
 }
 
 function CustomerTypeBadge({ type }) {
-  const isRoute = type === "route";
+  const styles =
+    type === "route"
+      ? "bg-[#EEEDFE] text-[#3C3489]"
+      : type === "regular"
+        ? "bg-emerald-50 text-emerald-800"
+        : "bg-[#E6F1FB] text-[#0C447C]";
+  const label =
+    type === "route" ? "Route" : type === "regular" ? "Regular" : type === "debtor" ? "Debtor" : type || "Debtor";
+
   return (
-    <span
-      className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize ${
-        isRoute ? "bg-[#EEEDFE] text-[#3C3489]" : "bg-[#E6F1FB] text-[#0C447C]"
-      }`}
-    >
-      {type || "debtor"}
+    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-medium ${styles}`}>
+      {label}
     </span>
   );
 }
@@ -648,6 +666,17 @@ function ViewIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
       <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function StatementIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
     </svg>
   );
 }

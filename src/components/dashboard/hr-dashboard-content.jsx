@@ -31,7 +31,7 @@ const HR_LINKS = [
   { href: "/reports/headcount", title: "Headcount", desc: "Workforce by department and branch" },
   { href: "/reports/contract-expiry", title: "Contract expiry", desc: "Upcoming contract end dates" },
   { href: "/reports/staff-turnover", title: "Staff turnover", desc: "Turnover rate by department" },
-  { href: "/reports/hr-dashboard-kpi", title: "HR dashboard KPIs", desc: "Organization workforce metrics" },
+  { href: "/reports/hr-dashboard-kpi", title: "Workforce summary", desc: "Organization-wide headcount, payroll, and contracts" },
 ];
 
 export function HrDashboardContent() {
@@ -114,8 +114,8 @@ export function HrDashboardContent() {
 
   return (
     <CatalogPageShell
-      title="HR & Payroll dashboard"
-      subtitle="Workforce overview and payroll readiness"
+      title="HR Overview"
+      subtitle="Workforce summary and payroll readiness"
       action={<PrimaryLink href="/hr/employees/new">Add employee</PrimaryLink>}
     >
       <DashboardErrorBanner message={error} />

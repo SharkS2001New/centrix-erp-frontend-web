@@ -50,6 +50,12 @@ export const STOCK_DEDUCT_TIMING_OPTIONS = [
   { value: "trip_depart", label: "When trip departs (distribution)" },
 ];
 
+/** Whether org has mobile sales enabled at platform level. */
+export function isOrgMobileSalesEnabled(capabilities) {
+  if (capabilities?.mobile_orders_enabled === false) return false;
+  return isMobileOrdersEnabled(capabilities?.module_settings);
+}
+
 /** Whether Mobile Orders appears in the sales sidebar and queue routes. */
 export function isMobileOrdersEnabled(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).enable_mobile_orders);
@@ -189,8 +195,8 @@ export function salesOrganizationPayloadFromForm(form) {
 }
 
 /**
- * Standalone loading sheets for mobile orders when Distribution is not enabled.
- * When Distribution is on, loading lists live under Logistics → Shipment tracking.
+ * Backoffice loading list for mobile route orders when Distribution is not enabled.
+ * When Distribution is on, loading lists live under Distribution → Trips.
  */
 export function shouldShowMobileLoadingSheets(capabilities) {
   if (!capabilities?.modules?.["sales.mobile"]) return false;

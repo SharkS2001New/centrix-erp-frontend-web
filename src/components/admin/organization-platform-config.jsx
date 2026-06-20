@@ -1,12 +1,22 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   OrderWorkflowSettingsEditor,
   orderWorkflowFromApi,
 } from "@/components/admin/order-workflow-settings";
 import { DEFAULT_ORDER_WORKFLOW } from "@/lib/order-workflow";
-import { DOMAIN_MODULE_ORDER } from "@/lib/module-registry";
+import {
+  DOMAIN_MODULE_ORDER,
+  buildDomainChildrenMap,
+  patchEnabledModules,
+} from "@/lib/module-registry";
+import {
+  isProvisionableWorkspaceEnabled,
+  patchEnabledModulesForWorkspace,
+  sortProvisionableWorkspaces,
+  workspaceToggleIcon,
+} from "@/lib/workspace-modules";
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]";
@@ -17,6 +27,162 @@ function OrgRegisterField({ label, children, className = "" }) {
       <span className="text-xs font-medium text-slate-600">{label}</span>
       {children}
     </label>
+  );
+}
+
+export function PlatformFormSection({ title, description, children }) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-[#185FA5]">{title}</h2>
+      {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+const PROFILE_TAB_BTN = "rounded-md px-3 py-1.5 text-sm font-medium transition";
+const PROFILE_TAB_BTN_ACTIVE = "bg-white text-[#185FA5] shadow-sm";
+const PROFILE_TAB_BTN_IDLE = "text-slate-600 hover:text-slate-900";
+
+/**
+ * @param {{
+ *   mode: 'register' | 'manage',
+ *   values: Record<string, string>,
+ *   onChange: (field: string, value: string) => void,
+ *   profilePresets?: Array<{ key: string, label: string }>,
+ *   deploymentProfile?: string,
+ *   onProfileChange?: (key: string) => void,
+ * }} props
+ */
+export function OrganizationTenantProfile({
+  mode,
+  values,
+  onChange,
+  profilePresets = [],
+  deploymentProfile,
+  onProfileChange,
+}) {
+  const isRegister = mode === "register";
+  const description = isRegister
+    ? "Legal identity and business type for the new organization. Company code is used at sign-in."
+    : "Organization identity and business type. Company code cannot be changed after registration.";
+
+  return (
+    <PlatformFormSection title="Tenant profile" description={description}>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {isRegister ? (
+          <OrgRegisterField label="Company code *">
+            <input
+              className={`${inputClass} uppercase`}
+              value={values.company_code ?? ""}
+              onChange={(e) => onChange("company_code", e.target.value.replace(/[^a-zA-Z0-9]/g, ""))}
+              placeholder="e.g. ACME"
+              required
+            />
+          </OrgRegisterField>
+        ) : (
+          <OrgRegisterField label="Company code">
+            <input
+              className={`${inputClass} font-mono uppercase`}
+              value={values.company_code ?? ""}
+              readOnly
+              disabled
+            />
+          </OrgRegisterField>
+        )}
+        <OrgRegisterField label="Company name *">
+          <input
+            className={inputClass}
+            value={values.org_name ?? ""}
+            onChange={(e) => onChange("org_name", e.target.value)}
+            required
+          />
+        </OrgRegisterField>
+        <OrgRegisterField label="Email *">
+          <input
+            type="email"
+            className={inputClass}
+            value={values.org_email ?? ""}
+            onChange={(e) => onChange("org_email", e.target.value)}
+            required
+          />
+        </OrgRegisterField>
+        <OrgRegisterField label="Telephone *">
+          <input
+            className={inputClass}
+            value={values.primary_tel ?? ""}
+            onChange={(e) => onChange("primary_tel", e.target.value)}
+            required
+          />
+        </OrgRegisterField>
+        {!isRegister ? (
+          <>
+            <OrgRegisterField label="Secondary telephone">
+              <input
+                className={inputClass}
+                value={values.secondary_tel ?? ""}
+                onChange={(e) => onChange("secondary_tel", e.target.value)}
+              />
+            </OrgRegisterField>
+            <OrgRegisterField label="Additional telephone 1">
+              <input
+                className={inputClass}
+                value={values.addn_tel1 ?? ""}
+                onChange={(e) => onChange("addn_tel1", e.target.value)}
+              />
+            </OrgRegisterField>
+            <OrgRegisterField label="Additional telephone 2">
+              <input
+                className={inputClass}
+                value={values.addn_tel2 ?? ""}
+                onChange={(e) => onChange("addn_tel2", e.target.value)}
+              />
+            </OrgRegisterField>
+          </>
+        ) : null}
+        <OrgRegisterField label="Physical address *" className="sm:col-span-2">
+          <input
+            className={inputClass}
+            value={values.org_address ?? ""}
+            onChange={(e) => onChange("org_address", e.target.value)}
+            required
+          />
+        </OrgRegisterField>
+        <OrgRegisterField label="KRA PIN (optional)">
+          <input
+            className={`${inputClass} uppercase`}
+            value={values.org_pin ?? ""}
+            onChange={(e) => onChange("org_pin", e.target.value)}
+          />
+        </OrgRegisterField>
+        <OrgRegisterField label="VAT reg no (optional)">
+          <input
+            className={inputClass}
+            value={values.vat_regno ?? ""}
+            onChange={(e) => onChange("vat_regno", e.target.value)}
+          />
+        </OrgRegisterField>
+        {profilePresets.length > 0 ? (
+          <OrgRegisterField label="Deployment profile *" className="sm:col-span-2 sm:max-w-md">
+            <select
+              className={inputClass}
+              value={deploymentProfile}
+              onChange={(e) => onProfileChange?.(e.target.value)}
+              required
+            >
+              {profilePresets.map((profile) => (
+                <option key={profile.key} value={profile.key}>
+                  {profile.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Business type preset. Changing this updates the default application toggles on the Applications tab.
+            </p>
+          </OrgRegisterField>
+        ) : null}
+      </div>
+    </PlatformFormSection>
   );
 }
 
@@ -36,6 +202,8 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
   return {
     show_checkout_on_create_order: true,
     enable_mobile_orders: true,
+    enable_mpesa_stk: true,
+    enable_kra_integration: true,
     stock_deduct_on: "order_completed",
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
   };
@@ -46,6 +214,8 @@ export function salesPlatformFromApi(apiPayload) {
   return {
     show_checkout_on_create_order: Boolean(apiPayload.show_checkout_on_create_order ?? true),
     enable_mobile_orders: apiPayload.enable_mobile_orders !== false,
+    enable_mpesa_stk: apiPayload.enable_mpesa_stk !== false,
+    enable_kra_integration: apiPayload.enable_kra_integration !== false,
     stock_deduct_on: apiPayload.stock_deduct_on ?? "order_completed",
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
   };
@@ -54,13 +224,12 @@ export function salesPlatformFromApi(apiPayload) {
 export function OrganizationPlatformSalesSettings({
   salesPlatform,
   onChange,
-  deploymentProfile,
   enabledModules = {},
 }) {
-  const wf = salesPlatform?.order_workflow ?? DEFAULT_ORDER_WORKFLOW;
-  const posEnabled = Boolean(enabledModules["sales.pos"]);
-  const mobileEnabled = Boolean(enabledModules["sales.mobile"]);
-  const distributionEnabled = Boolean(enabledModules.distribution);
+  const salesEnabled = Boolean(enabledModules.sales);
+  const mobileOrdersEnabled = salesPlatform?.enable_mobile_orders !== false;
+  const description =
+    "Platform-only checkout mode, mobile application access, and payment integrations.";
 
   function patch(partial) {
     onChange?.({ ...salesPlatform, ...partial });
@@ -69,40 +238,69 @@ export function OrganizationPlatformSalesSettings({
   const showCheckout = salesPlatform?.show_checkout_on_create_order !== false;
 
   return (
-    <section>
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-[#185FA5]">Sales behaviour</h2>
-      <p className="mt-1 text-sm text-slate-500">
-        Platform-only settings. The organization manager cannot change checkout mode or order workflow — they
-        configure payment fields, receipts, and other day-to-day preferences after sign-in.
-      </p>
-
-      <div className="mt-4 space-y-3">
-        {posEnabled ? (
+    <PlatformFormSection title="Sales behaviour" description={description}>
+      {!salesEnabled ? (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Enable the <strong>Sales</strong> module to configure sales behaviour for this organization.
+        </p>
+      ) : (
+        <div className="space-y-3">
           <Toggle
             label="Show checkout on create order (POS)"
             description="When off, cashiers use Save order instead of opening the payment screen immediately."
             checked={showCheckout}
             onChange={(v) => patch({ show_checkout_on_create_order: v })}
           />
-        ) : null}
-        {mobileEnabled ? (
           <Toggle
-            label="Show mobile orders in sidebar"
-            description="On by default when the Mobile sales module is enabled. Turn off if this organization does not use mobile orders."
-            checked={salesPlatform?.enable_mobile_orders !== false}
+            label="Enable mobile orders"
+            description="When off, the organization does not use the mobile app. Mobile users cannot sign in and admins can only create backoffice/POS users."
+            checked={mobileOrdersEnabled}
             onChange={(v) => patch({ enable_mobile_orders: v })}
           />
-        ) : null}
-        {!posEnabled && !mobileEnabled ? (
-          <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            Enable at least one sales submodule above (POS, mobile, or backend) to configure channel-specific
-            behaviour.
-          </p>
-        ) : null}
-      </div>
+          <Toggle
+            label="Enable M-Pesa STK Push"
+            description="When off, this organization cannot configure M-Pesa and STK Push is hidden on POS checkout."
+            checked={salesPlatform?.enable_mpesa_stk !== false}
+            onChange={(v) => patch({ enable_mpesa_stk: v })}
+          />
+          <Toggle
+            label="Enable KRA integration"
+            description="When off, this organization cannot configure a KRA fiscal device."
+            checked={salesPlatform?.enable_kra_integration !== false}
+            onChange={(v) => patch({ enable_kra_integration: v })}
+          />
+        </div>
+      )}
+    </PlatformFormSection>
+  );
+}
 
-      <div className="mt-4">
+export function OrganizationOrderWorkflowSettings({
+  salesPlatform,
+  onChange,
+  enabledModules = {},
+}) {
+  const wf = salesPlatform?.order_workflow ?? DEFAULT_ORDER_WORKFLOW;
+  const salesEnabled = Boolean(enabledModules.sales);
+  const distributionEnabled = Boolean(enabledModules.distribution);
+  const showCheckout = salesPlatform?.show_checkout_on_create_order !== false;
+
+  function patch(partial) {
+    onChange?.({ ...salesPlatform, ...partial });
+  }
+
+  return (
+    <PlatformFormSection
+      title="Order workflow"
+      description="Order pipeline stages, save and checkout rules, and stock deduction timing."
+    >
+      {!salesEnabled ? (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Enable the <strong>Sales</strong> module to configure order workflow for this organization.
+        </p>
+      ) : (
         <OrderWorkflowSettingsEditor
+          embedded
           workflow={wf}
           onChange={(next) => patch({ order_workflow: next })}
           showCheckoutOnCreate={showCheckout}
@@ -110,8 +308,114 @@ export function OrganizationPlatformSalesSettings({
           onStockDeductOnChange={(value) => patch({ stock_deduct_on: value })}
           distributionOpsEnabled={distributionEnabled}
         />
-      </div>
-    </section>
+      )}
+    </PlatformFormSection>
+  );
+}
+
+const MANAGE_ORG_TABS = [
+  { id: "profile", label: "Tenant profile" },
+  { id: "sales", label: "Sales behaviour" },
+  { id: "workflow", label: "Order workflow" },
+  { id: "status", label: "Organization status" },
+  { id: "modules", label: "Applications" },
+];
+
+const REGISTER_ORG_TABS = [
+  { id: "profile", label: "Tenant profile" },
+  { id: "sales", label: "Sales behaviour" },
+  { id: "workflow", label: "Order workflow" },
+  { id: "modules", label: "Applications" },
+  { id: "admin", label: "Initial administrator" },
+];
+
+function OrganizationConfigTabBar({ tabs, activeTab, onTabChange }) {
+  return (
+    <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-0.5">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          onClick={() => onTabChange(tab.id)}
+          className={`${PROFILE_TAB_BTN} ${
+            activeTab === tab.id ? PROFILE_TAB_BTN_ACTIVE : PROFILE_TAB_BTN_IDLE
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function OrganizationConfigTabs({
+  mode,
+  tenantValues,
+  onTenantChange,
+  profilePresets = [],
+  deploymentProfile,
+  onProfileChange,
+  salesPlatform,
+  onSalesChange,
+  enabledModules = {},
+  moduleOptions = [],
+  onToggleModule,
+  onSetModules,
+  mobileOrdersEnabled = true,
+  organization,
+  onStatusChange,
+  adminPanel,
+}) {
+  const tabs = mode === "register" ? REGISTER_ORG_TABS : MANAGE_ORG_TABS;
+  const [activeTab, setActiveTab] = useState("profile");
+
+  return (
+    <div className="space-y-4">
+      <OrganizationConfigTabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {activeTab === "profile" ? (
+        <OrganizationTenantProfile
+          mode={mode}
+          values={tenantValues}
+          onChange={onTenantChange}
+          profilePresets={profilePresets}
+          deploymentProfile={deploymentProfile}
+          onProfileChange={onProfileChange}
+        />
+      ) : null}
+
+      {activeTab === "sales" ? (
+        <OrganizationPlatformSalesSettings
+          salesPlatform={salesPlatform}
+          onChange={onSalesChange}
+          enabledModules={enabledModules}
+        />
+      ) : null}
+
+      {activeTab === "workflow" ? (
+        <OrganizationOrderWorkflowSettings
+          salesPlatform={salesPlatform}
+          onChange={onSalesChange}
+          enabledModules={enabledModules}
+        />
+      ) : null}
+
+      {activeTab === "status" && mode === "manage" ? (
+        <OrganizationStatusPanel organization={organization} onChange={onStatusChange} />
+      ) : null}
+
+      {activeTab === "modules" ? (
+        <OrganizationModuleToggles
+          moduleOptions={moduleOptions}
+          enabledModules={enabledModules}
+          onToggle={onToggleModule}
+          onSetModules={onSetModules}
+          mobileOrdersEnabled={mobileOrdersEnabled}
+        />
+      ) : null}
+
+      {activeTab === "admin" && mode === "register" && adminPanel ? adminPanel : null}
+    </div>
   );
 }
 
@@ -134,165 +438,445 @@ export function groupModulesByDomain(moduleOptions) {
   });
 }
 
-export function groupModulesByNav(modules, navGroups) {
-  const grouped = new Map();
-  for (const group of navGroups ?? []) {
-    grouped.set(group.label, []);
-  }
-  grouped.set("Other", []);
-
-  for (const mod of modules ?? []) {
-    const group = mod.nav_group ?? "Other";
-    if (!grouped.has(group)) grouped.set(group, []);
-    grouped.get(group).push(mod);
-  }
-
-  const order = (navGroups ?? []).map((g) => g.label);
-  return [...grouped.entries()]
-    .filter(([, items]) => items.length > 0)
-    .sort(([a], [b]) => {
-      const ai = order.indexOf(a);
-      const bi = order.indexOf(b);
-      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-    });
-}
-
 export function OrganizationModuleToggles({
-  moduleOptions,
-  navGroups,
+  moduleOptions = [],
   enabledModules,
   onToggle,
   onSetModules,
-  onProfileChange,
-  profilePresets,
-  deploymentProfile,
+  mobileOrdersEnabled = true,
 }) {
-  const grouped = useMemo(() => groupModulesByDomain(moduleOptions), [moduleOptions]);
+  const domainChildrenMap = useMemo(() => buildDomainChildrenMap(moduleOptions), [moduleOptions]);
+  const workspaces = useMemo(() => sortProvisionableWorkspaces(), []);
 
-  function domainCheckState(domain, children) {
-    const keys = [domain.key, ...children.map((c) => c.key)];
-    const onCount = keys.filter((key) => enabledModules[key]).length;
-    if (onCount === 0) return "none";
-    if (onCount === keys.length) return "all";
-    return "partial";
-  }
-
-  function setDomainModules(domain, children, enable) {
-    const patch = { [domain.key]: enable };
-    for (const child of children) {
-      patch[child.key] = enable;
-    }
+  function setWorkspaceEnabled(workspaceId, enable) {
+    const next = patchEnabledModulesForWorkspace(
+      enabledModules,
+      workspaceId,
+      enable,
+      domainChildrenMap,
+      mobileOrdersEnabled,
+    );
     if (onSetModules) {
-      onSetModules(patch);
+      onSetModules(next);
       return;
     }
-    for (const [key, value] of Object.entries(patch)) {
-      if (Boolean(enabledModules[key]) !== value) {
+    for (const [key, value] of Object.entries(next)) {
+      if (Boolean(enabledModules[key]) !== Boolean(value)) {
         onToggle(key);
       }
     }
   }
 
-  function toggleDomainChild(domainKey, childKey, enable) {
-    const patch = { [childKey]: enable };
-    if (enable) {
-      patch[domainKey] = true;
+  return (
+    <PlatformFormSection
+      title="Applications"
+      description="Choose which applications appear on the login workspace screen for this organization."
+    >
+      <div className="space-y-4">
+        {workspaces.map((workspace) => {
+          const enabled = isProvisionableWorkspaceEnabled(workspace, enabledModules);
+          const isDistribution = workspace.id === "distribution";
+          const distributionBlocked = isDistribution && !mobileOrdersEnabled;
+
+          return (
+            <label
+              key={workspace.id}
+              className={`flex items-start gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 ${
+                distributionBlocked ? "opacity-60" : ""
+              }`}
+            >
+              <input
+                type="checkbox"
+                className="mt-1 rounded"
+                checked={enabled}
+                disabled={distributionBlocked}
+                onChange={(e) => setWorkspaceEnabled(workspace.id, e.target.checked)}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="text-lg" aria-hidden>
+                    {workspaceToggleIcon(workspace.icon)}
+                  </span>
+                  <span className="block text-sm font-semibold text-slate-900">{workspace.label}</span>
+                </span>
+                <span className="mt-1 block text-xs text-slate-500">{workspace.description}</span>
+                {isDistribution ? (
+                  <span className="mt-1 block text-xs text-slate-500">
+                    {mobileOrdersEnabled
+                      ? "Requires mobile orders to be enabled."
+                      : "Enable mobile orders on the Sales behaviour tab before turning on Distribution."}
+                  </span>
+                ) : null}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </PlatformFormSection>
+  );
+}
+
+function formatChannels(channels) {
+  if (!Array.isArray(channels) || channels.length === 0) return "—";
+  return channels.join(", ");
+}
+
+export function OrganizationUsersPanel({ organizationId, companyCode, detailed = false }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState(null);
+  const [createMessage, setCreateMessage] = useState(null);
+
+  const loadUsers = useCallback(async () => {
+    if (!organizationId) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const { apiRequest } = await import("@/lib/api");
+      const res = await apiRequest(`/admin/organizations/${organizationId}/users`);
+      setUsers(res.data ?? []);
+    } catch (err) {
+      const { ApiError } = await import("@/lib/api");
+      setLoadError(err instanceof ApiError ? err.message : "Could not load users.");
+    } finally {
+      setLoading(false);
     }
-    if (onSetModules) {
-      onSetModules(patch);
-      return;
-    }
-    if (enable && !enabledModules[domainKey]) {
-      onToggle(domainKey);
-    }
-    if (Boolean(enabledModules[childKey]) !== enable) {
-      onToggle(childKey);
+  }, [organizationId]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!organizationId) return;
+    setSaving(true);
+    setCreateError(null);
+    setCreateMessage(null);
+    try {
+      const { apiRequest } = await import("@/lib/api");
+      const res = await apiRequest(`/admin/organizations/${organizationId}/users`, {
+        method: "POST",
+        body: {
+          full_name: fullName,
+          username,
+          email,
+          password,
+          is_admin: isAdmin,
+        },
+      });
+      setCreateMessage(`User ${res.user?.username ?? username} created.`);
+      setFullName("");
+      setUsername("");
+      setEmail("");
+      setPassword("");
+      setIsAdmin(false);
+      setOpen(false);
+      await loadUsers();
+    } catch (err) {
+      const { ApiError } = await import("@/lib/api");
+      setCreateError(err instanceof ApiError ? err.message : "Could not create user.");
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
-    <section>
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-[#185FA5]">ERP modules</h2>
-      <p className="mt-1 text-sm text-slate-500">
-        Each domain is a master switch — disabling it hides its features, dashboard, and reports. When a
-        domain is on, you can turn individual submodules off per organization (for example, sales reports on
-        org A but not org B).
-      </p>
-      {profilePresets.length > 0 ? (
-        <OrgRegisterField label="Deployment profile" className="mt-4 sm:max-w-md">
-          <select
-            className={inputClass}
-            value={deploymentProfile}
-            onChange={(e) => onProfileChange?.(e.target.value)}
-          >
-            {profilePresets.map((profile) => (
-              <option key={profile.key} value={profile.key}>
-                {profile.label}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-slate-500">
-            Profiles preset module toggles below. Adjust individual sidebar areas before saving.
-          </p>
-        </OrgRegisterField>
+    <PlatformFormSection
+      title="Users & logins"
+      description={
+        companyCode
+          ? `Sign-in accounts for this tenant (company code ${companyCode}). ${detailed ? "Shows last login and active sessions." : ""}`
+          : "Sign-in accounts for this tenant."
+      }
+    >
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-600">
+          {loading ? "Loading users…" : `${users.length} user${users.length === 1 ? "" : "s"}`}
+        </p>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          {open ? "Cancel" : "Create user"}
+        </button>
+      </div>
+
+      {loadError ? (
+        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{loadError}</p>
       ) : null}
 
-      <div className="mt-4 space-y-6">
-        {grouped.map(({ domain, children }) => {
-          const groupState = domainCheckState(domain, children);
-          const childItems = children.filter((c) => c.key !== domain.key);
-          return (
-            <div key={domain.key} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-900">{domain.label}</h3>
-                  <p className="mt-0.5 font-mono text-[10px] text-slate-400">{domain.key}</p>
-                </div>
-                <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-600">
-                  <input
-                    type="checkbox"
-                    className="rounded"
-                    checked={groupState === "all"}
-                    ref={(el) => {
-                      if (el) el.indeterminate = groupState === "partial";
-                    }}
-                    onChange={(e) => setDomainModules(domain, children, e.target.checked)}
-                  />
-                  Enable domain
-                </label>
-              </div>
-              {childItems.length > 0 ? (
-                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {childItems.map((module) => (
-                    <label
-                      key={module.key}
-                      className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3"
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-0.5"
-                        checked={Boolean(enabledModules[module.key])}
-                        disabled={!enabledModules[domain.key] && !enabledModules[module.key]}
-                        onChange={(e) =>
-                          toggleDomainChild(domain.key, module.key, e.target.checked)
-                        }
-                      />
-                      <span>
-                        <span className="block text-sm font-medium text-slate-900">{module.label}</span>
-                        <span className="mt-0.5 block font-mono text-[10px] text-slate-400">
-                          {module.kind ?? "feature"}
-                          {module.kind === "dashboard" ? " · analytics home" : null}
-                          {module.kind === "reports" ? " · reports in sidebar" : null}
-                        </span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </section>
+      {!loading && users.length > 0 ? (
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="min-w-full text-sm">
+            <thead className="border-b border-slate-100 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-2">Username</th>
+                <th className="px-4 py-2">Name</th>
+                <th className="px-4 py-2">Email</th>
+                <th className="px-4 py-2">Role</th>
+                <th className="px-4 py-2">Channels</th>
+                <th className="px-4 py-2">Last login</th>
+                <th className="px-4 py-2">Sessions</th>
+                <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {users.map((user) => (
+                <OrganizationUserRow
+                  key={user.id}
+                  user={user}
+                  organizationId={organizationId}
+                  onUpdated={loadUsers}
+                  detailed={detailed}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {!loading && users.length === 0 && !loadError ? (
+        <p className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
+          No users yet. Create the first sign-in account below.
+        </p>
+      ) : null}
+
+      {open ? (
+        <form onSubmit={handleSubmit} className="mt-4 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+          <h3 className="text-sm font-semibold text-slate-900">New user</h3>
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <OrgRegisterField label="Full name *">
+              <input
+                className={inputClass}
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+              />
+            </OrgRegisterField>
+            <OrgRegisterField label="Username *">
+              <input
+                className={inputClass}
+                value={username}
+                onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
+                required
+              />
+            </OrgRegisterField>
+            <OrgRegisterField label="Email *">
+              <input
+                type="email"
+                className={inputClass}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </OrgRegisterField>
+            <OrgRegisterField label="Password *">
+              <input
+                type="password"
+                className={inputClass}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                minLength={6}
+                required
+              />
+            </OrgRegisterField>
+          </div>
+          <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={isAdmin}
+              onChange={(e) => setIsAdmin(e.target.checked)}
+              className="rounded"
+            />
+            Organization administrator (full access)
+          </label>
+          {createError ? (
+            <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</p>
+          ) : null}
+          {createMessage ? (
+            <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              {createMessage}
+            </p>
+          ) : null}
+          <div className="mt-4">
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#144f8a] disabled:opacity-50"
+            >
+              {saving ? "Creating…" : "Create user"}
+            </button>
+          </div>
+        </form>
+      ) : null}
+    </PlatformFormSection>
+  );
+}
+
+function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false }) {
+  const [expanded, setExpanded] = useState(false);
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function updateUser(body) {
+    setBusy(true);
+    setError(null);
+    try {
+      const { apiRequest } = await import("@/lib/api");
+      await apiRequest(`/admin/organizations/${organizationId}/users/${user.id}`, {
+        method: "PATCH",
+        body,
+      });
+      setPassword("");
+      await onUpdated?.();
+    } catch (err) {
+      const { ApiError } = await import("@/lib/api");
+      setError(err instanceof ApiError ? err.message : "Could not update user.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <tr>
+      <td className="px-4 py-2 font-mono text-xs">{user.username}</td>
+      <td className="px-4 py-2">{user.full_name}</td>
+      <td className="px-4 py-2 text-slate-600">{user.email}</td>
+      <td className="px-4 py-2">
+        {user.is_admin ? (
+          <span className="rounded bg-[#185FA5]/10 px-2 py-0.5 text-xs font-medium text-[#185FA5]">
+            Administrator
+          </span>
+        ) : (
+          <span className="text-slate-600">Staff</span>
+        )}
+      </td>
+      <td className="px-4 py-2 text-xs text-slate-600">{formatChannels(user.login_channels)}</td>
+      <td className="px-4 py-2 text-xs text-slate-600">
+        {user.last_login ? new Date(user.last_login).toLocaleString() : "—"}
+      </td>
+      <td className="px-4 py-2 text-xs text-slate-600">
+        {user.active_login_count > 0 ? (
+          detailed ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="font-medium text-emerald-700 hover:underline"
+            >
+              {user.active_login_count} active
+            </button>
+          ) : (
+            <span className="font-medium text-emerald-700">{user.active_login_count} active</span>
+          )
+        ) : (
+          <span className="text-slate-400">None</span>
+        )}
+      </td>
+      <td className="px-4 py-2">
+        {user.is_active ? (
+          <span className="text-emerald-700">Active</span>
+        ) : (
+          <span className="text-slate-400">Inactive</span>
+        )}
+      </td>
+      <td className="px-4 py-2">
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <input
+              type="password"
+              className="w-36 rounded border border-slate-300 px-2 py-1 text-xs"
+              placeholder="New password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button
+              type="button"
+              disabled={busy || password.length < 6}
+              onClick={() => void updateUser({ password, must_change_password: true })}
+              className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-white disabled:opacity-50"
+            >
+              Reset password
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void updateUser({ is_active: !user.is_active })}
+              className="rounded border border-amber-300 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-50 disabled:opacity-50"
+            >
+              {user.is_active ? "Disable login" : "Enable login"}
+            </button>
+          </div>
+          {error ? <p className="text-xs text-red-600">{error}</p> : null}
+        </div>
+      </td>
+    </tr>
+      {detailed && expanded && user.active_logins?.length > 0 ? (
+        <tr className="bg-slate-50">
+          <td colSpan={9} className="px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Active sessions</p>
+            <ul className="mt-2 space-y-2">
+              {user.active_logins.map((session) => (
+                <li
+                  key={session.id}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"
+                >
+                  <span className="font-medium text-slate-900">{session.channel}</span>
+                  {session.device ? <span className="text-slate-500"> · {session.device}</span> : null}
+                  <span className="mt-1 block text-slate-500">
+                    Signed in {session.signed_in_at ? new Date(session.signed_in_at).toLocaleString() : "—"}
+                    {session.last_used_at
+                      ? ` · Last used ${new Date(session.last_used_at).toLocaleString()}`
+                      : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
+
+export function OrganizationStatusPanel({ organization, onChange }) {
+  const isActive = organization?.is_active !== false;
+
+  return (
+    <PlatformFormSection
+      title="Organization status"
+      description="Disabling an organization signs out all users and blocks sign-in until re-enabled."
+    >
+      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={isActive}
+          onChange={(e) => onChange?.({ is_active: e.target.checked })}
+        />
+        <span>
+          <span className="block text-sm font-medium text-slate-900">
+            {isActive ? "Organization is active" : "Organization is disabled"}
+          </span>
+          <span className="mt-0.5 block text-xs text-slate-500">
+            {isActive
+              ? "Users can sign in normally."
+              : "All users are signed out and cannot sign in until you re-enable this organization."}
+          </span>
+        </span>
+      </label>
+    </PlatformFormSection>
   );
 }

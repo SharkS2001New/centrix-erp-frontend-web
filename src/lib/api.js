@@ -200,6 +200,14 @@ export async function uploadEmployeePhoto(employeeId, file) {
   return apiUpload(`/employees/${employeeId}/photo`, file);
 }
 
+export async function uploadOrganizationLogo(organizationId, file) {
+  return apiUpload(`/organizations/${organizationId}/logo`, file);
+}
+
+export function organizationLogoFileUrl(organizationId) {
+  return `${apiBaseOrigin()}/api/v1/organizations/${organizationId}/logo/file`;
+}
+
 export async function capturePodDelivery(saleId, payload) {
   const url = new URL(`${baseUrl()}/sales/orders/${saleId}/pod`);
   const token = getToken();

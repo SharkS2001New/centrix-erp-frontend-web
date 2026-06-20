@@ -1,6 +1,20 @@
+import { withNavItemIcon } from "@/lib/nav-item-icons";
 import { REPORT_CATEGORY_DEFS } from "@/lib/reports/catalog-ui";
 import { WORKSPACE_REPORT_MODULES } from "@/lib/workspace-reports";
 import { P } from "@/lib/permission-codes";
+
+const CUSTOM_REPORT_ICON_POOL = [
+  "file",
+  "chart",
+  "list",
+  "book",
+  "layers",
+  "clipboard",
+  "tag",
+  "link",
+  "star",
+  "measure",
+];
 
 export function customReportKey(id) {
   return `custom-${id}`;
@@ -80,13 +94,16 @@ export function mergeCustomReportsIntoCategories(categories, templates) {
 /** @param {Array<{ id: number, name: string, category_label?: string, report_module?: string | null }>} templates */
 export function buildCustomReportNavItems(templates) {
   return templates
-    .map((template) => ({
-      href: customReportHref(template.id),
-      label: template.name,
-      module: template.report_module ?? null,
-      permission: P.reports.builder.view,
-      group: template.category_label ?? "Other Reports",
-    }))
+    .map((template, index) =>
+      withNavItemIcon({
+        href: customReportHref(template.id),
+        label: template.name,
+        icon: CUSTOM_REPORT_ICON_POOL[(Number(template.id) + index) % CUSTOM_REPORT_ICON_POOL.length],
+        module: template.report_module ?? null,
+        permission: P.reports.builder.view,
+        group: template.category_label ?? "Other Reports",
+      }),
+    )
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 

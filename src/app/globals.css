@@ -173,8 +173,25 @@ html[data-theme="dark"] .app-sidebar-menu-label {
 }
 
 html[data-theme="light"] .app-sidebar-group-label,
-html[data-theme="dark"] .app-sidebar-group-label {
+html[data-theme="dark"] .app-sidebar-group-label,
+html[data-theme="light"] .velzon-sidebar .app-sidebar-group-label,
+html[data-theme="dark"] .velzon-sidebar .app-sidebar-group-label {
   color: #838fb9;
+}
+
+html[data-theme="light"] .velzon-sidebar .app-sidebar-group-parent,
+html[data-theme="dark"] .velzon-sidebar .app-sidebar-group-parent {
+  color: #ced4e0;
+}
+
+html[data-theme="light"] .velzon-sidebar .app-sidebar-nested-links .app-sidebar-link,
+html[data-theme="dark"] .velzon-sidebar .app-sidebar-nested-links .app-sidebar-link {
+  font-size: 12.5px;
+}
+
+html[data-theme="light"] .app-sidebar-zone-label,
+html[data-theme="dark"] .app-sidebar-zone-label {
+  color: #6f7dab;
 }
 
 html[data-theme="light"] .app-sidebar-section-toggle,

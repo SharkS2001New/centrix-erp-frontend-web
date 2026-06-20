@@ -176,6 +176,11 @@ export function reportPermissionCode(reportKey) {
     "subledger-reconciliation": P.accounting.general_ledger.view,
     "customer-statement": P.reports.customer_statement.view,
     "audit-trail": P.admin.audit.view,
+    "mobile-route-sales": P.fulfillment.drivers.view,
+    "dispatch-trips": P.fulfillment.drivers.view,
+    "trip-cash-settlement": P.fulfillment.drivers.view,
+    "pod-compliance": P.fulfillment.drivers.view,
+    "driver-deliveries": P.fulfillment.drivers.view,
   };
   return map[reportKey] ?? P.reports.hub.view;
 }
@@ -213,6 +218,12 @@ export function canViewReport(reportKey, hasPermission) {
     return (
       hasPermission(P.reports.customer_statement.view) ||
       hasPermission(P.customers.customers.view) ||
+      hasPermission(P.reports.hub.view)
+    );
+  }
+  if (reportKey === "supplier-statement") {
+    return (
+      hasPermission(P.purchasing.suppliers.view) ||
       hasPermission(P.reports.hub.view)
     );
   }

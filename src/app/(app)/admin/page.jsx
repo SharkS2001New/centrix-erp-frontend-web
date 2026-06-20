@@ -7,10 +7,10 @@ import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 export default function AdminOverviewPage() {
   return (
     <CatalogPageShell
-      title="Administration"
-      subtitle="Manage company profile, users, access control, and system configuration."
+      title="Admin home"
+      subtitle="Shortcuts to company setup, users, access control, and organization settings."
     >
-      <AdminBreadcrumb items={[{ label: "Administration" }]} />
+      <AdminBreadcrumb items={[{ label: "Admin home" }]} />
       <AdminOverviewCards />
     </CatalogPageShell>
   );

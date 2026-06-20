@@ -34,6 +34,16 @@ function isoDate(d = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
+function formatTripCash(trip) {
+  const expected = Number(trip.expected_cash ?? 0);
+  if (trip.cash_variance != null && trip.settled_at) {
+    const variance = Number(trip.cash_variance);
+    if (Math.abs(variance) < 0.01) return "Balanced";
+    return variance < 0 ? "Short" : "Over";
+  }
+  return expected > 0 ? "Due" : "—";
+}
+
 export default function TripsPage() {
   const { capabilities } = useAuth();
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
@@ -157,6 +167,7 @@ export default function TripsPage() {
                 <th className="px-4 py-3">Driver</th>
                 <th className="px-4 py-3">Vehicle</th>
                 <th className="px-4 py-3">Orders</th>
+                <th className="px-4 py-3">Cash</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -169,11 +180,28 @@ export default function TripsPage() {
                   <td className="px-4 py-3">{trip.driver?.full_name ?? "—"}</td>
                   <td className="px-4 py-3">{trip.vehicle?.plate_number ?? trip.vehicle?.vehicle_name ?? "—"}</td>
                   <td className="px-4 py-3">{trip.sales_count ?? 0}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {trip.settled_at
+                      ? "Settled"
+                      : trip.expected_cash != null && Number(trip.expected_cash) > 0
+                        ? formatTripCash(trip)
+                        : "—"}
+                  </td>
                   <td className="px-4 py-3 capitalize">{statusLabel(trip.status)}</td>
                   <td className="px-4 py-3 text-right">
-                    <Link href={`/fulfillment/trips/${trip.id}`} className="text-[#185FA5] hover:underline">
-                      Open
-                    </Link>
+                    <div className="flex justify-end gap-3">
+                      {trip.status === "in_transit" ? (
+                        <Link
+                          href={`/fulfillment/trips/${trip.id}/close`}
+                          className="font-medium text-emerald-700 hover:underline"
+                        >
+                          Close
+                        </Link>
+                      ) : null}
+                      <Link href={`/fulfillment/trips/${trip.id}`} className="text-[#185FA5] hover:underline">
+                        Open
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}

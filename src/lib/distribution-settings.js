@@ -1,5 +1,5 @@
 export const DISTRIBUTION_DEFAULTS = {
-  enable_distribution_ops: false,
+  enable_distribution_ops: true,
   inherit_customer_route: true,
   assign_on_status: "processed",
   auto_assign_truck: true,
@@ -47,10 +47,6 @@ export function isDistributionOpsEnabled(capabilities) {
   }
   if (capabilities?.distribution_ops_enabled != null) {
     return Boolean(capabilities.distribution_ops_enabled);
-  }
-  const distribution = mergeDistributionModuleSettings(capabilities?.module_settings);
-  if (distribution.enable_distribution_ops != null) {
-    return Boolean(distribution.enable_distribution_ops);
   }
   return true;
 }

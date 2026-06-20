@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { buildAccessContext } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
-import { resolveAvailableWorkspaces, workspaceIcon } from "@/lib/workspaces";
+import { resolveAvailableWorkspaces } from "@/lib/workspaces";
+import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
 
 function AppsGridIcon({ className }) {
   return (
@@ -105,29 +106,13 @@ export function WorkspaceSwitcher() {
               </Link>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 p-3">
-              {workspaces.map((workspace) => {
-                const active = workspace.id === currentId;
-                return (
-                  <button
-                    key={workspace.id}
-                    type="button"
-                    disabled={switching}
-                    onClick={() => void selectWorkspace(workspace.id)}
-                    className={`velzon-app-tile flex flex-col items-center rounded-lg border px-2 py-3 text-center transition disabled:opacity-60 ${
-                      active ? "velzon-app-tile-active" : ""
-                    }`}
-                  >
-                    <span className="velzon-app-tile-icon mb-2 flex h-10 w-10 items-center justify-center rounded-lg text-xl">
-                      {workspaceIcon(workspace.icon)}
-                    </span>
-                    <span className="line-clamp-2 text-[11px] font-medium leading-tight">
-                      {workspace.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            <WorkspaceApplicationPicker
+              workspaces={workspaces}
+              currentId={currentId}
+              onSelect={(id) => void selectWorkspace(id)}
+              disabled={switching}
+              variant="dropdown"
+            />
 
             {error ? (
               <p className="border-t px-4 py-2 text-xs text-red-600 dark:text-red-400">{error}</p>

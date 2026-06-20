@@ -131,6 +131,10 @@ export function AuthProvider({ children }) {
         token: null,
       });
       const caps = await applyAuthPayload(res, WEB_LOGIN_CHANNEL);
+      if (res.must_change_password || res.user?.must_change_password) {
+        router.replace("/change-password");
+        return caps;
+      }
       const ctx = buildAccessContext({
         user: res.user,
         organization: res.organization,

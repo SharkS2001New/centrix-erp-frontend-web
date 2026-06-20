@@ -11,7 +11,8 @@ import {
   uploadProductsToKra,
 } from "@/components/products/kra-product-upload-bar";
 import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
-import { useAuth } from "@/contexts/auth-context";
+import { formatShortDate } from "@/components/catalog/catalog-shared";
+import { resolveProductAudit } from "@/lib/product-audit";
 import { PermissionGate } from "@/components/permission-gate";
 import { P } from "@/lib/permission-codes";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
@@ -32,7 +33,7 @@ const PRODUCT_COLUMNS = [
   { id: "vat", label: "VAT", defaultVisible: true },
   { id: "pricing", label: "Pricing", defaultVisible: true },
   { id: "alert", label: "Reorder", defaultVisible: false },
-  { id: "updated", label: "Updated", defaultVisible: true },
+  { id: "updated", label: "Updated by", defaultVisible: true },
   { id: "actions", label: "Actions", defaultVisible: true, required: true, align: "center" },
 ];
 
@@ -93,13 +94,14 @@ function effectiveReorderPoint(product, globalThreshold) {
   return rp > 0 ? rp : Number(globalThreshold ?? 0);
 }
 
-function formatDate(value) {
-  if (!value) return "—";
-  return new Date(value).toLocaleDateString("en-KE", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+
+function UserDateCell({ name, date }) {
+  return (
+    <div>
+      <p className="font-medium text-slate-800">{name || "—"}</p>
+      <p className="text-xs text-slate-500">{formatShortDate(date)}</p>
+    </div>
+  );
 }
 
 function locationStockStatus(qty, reorderPoint) {
@@ -200,9 +202,10 @@ function groupProducts(products) {
 export default function ProductsPage() {
   const router = useRouter();
   const { capabilities } = useAuth();
-  const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings);
+  const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
   const selectionEnabled = kraDeviceEnabled && kraSelectMode;
   const [products, setProducts] = useState([]);
+  const [users, setUsers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [vats, setVats] = useState([]);
@@ -255,9 +258,10 @@ export default function ProductsPage() {
   const loadData = useCallback(async () => {
     setError(null);
     try {
-      const [prodRes, catRes, subRes, vatRes, uomRes, supRes, retailRes, settingsRes] =
+      const [prodRes, userRes, catRes, subRes, vatRes, uomRes, supRes, retailRes, settingsRes] =
         await Promise.all([
           apiRequest("/products", { searchParams: { per_page: 200 } }),
+          apiRequest("/users", { searchParams: { per_page: 200 } }),
           apiRequest("/categories", { searchParams: { per_page: 200 } }),
           apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
           apiRequest("/vats", { searchParams: { per_page: 50 } }),
@@ -267,6 +271,7 @@ export default function ProductsPage() {
           apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
         ]);
       setProducts(prodRes.data ?? []);
+      setUsers(userRes.data ?? []);
       setCategories(catRes.data ?? []);
       setSubCategories(subRes.data ?? []);
       setVats(vatRes.data ?? []);
@@ -332,11 +337,12 @@ export default function ProductsPage() {
     () => new Map(retailPackages.map((r) => [r.product_code, r])),
     [retailPackages],
   );
+  const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 
   const enriched = useMemo(
     () =>
-      products.map((p) =>
-        enrichProduct(
+      products.map((p) => {
+        const row = enrichProduct(
           p,
           subById,
           catById,
@@ -345,8 +351,14 @@ export default function ProductsPage() {
           supplierById,
           retailByCode,
           globalReorderThreshold,
-        ),
-      ),
+        );
+        const audit = resolveProductAudit(p, userById);
+        return {
+          ...row,
+          audit_name: audit.name,
+          audit_date: audit.date,
+        };
+      }),
     [
       products,
       subById,
@@ -356,6 +368,7 @@ export default function ProductsPage() {
       supplierById,
       retailByCode,
       globalReorderThreshold,
+      userById,
     ],
   );
 
@@ -1000,7 +1013,7 @@ function renderProductCell(product, columnId, onPriceSaved) {
         </span>
       );
     case "updated":
-      return <span className="text-slate-600">{formatDate(product.updated_at)}</span>;
+      return <UserDateCell name={product.audit_name} date={product.audit_date} />;
     default:
       return "—";
   }

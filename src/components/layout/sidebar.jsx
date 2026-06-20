@@ -1,18 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { OrganizationSwitcher } from "@/components/layout/organization-switcher";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isNavItemActive, isNavSectionActive, isNavItemVisible } from "@/lib/nav-config";
-import { defaultWorkspaceId } from "@/lib/workspaces";
+import { defaultWorkspaceId, groupNavSectionsByZone } from "@/lib/workspaces";
 import { buildWorkspaceNavSections } from "@/lib/workspace-nav";
 import { isPosTillFloatRequired } from "@/lib/sales-settings";
 import { CentrixLogo } from "@/components/branding/centrix-logo";
 import { PRODUCT_NAME } from "@/lib/branding";
-import { NavSectionIcon } from "@/lib/nav-icons";
+import { NavItemIcon, NavSectionIcon } from "@/lib/nav-icons";
 import { apiRequest } from "@/lib/api";
 import { P } from "@/lib/permission-codes";
 import {
@@ -21,7 +20,7 @@ import {
   injectCustomReportsIntoNavSections,
 } from "@/lib/reports/custom-reports";
 
-const STORAGE_KEY = "sidebar-expanded-sections-v2";
+const STORAGE_KEY = "sidebar-expanded-sections-v7";
 
 function ChevronIcon({ open }) {
   return (
@@ -52,48 +51,140 @@ function readStoredSections() {
   }
 }
 
-function NavGroupLabel({ label, inFlyout = false, isFirst = false }) {
+function NavZoneLabel({ label, inFlyout = false }) {
+  if (!label) return null;
   return (
     <p
-      className={`app-sidebar-group-label pb-1 text-[10.5px] font-semibold uppercase tracking-[0.1em] ${
-        isFirst ? "pt-1" : "mt-1 border-t border-white/[0.08] pt-3"
-      } ${inFlyout ? "mx-4 px-0" : "mx-[18px] px-1"}`}
+      className={`app-sidebar-zone-label pb-1.5 pt-4 text-[10px] font-bold uppercase tracking-[0.14em] first:pt-2 ${
+        inFlyout ? "px-4" : "px-[22px]"
+      }`}
     >
       {label}
     </p>
   );
 }
 
-function SectionNavItems({ items, pathname, onNavigate, inFlyout = false }) {
-  let lastGroup = null;
-  let groupCount = 0;
+function NavGroupLabel({ label, inFlyout = false, isFirst = false }) {
+  return (
+    <p
+      className={`app-sidebar-group-parent px-2 pb-0.5 text-[12.5px] font-medium leading-snug ${
+        isFirst ? "pt-0.5" : "mt-2 border-t border-white/[0.06] pt-2.5"
+      } ${inFlyout ? "mx-2" : ""}`}
+    >
+      {label}
+    </p>
+  );
+}
 
-  return items.map((item) => {
-    const active = isNavItemActive(item, pathname);
-    const showGroup = item.group && item.group !== lastGroup;
-    const isFirstGroup = showGroup && groupCount === 0;
-    if (showGroup) {
-      lastGroup = item.group;
-      groupCount += 1;
+function groupNavItemsByLabel(items) {
+  const blocks = [];
+  let current = { group: undefined, items: [] };
+
+  for (const item of items) {
+    const group = item.group ?? null;
+    if (group !== current.group && current.items.length > 0) {
+      blocks.push(current);
+      current = { group, items: [] };
     }
+    current.group = group;
+    current.items.push(item);
+  }
 
-    return (
-      <Fragment key={item.href}>
-        {showGroup ? (
-          <NavGroupLabel label={item.group} inFlyout={inFlyout} isFirst={isFirstGroup} />
-        ) : null}
-        <Link
-          href={item.href}
-          onClick={onNavigate}
-          className={`app-sidebar-link block py-2 text-[13.5px] leading-snug transition ${
-            inFlyout ? "px-4" : "pl-[52px] pr-[18px]"
-          } ${active ? "app-sidebar-link-active" : ""}`}
-        >
-          {item.label}
-        </Link>
-      </Fragment>
-    );
-  });
+  if (current.items.length > 0) {
+    blocks.push(current);
+  }
+
+  return blocks;
+}
+
+function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = false, nested = false }) {
+  const active = isNavItemActive(item, pathname);
+
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      className={`app-sidebar-link flex items-center gap-2.5 py-1.5 text-[13px] leading-snug transition ${
+        nested
+          ? inFlyout
+            ? "px-3"
+            : "pr-3 pl-2"
+          : inFlyout
+            ? "px-4"
+            : "pr-3 pl-2"
+      } ${active ? "app-sidebar-link-active" : ""}`}
+    >
+      <NavItemIcon item={item} sectionId={sectionId} />
+      <span className="min-w-0 truncate">{item.label}</span>
+    </Link>
+  );
+}
+
+function SectionNavItems({ items, sectionId, pathname, onNavigate, inFlyout = false }) {
+  const hasGroups = items.some((item) => item.group);
+  if (!hasGroups) {
+    return items.map((item) => (
+      <SidebarNavLink
+        key={item.href}
+        item={item}
+        sectionId={sectionId}
+        pathname={pathname}
+        onNavigate={onNavigate}
+        inFlyout={inFlyout}
+      />
+    ));
+  }
+
+  const blocks = groupNavItemsByLabel(items);
+
+  return blocks.map((block, blockIndex) => (
+    <div
+      key={`${block.group ?? "ungrouped"}-${blockIndex}`}
+      className={block.group ? "app-sidebar-link-block" : "pb-0.5"}
+    >
+      {block.group ? (
+        <NavGroupLabel label={block.group} inFlyout={inFlyout} isFirst={blockIndex === 0} />
+      ) : null}
+      <div
+        className={
+          block.group
+            ? `app-sidebar-nested-links ml-2 border-l border-white/10 py-0.5 ${inFlyout ? "mr-2" : ""}`
+            : ""
+        }
+      >
+        {block.items.map((item) => (
+          <SidebarNavLink
+            key={item.href}
+            item={item}
+            sectionId={sectionId}
+            pathname={pathname}
+            onNavigate={onNavigate}
+            inFlyout={inFlyout}
+            nested={Boolean(block.group)}
+          />
+        ))}
+      </div>
+    </div>
+  ));
+}
+
+function StandaloneNavSection({ section, pathname, onNavigate }) {
+  const item = section.items[0];
+  if (!item) return null;
+  const active = isNavItemActive(item, pathname);
+
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      className={`app-sidebar-section-toggle flex w-full items-center gap-3 px-[18px] py-2.5 text-left text-[14px] font-normal transition ${
+        active ? "app-sidebar-section-active" : ""
+      }`}
+    >
+      <NavSectionIcon sectionId={section.id} className="shrink-0 opacity-90" />
+      <span className="min-w-0 flex-1 truncate">{section.label}</span>
+    </Link>
+  );
 }
 
 function CollapsedSectionIcon({
@@ -130,6 +221,32 @@ function CollapsibleNavSection({
   onIconClick,
   onNavigate,
 }) {
+  if (section.variant === "link") {
+    if (iconOnly) {
+      const item = section.items[0];
+      if (!item) return null;
+      const active = isNavItemActive(item, pathname);
+      return (
+        <Link
+          href={item.href}
+          onClick={onNavigate}
+          className={`app-sidebar-icon-btn flex w-full items-center justify-center py-3 transition ${
+            active ? "app-sidebar-icon-btn-active" : ""
+          }`}
+          title={section.label}
+          aria-label={section.label}
+        >
+          <NavSectionIcon sectionId={section.id} className="h-[18px] w-[18px] shrink-0" />
+        </Link>
+      );
+    }
+    return (
+      <div className="app-sidebar-section-block">
+        <StandaloneNavSection section={section} pathname={pathname} onNavigate={onNavigate} />
+      </div>
+    );
+  }
+
   if (iconOnly) {
     return (
       <CollapsedSectionIcon
@@ -145,6 +262,7 @@ function CollapsibleNavSection({
   const children = (
     <SectionNavItems
       items={section.items}
+      sectionId={section.id}
       pathname={pathname}
       onNavigate={onNavigate}
       inFlyout={false}
@@ -160,7 +278,7 @@ function CollapsibleNavSection({
       <button
         type="button"
         onClick={() => onToggle(section.id)}
-        className={`app-sidebar-section-toggle flex w-full items-center gap-3 px-[18px] py-2.5 text-left text-[14px] font-normal transition ${
+        className={`app-sidebar-section-toggle flex w-full items-center gap-3 px-[18px] py-2.5 text-left text-[14px] font-medium transition ${
           active ? "app-sidebar-section-active" : ""
         }`}
         aria-expanded={expanded}
@@ -170,7 +288,9 @@ function CollapsibleNavSection({
         <ChevronIcon open={expanded} />
       </button>
       {expanded ? (
-        <div className="app-sidebar-submenu pb-2 pt-0.5">{children}</div>
+        <div className="app-sidebar-submenu ml-[22px] border-l border-white/10 pb-2 pt-0.5 pl-2">
+          {children}
+        </div>
       ) : null}
     </div>
   );
@@ -231,17 +351,18 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
     [capabilities, customReportNavItems, isSuperAdmin, navContext, workspaceId],
   );
 
+  const navZones = useMemo(
+    () => groupNavSectionsByZone(visibleSections, workspaceId),
+    [visibleSections, workspaceId],
+  );
+
   const [expandedSections, setExpandedSections] = useState(() => {
     const stored = readStoredSections();
     const validIds = new Set(visibleSections.map((s) => s.id));
     if (stored) {
       return new Set(stored.filter((id) => validIds.has(id)));
     }
-    return new Set(
-      visibleSections
-        .filter((s) => s.id === "dashboard" || isNavSectionActive(s, pathname))
-        .map((s) => s.id),
-    );
+    return new Set();
   });
 
   const iconOnly = collapsed && !mobileOpen;
@@ -252,13 +373,11 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
     setExpandedSections((prev) => {
       const next = new Set(prev);
       for (const section of visibleSections) {
-        if (isNavSectionActive(section, pathname)) {
-          next.add(section.id);
-        }
+        next.add(section.id);
       }
       return next;
     });
-  }, [pathname, visibleSections]);
+  }, [visibleSections]);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...expandedSections]));
@@ -319,7 +438,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
     closeOnMobile();
   }, [closeOnMobile]);
 
-  const railWidthClass = iconOnly ? "w-[70px]" : "w-[250px]";
+  const railWidthClass = iconOnly ? "w-[70px]" : "w-[264px]";
   const visibilityClass = mobileOpen
     ? "translate-x-0"
     : "-translate-x-full lg:translate-x-0";
@@ -344,32 +463,23 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
           </Link>
         </div>
 
-        <OrganizationSwitcher collapsed={iconOnly} />
-
-        {!iconOnly ? (
-          <div className="px-[22px] pb-2">
-            <p className="app-sidebar-menu-label text-[11px] font-semibold uppercase tracking-[0.12em]">
-              Menu
-            </p>
-          </div>
-        ) : null}
-
         <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-4 pt-1">
-          {visibleSections.map((section, index) => (
-            <div
-              key={section.id}
-              className={index > 0 ? "border-t border-white/[0.08]" : undefined}
-            >
-              <CollapsibleNavSection
-                section={section}
-                pathname={pathname}
-                expanded={expandedSections.has(section.id)}
-                onToggle={toggleSection}
-                iconOnly={iconOnly}
-                isFlyoutOpen={activeFlyoutId === section.id}
-                onIconClick={toggleFlyout}
-                onNavigate={handleNavigate}
-              />
+          {navZones.map((zone) => (
+            <div key={zone.label ?? "nav"}>
+              {zone.label ? <NavZoneLabel label={zone.label} /> : null}
+              {zone.sections.map((section) => (
+                <CollapsibleNavSection
+                  key={section.id}
+                  section={section}
+                  pathname={pathname}
+                  expanded={expandedSections.has(section.id)}
+                  onToggle={toggleSection}
+                  iconOnly={iconOnly}
+                  isFlyoutOpen={activeFlyoutId === section.id}
+                  onIconClick={toggleFlyout}
+                  onNavigate={handleNavigate}
+                />
+              ))}
             </div>
           ))}
         </nav>
@@ -385,6 +495,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
           <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">
             <SectionNavItems
               items={activeFlyoutSection.items}
+              sectionId={activeFlyoutSection.id}
               pathname={pathname}
               onNavigate={handleNavigate}
               inFlyout

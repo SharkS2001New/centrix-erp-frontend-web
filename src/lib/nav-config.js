@@ -1,9 +1,12 @@
 import { REPORT_DEFINITIONS } from "@/lib/reports/definitions";
 import { HR_REPORT_DEFS } from "@/lib/reports/hr-reports";
+import { DISTRIBUTION_REPORT_DEFS } from "@/lib/reports/distribution-reports";
 import { canViewReport, P, reportPermissionCode } from "@/lib/permission-codes";
 import { shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
 import { reportModuleForSlug, anyReportsModuleEnabled } from "@/lib/module-registry";
-import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance } from "@/lib/sales-settings";
+import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled } from "@/lib/sales-settings";
+import { userHasMobileChannel } from "@/lib/mobile-order-scope";
+import { withNavItemIcons, resolveNavHrefIcon } from "@/lib/nav-item-icons";
 
 function reportNavLabel(key) {
   const title = REPORT_DEFINITIONS[key]?.title ?? key;
@@ -14,27 +17,28 @@ function buildReportNavItems() {
   const items = [
     {
       href: "/reports",
-      label: "Overview",
+      label: "Report overview",
+      icon: "reports",
       module: null,
       permission: P.reports.hub.view,
       exact: true,
-      group: "Overview",
       requireAnyReportsModule: true,
     },
     {
       href: "/reports/builder",
       label: "Report builder",
+      icon: "plus",
       module: null,
       permission: P.reports.builder.view,
-      group: "Overview",
       requireAnyReportsModule: true,
     },
     {
       href: "/reports/customer-statement",
-      label: "Customer statement",
+      label: "Customer Statement",
       module: "accounting.reports",
       permission: P.reports.customer_statement.view,
       group: "Finance reports",
+      reportKey: "customer-statement",
     },
     {
       href: "/reports/subledger-reconciliation",
@@ -89,6 +93,7 @@ function buildReportNavItems() {
             ? ["sales.reports", "accounting.reports"]
             : undefined,
         permission: reportPermissionCode(key),
+        icon: resolveNavHrefIcon(`/reports/${key}`),
         reportKey: key,
         group,
       });
@@ -101,20 +106,32 @@ function buildReportNavItems() {
       label: report.label,
       module: "hr_payroll.reports",
       permission: reportPermissionCode(report.key),
+      icon: report.icon,
       reportKey: report.key,
-      group: "HR reports",
+    });
+  }
+
+  for (const report of DISTRIBUTION_REPORT_DEFS) {
+    items.push({
+      href: `/reports/${report.key}`,
+      label: report.label,
+      module: "distribution.reports",
+      permission: reportPermissionCode(report.key),
+      icon: report.icon,
+      reportKey: report.key,
+      group: "Distribution reports",
     });
   }
 
   return items;
 }
 
-/** @typedef {{ href: string, label: string, module?: string | null, moduleAny?: string[], permission?: string, exact?: boolean, ordersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, group?: string, reportKey?: string }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, group?: string, reportKey?: string }} NavItem */
 
-/** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, items: NavItem[] }} NavSection */
+/** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, items: NavItem[] }} NavSection */
 
 /** @type {NavSection[]} */
-export const navSections = [
+const NAV_SECTION_DEFINITIONS = [
   {
     id: "platform",
     label: "Platform",
@@ -123,6 +140,7 @@ export const navSections = [
     collapsible: true,
     items: [
       { href: "/platform", label: "Overview", exact: true, superAdminOnly: true },
+      { href: "/platform/active-users", label: "Active users", superAdminOnly: true },
       { href: "/platform/organizations/new", label: "Register organization", superAdminOnly: true },
     ],
   },
@@ -134,7 +152,7 @@ export const navSections = [
     items: [
       {
         href: "/dashboard",
-        label: "Overview",
+        label: "Business summary",
         module: null,
         permission: P.dashboard.overview.view,
         exact: true,
@@ -144,7 +162,6 @@ export const navSections = [
         label: "Sales analytics",
         module: "sales.dashboard",
         permission: P.sales.dashboard.view,
-        group: "Analytics",
         exact: true,
       },
       {
@@ -152,28 +169,25 @@ export const navSections = [
         label: "Inventory analytics",
         module: "inventory.dashboard",
         permission: P.inventory.stock.view,
-        group: "Analytics",
         exact: true,
       },
-      {
-        href: "/accounting",
-        label: "Finance overview",
-        module: "accounting.dashboard",
-        permission: P.accounting.dashboard.view,
-        group: "Analytics",
-        exact: true,
-      },
+    {
+      href: "/accounting",
+      label: "Finance overview",
+      module: "accounting.dashboard",
+      permission: P.accounting.dashboard.view,
+      exact: true,
+    },
       {
         href: "/hr",
-        label: "HR overview",
+        label: "HR Overview",
         module: "hr_payroll.dashboard",
         permission: P.hr.employees.view,
-        group: "Analytics",
         exact: true,
       },
       {
         href: "/fulfillment",
-        label: "Fulfillment analytics",
+        label: "Distribution overview",
         module: "distribution.dashboard",
         permission: P.fulfillment.drivers.view,
         group: "Analytics",
@@ -182,7 +196,86 @@ export const navSections = [
     ],
   },
   {
-    id: "sales",
+    id: "products",
+    label: "Products",
+    icon: "📋",
+    collapsible: true,
+    items: [
+      {
+        href: "/products",
+        label: "Products catalogue",
+        module: null,
+        permission: P.catalogue.products.view,
+      },
+      {
+        href: "/categories",
+        label: "Categories",
+        module: null,
+        permission: P.catalogue.categories.view,
+      },
+      {
+        href: "/uoms",
+        label: "Units of measure",
+        module: null,
+        permission: P.catalogue.uoms.view,
+      },
+      {
+        href: "/retail-package-settings",
+        label: "Retail packages",
+        module: null,
+        permission: P.catalogue.retail_packages.view,
+      },
+    ],
+  },
+  {
+    id: "pos",
+    label: "Point of sale",
+    icon: "💳",
+    collapsible: true,
+    items: [
+      {
+        href: "/sales/pos",
+        label: "Create order",
+        module: "sales.pos",
+        permission: P.pos.checkout.create,
+      },
+      {
+        href: "/sales/end-of-day",
+        label: "End of day report",
+        module: "sales.pos",
+        permission: P.pos.end_of_day.view,
+      },
+      {
+        href: "/sales/till-management",
+        label: "Till management",
+        module: "sales.pos",
+        permission: P.pos.till_management.view,
+        requireTillFloat: true,
+      },
+    ],
+  },
+  {
+    id: "pricing_tax",
+    label: "Pricing & tax",
+    icon: "💰",
+    collapsible: true,
+    items: [
+      {
+        href: "/vats",
+        label: "VAT / tax rates",
+        module: null,
+        permission: P.catalogue.vat_rates.view,
+      },
+      {
+        href: "/price-history",
+        label: "Price history",
+        module: null,
+        permission: P.catalogue.price_history.view,
+      },
+    ],
+  },
+  {
+    id: "sales_orders",
     label: "Sales & orders",
     icon: "🛒",
     collapsible: true,
@@ -195,62 +288,28 @@ export const navSections = [
         ordersNav: true,
       },
       {
-        href: "/sales/pos",
-        label: "Create order",
-        module: "sales.pos",
-        permission: P.pos.checkout.create,
-        group: "Point of sale",
-      },
-      {
-        href: "/sales/till-management",
-        label: "Till management",
-        module: "sales.pos",
-        permission: P.pos.till_management.view,
-        requireTillFloat: true,
-        group: "Point of sale",
-      },
-      {
-        href: "/sales/end-of-day",
-        label: "End of day",
-        module: "sales.pos",
-        permission: P.pos.end_of_day.view,
-        group: "Point of sale",
-      },
-      {
-        href: "/sales/returns",
-        label: "Returns & credit notes",
-        module: "sales.backend",
-        permission: P.sales.returns.view,
-        group: "After sales",
-      },
-      {
-        href: "/sales/reservations",
-        label: "Reservations",
-        module: "sales.backend",
-        permission: P.sales.reservations.view,
-        group: "After sales",
-      },
-      {
-        href: "/sales/vouchers",
-        label: "Vouchers",
-        module: "sales.backend",
-        permission: P.sales.vouchers.view,
-        group: "Promotions & loyalty",
-      },
-      {
-        href: "/sales/loyalty-cards",
-        label: "Loyalty cards",
-        module: "sales.backend",
-        permission: P.sales.loyalty_cards.view,
-        group: "Promotions & loyalty",
-      },
-      {
         href: "/sales/loading-sheets",
-        label: "Loading sheets",
+        label: "Loading list",
         module: "sales.backend",
         permission: P.sales.orders.view,
         requireMobileLoadingSheets: true,
-        group: "Field sales",
+      },
+    ],
+  },
+  {
+    id: "field_sales",
+    label: "Field sales",
+    icon: "📱",
+    collapsible: true,
+    requireUserMobileChannel: true,
+    requireOrgMobileSales: true,
+    items: [
+      {
+        href: "/sales/orders/queues/mobile",
+        label: "Mobile orders",
+        module: "sales.backend",
+        permission: P.sales.orders.view,
+        mobileOrdersNav: true,
       },
       {
         href: "/sales/field-attendance",
@@ -258,7 +317,46 @@ export const navSections = [
         module: "sales.backend",
         permission: P.sales.orders.view,
         requireMobileFieldAttendance: true,
-        group: "Field sales",
+      },
+    ],
+  },
+  {
+    id: "after_sales",
+    label: "After sales",
+    icon: "↩️",
+    collapsible: true,
+    items: [
+      {
+        href: "/sales/returns",
+        label: "Returns & credit notes",
+        module: "sales.backend",
+        permission: P.sales.returns.view,
+      },
+      {
+        href: "/sales/reservations",
+        label: "Reservations",
+        module: "sales.backend",
+        permission: P.sales.reservations.view,
+      },
+    ],
+  },
+  {
+    id: "promotions",
+    label: "Promotions & loyalty",
+    icon: "🎁",
+    collapsible: true,
+    items: [
+      {
+        href: "/sales/vouchers",
+        label: "Vouchers",
+        module: "sales.backend",
+        permission: P.sales.vouchers.view,
+      },
+      {
+        href: "/sales/loyalty-cards",
+        label: "Loyalty cards",
+        module: "sales.backend",
+        permission: P.sales.loyalty_cards.view,
       },
     ],
   },
@@ -270,59 +368,16 @@ export const navSections = [
     items: [
       {
         href: "/customers",
-        label: "Customer list",
+        label: "Customers",
         module: "customers_suppliers",
         permission: P.customers.customers.view,
       },
-    ],
-  },
-  {
-    id: "catalogue",
-    label: "Product catalogue",
-    icon: "📋",
-    collapsible: true,
-    items: [
       {
-        href: "/products",
-        label: "Products",
-        module: null,
-        permission: P.catalogue.products.view,
-        group: "Products",
-      },
-      {
-        href: "/categories",
-        label: "Categories",
-        module: null,
-        permission: P.catalogue.categories.view,
-        group: "Products",
-      },
-      {
-        href: "/uoms",
-        label: "Units of measure",
-        module: null,
-        permission: P.catalogue.uoms.view,
-        group: "Products",
-      },
-      {
-        href: "/retail-package-settings",
-        label: "Retail packages",
-        module: null,
-        permission: P.catalogue.retail_packages.view,
-        group: "Products",
-      },
-      {
-        href: "/vats",
-        label: "VAT / tax rates",
-        module: null,
-        permission: P.catalogue.vat_rates.view,
-        group: "Pricing & tax",
-      },
-      {
-        href: "/price-history",
-        label: "Price history",
-        module: null,
-        permission: P.catalogue.price_history.view,
-        group: "Pricing & tax",
+        href: "/reports/customer-statement",
+        label: "Customer Statement",
+        module: "customers_suppliers",
+        permission: P.customers.customers.view,
+        reportKey: "customer-statement",
       },
     ],
   },
@@ -333,89 +388,94 @@ export const navSections = [
     collapsible: true,
     items: [
       {
-        href: "/inventory/stock",
-        label: "Stock levels",
-        module: "inventory",
-        permission: P.inventory.stock.view,
-        group: "Stock",
-      },
-      {
         href: "/inventory/stock-take",
         label: "Stock take",
         module: "inventory",
         permission: P.inventory.stock_take.view,
-        group: "Stock",
       },
       {
         href: "/inventory/transactions",
         label: "Transactions",
         module: "inventory",
         permission: P.inventory.movements.view,
-        group: "Stock",
       },
+      {
+        href: "/inventory/stock",
+        label: "Stock levels",
+        module: "inventory",
+        permission: P.inventory.stock.view,
+      },
+    ],
+  },
+  {
+    id: "stock_movements",
+    label: "Stock movements",
+    icon: "🔄",
+    collapsible: true,
+    items: [
       {
         href: "/inventory/transfers",
         label: "Transfers",
         module: "inventory",
         permission: P.inventory.transfers.view,
-        group: "Movements",
       },
       {
         href: "/inventory/transfers/new",
         label: "New transfer",
         module: "inventory",
         permission: P.inventory.transfers.create,
-        group: "Movements",
       },
       {
         href: "/inventory/receipts",
         label: "Goods received",
         module: "inventory",
         permission: P.inventory.receipts.view,
-        group: "Movements",
       },
       {
         href: "/inventory/damages",
         label: "Write-offs & damages",
         module: "inventory",
         permission: P.inventory.damages.view,
-        group: "Movements",
       },
     ],
   },
   {
-    id: "purchases",
-    label: "Purchasing",
+    id: "suppliers",
+    label: "Suppliers",
     icon: "🚚",
     collapsible: true,
     items: [
       {
         href: "/suppliers",
-        label: "Suppliers",
+        label: "Suppliers list",
         module: "customers_suppliers",
         permission: P.purchasing.suppliers.view,
-        group: "Suppliers",
+        exact: true,
       },
       {
         href: "/lpo",
         label: "Purchase orders (LPO)",
         module: "customers_suppliers",
         permission: P.purchasing.lpo.view,
-        group: "Suppliers",
       },
       {
         href: "/suppliers/payments",
         label: "Supplier payments",
         module: "customers_suppliers",
         permission: P.purchasing.supplier_payments.view,
-        group: "Payments & returns",
       },
       {
         href: "/suppliers/returns",
         label: "Supplier returns",
         module: "customers_suppliers",
         permission: P.purchasing.supplier_returns.view,
-        group: "Payments & returns",
+      },
+      {
+        href: "/reports/supplier-statement",
+        label: "Supplier Statement",
+        module: "customers_suppliers",
+        permission: P.purchasing.suppliers.view,
+        reportKey: "supplier-statement",
       },
     ],
   },
@@ -533,8 +593,8 @@ export const navSections = [
     ],
   },
   {
-    id: "hr",
-    label: "Human resources",
+    id: "hr_people",
+    label: "People",
     icon: "👥",
     collapsible: true,
     items: [
@@ -543,91 +603,103 @@ export const navSections = [
         label: "Employees",
         module: "hr_payroll",
         permission: P.hr.employees.view,
-        group: "People",
       },
       {
         href: "/hr/departments",
         label: "Departments",
         module: "hr_payroll",
         permission: P.hr.departments.view,
-        group: "People",
       },
       {
         href: "/hr/positions",
         label: "Positions",
         module: "hr_payroll",
         permission: P.hr.positions.view,
-        group: "People",
       },
+    ],
+  },
+  {
+    id: "hr_time_attendance",
+    label: "Time & attendance",
+    icon: "🕐",
+    collapsible: true,
+    items: [
       {
         href: "/hr/attendance",
         label: "Attendance",
         module: "hr_payroll",
         permission: P.hr.attendance.view,
-        group: "Time & attendance",
       },
       {
         href: "/hr/leave",
         label: "Leave",
         module: "hr_payroll",
         permission: P.hr.leave.view,
-        group: "Time & attendance",
       },
       {
         href: "/hr/shifts",
         label: "Shifts",
         module: "hr_payroll",
         permission: P.hr.shifts.view,
-        group: "Time & attendance",
       },
       {
         href: "/hr/overtime",
         label: "Overtime",
         module: "hr_payroll",
         permission: P.hr.overtime.view,
-        group: "Time & attendance",
       },
+    ],
+  },
+  {
+    id: "hr_payroll",
+    label: "Payroll",
+    icon: "💰",
+    collapsible: true,
+    items: [
       {
         href: "/hr/payroll",
         label: "Payroll runs",
         module: "hr_payroll",
         permission: P.hr.payroll.view,
-        group: "Payroll",
       },
       {
         href: "/hr/allowances",
         label: "Allowances",
         module: "hr_payroll",
         permission: P.hr.allowances.view,
-        group: "Payroll",
       },
       {
         href: "/hr/deductions",
         label: "Deductions",
         module: "hr_payroll",
         permission: P.hr.deductions.view,
-        group: "Payroll",
       },
       {
         href: "/hr/cash-advances",
         label: "Cash advances",
         module: "hr_payroll",
         permission: P.hr.cash_advances.view,
-        group: "Payroll",
       },
+    ],
+  },
+  {
+    id: "hr_performance",
+    label: "Performance",
+    icon: "📈",
+    collapsible: true,
+    items: [
       {
         href: "/hr/kpis",
         label: "KPIs",
         module: "hr_payroll",
         permission: P.hr.kpis.view,
-        group: "Performance",
       },
     ],
   },
   {
-    id: "logistics",
-    label: "Fulfillment & logistics",
-    icon: "🚛",
+    id: "distribution_ops",
+    label: "Operations",
+    icon: "🚚",
     collapsible: true,
     items: [
       {
@@ -635,49 +707,64 @@ export const navSections = [
         label: "Dispatch",
         module: "distribution",
         permission: P.fulfillment.drivers.view,
-        group: "Fulfillment",
       },
       {
         href: "/fulfillment/trips",
         label: "Trips",
         module: "distribution",
         permission: P.fulfillment.drivers.view,
-        group: "Fulfillment",
       },
       {
         href: "/fulfillment/pod-records",
         label: "Proof of delivery",
         module: "distribution",
         permission: P.fulfillment.drivers.view,
-        group: "Fulfillment",
       },
+    ],
+  },
+  {
+    id: "distribution_fleet",
+    label: "Fleet & routes",
+    icon: "🚛",
+    collapsible: true,
+    items: [
       {
         href: "/fulfillment/drivers",
         label: "Drivers",
         module: "distribution",
         permission: P.fulfillment.drivers.view,
-        group: "Fleet",
       },
       {
         href: "/fulfillment/vehicles",
         label: "Vehicles",
         module: "distribution",
         permission: P.fulfillment.vehicles.view,
-        group: "Fleet",
       },
       {
         href: "/fulfillment/routes",
         label: "Routes",
         module: "distribution",
         permission: P.fulfillment.routes.view,
-        group: "Fleet",
       },
       {
         href: "/fulfillment/schedules",
         label: "Schedules",
         module: "distribution",
         permission: P.fulfillment.routes.view,
-        group: "Fleet",
+      },
+    ],
+  },
+  {
+    id: "distribution_orders",
+    label: "Orders",
+    icon: "📦",
+    collapsible: true,
+    items: [
+      {
+        href: "/fulfillment/orders",
+        label: "Route orders",
+        module: "distribution",
+        permission: P.sales.orders.view,
       },
     ],
   },
@@ -689,7 +776,45 @@ export const navSections = [
     items: buildReportNavItems(),
   },
   {
-    id: "users",
+    id: "admin_dashboard",
+    label: "Dashboard",
+    icon: "📊",
+    collapsible: true,
+    items: [
+      {
+        href: "/admin",
+        label: "Admin home",
+        module: "admin",
+        permission: P.admin.overview.view,
+        orgAdminOnly: true,
+        exact: true,
+      },
+    ],
+  },
+  {
+    id: "admin_organization",
+    label: "Organization",
+    icon: "🏢",
+    collapsible: true,
+    items: [
+      {
+        href: "/admin/company",
+        label: "Company profile",
+        module: "admin",
+        permission: P.admin.company.view,
+        orgAdminOnly: true,
+      },
+      {
+        href: "/admin/branches",
+        label: "Branches",
+        module: "admin",
+        permission: P.admin.branches.view,
+        orgAdminOnly: true,
+      },
+    ],
+  },
+  {
+    id: "admin_users",
     label: "User management",
     icon: "🔐",
     collapsible: true,
@@ -704,14 +829,14 @@ export const navSections = [
       },
       {
         href: "/admin/roles",
-        label: "Roles & permissions",
+        label: "Roles and permissions",
         module: "admin",
         permission: P.admin.roles.view,
         orgAdminOnly: true,
       },
       {
         href: "/admin/audit",
-        label: "Audit log",
+        label: "Audit logs",
         module: "admin",
         permission: P.admin.audit.view,
         orgAdminOnly: true,
@@ -719,42 +844,17 @@ export const navSections = [
     ],
   },
   {
-    id: "settings",
-    label: "Administration",
-    icon: "⚙️",
+    id: "admin_finance_tax",
+    label: "Finance & tax",
+    icon: "💳",
     collapsible: true,
     items: [
-      {
-        href: "/admin",
-        label: "Overview",
-        module: "admin",
-        permission: P.admin.overview.view,
-        orgAdminOnly: true,
-        exact: true,
-      },
-      {
-        href: "/admin/company",
-        label: "Company profile",
-        module: "admin",
-        permission: P.admin.company.view,
-        orgAdminOnly: true,
-        group: "Organisation",
-      },
-      {
-        href: "/admin/branches",
-        label: "Branches",
-        module: "admin",
-        permission: P.admin.branches.view,
-        orgAdminOnly: true,
-        group: "Organisation",
-      },
       {
         href: "/admin/payment-methods",
         label: "Payment methods",
         module: "admin",
         permission: P.admin.payment_methods.view,
         orgAdminOnly: true,
-        group: "Finance & tax",
       },
       {
         href: "/vats",
@@ -762,7 +862,6 @@ export const navSections = [
         module: null,
         permission: P.catalogue.vat_rates.view,
         orgAdminOnly: true,
-        group: "Finance & tax",
       },
       {
         href: "/admin/kra-responses",
@@ -770,19 +869,27 @@ export const navSections = [
         module: "admin",
         permission: P.admin.settings.view,
         orgAdminOnly: true,
-        group: "Finance & tax",
       },
+    ],
+  },
+  {
+    id: "admin_settings",
+    label: "Settings",
+    icon: "⚙️",
+    collapsible: true,
+    items: [
       {
         href: "/admin/settings",
-        label: "System preferences",
+        label: "Organization settings",
         module: "admin",
         permission: P.admin.settings.view,
         orgAdminOnly: true,
-        group: "Settings",
       },
     ],
   },
 ];
+
+export const navSections = withNavItemIcons(NAV_SECTION_DEFINITIONS);
 
 export function isNavItemActive(item, pathname) {
   if (item.exact) {
@@ -793,6 +900,16 @@ export function isNavItemActive(item, pathname) {
 
 export function isNavSectionActive(section, pathname) {
   return section.items.some((item) => isNavItemActive(item, pathname));
+}
+
+export function isNavSectionVisible(section, navContext) {
+  if (section.requireUserMobileChannel && !userHasMobileChannel(navContext.user?.login_channels)) {
+    return false;
+  }
+  if (section.requireOrgMobileSales && !isOrgMobileSalesEnabled(navContext.capabilities)) {
+    return false;
+  }
+  return true;
 }
 
 export function isNavItemVisible(item, { isModuleEnabled, hasPermission, requireTillFloat, user, capabilities, isSuperAdmin, organization }) {
@@ -812,6 +929,8 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   if (item.requireTillFloat && !requireTillFloat) return false;
   if (item.requireMobileLoadingSheets && !shouldShowMobileLoadingSheets(capabilities)) return false;
   if (item.requireMobileFieldAttendance && !shouldShowMobileFieldAttendance(capabilities)) return false;
+  if (item.requireUserMobileChannel && !userHasMobileChannel(user?.login_channels)) return false;
+  if (item.requireOrgMobileSales && !isOrgMobileSalesEnabled(capabilities)) return false;
   if (item.requireAdmin && !user?.is_admin && !capabilities?.is_admin) return false;
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;
   if (item.moduleAny?.length) {

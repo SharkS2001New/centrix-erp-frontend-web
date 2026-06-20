@@ -115,7 +115,7 @@ export function FulfillmentDashboardContent() {
 
   return (
     <CatalogPageShell
-      title="Fulfillment dashboard"
+      title="Distribution dashboard"
       subtitle="Drivers, routes, and today's delivery performance"
       action={<PrimaryLink href="/fulfillment/drivers">Manage drivers</PrimaryLink>}
     >

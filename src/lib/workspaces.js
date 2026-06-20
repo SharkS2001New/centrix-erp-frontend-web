@@ -2,6 +2,7 @@ import { isNavItemVisible } from "@/lib/nav-config";
 import { POS_LOGIN_CHANNEL, WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
 import {
   WORKSPACE_ANALYTICS_HREFS,
+  WORKSPACE_HIDE_REPORTS_HUB,
   WORKSPACE_REPORT_MODULES,
   reportNavItemBelongsToWorkspace,
   reportSlugBelongsToWorkspace,
@@ -13,26 +14,109 @@ export const WORKSPACE_ICONS = {
   chart: "📊",
   people: "👥",
   pos: "🛒",
+  truck: "🚛",
   app: "📱",
+  settings: "⚙️",
 };
+
+/** Display order for the application switcher and choose-workspace screen. */
+export const WORKSPACE_DISPLAY_ORDER = [
+  "pos",
+  "backoffice",
+  "distribution",
+  "accounting",
+  "hr",
+  "admin",
+];
+
+/**
+ * @param {Array<{ id: string }>} workspaces
+ */
+export function sortWorkspaces(workspaces) {
+  const rank = new Map(WORKSPACE_DISPLAY_ORDER.map((id, index) => [id, index]));
+  return [...workspaces].sort(
+    (a, b) => (rank.get(a.id) ?? 999) - (rank.get(b.id) ?? 999),
+  );
+}
 
 /** Nav sections shown per workspace (reports filtered further by report module). */
 export const WORKSPACE_SECTION_IDS = {
   pos: [],
   backoffice: [
     "dashboard",
-    "sales",
+    "products",
+    "pos",
+    "pricing_tax",
+    "sales_orders",
+    "field_sales",
+    "after_sales",
+    "promotions",
     "customers",
-    "catalogue",
     "inventory",
-    "purchases",
-    "logistics",
+    "stock_movements",
+    "suppliers",
     "reports",
   ],
-  admin: ["users", "settings"],
+  admin: ["admin_dashboard", "admin_organization", "admin_users", "admin_finance_tax", "admin_settings"],
   accounting: ["dashboard", "accounting", "reports"],
-  hr: ["dashboard", "hr", "reports"],
+  hr: ["dashboard", "hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"],
+  distribution: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "reports"],
 };
+
+/** Sidebar zone headers for workspaces that still use grouped sections. */
+export const WORKSPACE_NAV_ZONES = {
+  accounting: [
+    { label: null, sectionIds: ["dashboard", "accounting", "reports"] },
+  ],
+  hr: [
+    { label: null, sectionIds: ["dashboard", "hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"] },
+  ],
+  distribution: [
+    {
+      label: null,
+      sectionIds: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "reports"],
+    },
+  ],
+  admin: [
+    {
+      label: null,
+      sectionIds: [
+        "admin_dashboard",
+        "admin_organization",
+        "admin_users",
+        "admin_finance_tax",
+        "admin_settings",
+      ],
+    },
+  ],
+};
+
+/**
+ * @param {import("@/lib/nav-config").NavSection[]} sections
+ * @param {string} workspaceId
+ * @returns {{ label: string | null, sections: import("@/lib/nav-config").NavSection[] }[]}
+ */
+export function groupNavSectionsByZone(sections, workspaceId) {
+  const zones = WORKSPACE_NAV_ZONES[workspaceId];
+  if (!zones?.length) {
+    return [{ label: null, sections }];
+  }
+
+  const byId = new Map(sections.map((section) => [section.id, section]));
+  const ordered = zones
+    .flatMap((zone) => zone.sectionIds.map((id) => byId.get(id)).filter(Boolean));
+
+  if (ordered.length === sections.length) {
+    return [{ label: null, sections: ordered }];
+  }
+
+  return zones
+    .map((zone) => ({
+      label: zone.label,
+      sections: zone.sectionIds.map((id) => byId.get(id)).filter(Boolean),
+    }))
+    .filter((zone) => zone.sections.length > 0);
+}
 
 /** Dashboard analytics links allowed per workspace. */
 export const WORKSPACE_DASHBOARD_HREFS = WORKSPACE_ANALYTICS_HREFS;
@@ -55,7 +139,6 @@ export const WORKSPACE_PATH_PREFIXES = {
     "/suppliers",
     "/lpo",
     "/purchases",
-    "/fulfillment",
     "/routes",
     "/till-management",
     "/platform",
@@ -63,6 +146,7 @@ export const WORKSPACE_PATH_PREFIXES = {
   admin: ["/admin", "/vats"],
   accounting: ["/accounting", "/expenses", "/finance", "/vats"],
   hr: ["/hr", "/employees"],
+  distribution: ["/fulfillment", "/fulfillment/orders", "/sales/orders"],
 };
 
 export const SHARED_WORKSPACE_PATHS = ["/profile", "/choose-workspace"];
@@ -78,7 +162,7 @@ export function workspaceLoginChannel(workspaceId) {
 
 /** @param {object} capabilities */
 export function workspacesFromCapabilities(capabilities) {
-  return capabilities?.workspaces ?? [];
+  return sortWorkspaces(capabilities?.workspaces ?? []);
 }
 
 /** @param {string} workspaceId */
@@ -102,6 +186,9 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
   }
 
   if (item.href?.startsWith("/reports") || item.reportKey) {
+    if (item.href === "/reports" && item.exact && WORKSPACE_HIDE_REPORTS_HUB.has(workspaceId)) {
+      return false;
+    }
     return reportNavItemBelongsToWorkspace(item, workspaceId);
   }
 
@@ -129,6 +216,13 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
 
   if (workspaceId === "hr") {
     return item.href?.startsWith("/hr") || item.href?.startsWith("/employees");
+  }
+
+  if (workspaceId === "distribution") {
+    return (
+      item.href?.startsWith("/fulfillment") ||
+      item.href?.startsWith("/sales/orders")
+    );
   }
 
   if (workspaceId === "backoffice") {
@@ -211,6 +305,9 @@ export function resolvePostLoginPath(ctx, capabilities) {
  * @param {import("@/lib/nav-config").NavSection[]} sections
  */
 export function filterNavSectionsForWorkspace(sections, workspaceId, navContext) {
+  const sectionOrder = WORKSPACE_SECTION_IDS[workspaceId] ?? [];
+  const orderRank = new Map(sectionOrder.map((id, index) => [id, index]));
+
   return sections
     .filter((section) => sectionBelongsToWorkspace(section, workspaceId))
     .map((section) => ({
@@ -223,7 +320,8 @@ export function filterNavSectionsForWorkspace(sections, workspaceId, navContext)
         return isNavItemVisible(item, navContext);
       }),
     }))
-    .filter((section) => section.items.length > 0);
+    .filter((section) => section.items.length > 0)
+    .sort((a, b) => (orderRank.get(a.id) ?? 999) - (orderRank.get(b.id) ?? 999));
 }
 
 /** True when user must pick a workspace before using the app shell. */

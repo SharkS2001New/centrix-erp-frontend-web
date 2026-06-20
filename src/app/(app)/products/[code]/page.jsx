@@ -23,6 +23,7 @@ import {
 } from "@/lib/uom-packaging";
 import { stockSellingValue } from "@/lib/retail-pricing";
 import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
+import { resolveProductAudit } from "@/lib/product-audit";
 
 const MAIN_TABS = [
   { id: "info", label: "Product information" },
@@ -106,17 +107,6 @@ function formatDiscount(product) {
   }
   if (pct === 0) return "—";
   return `${pct}%`;
-}
-
-function formatDateTime(value) {
-  if (!value) return "—";
-  return new Date(value).toLocaleString("en-KE", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function enrichProduct(product, subById, catById, supplierById, uomById, vatById, retailPackage) {
@@ -360,6 +350,15 @@ function DetailItem({ label, children }) {
   );
 }
 
+function UserDateCell({ name, date }) {
+  return (
+    <div>
+      <p className="font-medium text-slate-900">{name || "—"}</p>
+      <p className="mt-0.5 text-xs font-normal text-slate-500">{formatShortDate(date)}</p>
+    </div>
+  );
+}
+
 function movementTone(row) {
   const qty = Number(row.quantity_change ?? 0);
   if (qty > 0) return "in";
@@ -468,6 +467,7 @@ export default function ProductDetailPage() {
   const [activityView, setActivityView] = useState(initialTabs.activityView);
 
   const [product, setProduct] = useState(null);
+  const [users, setUsers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -491,6 +491,12 @@ export default function ProductDetailPage() {
   const supplierById = useMemo(() => new Map(suppliers.map((s) => [s.id, s])), [suppliers]);
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
   const vatById = useMemo(() => new Map(vats.map((v) => [v.id, v])), [vats]);
+  const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
+
+  const productAudit = useMemo(
+    () => resolveProductAudit(product, userById),
+    [product, userById],
+  );
 
   const enriched = useMemo(
     () =>
@@ -556,7 +562,7 @@ export default function ProductDetailPage() {
   }, [enriched]);
 
   const loadMeta = useCallback(async () => {
-    const [catRes, subRes, supRes, uomRes, vatRes, retailRes, settingsRes] = await Promise.all([
+    const [catRes, subRes, supRes, uomRes, vatRes, retailRes, settingsRes, userRes] = await Promise.all([
       apiRequest("/categories", { searchParams: { per_page: 200 } }),
       apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
       apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
@@ -566,12 +572,14 @@ export default function ProductDetailPage() {
         searchParams: { per_page: 1, "filter[product_code]": productCode },
       }).catch(() => ({ data: [] })),
       apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
+      apiRequest("/users", { searchParams: { per_page: 200 } }),
     ]);
     setCategories(catRes.data ?? []);
     setSubCategories(subRes.data ?? []);
     setSuppliers(supRes.data ?? []);
     setUoms(uomRes.data ?? uomRes ?? []);
     setVats(vatRes.data ?? vatRes ?? []);
+    setUsers(userRes.data ?? []);
     const retailRows = retailRes?.data ?? [];
     setRetailPackage(retailRows[0] ?? null);
     const settingsRows = settingsRes?.data ?? settingsRes ?? [];
@@ -907,8 +915,9 @@ export default function ProductDetailPage() {
               </SectionCard>
 
               <SectionCard title="Record" description="Audit trail">
-                <DetailItem label="Created">{formatDateTime(enriched.created_at)}</DetailItem>
-                <DetailItem label="Last updated">{formatDateTime(enriched.updated_at)}</DetailItem>
+                <DetailItem label={productAudit.label}>
+                  <UserDateCell name={productAudit.name} date={productAudit.date} />
+                </DetailItem>
                 <DetailItem label="Status">
                   <StatusBadge active={enriched.is_active} />
                 </DetailItem>

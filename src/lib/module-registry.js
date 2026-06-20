@@ -5,7 +5,11 @@ export const REPORT_MODULE_BY_SLUG = {
   "sales-by-user": "sales.reports",
   "sales-by-customer": "sales.reports",
   "sales-by-channel": "sales.reports",
-  "mobile-route-sales": "sales.reports",
+  "mobile-route-sales": "distribution.reports",
+  "dispatch-trips": "distribution.reports",
+  "trip-cash-settlement": "distribution.reports",
+  "pod-compliance": "distribution.reports",
+  "driver-deliveries": "distribution.reports",
   "sales-pipeline": "sales.reports",
   "vat-collected": "sales.reports",
   "category-sales": "sales.reports",
@@ -43,7 +47,8 @@ export const REPORT_MODULE_BY_SLUG = {
   "accounts-payable": "accounting.reports",
   "subledger-reconciliation": "accounting.reports",
   "kra-receipts": "accounting.reports",
-  "customer-statement": "accounting.reports",
+  "customer-statement": "customers_suppliers",
+  "supplier-statement": "customers_suppliers",
 
   "purchases-by-supplier": "customers_suppliers.reports",
   "open-lpo": "customers_suppliers.reports",
@@ -81,3 +86,98 @@ export const DOMAIN_MODULE_ORDER = [
   "distribution",
   "admin",
 ];
+
+/** Module keys gated by the distribution domain. */
+export const DISTRIBUTION_MODULE_KEYS = [
+  "distribution",
+  "distribution.dashboard",
+  "distribution.reports",
+];
+
+/**
+ * @param {Array<{ key: string, kind?: string, children?: string[] }>} moduleOptions
+ * @returns {Map<string, string[]>}
+ */
+export function buildDomainChildrenMap(moduleOptions) {
+  const map = new Map();
+  for (const mod of moduleOptions ?? []) {
+    if (mod.kind !== "domain") continue;
+    const childKeys = mod.children?.length
+      ? mod.children
+      : (moduleOptions ?? []).filter((m) => m.parent === mod.key).map((m) => m.key);
+    map.set(mod.key, [mod.key, ...childKeys.filter((k) => k !== mod.key)]);
+  }
+  return map;
+}
+
+/**
+ * @param {Record<string, boolean>} previous
+ * @param {Record<string, boolean>} partial
+ * @param {Map<string, string[]> | null} [domainChildrenMap]
+ */
+export function patchEnabledModules(previous, partial, domainChildrenMap = null, mobileOrdersEnabled = true) {
+  const next = { ...previous };
+
+  for (const [key, value] of Object.entries(partial)) {
+    if (domainChildrenMap?.has(key)) {
+      next[key] = value;
+      if (!value) {
+        for (const childKey of domainChildrenMap.get(key) ?? []) {
+          next[childKey] = false;
+        }
+      }
+      continue;
+    }
+    next[key] = value;
+  }
+
+  const distributionTouched = DISTRIBUTION_MODULE_KEYS.some((key) => key in partial);
+  const distributionOn = DISTRIBUTION_MODULE_KEYS.some((key) => next[key]);
+
+  if (distributionTouched && distributionOn) {
+    next["sales.mobile"] = true;
+    next.sales = true;
+  }
+
+  if (!next["sales.mobile"] || !mobileOrdersEnabled) {
+    for (const key of DISTRIBUTION_MODULE_KEYS) {
+      next[key] = false;
+    }
+  }
+
+  return next;
+}
+
+/**
+ * @param {Record<string, boolean>} modules
+ * @param {Map<string, string[]>} domainChildrenMap
+ */
+export function isDomainFullyEnabled(modules, domainKey, domainChildrenMap) {
+  const keys = domainChildrenMap.get(domainKey) ?? [domainKey];
+  return keys.every((key) => Boolean(modules[key]));
+}
+
+/**
+ * Collapse partial domain states to whole-module on/off (domain on if any child was on).
+ *
+ * @param {Record<string, boolean>} modules
+ * @param {Map<string, string[]>} domainChildrenMap
+ */
+export function normalizeDomainModules(modules, domainChildrenMap) {
+  const next = { ...modules };
+
+  for (const [domain, keys] of domainChildrenMap.entries()) {
+    const children = keys.filter((key) => key !== domain);
+    const anyChildOn = children.some((key) => next[key]);
+    const domainOn = Boolean(next[domain]) || anyChildOn;
+    next[domain] = domainOn;
+
+    if (!domainOn) {
+      for (const key of keys) {
+        next[key] = false;
+      }
+    }
+  }
+
+  return patchEnabledModules(next, {}, domainChildrenMap);
+}

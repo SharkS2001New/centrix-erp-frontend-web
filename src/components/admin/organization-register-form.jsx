@@ -1,6 +1,11 @@
 "use client";
 
 import { PasswordInput } from "@/components/auth/password-input";
+import { PlatformFormSection } from "@/components/admin/organization-platform-config";
+import {
+  buildDomainChildrenMap,
+  normalizeDomainModules,
+} from "@/lib/module-registry";
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]";
@@ -16,27 +21,36 @@ export function OrgRegisterField({ label, children, className = "" }) {
 
 export { inputClass };
 
-export function modulesForProfile(profiles, profileKey) {
+export function modulesForProfile(profiles, profileKey, moduleOptions = []) {
   const profile = profiles.find((p) => p.key === profileKey);
-  return profile?.modules ?? {};
+  const raw = profile?.modules ?? {};
+  const map = buildDomainChildrenMap(moduleOptions);
+  if (map.size === 0) {
+    return raw;
+  }
+  return normalizeDomainModules(raw, map);
 }
 
 export {
+  OrganizationConfigTabs,
   OrganizationModuleToggles,
+  OrganizationOrderWorkflowSettings,
   OrganizationPlatformSalesSettings,
+  OrganizationTenantProfile,
+  OrganizationUsersPanel,
+  OrganizationStatusPanel,
+  PlatformFormSection,
   defaultSalesPlatformState,
   salesPlatformFromApi,
 } from "@/components/admin/organization-platform-config";
 
-export function ManagerAccountFields({ values, onChange }) {
+export function InitialAdministratorFields({ values, onChange }) {
   return (
-    <section>
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-[#185FA5]">Manager account</h2>
-      <p className="mt-1 text-sm text-slate-500">
-        Creates the organization administrator. They sign in with the company code and these credentials, then add
-        staff under Admin → Users.
-      </p>
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <PlatformFormSection
+      title="Initial administrator"
+      description="Creates the first organization administrator. They sign in with the company code and these credentials, then add staff under Administration → Users."
+    >
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <OrgRegisterField label="Full name *">
           <input
             className={inputClass}
@@ -72,6 +86,9 @@ export function ManagerAccountFields({ values, onChange }) {
           />
         </OrgRegisterField>
       </div>
-    </section>
+    </PlatformFormSection>
   );
 }
+
+/** @deprecated Use InitialAdministratorFields */
+export const ManagerAccountFields = InitialAdministratorFields;

@@ -130,7 +130,7 @@ export default function CustomerDetailPage() {
               href={`/reports/customer-statement?customer=${customer.customer_num}`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#185FA5] px-4 py-2 text-sm font-medium text-[#185FA5] hover:bg-[#E6F1FB]"
             >
-              View statement
+              Customer Statement
             </Link>
             <Link
               href={`/customers/${customer.customer_num}/edit`}
@@ -362,14 +362,20 @@ function ProfileRow({ label, value, highlight = false }) {
 }
 
 function CustomerTypeBadge({ type }) {
-  const isRoute = type === "route";
+  const styles =
+    type === "route"
+      ? "bg-[#EEEDFE] text-[#3C3489]"
+      : type === "regular"
+        ? "bg-emerald-50 text-emerald-800"
+        : "bg-[#E6F1FB] text-[#0C447C]";
+  const label =
+    type === "route" ? "Route" : type === "regular" ? "Regular" : type === "debtor" ? "Debtor" : type || "Debtor";
+
   return (
     <span
-      className={`mt-2 inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-medium capitalize ${
-        isRoute ? "bg-[#EEEDFE] text-[#3C3489]" : "bg-[#E6F1FB] text-[#0C447C]"
-      }`}
+      className={`mt-2 inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-medium ${styles}`}
     >
-      {type || "debtor"}
+      {label}
     </span>
   );
 }
