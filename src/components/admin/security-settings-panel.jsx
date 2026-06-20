@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { securityFormFromApi, securityPayloadFromForm } from "@/lib/security-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description }) {
   return (
@@ -18,16 +19,17 @@ function Toggle({ checked, onChange, label, description }) {
 }
 
 export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage }) {
+  const { settingsPath } = useSettingsApi();
   const [form, setForm] = useState(securityFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    apiRequest("/erp/settings/security")
+    apiRequest(settingsPath("security"))
       .then((res) => setForm(securityFormFromApi(res)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load security settings"))
       .finally(() => setLoading(false));
-  }, [setError]);
+  }, [setError, settingsPath]);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -35,7 +37,7 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage 
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest("/erp/settings/security", {
+      const res = await apiRequest(settingsPath("security"), {
         method: "PATCH",
         body: securityPayloadFromForm(form),
       });

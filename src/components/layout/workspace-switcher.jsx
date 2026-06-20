@@ -2,26 +2,24 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { buildAccessContext } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
-import { resolveAvailableWorkspaces } from "@/lib/workspaces";
+import { resolveActiveWorkspace, resolveAvailableWorkspaces, workspaceIcon } from "@/lib/workspaces";
 import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
 
-function AppsGridIcon({ className }) {
+function ChevronDownIcon({ className }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
-      <rect x="3" y="3" width="8" height="8" rx="1.5" />
-      <rect x="13" y="3" width="8" height="8" rx="1.5" />
-      <rect x="3" y="13" width="8" height="8" rx="1.5" />
-      <rect x="13" y="13" width="8" height="8" rx="1.5" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
     </svg>
   );
 }
 
 export function WorkspaceSwitcher() {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, organization, capabilities, isSuperAdmin, switchWorkspace } = useAuth();
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -44,14 +42,17 @@ export function WorkspaceSwitcher() {
     [capabilities, ctx],
   );
 
-  const currentId = getStoredWorkspace();
+  const currentWorkspace = useMemo(
+    () => resolveActiveWorkspace(workspaces, getStoredWorkspace(), pathname),
+    [workspaces, pathname],
+  );
 
   if (workspaces.length <= 1) {
     return null;
   }
 
   async function selectWorkspace(id) {
-    if (switching || id === currentId) {
+    if (switching || id === currentWorkspace?.id) {
       setOpen(false);
       return;
     }
@@ -73,17 +74,27 @@ export function WorkspaceSwitcher() {
     }
   }
 
+  const currentLabel = currentWorkspace?.label ?? "Applications";
+
   return (
     <div className="relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="app-topbar-icon-btn"
+        className="app-topbar-app-switcher"
         aria-expanded={open}
         aria-haspopup="dialog"
-        title="Switch application"
+        title={`Current application: ${currentLabel}. Click to switch.`}
       >
-        <AppsGridIcon className="h-[18px] w-[18px]" />
+        {currentWorkspace ? (
+          <span className="app-topbar-app-switcher-icon" aria-hidden>
+            {workspaceIcon(currentWorkspace.icon)}
+          </span>
+        ) : null}
+        <span className="app-topbar-app-switcher-label hidden max-w-[9rem] truncate sm:inline">
+          {currentLabel}
+        </span>
+        <ChevronDownIcon className="app-topbar-app-switcher-chevron h-4 w-4 shrink-0" />
       </button>
 
       {open ? (
@@ -96,10 +107,17 @@ export function WorkspaceSwitcher() {
           />
           <div className="velzon-apps-dropdown absolute right-0 z-50 mt-2 w-[320px] sm:w-[360px]" role="dialog">
             <div className="flex items-center justify-between border-b px-4 py-3">
-              <p className="text-[13px] font-semibold uppercase tracking-wide">Applications</p>
+              <div className="min-w-0">
+                <p className="text-[13px] font-semibold uppercase tracking-wide">Applications</p>
+                {currentWorkspace ? (
+                  <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                    Open: <span className="font-medium text-slate-700 dark:text-slate-200">{currentLabel}</span>
+                  </p>
+                ) : null}
+              </div>
               <Link
                 href="/choose-workspace"
-                className="text-xs font-medium text-[#405189] hover:underline dark:text-[#878a99]"
+                className="shrink-0 text-xs font-medium text-[#405189] hover:underline dark:text-[#878a99]"
                 onClick={() => setOpen(false)}
               >
                 View all
@@ -108,7 +126,7 @@ export function WorkspaceSwitcher() {
 
             <WorkspaceApplicationPicker
               workspaces={workspaces}
-              currentId={currentId}
+              currentId={currentWorkspace?.id ?? null}
               onSelect={(id) => void selectWorkspace(id)}
               disabled={switching}
               variant="dropdown"

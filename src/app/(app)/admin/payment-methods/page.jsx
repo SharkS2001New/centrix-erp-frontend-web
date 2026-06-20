@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useAdminApi } from "@/contexts/admin-api-context";
 import { P } from "@/lib/permission-codes";
 import {
   ActiveBadge,
@@ -21,6 +22,7 @@ const EMPTY = { method_name: "", method_code: "", requires_reference: false, is_
 
 export default function PaymentMethodsPage() {
   const { hasPermission } = useAuth();
+  const { adminPath } = useAdminApi();
   const canCreate = hasPermission(P.admin.payment_methods.create);
   const canEdit = hasPermission(P.admin.payment_methods.edit);
   const canDelete = hasPermission(P.admin.payment_methods.delete);
@@ -38,14 +40,14 @@ export default function PaymentMethodsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiRequest("/payment-methods", { searchParams: { per_page: 100 } });
+      const res = await apiRequest(adminPath("/payment-methods"), { searchParams: { per_page: 100 } });
       setRows(res.data ?? []);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load payment methods");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [adminPath]);
 
   useEffect(() => {
     load();
@@ -82,9 +84,9 @@ export default function PaymentMethodsPage() {
         is_active: form.is_active,
       };
       if (editing) {
-        await apiRequest(`/payment-methods/${editing.id}`, { method: "PATCH", body });
+        await apiRequest(adminPath(`/payment-methods/${editing.id}`), { method: "PATCH", body });
       } else {
-        await apiRequest("/payment-methods", { method: "POST", body });
+        await apiRequest(adminPath("/payment-methods"), { method: "POST", body });
       }
       setDrawerOpen(false);
       await load();
@@ -98,7 +100,7 @@ export default function PaymentMethodsPage() {
   async function remove(row) {
     if (!window.confirm(`Delete payment method "${row.method_name}"?`)) return;
     try {
-      await apiRequest(`/payment-methods/${row.id}`, { method: "DELETE" });
+      await apiRequest(adminPath(`/payment-methods/${row.id}`), { method: "DELETE" });
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Delete failed");

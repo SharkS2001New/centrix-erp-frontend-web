@@ -282,6 +282,26 @@ export function resolveAvailableWorkspaces(ctx, capabilities) {
 }
 
 /**
+ * Resolve the workspace the user is in (stored preference, else infer from route).
+ * @param {Array<{ id: string }>} workspaces
+ * @param {string | null | undefined} storedId
+ * @param {string | null | undefined} pathname
+ */
+export function resolveActiveWorkspace(workspaces, storedId, pathname) {
+  if (storedId) {
+    const stored = workspaces.find((w) => w.id === storedId);
+    if (stored) return stored;
+  }
+
+  if (pathname) {
+    const fromPath = workspaces.find((w) => pathBelongsToWorkspace(pathname, w.id));
+    if (fromPath) return fromPath;
+  }
+
+  return workspaces[0] ?? null;
+}
+
+/**
  * @param {object} ctx
  * @param {object} capabilities
  */

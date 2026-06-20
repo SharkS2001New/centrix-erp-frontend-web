@@ -25,6 +25,7 @@ export async function applyWorkspaceSession(workspaceId) {
     body: {
       login_channel: loginChannel,
       client_id: getAuthClientId(),
+      workspace_id: workspaceId,
     },
   });
   setSession(

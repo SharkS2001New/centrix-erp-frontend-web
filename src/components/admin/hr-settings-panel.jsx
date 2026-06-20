@@ -5,6 +5,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { hrPayrollFormFromApi, hrPayrollPayloadFromForm } from "@/lib/hr-settings";
 import { OrganizationLeaveSettingsEditor } from "@/components/hr/organization-leave-settings-editor";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -29,16 +30,17 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
 }
 
 export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
+  const { settingsPath } = useSettingsApi();
   const [form, setForm] = useState(hrPayrollFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    apiRequest("/erp/settings/hr")
+    apiRequest(settingsPath("hr"))
       .then((res) => setForm(hrPayrollFormFromApi(res)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load HR settings"))
       .finally(() => setLoading(false));
-  }, [setError]);
+  }, [setError, settingsPath]);
 
   async function handleSavePayroll(e) {
     e.preventDefault();
@@ -46,7 +48,7 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest("/erp/settings/hr", {
+      const res = await apiRequest(settingsPath("hr"), {
         method: "PATCH",
         body: hrPayrollPayloadFromForm(form),
       });

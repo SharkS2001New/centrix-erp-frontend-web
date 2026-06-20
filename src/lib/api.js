@@ -200,12 +200,14 @@ export async function uploadEmployeePhoto(employeeId, file) {
   return apiUpload(`/employees/${employeeId}/photo`, file);
 }
 
-export async function uploadOrganizationLogo(organizationId, file) {
-  return apiUpload(`/organizations/${organizationId}/logo`, file);
+export async function uploadOrganizationLogo(organizationId, file, options = {}) {
+  const path = options.uploadPath ?? `/organizations/${organizationId}/logo`;
+  return apiUpload(path, file);
 }
 
-export function organizationLogoFileUrl(organizationId) {
-  return `${apiBaseOrigin()}/api/v1/organizations/${organizationId}/logo/file`;
+export function organizationLogoFileUrl(organizationId, options = {}) {
+  const relative = options.filePath ?? `/organizations/${organizationId}/logo/file`;
+  return `${apiBaseOrigin()}/api/v1${relative}`;
 }
 
 export async function capturePodDelivery(saleId, payload) {

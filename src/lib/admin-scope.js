@@ -25,6 +25,11 @@ export function isPlatformOrganization(organization) {
   return Boolean(organization?.module_settings?.platform);
 }
 
+/** Whether the tenant Administration workspace/module is enabled for this organization. */
+export function isAdministrationModuleEnabled(capabilities) {
+  return Boolean(capabilities?.modules?.admin);
+}
+
 export function isOrgAdministrator(user, capabilities) {
   return Boolean(user?.is_admin || capabilities?.is_admin);
 }
@@ -50,6 +55,9 @@ export function shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuper
 
 export function canAccessOrgAdminSettings({ organization, isSuperAdmin, hasPermission, user, capabilities }) {
   if (shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin })) {
+    return false;
+  }
+  if (!isAdministrationModuleEnabled(capabilities)) {
     return false;
   }
   if (isOrgAdministrator(user, capabilities)) {

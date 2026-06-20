@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useAdminApi } from "@/contexts/admin-api-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { filterByOrganization, formatAuditValues, orgListParams } from "@/lib/admin";
 import {
@@ -36,7 +37,8 @@ function ActionBadge({ action }) {
 
 export default function AdminAuditPage() {
   const { user, capabilities, isOrgWide } = useAuth();
-  const organizationId = user?.organization_id ?? capabilities?.organization_id;
+  const { adminPath, organizationId: platformOrgId } = useAdminApi();
+  const organizationId = platformOrgId ?? user?.organization_id ?? capabilities?.organization_id;
   const branchLocked = !isOrgWide();
 
   const defaults = useMemo(() => defaultAuditDateRange(), []);
@@ -70,8 +72,8 @@ export default function AdminAuditPage() {
     try {
       const params = { per_page: 200, ...orgListParams(organizationId) };
       const [userRes, branchRes] = await Promise.all([
-        apiRequest("/users", { searchParams: params }),
-        apiRequest("/branches", { searchParams: params }),
+        apiRequest(adminPath("/users"), { searchParams: params }),
+        apiRequest(adminPath("/branches"), { searchParams: params }),
       ]);
       setUsers(filterByOrganization(userRes.data, organizationId));
       setBranches(filterByOrganization(branchRes.data, organizationId));
@@ -79,7 +81,7 @@ export default function AdminAuditPage() {
       setUsers([]);
       setBranches([]);
     }
-  }, [organizationId]);
+  }, [adminPath, organizationId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,7 +99,7 @@ export default function AdminAuditPage() {
       if (moduleFilter !== "all") searchParams["filter[table_name]"] = moduleFilter;
       if (search.trim()) searchParams.q = search.trim();
 
-      const res = await apiRequest("/audit-logs", { searchParams });
+      const res = await apiRequest(adminPath("/audit-logs"), { searchParams });
       setLogs(res.data ?? []);
       setMeta({
         current_page: res.current_page ?? page,
@@ -112,7 +114,7 @@ export default function AdminAuditPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, fromDate, toDate, userFilter, branchFilter, actionFilter, moduleFilter, search]);
+  }, [adminPath, page, fromDate, toDate, userFilter, branchFilter, actionFilter, moduleFilter, search]);
 
   useEffect(() => {
     loadReferenceData();

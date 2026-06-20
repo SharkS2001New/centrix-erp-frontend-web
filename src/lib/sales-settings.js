@@ -200,7 +200,7 @@ export function salesOrganizationPayloadFromForm(form) {
  */
 export function shouldShowMobileLoadingSheets(capabilities) {
   if (!capabilities?.modules?.["sales.mobile"]) return false;
-  if (!isMobileOrdersEnabled(capabilities?.module_settings)) return false;
+  if (!isOrgMobileSalesEnabled(capabilities)) return false;
   if (capabilities?.modules?.distribution) return false;
   return true;
 }
@@ -208,6 +208,7 @@ export function shouldShowMobileLoadingSheets(capabilities) {
 /** Field attendance sessions for mobile sales reps (sign-in photo + GPS). */
 export function shouldShowMobileFieldAttendance(capabilities) {
   if (!capabilities?.modules?.["sales.mobile"]) return false;
+  if (!isOrgMobileSalesEnabled(capabilities)) return false;
   const sales = mergeSalesSettings(capabilities?.module_settings);
   return Boolean(sales.mobile_enable_field_attendance);
 }

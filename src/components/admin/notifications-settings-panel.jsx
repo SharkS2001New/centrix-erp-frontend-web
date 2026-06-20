@@ -10,6 +10,7 @@ import {
   notificationsPayloadFromForm,
 } from "@/lib/notifications-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -61,16 +62,17 @@ function TemplateFields({ form, setForm, smsKey, emailKey, placeholders, smsDisa
 }
 
 export function NotificationsSettingsPanel({ saving, setSaving, setError, setMessage }) {
+  const { settingsPath } = useSettingsApi();
   const [form, setForm] = useState(notificationsFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    apiRequest("/erp/settings/notifications")
+    apiRequest(settingsPath("notifications"))
       .then((res) => setForm(notificationsFormFromApi(res)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load notification settings"))
       .finally(() => setLoading(false));
-  }, [setError]);
+  }, [setError, settingsPath]);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -78,7 +80,7 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest("/erp/settings/notifications", {
+      const res = await apiRequest(settingsPath("notifications"), {
         method: "PATCH",
         body: notificationsPayloadFromForm(form),
       });

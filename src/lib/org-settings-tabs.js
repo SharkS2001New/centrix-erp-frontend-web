@@ -1,3 +1,10 @@
+import {
+  isPlatformAiEnabled,
+  isPlatformKraIntegrationEnabled,
+  isPlatformMobileOrdersEnabled,
+  isPlatformMpesaStkEnabled,
+} from "@/lib/platform-org-features";
+
 /** Map organization settings tabs to ERP module keys (super-admin controlled). */
 export const ORG_SETTINGS_TAB_MODULES = {
   general: ["admin"],
@@ -14,19 +21,94 @@ export const ORG_SETTINGS_TAB_MODULES = {
 };
 
 /** Tabs only shown when platform manages settings on behalf of a tenant without Administration. */
-export const PLATFORM_MANAGED_ADMIN_TABS = new Set(["general", "ai", "notifications", "security"]);
+export const PLATFORM_MANAGED_ADMIN_TABS = new Set(["general", "notifications", "security"]);
+
+function moduleEnabled(capabilities, moduleKey) {
+  return Boolean(capabilities?.modules?.[moduleKey]);
+}
 
 /** @param {object} capabilities erp/capabilities payload */
 export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged = false } = {}) {
-  const modules = capabilities?.modules ?? {};
-  const required = ORG_SETTINGS_TAB_MODULES[tabId] ?? ["admin"];
-  if (platformManaged && PLATFORM_MANAGED_ADMIN_TABS.has(tabId)) {
-    return true;
+  switch (tabId) {
+    case "general":
+    case "notifications":
+    case "security":
+      if (platformManaged && PLATFORM_MANAGED_ADMIN_TABS.has(tabId)) {
+        return true;
+      }
+      return moduleEnabled(capabilities, "admin");
+
+    case "sales":
+      return moduleEnabled(capabilities, "sales");
+
+    case "mobile":
+      return moduleEnabled(capabilities, "sales.mobile") && isPlatformMobileOrdersEnabled(capabilities);
+
+    case "distribution":
+      return moduleEnabled(capabilities, "distribution");
+
+    case "inventory":
+      return moduleEnabled(capabilities, "inventory");
+
+    case "procurement":
+      return moduleEnabled(capabilities, "customers_suppliers");
+
+    case "finance":
+      if (moduleEnabled(capabilities, "accounting")) {
+        return true;
+      }
+      if (!moduleEnabled(capabilities, "payments")) {
+        return false;
+      }
+      return isPlatformMpesaStkEnabled(capabilities) || isPlatformKraIntegrationEnabled(capabilities);
+
+    case "ai":
+      if (!isPlatformAiEnabled(capabilities)) {
+        return false;
+      }
+      if (platformManaged) {
+        return true;
+      }
+      return moduleEnabled(capabilities, "admin");
+
+    case "hr":
+      return moduleEnabled(capabilities, "hr_payroll");
+
+    default: {
+      const required = ORG_SETTINGS_TAB_MODULES[tabId] ?? ["admin"];
+      return required.some((key) => moduleEnabled(capabilities, key));
+    }
   }
-  return required.some((key) => modules[key]);
 }
 
 /** @param {object} capabilities */
 export function visibleOrgSettingsTabs(allTabs, capabilities, options = {}) {
   return allTabs.filter((tab) => isOrgSettingsTabVisible(tab.id, capabilities, options));
+}
+
+/** Build a capabilities-shaped object from platform organization show payload. */
+export function capabilitiesFromOrganizationPayload(payload) {
+  if (payload?.capabilities?.modules) {
+    return payload.capabilities;
+  }
+
+  const moduleSettings = payload?.capabilities?.module_settings ?? payload?.organization?.module_settings ?? {};
+  const modules = payload?.effective_modules ?? payload?.capabilities?.modules ?? {};
+  const finance = moduleSettings.finance ?? {};
+  const ai = moduleSettings.ai ?? {};
+  const sales = moduleSettings.sales ?? {};
+
+  return {
+    modules,
+    module_settings: moduleSettings,
+    mobile_orders_enabled: sales.enable_mobile_orders !== false,
+    platform_mpesa_stk_enabled: finance.enable_mpesa_stk !== false,
+    platform_kra_integration_enabled: finance.enable_kra_integration !== false,
+    platform_ai_enabled: ai.enable_ai !== false,
+    ai_assistant: {
+      platform_enabled: ai.enable_ai !== false,
+      enabled: Boolean(ai.enabled),
+      available: false,
+    },
+  };
 }

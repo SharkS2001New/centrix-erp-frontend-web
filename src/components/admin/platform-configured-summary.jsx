@@ -3,9 +3,14 @@
 import { useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { workflowPipelineSteps } from "@/lib/order-workflow";
+import {
+  isPlatformCheckoutOnCreateEnabled,
+  isPlatformMobileOrdersEnabled,
+} from "@/lib/platform-org-features";
 
-export function PlatformConfiguredSalesSummary() {
-  const { capabilities } = useAuth();
+export function PlatformConfiguredSalesSummary({ capabilities: capabilitiesProp }) {
+  const { capabilities: authCapabilities } = useAuth();
+  const capabilities = capabilitiesProp ?? authCapabilities;
   const sales = capabilities?.module_settings?.sales ?? {};
   const workflow = sales.order_workflow;
   const pipeline = useMemo(
@@ -26,14 +31,20 @@ export function PlatformConfiguredSalesSummary() {
         registered. Contact your platform administrator to change them.
       </p>
       <ul className="mt-3 space-y-1 text-xs">
-        <li>
-          <span className="font-medium">POS checkout on create:</span>{" "}
-          {sales.show_checkout_on_create_order !== false ? "Checkout" : "Save order (no checkout)"}
-        </li>
-        <li>
-          <span className="font-medium">Mobile orders in sidebar:</span>{" "}
-          {sales.enable_mobile_orders !== false ? "Enabled" : "Disabled"}
-        </li>
+        {isPlatformCheckoutOnCreateEnabled(capabilities) ? (
+          <li>
+            <span className="font-medium">POS checkout on create:</span> Checkout
+          </li>
+        ) : (
+          <li>
+            <span className="font-medium">POS order flow:</span> Save order (no checkout)
+          </li>
+        )}
+        {isPlatformMobileOrdersEnabled(capabilities) ? (
+          <li>
+            <span className="font-medium">Mobile orders in sidebar:</span> Enabled
+          </li>
+        ) : null}
         {pipeline.length > 0 ? (
           <li>
             <span className="font-medium">Order pipeline:</span>{" "}

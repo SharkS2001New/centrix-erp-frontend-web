@@ -73,6 +73,7 @@ export default function PlatformOverviewPage() {
                   <th className="px-5 py-3">Profile</th>
                   <th className="px-5 py-3">Created</th>
                   <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3">Administration</th>
                   <th className="px-5 py-3" />
                 </tr>
               </thead>
@@ -92,13 +93,30 @@ export default function PlatformOverviewPage() {
                         <span className="text-emerald-700">Active</span>
                       )}
                     </td>
+                    <td className="px-5 py-3 text-slate-600">
+                      {org.administration_enabled === false ? (
+                        <span className="text-amber-800">Platform-managed</span>
+                      ) : (
+                        <span className="text-slate-600">Tenant</span>
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-right">
-                      <Link
-                        href={`/platform/organizations/${org.id}`}
-                        className="text-sm font-medium text-[#185FA5] hover:underline"
-                      >
-                        Manage organization
-                      </Link>
+                      <div className="flex flex-col items-end gap-1">
+                        <Link
+                          href={`/platform/organizations/${org.id}`}
+                          className="text-sm font-medium text-[#185FA5] hover:underline"
+                        >
+                          Manage organization
+                        </Link>
+                        {org.administration_enabled === false ? (
+                          <Link
+                            href={`/platform/organizations/${org.id}/settings`}
+                            className="text-xs font-medium text-amber-800 hover:underline"
+                          >
+                            Organization settings
+                          </Link>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}

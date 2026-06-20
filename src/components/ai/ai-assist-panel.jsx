@@ -10,6 +10,7 @@ import {
   canShowAiAssistant,
   isAiAssistantAvailable,
   isAiAssistantEnabledForOrg,
+  isAiPlatformEnabled,
 } from "@/lib/ai-settings";
 import { aiStartersForWorkspace, aiWorkspaceLabel } from "@/lib/ai-workspace";
 import { AI_ASSISTANT_TITLE } from "@/lib/branding";
@@ -65,7 +66,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const [actionResult, setActionResult] = useState(null);
   const bottomRef = useRef(null);
 
-  const canUse = canShowAiAssistant(hasPermission);
+  const canUse = canShowAiAssistant(hasPermission) && isAiPlatformEnabled(capabilities);
   const orgAvailable = isAiAssistantAvailable(capabilities);
   const orgEnabled = isAiAssistantEnabledForOrg(capabilities);
 

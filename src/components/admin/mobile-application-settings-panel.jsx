@@ -5,16 +5,17 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import {
   EMPTY_MOBILE_APPLICATION_FORM,
-  isMobileOrdersEnabled,
+  isOrgMobileSalesEnabled,
   mobileApplicationFormFromApi,
   mobileApplicationPayloadFromForm,
 } from "@/lib/sales-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
     <label
-      className={`flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 ${
+      className={`flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 ${
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       }`}
     >
@@ -26,22 +27,23 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
         onChange={(e) => onChange(e.target.checked)}
       />
       <span>
-        <span className="block text-sm font-medium text-slate-900">{label}</span>
-        {description ? <span className="mt-0.5 block text-xs text-slate-500">{description}</span> : null}
+        <span className="theme-heading block text-sm font-medium">{label}</span>
+        {description ? <span className="theme-subtext mt-0.5 block text-xs">{description}</span> : null}
       </span>
     </label>
   );
 }
 
-function PlatformMobileSummary() {
-  const { capabilities } = useAuth();
+function PlatformMobileSummary({ capabilities: capabilitiesProp }) {
+  const { capabilities: authCapabilities } = useAuth();
+  const capabilities = capabilitiesProp ?? authCapabilities;
   const sales = capabilities?.module_settings?.sales ?? {};
-  const mobileOrdersEnabled = isMobileOrdersEnabled(capabilities?.module_settings);
+  const mobileOrdersEnabled = isOrgMobileSalesEnabled(capabilities);
 
   return (
-    <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
-      <p className="font-medium text-slate-900">Configured by platform administrator</p>
-      <p className="mt-1 text-xs text-slate-500">
+    <div className="mb-5 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-4 text-sm">
+      <p className="theme-heading font-medium">Configured by platform administrator</p>
+      <p className="theme-subtext mt-1 text-xs">
         Mobile module access and whether mobile orders appear in the backoffice sidebar are set at
         organization registration (mobile orders in the sidebar are on by default). Contact your
         platform administrator to change them.
@@ -60,18 +62,25 @@ function PlatformMobileSummary() {
   );
 }
 
-export function MobileApplicationSettingsPanel({ saving, setSaving, setError, setMessage }) {
-  const { refreshCapabilities } = useAuth();
+export function MobileApplicationSettingsPanel({ saving, setSaving, setError, setMessage, capabilities: capabilitiesProp, onAfterSave }) {
+  const { refreshCapabilities, capabilities: authCapabilities } = useAuth();
+  const capabilities = capabilitiesProp ?? authCapabilities;
+  const { settingsPath } = useSettingsApi();
+  const afterSave = onAfterSave ?? refreshCapabilities;
   const [form, setForm] = useState(EMPTY_MOBILE_APPLICATION_FORM);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    apiRequest("/erp/settings/sales")
+    apiRequest(settingsPath("sales"))
       .then((res) => setForm(mobileApplicationFormFromApi(res)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load mobile settings"))
       .finally(() => setLoading(false));
-  }, [setError]);
+  }, [setError, settingsPath]);
+
+  if (!isOrgMobileSalesEnabled(capabilities)) {
+    return null;
+  }
 
   async function handleSave(e) {
     e.preventDefault();
@@ -79,12 +88,12 @@ export function MobileApplicationSettingsPanel({ saving, setSaving, setError, se
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest("/erp/settings/sales", {
+      const res = await apiRequest(settingsPath("sales"), {
         method: "PATCH",
         body: mobileApplicationPayloadFromForm(form),
       });
       setForm(mobileApplicationFormFromApi(res));
-      await refreshCapabilities();
+      if (afterSave) await afterSave();
       setMessage("Mobile application settings saved.");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to save mobile settings");
@@ -106,7 +115,7 @@ export function MobileApplicationSettingsPanel({ saving, setSaving, setError, se
         ) : (
           <>
             <div className="mt-5 space-y-3">
-              <PlatformMobileSummary />
+              <PlatformMobileSummary capabilities={capabilities} />
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Checkout
               </p>

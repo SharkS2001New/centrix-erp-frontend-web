@@ -47,7 +47,9 @@ export function DispatchBoardContent() {
     setLoading(true);
     try {
       const [salesRes, routeRes, driverRes, vehicleRes] = await Promise.all([
-        apiRequest("/sales", { searchParams: { per_page: 500, with_items: 0, exclude_status: "held" } }),
+        apiRequest("/sales", {
+          searchParams: { per_page: 500, with_items: 0, exclude_status: "held", dispatch_orders: 1 },
+        }),
         apiRequest("/routes", { searchParams: { per_page: 200 } }),
         apiRequest("/drivers", { searchParams: { per_page: 200 } }),
         apiRequest("/vehicles", { searchParams: { per_page: 200 } }),

@@ -72,6 +72,7 @@ import { CloseSessionModal, XReportModal, ZReportModal } from "@/components/pos/
 import { FloatBreakdownModal, OpenSessionModal } from "@/components/pos/till-session-ui";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
+import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { PosStatusFooter } from "./pos-status-footer";
 import {
   PosCalculatorModal,
@@ -123,7 +124,7 @@ function sameLineId(a, b) {
 
 export function PosScreen({ standalone = false }) {
   const router = useRouter();
-  const { user, capabilities, refreshCapabilities, logout, organization } = useAuth();
+  const { user, capabilities, refreshCapabilities, organization } = useAuth();
   const {
     activeSession,
     tillId,
@@ -2293,14 +2294,11 @@ export function PosScreen({ standalone = false }) {
               </div>
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <WorkspaceSwitcher />
-                <ThemeToggle showLabel className="pos-header-theme-btn" />
-                <button
-                  type="button"
-                  onClick={() => void logout()}
-                  className={`${posHeaderBtnClassName} normal-case`}
-                >
-                  Sign out
-                </button>
+                <ThemeToggle showLabel className="pos-header-theme-btn hidden sm:inline-flex" />
+                <UserAccountMenu
+                  showName={false}
+                  triggerClassName="pos-header-action-btn inline-flex items-center rounded-md p-1"
+                />
               </div>
             </div>
           </div>

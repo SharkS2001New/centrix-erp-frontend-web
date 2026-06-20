@@ -1,10 +1,19 @@
+import { isPlatformAiEnabled } from "@/lib/platform-org-features";
+
+/** @param {object} capabilities erp/capabilities payload */
+export function isAiPlatformEnabled(capabilities) {
+  return isPlatformAiEnabled(capabilities);
+}
+
 /** @param {object} capabilities erp/capabilities payload */
 export function isAiAssistantAvailable(capabilities) {
+  if (!isAiPlatformEnabled(capabilities)) return false;
   return Boolean(capabilities?.ai_assistant?.available);
 }
 
 /** @param {object} capabilities */
 export function isAiAssistantEnabledForOrg(capabilities) {
+  if (!isAiPlatformEnabled(capabilities)) return false;
   return Boolean(capabilities?.ai_assistant?.enabled);
 }
 
@@ -28,6 +37,7 @@ export function aiFormFromApi(res) {
     api_key_set: Boolean(settings.api_key_set),
     api_key_hint: settings.api_key_hint ?? "",
     available: Boolean(res?.available),
+    platform_enabled: res?.platform_enabled !== false,
   };
 }
 

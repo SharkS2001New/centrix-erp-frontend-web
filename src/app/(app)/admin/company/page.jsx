@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest, ApiError, uploadOrganizationLogo } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useAdminApi } from "@/contexts/admin-api-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
   CatalogPageShell,
@@ -29,7 +30,8 @@ const readOnlyClass = `${inputClassName()} cursor-not-allowed bg-slate-50 text-s
 
 export default function AdminCompanyPage() {
   const { user, capabilities } = useAuth();
-  const organizationId = user?.organization_id ?? capabilities?.organization_id;
+  const { adminPath, organizationId: platformOrgId, organizationPath, logoUploadPath, logoFileUrl } = useAdminApi();
+  const organizationId = platformOrgId ?? user?.organization_id ?? capabilities?.organization_id;
   const fileInputRef = useRef(null);
   const [orgId, setOrgId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -48,27 +50,29 @@ export default function AdminCompanyPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await apiRequest(`/organizations/${organizationId}`);
-      setOrgId(res.id);
-      setHasLogo(Boolean(res.has_logo));
+      const path = platformOrgId ? organizationPath("") : organizationPath(`/${organizationId}`);
+      const res = await apiRequest(path);
+      const org = res.organization ?? res;
+      setOrgId(org.id);
+      setHasLogo(Boolean(org.has_logo));
       setForm({
-        org_name: res.org_name ?? "",
-        company_code: res.company_code ?? "",
-        org_pin: res.org_pin ?? "",
-        org_email: res.org_email ?? "",
-        primary_tel: res.primary_tel ?? "",
-        secondary_tel: res.secondary_tel ?? "",
-        addn_tel1: res.addn_tel1 ?? "",
-        addn_tel2: res.addn_tel2 ?? "",
-        org_address: res.org_address ?? "",
-        vat_regno: res.vat_regno ?? "",
+        org_name: org.org_name ?? "",
+        company_code: org.company_code ?? "",
+        org_pin: org.org_pin ?? "",
+        org_email: org.org_email ?? "",
+        primary_tel: org.primary_tel ?? "",
+        secondary_tel: org.secondary_tel ?? "",
+        addn_tel1: org.addn_tel1 ?? "",
+        addn_tel2: org.addn_tel2 ?? "",
+        org_address: org.org_address ?? "",
+        vat_regno: org.vat_regno ?? "",
       });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load company profile");
     } finally {
       setLoading(false);
     }
-  }, [organizationId]);
+  }, [organizationId, organizationPath, platformOrgId]);
 
   useEffect(() => {
     load();
@@ -81,8 +85,9 @@ export default function AdminCompanyPage() {
     setError(null);
     setMessage(null);
     try {
-      await apiRequest(`/organizations/${orgId}`, {
-        method: "PUT",
+      const path = platformOrgId ? organizationPath("") : `/organizations/${orgId}`;
+      await apiRequest(path, {
+        method: platformOrgId ? "PATCH" : "PUT",
         body: {
           org_name: form.org_name.trim(),
           primary_tel: form.primary_tel.trim(),
@@ -110,7 +115,7 @@ export default function AdminCompanyPage() {
     setError(null);
     setMessage(null);
     try {
-      await uploadOrganizationLogo(orgId, file);
+      await uploadOrganizationLogo(orgId, file, { uploadPath: logoUploadPath(orgId) });
       setHasLogo(true);
       setMessage("Logo uploaded.");
       await load();
@@ -127,7 +132,7 @@ export default function AdminCompanyPage() {
     setUploadingLogo(true);
     setError(null);
     try {
-      await apiRequest(`/organizations/${orgId}/logo`, { method: "DELETE" });
+      await apiRequest(logoUploadPath(orgId), { method: "DELETE" });
       setHasLogo(false);
       setMessage("Logo removed.");
     } catch (err) {
@@ -247,7 +252,7 @@ export default function AdminCompanyPage() {
             <div className="mt-4 flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-slate-50">
               {hasLogo && orgId ? (
                 <EntityPhotoDisplay
-                  fileUrl={organizationLogoFileUrl(orgId)}
+                  fileUrl={platformOrgId ? logoFileUrl(orgId) : organizationLogoFileUrl(orgId)}
                   alt="Company logo"
                   className="h-full w-full object-contain p-2"
                   placeholderClassName="px-2 text-center text-xs text-slate-400"

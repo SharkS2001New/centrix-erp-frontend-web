@@ -342,7 +342,8 @@ export default function TripDetailPage() {
       <section className="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Loading list</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Aggregated products for this trip · Total {formatSaleKes(loadingList?.total_amount ?? 0)}
+          Aggregated pick quantities from mobile and route orders on this trip · Total{" "}
+          {formatSaleKes(loadingList?.total_amount ?? 0)}
           {loadingList?.status ? (
             <>
               {" "}

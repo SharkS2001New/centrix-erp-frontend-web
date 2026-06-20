@@ -196,7 +196,14 @@ function VerticalList({ workspaces, currentId, onSelect, disabled, variant }) {
                 {workspaceIcon(workspace.icon)}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium leading-tight">{workspace.label}</span>
+                <span className="flex items-center gap-2">
+                  <span className="block text-sm font-medium leading-tight">{workspace.label}</span>
+                  {active ? (
+                    <span className="rounded-full bg-[#405189]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#405189] dark:bg-white/10 dark:text-slate-200">
+                      Open
+                    </span>
+                  ) : null}
+                </span>
                 {workspace.description ? (
                   <span className="mt-0.5 line-clamp-2 text-[11px] text-slate-500 dark:text-slate-400">
                     {workspace.description}
@@ -262,6 +269,11 @@ function HorizontalGrid({ workspaces, currentId, onSelect, disabled, variant }) 
               {workspaceIcon(workspace.icon)}
             </span>
             <span className="line-clamp-2 text-[11px] font-medium leading-tight">{workspace.label}</span>
+            {active ? (
+              <span className="mt-1 rounded-full bg-[#405189]/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#405189] dark:bg-white/10 dark:text-slate-200">
+                Open
+              </span>
+            ) : null}
           </button>
         );
       })}

@@ -32,9 +32,9 @@ function OrgRegisterField({ label, children, className = "" }) {
 
 export function PlatformFormSection({ title, description, children }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-[#185FA5]">{title}</h2>
-      {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
+    <section className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 shadow-sm">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-[#185FA5] dark:text-sky-400">{title}</h2>
+      {description ? <p className="theme-subtext mt-1 text-sm">{description}</p> : null}
       <div className="mt-4">{children}</div>
     </section>
   );
@@ -199,11 +199,14 @@ function Toggle({ checked, onChange, label, description }) {
 }
 
 export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail") {
+  const mobileProfiles = new Set(["wholesale_retail", "distribution"]);
+
   return {
     show_checkout_on_create_order: true,
-    enable_mobile_orders: true,
+    enable_mobile_orders: mobileProfiles.has(deploymentProfile),
     enable_mpesa_stk: true,
     enable_kra_integration: true,
+    enable_ai: true,
     stock_deduct_on: "order_completed",
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
   };
@@ -216,6 +219,7 @@ export function salesPlatformFromApi(apiPayload) {
     enable_mobile_orders: apiPayload.enable_mobile_orders !== false,
     enable_mpesa_stk: apiPayload.enable_mpesa_stk !== false,
     enable_kra_integration: apiPayload.enable_kra_integration !== false,
+    enable_ai: apiPayload.enable_ai !== false,
     stock_deduct_on: apiPayload.stock_deduct_on ?? "order_completed",
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
   };
@@ -269,6 +273,12 @@ export function OrganizationPlatformSalesSettings({
             checked={salesPlatform?.enable_kra_integration !== false}
             onChange={(v) => patch({ enable_kra_integration: v })}
           />
+          <Toggle
+            label="Enable AI assistant"
+            description="When off, this organization cannot configure or use the floating AI assistant, regardless of user permissions."
+            checked={salesPlatform?.enable_ai !== false}
+            onChange={(v) => patch({ enable_ai: v })}
+          />
         </div>
       )}
     </PlatformFormSection>
@@ -319,6 +329,7 @@ const MANAGE_ORG_TABS = [
   { id: "workflow", label: "Order workflow" },
   { id: "status", label: "Organization status" },
   { id: "modules", label: "Applications" },
+  { id: "users", label: "Users" },
 ];
 
 const REGISTER_ORG_TABS = [
@@ -363,6 +374,7 @@ export function OrganizationConfigTabs({
   onSetModules,
   mobileOrdersEnabled = true,
   organization,
+  organizationId,
   onStatusChange,
   adminPanel,
 }) {
@@ -411,6 +423,14 @@ export function OrganizationConfigTabs({
           onToggle={onToggleModule}
           onSetModules={onSetModules}
           mobileOrdersEnabled={mobileOrdersEnabled}
+        />
+      ) : null}
+
+      {activeTab === "users" && mode === "manage" ? (
+        <OrganizationUsersPanel
+          organizationId={organizationId ?? organization?.id}
+          companyCode={tenantValues.company_code}
+          detailed
         />
       ) : null}
 
@@ -470,7 +490,7 @@ export function OrganizationModuleToggles({
   return (
     <PlatformFormSection
       title="Applications"
-      description="Choose which applications appear on the login workspace screen for this organization."
+      description="Choose which applications appear on the login workspace screen for this organization. When Administration is disabled, tenant managers cannot open the Administration workspace — configure users and organization settings from the platform instead."
     >
       <div className="space-y-4">
         {workspaces.map((workspace) => {
@@ -481,13 +501,13 @@ export function OrganizationModuleToggles({
           return (
             <label
               key={workspace.id}
-              className={`flex items-start gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 ${
+              className={`flex items-start gap-4 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] p-4 ${
                 distributionBlocked ? "opacity-60" : ""
               }`}
             >
               <input
                 type="checkbox"
-                className="mt-1 rounded"
+                className="mt-1 rounded border-[var(--theme-border)]"
                 checked={enabled}
                 disabled={distributionBlocked}
                 onChange={(e) => setWorkspaceEnabled(workspace.id, e.target.checked)}
@@ -497,14 +517,20 @@ export function OrganizationModuleToggles({
                   <span className="text-lg" aria-hidden>
                     {workspaceToggleIcon(workspace.icon)}
                   </span>
-                  <span className="block text-sm font-semibold text-slate-900">{workspace.label}</span>
+                  <span className="theme-heading block text-sm font-semibold">{workspace.label}</span>
                 </span>
-                <span className="mt-1 block text-xs text-slate-500">{workspace.description}</span>
+                <span className="theme-subtext mt-1 block text-xs">{workspace.description}</span>
                 {isDistribution ? (
-                  <span className="mt-1 block text-xs text-slate-500">
+                  <span className="theme-subtext mt-1 block text-xs">
                     {mobileOrdersEnabled
                       ? "Requires mobile orders to be enabled."
                       : "Enable mobile orders on the Sales behaviour tab before turning on Distribution."}
+                  </span>
+                ) : null}
+                {workspace.id === "admin" && !enabled ? (
+                  <span className="mt-1 block text-xs text-amber-800 dark:text-amber-300">
+                    Organization settings, security, notifications, and AI preferences move to Platform → Organization
+                    settings for this tenant.
                   </span>
                 ) : null}
               </span>
@@ -833,7 +859,12 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
                   key={session.id}
                   className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"
                 >
-                  <span className="font-medium text-slate-900">{session.channel}</span>
+                  <span className="font-medium text-slate-900">
+                    {session.active_workspace_label ?? session.channel}
+                  </span>
+                  {session.channel ? (
+                    <span className="text-slate-500"> · {session.channel}</span>
+                  ) : null}
                   {session.device ? <span className="text-slate-500"> · {session.device}</span> : null}
                   <span className="mt-1 block text-slate-500">
                     Signed in {session.signed_in_at ? new Date(session.signed_in_at).toLocaleString() : "—"}

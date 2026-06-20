@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useAdminApi } from "@/contexts/admin-api-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { filterByOrganization, orgListParams, slugCode } from "@/lib/admin";
 import {
@@ -35,7 +36,8 @@ const EMPTY_FORM = {
 
 export default function AdminBranchesPage() {
   const { user, capabilities } = useAuth();
-  const organizationId = user?.organization_id ?? capabilities?.organization_id;
+  const { adminPath, organizationId: platformOrgId } = useAdminApi();
+  const organizationId = platformOrgId ?? user?.organization_id ?? capabilities?.organization_id;
 
   const [branches, setBranches] = useState([]);
   const [users, setUsers] = useState([]);
@@ -59,14 +61,14 @@ export default function AdminBranchesPage() {
     setError(null);
     try {
       const [branchRes, userRes] = await Promise.all([
-        apiRequest("/branches", { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
-        apiRequest("/users", { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
+        apiRequest(adminPath("/branches"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
+        apiRequest(adminPath("/users"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
       ]);
       setBranches(filterByOrganization(branchRes.data, organizationId));
       setUsers(filterByOrganization(userRes.data, organizationId));
 
       try {
-        const empRes = await apiRequest("/employees", {
+        const empRes = await apiRequest(adminPath("/employees"), {
           searchParams: { per_page: 200, ...orgListParams(organizationId) },
         });
         setEmployees(filterByOrganization(empRes.data, organizationId));
@@ -78,7 +80,7 @@ export default function AdminBranchesPage() {
     } finally {
       setLoading(false);
     }
-  }, [organizationId]);
+  }, [adminPath, organizationId]);
 
   useEffect(() => {
     load();
@@ -149,7 +151,7 @@ export default function AdminBranchesPage() {
     }
     if (!window.confirm(`Delete branch "${branch.branch_name}"? This cannot be undone.`)) return;
     try {
-      await apiRequest(`/branches/${branch.id}`, { method: "DELETE" });
+      await apiRequest(adminPath(`/branches/${branch.id}`), { method: "DELETE" });
       if (viewBranch?.id === branch.id) setViewBranch(null);
       await load();
     } catch (e) {
@@ -187,9 +189,9 @@ export default function AdminBranchesPage() {
         },
       };
       if (editing) {
-        await apiRequest(`/branches/${editing.id}`, { method: "PUT", body });
+        await apiRequest(adminPath(`/branches/${editing.id}`), { method: "PUT", body });
       } else {
-        await apiRequest("/branches", { method: "POST", body });
+        await apiRequest(adminPath("/branches"), { method: "POST", body });
       }
       setDrawerOpen(false);
       await load();

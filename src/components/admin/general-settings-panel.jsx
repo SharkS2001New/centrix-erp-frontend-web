@@ -14,6 +14,7 @@ import {
   generalPayloadFromForm,
 } from "@/lib/general-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description }) {
   return (
@@ -28,16 +29,17 @@ function Toggle({ checked, onChange, label, description }) {
 }
 
 export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage }) {
+  const { settingsPath } = useSettingsApi();
   const [form, setForm] = useState(generalFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    apiRequest("/erp/settings/general")
+    apiRequest(settingsPath("general"))
       .then((res) => setForm(generalFormFromApi(res)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load general settings"))
       .finally(() => setLoading(false));
-  }, [setError]);
+  }, [setError, settingsPath]);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -45,7 +47,7 @@ export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage }
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest("/erp/settings/general", {
+      const res = await apiRequest(settingsPath("general"), {
         method: "PATCH",
         body: generalPayloadFromForm(form),
       });

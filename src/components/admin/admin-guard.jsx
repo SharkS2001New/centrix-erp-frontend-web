@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import {
   canAccessOrgAdminSettings,
+  isAdministrationModuleEnabled,
   shouldHideOrgAdminFromPlatformSuperAdmin,
 } from "@/lib/admin-scope";
 import { buildAccessContext, resolveHomePath } from "@/lib/access-control";
@@ -15,6 +16,7 @@ export function AdminGuard({ children, strict = false }) {
   const router = useRouter();
 
   const platformShellBlock = shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin });
+  const administrationEnabled = isAdministrationModuleEnabled(capabilities);
 
   const isAdmin = user?.is_admin || capabilities?.is_admin;
   const canAccess = platformShellBlock
@@ -33,7 +35,7 @@ export function AdminGuard({ children, strict = false }) {
         });
 
   useEffect(() => {
-    if (!loading && !canAccess && !platformShellBlock) {
+    if (!loading && !canAccess && !platformShellBlock && administrationEnabled) {
       router.replace(
         resolveHomePath(
           buildAccessContext({
@@ -45,7 +47,17 @@ export function AdminGuard({ children, strict = false }) {
         ),
       );
     }
-  }, [canAccess, capabilities, isSuperAdmin, loading, organization, platformShellBlock, router, user]);
+  }, [
+    administrationEnabled,
+    canAccess,
+    capabilities,
+    isSuperAdmin,
+    loading,
+    organization,
+    platformShellBlock,
+    router,
+    user,
+  ]);
 
   if (loading) {
     return (
@@ -78,6 +90,21 @@ export function AdminGuard({ children, strict = false }) {
             Register organization
           </Link>
         </div>
+      </div>
+    );
+  }
+
+  if (!administrationEnabled) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950">
+        <h2 className="font-medium">Administration is not available</h2>
+        <p className="mt-2">
+          The Administration application is disabled for this organization. Company setup, users, roles, branches,
+          and organization settings are managed by your platform operator instead.
+        </p>
+        <p className="mt-2 text-xs text-amber-800">
+          Contact your platform support team if you need changes to users, branches, or system preferences.
+        </p>
       </div>
     );
   }

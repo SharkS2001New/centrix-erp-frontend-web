@@ -10,11 +10,12 @@ import {
   distributionPayloadFromForm,
 } from "@/lib/distribution-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
     <label
-      className={`flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 ${
+      className={`flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 ${
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       }`}
     >
@@ -26,25 +27,27 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
         onChange={(e) => onChange(e.target.checked)}
       />
       <span>
-        <span className="block text-sm font-medium text-slate-900">{label}</span>
-        {description ? <span className="mt-0.5 block text-xs text-slate-500">{description}</span> : null}
+        <span className="theme-heading block text-sm font-medium">{label}</span>
+        {description ? <span className="theme-subtext mt-0.5 block text-xs">{description}</span> : null}
       </span>
     </label>
   );
 }
 
-export function DistributionSettingsPanel({ saving, setSaving, setError, setMessage }) {
+export function DistributionSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { refreshCapabilities } = useAuth();
+  const { settingsPath } = useSettingsApi();
+  const afterSave = onAfterSave ?? refreshCapabilities;
   const [form, setForm] = useState(distributionFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    apiRequest("/erp/settings/distribution")
+    apiRequest(settingsPath("distribution"))
       .then((res) => setForm(distributionFormFromApi(res)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load distribution settings"))
       .finally(() => setLoading(false));
-  }, [setError]);
+  }, [setError, settingsPath]);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -52,12 +55,12 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest("/erp/settings/distribution", {
+      const res = await apiRequest(settingsPath("distribution"), {
         method: "PATCH",
         body: distributionPayloadFromForm(form),
       });
       setForm(distributionFormFromApi(res));
-      await refreshCapabilities();
+      if (afterSave) await afterSave();
       setMessage("Distribution settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save distribution settings");
@@ -68,13 +71,13 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
 
   return (
     <form onSubmit={handleSave}>
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-medium text-slate-900">Distribution settings</h2>
-        <p className="mt-1 text-sm text-slate-500">
+      <section className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm">
+        <h2 className="theme-heading text-lg font-medium">Distribution settings</h2>
+        <p className="theme-subtext mt-1 text-sm">
           Route planning, driver assignment, and proof of delivery for wholesale distributors.
         </p>
         {loading ? (
-          <p className="mt-4 text-sm text-slate-500">Loading…</p>
+          <p className="theme-subtext mt-4 text-sm">Loading…</p>
         ) : (
           <div className="mt-5 space-y-3">
             <Toggle
@@ -126,7 +129,15 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
               onChange={(v) => setForm((f) => ({ ...f, enforce_vehicle_capacity: v }))}
               disabled={!form.enable_distribution_ops}
             />
-            <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Cash / COD</p>
+            <p className="theme-subtext pt-2 text-xs font-semibold uppercase tracking-wide">Loading lists</p>
+            <Toggle
+              label="Include normal backoffice orders"
+              description="By default, loading lists and dispatch trips only aggregate mobile and POS route orders. Enable this to also include backoffice orders assigned to a route."
+              checked={form.include_normal_orders_in_loading_list}
+              onChange={(v) => setForm((f) => ({ ...f, include_normal_orders_in_loading_list: v }))}
+              disabled={!form.enable_distribution_ops}
+            />
+            <p className="theme-subtext pt-2 text-xs font-semibold uppercase tracking-wide">Cash / COD</p>
             <Toggle
               label="Enable route cash reconciliation"
               description="Track expected COD per trip and record cash collected by the driver at trip close."

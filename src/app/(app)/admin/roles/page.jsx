@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useAdminApi } from "@/contexts/admin-api-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { PermissionMatrix } from "@/components/admin/permission-matrix";
 import {
@@ -17,6 +18,7 @@ import {
 import { normalizeRoleId, permissionIdSet } from "@/lib/permission-ids";
 
 export default function AdminRolesPage() {
+  const { adminPath } = useAdminApi();
   const [roles, setRoles] = useState([]);
   const [permissionGroups, setPermissionGroups] = useState([]);
   const [selectedRoleId, setSelectedRoleId] = useState(null);
@@ -36,12 +38,12 @@ export default function AdminRolesPage() {
   );
 
   const loadRoles = useCallback(async () => {
-    const res = await apiRequest("/roles", { searchParams: { per_page: 200 } });
+    const res = await apiRequest(adminPath("/roles"), { searchParams: { per_page: 200 } });
     return res.data ?? [];
   }, []);
 
   const loadPermissionsCatalog = useCallback(async () => {
-    const res = await apiRequest("/roles/permissions/matrix");
+    const res = await apiRequest(adminPath("/roles/permissions/matrix"));
     setPermissionGroups(res.groups ?? []);
   }, []);
 
@@ -51,7 +53,7 @@ export default function AdminRolesPage() {
       setAssignedIds(new Set());
       return;
     }
-    const res = await apiRequest(`/roles/${id}/permissions`);
+    const res = await apiRequest(adminPath(`/roles/${id}/permissions`));
     setAssignedIds(permissionIdSet(res.permission_ids));
   }, []);
 
@@ -124,7 +126,7 @@ export default function AdminRolesPage() {
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest(`/roles/${roleId}/permissions`, {
+      const res = await apiRequest(adminPath(`/roles/${roleId}/permissions`), {
         method: "PUT",
         body: { permission_ids: [...assignedIds] },
       });
@@ -155,7 +157,7 @@ export default function AdminRolesPage() {
     setError(null);
     setMessage(null);
     try {
-      await apiRequest(`/roles/${roleId}`, { method: "DELETE" });
+      await apiRequest(adminPath(`/roles/${roleId}`), { method: "DELETE" });
       const list = await loadRoles();
       setRoles(list);
       const nextId = list[0] ? normalizeRoleId(list[0].id) : null;
@@ -178,7 +180,7 @@ export default function AdminRolesPage() {
     setSaving(true);
     setFormError(null);
     try {
-      const role = await apiRequest("/roles", {
+      const role = await apiRequest(adminPath("/roles"), {
         method: "POST",
         body: { role_name: roleName.trim(), scope: "branch", is_active: true },
       });

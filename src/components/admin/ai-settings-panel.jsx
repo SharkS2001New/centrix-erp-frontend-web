@@ -5,11 +5,22 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { aiFormFromApi, aiPayloadFromForm } from "@/lib/ai-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 
-function Toggle({ checked, onChange, label, description }) {
+function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-      <input type="checkbox" className="mt-1" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    <label
+      className={`flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 ${
+        disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+      }`}
+    >
+      <input
+        type="checkbox"
+        className="mt-1"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
       <span>
         <span className="block text-sm font-medium text-slate-900">{label}</span>
         {description ? <span className="mt-0.5 block text-xs text-slate-500">{description}</span> : null}
@@ -18,30 +29,32 @@ function Toggle({ checked, onChange, label, description }) {
   );
 }
 
-export function AiSettingsPanel({ saving, setSaving, setError, setMessage }) {
+export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { refreshCapabilities } = useAuth();
+  const { settingsPath } = useSettingsApi();
+  const afterSave = onAfterSave ?? refreshCapabilities;
   const [form, setForm] = useState(aiFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    apiRequest("/erp/settings/ai")
+    apiRequest(settingsPath("ai"))
       .then((res) => setForm(aiFormFromApi(res)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load AI settings"))
       .finally(() => setLoading(false));
-  }, [setError]);
+  }, [setError, settingsPath]);
 
   async function saveAiSettings() {
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest("/erp/settings/ai", {
+      const res = await apiRequest(settingsPath("ai"), {
         method: "PATCH",
         body: aiPayloadFromForm(form),
       });
       setForm(aiFormFromApi(res));
-      await refreshCapabilities();
+      if (afterSave) await afterSave();
       setMessage("AI settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save AI settings");

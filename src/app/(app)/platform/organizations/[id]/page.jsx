@@ -39,6 +39,7 @@ export default function ManageOrganizationPage() {
   const [orgAddress, setOrgAddress] = useState("");
   const [orgPin, setOrgPin] = useState("");
   const [vatRegno, setVatRegno] = useState("");
+  const [administrationEnabled, setAdministrationEnabled] = useState(true);
 
   const domainChildrenMap = useMemo(() => buildDomainChildrenMap(moduleOptions), [moduleOptions]);
 
@@ -71,6 +72,7 @@ export default function ManageOrganizationPage() {
       const childrenMap = buildDomainChildrenMap(optionsRes.modules ?? []);
       setDeploymentProfile(org.deployment_profile ?? "wholesale_retail");
       setEnabledModules(normalizeDomainModules(orgRes.effective_modules ?? {}, childrenMap));
+      setAdministrationEnabled(Boolean(orgRes.effective_modules?.admin));
       setSalesPlatform(salesPlatformFromApi(orgRes.sales_platform));
       setOrgActive(org.is_active !== false);
       setOrgName(org.org_name ?? "");
@@ -149,6 +151,7 @@ export default function ManageOrganizationPage() {
       setOrganization(org);
       const childrenMap = buildDomainChildrenMap(moduleOptions);
       setEnabledModules(normalizeDomainModules(res.effective_modules ?? enabledModules, childrenMap));
+      setAdministrationEnabled(Boolean(res.effective_modules?.admin));
       setSalesPlatform(salesPlatformFromApi(res.sales_platform));
       setOrgActive(org?.is_active !== false);
       setOrgName(org?.org_name ?? orgName);
@@ -184,6 +187,28 @@ export default function ManageOrganizationPage() {
         <p className="mt-6 text-sm text-slate-500">Loading…</p>
       ) : (
         <div className="mt-6 max-w-3xl space-y-6">
+          {!administrationEnabled ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950">
+              <p className="font-medium">Administration is disabled</p>
+              <p className="mt-1 text-xs text-amber-800">
+                This organization cannot manage its own operational settings. Configure checkout, finance,
+                notifications, and other preferences on their behalf.
+              </p>
+              <Link
+                href={`/platform/organizations/${orgId}/settings`}
+                className="mt-3 inline-flex items-center rounded-lg bg-[#185FA5] px-3 py-2 text-xs font-medium text-white hover:bg-[#134d88]"
+              >
+                Organization settings
+              </Link>
+              <Link
+                href={`/platform/organizations/${orgId}/admin`}
+                className="mt-3 inline-flex items-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-amber-950 hover:bg-amber-100"
+              >
+                Platform admin
+              </Link>
+            </div>
+          ) : null}
+
           <form onSubmit={onSave} className="space-y-6">
             <OrganizationConfigTabs
               mode="manage"
@@ -199,7 +224,8 @@ export default function ManageOrganizationPage() {
               onToggleModule={toggleModule}
               onSetModules={setModules}
               mobileOrdersEnabled={salesPlatform?.enable_mobile_orders !== false}
-              organization={{ is_active: orgActive }}
+              organization={organization}
+              organizationId={orgId}
               onStatusChange={({ is_active }) => setOrgActive(is_active)}
             />
 

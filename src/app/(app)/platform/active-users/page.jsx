@@ -11,34 +11,11 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function channelLabel(channel) {
-  if (channel === "pos") return "POS";
-  if (channel === "mobile") return "Mobile";
-  return "Backoffice";
-}
-
-function ChannelBadge({ channel }) {
-  const label = channelLabel(channel);
-  const className =
-    channel === "pos"
-      ? "bg-slate-800 text-white"
-      : channel === "mobile"
-        ? "bg-violet-100 text-violet-800"
-        : "bg-sky-100 text-sky-800";
+function ApplicationBadge({ label }) {
+  if (!label) return <span className="text-slate-400">—</span>;
 
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${className}`}>
-      {channel === "pos" ? (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <rect x="2" y="3" width="20" height="14" rx="2" />
-          <path d="M8 21h8M12 17v4" />
-        </svg>
-      ) : (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <rect x="3" y="4" width="18" height="12" rx="2" />
-          <path d="M2 20h20" />
-        </svg>
-      )}
+    <span className="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-800">
       {label}
     </span>
   );
@@ -122,7 +99,7 @@ function OrganizationActiveUsersCard({ group, onRefresh }) {
           <thead className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Username</th>
-              <th className="px-4 py-3">System type</th>
+              <th className="px-4 py-3">Application</th>
               <th className="px-4 py-3">Computer ID</th>
               <th className="px-4 py-3">Last active</th>
               <th className="px-4 py-3">Session started</th>
@@ -134,7 +111,7 @@ function OrganizationActiveUsersCard({ group, onRefresh }) {
               <tr key={session.id} className="hover:bg-slate-50/80">
                 <td className="px-4 py-3 font-semibold text-slate-900">{session.username}</td>
                 <td className="px-4 py-3">
-                  <ChannelBadge channel={session.login_channel} />
+                  <ApplicationBadge label={session.active_workspace_label} />
                 </td>
                 <td className="max-w-[220px] truncate px-4 py-3 font-mono text-xs text-slate-600" title={session.computer_id}>
                   {session.computer_id}

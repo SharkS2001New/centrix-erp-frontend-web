@@ -36,7 +36,7 @@ import {
 } from "@/components/sales/sales-orders-shared";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { saleCustomerLabel, isRouteOrderSale } from "@/lib/sales";
-import { isMobileOrdersEnabled, orderDocumentPrintLabel } from "@/lib/sales-settings";
+import { isOrgMobileSalesEnabled, orderDocumentPrintLabel } from "@/lib/sales-settings";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
 import {
   FulfillmentAssignmentDialog,
@@ -66,7 +66,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
     () => getSalesOrderQueueWorkflow(capabilities, "backend"),
     [capabilities],
   );
-  const includeMobileOrders = isMobileOrdersEnabled(capabilities?.module_settings);
+  const includeMobileOrders = isOrgMobileSalesEnabled(capabilities);
   const queueConfig = useMemo(
     () => resolveSalesOrderQueue(queueSlug, orgWorkflow, { includeMobile: includeMobileOrders }),
     [queueSlug, orgWorkflow, includeMobileOrders],

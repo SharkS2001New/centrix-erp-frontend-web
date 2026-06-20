@@ -78,6 +78,9 @@ export function ExternalAccountingIntegrationPanel({ provider = "quickbooks", sa
   }
 
   const connected = status?.connection?.status === "connected" && status?.connection?.provider === provider;
+  const quickbooksMode = status?.quickbooks_mode ?? "stub";
+  const accountingMode = status?.accounting_mode ?? "internal";
+  const quickbooksLive = quickbooksMode === "live";
 
   return (
     <div className="theme-subtext space-y-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3 text-sm">
@@ -85,6 +88,22 @@ export function ExternalAccountingIntegrationPanel({ provider = "quickbooks", sa
         <p>Loading {label} status…</p>
       ) : (
         <>
+          <p>
+            Ledger mode: <strong className="theme-heading">{accountingMode}</strong>
+            {provider === "quickbooks" ? (
+              <>
+                {" "}
+                · QuickBooks integration:{" "}
+                <strong className="theme-heading">{quickbooksLive ? "Live" : "Stub (credentials missing)"}</strong>
+              </>
+            ) : null}
+          </p>
+          {!quickbooksLive && provider === "quickbooks" ? (
+            <p className="text-xs">
+              Add QuickBooks OAuth client ID and secret in server environment variables to enable live
+              connection. Stub mode lets you test export queue behaviour without calling Intuit.
+            </p>
+          ) : null}
           <p>
             Status:{" "}
             <strong className="theme-heading">{connected ? "Connected" : "Not connected"}</strong>

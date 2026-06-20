@@ -7,6 +7,7 @@ import {
   procurementPayloadFromForm,
 } from "@/lib/procurement-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description }) {
   return (
@@ -21,16 +22,17 @@ function Toggle({ checked, onChange, label, description }) {
 }
 
 export function ProcurementSettingsPanel({ saving, setSaving, setError, setMessage }) {
+  const { settingsPath } = useSettingsApi();
   const [form, setForm] = useState(procurementFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    apiRequest("/erp/settings/procurement")
+    apiRequest(settingsPath("procurement"))
       .then((res) => setForm(procurementFormFromApi(res)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load procurement settings"))
       .finally(() => setLoading(false));
-  }, [setError]);
+  }, [setError, settingsPath]);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -38,7 +40,7 @@ export function ProcurementSettingsPanel({ saving, setSaving, setError, setMessa
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest("/erp/settings/procurement", {
+      const res = await apiRequest(settingsPath("procurement"), {
         method: "PATCH",
         body: procurementPayloadFromForm(form),
       });

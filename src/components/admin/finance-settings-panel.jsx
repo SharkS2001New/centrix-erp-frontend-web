@@ -7,6 +7,7 @@ import { financeFormFromApi, financePayloadFromForm, isPlatformKraIntegrationEna
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { ExternalAccountingIntegrationPanel } from "@/components/admin/external-accounting-integration-panel";
 import { AccountingAutoPostPanel } from "@/components/admin/accounting-auto-post-panel";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description }) {
   return (
@@ -33,18 +34,21 @@ function UrlField({ label, value, onChange, placeholder }) {
   );
 }
 
-export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }) {
-  const { refreshCapabilities, capabilities } = useAuth();
+export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, capabilities: capabilitiesProp, onAfterSave }) {
+  const { refreshCapabilities, capabilities: authCapabilities } = useAuth();
+  const capabilities = capabilitiesProp ?? authCapabilities;
+  const { settingsPath } = useSettingsApi();
+  const afterSave = onAfterSave ?? refreshCapabilities;
   const [form, setForm] = useState(financeFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    apiRequest("/erp/settings/finance")
+    apiRequest(settingsPath("finance"))
       .then((res) => setForm(financeFormFromApi(res)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load finance settings"))
       .finally(() => setLoading(false));
-  }, [setError]);
+  }, [setError, settingsPath]);
 
   function setMpesa(field, value) {
     setForm((f) => ({ ...f, mpesa: { ...f.mpesa, [field]: value } }));
@@ -55,12 +59,12 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest("/erp/settings/finance", {
+      const res = await apiRequest(settingsPath("finance"), {
         method: "PATCH",
         body: financePayloadFromForm(form),
       });
       setForm(financeFormFromApi(res));
-      await refreshCapabilities();
+      if (afterSave) await afterSave();
       setMessage("Finance settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save finance settings");
@@ -71,8 +75,10 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
 
   const mpesaStatus = form.mpesa_status;
   const mpesa = form.mpesa ?? {};
+  const hasAccounting = Boolean(capabilities?.modules?.accounting);
   const kraAllowed = isPlatformKraIntegrationEnabled({ finance: form }, capabilities);
   const mpesaAllowed = isPlatformMpesaStkEnabled({ finance: form }, capabilities);
+  const hasFinanceContent = hasAccounting || kraAllowed || mpesaAllowed;
 
   return (
     <section className="theme-panel rounded-xl border p-6 shadow-sm">
@@ -80,6 +86,8 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
       <p className="theme-subtext mt-1 text-sm">Organization-level payment and fiscal configuration.</p>
       {loading ? (
         <p className="mt-4 text-sm text-slate-500">Loading…</p>
+      ) : !hasFinanceContent ? (
+        <p className="mt-4 text-sm text-slate-500">No finance settings are available for this organization.</p>
       ) : (
         <div className="mt-5 space-y-6">
           {kraAllowed ? (
@@ -145,12 +153,9 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
               />
             </div>
           </div>
-          ) : (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              KRA integration is disabled for this organization by the platform administrator.
-            </p>
-          )}
+          ) : null}
 
+          {hasAccounting ? (
           <div className="border-t border-[var(--theme-border)] pt-6">
             <h3 className="theme-heading text-sm font-medium">Accounting system</h3>
             <p className="theme-subtext mt-1 text-sm">
@@ -312,6 +317,7 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
               )}
             </div>
           </div>
+          ) : null}
 
           {mpesaAllowed ? (
           <div className="border-t border-slate-200 pt-6">
@@ -446,11 +452,7 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage }
               organization by paybill or till number.
             </p>
           </div>
-          ) : (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              M-Pesa STK Push is disabled for this organization by the platform administrator.
-            </p>
-          )}
+          ) : null}
 
           <PrimaryButton type="button" showIcon={false} disabled={saving} onClick={() => void saveFinanceSettings()}>
             {saving ? "Saving…" : "Save finance settings"}

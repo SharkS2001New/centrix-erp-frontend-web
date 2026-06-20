@@ -6,8 +6,8 @@ const SALES_CHILDREN = ["sales.pos", "sales.mobile", "sales.backend", "sales.das
 const BACKOFFICE_SALES_CHILDREN = ["sales.backend", "sales.dashboard", "sales.reports"];
 
 /**
- * Tenant applications shown on the login workspace picker.
- * Mirrors config/erp_workspaces.php (excluding platform Administration).
+ * Tenant applications shown on the login workspace picker and super-admin Applications tab.
+ * Mirrors config/erp_workspaces.php.
  */
 export const PROVISIONABLE_WORKSPACES = [
   {
@@ -39,6 +39,13 @@ export const PROVISIONABLE_WORKSPACES = [
     label: "Human Resources",
     description: "Employees, attendance, payroll, and HR reports.",
     icon: "people",
+  },
+  {
+    id: "admin",
+    label: "Administration",
+    description:
+      "Users, roles, branches, company setup, and organization settings. When disabled, tenant managers cannot open Administration — you configure those settings from the platform instead.",
+    icon: "settings",
   },
 ];
 
@@ -73,6 +80,8 @@ export function isProvisionableWorkspaceEnabled(workspace, enabledModules = {}) 
       return Boolean(enabledModules.accounting);
     case "hr":
       return Boolean(enabledModules.hr_payroll);
+    case "admin":
+      return Boolean(enabledModules.admin);
     default:
       return false;
   }
@@ -104,6 +113,8 @@ function enableWorkspacePatch(workspaceId) {
       return { accounting: true };
     case "hr":
       return { hr_payroll: true };
+    case "admin":
+      return { admin: true };
     default:
       return {};
   }
@@ -127,6 +138,8 @@ function disableWorkspacePatch(workspaceId) {
       return { accounting: false };
     case "hr":
       return { hr_payroll: false };
+    case "admin":
+      return { admin: false };
     default:
       return {};
   }

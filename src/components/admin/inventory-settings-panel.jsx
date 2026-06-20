@@ -10,6 +10,7 @@ import {
   inventoryPayloadFromForm,
 } from "@/lib/inventory-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -33,18 +34,20 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
   );
 }
 
-export function InventorySettingsPanel({ saving, setSaving, setError, setMessage }) {
+export function InventorySettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { refreshCapabilities } = useAuth();
+  const { settingsPath } = useSettingsApi();
+  const afterSave = onAfterSave ?? refreshCapabilities;
   const [form, setForm] = useState(inventoryFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    apiRequest("/erp/settings/inventory")
+    apiRequest(settingsPath("inventory"))
       .then((res) => setForm(inventoryFormFromApi(res)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load inventory settings"))
       .finally(() => setLoading(false));
-  }, [setError]);
+  }, [setError, settingsPath]);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -66,12 +69,12 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest("/erp/settings/inventory", {
+      const res = await apiRequest(settingsPath("inventory"), {
         method: "PATCH",
         body: payload,
       });
       setForm(inventoryFormFromApi(res));
-      await refreshCapabilities();
+      if (afterSave) await afterSave();
       setMessage("Inventory settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save inventory settings");

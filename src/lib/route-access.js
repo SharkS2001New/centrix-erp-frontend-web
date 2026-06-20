@@ -1,6 +1,10 @@
 import { isNavItemVisible, navSections } from "@/lib/nav-config";
 import { canViewReport, P } from "@/lib/permission-codes";
-import { isOrgAdminSettingsPath, shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
+import {
+  isAdministrationModuleEnabled,
+  isOrgAdminSettingsPath,
+  shouldHideOrgAdminFromPlatformSuperAdmin,
+} from "@/lib/admin-scope";
 import { isPlatformShellRoute, isPlatformShellUser } from "@/lib/access-control";
 import { isReportModuleEnabled } from "@/lib/backoffice-finance-reports";
 import { anyReportsModuleEnabled } from "@/lib/module-registry";
@@ -44,6 +48,13 @@ export function canAccessRoute(pathname, ctx) {
 
   if (isPlatformShellUser(ctx)) {
     return isPlatformShellRoute(pathname);
+  }
+
+  if (
+    (pathname.startsWith("/admin") || isOrgAdminSettingsPath(pathname)) &&
+    !isAdministrationModuleEnabled(ctx.capabilities)
+  ) {
+    return false;
   }
 
   const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(ctx.capabilities, ctx);
