@@ -2249,7 +2249,7 @@ export function PosScreen({ standalone = false }) {
                 >
                   Reprint last receipt
                 </button>
-                {showStandaloneTillActions ? (
+                {showStandaloneTillActions && requirePosTillFloat ? (
                   <>
                     <button
                       type="button"
@@ -2257,9 +2257,7 @@ export function PosScreen({ standalone = false }) {
                       title={
                         canUseSessionReports
                           ? "Interim session report (session stays open)"
-                          : requirePosTillFloat
-                            ? "Declare your operating float to print an X report"
-                            : "Open a till session to print an X report"
+                          : "Declare your operating float to print an X report"
                       }
                       onClick={handleStandaloneXReport}
                       className={posHeaderBtnClassName}
@@ -2273,9 +2271,7 @@ export function PosScreen({ standalone = false }) {
                       title={
                         canUseSessionReports
                           ? "Close session and print Z report"
-                          : requirePosTillFloat
-                            ? "Declare your operating float to print a Z report"
-                            : "Open a till session to print a Z report"
+                          : "Declare your operating float to print a Z report"
                       }
                       className={posHeaderBtnClassName}
                     >
@@ -2364,7 +2360,7 @@ export function PosScreen({ standalone = false }) {
         subtitle={
           requirePosTillFloat
             ? "Your till is assigned automatically (Till01, Till02, …). Each till belongs to one cashier. Enter the cash you are starting with."
-            : "Start a till session without operating float. Use this for X/Z reports and shift tracking."
+            : "Start a till session without operating float."
         }
       />
 
@@ -2763,7 +2759,7 @@ export function PosScreen({ standalone = false }) {
                 ) : null}
               </>
             ) : null}
-            {!standalone && activeSession && hasPosTill ? (
+            {!standalone && requirePosTillFloat && activeSession && hasPosTill ? (
               <>
                 <button
                   type="button"

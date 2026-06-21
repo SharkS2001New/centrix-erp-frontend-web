@@ -343,7 +343,7 @@ export function OpenSessionModal({
             </>
           ) : (
             <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Operating float is not required for this organization. A till session will open with zero float so you can run X/Z reports and track sales.
+              Operating float is not required for this organization. A till session will open with zero float when you choose to track a shift.
             </p>
           )}
         </div>
