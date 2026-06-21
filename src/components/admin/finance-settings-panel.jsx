@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { financeFormFromApi, financePayloadFromForm, isPlatformKraIntegrationEnabled, isPlatformMpesaStkEnabled } from "@/lib/finance-settings";
+import { accountingSettingsFromApi, accountingSettingsPayload } from "@/lib/accounting-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { ExternalAccountingIntegrationPanel } from "@/components/admin/external-accounting-integration-panel";
 import { AccountingAutoPostPanel } from "@/components/admin/accounting-auto-post-panel";
@@ -40,6 +41,7 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
   const { settingsPath } = useSettingsApi();
   const afterSave = onAfterSave ?? refreshCapabilities;
   const [form, setForm] = useState(financeFormFromApi({}));
+  const [autoPostForm, setAutoPostForm] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -54,6 +56,11 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
     setForm((f) => ({ ...f, mpesa: { ...f.mpesa, [field]: value } }));
   }
 
+  const hasAccounting = Boolean(capabilities?.modules?.accounting);
+  const kraAllowed = isPlatformKraIntegrationEnabled({ finance: form }, capabilities);
+  const mpesaAllowed = isPlatformMpesaStkEnabled({ finance: form }, capabilities);
+  const hasFinanceContent = hasAccounting || kraAllowed || mpesaAllowed;
+
   async function saveFinanceSettings() {
     setSaving(true);
     setError(null);
@@ -64,6 +71,15 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
         body: financePayloadFromForm(form),
       });
       setForm(financeFormFromApi(res));
+
+      if (hasAccounting && form.accounting_mode !== "external" && autoPostForm) {
+        const accountingRes = await apiRequest("/accounting/settings", {
+          method: "PATCH",
+          body: accountingSettingsPayload(autoPostForm),
+        });
+        setAutoPostForm(accountingSettingsFromApi(accountingRes));
+      }
+
       if (afterSave) await afterSave();
       setMessage("Finance settings saved.");
     } catch (e) {
@@ -75,10 +91,6 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
 
   const mpesaStatus = form.mpesa_status;
   const mpesa = form.mpesa ?? {};
-  const hasAccounting = Boolean(capabilities?.modules?.accounting);
-  const kraAllowed = isPlatformKraIntegrationEnabled({ finance: form }, capabilities);
-  const mpesaAllowed = isPlatformMpesaStkEnabled({ finance: form }, capabilities);
-  const hasFinanceContent = hasAccounting || kraAllowed || mpesaAllowed;
 
   return (
     <section className="theme-panel rounded-xl border p-6 shadow-sm">
@@ -308,6 +320,8 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
                   </p>
                   <AccountingAutoPostPanel
                     compact
+                    hideSaveButton
+                    onFormChange={setAutoPostForm}
                     saving={saving}
                     setSaving={setSaving}
                     setError={setError}

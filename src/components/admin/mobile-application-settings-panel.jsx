@@ -37,24 +37,18 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
 function PlatformMobileSummary({ capabilities: capabilitiesProp }) {
   const { capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
-  const sales = capabilities?.module_settings?.sales ?? {};
   const mobileOrdersEnabled = isOrgMobileSalesEnabled(capabilities);
 
   return (
     <div className="mb-5 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-4 text-sm">
       <p className="theme-heading font-medium">Configured by platform administrator</p>
       <p className="theme-subtext mt-1 text-xs">
-        Mobile module access and whether mobile orders appear in the backoffice sidebar are set at
-        organization registration (mobile orders in the sidebar are on by default). Contact your
-        platform administrator to change them.
+        Whether this organization uses the mobile application and field-sales backoffice views is set at
+        organization registration. Contact your platform administrator to change it.
       </p>
       <ul className="mt-3 space-y-1 text-xs">
         <li>
-          <span className="font-medium">Mobile sales module:</span>{" "}
-          {capabilities?.modules?.["sales.mobile"] ? "Enabled" : "Disabled"}
-        </li>
-        <li>
-          <span className="font-medium">Mobile orders in sidebar:</span>{" "}
+          <span className="font-medium">Mobile orders:</span>{" "}
           {mobileOrdersEnabled ? "Enabled" : "Disabled"}
         </li>
       </ul>
@@ -107,8 +101,8 @@ export function MobileApplicationSettingsPanel({ saving, setSaving, setError, se
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Mobile application</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Settings for the field sales mobile app. Module access and mobile orders in the backoffice
-          sidebar are configured by the platform administrator.
+          Settings for the field sales mobile app. Mobile module access is configured by the platform
+          administrator.
         </p>
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">Loading…</p>

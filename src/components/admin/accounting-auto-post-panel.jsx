@@ -22,17 +22,38 @@ function Toggle({ checked, onChange, label, description }) {
   );
 }
 
-export function AccountingAutoPostPanel({ saving, setSaving, setError, setMessage, compact = false }) {
+export function AccountingAutoPostPanel({
+  saving,
+  setSaving,
+  setError,
+  setMessage,
+  compact = false,
+  hideSaveButton = false,
+  onFormChange,
+}) {
   const [form, setForm] = useState(accountingSettingsFromApi({}));
   const [loading, setLoading] = useState(true);
   const [canManage, setCanManage] = useState(true);
+
+  const updateForm = useCallback(
+    (updater) => {
+      setForm((current) => {
+        const next = typeof updater === "function" ? updater(current) : updater;
+        onFormChange?.(next);
+        return next;
+      });
+    },
+    [onFormChange],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await apiRequest("/accounting/settings");
-      setForm(accountingSettingsFromApi(res));
+      const next = accountingSettingsFromApi(res);
+      setForm(next);
+      onFormChange?.(next);
     } catch (e) {
       if (e instanceof ApiError && e.status === 403) {
         setCanManage(false);
@@ -42,7 +63,7 @@ export function AccountingAutoPostPanel({ saving, setSaving, setError, setMessag
     } finally {
       setLoading(false);
     }
-  }, [setError]);
+  }, [setError, onFormChange]);
 
   useEffect(() => {
     load();
@@ -58,6 +79,7 @@ export function AccountingAutoPostPanel({ saving, setSaving, setError, setMessag
         body: accountingSettingsPayload(form),
       });
       setForm(accountingSettingsFromApi(res));
+      onFormChange?.(accountingSettingsFromApi(res));
       setMessage("Accounting auto-post settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save accounting settings");
@@ -72,7 +94,11 @@ export function AccountingAutoPostPanel({ saving, setSaving, setError, setMessag
     setMessage(null);
     try {
       await apiRequest("/accounting/seed-chart-of-accounts", { method: "POST" });
-      setForm((f) => ({ ...f, chart_seeded: true }));
+      setForm((f) => {
+        const next = { ...f, chart_seeded: true };
+        onFormChange?.(next);
+        return next;
+      });
       setMessage("Standard chart of accounts seeded.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to seed chart of accounts");
@@ -100,7 +126,7 @@ export function AccountingAutoPostPanel({ saving, setSaving, setError, setMessag
             label={toggle.label}
             description={toggle.description}
             checked={Boolean(form[toggle.key])}
-            onChange={(v) => setForm((f) => ({ ...f, [toggle.key]: v }))}
+            onChange={(v) => updateForm((f) => ({ ...f, [toggle.key]: v }))}
           />
         ))}
       </div>
@@ -118,7 +144,7 @@ export function AccountingAutoPostPanel({ saving, setSaving, setError, setMessag
         </p>
       ) : null}
 
-      {canManage ? (
+      {canManage && !hideSaveButton ? (
         <div className="flex flex-wrap items-center gap-3">
           <PrimaryButton type="button" showIcon={false} disabled={saving} onClick={() => void save()}>
             {saving ? "Saving…" : "Save auto-post settings"}

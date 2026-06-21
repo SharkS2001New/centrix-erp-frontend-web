@@ -53,6 +53,7 @@ export const STOCK_DEDUCT_TIMING_OPTIONS = [
 /** Whether org has mobile sales enabled at platform level. */
 export function isOrgMobileSalesEnabled(capabilities) {
   if (capabilities?.mobile_orders_enabled === false) return false;
+  if (!capabilities?.modules?.["sales.mobile"]) return false;
   return isMobileOrdersEnabled(capabilities?.module_settings);
 }
 
@@ -135,7 +136,6 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   enable_checkout_customer_name: false,
   add_route_markup_prices: false,
   pos_order_type_mode: "normal",
-  require_pos_till_float: false,
   blind_till_close: false,
   order_document_type: "receipt",
   invoice_valid_days: "7",
@@ -173,7 +173,6 @@ export function salesOrganizationFormFromApi(res) {
     enable_checkout_customer_name: Boolean(sales.enable_checkout_customer_name),
     add_route_markup_prices: Boolean(sales.add_route_markup_prices),
     pos_order_type_mode: resolvePosOrderTypeMode(sales),
-    require_pos_till_float: Boolean(sales.require_pos_till_float),
     blind_till_close: Boolean(sales.blind_till_close),
     order_document_type: sales.order_document_type === "invoice" ? "invoice" : "receipt",
     invoice_valid_days: String(sales.invoice_valid_days ?? 7),

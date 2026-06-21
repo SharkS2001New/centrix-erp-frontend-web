@@ -27,8 +27,8 @@ export function PlatformConfiguredSalesSummary({ capabilities: capabilitiesProp 
     <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
       <p className="font-medium text-slate-900">Configured by platform administrator</p>
       <p className="mt-1 text-xs text-slate-500">
-        Module access, checkout vs save order, and order workflow are set when your organization was
-        registered. Contact your platform administrator to change them.
+        Module access, checkout vs save order, mobile orders, till float, and order workflow are set when
+        your organization was registered. Contact your platform administrator to change them.
       </p>
       <ul className="mt-3 space-y-1 text-xs">
         {isPlatformCheckoutOnCreateEnabled(capabilities) ? (
@@ -42,7 +42,12 @@ export function PlatformConfiguredSalesSummary({ capabilities: capabilitiesProp 
         )}
         {isPlatformMobileOrdersEnabled(capabilities) ? (
           <li>
-            <span className="font-medium">Mobile orders in sidebar:</span> Enabled
+            <span className="font-medium">Mobile orders:</span> Enabled
+          </li>
+        ) : null}
+        {capabilities?.module_settings?.sales?.require_pos_till_float ? (
+          <li>
+            <span className="font-medium">POS till float:</span> Required
           </li>
         ) : null}
         {pipeline.length > 0 ? (

@@ -559,12 +559,6 @@ export function OrganizationSettingsContent({
                 {hasPosSales ? (
                 <div className="mt-4 space-y-3">
                   <Toggle
-                    label="Require operating till float at POS"
-                    description="When on, cashiers must open a till session and declare the operating float (any amount) before POS sales. X reports, Z reports, and end-of-day sales include the float breakdown. When off, POS sells without a till session and X/Z reports are hidden."
-                    checked={salesForm.require_pos_till_float}
-                    onChange={(v) => setSalesForm((f) => ({ ...f, require_pos_till_float: v }))}
-                  />
-                  <Toggle
                     label="Blind till close"
                     description="When on, cashiers count cash without seeing expected cash or variance during close. Variance appears on the Z report after closing."
                     checked={salesForm.blind_till_close}

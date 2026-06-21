@@ -208,6 +208,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_kra_integration: true,
     enable_ai: true,
     stock_deduct_on: "order_completed",
+    require_pos_till_float: false,
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
   };
 }
@@ -221,6 +222,7 @@ export function salesPlatformFromApi(apiPayload) {
     enable_kra_integration: apiPayload.enable_kra_integration !== false,
     enable_ai: apiPayload.enable_ai !== false,
     stock_deduct_on: apiPayload.stock_deduct_on ?? "order_completed",
+    require_pos_till_float: Boolean(apiPayload.require_pos_till_float ?? false),
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
   };
 }
@@ -257,9 +259,15 @@ export function OrganizationPlatformSalesSettings({
           />
           <Toggle
             label="Enable mobile orders"
-            description="When off, the organization does not use the mobile app. Mobile users cannot sign in and admins can only create backoffice/POS users."
+            description="When on, the mobile app, mobile user logins, and backoffice mobile-order views are available. When off, only backoffice and POS channels can be used."
             checked={mobileOrdersEnabled}
             onChange={(v) => patch({ enable_mobile_orders: v })}
+          />
+          <Toggle
+            label="Require operating till float at POS"
+            description="When on, cashiers must open a till session and declare the operating float before POS sales. X reports, Z reports, and end-of-day sales include the float breakdown. When off, POS sells without a till session and X/Z reports are hidden."
+            checked={Boolean(salesPlatform?.require_pos_till_float)}
+            onChange={(v) => patch({ require_pos_till_float: v })}
           />
           <Toggle
             label="Enable M-Pesa STK Push"

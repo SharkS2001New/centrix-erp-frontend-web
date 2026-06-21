@@ -6,6 +6,7 @@ export function isPlatformCheckoutOnCreateEnabled(capabilities) {
 
 export function isPlatformMobileOrdersEnabled(capabilities) {
   if (capabilities?.mobile_orders_enabled === false) return false;
+  if (!capabilities?.modules?.["sales.mobile"]) return false;
   return capabilities?.module_settings?.sales?.enable_mobile_orders !== false;
 }
 

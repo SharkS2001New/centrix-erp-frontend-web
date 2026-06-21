@@ -1,4 +1,4 @@
-import { reportModuleForSlug } from "@/lib/module-registry";
+import { reportModuleForSlug, isModuleEnabledForNav } from "@/lib/module-registry";
 
 /**
  * Operational finance reports available in the backoffice workspace when full
@@ -54,5 +54,5 @@ export function reportAccessModules(slug) {
 export function isReportModuleEnabled(slug, isModuleEnabled) {
   const modules = reportAccessModules(slug);
   if (!modules.length) return true;
-  return modules.some((key) => isModuleEnabled(key));
+  return modules.some((key) => isModuleEnabledForNav(key, isModuleEnabled));
 }
