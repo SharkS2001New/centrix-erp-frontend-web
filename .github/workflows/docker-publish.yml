@@ -40,7 +40,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
       - name: Extract Docker metadata
         id: meta
@@ -65,7 +65,7 @@ jobs:
             NEXT_PUBLIC_COMPANY_NAME=${{ vars.NEXT_PUBLIC_COMPANY_NAME || 'Centrix ERP' }}
 
       - name: Check out pitchpredk3ssetup
-        if: github.event_name != 'pull_request' && secrets.PERSONAL_ACCESS_TOKEN != ''
+        if: github.event_name != 'pull_request'
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/pitchpredk3ssetup
@@ -73,7 +73,7 @@ jobs:
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
       - name: Update Helm image tag
-        if: github.event_name != 'pull_request' && secrets.PERSONAL_ACCESS_TOKEN != ''
+        if: github.event_name != 'pull_request'
         id: helm_tag
         run: |
           set -euo pipefail
@@ -83,23 +83,23 @@ jobs:
             echo "Missing ${VALUES_FILE} in pitchpredk3ssetup checkout" >&2
             exit 1
           fi
-          sed -i "s|^\([[:space:]]*tag:\).*|\1 ${IMAGE_TAG}|" "$VALUES_FILE"
+          sed -i "s|tag:.*|tag: ${IMAGE_TAG}|" "$VALUES_FILE"
           echo "Updated ${VALUES_FILE} -> ${IMAGE_TAG}"
           echo "value=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Commit and push pitchpredk3ssetup
-        if: github.event_name != 'pull_request' && secrets.PERSONAL_ACCESS_TOKEN != ''
+        if: github.event_name != 'pull_request'
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
           set -euo pipefail
           cd pitchpredk3ssetup
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
           git add centrix-erp-frontend-web/values.yaml
           if git diff --staged --quiet; then
             echo "Helm tag already up to date (${{ steps.helm_tag.outputs.value }})." >&2
             exit 0
           fi
-          git commit -m "chore(centrix-erp-frontend-web): bump image tag to ${{ steps.helm_tag.outputs.value }}"
+          git commit -m "Update centrix-erp-frontend-web image tag to ${{ steps.helm_tag.outputs.value }}"
           git push

@@ -32,7 +32,6 @@ export default function NewProductPage() {
     vats,
     branches,
     globalReorderLevel,
-    branches,
     loading,
     error: loadError,
     reload,
