@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "bootstrap-icons/font/bootstrap-icons.css";
 
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
@@ -8,6 +9,35 @@
 
 body {
   margin: 0;
+}
+
+/* Bootstrap Icons — fixed sizes for sidebar nav (prevents oversized parent section icons). */
+.app-nav-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  line-height: 1;
+  vertical-align: middle;
+  font-style: normal;
+}
+
+.app-nav-icon-section {
+  width: 1.125rem;
+  height: 1.125rem;
+  font-size: 1.125rem;
+}
+
+.app-nav-icon-item {
+  width: 0.9375rem;
+  height: 0.9375rem;
+  font-size: 0.9375rem;
+  opacity: 0.85;
+}
+
+.velzon-sidebar .app-sidebar-section-toggle .app-nav-icon-section,
+.velzon-sidebar .app-sidebar-icon-btn .app-nav-icon-section {
+  width: 1.125rem;
+  height: 1.125rem;
+  font-size: 1.125rem;
 }
 
 /* ── Theme surfaces (explicit selectors — do not rely on CSS variables alone) ── */

@@ -181,7 +181,7 @@ function StandaloneNavSection({ section, pathname, onNavigate }) {
         active ? "app-sidebar-section-active" : ""
       }`}
     >
-      <NavSectionIcon sectionId={section.id} className="shrink-0 opacity-90" />
+      <NavSectionIcon sectionId={section.id} />
       <span className="min-w-0 flex-1 truncate">{section.label}</span>
     </Link>
   );
@@ -206,7 +206,7 @@ function CollapsedSectionIcon({
       aria-label={section.label}
       aria-expanded={isOpen}
     >
-      <NavSectionIcon sectionId={section.id} className="h-[18px] w-[18px] shrink-0" />
+      <NavSectionIcon sectionId={section.id} />
     </button>
   );
 }
@@ -236,7 +236,7 @@ function CollapsibleNavSection({
           title={section.label}
           aria-label={section.label}
         >
-          <NavSectionIcon sectionId={section.id} className="h-[18px] w-[18px] shrink-0" />
+      <NavSectionIcon sectionId={section.id} />
         </Link>
       );
     }
@@ -283,7 +283,7 @@ function CollapsibleNavSection({
         }`}
         aria-expanded={expanded}
       >
-        <NavSectionIcon sectionId={section.id} className="shrink-0 opacity-90" />
+        <NavSectionIcon sectionId={section.id} />
         <span className="min-w-0 flex-1 truncate">{section.label}</span>
         <ChevronIcon open={expanded} />
       </button>
