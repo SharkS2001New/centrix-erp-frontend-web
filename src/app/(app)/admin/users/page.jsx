@@ -366,7 +366,7 @@ export default function AdminUsersPage() {
 
   const viewRoleName = viewUser ? roleById.get(viewUser.role_id)?.role_name : null;
 
-  const page = (
+  const pageContent = (
     <CatalogPageShell
       title="Users"
       subtitle="Manage system users, branches, roles, and per-user permission overrides."
@@ -636,7 +636,7 @@ export default function AdminUsersPage() {
       </CatalogPageShell>
   );
 
-  if (isPlatformManaged) return page;
+  if (isPlatformManaged) return pageContent;
 
-  return <AdminGuard strict>{page}</AdminGuard>;
+  return <AdminGuard strict>{pageContent}</AdminGuard>;
 }

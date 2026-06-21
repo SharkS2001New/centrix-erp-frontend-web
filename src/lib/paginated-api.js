@@ -6,7 +6,7 @@ export function parsePaginator(res) {
   return {
     items,
     page: Number(res?.current_page ?? 1),
-    perPage: Number(res?.per_page ?? items.length || 25),
+    perPage: Number(res?.per_page ?? (items.length || 25)),
     total: Number(res?.total ?? items.length),
     totalPages: Math.max(1, Number(res?.last_page ?? 1)),
   };
