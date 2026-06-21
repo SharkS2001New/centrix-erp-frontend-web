@@ -34,6 +34,7 @@ export default function EditProductPage() {
     suppliers,
     uoms,
     vats,
+    branches,
     globalReorderLevel,
     loading: metaLoading,
     error: metaError,
@@ -121,6 +122,11 @@ export default function EditProductPage() {
       return;
     }
 
+    if (form.catalog_scope === "branch" && !form.branch_id) {
+      setFormError("Select a branch for branch-scoped products.");
+      return;
+    }
+
     setSaving(true);
     setFormError(null);
     try {
@@ -198,6 +204,7 @@ export default function EditProductPage() {
               onImageSelect={onImageSelect}
               onOpenSubcategoryModal={() => setSubcategoryModalOpen(true)}
               allowDiscounts={allowDiscounts}
+              branches={branches}
             />
           </ProductFormCard>
 

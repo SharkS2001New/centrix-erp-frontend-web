@@ -30,7 +30,9 @@ export default function NewProductPage() {
     suppliers,
     uoms,
     vats,
+    branches,
     globalReorderLevel,
+    branches,
     loading,
     error: loadError,
     reload,
@@ -117,6 +119,10 @@ export default function NewProductPage() {
       setFormError(retailError);
       return;
     }
+    if (form.catalog_scope === "branch" && !form.branch_id) {
+      setFormError("Select a branch for branch-scoped products.");
+      return;
+    }
 
     setSaving(true);
     setFormError(null);
@@ -189,6 +195,7 @@ export default function NewProductPage() {
               generatingSku={generatingSku}
               onGenerateSku={onGenerateSku}
               allowDiscounts={allowDiscounts}
+              branches={branches}
             />
           </ProductFormCard>
 

@@ -24,6 +24,11 @@ import {
   CustomerFormPageShell,
 } from "@/components/customers/customer-form";
 import { EntityPhotoField } from "@/components/media/entity-photo-field";
+import { useAuth } from "@/contexts/auth-context";
+import {
+  defaultProductBranchId,
+  isMultiBranchCatalog,
+} from "@/lib/catalog-scope";
 
 export const EMPTY_PRODUCT_FORM = {
   product_code: "",
@@ -48,6 +53,8 @@ export const EMPTY_PRODUCT_FORM = {
   retail_package_id: "",
   retail_pricing_tiers: [defaultRetailPricingTier(null)],
   vat_id: "",
+  catalog_scope: "organization",
+  branch_id: "",
   is_active: true,
 };
 
@@ -132,6 +139,8 @@ export function productToForm(product, retailPackage = null, uom = null) {
     reorder_packs: reorderPacks,
     sell_on_retail: product.sell_on_retail === 1 || product.sell_on_retail === true,
     vat_id: product.vat_id ? String(product.vat_id) : "",
+    catalog_scope: product.catalog_scope === "branch" || product.branch_id ? "branch" : "organization",
+    branch_id: product.branch_id != null ? String(product.branch_id) : "",
     is_active: product.is_active !== false && !product.deleted_at,
     ...retailPackageToFormFields(retailPackage),
   };
@@ -159,6 +168,14 @@ export function buildProductBody(form, uom = null, { allowDiscounts = true } = {
     reorder_point: reorderBaseFromForm(form, uom),
     deleted_at: form.is_active ? null : new Date().toISOString(),
   };
+
+  if (form.catalog_scope === "branch" && form.branch_id) {
+    body.catalog_scope = "branch";
+    body.branch_id = Number(form.branch_id);
+  } else {
+    body.catalog_scope = "organization";
+    body.branch_id = null;
+  }
 
   if (allowDiscounts) {
     body.discount_type = form.discount_type === "fixed" ? "fixed" : "percentage";
@@ -232,6 +249,7 @@ export function useProductFormResources() {
   const [suppliers, setSuppliers] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [vats, setVats] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [systemSettings, setSystemSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -239,12 +257,13 @@ export function useProductFormResources() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [catRes, subRes, supRes, uomRes, vatRes, settingsRes] = await Promise.all([
+      const [catRes, subRes, supRes, uomRes, vatRes, branchRes, settingsRes] = await Promise.all([
         apiRequest("/categories", { searchParams: { per_page: 200 } }),
         apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
         apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
         apiRequest("/uoms", { searchParams: { per_page: 100 } }),
         apiRequest("/vats", { searchParams: { per_page: 50 } }),
+        apiRequest("/branches", { searchParams: { per_page: 100 } }).catch(() => ({ data: [] })),
         apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
       ]);
       setCategories(catRes.data ?? []);
@@ -252,6 +271,7 @@ export function useProductFormResources() {
       setSuppliers(supRes.data ?? []);
       setUoms(uomRes.data ?? []);
       setVats(vatRes.data ?? vatRes ?? []);
+      setBranches(branchRes.data ?? []);
       const settingsRows = settingsRes?.data ?? settingsRes ?? [];
       setSystemSettings(Array.isArray(settingsRows) ? settingsRows[0] : settingsRows);
     } catch (e) {
@@ -277,6 +297,7 @@ export function useProductFormResources() {
     suppliers,
     uoms,
     vats,
+    branches,
     systemSettings,
     globalReorderLevel,
     loading,
@@ -340,7 +361,10 @@ export function ProductFormFields({
   generatingSku = false,
   onGenerateSku,
   allowDiscounts = true,
+  branches = [],
 }) {
+  const { capabilities, user } = useAuth();
+  const multiBranch = isMultiBranchCatalog(capabilities);
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
     [categories],
@@ -603,6 +627,63 @@ export function ProductFormFields({
           ))}
         </select>
       </Field>
+
+      {multiBranch ? (
+        <div className="md:col-span-2 xl:col-span-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Catalog scope</p>
+          <p className="mt-1 text-xs text-slate-600">
+            Choose whether this product is shared across all branches or limited to one branch.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-4 text-sm">
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                name="catalog_scope"
+                checked={form.catalog_scope !== "branch"}
+                onChange={() => {
+                  onChange("catalog_scope", "organization");
+                  onChange("branch_id", "");
+                }}
+              />
+              All branches
+            </label>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="radio"
+                name="catalog_scope"
+                checked={form.catalog_scope === "branch"}
+                onChange={() => {
+                  onChange("catalog_scope", "branch");
+                  onChange(
+                    "branch_id",
+                    form.branch_id || defaultProductBranchId(capabilities, user, branches),
+                  );
+                }}
+              />
+              Specific branch
+            </label>
+          </div>
+          {form.catalog_scope === "branch" ? (
+            <div className="mt-3 max-w-md">
+              <Field label="Branch">
+                <select
+                  value={form.branch_id}
+                  onChange={(e) => onChange("branch_id", e.target.value)}
+                  required
+                  className={inputClassName()}
+                >
+                  <option value="">Select branch</option>
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={String(branch.id)}>
+                      {branch.branch_name} ({branch.branch_code})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="md:col-span-2 xl:col-span-3">
         <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">

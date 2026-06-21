@@ -16,6 +16,7 @@ import { resolveProductAudit } from "@/lib/product-audit";
 import { PermissionGate } from "@/components/permission-gate";
 import { P } from "@/lib/permission-codes";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
+import { productScopeLabel } from "@/lib/catalog-scope";
 
 const PAGE_SIZE = 10;
 const COLUMN_STORAGE_KEY = "centrix-erp-products-visible-columns";
@@ -944,6 +945,9 @@ function renderProductCell(product, columnId, onPriceSaved) {
             {product.product_name}
           </Link>
           <p className="mt-0.5 font-mono text-xs text-slate-400">{product.product_code}</p>
+          {product.catalog_scope === "branch" || product.branch_id ? (
+            <p className="mt-1 text-xs font-medium text-amber-700">{productScopeLabel(product)}</p>
+          ) : null}
         </>
       );
     case "unit_price":
