@@ -695,7 +695,7 @@ export function RecordSupplierReturnForm({
   ];
 
 
-  function PendingAddBar({ title, subtitle }) {
+  function renderPendingAddBar({ title, subtitle }) {
     const lpoLocMeta =
       mode === RETURN_MODES.LPO && pendingLpoLine
         ? lpoReceivedLocationMeta(pendingLpoLine)
@@ -1126,17 +1126,17 @@ export function RecordSupplierReturnForm({
                 </div>
 
                 {pendingManual ? (
-                  <PendingAddBar
-                    title={pendingManual.product_name}
-                    subtitle={`${pendingManual.product_code} · ${formatPackagingLabel(pendingManual.uom)}`}
-                  />
+                  renderPendingAddBar({
+                    title: pendingManual.product_name,
+                    subtitle: `${pendingManual.product_code} · ${formatPackagingLabel(pendingManual.uom)}`,
+                  })
                 ) : null}
 
                 {pendingLpoLine ? (
-                  <PendingAddBar
-                    title={pendingLpoLine.product_name}
-                    subtitle={`Received ${pendingLpoLine.received_qty} of ${pendingLpoLine.ordered_qty} · max return ${pendingLpoLine.max_return_qty}`}
-                  />
+                  renderPendingAddBar({
+                    title: pendingLpoLine.product_name,
+                    subtitle: `Received ${pendingLpoLine.received_qty} of ${pendingLpoLine.ordered_qty} · max return ${pendingLpoLine.max_return_qty}`,
+                  })
                 ) : null}
 
                 {addError && !pendingManual && !pendingLpoLine ? (

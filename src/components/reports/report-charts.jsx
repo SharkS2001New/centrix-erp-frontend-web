@@ -95,32 +95,35 @@ export function DonutChart({ segments, loading, emptyMessage = "No data for this
   const stroke = 22;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
-  let offset = 0;
+  const circleElements = segments.reduce(
+    (acc, seg, i) => {
+      const value = Number(seg.value) || 0;
+      const pct = total > 0 ? value / total : 0;
+      const dash = pct * circumference;
+      acc.elements.push(
+        <circle
+          key={seg.label ?? i}
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={seg.color ?? CHART_COLORS[i % CHART_COLORS.length]}
+          strokeWidth={stroke}
+          strokeDasharray={`${dash} ${circumference - dash}`}
+          strokeDashoffset={-acc.offset}
+        />,
+      );
+      acc.offset += dash;
+      return acc;
+    },
+    { offset: 0, elements: [] },
+  ).elements;
 
   return (
     <div className="flex flex-wrap items-center gap-6">
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Distribution chart">
         <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-          {segments.map((seg, i) => {
-            const value = Number(seg.value) || 0;
-            const pct = total > 0 ? value / total : 0;
-            const dash = pct * circumference;
-            const circle = (
-              <circle
-                key={seg.label ?? i}
-                cx={size / 2}
-                cy={size / 2}
-                r={radius}
-                fill="none"
-                stroke={seg.color ?? CHART_COLORS[i % CHART_COLORS.length]}
-                strokeWidth={stroke}
-                strokeDasharray={`${dash} ${circumference - dash}`}
-                strokeDashoffset={-offset}
-              />
-            );
-            offset += dash;
-            return circle;
-          })}
+          {circleElements}
         </g>
       </svg>
       <ul className="min-w-0 flex-1 space-y-2 text-sm">

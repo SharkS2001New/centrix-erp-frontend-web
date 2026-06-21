@@ -43,7 +43,9 @@ export default function CustomerLocationMap({
   const markerRef = useRef(null);
   const onPickRef = useRef(onPick);
 
-  onPickRef.current = onPick;
+  useEffect(() => {
+    onPickRef.current = onPick;
+  }, [onPick]);
 
   const { lat, lng, hasPoint } = parseCoords(latitude, longitude);
 

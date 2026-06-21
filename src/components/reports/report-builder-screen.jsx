@@ -134,9 +134,9 @@ export function ReportBuilderScreen() {
   const sourcesByModule = useMemo(() => {
     const grouped = new Map();
     for (const source of schema?.sources ?? []) {
-      const module = source.module ?? "General";
-      if (!grouped.has(module)) grouped.set(module, []);
-      grouped.get(module).push(source);
+      const sourceModule = source.module ?? "General";
+      if (!grouped.has(sourceModule)) grouped.set(sourceModule, []);
+      grouped.get(sourceModule).push(source);
     }
     return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [schema]);

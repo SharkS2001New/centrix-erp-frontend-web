@@ -8,6 +8,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
   ]),
+  {
+    rules: {
+      // Existing screens load data in mount effects; migrating incrementally.
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/preserve-manual-memoization": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

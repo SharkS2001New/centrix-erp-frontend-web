@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -52,15 +52,12 @@ export function HrCrudPage({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
-  const loadExtraRef = useRef(loadExtra);
-  loadExtraRef.current = loadExtra;
-
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
-      const extraPromise = loadExtraRef.current
-        ? loadExtraRef.current().catch(() => ({}))
+      const extraPromise = loadExtra
+        ? loadExtra().catch(() => ({}))
         : Promise.resolve({});
       const [res, extraData] = await Promise.all([
         apiRequest(apiPath, {
@@ -75,7 +72,7 @@ export function HrCrudPage({
     } finally {
       setLoading(false);
     }
-  }, [apiPath, listSearchParams]);
+  }, [apiPath, listSearchParams, loadExtra]);
 
   const tableExtra = useMemo(
     () => ({ employees: [], ...extra }),

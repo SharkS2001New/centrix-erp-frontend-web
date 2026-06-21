@@ -183,7 +183,7 @@ export function PosSessionProvider({ children }) {
         setBusy(false);
       }
     },
-    [activeSession?.id, refreshReport],
+    [activeSession, refreshReport],
   );
 
   const recordCashMovement = useCallback(
@@ -212,7 +212,7 @@ export function PosSessionProvider({ children }) {
         setBusy(false);
       }
     },
-    [activeSession?.id, refreshReport],
+    [activeSession, refreshReport],
   );
 
   const refreshActiveSession = useCallback(async () => {
@@ -243,7 +243,7 @@ export function PosSessionProvider({ children }) {
     } finally {
       setBusy(false);
     }
-  }, [activeSession?.id]);
+  }, [activeSession]);
 
   const resumeSession = useCallback(
     async (sessionId) => {
@@ -268,7 +268,7 @@ export function PosSessionProvider({ children }) {
         setBusy(false);
       }
     },
-    [activeSession?.id, refreshReport, suspendedSession?.id],
+    [activeSession, refreshReport, suspendedSession],
   );
 
   const closeSession = useCallback(
@@ -302,7 +302,7 @@ export function PosSessionProvider({ children }) {
         setBusy(false);
       }
     },
-    [activeSession?.id, sessionReport],
+    [activeSession, sessionReport],
   );
 
   const clearSession = useCallback(() => {

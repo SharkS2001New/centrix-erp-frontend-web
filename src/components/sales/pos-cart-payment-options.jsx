@@ -199,6 +199,41 @@ export function PosCartPaymentOptions({
     return () => window.cancelAnimationFrame(t);
   }, [activeDialog]);
 
+  useEffect(() => {
+    if (!stkPushAvailable && mpesaMode === "stk") {
+      setMpesaMode("check");
+    }
+  }, [stkPushAvailable, mpesaMode]);
+
+  useEffect(() => {
+    return () => stopMpesaWatch();
+  }, []);
+
+  useEffect(() => {
+    if (!watchingMpesa || activeDialog !== "mpesa" || mpesaMode !== "check" || !cart?.id) {
+      return undefined;
+    }
+    let cancelled = false;
+
+    async function tick() {
+      if (cancelled) return;
+      await checkMpesaPayments({ silent: true });
+      if (!cancelled) {
+        pollTimerRef.current = window.setTimeout(tick, 3000);
+      }
+    }
+
+    void tick();
+
+    return () => {
+      cancelled = true;
+      if (pollTimerRef.current) {
+        window.clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+  }, [watchingMpesa, activeDialog, mpesaMode, cart?.id]);
+
   const hasVoucher = Number(cart?.voucher_payment_amount ?? 0) > 0;
   const hasDiscountVoucher =
     Number(cart?.discount_voucher_id ?? 0) > 0 && Number(cart?.order_discount ?? 0) > 0;
@@ -300,16 +335,6 @@ export function PosCartPaymentOptions({
     setMpesaError(null);
     setMpesaMode(mode);
   }
-
-  useEffect(() => {
-    if (!stkPushAvailable && mpesaMode === "stk") {
-      setMpesaMode("check");
-    }
-  }, [stkPushAvailable, mpesaMode]);
-
-  useEffect(() => {
-    return () => stopMpesaWatch();
-  }, []);
 
   async function applyVoucher() {
     if (!cart?.id || !voucherCode.trim()) return;
@@ -501,31 +526,6 @@ export function PosCartPaymentOptions({
       if (!silent) setWorking(false);
     }
   }
-
-  useEffect(() => {
-    if (!watchingMpesa || activeDialog !== "mpesa" || mpesaMode !== "check" || !cart?.id) {
-      return undefined;
-    }
-    let cancelled = false;
-
-    async function tick() {
-      if (cancelled) return;
-      await checkMpesaPayments({ silent: true });
-      if (!cancelled) {
-        pollTimerRef.current = window.setTimeout(tick, 3000);
-      }
-    }
-
-    void tick();
-
-    return () => {
-      cancelled = true;
-      if (pollTimerRef.current) {
-        window.clearTimeout(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    };
-  }, [watchingMpesa, activeDialog, mpesaMode, cart?.id]);
 
   function startMpesaWatch() {
     const phone = normalizeKenyanPhoneInput(mpesaPhone);

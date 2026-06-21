@@ -15,6 +15,7 @@ import {
 import { aiStartersForWorkspace, aiWorkspaceLabel } from "@/lib/ai-workspace";
 import { AI_ASSISTANT_TITLE } from "@/lib/branding";
 import { defaultWorkspaceId } from "@/lib/workspaces";
+import { AiActionForm } from "@/components/ai/ai-action-form";
 
 function closePanel(setOpen, setExpanded) {
   setExpanded(false);
