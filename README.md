@@ -87,6 +87,6 @@ docker build \
 docker run --rm -p 3000:3000 centrix-erp-frontend-web
 ```
 
-Images are published to `ghcr.io/<owner>/centrix-erp-frontend-web` on push to `main`/`master` via `.github/workflows/docker-publish.yml`.
+Images are published to `ghcr.io/<owner>/centrix-erp-frontend-web` on push to `main`/`master` via `.github/workflows/docker-publish.yml`. Each push also updates `tag` in `pitchpredk3ssetup/centrix-erp-frontend-web/values.yaml` (same pattern as pitchpredictionswebsite).
 
-Optional GitOps: set repository variable `K8S_SETUP_REPO` (e.g. `centrix-erp-setup`) and secret `PERSONAL_ACCESS_TOKEN` to auto-update Helm `values.yaml` tags (same pattern as pitchpredictionswebsite → pitchpredk3ssetup).
+Requires GitHub secret `PERSONAL_ACCESS_TOKEN` with `repo` and `write:packages` scopes.
