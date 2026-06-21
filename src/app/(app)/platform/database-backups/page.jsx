@@ -89,7 +89,6 @@ export default function PlatformDatabaseBackupsPage() {
             body: {
               send_email: true,
               upload_google_drive: true,
-              async: true,
             },
           }),
         {

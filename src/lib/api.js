@@ -72,7 +72,14 @@ export function formatApiErrorMessage(data, fallback = "Request failed") {
       }
     }
     if (typeof data.message === "string" && data.message.trim()) {
-      return data.message;
+      const detail = typeof data.detail === "string" && data.detail.trim() ? data.detail.trim() : "";
+      if (detail && detail !== data.message.trim()) {
+        return `${data.message.trim()} ${detail}`;
+      }
+      return data.message.trim();
+    }
+    if (typeof data.detail === "string" && data.detail.trim()) {
+      return data.detail.trim();
     }
     if (typeof data.error === "object" && data.error !== null) {
       if (typeof data.error.errorMessage === "string" && data.error.errorMessage.trim()) {
