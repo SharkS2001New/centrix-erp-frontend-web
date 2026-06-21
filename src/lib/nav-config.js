@@ -3,7 +3,7 @@ import { HR_REPORT_DEFS } from "@/lib/reports/hr-reports";
 import { DISTRIBUTION_REPORT_DEFS } from "@/lib/reports/distribution-reports";
 import { canViewReport, P, reportPermissionCode } from "@/lib/permission-codes";
 import { shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
-import { reportModuleForSlug, anyReportsModuleEnabled } from "@/lib/module-registry";
+import { reportModuleForSlug, anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-registry";
 import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled } from "@/lib/sales-settings";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { withNavItemIcons, resolveNavHrefIcon } from "@/lib/nav-item-icons";
@@ -171,17 +171,17 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.inventory.stock.view,
         exact: true,
       },
-    {
-      href: "/accounting",
-      label: "Finance overview",
-      module: "accounting.dashboard",
-      permission: P.accounting.dashboard.view,
-      exact: true,
-    },
+      {
+        href: "/accounting",
+        label: "Finance overview",
+        module: "accounting",
+        permission: P.accounting.dashboard.view,
+        exact: true,
+      },
       {
         href: "/hr",
         label: "HR Overview",
-        module: "hr_payroll.dashboard",
+        module: "hr_payroll",
         permission: P.hr.employees.view,
         exact: true,
       },
@@ -934,8 +934,8 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   if (item.requireAdmin && !user?.is_admin && !capabilities?.is_admin) return false;
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;
   if (item.moduleAny?.length) {
-    if (!item.moduleAny.some((key) => isModuleEnabled(key))) return false;
-  } else if (item.module && !isModuleEnabled(item.module)) return false;
+    if (!item.moduleAny.some((key) => isModuleEnabledForNav(key, isModuleEnabled))) return false;
+  } else if (item.module && !isModuleEnabledForNav(item.module, isModuleEnabled)) return false;
   if (item.reportKey && !canViewReport(item.reportKey, hasPermission)) return false;
   else if (item.permission && !hasPermission(item.permission)) return false;
   return true;

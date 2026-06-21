@@ -69,6 +69,24 @@ export function reportModuleForSlug(slug) {
   return REPORT_MODULE_BY_SLUG[slug] ?? null;
 }
 
+/**
+ * Dashboard and report submodules inherit visibility from their parent domain
+ * when the parent is enabled (matches backend ModuleRegistry::cascade).
+ */
+export function isModuleEnabledForNav(moduleKey, isModuleEnabled) {
+  if (!moduleKey) return true;
+  if (isModuleEnabled(moduleKey)) return true;
+
+  if (moduleKey.endsWith(".dashboard") || moduleKey.endsWith(".reports")) {
+    const parent = moduleKey.includes(".") ? moduleKey.split(".").slice(0, -1).join(".") : null;
+    if (parent && isModuleEnabled(parent)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /** @param {Record<string, boolean>} modules */
 export function anyReportsModuleEnabled(modules) {
   return Object.entries(modules ?? {}).some(

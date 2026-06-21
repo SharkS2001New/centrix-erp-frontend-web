@@ -30,18 +30,13 @@ export function isPlatformShellUser({ user, organization, capabilities, isSuperA
 
 /**
  * Single source of truth for UI permission checks.
- * Org admins (`is_admin`) receive every permission within modules enabled for the organization.
+ * Org admins bypass permission checks; module enablement still gates nav and routes.
  * Other users rely on the role/override permission map from the API.
  */
 export function resolveHasPermission({ user, organization, capabilities, code, isSuperAdmin }) {
   if (!code) return true;
 
-  const isAdmin = Boolean(user?.is_admin || capabilities?.is_admin);
-  if (isAdmin) {
-    const perms = capabilities?.permissions;
-    if (perms && Object.keys(perms).length > 0) {
-      return Boolean(perms[code]);
-    }
+  if (user?.is_admin || capabilities?.is_admin) {
     return true;
   }
 
