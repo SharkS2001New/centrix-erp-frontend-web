@@ -89,9 +89,13 @@ export default function PlatformDatabaseBackupsPage() {
             body: {
               send_email: true,
               upload_google_drive: true,
+              async: true,
             },
           }),
-        { message: "Please wait while the database backup runs. This may take a minute on large databases…" },
+        {
+          message: "Please wait while the database backup runs. This may take a minute on large databases…",
+          timeoutMs: 3_900_000,
+        },
       );
       setSuccess(res.message ?? "Database backup completed.");
       await load();
