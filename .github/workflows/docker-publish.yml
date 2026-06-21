@@ -49,8 +49,11 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
           tags: type=sha,format=short
 
+      - name: Resolve image tag for Helm
+        id: image_tag
+        run: echo "value=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push Docker image
-        id: build-and-push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -64,7 +67,7 @@ jobs:
             NEXT_PUBLIC_COMPANY_CODE=${{ vars.NEXT_PUBLIC_COMPANY_CODE || 'DEMO' }}
             NEXT_PUBLIC_COMPANY_NAME=${{ vars.NEXT_PUBLIC_COMPANY_NAME || 'Centrix ERP' }}
 
-      - name: Check out the pitchpredk3ssetup repo
+      - name: Check out pitchpredk3ssetup
         if: github.event_name != 'pull_request'
         uses: actions/checkout@v4
         with:
@@ -72,23 +75,24 @@ jobs:
           path: pitchpredk3ssetup
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
 
-      - name: Update values.yaml with new image tag
+      - name: Update Helm image tag
         if: github.event_name != 'pull_request'
         run: |
-          SHORT_SHA_PART="${{ steps.meta.outputs.tags }}"
-          SHORT_SHA_PART="$(echo "$SHORT_SHA_PART" | awk -F':' '{print $2}' | cut -c1-11)"
-          sed -i "s|tag:.*|tag: $SHORT_SHA_PART|" pitchpredk3ssetup/centrix-erp-frontend-web/values.yaml
-          echo "SHORT_SHA_PART=$SHORT_SHA_PART" >> "$GITHUB_ENV"
-          echo "Updated tag in centrix-erp-frontend-web/values.yaml to $SHORT_SHA_PART"
+          TAG="${{ steps.image_tag.outputs.value }}"
+          FILE="pitchpredk3ssetup/centrix-erp-frontend-web/values.yaml"
+          sed -i "s|^\([[:space:]]*tag:\).*|\1 ${TAG}|" "$FILE"
+          echo "Updated ${FILE} -> ${TAG}"
 
-      - name: Commit and push changes to pitchpredk3ssetup repo
+      - name: Commit and push pitchpredk3ssetup
         if: github.event_name != 'pull_request'
         run: |
           cd pitchpredk3ssetup
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add centrix-erp-frontend-web/values.yaml
-          git commit -m "Update centrix-erp-frontend-web image tag to $SHORT_SHA_PART"
+          if git diff --staged --quiet; then
+            echo "No tag changes to commit."
+            exit 0
+          fi
+          git commit -m "chore(centrix-erp-frontend-web): bump image tag to ${{ steps.image_tag.outputs.value }}"
           git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
