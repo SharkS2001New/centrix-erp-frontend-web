@@ -17,6 +17,7 @@ import { PermissionGate } from "@/components/permission-gate";
 import { P } from "@/lib/permission-codes";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
 import { productScopeLabel } from "@/lib/catalog-scope";
+import { useAuth } from "@/contexts/auth-context";
 
 const PAGE_SIZE = 10;
 const COLUMN_STORAGE_KEY = "centrix-erp-products-visible-columns";
@@ -203,6 +204,7 @@ function groupProducts(products) {
 export default function ProductsPage() {
   const router = useRouter();
   const { capabilities } = useAuth();
+  const [kraSelectMode, setKraSelectMode] = useState(false);
   const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
   const selectionEnabled = kraDeviceEnabled && kraSelectMode;
   const [products, setProducts] = useState([]);
@@ -230,7 +232,6 @@ export default function ProductsPage() {
   const [activeFilter, setActiveFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(new Set());
-  const [kraSelectMode, setKraSelectMode] = useState(false);
   const [kraUploadBusy, setKraUploadBusy] = useState(false);
   const [kraUploadMessage, setKraUploadMessage] = useState(null);
   const [kraUploadError, setKraUploadError] = useState(null);
