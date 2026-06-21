@@ -1,8 +1,29 @@
 import { getToken, clearSession, isScreenLocked } from "./auth-storage";
-import { apiFetchCredentials } from "./auth-config";
+import { apiFetchCredentials, useCookieAuth } from "./auth-config";
 
 const baseUrl = () =>
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+
+/** Clear HttpOnly session cookie on the API (cookie-auth mode only). */
+export async function revokeServerAuthSession() {
+  if (!useCookieAuth || typeof window === "undefined") {
+    return;
+  }
+  try {
+    await fetch(`${baseUrl()}/auth/logout`, {
+      method: "POST",
+      credentials: apiFetchCredentials(),
+      headers: { Accept: "application/json" },
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+function isAuthEndpoint(path) {
+  const normalized = path.startsWith("http") ? new URL(path).pathname : path;
+  return normalized.includes("/auth/login") || normalized.includes("/auth/logout");
+}
 
 export function apiBaseOrigin() {
   return baseUrl().replace(/\/api\/v1\/?$/, "");
@@ -29,6 +50,7 @@ export class ApiError extends Error {
   }
 }
 
+/** @param {unknown} error */
 export function isSessionConflictError(error) {
   return (
     error instanceof ApiError
@@ -106,6 +128,9 @@ export async function apiRequest(path, options = {}) {
         locked && code !== "session_active_elsewhere";
 
       if (!stayOnPageWhileLocked) {
+        if (!isAuthEndpoint(path)) {
+          await revokeServerAuthSession();
+        }
         clearSession();
         localStorage.removeItem("pos_erp_active_session");
         const loginPath = "/login";

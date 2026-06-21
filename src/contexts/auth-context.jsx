@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, revokeServerAuthSession, isSessionConflictError } from "@/lib/api";
 import {
   clearSession,
   getStoredLoginChannel,
@@ -29,6 +29,7 @@ import { buildAccessContext, resolveHasPermission } from "@/lib/access-control";
 import { resolvePostLoginPath, workspaceLoginChannel, workspacesFromCapabilities } from "@/lib/workspaces";
 import { applyWorkspaceSession } from "@/lib/workspace-session";
 import { WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
+import { useCookieAuth } from "@/lib/auth-config";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
 
@@ -76,9 +77,20 @@ export function AuthProvider({ children }) {
     setOrganization(res.organization ?? null);
     setMemberships(res.memberships ?? []);
     setLoginChannel(channel);
-    const caps = await apiRequest("/erp/capabilities");
-    setCapabilities(caps);
-    return caps;
+    try {
+      const caps = await apiRequest("/erp/capabilities");
+      setCapabilities(caps);
+      return caps;
+    } catch (e) {
+      await revokeServerAuthSession();
+      clearSession();
+      setUser(null);
+      setOrganization(null);
+      setMemberships([]);
+      setCapabilities(null);
+      setLoginChannel(null);
+      throw e;
+    }
   }, []);
 
   useEffect(() => {
@@ -95,8 +107,9 @@ export function AuthProvider({ children }) {
       .then((caps) => {
         syncStoredWorkspace(caps?.workspaces ?? []);
       })
-      .catch(() => {
+      .catch(async () => {
         if (isScreenLocked()) return;
+        await revokeServerAuthSession();
         clearSession();
         setUser(null);
         setOrganization(null);
@@ -117,18 +130,37 @@ export function AuthProvider({ children }) {
   const login = useCallback(
     async (companyCode, username, password, options = {}) => {
       const { forceLogout = false } = options;
-      const res = await apiRequest("/auth/login", {
-        method: "POST",
-        body: {
-          company_code: companyCode.trim() ? companyCode.trim().toUpperCase() : "",
-          username,
-          password,
-          client_id: getClientId(),
-          login_channel: WEB_LOGIN_CHANNEL,
-          ...(forceLogout ? { force_logout: true } : {}),
-        },
-        token: null,
-      });
+
+      if (useCookieAuth && !forceLogout) {
+        await revokeServerAuthSession();
+      }
+
+      const performLogin = (force) =>
+        apiRequest("/auth/login", {
+          method: "POST",
+          body: {
+            company_code: companyCode.trim() ? companyCode.trim().toUpperCase() : "",
+            username,
+            password,
+            client_id: getClientId(),
+            login_channel: WEB_LOGIN_CHANNEL,
+            ...(force ? { force_logout: true } : {}),
+          },
+          token: null,
+        });
+
+      let res;
+      try {
+        res = await performLogin(forceLogout);
+      } catch (err) {
+        if (!forceLogout && useCookieAuth && isSessionConflictError(err)) {
+          await revokeServerAuthSession();
+          res = await performLogin(true);
+        } else {
+          throw err;
+        }
+      }
+
       const caps = await applyAuthPayload(res, WEB_LOGIN_CHANNEL);
       if (res.must_change_password || res.user?.must_change_password) {
         router.replace("/change-password");
@@ -182,7 +214,10 @@ export function AuthProvider({ children }) {
   const logout = useCallback(async () => {
     try {
       if (hasAuthSession()) {
-        await apiRequest("/auth/logout", { method: "POST" });
+        await revokeServerAuthSession();
+        if (!useCookieAuth) {
+          await apiRequest("/auth/logout", { method: "POST" });
+        }
       }
     } catch {
       /* ignore */
