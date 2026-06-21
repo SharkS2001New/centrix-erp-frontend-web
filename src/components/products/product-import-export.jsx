@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { openPrintWindow } from "@/lib/open-print-window";
+import { downloadExcelFromObjects, downloadExcelFromRows, readExcelFile } from "@/lib/spreadsheet";
 import { baseToDisplayQty } from "@/lib/stock-uom";
 
 const SAMPLE_HEADERS = [
@@ -89,11 +90,7 @@ async function parseSpreadsheet(file) {
     const text = await file.text();
     return parseCsv(text);
   }
-  const XLSX = await import("xlsx");
-  const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: "array" });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(sheet, { defval: "" });
+  return readExcelFile(file);
 }
 
 function downloadBlob(blob, filename) {
@@ -132,12 +129,12 @@ function ExportModal({ open, onClose, products }) {
   async function exportExcel() {
     setExporting(true);
     try {
-      const XLSX = await import("xlsx");
       const rows = productExportRows(products);
-      const sheet = XLSX.utils.json_to_sheet(rows);
-      const book = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(book, sheet, "Products");
-      XLSX.writeFile(book, `products-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      await downloadExcelFromObjects(
+        `products-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        "Products",
+        rows,
+      );
       onClose();
     } finally {
       setExporting(false);
@@ -219,12 +216,7 @@ function ImportModal({ open, onClose, onImported }) {
       downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), "products-import-sample.csv");
       return;
     }
-    import("xlsx").then((XLSX) => {
-      const sheet = XLSX.utils.aoa_to_sheet([SAMPLE_HEADERS, SAMPLE_ROW]);
-      const book = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(book, sheet, "Sample");
-      XLSX.writeFile(book, "products-import-sample.xlsx");
-    });
+    void downloadExcelFromRows("products-import-sample.xlsx", "Sample", [SAMPLE_HEADERS, SAMPLE_ROW]);
   }
 
   function normalizeRow(row) {
