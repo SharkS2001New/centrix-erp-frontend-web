@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useQueuedTask } from "@/lib/use-queued-task";
 import { useOrgFormat } from "@/lib/org-format";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 
@@ -15,6 +16,7 @@ export default function ExportQueuePage() {
   const [working, setWorking] = useState(false);
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
+  const { runQueuedTask, overlayNode } = useQueuedTask("Please wait while export queue items are processed…");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,7 +46,11 @@ export default function ExportQueuePage() {
     setError(null);
     try {
       const path = retryFailed ? "/accounting/export-queue/retry-failed" : "/accounting/export-queue/process";
-      const res = await apiRequest(path, { method: "POST" });
+      const res = await runQueuedTask(() => apiRequest(path, { method: "POST" }), {
+        message: retryFailed
+          ? "Please wait while failed exports are retried…"
+          : "Please wait while pending exports are processed…",
+      });
       if (retryFailed) {
         setMessage(
           `Retried ${res.reset ?? 0} failed item(s): ${res.exported ?? 0} exported, ${res.failed ?? 0} failed.`,
@@ -230,6 +236,7 @@ export default function ExportQueuePage() {
           </tbody>
         </table>
       </div>
+      {overlayNode}
     </CatalogPageShell>
   );
 }

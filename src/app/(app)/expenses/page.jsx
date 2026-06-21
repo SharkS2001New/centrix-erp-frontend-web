@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
@@ -69,17 +71,40 @@ function sumAmounts(expenses) {
   return expenses.reduce((sum, e) => sum + Number(e.expense_amount ?? 0), 0);
 }
 
+function expenseDateRange(dateFilter) {
+  const now = new Date();
+  const pad = (d) => d.toISOString().slice(0, 10);
+  if (dateFilter === "today") {
+    const today = pad(now);
+    return { from_date: today, to_date: today };
+  }
+  if (dateFilter === "month") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from_date: pad(start), to_date: pad(now) };
+  }
+  if (dateFilter === "year") {
+    const start = new Date(now.getFullYear(), 0, 1);
+    return { from_date: pad(start), to_date: pad(now) };
+  }
+  return {};
+}
+
 export default function ExpensesPage() {
   const { user } = useAuth();
 
   const [expenses, setExpenses] = useState([]);
+  const [totalExpenses, setTotalExpenses] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [expenseStats, setExpenseStats] = useState(null);
   const [groups, setGroups] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [groupFilter, setGroupFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("active");
@@ -98,19 +123,19 @@ export default function ExpensesPage() {
   const [groupSaving, setGroupSaving] = useState(false);
   const [groupError, setGroupError] = useState(null);
 
-  const loadData = useCallback(async () => {
+  const loadReferenceData = useCallback(async () => {
     setError(null);
     try {
-      const [expRes, groupRes, pmRes, userRes] = await Promise.all([
-        apiRequest("/expenses", { searchParams: { per_page: 500 } }),
+      const [groupRes, pmRes, userRes, statsRes] = await Promise.all([
         apiRequest("/expense-groups", { searchParams: { per_page: 200 } }),
         apiRequest("/payment-methods", { searchParams: { per_page: 50 } }),
         apiRequest("/users", { searchParams: { per_page: 200 } }),
+        apiRequest("/expenses/summary").catch(() => null),
       ]);
-      setExpenses(expRes.data ?? []);
       setGroups(groupRes.data ?? []);
       setPaymentMethods(pmRes.data ?? []);
       setUsers(userRes.data ?? []);
+      if (statsRes) setExpenseStats(statsRes);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load expenses");
     } finally {
@@ -118,9 +143,52 @@ export default function ExpensesPage() {
     }
   }, []);
 
+  const loadExpenses = useCallback(async () => {
+    setListLoading(true);
+    setError(null);
+    try {
+      const filters = {};
+      if (groupFilter !== "all") filters.expense_group_id = groupFilter;
+
+      const extra = {
+        status: statusFilter,
+        ...expenseDateRange(dateFilter),
+      };
+
+      const searchParams = buildPageParams({
+        page,
+        perPage: PAGE_SIZE,
+        q: debouncedSearch,
+        filters,
+        extra,
+      });
+      const expRes = await apiRequest("/expenses", { searchParams });
+      const parsed = parsePaginator(expRes);
+      setExpenses(parsed.items);
+      setTotalExpenses(parsed.total);
+      setTotalPages(parsed.totalPages);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load expenses");
+    } finally {
+      setListLoading(false);
+    }
+  }, [page, debouncedSearch, groupFilter, dateFilter, statusFilter]);
+
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadReferenceData();
+  }, [loadReferenceData]);
+
+  useEffect(() => {
+    loadExpenses();
+  }, [loadExpenses]);
+
+  async function reloadAll() {
+    const [statsRes] = await Promise.all([
+      apiRequest("/expenses/summary").catch(() => null),
+      loadExpenses(),
+    ]);
+    if (statsRes) setExpenseStats(statsRes);
+  }
 
   const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
@@ -129,13 +197,16 @@ export default function ExpensesPage() {
     [paymentMethods],
   );
 
-  const activeExpenses = useMemo(
-    () => expenses.filter((e) => !e.deleted_at),
-    [expenses],
-  );
-
   const stats = useMemo(() => {
+    if (expenseStats) {
+      return {
+        today: Number(expenseStats.today ?? 0),
+        month: Number(expenseStats.month ?? 0),
+        year: Number(expenseStats.year ?? 0),
+      };
+    }
     const now = new Date();
+    const activeExpenses = expenses.filter((e) => !e.deleted_at);
     const today = activeExpenses.filter((e) => isSameDay(new Date(e.expense_date), now));
     const month = activeExpenses.filter((e) => isSameMonth(new Date(e.expense_date), now));
     const year = activeExpenses.filter((e) => isSameYear(new Date(e.expense_date), now));
@@ -144,57 +215,11 @@ export default function ExpensesPage() {
       month: sumAmounts(month),
       year: sumAmounts(year),
     };
-  }, [activeExpenses]);
-
-  const filtered = useMemo(() => {
-    const now = new Date();
-    let list = expenses;
-
-    if (statusFilter === "active") list = list.filter((e) => !e.deleted_at);
-    else if (statusFilter === "deleted") list = list.filter((e) => e.deleted_at);
-
-    if (groupFilter !== "all") {
-      list = list.filter((e) => String(e.expense_group_id) === groupFilter);
-    }
-
-    if (dateFilter === "today") {
-      list = list.filter((e) => isSameDay(new Date(e.expense_date), now));
-    } else if (dateFilter === "month") {
-      list = list.filter((e) => isSameMonth(new Date(e.expense_date), now));
-    } else if (dateFilter === "year") {
-      list = list.filter((e) => isSameYear(new Date(e.expense_date), now));
-    }
-
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter((e) => {
-        const groupName = groupById.get(e.expense_group_id)?.group_name ?? "";
-        const userName = userById.get(e.recorded_by)?.username ?? "";
-        return (
-          e.description?.toLowerCase().includes(q) ||
-          e.invoice_no?.toLowerCase().includes(q) ||
-          groupName.toLowerCase().includes(q) ||
-          userName.toLowerCase().includes(q)
-        );
-      });
-    }
-
-    return [...list].sort(
-      (a, b) => new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime(),
-    );
-  }, [expenses, statusFilter, groupFilter, dateFilter, search, groupById, userById]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  }, [expenseStats, expenses]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, groupFilter, dateFilter, statusFilter]);
-
-  useEffect(() => {
-    if (page !== safePage) setPage(safePage);
-  }, [page, safePage]);
+  }, [debouncedSearch, groupFilter, dateFilter, statusFilter]);
 
   function openCreateDrawer() {
     setDrawerMode("create");
@@ -286,7 +311,7 @@ export default function ExpensesPage() {
       } else {
         await apiRequest("/expenses", { method: "POST", body });
       }
-      await loadData();
+      await reloadAll();
       closeDrawer();
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
@@ -299,7 +324,7 @@ export default function ExpensesPage() {
     if (!window.confirm(`Delete expense "${expenseDisplayName(expense)}"?`)) return;
     try {
       await apiRequest(`/expenses/${expense.id}`, { method: "DELETE" });
-      await loadData();
+      await reloadAll();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Delete failed");
     }
@@ -407,14 +432,14 @@ export default function ExpensesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageSlice.length === 0 ? (
+                  {expenses.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
                         No expenses match your filters.
                       </td>
                     </tr>
                   ) : (
-                    pageSlice.map((expense) => {
+                    expenses.map((expense) => {
                       const group = groupById.get(expense.expense_group_id);
                       const recorder = userById.get(expense.recorded_by);
                       return (
@@ -468,9 +493,9 @@ export default function ExpensesPage() {
               </table>
             </div>
             <PaginationBar
-              page={safePage}
+              page={page}
               totalPages={totalPages}
-              total={filtered.length}
+              total={totalExpenses}
               pageSize={PAGE_SIZE}
               onChange={setPage}
             />

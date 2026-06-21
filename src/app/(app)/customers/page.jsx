@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import {
   CatalogPageShell,
@@ -16,7 +18,6 @@ import {
   TrashIcon,
   formatKesCompact,
   formatShortDate,
-  isSameCalendarMonth,
 } from "@/components/catalog/catalog-shared";
 
 const PAGE_SIZE = 10;
@@ -271,12 +272,17 @@ export default function CustomersPage() {
   const router = useRouter();
 
   const [customers, setCustomers] = useState([]);
+  const [totalCustomers, setTotalCustomers] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [customerStats, setCustomerStats] = useState(null);
   const [routes, setRoutes] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [deletedFilter, setDeletedFilter] = useState("active");
   const [page, setPage] = useState(1);
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
@@ -298,17 +304,17 @@ export default function CustomersPage() {
     [visibleColumnIds],
   );
 
-  const loadData = useCallback(async () => {
+  const loadReferenceData = useCallback(async () => {
     setError(null);
     try {
-      const [custRes, routeRes, userRes] = await Promise.all([
-        apiRequest("/customers", { searchParams: { per_page: 200 } }),
+      const [routeRes, userRes, statsRes] = await Promise.all([
         apiRequest("/routes", { searchParams: { per_page: 200 } }),
         apiRequest("/users", { searchParams: { per_page: 200 } }),
+        apiRequest("/customers/summary").catch(() => null),
       ]);
-      setCustomers(custRes.data ?? []);
       setRoutes(routeRes.data ?? []);
       setUsers(userRes.data ?? []);
+      if (statsRes) setCustomerStats(statsRes);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load customers");
     } finally {
@@ -316,9 +322,46 @@ export default function CustomersPage() {
     }
   }, []);
 
+  const loadCustomers = useCallback(async () => {
+    setListLoading(true);
+    setError(null);
+    try {
+      const status =
+        deletedFilter === "deleted"
+          ? "inactive"
+          : deletedFilter === "all"
+            ? "all"
+            : "active";
+      const searchParams = buildPageParams({
+        page,
+        perPage: PAGE_SIZE,
+        q: debouncedSearch,
+        extra: { status },
+      });
+      const custRes = await apiRequest("/customers", { searchParams });
+      const parsed = parsePaginator(custRes);
+      setCustomers(parsed.items);
+      setTotalCustomers(parsed.total);
+      setTotalPages(parsed.totalPages);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load customers");
+    } finally {
+      setListLoading(false);
+    }
+  }, [page, debouncedSearch, deletedFilter]);
+
+  const reloadAll = useCallback(async () => {
+    await Promise.all([loadReferenceData(), loadCustomers()]);
+  }, [loadReferenceData, loadCustomers]);
+
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadReferenceData();
+  }, [loadReferenceData]);
+
+  useEffect(() => {
+    if (loading) return;
+    loadCustomers();
+  }, [loading, loadCustomers]);
 
   const routeById = useMemo(() => new Map(routes.map((r) => [r.id, r])), [routes]);
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
@@ -328,63 +371,22 @@ export default function CustomersPage() {
     [customers, routeById, userById],
   );
 
-  const stats = useMemo(() => {
-    const now = new Date();
-    const active = enriched.filter((c) => !c.deleted_at);
-    const newThisMonth = active.filter((c) =>
-      c.created_at ? isSameCalendarMonth(new Date(c.created_at), now) : false,
-    );
-    const onRoutes = active.filter((c) => c.route_id != null);
-    const outstanding = active.reduce((sum, c) => sum + Number(c.current_balance ?? 0), 0);
-    return {
-      active: active.length,
-      newThisMonth: newThisMonth.length,
-      onRoutes: onRoutes.length,
-      outstanding,
-    };
-  }, [enriched]);
+  const stats = useMemo(
+    () => ({
+      active: customerStats?.active ?? totalCustomers,
+      newThisMonth: customerStats?.new_this_month ?? 0,
+      onRoutes: customerStats?.on_routes ?? 0,
+      outstanding: customerStats?.outstanding_balance ?? 0,
+    }),
+    [customerStats, totalCustomers],
+  );
 
-  const filtered = useMemo(() => {
-    let list = enriched;
-    if (deletedFilter === "active") {
-      list = list.filter((c) => !c.deleted_at);
-    } else if (deletedFilter === "deleted") {
-      list = list.filter((c) => c.deleted_at);
-    }
-
-    const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((c) => {
-      const haystack = [
-        c.customer_num,
-        c.customer_name,
-        c.customer_type,
-        c.phone_number,
-        c.additional_phone,
-        c.town,
-        c.route_name,
-        c.kra_pin,
-        c.terms_of_payment,
-        c.created_by_name,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [enriched, search, deletedFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageSlice = enriched;
 
   useEffect(() => {
     setPage(1);
-  }, [search, deletedFilter]);
-
-  useEffect(() => {
-    if (page !== safePage) setPage(safePage);
-  }, [page, safePage]);
+  }, [debouncedSearch, deletedFilter]);
 
   function toggleColumn(id) {
     const col = CUSTOMER_COLUMNS.find((c) => c.id === id);
@@ -407,7 +409,7 @@ export default function CustomersPage() {
     if (!window.confirm(`Delete customer "${customer.customer_name}"?`)) return;
     try {
       await apiRequest(`/customers/${customer.customer_num}`, { method: "DELETE" });
-      await loadData();
+      await reloadAll();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Delete failed");
     }
@@ -543,10 +545,13 @@ export default function CustomersPage() {
             <PaginationBar
               page={safePage}
               totalPages={totalPages}
-              total={filtered.length}
+              total={totalCustomers}
               pageSize={PAGE_SIZE}
               onChange={setPage}
             />
+            {listLoading ? (
+              <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">Updating…</p>
+            ) : null}
           </>
         )}
       </div>

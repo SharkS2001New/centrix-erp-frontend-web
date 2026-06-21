@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import {
   getOrderWorkflow,
   getSalesOrderQueueWorkflow,
-  matchesWorkflowStatusFilter,
   resolveSalesOrderQueue,
   workflowStatusFilterOptions,
 } from "@/lib/order-workflow";
@@ -20,7 +21,7 @@ import {
   SearchInput,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
-import { isoDate, rowInDateRange } from "@/components/inventory/inventory-shared";
+import { isoDate } from "@/components/inventory/inventory-shared";
 import { orderTableColumnCount } from "@/components/sales/sales-orders-columns";
 import {
   orderSourceFilterOptions,
@@ -30,12 +31,10 @@ import {
   OrderSummaryStats,
   buildOrderContextMenuItems,
   indexSalesWithItems,
-  matchesOrderSourceFilter,
   saleBranchLabel,
   summarizeOrders,
 } from "@/components/sales/sales-orders-shared";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
-import { saleCustomerLabel, isRouteOrderSale } from "@/lib/sales";
 import { isOrgMobileSalesEnabled, orderDocumentPrintLabel } from "@/lib/sales-settings";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
 import {
@@ -81,9 +80,13 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   );
 
   const [rows, setRows] = useState([]);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [fromDate, setFromDate] = useState(() => isoDate());
@@ -108,7 +111,6 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   const effectiveSourceFilter = queueConfig?.lockSourceFilter
     ? queueConfig.fixedSourceFilter
     : sourceFilter;
-  const apiStatusFilter = queueConfig?.fixedStatusFilter ?? (statusFilter !== "all" ? statusFilter : null);
 
   useEffect(() => {
     if (!includeMobileOrders && sourceFilter === "mobile") {
@@ -135,16 +137,14 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   useEffect(() => {
     Promise.all([
       apiRequest("/routes", { searchParams: { per_page: 200 } }),
-      apiRequest("/sale-payments", { searchParams: { per_page: 500 } }),
       apiRequest("/uoms", { searchParams: { per_page: 500 } }),
     ])
-      .then(([routeRes, payRes, uomRes]) => {
+      .then(([routeRes, uomRes]) => {
         const routes = new Map();
         for (const route of routeRes.data ?? []) {
           if (route?.id != null) routes.set(route.id, route);
         }
         setRouteById(routes);
-        setPaymentRefsBySaleId(indexPaymentRefs(payRes.data));
         const uoms = new Map();
         for (const u of uomRes.data ?? []) {
           if (u?.id != null) uoms.set(u.id, u);
@@ -153,10 +153,22 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       })
       .catch(() => {
         setRouteById(new Map());
-        setPaymentRefsBySaleId(new Map());
         setUomById(new Map());
       });
   }, []);
+
+  useEffect(() => {
+    const saleIds = rows.map((sale) => sale.id).filter(Boolean);
+    if (!saleIds.length) {
+      setPaymentRefsBySaleId(new Map());
+      return;
+    }
+    apiRequest("/sale-payments", {
+      searchParams: { sale_ids: saleIds.join(","), per_page: 200 },
+    })
+      .then((res) => setPaymentRefsBySaleId(indexPaymentRefs(res.data)))
+      .catch(() => setPaymentRefsBySaleId(new Map()));
+  }, [rows]);
 
   const showBranchColumn = branches.length > 1;
   const showRouteColumn = routeOrdersOnly || Boolean(queueConfig?.showRouteColumn);
@@ -174,16 +186,43 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
     showSourceColumn,
   });
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadOrders = useCallback(async () => {
+    setListLoading(true);
     setError(null);
     try {
-      const params = { per_page: 200, exclude_status: "held", with_items: 1 };
-      if (apiStatusFilter) params["filter[status]"] = apiStatusFilter;
-      if (routeOrdersOnly) params.route_orders = 1;
-      const res = await apiRequest("/sales", { searchParams: params });
-      const list = res.data ?? [];
+      const filters = {};
+      const statusParam = queueConfig?.lockStatusFilter
+        ? queueConfig.fixedStatusFilter
+        : effectiveStatusFilter !== "all"
+          ? effectiveStatusFilter
+          : null;
+      if (statusParam) filters.status = statusParam;
+
+      const extra = {
+        exclude_status: "held",
+        with_items: 1,
+      };
+      if (routeOrdersOnly) extra.route_orders = 1;
+      if (appliedFromDate) extra.from_date = appliedFromDate;
+      if (appliedToDate) extra.to_date = appliedToDate;
+      if (!routeOrdersOnly && effectiveSourceFilter && effectiveSourceFilter !== "all") {
+        extra.order_source = effectiveSourceFilter;
+      }
+
+      const searchParams = buildPageParams({
+        page,
+        perPage: PAGE_SIZE,
+        q: debouncedSearch,
+        filters,
+        extra,
+      });
+      const res = await apiRequest("/sales", { searchParams });
+      const parsed = parsePaginator(res);
+      const list = parsed.items;
+
       setRows(list);
+      setTotalOrders(parsed.total);
+      setTotalPages(parsed.totalPages);
       setDetailsById(indexSalesWithItems(list));
 
       const missing = list.filter((sale) => !sale?.items?.length);
@@ -203,12 +242,22 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       setError(e instanceof Error ? e.message : "Failed to load orders");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [apiStatusFilter, routeOrdersOnly]);
+  }, [
+    page,
+    debouncedSearch,
+    appliedFromDate,
+    appliedToDate,
+    effectiveSourceFilter,
+    effectiveStatusFilter,
+    queueConfig,
+    routeOrdersOnly,
+  ]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadOrders();
+  }, [loadOrders]);
 
   async function loadOrderDetail(orderId) {
     const key = String(orderId);
@@ -359,59 +408,8 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
     setPage(1);
   }
 
-  const filtered = useMemo(() => {
-    let list = rows;
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter((s) => {
-        const receipt = `S${String(s.order_num ?? s.id).padStart(4, "0")}`.toLowerCase();
-        const customer = saleCustomerLabel(s).toLowerCase();
-        const orderNum = String(s.order_num ?? "");
-        return receipt.includes(q) || customer.includes(q) || orderNum.includes(q);
-      });
-    }
-    const rangeFrom =
-      appliedFromDate && appliedToDate && appliedFromDate > appliedToDate
-        ? appliedToDate
-        : appliedFromDate;
-    const rangeTo =
-      appliedFromDate && appliedToDate && appliedFromDate > appliedToDate
-        ? appliedFromDate
-        : appliedToDate;
-    list = list.filter((s) =>
-      rowInDateRange(s, rangeFrom, rangeTo, ["completed_at", "created_at"]),
-    );
-    list = list.filter((s) =>
-      matchesWorkflowStatusFilter(s, effectiveStatusFilter ?? "all", orgWorkflow),
-    );
-    if (routeOrdersOnly) {
-      list = list.filter((s) => isRouteOrderSale(s));
-    } else {
-      list = list.filter((s) => matchesOrderSourceFilter(s, effectiveSourceFilter ?? "all"));
-    }
-    return list.sort((a, b) => {
-      const da = new Date(a.completed_at ?? a.created_at ?? 0).getTime();
-      const db = new Date(b.completed_at ?? b.created_at ?? 0).getTime();
-      return db - da;
-    });
-  }, [
-    rows,
-    search,
-    appliedFromDate,
-    appliedToDate,
-    effectiveSourceFilter,
-    effectiveStatusFilter,
-    orgWorkflow,
-    routeOrdersOnly,
-  ]);
-
-  const summary = useMemo(() => summarizeOrders(filtered), [filtered]);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = useMemo(
-    () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
-    [filtered, safePage],
-  );
+  const summary = useMemo(() => summarizeOrders(rows), [rows]);
+  const pageSlice = rows;
 
   const workflowBySaleId = useMemo(() => {
     const map = new Map();
@@ -455,7 +453,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, sourceFilter, appliedFromDate, appliedToDate, queueSlug]);
+  }, [debouncedSearch, statusFilter, sourceFilter, appliedFromDate, appliedToDate, queueSlug]);
 
   useEffect(() => {
     if (queueConfig?.lockSourceFilter && queueConfig.fixedSourceFilter) {
@@ -662,9 +660,9 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
             onClose={() => setContextMenu(null)}
           />
           <PaginationBar
-            page={safePage}
+            page={page}
             totalPages={totalPages}
-            total={filtered.length}
+            total={totalOrders}
             pageSize={PAGE_SIZE}
             onChange={setPage}
           />

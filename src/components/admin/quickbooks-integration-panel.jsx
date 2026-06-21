@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useQueuedTask } from "@/lib/use-queued-task";
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
 
 export function QuickBooksIntegrationPanel({ saving, setMessage, setError }) {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+  const { runQueuedTask, overlayNode } = useQueuedTask("Please wait while the export queue is processed…");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,7 +60,10 @@ export function QuickBooksIntegrationPanel({ saving, setMessage, setError }) {
     setWorking(true);
     setError(null);
     try {
-      const res = await apiRequest("/accounting/export-queue/process", { method: "POST" });
+      const res = await runQueuedTask(
+        () => apiRequest("/accounting/export-queue/process", { method: "POST" }),
+        { message: "Please wait while the export queue is processed…" },
+      );
       setMessage(`Export queue processed: ${res.exported ?? 0} exported, ${res.failed ?? 0} failed.`);
       await load();
     } catch (e) {
@@ -125,6 +130,7 @@ export function QuickBooksIntegrationPanel({ saving, setMessage, setError }) {
           </p>
         </>
       )}
+      {overlayNode}
     </div>
   );
 }

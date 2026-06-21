@@ -1,20 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
 import { useOrgFormat } from "@/lib/org-format";
 import {
   CatalogPageShell,
-  Field,
   FilterSelect,
   PaginationBar,
-  PrimaryButton,
   SearchInput,
-  inputClassName,
 } from "@/components/catalog/catalog-shared";
 
 const PAGE_SIZE = 20;
@@ -33,54 +32,64 @@ export default function CustomerInvoicesPage() {
   const canManage = hasPermission(P.payments.customer_invoices.manage);
 
   const [invoices, setInvoices] = useState([]);
+  const [totalInvoices, setTotalInvoices] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setListLoading(true);
     setError(null);
     try {
-      const res = await apiRequest("/customer-invoices", { searchParams: { per_page: 200 } });
-      setInvoices(res.data ?? []);
+      const extra = {};
+      if (presetCustomer) extra.customer_num = presetCustomer;
+      if (statusFilter !== "all") extra.payment_status = statusFilter;
+
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: PAGE_SIZE,
+        q: debouncedSearch,
+        extra,
+      });
+      const res = await apiRequest("/customer-invoices", { searchParams: searchParamsApi });
+      const parsed = parsePaginator(res);
+      setInvoices(parsed.items);
+      setTotalInvoices(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load invoices");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, []);
+  }, [page, debouncedSearch, statusFilter, presetCustomer]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return invoices.filter((inv) => {
-      if (presetCustomer && String(inv.customer_num) !== String(presetCustomer)) return false;
-      if (statusFilter !== "all" && String(inv.payment_status) !== statusFilter) return false;
-      if (!q) return true;
-      const hay = [inv.invoice_number, inv.customer_num, inv.sale_id].filter(Boolean).join(" ").toLowerCase();
-      return hay.includes(q);
-    });
-  }, [invoices, search, statusFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageSlice = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter, presetCustomer]);
 
   return (
     <CatalogPageShell title="Customer invoices" subtitle="Accounts receivable invoices and balances">
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search invoice #, customer…" className="min-w-[220px]" />
+        <SearchInput
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search invoice #, customer…"
+          className="min-w-[220px]"
+        />
         <FilterSelect
           label="Status"
           value={statusFilter}
-          onChange={(v) => {
-            setStatusFilter(v);
-            setPage(1);
-          }}
+          onChange={(e) => setStatusFilter(e.target.value)}
           options={[
             { value: "all", label: "All statuses" },
             { value: "0", label: "Unpaid" },
@@ -92,7 +101,7 @@ export default function CustomerInvoicesPage() {
 
       {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className={`overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${listLoading ? "opacity-60" : ""}`}>
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
             <tr>
@@ -113,14 +122,14 @@ export default function CustomerInvoicesPage() {
                   Loading…
                 </td>
               </tr>
-            ) : pageSlice.length === 0 ? (
+            ) : invoices.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                   No invoices found.
                 </td>
               </tr>
             ) : (
-              pageSlice.map((inv) => {
+              invoices.map((inv) => {
                 const balance = Number(inv.invoice_total ?? 0) - Number(inv.amount_paid ?? 0);
                 const status = PAYMENT_STATUS[inv.payment_status] ?? PAYMENT_STATUS[0];
                 return (
@@ -136,7 +145,9 @@ export default function CustomerInvoicesPage() {
                     <td className="px-4 py-3 text-right">{currency(inv.amount_paid)}</td>
                     <td className="px-4 py-3 text-right font-medium">{currency(balance)}</td>
                     <td className="px-4 py-3">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${status.tone}`}>{status.label}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${status.tone}`}>
+                        {status.label}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link href={`/accounting/customer-invoices/${inv.id}`} className="text-[#185FA5] hover:underline">
@@ -151,7 +162,13 @@ export default function CustomerInvoicesPage() {
         </table>
       </div>
 
-      <PaginationBar page={page} totalPages={totalPages} onPageChange={setPage} className="mt-4" />
+      <PaginationBar
+        page={page}
+        totalPages={totalPages}
+        total={totalInvoices}
+        pageSize={PAGE_SIZE}
+        onChange={setPage}
+      />
     </CatalogPageShell>
   );
 }

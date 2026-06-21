@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   CatalogPageShell,
   FilterSelect,
@@ -45,12 +47,16 @@ export default function SuppliersPage() {
 
   const [dashboard, setDashboard] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
+  const [totalSuppliers, setTotalSuppliers] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [users, setUsers] = useState([]);
   const [contactsModal, setContactsModal] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
@@ -72,7 +78,7 @@ export default function SuppliersPage() {
     [visibleColumnIds],
   );
 
-  const loadData = useCallback(async () => {
+  const loadReferenceData = useCallback(async () => {
     setError(null);
     try {
       if (typeof window !== "undefined" && !sessionStorage.getItem("suppliers-balances-synced")) {
@@ -83,13 +89,11 @@ export default function SuppliersPage() {
           /* non-blocking */
         }
       }
-      const [dashRes, listRes, userRes] = await Promise.all([
+      const [dashRes, userRes] = await Promise.all([
         apiRequest("/suppliers/dashboard"),
-        apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
         apiRequest("/users", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
       ]);
       setDashboard(dashRes);
-      setSuppliers(listRes.data ?? []);
       setUsers(userRes.data ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load suppliers");
@@ -98,9 +102,43 @@ export default function SuppliersPage() {
     }
   }, []);
 
+  const loadSuppliers = useCallback(async () => {
+    setListLoading(true);
+    setError(null);
+    try {
+      const extra = {};
+      if (statusFilter === "active") extra.is_active = 1;
+      if (statusFilter === "inactive") extra.is_active = 0;
+
+      const searchParams = buildPageParams({
+        page,
+        perPage: PAGE_SIZE,
+        q: debouncedSearch,
+        extra,
+      });
+      const listRes = await apiRequest("/suppliers", { searchParams });
+      const parsed = parsePaginator(listRes);
+      setSuppliers(parsed.items);
+      setTotalSuppliers(parsed.total);
+      setTotalPages(parsed.totalPages);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load suppliers");
+    } finally {
+      setListLoading(false);
+    }
+  }, [page, debouncedSearch, statusFilter]);
+
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadReferenceData();
+  }, [loadReferenceData]);
+
+  useEffect(() => {
+    loadSuppliers();
+  }, [loadSuppliers]);
+
+  async function reloadAll() {
+    await Promise.all([loadReferenceData(), loadSuppliers()]);
+  }
 
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 
@@ -109,41 +147,9 @@ export default function SuppliersPage() {
     [suppliers, userById],
   );
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return enriched.filter((s) => {
-      if (statusFilter === "active" && s.is_active === false) return false;
-      if (statusFilter === "inactive" && s.is_active !== false) return false;
-      if (!q) return true;
-      const hay = [
-        s.supplier_name,
-        s.contact_person,
-        s.phone,
-        s.alternate_phone,
-        s.email,
-        s.town,
-        s.tax_pin,
-        s.address,
-        s.created_by_name,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
-    });
-  }, [enriched, search, statusFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter]);
-
-  useEffect(() => {
-    if (page !== safePage) setPage(safePage);
-  }, [page, safePage]);
+  }, [debouncedSearch, statusFilter]);
 
   function toggleColumn(id) {
     const col = SUPPLIER_COLUMNS.find((c) => c.id === id);
@@ -162,7 +168,7 @@ export default function SuppliersPage() {
     if (!window.confirm(`Remove supplier "${row.supplier_name}"?`)) return;
     try {
       await apiRequest(`/suppliers/${row.id}`, { method: "DELETE" });
-      await loadData();
+      await reloadAll();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Delete failed");
     }
@@ -282,7 +288,7 @@ export default function SuppliersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageSlice.length === 0 ? (
+                  {enriched.length === 0 ? (
                     <tr>
                       <td
                         colSpan={visibleColumns.length}
@@ -292,7 +298,7 @@ export default function SuppliersPage() {
                       </td>
                     </tr>
                   ) : (
-                    pageSlice.map((row) => (
+                    enriched.map((row) => (
                       <tr
                         key={row.id}
                         className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
@@ -312,9 +318,9 @@ export default function SuppliersPage() {
               </table>
             </div>
             <PaginationBar
-              page={safePage}
+              page={page}
               totalPages={totalPages}
-              total={filtered.length}
+              total={totalSuppliers}
               pageSize={PAGE_SIZE}
               onChange={setPage}
             />

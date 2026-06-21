@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
-
-const PAGE_SIZE = 8;
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { PaginationBar } from "@/components/catalog/catalog-shared";
 
 function formatKes(value) {
   if (value == null || value === "") return "—";
@@ -46,7 +47,7 @@ function priceDelta(oldPrice, newPrice) {
   return { type: "dn", label };
 }
 
-function enrichHistory(records, productByCode, userById, subById) {
+function enrichHistory(records) {
   const sorted = [...records].sort(
     (a, b) => new Date(a.changed_at).getTime() - new Date(b.changed_at).getTime(),
   );
@@ -61,9 +62,9 @@ function enrichHistory(records, productByCode, userById, subById) {
         : null;
     prevPrice.set(row.product_code, unitPrice);
 
-    const product = productByCode.get(row.product_code);
-    const sub = product ? subById.get(product.subcategory_id) : null;
-    const user = userById.get(row.changed_by);
+    const product = row.product;
+    const sub = product?.subcategory;
+    const user = row.changed_by_user ?? row.changedByUser;
     const userName = user?.username ?? user?.full_name ?? "—";
 
     return {
@@ -113,118 +114,84 @@ function groupByProduct(rows) {
   );
 }
 
-function buildPageNumbers(current, total) {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const pages = [1];
-  if (current > 3) pages.push("…");
-  for (let p = Math.max(2, current - 1); p <= Math.min(total - 1, current + 1); p++) {
-    pages.push(p);
-  }
-  if (current < total - 2) pages.push("…");
-  pages.push(total);
-  return pages;
-}
+const RECORDS_PAGE_SIZE = 50;
 
 export default function PriceHistoryPage() {
   const [records, setRecords] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [categories, setCategories] = useState([]);
-  const [subCategories, setSubCategories] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState(() => new Set());
 
-  const loadData = useCallback(async () => {
-    setError(null);
+  const loadReferenceData = useCallback(async () => {
     try {
-      const [histRes, prodRes, catRes, subRes, userRes] = await Promise.all([
-        apiRequest("/price-history", { searchParams: { per_page: 200, days: 7 } }),
-        apiRequest("/products", { searchParams: { per_page: 200 } }),
+      const [catRes, userRes] = await Promise.all([
         apiRequest("/categories", { searchParams: { per_page: 200 } }),
-        apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
         apiRequest("/users", { searchParams: { per_page: 200 } }),
       ]);
-      setRecords(histRes.data ?? []);
-      setProducts(prodRes.data ?? []);
       setCategories(catRes.data ?? []);
-      setSubCategories(subRes.data ?? []);
       setUsers(userRes.data ?? []);
+    } catch {
+      /* non-blocking */
+    }
+  }, []);
+
+  const loadRecords = useCallback(async () => {
+    setError(null);
+    setListLoading(true);
+    try {
+      const extra = { days: 7 };
+      if (categoryFilter !== "all") extra.category_id = categoryFilter;
+      if (userFilter !== "all") extra.changed_by = userFilter;
+
+      const searchParams = buildPageParams({
+        page,
+        perPage: RECORDS_PAGE_SIZE,
+        q: debouncedSearch,
+        extra,
+      });
+      const histRes = await apiRequest("/price-history", { searchParams });
+      const parsed = parsePaginator(histRes);
+      setRecords(parsed.items);
+      setTotalRecords(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load price history");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, []);
+  }, [page, debouncedSearch, categoryFilter, userFilter]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadReferenceData();
+  }, [loadReferenceData]);
 
-  const productByCode = useMemo(
-    () => new Map(products.map((p) => [p.product_code, p])),
-    [products],
-  );
-  const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
-  const subById = useMemo(
-    () => new Map(subCategories.map((s) => [s.id, s])),
-    [subCategories],
-  );
-
-  const enriched = useMemo(
-    () => enrichHistory(records, productByCode, userById, subById),
-    [records, productByCode, userById, subById],
-  );
-
-  const filteredChanges = useMemo(() => {
-    const q = search.trim().toLowerCase();
-
-    return enriched.filter((row) => {
-      if (
-        q &&
-        !row.product_name?.toLowerCase().includes(q) &&
-        !row.product_code?.toLowerCase().includes(q)
-      ) {
-        return false;
-      }
-      if (categoryFilter !== "all" && String(row.category_id) !== categoryFilter) {
-        return false;
-      }
-      if (userFilter !== "all" && String(row.changed_by) !== userFilter) {
-        return false;
-      }
-      return true;
-    });
-  }, [enriched, search, categoryFilter, userFilter]);
-
-  const productGroups = useMemo(
-    () => groupByProduct(filteredChanges),
-    [filteredChanges],
-  );
-
-  const totalChangeCount = filteredChanges.length;
-
-  const totalPages = Math.max(1, Math.ceil(productGroups.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = productGroups.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  useEffect(() => {
+    loadRecords();
+  }, [loadRecords]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, categoryFilter, userFilter]);
+  }, [debouncedSearch, categoryFilter, userFilter]);
+
+  const enriched = useMemo(() => enrichHistory(records), [records]);
+
+  const productGroups = useMemo(() => groupByProduct(enriched), [enriched]);
 
   useEffect(() => {
-    if (page !== safePage) setPage(safePage);
-  }, [page, safePage]);
-
-  useEffect(() => {
-    const slice = productGroups.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-    setExpanded(new Set(slice.map((g) => g.product_code)));
-  }, [safePage, productGroups]);
+    setExpanded(new Set(productGroups.map((g) => g.product_code)));
+  }, [page, productGroups]);
 
   function toggleProduct(code) {
     setExpanded((prev) => {
@@ -247,7 +214,7 @@ export default function PriceHistoryPage() {
       "Changed at",
     ];
     const lines = [headers.join(",")];
-    for (const row of filteredChanges) {
+    for (const row of enriched) {
       lines.push(
         [
           row.product_code,
@@ -282,7 +249,7 @@ export default function PriceHistoryPage() {
         <button
           type="button"
           onClick={exportCsv}
-          disabled={loading || filteredChanges.length === 0}
+          disabled={loading || enriched.length === 0}
           className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
         >
           <DownloadIcon />
@@ -339,13 +306,13 @@ export default function PriceHistoryPage() {
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading price history…</p>
-        ) : pageSlice.length === 0 ? (
+        ) : productGroups.length === 0 ? (
           <p className="px-4 py-12 text-center text-sm text-slate-500">
             No price changes in the last 7 days match your filters.
           </p>
         ) : (
-          <ul className="divide-y divide-slate-200">
-            {pageSlice.map((group) => {
+          <ul className={`divide-y divide-slate-200 ${listLoading ? "opacity-60" : ""}`}>
+            {productGroups.map((group) => {
               const isOpen = expanded.has(group.product_code);
               return (
                 <li key={group.product_code}>
@@ -436,16 +403,15 @@ export default function PriceHistoryPage() {
           </ul>
         )}
 
-        {!loading && productGroups.length > 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-2.5 text-xs text-slate-500">
-            <span>
-              {productGroups.length} product{productGroups.length === 1 ? "" : "s"} ·{" "}
-              {totalChangeCount} price change{totalChangeCount === 1 ? "" : "s"}
-              {productGroups.length > PAGE_SIZE
-                ? ` · showing ${(safePage - 1) * PAGE_SIZE + 1}–${Math.min(safePage * PAGE_SIZE, productGroups.length)}`
-                : ""}
-            </span>
-            <Pagination page={safePage} totalPages={totalPages} onChange={setPage} />
+        {!loading && totalRecords > 0 ? (
+          <div className="border-t border-slate-200 px-4 py-2.5">
+            <PaginationBar
+              page={page}
+              totalPages={totalPages}
+              total={totalRecords}
+              pageSize={RECORDS_PAGE_SIZE}
+              onChange={setPage}
+            />
           </div>
         ) : null}
       </div>
@@ -489,48 +455,6 @@ function ChevronIcon({ open }) {
     >
       <polyline points="9 18 15 12 9 6" />
     </svg>
-  );
-}
-
-function Pagination({ page, totalPages, onChange }) {
-  const pages = buildPageNumbers(page, totalPages);
-  return (
-    <div className="flex gap-1">
-      <PagBtn disabled={page <= 1} onClick={() => onChange(page - 1)}>
-        ‹
-      </PagBtn>
-      {pages.map((p, i) =>
-        p === "…" ? (
-          <span key={`e-${i}`} className="px-1 text-slate-400">
-            …
-          </span>
-        ) : (
-          <PagBtn key={p} active={p === page} onClick={() => onChange(p)}>
-            {p}
-          </PagBtn>
-        ),
-      )}
-      <PagBtn disabled={page >= totalPages} onClick={() => onChange(page + 1)}>
-        ›
-      </PagBtn>
-    </div>
-  );
-}
-
-function PagBtn({ children, onClick, disabled, active }) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={`rounded-md border px-2 py-1 text-xs disabled:opacity-40 ${
-        active
-          ? "border-[#185FA5] bg-[#185FA5] text-[#E6F1FB]"
-          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

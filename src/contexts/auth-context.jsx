@@ -222,7 +222,8 @@ export function AuthProvider({ children }) {
         }),
       isOrgWide: () => (capabilities?.access_scope ?? user?.access_scope) === "org" || user?.is_admin,
       generalSettings: () => resolveGeneralSettings(capabilities),
-      sessionIdleMinutes: () => capabilities?.session_idle_minutes ?? 30,
+      sessionIdleMinutes: () => capabilities?.session_idle_minutes ?? 60,
+      screenLockMinutes: () => capabilities?.screen_lock_minutes ?? 5,
     }),
     [
       user,

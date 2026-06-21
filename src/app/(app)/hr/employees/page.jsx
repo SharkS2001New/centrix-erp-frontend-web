@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   CatalogPageShell,
   FilterSelect,
@@ -29,24 +31,29 @@ export default function HrEmployeesPage() {
   const router = useRouter();
 
   const [employees, setEmployees] = useState([]);
+  const [totalEmployees, setTotalEmployees] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [employeeStats, setEmployeeStats] = useState(null);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [deptFilter, setDeptFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
 
-  const loadData = useCallback(async () => {
+  const loadReferenceData = useCallback(async () => {
     setError(null);
     try {
-      const [empRes, deptRes] = await Promise.all([
-        apiRequest("/employees", { searchParams: { per_page: 200 } }),
+      const [deptRes, statsRes] = await Promise.all([
         apiRequest("/departments", { searchParams: { per_page: 200 } }),
+        apiRequest("/employees/summary").catch(() => null),
       ]);
-      setEmployees(empRes.data ?? []);
       setDepartments(deptRes.data ?? []);
+      if (statsRes) setEmployeeStats(statsRes);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load employees");
     } finally {
@@ -54,54 +61,78 @@ export default function HrEmployeesPage() {
     }
   }, []);
 
+  const loadEmployees = useCallback(async () => {
+    setListLoading(true);
+    setError(null);
+    try {
+      const filters = {};
+      if (deptFilter !== "all") filters.department_id = deptFilter;
+
+      const extra = {};
+      if (statusFilter === "active") extra.is_active = 1;
+      if (statusFilter === "inactive") extra.is_active = 0;
+
+      const searchParams = buildPageParams({
+        page,
+        perPage: PAGE_SIZE,
+        q: debouncedSearch,
+        filters,
+        extra,
+      });
+      const empRes = await apiRequest("/employees", { searchParams });
+      const parsed = parsePaginator(empRes);
+      setEmployees(parsed.items);
+      setTotalEmployees(parsed.total);
+      setTotalPages(parsed.totalPages);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load employees");
+    } finally {
+      setListLoading(false);
+    }
+  }, [page, debouncedSearch, deptFilter, statusFilter]);
+
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadReferenceData();
+  }, [loadReferenceData]);
+
+  useEffect(() => {
+    loadEmployees();
+  }, [loadEmployees]);
+
+  async function reloadAll() {
+    await Promise.all([loadReferenceData(), loadEmployees()]);
+  }
 
   const deptById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
 
   const stats = useMemo(() => {
+    if (employeeStats) {
+      return {
+        total: Number(employeeStats.total ?? 0),
+        active: Number(employeeStats.active ?? 0),
+        departments: Number(employeeStats.departments ?? 0),
+        payrollCost: Number(employeeStats.payroll_cost ?? 0),
+      };
+    }
     const active = employees.filter((e) => e.is_active !== false);
     const totalSalary = active.reduce((sum, e) => sum + Number(e.base_salary ?? 0), 0);
     return {
-      total: employees.length,
+      total: totalEmployees,
       active: active.length,
       departments: departments.filter((d) => d.is_active !== false).length,
       payrollCost: totalSalary,
     };
-  }, [employees, departments]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return employees.filter((e) => {
-      if (statusFilter === "active" && e.is_active === false) return false;
-      if (statusFilter === "inactive" && e.is_active !== false) return false;
-      if (deptFilter !== "all" && String(e.department_id) !== deptFilter) return false;
-      if (q) {
-        const hay = `${e.full_name} ${e.first_name} ${e.middle_name} ${e.last_name} ${e.employee_code} ${e.job_title} ${e.email}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [employees, search, deptFilter, statusFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  }, [employeeStats, employees, totalEmployees, departments]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, deptFilter, statusFilter]);
-
-  useEffect(() => {
-    if (page !== safePage) setPage(safePage);
-  }, [page, safePage]);
+  }, [debouncedSearch, deptFilter, statusFilter]);
 
   async function deleteEmployee(employee) {
     if (!window.confirm(`Delete employee "${composeEmployeeDisplayName(employee)}"?`)) return;
     try {
       await apiRequest(`/employees/${employee.id}`, { method: "DELETE" });
-      await loadData();
+      await reloadAll();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Delete failed");
     }
@@ -183,14 +214,14 @@ export default function HrEmployeesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageSlice.length === 0 ? (
+                  {employees.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
                         No employees found.
                       </td>
                     </tr>
                   ) : (
-                    pageSlice.map((employee) => (
+                    employees.map((employee) => (
                       <tr
                         key={employee.id}
                         className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
@@ -257,9 +288,9 @@ export default function HrEmployeesPage() {
               </table>
             </div>
             <PaginationBar
-              page={safePage}
+              page={page}
               totalPages={totalPages}
-              total={filtered.length}
+              total={totalEmployees}
               pageSize={PAGE_SIZE}
               onChange={setPage}
             />

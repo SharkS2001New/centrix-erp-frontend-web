@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useQueuedTask } from "@/lib/use-queued-task";
 import { openPrintWindow } from "@/lib/open-print-window";
 import { baseToDisplayQty } from "@/lib/stock-uom";
 
@@ -204,8 +205,10 @@ function ExportModal({ open, onClose, products }) {
 function ImportModal({ open, onClose, onImported }) {
   const inputRef = useRef(null);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(null);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const { runQueuedTask, overlayNode } = useQueuedTask("Please wait while products are imported…");
 
   if (!open) return null;
 
@@ -259,42 +262,57 @@ function ImportModal({ open, onClose, onImported }) {
     if (!file) return;
     setError(null);
     setResult(null);
+    setImportProgress(null);
     setImporting(true);
     try {
       const rows = await parseSpreadsheet(file);
       if (!rows.length) throw new Error("The file has no data rows.");
-      let created = 0;
-      const failures = [];
+
+      const normalizedRows = [];
       for (const row of rows) {
         if (!row.product_code && !row.product_name) continue;
-        try {
-          const body = normalizeRow(row);
-          if (!body.product_code || !body.product_name || !body.subcategory_id || !body.unit_id) {
-            throw new Error("Missing required fields");
-          }
-          await apiRequest("/products", { method: "POST", body });
-          created += 1;
-        } catch (err) {
-          failures.push({
-            code: row.product_code || row.product_name,
-            message: err instanceof ApiError ? err.message : "Import failed",
-          });
+        const body = normalizeRow(row);
+        if (!body.product_code || !body.product_name || !body.subcategory_id || !body.unit_id) {
+          throw new Error(`Row "${row.product_code || row.product_name}" is missing required fields.`);
         }
+        normalizedRows.push(body);
       }
-      setResult({ created, failures });
-      if (created > 0) onImported?.();
+      if (!normalizedRows.length) throw new Error("The file has no valid product rows.");
+
+      const res = await runQueuedTask(
+        () =>
+          apiRequest("/products/import-batch", {
+            method: "POST",
+            body: { rows: normalizedRows },
+          }),
+        {
+          message: `Please wait while ${normalizedRows.length} product(s) are imported…`,
+          onProgress: (task) => {
+            setImportProgress(Number(task.progress ?? 0));
+          },
+        },
+      );
+
+      setResult({
+        created: Number(res.created ?? 0),
+        failures: Array.isArray(res.failures) ? res.failures : [],
+      });
+      if (Number(res.created ?? 0) > 0) onImported?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not read file");
+      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Could not read file");
     } finally {
       setImporting(false);
+      setImportProgress(null);
       if (inputRef.current) inputRef.current.value = "";
     }
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
-        <h2 className="text-[15px] font-medium text-slate-900">Import products</h2>
+  return (
+    <>
+      {createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
+            <h2 className="text-[15px] font-medium text-slate-900">Import products</h2>
         <p className="mt-2 text-sm text-slate-500">
           Upload a CSV or Excel file. Stock columns are in base pieces (same as the database).
         </p>
@@ -323,6 +341,9 @@ function ImportModal({ open, onClose, onImported }) {
           onChange={handleFile}
           disabled={importing}
         />
+        {importing && importProgress != null ? (
+          <p className="mt-3 text-sm text-slate-600">Importing… {importProgress}%</p>
+        ) : null}
         {error ? (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         ) : null}
@@ -331,9 +352,9 @@ function ImportModal({ open, onClose, onImported }) {
             <p>{result.created} product{result.created === 1 ? "" : "s"} imported.</p>
             {result.failures.length > 0 ? (
               <ul className="mt-2 max-h-32 overflow-y-auto text-xs text-red-700">
-                {result.failures.slice(0, 8).map((f) => (
-                  <li key={f.code}>
-                    {f.code}: {f.message}
+                {result.failures.slice(0, 8).map((f, idx) => (
+                  <li key={`${f.code ?? "row"}-${idx}`}>
+                    {f.code ?? `Row ${f.row ?? idx + 1}`}: {f.message}
                   </li>
                 ))}
               </ul>
@@ -349,9 +370,12 @@ function ImportModal({ open, onClose, onImported }) {
             Close
           </button>
         </div>
-      </div>
-    </div>,
-    document.body,
+          </div>
+        </div>,
+        document.body,
+      )}
+      {overlayNode}
+    </>
   );
 }
 

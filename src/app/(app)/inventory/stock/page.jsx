@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
 import {
   FilterSelect,
@@ -67,16 +69,17 @@ export default function CurrentStockPage() {
   const [stockRows, setStockRows] = useState([]);
   const [valuationRows, setValuationRows] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [subCategories, setSubCategories] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [uoms, setUoms] = useState([]);
   const [retailPackages, setRetailPackages] = useState([]);
+  const [totalStockRows, setTotalStockRows] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsOpen, setColumnsOpen] = useState(false);
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [page, setPage] = useState(1);
@@ -85,106 +88,99 @@ export default function CurrentStockPage() {
     setVisibleColumnIds(readStoredColumnIds());
   }, []);
 
-  const load = useCallback(async () => {
-    setError(null);
-    setLoading(true);
+  const loadReferenceData = useCallback(async () => {
     try {
-      const [stockRes, valRes, catRes, subRes, prodRes, uomRes, retailRes] = await Promise.all([
-        apiRequest("/reports/stock-on-hand", {
-          searchParams: { branch_id: branchId, per_page: 500 },
-        }),
-        apiRequest("/reports/stock-valuation", {
-          searchParams: { branch_id: branchId, per_page: 500 },
-        }),
+      const [catRes, retailRes] = await Promise.all([
         apiRequest("/categories", { searchParams: { per_page: 200 } }),
-        apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
-        apiRequest("/products", { searchParams: { per_page: 500 } }),
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
-        apiRequest("/retail-package-settings", { searchParams: { per_page: 500 } }),
+        apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }),
       ]);
-      setStockRows(stockRes.data ?? []);
-      setValuationRows(valRes.data ?? []);
       setCategories(catRes.data ?? []);
-      setSubCategories(subRes.data ?? []);
-      setProducts(prodRes.data ?? []);
-      setUoms(uomRes.data ?? []);
       setRetailPackages(retailRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load current stock");
+      setError(e instanceof Error ? e.message : "Failed to load stock filters");
     } finally {
       setLoading(false);
     }
-  }, [branchId]);
+  }, []);
+
+  const loadStock = useCallback(async () => {
+    setListLoading(true);
+    setError(null);
+    try {
+      const searchParams = buildPageParams({
+        page,
+        perPage: PAGE_SIZE,
+        q: debouncedSearch,
+        extra: {
+          branch_id: branchId,
+          category_id: categoryFilter !== "all" ? categoryFilter : undefined,
+          location: locationFilter !== "all" ? locationFilter : undefined,
+        },
+      });
+      const [stockRes, valRes] = await Promise.all([
+        apiRequest("/reports/stock-on-hand", { searchParams }),
+        apiRequest("/reports/stock-valuation", { searchParams }),
+      ]);
+      const parsed = parsePaginator(stockRes);
+      setStockRows(parsed.items);
+      setTotalStockRows(parsed.total);
+      setTotalPages(parsed.totalPages);
+      setValuationRows(valRes.data ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load current stock");
+    } finally {
+      setListLoading(false);
+    }
+  }, [branchId, page, debouncedSearch, categoryFilter, locationFilter]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadReferenceData();
+  }, [loadReferenceData]);
 
-  const valuationByCode = useMemo(
-    () => new Map(valuationRows.map((r) => [r.product_code, r])),
-    [valuationRows],
-  );
+  useEffect(() => {
+    if (loading) return;
+    loadStock();
+  }, [loading, loadStock]);
 
-  const productCategoryByCode = useMemo(() => {
-    const subById = new Map(subCategories.map((s) => [s.id, s]));
-    const map = new Map();
-    for (const p of products) {
-      const sub = subById.get(p.subcategory_id);
-      map.set(p.product_code, sub?.category_id ?? null);
-    }
-    return map;
-  }, [products, subCategories]);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, categoryFilter, locationFilter]);
 
   const retailByCode = useMemo(
     () => new Map(retailPackages.map((r) => [r.product_code, r])),
     [retailPackages],
   );
 
-  const uomByProductCode = useMemo(() => {
-    const uomById = new Map(uoms.map((u) => [u.id, u]));
-    const map = new Map();
-    for (const p of products) {
-      const uom = uomById.get(p.unit_id);
-      map.set(p.product_code, {
-        factor: Number(uom?.conversion_factor ?? 1),
-        name: uom?.full_name ?? "units",
-        uom: uom ?? null,
-      });
-    }
-    return map;
-  }, [products, uoms]);
-
   const enriched = useMemo(() => {
-    const stockByCode = new Map(stockRows.map((row) => [row.product_code, row]));
+    const valuationByCode = new Map(valuationRows.map((r) => [r.product_code, r]));
 
-    return products.map((product) => {
-      const row = stockByCode.get(product.product_code);
-      const uomMeta = uomByProductCode.get(product.product_code);
-      const factor = Number(row?.conversion_factor ?? uomMeta?.factor ?? 1);
-      const uomName = row?.uom_name ?? uomMeta?.name ?? "units";
-      const val = valuationByCode.get(product.product_code);
-      const cost = Number(val?.last_cost_price ?? product.last_cost_price ?? 0);
-      const sell = Number(val?.unit_price ?? row?.wholesale_price ?? product.unit_price ?? 0);
-      const retailPackage = retailByCode.get(product.product_code) ?? null;
-      const sellOnRetail = product.sell_on_retail === 1 || product.sell_on_retail === true;
-      const shopQty = Number(row?.shop_quantity ?? product.stock_in_shop ?? 0);
-      const storeQty = Number(row?.store_quantity ?? product.stock_in_store ?? 0);
+    return stockRows.map((row) => {
+      const val = valuationByCode.get(row.product_code);
+      const factor = Number(row.conversion_factor ?? 1);
+      const uomName = row.uom_name ?? "units";
+      const uomObj = {
+        full_name: uomName,
+        conversion_factor: factor,
+      };
+      const retailPackage = retailByCode.get(row.product_code) ?? null;
+      const cost = Number(val?.last_cost_price ?? 0);
+      const sell = Number(val?.unit_price ?? row.wholesale_price ?? 0);
+      const shopQty = Number(row.shop_quantity ?? 0);
+      const storeQty = Number(row.store_quantity ?? 0);
       const totalBase = shopQty + storeQty;
-      const uomObj = uomMeta?.uom ?? null;
-      const shopValue = stockSellingValue(shopQty, sell, uomObj, retailPackage, sellOnRetail);
-      const storeValue = stockSellingValue(storeQty, sell, uomObj, retailPackage, sellOnRetail);
-      const profitMargin =
-        sell > 0 ? Math.round(((sell - cost) / sell) * 100) : null;
-      const reorderPoint = Number(row?.reorder_point ?? product.reorder_point ?? 0);
+      const shopValue = stockSellingValue(shopQty, sell, uomObj, retailPackage, false);
+      const storeValue = stockSellingValue(storeQty, sell, uomObj, retailPackage, false);
+      const profitMargin = sell > 0 ? Math.round(((sell - cost) / sell) * 100) : null;
+      const reorderPoint = Number(row.reorder_point ?? 0);
 
       return {
-        product_code: product.product_code,
-        product_name: row?.product_name ?? product.product_name,
+        product_code: row.product_code,
+        product_name: row.product_name,
         shop_quantity: shopQty,
         store_quantity: storeQty,
         total_base_units: totalBase,
         reorder_point: reorderPoint,
-        product_alert: row?.product_alert ?? (reorderPoint > 0 && totalBase <= reorderPoint ? "REORDER" : "OK"),
+        product_alert: row.product_alert ?? (reorderPoint > 0 && totalBase <= reorderPoint ? "REORDER" : "OK"),
         shopDisplay: baseToDisplayQty(shopQty, factor),
         storeDisplay: baseToDisplayQty(storeQty, factor),
         reorderDisplay: baseToDisplayQty(reorderPoint, factor),
@@ -196,39 +192,22 @@ export default function CurrentStockPage() {
         profitMargin,
         cost,
         sell,
-        sellOnRetail,
+        sellOnRetail: false,
         retailPackage,
-        product,
-        hasStockRecord: Boolean(row),
+        product: {
+          product_code: row.product_code,
+          product_name: row.product_name,
+          unit_price: sell,
+          sell_on_retail: false,
+        },
+        hasStockRecord: true,
       };
     });
-  }, [products, stockRows, valuationByCode, uomByProductCode, retailByCode]);
+  }, [stockRows, valuationRows, retailByCode]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return enriched.filter((row) => {
-      if (categoryFilter !== "all") {
-        const catId = productCategoryByCode.get(row.product_code);
-        if (String(catId) !== categoryFilter) return false;
-      }
-      if (locationFilter === "shop" && Number(row.shop_quantity ?? 0) <= 0) return false;
-      if (locationFilter === "store" && Number(row.store_quantity ?? 0) <= 0) return false;
-      if (!q) return true;
-      return (
-        row.product_code?.toLowerCase().includes(q) ||
-        row.product_name?.toLowerCase().includes(q)
-      );
-    });
-  }, [enriched, search, categoryFilter, locationFilter, productCategoryByCode]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageSlice = enriched;
   const visibleColumns = STOCK_COLUMNS.filter((c) => visibleColumnIds.includes(c.id));
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, categoryFilter, locationFilter]);
 
   function toggleColumn(id) {
     const col = STOCK_COLUMNS.find((c) => c.id === id);
@@ -293,7 +272,7 @@ export default function CurrentStockPage() {
   }
 
   function generatePriceList() {
-    const inStock = filtered.filter(
+    const inStock = pageSlice.filter(
       (row) => Number(row.shop_quantity ?? 0) > 0 || Number(row.store_quantity ?? 0) > 0,
     );
     const rows = inStock.map((row) =>
@@ -318,12 +297,12 @@ export default function CurrentStockPage() {
   const totals = useMemo(() => {
     let shop = 0;
     let store = 0;
-    for (const row of filtered) {
+    for (const row of pageSlice) {
       shop += row.shopValue ?? 0;
       store += row.storeValue ?? 0;
     }
     return { shop, store, all: shop + store };
-  }, [filtered]);
+  }, [pageSlice]);
 
   return (
     <InventoryPageShell
@@ -353,10 +332,10 @@ export default function CurrentStockPage() {
         <button
           type="button"
           onClick={generatePriceList}
-          disabled={loading || filtered.length === 0}
+          disabled={loading || pageSlice.length === 0}
           className="rounded-lg border border-[#185FA5] bg-[#185FA5] px-3 py-2 text-sm font-medium text-white hover:bg-[#0C447C] disabled:opacity-50"
         >
-          Generate price list
+          Price list (this page)
         </button>
         <div className="relative">
           <button
@@ -394,9 +373,9 @@ export default function CurrentStockPage() {
         </p>
       ) : null}
 
-      {!loading && filtered.length > 0 ? (
+      {!loading && pageSlice.length > 0 ? (
         <p className="mb-3 text-xs text-slate-500">
-          Stock value totals — Shop: {formatInventoryKes(totals.shop)} · Store:{" "}
+          Stock value totals (this page){listLoading ? " · updating…" : ""} — Shop: {formatInventoryKes(totals.shop)} · Store:{" "}
           {formatInventoryKes(totals.store)} · Combined: {formatInventoryKes(totals.all)}
         </p>
       ) : null}
@@ -447,7 +426,7 @@ export default function CurrentStockPage() {
             <PaginationBar
               page={safePage}
               totalPages={totalPages}
-              total={filtered.length}
+              total={totalStockRows}
               pageSize={PAGE_SIZE}
               onChange={setPage}
             />

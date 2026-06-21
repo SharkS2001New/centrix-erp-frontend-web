@@ -2,8 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { securityFormFromApi, securityPayloadFromForm } from "@/lib/security-settings";
+import {
+  securityFormFromApi,
+  securityPayloadFromForm,
+  validateSecurityForm,
+} from "@/lib/security-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { useAuth } from "@/contexts/auth-context";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description }) {
@@ -18,8 +23,10 @@ function Toggle({ checked, onChange, label, description }) {
   );
 }
 
-export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage }) {
+export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { settingsPath } = useSettingsApi();
+  const { refreshCapabilities } = useAuth();
+  const afterSave = onAfterSave ?? refreshCapabilities;
   const [form, setForm] = useState(securityFormFromApi({}));
   const [loading, setLoading] = useState(true);
 
@@ -33,6 +40,12 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage 
 
   async function handleSave(e) {
     e.preventDefault();
+    const validationError = validateSecurityForm(form);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -42,7 +55,8 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage 
         body: securityPayloadFromForm(form),
       });
       setForm(securityFormFromApi(res));
-      setMessage("Security settings saved.");
+      if (afterSave) await afterSave();
+      setMessage("Security settings saved for this organization.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save security settings");
     } finally {
@@ -54,12 +68,28 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage 
     <form onSubmit={handleSave}>
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Security settings</h2>
-        <p className="mt-1 text-sm text-slate-500">Session timeout and password policy for this organization.</p>
+        <p className="mt-1 text-sm text-slate-500">
+          Session timeouts apply to all users in this organization. Password policy applies when users
+          set or change passwords.
+        </p>
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">Loading…</p>
         ) : (
           <div className="mt-5 space-y-4">
-            <Field label="Session idle timeout (minutes)">
+            <Field label="Screen lock after inactivity (minutes)">
+              <input
+                type="number"
+                min="1"
+                max="120"
+                className={`${inputClassName()} w-32`}
+                value={form.screen_lock_minutes}
+                onChange={(e) => setForm((f) => ({ ...f, screen_lock_minutes: e.target.value }))}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Shows the lock screen; users unlock with their password without signing in again.
+              </p>
+            </Field>
+            <Field label="Sign out after inactivity (minutes)">
               <input
                 type="number"
                 min="5"
@@ -69,9 +99,8 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage 
                 onChange={(e) => setForm((f) => ({ ...f, session_idle_minutes: e.target.value }))}
               />
               <p className="mt-1 text-xs text-slate-500">
-                Used for stale session cleanup and detecting active sign-ins on other devices. Screen
-                inactivity is handled by the app lock — users unlock with their password instead of
-                signing in again.
+                Fully ends the session and returns users to the login page. Must be greater than the
+                screen lock time.
               </p>
             </Field>
             <Toggle
@@ -94,7 +123,7 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage 
         )}
         <div className="mt-6">
           <PrimaryButton type="submit" disabled={loading || saving} showIcon={false}>
-            {saving ? "Saving…" : "Save"}
+            {saving ? "Saving…" : "Save security settings"}
           </PrimaryButton>
         </div>
       </section>

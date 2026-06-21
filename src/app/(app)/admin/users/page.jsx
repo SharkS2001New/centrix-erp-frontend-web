@@ -10,6 +10,8 @@ import { UserDetailModal } from "@/components/admin/user-detail-modal";
 import { toggleUserPermissionOverride } from "@/components/admin/user-permission-matrix";
 import { permissionIdSet } from "@/lib/permission-ids";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import {
   ActiveBadge,
@@ -17,6 +19,7 @@ import {
   Field,
   FormDrawer,
   IconButton,
+  PaginationBar,
   PencilIcon,
   PrimaryButton,
   ShieldIcon,
@@ -36,10 +39,6 @@ import {
 import { isOrgMobileSalesEnabled } from "@/lib/sales-settings";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 
-function isProtectedUserAccount(row, currentUserId) {
-  return row.id === currentUserId || Boolean(row.is_admin);
-}
-
 const EMPTY_FORM = {
   full_name: "",
   email: "",
@@ -53,6 +52,12 @@ const EMPTY_FORM = {
   is_active: true,
 };
 
+const PAGE_SIZE = 15;
+
+function isProtectedUserAccount(row, currentUserId) {
+  return row.id === currentUserId || Boolean(row.is_admin);
+}
+
 export default function AdminUsersPage() {
   const { user, capabilities } = useAuth();
   const { adminPath, organizationId: platformOrgId, isPlatformManaged, tenantCapabilities } = useAdminApi();
@@ -60,6 +65,9 @@ export default function AdminUsersPage() {
   const effectiveCapabilities = isPlatformManaged ? tenantCapabilities ?? capabilities : capabilities;
 
   const [users, setUsers] = useState([]);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
   const [branches, setBranches] = useState([]);
   const [roles, setRoles] = useState([]);
   const [routes, setRoutes] = useState([]);
@@ -67,8 +75,10 @@ export default function AdminUsersPage() {
   const [permissionGroups, setPermissionGroups] = useState([]);
   const [permissionApplications, setPermissionApplications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewUser, setViewUser] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -94,19 +104,16 @@ export default function AdminUsersPage() {
   const branchById = useMemo(() => new Map(branches.map((b) => [b.id, b])), [branches]);
   const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r])), [roles]);
 
-  const load = useCallback(async () => {
+  const loadReferenceData = useCallback(async () => {
     if (!organizationId) return;
-    setLoading(true);
     setError(null);
     try {
-      const [userRes, branchRes, roleRes, routeRes, matrixRes] = await Promise.all([
-        apiRequest(adminPath("/users"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
+      const [branchRes, roleRes, routeRes, matrixRes] = await Promise.all([
         apiRequest(adminPath("/branches"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
         apiRequest(adminPath("/roles"), { searchParams: { per_page: 200 } }),
         apiRequest(adminPath("/routes"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
         apiRequest(adminPath("/roles/permissions/matrix")),
       ]);
-      setUsers(filterByOrganization(userRes.data, organizationId));
       setBranches(filterByOrganization(branchRes.data, organizationId));
       setRoles(roleRes.data ?? []);
       setRoutes(filterByOrganization(routeRes.data ?? [], organizationId));
@@ -119,6 +126,33 @@ export default function AdminUsersPage() {
       setLoading(false);
     }
   }, [organizationId, adminPath]);
+
+  const loadUsers = useCallback(async () => {
+    if (!organizationId) return;
+    setListLoading(true);
+    setError(null);
+    try {
+      const searchParams = buildPageParams({
+        page,
+        perPage: PAGE_SIZE,
+        q: debouncedSearch,
+        extra: orgListParams(organizationId),
+      });
+      const userRes = await apiRequest(adminPath("/users"), { searchParams });
+      const parsed = parsePaginator(userRes);
+      setUsers(filterByOrganization(parsed.items, organizationId));
+      setTotalUsers(parsed.total);
+      setTotalPages(parsed.totalPages);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to load users");
+    } finally {
+      setListLoading(false);
+    }
+  }, [organizationId, adminPath, page, debouncedSearch]);
+
+  async function reloadAll() {
+    await Promise.all([loadReferenceData(), loadUsers()]);
+  }
 
   const loadUserPermissions = useCallback(async (userId) => {
     setPermLoading(true);
@@ -136,8 +170,16 @@ export default function AdminUsersPage() {
   }, [adminPath]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadReferenceData();
+  }, [loadReferenceData]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     if (viewUser?.id) loadUserPermissions(viewUser.id);
@@ -148,14 +190,6 @@ export default function AdminUsersPage() {
       setPermError(null);
     }
   }, [viewUser, loadUserPermissions]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter((u) =>
-      `${u.full_name} ${u.email} ${u.username}`.toLowerCase().includes(q),
-    );
-  }, [users, search]);
 
   function openCreate() {
     setEditing(null);
@@ -205,7 +239,7 @@ export default function AdminUsersPage() {
     }
     try {
       await apiRequest(adminPath(`/users/${row.id}`), { method: "PUT", body: { is_active: false } });
-      await load();
+      await reloadAll();
       if (viewUser?.id === row.id) setViewUser((u) => ({ ...u, is_active: false }));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to disable user login");
@@ -231,7 +265,7 @@ export default function AdminUsersPage() {
     try {
       await apiRequest(adminPath(`/users/${row.id}`), { method: "DELETE" });
       setViewUser(null);
-      await load();
+      await reloadAll();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to archive user");
     }
@@ -322,7 +356,7 @@ export default function AdminUsersPage() {
         await apiRequest(adminPath("/users"), { method: "POST", body });
       }
       setDrawerOpen(false);
-      await load();
+      await reloadAll();
     } catch (e) {
       setFormError(e instanceof ApiError ? e.message : "Save failed");
     } finally {
@@ -342,7 +376,12 @@ export default function AdminUsersPage() {
         </PrimaryButton>
       }
       toolbar={
-        <SearchInput value={search} onChange={setSearch} placeholder="Search user…" className="max-w-sm" />
+        <SearchInput
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search user…"
+          className="max-w-sm"
+        />
       }
     >
       {!isPlatformManaged ? (
@@ -353,7 +392,7 @@ export default function AdminUsersPage() {
           <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
         ) : null}
 
-        <div className={`${workspaceCardClassName} overflow-x-auto`}>
+        <div className={`${workspaceCardClassName} overflow-x-auto ${listLoading ? "opacity-60" : ""}`}>
           <table className="min-w-full text-sm">
             <thead className={TABLE_HEAD_ROW_CLASS}>
               <tr>
@@ -373,14 +412,14 @@ export default function AdminUsersPage() {
                     Loading…
                   </td>
                 </tr>
-              ) : filtered.length === 0 ? (
+              ) : users.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                     No users found.
                   </td>
                 </tr>
               ) : (
-                filtered.map((row) => (
+                users.map((row) => (
                   <tr key={row.id} className="hover:bg-slate-50/80">
                     <td className="px-4 py-3 font-medium text-slate-900">{row.full_name}</td>
                     <td className="px-4 py-3 text-slate-600">{row.email ?? "—"}</td>
@@ -429,6 +468,14 @@ export default function AdminUsersPage() {
             </tbody>
           </table>
         </div>
+
+        <PaginationBar
+          page={page}
+          totalPages={totalPages}
+          total={totalUsers}
+          pageSize={PAGE_SIZE}
+          onChange={setPage}
+        />
 
         <UserDetailModal
           open={Boolean(viewUser)}

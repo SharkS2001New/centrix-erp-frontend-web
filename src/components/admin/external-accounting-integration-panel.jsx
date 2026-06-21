@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useQueuedTask } from "@/lib/use-queued-task";
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
 
 const PROVIDER_LABELS = {
@@ -12,6 +13,7 @@ export function ExternalAccountingIntegrationPanel({ provider = "quickbooks", sa
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+  const { runQueuedTask, overlayNode } = useQueuedTask("Please wait while the export queue is processed…");
 
   const label = PROVIDER_LABELS[provider] ?? provider;
 
@@ -64,10 +66,14 @@ export function ExternalAccountingIntegrationPanel({ provider = "quickbooks", sa
     setWorking(true);
     setError(null);
     try {
-      const res = await apiRequest("/accounting/export-queue/process", {
-        method: "POST",
-        body: { provider },
-      });
+      const res = await runQueuedTask(
+        () =>
+          apiRequest("/accounting/export-queue/process", {
+            method: "POST",
+            body: { provider },
+          }),
+        { message: "Please wait while the export queue is processed…" },
+      );
       setMessage(`Export queue processed: ${res.exported ?? 0} exported, ${res.failed ?? 0} failed.`);
       await load();
     } catch (e) {
@@ -152,6 +158,7 @@ export function ExternalAccountingIntegrationPanel({ provider = "quickbooks", sa
           </div>
         </>
       )}
+      {overlayNode}
     </div>
   );
 }

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
 import {
   Field,
@@ -22,11 +24,8 @@ import {
   InventoryTableShell,
   movementLocationLabel,
   ProductCodeLink,
-  rowInDateRange,
   transactionTypeLabel,
 } from "@/components/inventory/inventory-shared";
-
-const PAGE_SIZE = 12;
 
 const TYPE_OPTIONS = [
   { value: "all", label: "All types" },
@@ -42,15 +41,16 @@ const TYPE_OPTIONS = [
   { value: "SUPPLIER_RETURN", label: "Supplier return" },
 ];
 
-function groupMovementsByProduct(rows, productByCode) {
+function groupMovementsByProduct(rows) {
   const map = new Map();
   for (const row of rows) {
     let group = map.get(row.product_code);
     if (!group) {
-      const product = productByCode.get(row.product_code);
+      const product = row.product;
       group = {
         product_code: row.product_code,
         product_name: product?.product_name ?? row.product_code,
+        unit_id: product?.unit_id,
         movements: [],
         netChange: 0,
         latestAt: row.created_at,
@@ -89,95 +89,98 @@ export default function InventoryTransactionsPage() {
   const branchId = user?.branch_id ?? 1;
 
   const [rows, setRows] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [totalMovements, setTotalMovements] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [uoms, setUoms] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(() => new Set());
 
   const initialRange = defaultDateRange(7);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [typeFilter, setTypeFilter] = useState(searchParams.get("type") || "all");
   const referenceIdFilter = searchParams.get("reference_id") || "";
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
   const [page, setPage] = useState(1);
 
-  const load = useCallback(async () => {
-    setError(null);
-    setLoading(true);
+  const loadReferenceData = useCallback(async () => {
     try {
-      const [txnRes, prodRes, uomRes, userRes] = await Promise.all([
-        apiRequest("/reports/stock-movement", {
-          searchParams: { branch_id: branchId, per_page: 300 },
-        }),
-        apiRequest("/products", { searchParams: { per_page: 500 } }),
+      const [uomRes, userRes] = await Promise.all([
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
         apiRequest("/users", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
       ]);
-      setRows(txnRes.data ?? []);
-      setProducts(prodRes.data ?? []);
       setUoms(uomRes.data ?? []);
       setUsers(userRes.data ?? []);
+    } catch {
+      /* non-blocking */
+    }
+  }, []);
+
+  const loadMovements = useCallback(async () => {
+    setError(null);
+    setListLoading(true);
+    try {
+      const extra = {
+        branch_id: branchId,
+        from_date: fromDate,
+        to_date: toDate,
+      };
+      if (typeFilter !== "all") extra.transaction_type = typeFilter;
+      if (referenceIdFilter) extra.reference_id = referenceIdFilter;
+
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: 48,
+        q: debouncedSearch,
+        extra,
+      });
+      const txnRes = await apiRequest("/reports/stock-movement", { searchParams: searchParamsApi });
+      const parsed = parsePaginator(txnRes);
+      setRows(parsed.items);
+      setTotalMovements(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load inventory movements");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [branchId]);
+  }, [branchId, fromDate, toDate, typeFilter, referenceIdFilter, page, debouncedSearch]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadReferenceData();
+  }, [loadReferenceData]);
+
+  useEffect(() => {
+    loadMovements();
+  }, [loadMovements]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, typeFilter, fromDate, toDate]);
 
   const uomByProduct = useMemo(() => {
     const uomById = new Map(uoms.map((u) => [u.id, u]));
     const map = new Map();
-    for (const p of products) {
-      map.set(p.product_code, uomById.get(p.unit_id));
+    for (const row of rows) {
+      if (!map.has(row.product_code)) {
+        map.set(row.product_code, uomById.get(row.product?.unit_id));
+      }
     }
     return map;
-  }, [products, uoms]);
+  }, [rows, uoms]);
 
-  const productByCode = useMemo(
-    () => new Map(products.map((p) => [p.product_code, p])),
-    [products],
-  );
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (!rowInDateRange(row, fromDate, toDate, ["created_at"])) return false;
-      if (typeFilter !== "all" && row.transaction_type !== typeFilter) return false;
-      if (referenceIdFilter && String(row.reference_id ?? "") !== referenceIdFilter) return false;
-      if (!q) return true;
-      const product = productByCode.get(row.product_code);
-      return (
-        row.product_code?.toLowerCase().includes(q) ||
-        product?.product_name?.toLowerCase().includes(q)
-      );
-    });
-  }, [rows, search, typeFilter, fromDate, toDate, productByCode, referenceIdFilter]);
-
-  const productGroups = useMemo(
-    () => groupMovementsByProduct(filtered, productByCode),
-    [filtered, productByCode],
-  );
-
-  const totalMovements = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(productGroups.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = productGroups.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const productGroups = useMemo(() => groupMovementsByProduct(rows), [rows]);
 
   useEffect(() => {
-    setPage(1);
-  }, [search, typeFilter, fromDate, toDate]);
-
-  useEffect(() => {
-    setExpanded(new Set(pageSlice.map((g) => g.product_code)));
-  }, [safePage, productGroups]);
+    setExpanded(new Set(productGroups.map((g) => g.product_code)));
+  }, [page, productGroups]);
 
   function toggleProduct(code) {
     setExpanded((prev) => {
@@ -227,8 +230,8 @@ export default function InventoryTransactionsPage() {
           options={TYPE_OPTIONS}
         />
         <p className="pb-2 text-xs text-slate-500">
-          {productGroups.length} product{productGroups.length === 1 ? "" : "s"} ·{" "}
-          {totalMovements} movement{totalMovements === 1 ? "" : "s"}
+          {productGroups.length} product{productGroups.length === 1 ? "" : "s"} on this page ·{" "}
+          {totalMovements} movement{totalMovements === 1 ? "" : "s"} total
         </p>
       </div>
 
@@ -241,12 +244,12 @@ export default function InventoryTransactionsPage() {
       <InventoryTableShell>
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading movements…</p>
-        ) : pageSlice.length === 0 ? (
+        ) : productGroups.length === 0 ? (
           <p className="px-4 py-12 text-center text-sm text-slate-500">No movements found.</p>
         ) : (
           <>
-            <ul className="divide-y divide-slate-200">
-              {pageSlice.map((group) => {
+            <ul className={`divide-y divide-slate-200 ${listLoading ? "opacity-60" : ""}`}>
+              {productGroups.map((group) => {
                 const isOpen = expanded.has(group.product_code);
                 const uom = uomByProduct.get(group.product_code);
                 const netLabel = formatStockQty(Math.abs(group.netChange), uom);
@@ -334,10 +337,10 @@ export default function InventoryTransactionsPage() {
               })}
             </ul>
             <PaginationBar
-              page={safePage}
+              page={page}
               totalPages={totalPages}
-              total={productGroups.length}
-              pageSize={PAGE_SIZE}
+              total={totalMovements}
+              pageSize={48}
               onChange={setPage}
             />
           </>

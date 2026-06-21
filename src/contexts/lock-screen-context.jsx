@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useAuth } from "@/contexts/auth-context";
@@ -15,16 +16,26 @@ import { isScreenLocked, setScreenLocked } from "@/lib/auth-storage";
 
 const LockScreenContext = createContext(null);
 
-/** Lock the app after this many milliseconds without user activity. */
-const IDLE_LOCK_MS = 10 * 60 * 1000;
-
 const IDLE_ACTIVITY_EVENTS = ["mousedown", "keydown", "touchstart", "click", "wheel", "scroll"];
 
+const DEFAULT_SCREEN_LOCK_MINUTES = 5;
+const DEFAULT_SESSION_IDLE_MINUTES = 60;
+
 export function LockScreenProvider({ children }) {
-  const { user, loading } = useAuth();
+  const { user, loading, logout, screenLockMinutes, sessionIdleMinutes } = useAuth();
   const [locked, setLocked] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const [error, setError] = useState(null);
+  const lockTimeoutRef = useRef(null);
+  const logoutTimeoutRef = useRef(null);
+  const lockedRef = useRef(false);
+
+  const lockMinutes = screenLockMinutes() || DEFAULT_SCREEN_LOCK_MINUTES;
+  const idleMinutes = sessionIdleMinutes() || DEFAULT_SESSION_IDLE_MINUTES;
+
+  useEffect(() => {
+    lockedRef.current = locked;
+  }, [locked]);
 
   useEffect(() => {
     if (!loading && user && isScreenLocked()) {
@@ -46,31 +57,54 @@ export function LockScreenProvider({ children }) {
     setError(null);
   }, []);
 
-  useEffect(() => {
-    if (loading || !user || locked) return undefined;
+  const clearIdleTimers = useCallback(() => {
+    if (lockTimeoutRef.current != null) {
+      window.clearTimeout(lockTimeoutRef.current);
+      lockTimeoutRef.current = null;
+    }
+    if (logoutTimeoutRef.current != null) {
+      window.clearTimeout(logoutTimeoutRef.current);
+      logoutTimeoutRef.current = null;
+    }
+  }, []);
 
-    let timeoutId = window.setTimeout(() => {
-      lockScreen();
-    }, IDLE_LOCK_MS);
+  const scheduleIdleTimers = useCallback(() => {
+    clearIdleTimers();
 
-    function resetIdleTimer() {
-      window.clearTimeout(timeoutId);
-      timeoutId = window.setTimeout(() => {
+    logoutTimeoutRef.current = window.setTimeout(() => {
+      void logout();
+    }, idleMinutes * 60 * 1000);
+
+    if (!lockedRef.current) {
+      lockTimeoutRef.current = window.setTimeout(() => {
         lockScreen();
-      }, IDLE_LOCK_MS);
+      }, lockMinutes * 60 * 1000);
+    }
+  }, [clearIdleTimers, idleMinutes, lockMinutes, lockScreen, logout]);
+
+  useEffect(() => {
+    if (loading || !user) {
+      clearIdleTimers();
+      return undefined;
+    }
+
+    scheduleIdleTimers();
+
+    function onActivity() {
+      scheduleIdleTimers();
     }
 
     IDLE_ACTIVITY_EVENTS.forEach((eventName) => {
-      window.addEventListener(eventName, resetIdleTimer, { passive: true });
+      window.addEventListener(eventName, onActivity, { passive: true });
     });
 
     return () => {
-      window.clearTimeout(timeoutId);
+      clearIdleTimers();
       IDLE_ACTIVITY_EVENTS.forEach((eventName) => {
-        window.removeEventListener(eventName, resetIdleTimer);
+        window.removeEventListener(eventName, onActivity);
       });
     };
-  }, [loading, user, locked, lockScreen]);
+  }, [loading, user, lockMinutes, idleMinutes, locked, scheduleIdleTimers, clearIdleTimers]);
 
   const unlockScreen = useCallback(async (password) => {
     setUnlocking(true);

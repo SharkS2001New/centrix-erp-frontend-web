@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   CatalogPageShell,
   FilterSelect,
@@ -27,34 +29,30 @@ function PlusIcon() {
 export default function LpoListPage() {
   const [dashboard, setDashboard] = useState(null);
   const [rows, setRows] = useState([]);
+  const [totalRows, setTotalRows] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [suppliers, setSuppliers] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [supplierFilter, setSupplierFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
 
-  const loadData = useCallback(async () => {
-    setError(null);
+  const loadReferenceData = useCallback(async () => {
     try {
-      const params = { per_page: 200 };
-      if (search.trim()) params.q = search.trim();
-      if (supplierFilter !== "all") params.supplier_id = supplierFilter;
-      if (statusFilter !== "all") params.status_code = statusFilter;
-
-      const [dashRes, listRes, supRes, statusRes] = await Promise.all([
+      const [dashRes, supRes, statusRes] = await Promise.all([
         apiRequest("/lpo-mst/dashboard"),
-        apiRequest("/lpo-mst", { searchParams: params }),
         apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
         apiRequest("/lpo-statuses", { searchParams: { per_page: 50 } }).catch(() => ({
           data: [],
         })),
       ]);
       setDashboard(dashRes);
-      setRows(listRes.data ?? []);
       setSuppliers(supRes.data ?? []);
       setStatuses(statusRes.data ?? statusRes ?? []);
     } catch (e) {
@@ -62,19 +60,45 @@ export default function LpoListPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, supplierFilter, statusFilter]);
+  }, []);
+
+  const loadRows = useCallback(async () => {
+    setListLoading(true);
+    setError(null);
+    try {
+      const extra = {};
+      if (supplierFilter !== "all") extra.supplier_id = supplierFilter;
+      if (statusFilter !== "all") extra.status_code = statusFilter;
+
+      const searchParams = buildPageParams({
+        page,
+        perPage: PAGE_SIZE,
+        q: debouncedSearch,
+        extra,
+      });
+      const listRes = await apiRequest("/lpo-mst", { searchParams });
+      const parsed = parsePaginator(listRes);
+      setRows(parsed.items);
+      setTotalRows(parsed.total);
+      setTotalPages(parsed.totalPages);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load purchase orders");
+    } finally {
+      setListLoading(false);
+    }
+  }, [page, debouncedSearch, supplierFilter, statusFilter]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadReferenceData();
+  }, [loadReferenceData]);
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  useEffect(() => {
+    loadRows();
+  }, [loadRows]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, supplierFilter, statusFilter]);
+  }, [debouncedSearch, supplierFilter, statusFilter]);
 
   const statusOptions = useMemo(
     () => [
@@ -164,14 +188,14 @@ export default function LpoListPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageSlice.length === 0 ? (
+                  {rows.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
                         No purchase orders found.
                       </td>
                     </tr>
                   ) : (
-                    pageSlice.map((row) => (
+                    rows.map((row) => (
                       <tr
                         key={row.lpo_no}
                         className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
@@ -236,9 +260,9 @@ export default function LpoListPage() {
               </table>
             </div>
             <PaginationBar
-              page={safePage}
+              page={page}
               totalPages={totalPages}
-              total={rows.length}
+              total={totalRows}
               pageSize={PAGE_SIZE}
               onChange={setPage}
             />

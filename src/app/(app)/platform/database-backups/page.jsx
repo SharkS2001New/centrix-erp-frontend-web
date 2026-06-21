@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchBlob, apiRequest, ApiError } from "@/lib/api";
+import { useQueuedTask } from "@/lib/use-queued-task";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 
@@ -37,6 +38,7 @@ export default function PlatformDatabaseBackupsPage() {
   const [busyFilename, setBusyFilename] = useState(null);
   const [creating, setCreating] = useState(false);
   const [success, setSuccess] = useState(null);
+  const { runQueuedTask, overlayNode } = useQueuedTask("Please wait while the database backup runs…");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,13 +82,17 @@ export default function PlatformDatabaseBackupsPage() {
     setError(null);
     setSuccess(null);
     try {
-      const res = await apiRequest("/admin/database-backups", {
-        method: "POST",
-        body: {
-          send_email: true,
-          upload_google_drive: true,
-        },
-      });
+      const res = await runQueuedTask(
+        () =>
+          apiRequest("/admin/database-backups", {
+            method: "POST",
+            body: {
+              send_email: true,
+              upload_google_drive: true,
+            },
+          }),
+        { message: "Please wait while the database backup runs. This may take a minute on large databases…" },
+      );
       setSuccess(res.message ?? "Database backup completed.");
       await load();
     } catch (e) {
@@ -177,6 +183,7 @@ export default function PlatformDatabaseBackupsPage() {
           </div>
         )}
       </div>
+      {overlayNode}
     </CatalogPageShell>
   );
 }

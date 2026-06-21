@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
-import { CatalogPageShell, Field, PrimaryLink, inputClassName } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, Field, PaginationBar, PrimaryLink, inputClassName } from "@/components/catalog/catalog-shared";
 import { DashboardErrorBanner, DashboardSection, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
 import {
   FulfillmentAssignmentDialog,
@@ -21,6 +22,8 @@ function isoDate(d = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
+const DISPATCH_PAGE_SIZE = 25;
+
 export function DispatchBoardContent() {
   const router = useRouter();
   const { capabilities } = useAuth();
@@ -33,6 +36,9 @@ export function DispatchBoardContent() {
   const [runDate, setRunDate] = useState(() => isoDate());
   const [routeFilter, setRouteFilter] = useState("all");
   const [sales, setSales] = useState([]);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
   const [routes, setRoutes] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -46,15 +52,27 @@ export function DispatchBoardContent() {
     setError(null);
     setLoading(true);
     try {
+      const extra = {
+        dispatch_orders: 1,
+        with_items: 0,
+        required_date: runDate,
+        status_in: DISPATCH_READY_STATUSES.join(","),
+        exclude_statuses: "cancelled,completed,held,draft",
+      };
+      if (routeFilter !== "all") extra.route_id = routeFilter;
+
       const [salesRes, routeRes, driverRes, vehicleRes] = await Promise.all([
         apiRequest("/sales", {
-          searchParams: { per_page: 500, with_items: 0, exclude_status: "held", dispatch_orders: 1 },
+          searchParams: buildPageParams({ page, perPage: DISPATCH_PAGE_SIZE, extra }),
         }),
         apiRequest("/routes", { searchParams: { per_page: 200 } }),
         apiRequest("/drivers", { searchParams: { per_page: 200 } }),
         apiRequest("/vehicles", { searchParams: { per_page: 200 } }),
       ]);
-      setSales(salesRes.data ?? []);
+      const parsed = parsePaginator(salesRes);
+      setSales(parsed.items);
+      setTotalOrders(parsed.total);
+      setTotalPages(parsed.totalPages);
       setRoutes(routeRes.data ?? []);
       setDrivers(driverRes.data ?? []);
       setVehicles(vehicleRes.data ?? []);
@@ -63,7 +81,11 @@ export function DispatchBoardContent() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [runDate, routeFilter, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [runDate, routeFilter]);
 
   useEffect(() => {
     loadData();
@@ -73,17 +95,7 @@ export function DispatchBoardContent() {
   const driverById = useMemo(() => new Map(drivers.map((d) => [d.id, d])), [drivers]);
   const vehicleById = useMemo(() => new Map(vehicles.map((v) => [v.id, v])), [vehicles]);
 
-  const dispatchOrders = useMemo(() => {
-    return sales.filter((sale) => {
-      if (sale.deleted_at || sale.status === "cancelled" || sale.status === "completed") return false;
-      if (!DISPATCH_READY_STATUSES.includes(sale.status)) return false;
-      const ts = sale.required_date ?? sale.created_at;
-      if (!ts) return false;
-      if (isoDate(new Date(ts)) !== runDate) return false;
-      if (routeFilter !== "all" && String(sale.route_id) !== routeFilter) return false;
-      return true;
-    });
-  }, [sales, runDate, routeFilter]);
+  const dispatchOrders = sales;
 
   const groupedByRoute = useMemo(() => {
     const map = new Map();
@@ -324,6 +336,16 @@ export function DispatchBoardContent() {
           )}
         </div>
       )}
+
+      {!loading && totalOrders > 0 ? (
+        <PaginationBar
+          page={page}
+          totalPages={totalPages}
+          total={totalOrders}
+          pageSize={DISPATCH_PAGE_SIZE}
+          onChange={setPage}
+        />
+      ) : null}
 
       {selectedIds.size > 0 ? (
         <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-full border border-slate-200 bg-white px-5 py-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">

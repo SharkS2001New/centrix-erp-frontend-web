@@ -91,7 +91,8 @@ export function KraProductUploadToolbar({
   );
 }
 
-export async function uploadProductsToKra({ productCodes, all = false }) {
+/** Submit KRA registration (returns 202 + task_id when queued). */
+export async function submitKraProductRegistration({ productCodes, all = false }) {
   return apiRequest("/kra/register-products", {
     method: "POST",
     body: all ? { all: true } : { product_codes: productCodes },

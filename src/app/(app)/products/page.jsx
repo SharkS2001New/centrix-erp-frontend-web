@@ -4,12 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { DeleteProductDialog } from "@/components/products/delete-product-dialog";
 import { ProductImportExport } from "@/components/products/product-import-export";
 import {
   KraProductUploadToolbar,
-  uploadProductsToKra,
+  submitKraProductRegistration,
 } from "@/components/products/kra-product-upload-bar";
+import { useQueuedTask } from "@/lib/use-queued-task";
 import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
 import { resolveProductAudit } from "@/lib/product-audit";
@@ -208,6 +211,9 @@ export default function ProductsPage() {
   const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
   const selectionEnabled = kraDeviceEnabled && kraSelectMode;
   const [products, setProducts] = useState([]);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [catalogStats, setCatalogStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
@@ -217,6 +223,7 @@ export default function ProductsPage() {
   const [retailPackages, setRetailPackages] = useState([]);
   const [globalReorderThreshold, setGlobalReorderThreshold] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -225,6 +232,7 @@ export default function ProductsPage() {
   const [deleteError, setDeleteError] = useState(null);
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subCategoryFilter, setSubCategoryFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
@@ -235,6 +243,9 @@ export default function ProductsPage() {
   const [kraUploadBusy, setKraUploadBusy] = useState(false);
   const [kraUploadMessage, setKraUploadMessage] = useState(null);
   const [kraUploadError, setKraUploadError] = useState(null);
+  const { runQueuedTask: runKraTask, overlayNode: kraOverlay } = useQueuedTask(
+    "Please wait while products are registered on the KRA device…",
+  );
   const [collapsed, setCollapsed] = useState(new Set());
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsOpen, setColumnsOpen] = useState(false);
@@ -257,12 +268,11 @@ export default function ProductsPage() {
 
   const tableColCount = (selectionEnabled ? 1 : 0) + visibleColumns.length;
 
-  const loadData = useCallback(async () => {
+  const loadReferenceData = useCallback(async () => {
     setError(null);
     try {
-      const [prodRes, userRes, catRes, subRes, vatRes, uomRes, supRes, retailRes, settingsRes] =
+      const [userRes, catRes, subRes, vatRes, uomRes, supRes, retailRes, settingsRes, statsRes] =
         await Promise.all([
-          apiRequest("/products", { searchParams: { per_page: 200 } }),
           apiRequest("/users", { searchParams: { per_page: 200 } }),
           apiRequest("/categories", { searchParams: { per_page: 200 } }),
           apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
@@ -271,8 +281,8 @@ export default function ProductsPage() {
           apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
           apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }),
           apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
+          apiRequest("/products/catalog-summary").catch(() => null),
         ]);
-      setProducts(prodRes.data ?? []);
       setUsers(userRes.data ?? []);
       setCategories(catRes.data ?? []);
       setSubCategories(subRes.data ?? []);
@@ -280,6 +290,7 @@ export default function ProductsPage() {
       setUoms(uomRes.data ?? []);
       setSuppliers(supRes.data ?? []);
       setRetailPackages(retailRes.data ?? []);
+      if (statsRes) setCatalogStats(statsRes);
       const settingsRows = settingsRes?.data ?? settingsRes ?? [];
       const settings = Array.isArray(settingsRows) ? settingsRows[0] : settingsRows;
       const threshold = settings?.global_low_stock_threshold;
@@ -293,9 +304,60 @@ export default function ProductsPage() {
     }
   }, []);
 
+  const loadProducts = useCallback(async () => {
+    setListLoading(true);
+    setError(null);
+    try {
+      const searchParams = buildPageParams({
+        page,
+        perPage: PAGE_SIZE,
+        q: debouncedSearch,
+        filters: {
+          subcategory_id: subCategoryFilter !== "all" ? subCategoryFilter : undefined,
+          category_id: categoryFilter !== "all" ? categoryFilter : undefined,
+        },
+        extra: {
+          status:
+            activeFilter === "inactive" ? "inactive" : activeFilter === "all" ? "all" : "active",
+          stock_status: stockFilter !== "all" ? stockFilter : undefined,
+          pricing: pricingFilter !== "all" ? pricingFilter : undefined,
+        },
+      });
+      const prodRes = await apiRequest("/products", { searchParams });
+      const parsed = parsePaginator(prodRes);
+      setProducts(parsed.items);
+      setTotalProducts(parsed.total);
+      setTotalPages(parsed.totalPages);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load products");
+    } finally {
+      setListLoading(false);
+    }
+  }, [
+    page,
+    debouncedSearch,
+    categoryFilter,
+    subCategoryFilter,
+    stockFilter,
+    pricingFilter,
+    activeFilter,
+  ]);
+
+  const reloadAll = useCallback(async () => {
+    await Promise.all([
+      loadReferenceData(),
+      loadProducts(),
+    ]);
+  }, [loadReferenceData, loadProducts]);
+
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadReferenceData();
+  }, [loadReferenceData]);
+
+  useEffect(() => {
+    if (loading) return;
+    loadProducts();
+  }, [loading, loadProducts]);
 
   function openDeleteDialog(product) {
     setDeletingProduct(product);
@@ -313,7 +375,7 @@ export default function ProductsPage() {
       });
       setDeleteOpen(false);
       setDeletingProduct(null);
-      await loadData();
+      await reloadAll();
     } catch (e) {
       setDeleteError(e instanceof ApiError ? e.message : "Delete failed");
     } finally {
@@ -374,40 +436,20 @@ export default function ProductsPage() {
     ],
   );
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return enriched.filter((p) => {
-      if (q && !p.product_name?.toLowerCase().includes(q) && !p.product_code?.toLowerCase().includes(q)) {
-        return false;
-      }
-      if (categoryFilter !== "all" && String(p.category_id) !== categoryFilter) return false;
-      if (subCategoryFilter !== "all" && String(p.subcategory_id) !== subCategoryFilter) return false;
-      if (stockFilter !== "all" && p.stock_status !== stockFilter) return false;
-      if (pricingFilter === "retail" && p.pricing !== "Sells W/R") return false;
-      if (pricingFilter === "wholesale" && p.pricing !== "Wholesale") return false;
-      if (activeFilter === "active" && !p.is_active) return false;
-      if (activeFilter === "inactive" && p.is_active) return false;
-      return true;
-    });
-  }, [enriched, search, categoryFilter, subCategoryFilter, stockFilter, pricingFilter, activeFilter]);
-
   const stats = useMemo(() => {
-    const total = enriched.length;
-    const active = enriched.filter((p) => p.is_active).length;
-    const lowStock = enriched.filter((p) => p.stock_status === "low_stock").length;
-    const outOfStock = enriched.filter((p) => p.stock_status === "out_of_stock").length;
+    const total = catalogStats?.total ?? totalProducts;
+    const active = catalogStats?.active ?? total;
     return {
       total,
       active,
       activePct: total ? ((active / total) * 100).toFixed(1) : "0",
-      lowStock,
-      outOfStock,
+      lowStock: catalogStats?.low_stock ?? 0,
+      outOfStock: catalogStats?.out_of_stock ?? 0,
     };
-  }, [enriched]);
+  }, [catalogStats, totalProducts]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageSlice = enriched;
   const grouped = useMemo(() => groupProducts(pageSlice), [pageSlice]);
   const showCategoryHeaders = categoryFilter === "all";
 
@@ -418,11 +460,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, categoryFilter, subCategoryFilter, stockFilter, pricingFilter, activeFilter]);
-
-  useEffect(() => {
-    if (page !== safePage) setPage(safePage);
-  }, [page, safePage]);
+  }, [debouncedSearch, categoryFilter, subCategoryFilter, stockFilter, pricingFilter, activeFilter]);
 
   function toggleAll(checked) {
     if (checked) setSelected(new Set(pageSlice.map((p) => p.product_code)));
@@ -494,7 +532,10 @@ export default function ProductsPage() {
     setKraUploadMessage(null);
     setKraUploadError(null);
     try {
-      const res = await uploadProductsToKra({ productCodes: [...selected] });
+      const res = await runKraTask(
+        () => submitKraProductRegistration({ productCodes: [...selected] }),
+        { message: "Please wait while selected products are registered on the KRA device…" },
+      );
       setKraUploadMessage(
         res.message ??
           `Uploaded ${res.registered_count ?? selected.size} item(s) to KRA device.`,
@@ -511,7 +552,10 @@ export default function ProductsPage() {
     setKraUploadMessage(null);
     setKraUploadError(null);
     try {
-      const res = await uploadProductsToKra({ all: true });
+      const res = await runKraTask(
+        () => submitKraProductRegistration({ all: true }),
+        { message: "Please wait while the catalogue is registered on the KRA device…" },
+      );
       setKraUploadMessage(
         res.message ??
           `Uploaded ${res.registered_count ?? 0} item(s) to KRA device.`,
@@ -537,7 +581,7 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ProductImportExport products={filtered} onImported={loadData} />
+          <ProductImportExport products={enriched} onImported={reloadAll} />
           <PermissionGate permission={P.catalogue.products.create}>
             <Link
               href="/products/new"
@@ -556,7 +600,7 @@ export default function ProductsPage() {
             enabled={kraDeviceEnabled}
             selectMode={kraSelectMode}
             selectedCount={selected.size}
-            filteredCount={filtered.length}
+            filteredCount={totalProducts}
             busy={kraUploadBusy}
             message={kraUploadMessage}
             error={kraUploadError}
@@ -719,7 +763,7 @@ export default function ProductsPage() {
                         router.push(`/products/${encodeURIComponent(product.product_code)}/edit`)
                       }
                       onDelete={openDeleteDialog}
-                      onPriceSaved={loadData}
+                      onPriceSaved={reloadAll}
                     />
                   ))
                 )}
@@ -730,10 +774,11 @@ export default function ProductsPage() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-500">
             <p>
               Showing{" "}
-              {filtered.length === 0
+              {totalProducts === 0
                 ? "0"
-                : `${(safePage - 1) * PAGE_SIZE + 1}–${Math.min(safePage * PAGE_SIZE, filtered.length)}`}{" "}
-              of {filtered.length} products
+                : `${(safePage - 1) * PAGE_SIZE + 1}–${Math.min(safePage * PAGE_SIZE, totalProducts)}`}{" "}
+              of {totalProducts} products
+              {listLoading ? " · Updating…" : ""}
             </p>
             <Pagination page={safePage} totalPages={totalPages} onChange={setPage} />
           </div>
@@ -753,6 +798,7 @@ export default function ProductsPage() {
         }}
         onConfirm={confirmDelete}
       />
+      {kraOverlay}
     </div>
   );
 }

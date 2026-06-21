@@ -88,11 +88,13 @@ export function visibleOrgSettingsTabs(allTabs, capabilities, options = {}) {
 
 /** Build a capabilities-shaped object from platform organization show payload. */
 export function capabilitiesFromOrganizationPayload(payload) {
-  if (payload?.capabilities?.modules) {
-    return payload.capabilities;
+  const capabilities = payload?.capabilities;
+  if (capabilities?.modules && capabilities.screen_lock_minutes != null) {
+    return capabilities;
   }
 
-  const moduleSettings = payload?.capabilities?.module_settings ?? payload?.organization?.module_settings ?? {};
+  const moduleSettings = capabilities?.module_settings ?? payload?.organization?.module_settings ?? {};
+  const security = moduleSettings.security ?? {};
   const modules = payload?.effective_modules ?? payload?.capabilities?.modules ?? {};
   const finance = moduleSettings.finance ?? {};
   const ai = moduleSettings.ai ?? {};
@@ -101,6 +103,8 @@ export function capabilitiesFromOrganizationPayload(payload) {
   return {
     modules,
     module_settings: moduleSettings,
+    screen_lock_minutes: security.screen_lock_minutes ?? 5,
+    session_idle_minutes: security.session_idle_minutes ?? 60,
     mobile_orders_enabled: sales.enable_mobile_orders !== false,
     platform_mpesa_stk_enabled: finance.enable_mpesa_stk !== false,
     platform_kra_integration_enabled: finance.enable_kra_integration !== false,
