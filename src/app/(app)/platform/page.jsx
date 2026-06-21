@@ -39,6 +39,11 @@ export default function PlatformOverviewPage() {
               Active users
             </PrimaryButton>
           </Link>
+          <Link href="/platform/database-backups">
+            <PrimaryButton type="button" showIcon={false} className="!bg-slate-700 hover:!bg-slate-800">
+              Database backups
+            </PrimaryButton>
+          </Link>
           <Link href="/platform/organizations/new">
             <PrimaryButton type="button">Register organization</PrimaryButton>
           </Link>

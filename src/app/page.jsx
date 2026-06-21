@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getToken } from "@/lib/auth-storage";
+import { hasAuthSession } from "@/lib/auth-storage";
 import { useAuth } from "@/contexts/auth-context";
 import { buildAccessContext, resolveHomePath } from "@/lib/access-control";
 
@@ -12,7 +12,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!getToken()) {
+    if (!hasAuthSession()) {
       router.replace("/login");
       return;
     }

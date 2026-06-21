@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getToken } from "@/lib/auth-storage";
+import { apiFetchCredentials } from "@/lib/auth-config";
 import { apiBaseOrigin, resolveCustomerMediaUrl } from "@/lib/api";
 
 export function EntityPhotoDisplay({
@@ -34,7 +35,7 @@ export function EntityPhotoDisplay({
         try {
           const headers = { Accept: "image/*" };
           if (token) headers.Authorization = `Bearer ${token}`;
-          const res = await fetch(url, { headers });
+          const res = await fetch(url, { headers, credentials: apiFetchCredentials() });
           if (!res.ok) continue;
           const blob = await res.blob();
           if (!blob.type.startsWith("image/")) continue;

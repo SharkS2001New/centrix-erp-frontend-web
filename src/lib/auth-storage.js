@@ -1,3 +1,5 @@
+import { useCookieAuth } from "./auth-config";
+
 const TOKEN_KEY = "pos_erp_token";
 const USER_KEY = "pos_erp_user";
 const ORG_KEY = "pos_erp_organization";
@@ -8,11 +10,24 @@ const SCREEN_LOCKED_KEY = "pos_erp_screen_locked";
 
 export function getToken() {
   if (typeof window === "undefined") return null;
+  if (useCookieAuth) return null;
   return localStorage.getItem(TOKEN_KEY);
 }
 
+export function hasAuthSession() {
+  if (typeof window === "undefined") return false;
+  if (useCookieAuth) {
+    return Boolean(getStoredUser());
+  }
+  return Boolean(getToken() && getStoredUser());
+}
+
 export function setSession(token, user, organization = null, memberships = [], loginChannel = null) {
-  localStorage.setItem(TOKEN_KEY, token);
+  if (useCookieAuth) {
+    localStorage.removeItem(TOKEN_KEY);
+  } else if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  }
   localStorage.setItem(USER_KEY, JSON.stringify(user));
   if (organization) {
     localStorage.setItem(ORG_KEY, JSON.stringify(organization));

@@ -1,4 +1,5 @@
 import { getToken, clearSession, isScreenLocked } from "./auth-storage";
+import { apiFetchCredentials } from "./auth-config";
 
 const baseUrl = () =>
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
@@ -83,6 +84,7 @@ export async function apiRequest(path, options = {}) {
   const res = await fetch(url.toString(), {
     method: options.method ?? "GET",
     headers,
+    credentials: apiFetchCredentials(),
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
@@ -137,6 +139,7 @@ export async function apiUpload(path, file, fieldName = "image") {
   const res = await fetch(url.toString(), {
     method: "POST",
     headers,
+    credentials: apiFetchCredentials(),
     body: formData,
   });
 
@@ -174,7 +177,11 @@ export async function apiFetchBlob(path) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(url.toString(), { method: "GET", headers });
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers,
+    credentials: apiFetchCredentials(),
+  });
   if (!res.ok) {
     const text = await res.text();
     let data = null;
@@ -229,7 +236,12 @@ export async function capturePodDelivery(saleId, payload) {
   const headers = { Accept: "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(url.toString(), { method: "POST", headers, body: formData });
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers,
+    credentials: apiFetchCredentials(),
+    body: formData,
+  });
   const text = await res.text();
   let data = null;
   if (text) {
@@ -274,7 +286,12 @@ export async function apiUploadForm(path, fields, fileField = "file") {
   const headers = { Accept: "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(url.toString(), { method: "POST", headers, body: formData });
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers,
+    credentials: apiFetchCredentials(),
+    body: formData,
+  });
   const text = await res.text();
   let data = null;
   if (text) {

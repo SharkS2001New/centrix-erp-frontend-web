@@ -3,14 +3,14 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { getToken } from "@/lib/auth-storage";
+import { hasAuthSession } from "@/lib/auth-storage";
 
 export function AuthGuard({ children }) {
   const { loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !getToken()) {
+    if (!loading && !hasAuthSession()) {
       router.replace("/login");
     }
   }, [loading, router]);
@@ -23,7 +23,7 @@ export function AuthGuard({ children }) {
     );
   }
 
-  if (!getToken()) return null;
+  if (!hasAuthSession()) return null;
 
   return <>{children}</>;
 }

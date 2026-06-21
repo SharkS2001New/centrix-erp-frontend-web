@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { getToken } from "@/lib/auth-storage";
+import { hasAuthSession } from "@/lib/auth-storage";
 
 export function MustChangePasswordGuard({ children }) {
   const { user, loading } = useAuth();
@@ -11,7 +11,7 @@ export function MustChangePasswordGuard({ children }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (loading || !getToken()) return;
+    if (loading || !hasAuthSession()) return;
     if (user?.must_change_password && pathname !== "/change-password") {
       router.replace("/change-password");
     }

@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { getToken } from "@/lib/auth-storage";
+import { hasAuthSession } from "@/lib/auth-storage";
 import { P } from "@/lib/permission-codes";
 
 export function PosAuthGuard({ children }) {
@@ -12,11 +12,11 @@ export function PosAuthGuard({ children }) {
   const allowed = hasPermission(P.pos.terminal.view);
 
   useEffect(() => {
-    if (!loading && !getToken()) {
+    if (!loading && !hasAuthSession()) {
       router.replace("/login");
       return;
     }
-    if (!loading && getToken() && !allowed) {
+    if (!loading && hasAuthSession() && !allowed) {
       router.replace("/profile");
     }
   }, [allowed, loading, router]);
@@ -29,7 +29,7 @@ export function PosAuthGuard({ children }) {
     );
   }
 
-  if (!getToken() || !allowed) return null;
+  if (!hasAuthSession() || !allowed) return null;
 
   return <>{children}</>;
 }

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { getToken } from "@/lib/auth-storage";
+import { hasAuthSession } from "@/lib/auth-storage";
 import { ApiError, isSessionConflictError } from "@/lib/api";
 import {
   clearStoredCompanyCode,
@@ -54,7 +54,7 @@ function LoginForm() {
   }, []);
 
   useEffect(() => {
-    if (getToken()) {
+    if (hasAuthSession()) {
       router.replace("/dashboard");
     }
   }, [router]);

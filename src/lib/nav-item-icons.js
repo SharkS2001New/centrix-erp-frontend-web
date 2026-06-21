@@ -1,3 +1,5 @@
+import { formatNavLabel } from "@/lib/nav-label-format";
+
 /** @typedef {string} NavIconKey */
 
 /** Exact href → icon (most specific wins). */
@@ -6,6 +8,7 @@ export const NAV_HREF_ICONS = {
   // Platform
   "/platform": "platform",
   "/platform/active-users": "users",
+  "/platform/database-backups": "database",
   "/platform/organizations/new": "plus",
 
   // Dashboards
@@ -199,9 +202,15 @@ export function resolveNavHrefIcon(href) {
  * @returns {typeof item & { icon?: string }}
  */
 export function withNavItemIcon(item) {
-  if (!item?.href || item.icon) return item;
-  const icon = resolveNavHrefIcon(item.href);
-  return icon ? { ...item, icon } : item;
+  if (!item?.href) return item;
+  const next = {
+    ...item,
+    label: item.label ? formatNavLabel(item.label) : item.label,
+    group: item.group ? formatNavLabel(item.group) : item.group,
+  };
+  if (next.icon) return next;
+  const icon = resolveNavHrefIcon(next.href);
+  return icon ? { ...next, icon } : next;
 }
 
 /**
@@ -210,6 +219,7 @@ export function withNavItemIcon(item) {
 export function withNavItemIcons(sections) {
   return sections.map((section) => ({
     ...section,
+    label: section.label ? formatNavLabel(section.label) : section.label,
     items: section.items.map((item) => withNavItemIcon(item)),
   }));
 }

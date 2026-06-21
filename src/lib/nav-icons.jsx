@@ -36,6 +36,7 @@ export const NAV_BOOTSTRAP_ICONS = {
   users: "person-badge",
   settings: "gear",
   platform: "globe2",
+  database: "database-down",
   link: "link-45deg",
   building: "building",
   truck: "truck",

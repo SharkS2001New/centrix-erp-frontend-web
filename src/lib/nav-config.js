@@ -141,6 +141,7 @@ const NAV_SECTION_DEFINITIONS = [
     items: [
       { href: "/platform", label: "Overview", exact: true, superAdminOnly: true },
       { href: "/platform/active-users", label: "Active users", superAdminOnly: true },
+      { href: "/platform/database-backups", label: "Database backups", superAdminOnly: true },
       { href: "/platform/organizations/new", label: "Register organization", superAdminOnly: true },
     ],
   },

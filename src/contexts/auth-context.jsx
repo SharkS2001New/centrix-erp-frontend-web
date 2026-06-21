@@ -17,7 +17,7 @@ import {
   getStoredOrganization,
   getStoredUser,
   getStoredWorkspace,
-  getToken,
+  hasAuthSession,
   isScreenLocked,
   setSession,
   setStoredWorkspace,
@@ -82,9 +82,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    const token = getToken();
     const stored = getStoredUser();
-    if (!token || !stored) {
+    if (!hasAuthSession() || !stored) {
       setLoading(false);
       return;
     }
@@ -182,7 +181,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     try {
-      if (getToken()) {
+      if (hasAuthSession()) {
         await apiRequest("/auth/logout", { method: "POST" });
       }
     } catch {

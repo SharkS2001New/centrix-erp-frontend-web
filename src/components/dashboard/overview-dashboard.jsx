@@ -14,7 +14,7 @@ import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboar
 
 const MODULE_LINKS = [
   { key: "sales.backend", href: "/sales", title: "Sales", desc: "Orders and today's performance", permission: P.sales.dashboard.view },
-  { key: "sales.pos", href: "/sales/pos", title: "Create order", desc: "Search products, build a cart, and checkout", permission: P.pos.checkout.create },
+  { key: "sales.pos", href: "/sales/pos", title: "Create Order", desc: "Search products, build a cart, and checkout", permission: P.pos.checkout.create },
   { key: "inventory", href: "/inventory", title: "Inventory", desc: "Stock levels, receipts, and movements", permission: P.inventory.stock.view },
   { key: "customers_suppliers", href: "/customers", title: "Customers", desc: "Debtors, routes, and credit", permission: P.customers.customers.view },
   { key: "customers_suppliers", href: "/suppliers", title: "Suppliers", desc: "Purchasing and payables", permission: P.purchasing.suppliers.view },

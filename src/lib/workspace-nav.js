@@ -3,6 +3,7 @@ import { isOrgMobileSalesEnabled, isPosTillFloatRequired } from "@/lib/sales-set
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { isNavItemVisible, isNavSectionVisible, navSections } from "@/lib/nav-config";
 import { withNavItemIcon } from "@/lib/nav-item-icons";
+import { formatNavLabel } from "@/lib/nav-label-format";
 import { filterNavSectionsForWorkspace, defaultWorkspaceId } from "@/lib/workspaces";
 
 /**
@@ -22,7 +23,7 @@ export function buildWorkspaceNavSections({
   const salesOrderNavItems = salesOrderSidebarNavItems(workflow, { excludeMobile: true }).map((item) =>
     withNavItemIcon({
       href: item.href,
-      label: item.label,
+      label: formatNavLabel(item.label),
       module: "sales.backend",
       permission: "sales.orders.view",
       exact: item.slug === "all",
@@ -33,7 +34,7 @@ export function buildWorkspaceNavSections({
     ? [
         withNavItemIcon({
           href: "/sales/orders/queues/mobile",
-          label: "Mobile orders",
+          label: "Mobile Orders",
           module: "sales.backend",
           permission: "sales.orders.view",
           ordersNav: false,

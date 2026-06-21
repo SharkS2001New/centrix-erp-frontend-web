@@ -36,6 +36,7 @@ Login: **admin** / **password** (demo seeder).
 | Variable | Default |
 |----------|---------|
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000/api/v1` |
+| `NEXT_PUBLIC_USE_COOKIE_AUTH` | `false` locally; set `true` in production with API `WEB_COOKIE_AUTH=true` |
 | `NEXT_PUBLIC_COMPANY_CODE` | `DEMO` (organization for this install) |
 | `NEXT_PUBLIC_COMPANY_NAME` | Optional display name on login screen |
 
