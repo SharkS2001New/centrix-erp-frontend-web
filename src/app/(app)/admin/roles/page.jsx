@@ -21,6 +21,7 @@ export default function AdminRolesPage() {
   const { adminPath } = useAdminApi();
   const [roles, setRoles] = useState([]);
   const [permissionGroups, setPermissionGroups] = useState([]);
+  const [permissionApplications, setPermissionApplications] = useState([]);
   const [selectedRoleId, setSelectedRoleId] = useState(null);
   const [assignedIds, setAssignedIds] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
@@ -40,12 +41,13 @@ export default function AdminRolesPage() {
   const loadRoles = useCallback(async () => {
     const res = await apiRequest(adminPath("/roles"), { searchParams: { per_page: 200 } });
     return res.data ?? [];
-  }, []);
+  }, [adminPath]);
 
   const loadPermissionsCatalog = useCallback(async () => {
     const res = await apiRequest(adminPath("/roles/permissions/matrix"));
+    setPermissionApplications(res.applications ?? []);
     setPermissionGroups(res.groups ?? []);
-  }, []);
+  }, [adminPath]);
 
   const loadRolePermissions = useCallback(async (roleId) => {
     const id = normalizeRoleId(roleId);
@@ -289,9 +291,10 @@ export default function AdminRolesPage() {
 
               <div className="overflow-x-auto p-5">
                 <p className="theme-subtext mb-3 text-xs font-semibold uppercase tracking-wide">
-                  Permissions by module & feature
+                  Permissions by application & module
                 </p>
                 <PermissionMatrix
+                  applications={permissionApplications}
                   groups={permissionGroups}
                   assignedIds={assignedIds}
                   onToggle={togglePermission}

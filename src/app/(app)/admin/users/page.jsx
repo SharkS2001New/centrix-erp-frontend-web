@@ -65,6 +65,7 @@ export default function AdminUsersPage() {
   const [routes, setRoutes] = useState([]);
   const [permissions, setPermissions] = useState([]);
   const [permissionGroups, setPermissionGroups] = useState([]);
+  const [permissionApplications, setPermissionApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
@@ -110,6 +111,7 @@ export default function AdminUsersPage() {
       setRoles(roleRes.data ?? []);
       setRoutes(filterByOrganization(routeRes.data ?? [], organizationId));
       setPermissions(matrixRes.permissions ?? []);
+      setPermissionApplications(matrixRes.applications ?? []);
       setPermissionGroups(matrixRes.groups ?? []);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load users");
@@ -434,6 +436,7 @@ export default function AdminUsersPage() {
           roleName={viewRoleName}
           branchName={viewUser ? branchById.get(viewUser.branch_id)?.branch_name : null}
           matrix={matrix}
+          permissionApplications={permissionApplications}
           permissionGroups={permissionGroups}
           rolePermissionIds={rolePermissionIds}
           grantedIds={grantedIds}
