@@ -13,6 +13,7 @@ import {
 } from "@/components/admin/organization-register-form";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { buildDomainChildrenMap, patchEnabledModules } from "@/lib/module-registry";
+import { applicationsFromEnabledModules } from "@/lib/workspace-modules";
 
 export default function RegisterOrganizationPage() {
   const { capabilities } = useAuth();
@@ -62,7 +63,7 @@ export default function RegisterOrganizationPage() {
           : profiles[0]?.key;
         if (initialProfile) {
           setDeploymentProfile(initialProfile);
-          setEnabledModules(modulesForProfile(profiles, initialProfile, modules));
+          setEnabledModules(modulesForProfile(profiles, initialProfile, modules, defaultSalesPlatformState(initialProfile).enable_mobile_orders !== false));
           setSalesPlatform(defaultSalesPlatformState(initialProfile));
         }
       })
@@ -88,7 +89,7 @@ export default function RegisterOrganizationPage() {
 
   function onProfileChange(nextProfile) {
     setDeploymentProfile(nextProfile);
-    setEnabledModules(modulesForProfile(profilePresets, nextProfile, moduleOptions));
+    setEnabledModules(modulesForProfile(profilePresets, nextProfile, moduleOptions, salesPlatform?.enable_mobile_orders !== false));
     setSalesPlatform(defaultSalesPlatformState(nextProfile));
   }
 
@@ -128,7 +129,7 @@ export default function RegisterOrganizationPage() {
           org_pin: orgPin || null,
           vat_regno: vatRegno || null,
           deployment_profile: deploymentProfile,
-          enabled_modules: enabledModules,
+          applications: applicationsFromEnabledModules(enabledModules),
           sales_platform: salesPlatform,
           admin_username: managerUsername,
           admin_email: managerEmail,

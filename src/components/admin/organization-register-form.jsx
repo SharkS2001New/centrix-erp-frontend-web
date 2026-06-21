@@ -6,6 +6,7 @@ import {
   buildDomainChildrenMap,
   normalizeDomainModules,
 } from "@/lib/module-registry";
+import { modulesFromApplications } from "@/lib/workspace-modules";
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]";
@@ -21,8 +22,11 @@ export function OrgRegisterField({ label, children, className = "" }) {
 
 export { inputClass };
 
-export function modulesForProfile(profiles, profileKey, moduleOptions = []) {
+export function modulesForProfile(profiles, profileKey, moduleOptions = [], mobileOrdersEnabled = true) {
   const profile = profiles.find((p) => p.key === profileKey);
+  if (profile?.applications) {
+    return modulesFromApplications(profile.applications, moduleOptions, mobileOrdersEnabled);
+  }
   const raw = profile?.modules ?? {};
   const map = buildDomainChildrenMap(moduleOptions);
   if (map.size === 0) {

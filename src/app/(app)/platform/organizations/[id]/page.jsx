@@ -13,6 +13,7 @@ import {
 } from "@/components/admin/organization-register-form";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { buildDomainChildrenMap, normalizeDomainModules, patchEnabledModules } from "@/lib/module-registry";
+import { applicationsFromEnabledModules } from "@/lib/workspace-modules";
 
 export default function ManageOrganizationPage() {
   const params = useParams();
@@ -112,7 +113,7 @@ export default function ManageOrganizationPage() {
 
   function onProfileChange(nextProfile) {
     setDeploymentProfile(nextProfile);
-    setEnabledModules(modulesForProfile(profilePresets, nextProfile, moduleOptions));
+    setEnabledModules(modulesForProfile(profilePresets, nextProfile, moduleOptions, salesPlatform?.enable_mobile_orders !== false));
   }
 
   function toggleModule(key) {
@@ -142,7 +143,7 @@ export default function ManageOrganizationPage() {
           org_pin: orgPin || null,
           vat_regno: vatRegno || null,
           deployment_profile: deploymentProfile,
-          enabled_modules: enabledModules,
+          applications: applicationsFromEnabledModules(enabledModules),
           sales_platform: salesPlatform,
           is_active: orgActive,
         },

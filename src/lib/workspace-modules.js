@@ -187,6 +187,29 @@ export function patchEnabledModulesForWorkspace(
   return next;
 }
 
+export function applicationsFromEnabledModules(enabledModules = {}) {
+  const out = {};
+  for (const ws of PROVISIONABLE_WORKSPACES) {
+    out[ws.id] = isProvisionableWorkspaceEnabled(ws, enabledModules);
+  }
+  return out;
+}
+
+export function modulesFromApplications(applications = {}, moduleOptions = [], mobileOrdersEnabled = true) {
+  const domainChildrenMap = buildDomainChildrenMap(moduleOptions);
+  let modules = {};
+  for (const ws of sortProvisionableWorkspaces()) {
+    modules = patchEnabledModulesForWorkspace(
+      modules,
+      ws.id,
+      Boolean(applications[ws.id]),
+      domainChildrenMap,
+      mobileOrdersEnabled,
+    );
+  }
+  return modules;
+}
+
 export function workspaceToggleIcon(iconKey) {
   return WORKSPACE_ICONS[iconKey] ?? WORKSPACE_ICONS.app;
 }
