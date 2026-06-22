@@ -868,7 +868,7 @@ const NAV_SECTION_DEFINITIONS = [
         href: "/admin/kra-responses",
         label: "KRA responses",
         module: "admin",
-        permission: P.admin.settings.view,
+        permission: P.admin.audit.view,
         orgAdminOnly: true,
       },
     ],

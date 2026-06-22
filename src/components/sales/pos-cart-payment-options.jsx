@@ -115,6 +115,14 @@ function formatMpesaTime(iso) {
   }
 }
 
+export function posCartPaymentPromptsEnabled({
+  enableVouchers = false,
+  enablePoints = false,
+  enableMpesa = false,
+} = {}) {
+  return Boolean(enableVouchers || enablePoints || enableMpesa);
+}
+
 export function PosCartPaymentOptions({
   cart,
   busy,
@@ -240,7 +248,6 @@ export function PosCartPaymentOptions({
   const hasPoints = Number(cart?.points_payment_amount ?? 0) > 0;
   const hasMpesaPayment = Number(cart?.mpesa_payment_amount ?? 0) > 0;
   const hasMpesaPhone = Boolean(String(cart?.mpesa_phone ?? "").trim());
-  const showSection = enableVouchers || enablePoints || enableMpesa;
 
   const payButtons = useMemo(() => {
     const items = [];
@@ -302,7 +309,7 @@ export function PosCartPaymentOptions({
     cart?.points_redeemed,
   ]);
 
-  if (!showSection) return null;
+  if (!payButtons.length) return null;
 
   const disabled = busy || working || !cart?.lines?.length;
 

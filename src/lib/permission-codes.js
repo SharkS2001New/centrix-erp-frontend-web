@@ -136,7 +136,6 @@ export const P = {
     users: { view: "admin.users.view" },
     roles: { view: "admin.roles.view" },
     audit: { view: "admin.audit.view" },
-    settings: { view: "admin.settings.view" },
     payment_methods: {
       view: "admin.payment_methods.view",
       create: "admin.payment_methods.create",

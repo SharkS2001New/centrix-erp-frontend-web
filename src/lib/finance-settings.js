@@ -46,6 +46,8 @@ export function mergeFinanceSettings(moduleSettings) {
 export function isPlatformMpesaStkEnabled(moduleSettings, capabilities) {
   if (capabilities?.platform_mpesa_stk_enabled === false) return false;
   const finance = mergeFinanceSettings(moduleSettings);
+  if (finance.enable_mpesa_stk === false) return false;
+  if (capabilities?.platform_mpesa_stk_enabled === true) return true;
   return finance.enable_mpesa_stk !== false;
 }
 
@@ -70,10 +72,11 @@ function parseBooleanSetting(value, defaultValue = true) {
 }
 
 export function isStkPushEnabled(moduleSettings, capabilities = null) {
-  if (moduleSettings == null) return false;
   if (!isPlatformMpesaStkEnabled(moduleSettings, capabilities)) return false;
-  const mpesa = mergeFinanceSettings(moduleSettings).mpesa ?? MPESA_DEFAULTS;
-  return parseBooleanSetting(mpesa.enable_stk_push, true);
+  if (moduleSettings == null) return false;
+  const finance = mergeFinanceSettings(moduleSettings);
+  if (!finance.mpesa) return false;
+  return parseBooleanSetting(finance.mpesa.enable_stk_push, true);
 }
 
 export function shouldSubmitKraOnCheckout(moduleSettings, capabilities = null) {

@@ -45,7 +45,11 @@ import {
   resolveSaveOrderStatus,
   resolveSaveOrderStatusLabel,
 } from "@/lib/sales-settings";
-import { isStkPushEnabled, shouldSubmitKraOnCheckout } from "@/lib/finance-settings";
+import {
+  isPlatformMpesaStkEnabled,
+  isStkPushEnabled,
+  shouldSubmitKraOnCheckout,
+} from "@/lib/finance-settings";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import {
   canAdjustCartLineQuantity,
@@ -63,7 +67,7 @@ import {
 import { findMergeableCartLine } from "@/lib/pos-cart-merge";
 import { PosPaymentPanel } from "./pos-payment-panel";
 import { PosProductSearch } from "./pos-product-search";
-import { PosCartPaymentOptions } from "./pos-cart-payment-options";
+import { PosCartPaymentOptions, posCartPaymentPromptsEnabled } from "./pos-cart-payment-options";
 import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
 import { PosSaveOrderDialog } from "./pos-save-order-dialog";
 import { PosLeaveGuardDialog } from "./pos-leave-guard-dialog";
@@ -160,8 +164,26 @@ export function PosScreen({ standalone = false }) {
   const enableOrderDiscount = posSalesConfig.enableOrderDiscount;
   const enableVouchers = posSalesConfig.enableVouchers;
   const enableRedeemablePoints = posSalesConfig.enableRedeemablePoints;
-  const enableMpesaOnPos = posSalesConfig.payment?.enableMpesaAmount;
+  const mpesaStkPlatformEnabled = isPlatformMpesaStkEnabled(
+    capabilities?.module_settings,
+    capabilities,
+  );
+  const enableMpesaOnPos =
+    mpesaStkPlatformEnabled && Boolean(posSalesConfig.payment?.enableMpesaAmount);
   const enableStkPushOnPos = isStkPushEnabled(capabilities?.module_settings, capabilities);
+  const showCartPaymentPrompts = posCartPaymentPromptsEnabled({
+    enableVouchers,
+    enablePoints: enableRedeemablePoints,
+    enableMpesa: enableMpesaOnPos,
+  });
+  const checkoutPaymentConfig = useMemo(() => {
+    if (mpesaStkPlatformEnabled) return posSalesConfig.payment;
+    return {
+      ...posSalesConfig.payment,
+      enableMpesaAmount: false,
+      enableMpesaCode: false,
+    };
+  }, [mpesaStkPlatformEnabled, posSalesConfig.payment]);
   const allowEditUnitPrice = posSalesConfig.allowEditUnitPrice;
   const enableBarcodeScanner = posSalesConfig.enableBarcodeScanner;
   const allowNegativeStock = posSalesConfig.allowNegativeStock;
@@ -2707,6 +2729,7 @@ export function PosScreen({ standalone = false }) {
             </div>
           </div>
 
+          {showCartPaymentPrompts ? (
           <div className="pos-payment-panel shrink-0 px-4 pb-4">
           <PosCartPaymentOptions
             cart={cart}
@@ -2722,6 +2745,7 @@ export function PosScreen({ standalone = false }) {
             onCompleteOrder={(updatedCart) => void handleMpesaOrderComplete(updatedCart)}
           />
           </div>
+          ) : null}
           </div>
         </div>
 
@@ -3106,7 +3130,7 @@ export function PosScreen({ standalone = false }) {
         billTotal={cartSummary.amountDue}
         channel={channel}
         workflow={channelWorkflow}
-        paymentConfig={posSalesConfig.payment}
+        paymentConfig={checkoutPaymentConfig}
         prefillMpesaAmount={cart?.mpesa_payment_amount}
         prefillMpesaCode={cart?.mpesa_transaction_code}
         lockMpesaFields={Number(cart?.mpesa_payment_amount ?? 0) > 0}

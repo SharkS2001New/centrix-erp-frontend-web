@@ -62,7 +62,7 @@ export function canAccessOrgAdminSettings({ organization, isSuperAdmin, hasPermi
   if (isOrgAdministrator(user, capabilities)) {
     return true;
   }
-  return hasPermission(P.admin.settings.view);
+  return hasPermission(P.admin.overview.view);
 }
 
 export function canAccessPlatformAdmin(isSuperAdmin) {

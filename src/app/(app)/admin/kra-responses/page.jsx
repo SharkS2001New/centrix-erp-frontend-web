@@ -12,11 +12,10 @@ import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platfor
 import { platformOrgSettingsHref } from "@/lib/platform-admin-nav";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { P } from "@/lib/permission-codes";
 
 export default function KraResponsesPage() {
   const { dateTime } = useOrgFormat();
-  const { capabilities, hasPermission } = useAuth();
+  const { capabilities } = useAuth();
   const { adminPath, isPlatformManaged, organizationId: platformOrgId, tenantCapabilities } = useAdminApi();
   const params = useParams();
   const [rows, setRows] = useState([]);
@@ -155,8 +154,7 @@ export default function KraResponsesPage() {
                     >
                       Details
                     </button>
-                    {(hasPermission(P.admin.settings.view) || isPlatformManaged) &&
-                    r.status !== "success" &&
+                    {r.status !== "success" &&
                     r.sale_id ? (
                       <>
                         {" · "}
