@@ -143,8 +143,8 @@ export function MobileApplicationSettingsPanel({ saving, setSaving, setError, se
                     />
                   </Field>
                   <Toggle
-                    label="Allow offline orders"
-                    description="Shows an offline order option on mobile checkout to skip location verification. Orders are marked as offline in the system."
+                    label="Allow checkout without location check"
+                    description="Lets reps place the order without GPS radius verification (e.g. customer has no coordinates or rep is outside radius). The order still saves online through the normal cart and checkout — pricing, stock, and payments are unchanged. The sale is flagged as location-not-verified."
                     checked={form.mobile_allow_offline_orders}
                     onChange={(v) => setForm((f) => ({ ...f, mobile_allow_offline_orders: v }))}
                   />

@@ -178,6 +178,7 @@ export function resolveTillReportBundle(source) {
   const report = {
     ...(nested ?? {}),
     sales: nested?.sales ?? source.sales ?? {},
+    till: nested?.till ?? source.till ?? {},
     payments: nested?.payments ?? source.payments ?? [],
     expected_cash: nested?.expected_cash ?? source.expected_cash,
     float_entries: nested?.float_entries ?? source.float_entries,

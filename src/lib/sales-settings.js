@@ -36,6 +36,7 @@ const SALES_DEFAULTS = {
   mobile_checkout_location_radius_metres: 5,
   mobile_enable_field_attendance: false,
   require_pos_till_float: false,
+  require_backoffice_till_float: false,
   blind_till_close: false,
   order_document_type: "receipt",
   invoice_valid_days: 7,
@@ -137,6 +138,7 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   add_route_markup_prices: false,
   pos_order_type_mode: "normal",
   blind_till_close: false,
+  require_backoffice_till_float: false,
   order_document_type: "receipt",
   invoice_valid_days: "7",
   show_branch_on_receipt: true,
@@ -174,6 +176,7 @@ export function salesOrganizationFormFromApi(res) {
     add_route_markup_prices: Boolean(sales.add_route_markup_prices),
     pos_order_type_mode: resolvePosOrderTypeMode(sales),
     blind_till_close: Boolean(sales.blind_till_close),
+    require_backoffice_till_float: Boolean(sales.require_backoffice_till_float),
     order_document_type: sales.order_document_type === "invoice" ? "invoice" : "receipt",
     invoice_valid_days: String(sales.invoice_valid_days ?? 7),
     show_branch_on_receipt: Boolean(sales.show_branch_on_receipt),
@@ -212,9 +215,14 @@ export function shouldShowMobileFieldAttendance(capabilities) {
   return Boolean(sales.mobile_enable_field_attendance);
 }
 
-/** When true, cashiers must open a till session with operating float before POS sales. */
+/** When true, cashiers must open a till session with operating float before external POS sales. */
 export function isPosTillFloatRequired(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).require_pos_till_float);
+}
+
+/** When true, backoffice create order requires an open till session with operating float. */
+export function isBackofficeTillFloatRequired(moduleSettings) {
+  return Boolean(mergeSalesSettings(moduleSettings).require_backoffice_till_float);
 }
 
 /** When true, cashiers count cash without seeing expected amount during close. */
@@ -336,6 +344,7 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
       ? resolvePosOrderTypeMode(sales)
       : "normal",
     requirePosTillFloat: Boolean(sales.require_pos_till_float),
+    requireBackofficeTillFloat: Boolean(sales.require_backoffice_till_float),
     blindTillClose: Boolean(sales.blind_till_close),
     receiptCopies: Number(sales.receipt_copies ?? 1),
     showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),

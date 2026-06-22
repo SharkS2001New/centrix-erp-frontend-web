@@ -5,7 +5,7 @@ import { apiRequest } from "@/lib/api";
 import { Field, FormModal, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
 import { formatSaleKes, getPaymentMethodKind } from "@/lib/sales";
 
-export function RecordSalePaymentModal({ open, onClose, saleId, balanceDue, onSaved }) {
+export function RecordSalePaymentModal({ open, onClose, saleId, balanceDue, floatSessionId = null, onSaved }) {
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [paymentMethodId, setPaymentMethodId] = useState("");
   const [amount, setAmount] = useState("");
@@ -42,6 +42,7 @@ export function RecordSalePaymentModal({ open, onClose, saleId, balanceDue, onSa
           payment_method_id: Number(paymentMethodId),
           amount: parseDecimalInput(amount),
           reference_number: reference.trim() || null,
+          ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
         },
       });
       await onSaved?.();

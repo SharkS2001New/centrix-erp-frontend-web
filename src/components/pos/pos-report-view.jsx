@@ -94,13 +94,15 @@ function CashMovementsSection({ report }) {
 
 export function PosReportView({ report, session, tillName, cashierName, showCashReconciliation = false, variance = null, showFloatBreakdown = false }) {
   const sales = report?.sales ?? {};
+  const till = report?.till ?? {};
 
   const salesItems = [
     { label: "Transactions", value: sales.transactions ?? 0 },
-    { label: "Gross sales", value: formatTillKes(sales.gross) },
-    { label: "Discounts", value: formatTillKes(sales.discounts) },
+    { label: "Net sales", value: formatTillKes(sales.net_sales ?? sales.net) },
     { label: "Refunds", value: formatTillKes(sales.refunds) },
-    { label: "Net sales", value: formatTillKes(sales.net) },
+    ...(Number(sales.debtor_collections) > 0
+      ? [{ label: "Debtor collections", value: formatTillKes(sales.debtor_collections) }]
+      : []),
   ];
 
   const paymentItems = paymentSummaryItems(report);
@@ -142,9 +144,12 @@ export function PosReportView({ report, session, tillName, cashierName, showCash
         <h2 className="text-sm font-medium text-slate-900">Cash summary</h2>
         <dl className="mt-4 space-y-2 text-sm">
           {showFloatBreakdown ? (
-            <div className="flex justify-between"><dt className="text-slate-500">Operating float</dt><dd className="font-medium">{formatTillKes(session?.working_amount)}</dd></div>
+            <div className="flex justify-between"><dt className="text-slate-500">Operating float</dt><dd className="font-medium">{formatTillKes(till.opening_float ?? session?.working_amount)}</dd></div>
           ) : null}
-          <div className="flex justify-between"><dt className="text-slate-500">Cash sales</dt><dd className="font-medium">{formatTillKes(sales.cash)}</dd></div>
+          <div className="flex justify-between"><dt className="text-slate-500">Cash collected</dt><dd className="font-medium">{formatTillKes(till.cash_collected ?? sales.cash)}</dd></div>
+          {showFloatBreakdown ? (
+            <div className="flex justify-between border-t border-slate-100 pt-2"><dt className="text-slate-500">Gross till total</dt><dd className="font-semibold text-slate-900">{formatTillKes(till.gross_total ?? (Number(till.opening_float ?? session?.working_amount ?? 0) + Number(till.cash_collected ?? sales.cash ?? 0)))}</dd></div>
+          ) : null}
           {Number(report?.session_expenses) > 0 ? (
             <div className="flex justify-between"><dt className="text-slate-500">Session expenses</dt><dd className="font-medium text-red-700">−{formatTillKes(report.session_expenses)}</dd></div>
           ) : null}

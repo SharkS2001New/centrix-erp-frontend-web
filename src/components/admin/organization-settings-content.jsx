@@ -559,6 +559,12 @@ export function OrganizationSettingsContent({
                 {hasPosSales ? (
                 <div className="mt-4 space-y-3">
                   <Toggle
+                    label="Require till float on backoffice create order"
+                    description="When on, staff using Sales → Create order must open a till session and declare operating float before checkout — same X/Z cash reconciliation as external POS. When off (default), backoffice orders never require a till session."
+                    checked={salesForm.require_backoffice_till_float}
+                    onChange={(v) => setSalesForm((f) => ({ ...f, require_backoffice_till_float: v }))}
+                  />
+                  <Toggle
                     label="Blind till close"
                     description="When on, cashiers count cash without seeing expected cash or variance during close. Variance appears on the Z report after closing."
                     checked={salesForm.blind_till_close}

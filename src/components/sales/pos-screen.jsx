@@ -36,6 +36,7 @@ import {
   formatProductDiscountLabel,
   productHasConfiguredDiscount,
 } from "@/lib/product-discount";
+import { lineProductVat } from "@/lib/sales-vat";
 import { formatSaleKes } from "@/lib/sales";
 import { getChannelWorkflow, workflowPipelineSteps } from "@/lib/order-workflow";
 import {
@@ -136,6 +137,7 @@ export function PosScreen({ standalone = false }) {
     openSession,
     addFloat,
     recordCashMovement,
+    recordSessionExpense,
     suspendSession,
     resumeSession,
     closeSession,
@@ -193,7 +195,10 @@ export function PosScreen({ standalone = false }) {
   const allowNegativeStock = posSalesConfig.allowNegativeStock;
   const addRouteMarkupPrices = posSalesConfig.addRouteMarkupPrices;
   const posOrderTypeMode = posSalesConfig.posOrderTypeMode;
-  const requirePosTillFloat = posSalesConfig.requirePosTillFloat;
+  const requireTillFloat = standalone
+    ? posSalesConfig.requireTillFloat
+    : posSalesConfig.requireBackofficeTillFloat;
+  const salesWorkspace = standalone ? "pos" : "backoffice";
   const blindTillClose = posSalesConfig.blindTillClose;
   const canChooseOrderType = addRouteMarkupPrices && posOrderTypeMode === "toggle";
   const lockedToRouteOrder = addRouteMarkupPrices && posOrderTypeMode === "route";
@@ -281,10 +286,10 @@ export function PosScreen({ standalone = false }) {
   );
 
   useEffect(() => {
-    if (!requirePosTillFloat || activeSession || suspendedSession || sessionLoading || zReportOpen) return;
+    if (!requireTillFloat || activeSession || suspendedSession || sessionLoading || zReportOpen) return;
     setFloatModalOpen(true);
     loadPosTillMeta();
-  }, [requirePosTillFloat, activeSession, suspendedSession, sessionLoading, zReportOpen, loadPosTillMeta]);
+  }, [requireTillFloat, activeSession, suspendedSession, sessionLoading, zReportOpen, loadPosTillMeta]);
 
   async function handlePosOpenSession(payload) {
     try {
@@ -386,7 +391,7 @@ export function PosScreen({ standalone = false }) {
     setZReportPayload(null);
     setZReportOpen(false);
     setZReportTillName(null);
-    if (requirePosTillFloat && !suspendedSession) {
+    if (requireTillFloat && !suspendedSession) {
       setFloatModalOpen(true);
       loadPosTillMeta();
     }
@@ -530,7 +535,7 @@ export function PosScreen({ standalone = false }) {
   const canUseSessionReports = Boolean(activeSession?.id);
   const showCartToolbar =
     !standalone &&
-    (heldOrdersCount > 0 || (requirePosTillFloat && activeSession));
+    (heldOrdersCount > 0 || (requireTillFloat && activeSession));
 
   const cartSummary = useMemo(() => {
     const rows = cart?.lines ?? [];
@@ -937,6 +942,7 @@ export function PosScreen({ standalone = false }) {
       uom: finalComputed.uomLabel || product.package_name,
       on_wholesale_retail: lineRetailStockFlag ? 1 : 0,
       discount_given: allowDiscounts ? finalComputed.discountApplied : 0,
+      product_vat: lineProductVat(product, finalComputed.lineAmount),
     };
 
     if (targetLineRef) {
@@ -1848,7 +1854,7 @@ export function PosScreen({ standalone = false }) {
 
   async function handleCheckout(body) {
     if (!cart?.id) return null;
-    if (requirePosTillFloat && !activeSession) {
+    if (requireTillFloat && !activeSession) {
       setPaymentError(
         suspendedSession
           ? "Resume your suspended session before completing sales."
@@ -1863,8 +1869,9 @@ export function PosScreen({ standalone = false }) {
         method: "POST",
         body: {
           ...body,
+          sales_workspace: salesWorkspace,
           submit_kra: shouldSubmitKraOnCheckout(capabilities?.module_settings, capabilities),
-          ...(requirePosTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
+          ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
         },
       });
       setCompletedSale(sale);
@@ -1992,7 +1999,8 @@ export function PosScreen({ standalone = false }) {
         method: "POST",
         body: {
           ...body,
-          ...(requirePosTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
+          sales_workspace: salesWorkspace,
+          ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
         },
       });
       setCompletedSale(sale);
@@ -2251,7 +2259,7 @@ export function PosScreen({ standalone = false }) {
                     </span>
                   ) : null}
                 </button>
-                {requirePosTillFloat && activeSession ? (
+                {requireTillFloat && activeSession ? (
                   <button
                     type="button"
                     disabled={busy}
@@ -2285,7 +2293,7 @@ export function PosScreen({ standalone = false }) {
                 >
                   Reprint last receipt
                 </button>
-                {showStandaloneTillActions && requirePosTillFloat ? (
+                {showStandaloneTillActions && requireTillFloat ? (
                   <>
                     <button
                       type="button"
@@ -2337,7 +2345,7 @@ export function PosScreen({ standalone = false }) {
         </>
       ) : null}
 
-      {!requirePosTillFloat || activeSession ? null : suspendedSession ? (
+      {!requireTillFloat || activeSession ? null : suspendedSession ? (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-3 py-2">
           <p className="text-xs text-amber-900">
             Session #{suspendedSession.id} is suspended — resume to continue selling.
@@ -2375,7 +2383,7 @@ export function PosScreen({ standalone = false }) {
           !sessionLoading &&
           !zReportOpen &&
           floatModalOpen &&
-          (requirePosTillFloat || standalone)
+          (requireTillFloat || standalone)
         }
         onClose={() => {
           setSessionError(null);
@@ -2388,13 +2396,13 @@ export function PosScreen({ standalone = false }) {
         preferredTillId={preferredTillId}
         pendingTillLabel={pendingTillSuggestion?.till_name ?? pendingTillSuggestion?.till_number ?? null}
         autoAssignTill
-        requireTillFloat={requirePosTillFloat}
+        requireTillFloat={requireTillFloat}
         onOpen={handlePosOpenSession}
         busy={sessionBusy || posTillMetaLoading}
         error={sessionError}
-        title={requirePosTillFloat ? "Declare operating float" : "Open till session"}
+        title={requireTillFloat ? "Declare operating float" : "Open till session"}
         subtitle={
-          requirePosTillFloat
+          requireTillFloat
             ? "Your till is assigned automatically (Till01, Till02, …). Each till belongs to one cashier. Enter the cash you are starting with."
             : "Start a till session without operating float."
         }
@@ -2409,13 +2417,16 @@ export function PosScreen({ standalone = false }) {
         session={activeSession}
         tillName={activeTill ? tillDisplayName(activeTill) : null}
         cashierName={user?.full_name ?? user?.username ?? null}
-        canAddFloat={requirePosTillFloat}
+        canAddFloat={requireTillFloat}
         onAddFloat={handlePosAddFloat}
         addFloatBusy={sessionBusy}
         addFloatError={sessionError}
         onCashMovement={recordCashMovement}
         cashMovementBusy={sessionBusy}
         cashMovementError={sessionError}
+        onRecordExpense={activeSession ? recordSessionExpense : null}
+        recordExpenseBusy={sessionBusy}
+        recordExpenseError={sessionError}
       />
 
       <XReportModal
@@ -2428,7 +2439,7 @@ export function PosScreen({ standalone = false }) {
         report={sessionReport}
         tillName={activeTill ? tillDisplayName(activeTill) : null}
         cashierName={posCashierName}
-        showFloatBreakdown={requirePosTillFloat}
+        showFloatBreakdown={requireTillFloat}
         organizationName={organizationName}
         loading={xReportLoading}
         error={sessionError}
@@ -2445,7 +2456,7 @@ export function PosScreen({ standalone = false }) {
         closeSession={closeSession}
         busy={sessionBusy}
         error={sessionError}
-        requireTillFloat={requirePosTillFloat}
+        requireTillFloat={requireTillFloat}
         blindTillClose={blindTillClose}
         onClosed={handleSessionClosed}
       />
@@ -2455,7 +2466,7 @@ export function PosScreen({ standalone = false }) {
         onClose={handleZReportClose}
         payload={zReportPayload}
         organizationName={organizationName}
-        showFloatBreakdown={requirePosTillFloat}
+        showFloatBreakdown={requireTillFloat}
         fallbackCashierName={posCashierName}
         fallbackTillName={zReportTillName}
       />
@@ -2782,7 +2793,7 @@ export function PosScreen({ standalone = false }) {
                     </span>
                   </button>
                 ) : null}
-                {requirePosTillFloat && activeSession ? (
+                {requireTillFloat && activeSession ? (
                   <button
                     type="button"
                     disabled={busy}
@@ -2797,7 +2808,7 @@ export function PosScreen({ standalone = false }) {
                 ) : null}
               </>
             ) : null}
-            {!standalone && requirePosTillFloat && activeSession && hasPosTill ? (
+            {!standalone && requireTillFloat && activeSession && hasPosTill ? (
               <>
                 <button
                   type="button"

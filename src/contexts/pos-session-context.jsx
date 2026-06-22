@@ -215,6 +215,39 @@ export function PosSessionProvider({ children }) {
     [activeSession, refreshReport],
   );
 
+  const recordSessionExpense = useCallback(
+    async ({ expense_group_id, expense_amount, description, payment_method_id }) => {
+      if (!activeSession?.id) return null;
+      setBusy(true);
+      setError(null);
+      try {
+        await apiRequest(`/pos/sessions/${activeSession.id}/expenses`, {
+          method: "POST",
+          body: {
+            expense_group_id: Number(expense_group_id),
+            expense_amount: Number(expense_amount),
+            description: description?.trim() || null,
+            payment_method_id: Number(payment_method_id),
+          },
+        });
+        await refreshReport(activeSession.id);
+        const verified = await verifySession(activeSession);
+        if (verified) {
+          setStoredActiveSession(verified);
+          setActiveSession(verified);
+        }
+        return true;
+      } catch (e) {
+        const message = e instanceof ApiError ? e.message : "Could not record expense";
+        setError(message);
+        throw e;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [activeSession, refreshReport, verifySession],
+  );
+
   const refreshActiveSession = useCallback(async () => {
     if (!activeSession?.id) return null;
     const verified = await verifySession(activeSession);
@@ -327,6 +360,7 @@ export function PosSessionProvider({ children }) {
       openSession,
       addFloat,
       recordCashMovement,
+      recordSessionExpense,
       suspendSession,
       resumeSession,
       closeSession,
@@ -350,6 +384,7 @@ export function PosSessionProvider({ children }) {
       openSession,
       addFloat,
       recordCashMovement,
+      recordSessionExpense,
       suspendSession,
       resumeSession,
       closeSession,

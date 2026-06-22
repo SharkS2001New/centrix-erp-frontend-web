@@ -161,6 +161,34 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
               checked={form.reserve_stock_on_cart}
               onChange={(v) => setForm((f) => ({ ...f, reserve_stock_on_cart: v }))}
             />
+            {form.reserve_stock_on_cart ? (
+              <Field label="Cart reservation time (minutes)">
+                <input
+                  type="number"
+                  min="0"
+                  max="15"
+                  step="1"
+                  className={`${inputClassName()} w-32`}
+                  value={form.cart_reservation_ttl_minutes}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === "") {
+                      setForm((f) => ({ ...f, cart_reservation_ttl_minutes: "" }));
+                      return;
+                    }
+                    const parsed = Math.min(15, Math.max(0, Number(raw) || 0));
+                    setForm((f) => ({
+                      ...f,
+                      cart_reservation_ttl_minutes: String(parsed),
+                    }));
+                  }}
+                  placeholder="15"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  How long stock stays held on an open cart (max 15 minutes). Use 0 to disable expiry.
+                </p>
+              </Field>
+            ) : null}
             <Toggle
               label="Enable barcode scanner"
               description="Scan SKU/barcode to add qty 1 directly to the cart on POS."

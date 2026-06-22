@@ -264,8 +264,8 @@ export function OrganizationPlatformSalesSettings({
             onChange={(v) => patch({ enable_mobile_orders: v })}
           />
           <Toggle
-            label="Require operating till float at POS"
-            description="When on, cashiers must open a till session and declare the operating float before POS sales. X reports, Z reports, and end-of-day sales include the float breakdown. When off, POS sells without a till session and X/Z reports are hidden."
+            label="Require operating till float at external POS"
+            description="When on, cashiers on the external POS workspace (/pos) must open a till session and declare operating float before sales. Backoffice create order uses a separate setting below. X/Z reports and end-of-day include float breakdown."
             checked={Boolean(salesPlatform?.require_pos_till_float)}
             onChange={(v) => patch({ require_pos_till_float: v })}
           />

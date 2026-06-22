@@ -57,6 +57,7 @@ export function printPosTillReport({
   const report = bundle.report ?? {};
   const printVariance = variance ?? bundle.variance;
   const sales = report.sales ?? {};
+  const till = report.till ?? {};
   const opened = session?.opened_at;
   const closed = session?.closed_at;
   const dateStr = opened
@@ -69,10 +70,11 @@ export function printPosTillReport({
 
   const rows = [
     line("Transactions", String(sales.transactions ?? 0)),
-    line("Gross Sales", formatTillKes(sales.gross).replace(/^KES\s*/, "")),
-    line("Discounts", formatTillKes(sales.discounts).replace(/^KES\s*/, "")),
+    line("Net Sales", formatTillKes(sales.net_sales ?? sales.net).replace(/^KES\s*/, "")),
     line("Refunds", formatTillKes(sales.refunds).replace(/^KES\s*/, "")),
-    line("Net Sales", formatTillKes(sales.net).replace(/^KES\s*/, "")),
+    ...(Number(sales.debtor_collections) > 0
+      ? [line("Debtor collections", formatTillKes(sales.debtor_collections).replace(/^KES\s*/, ""))]
+      : []),
   ].join("");
 
   const payments = paymentPrintLines(report);
@@ -113,6 +115,13 @@ export function printPosTillReport({
         ),
       ].join("")
     : [
+        ...(showFloatBreakdown
+          ? [
+              line("Operating float", formatTillKes(till.opening_float ?? session?.working_amount).replace(/^KES\s*/, "")),
+              line("Cash collected", formatTillKes(till.cash_collected ?? sales.cash).replace(/^KES\s*/, "")),
+              line("Gross till total", formatTillKes(till.gross_total).replace(/^KES\s*/, "")),
+            ]
+          : []),
         ...(Number(report?.session_expenses) > 0
           ? [line("Session expenses", formatTillKes(report.session_expenses).replace(/^KES\s*/, ""))]
           : []),

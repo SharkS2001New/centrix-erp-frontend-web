@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
+import { usePosSession } from "@/contexts/pos-session-context";
 import { formatShortDate, getSaleTimestamp } from "@/components/catalog/catalog-shared";
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import {
@@ -476,6 +477,7 @@ function ChevronDownIcon() {
 export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const router = useRouter();
   const { capabilities, refreshCapabilities } = useAuth();
+  const { floatSessionId } = usePosSession();
 
   const [sale, setSale] = useState(null);
   const [payments, setPayments] = useState([]);
@@ -991,6 +993,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         onClose={() => setPaymentModalOpen(false)}
         saleId={saleId}
         balanceDue={balanceDue}
+        floatSessionId={floatSessionId}
         onSaved={loadSale}
       />
 

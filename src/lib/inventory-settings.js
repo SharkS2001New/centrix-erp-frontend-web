@@ -17,6 +17,10 @@ export function inventoryFormFromApi(res) {
     default_distribution_sale_location:
       inv.default_distribution_sale_location === "shop" ? "shop" : "store",
     reserve_stock_on_cart: inv.reserve_stock_on_cart !== false,
+    cart_reservation_ttl_minutes:
+      inv.cart_reservation_ttl_minutes != null && inv.cart_reservation_ttl_minutes !== ""
+        ? String(Math.min(15, Math.max(0, Number(inv.cart_reservation_ttl_minutes) || 0)))
+        : "15",
     allow_sell_from_shop: Boolean(inv.allow_sell_from_shop),
     allow_sell_from_store: Boolean(inv.allow_sell_from_store),
     enable_retail_pricing: Boolean(inv.enable_retail_pricing),
@@ -39,6 +43,10 @@ export function inventoryPayloadFromForm(form) {
     default_pos_sale_location: form.default_pos_sale_location,
     default_distribution_sale_location: form.default_distribution_sale_location,
     reserve_stock_on_cart: Boolean(form.reserve_stock_on_cart),
+    cart_reservation_ttl_minutes: Math.min(
+      15,
+      Math.max(0, Number(form.cart_reservation_ttl_minutes) || 0),
+    ),
     allow_sell_from_shop: Boolean(form.allow_sell_from_shop),
     allow_sell_from_store: Boolean(form.allow_sell_from_store),
     enable_retail_pricing: Boolean(form.enable_retail_pricing),
