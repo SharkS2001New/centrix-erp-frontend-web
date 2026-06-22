@@ -43,10 +43,15 @@ function mapOrganizationToForm(org) {
   };
 }
 
+function organizationFromResponse(res) {
+  if (!res || typeof res !== "object") return null;
+  return res.organization ?? res;
+}
+
 const readOnlyClass = `${inputClassName()} cursor-not-allowed bg-slate-50 text-slate-700`;
 
 export default function AdminCompanyPage() {
-  const { user, organization: authOrganization, loading: authLoading } = useAuth();
+  const { organization: authOrganization, loading: authLoading } = useAuth();
   const {
     organizationId: platformOrgId,
     organizationPath,
@@ -54,8 +59,6 @@ export default function AdminCompanyPage() {
     logoFileUrl,
     organizationProfile,
   } = useAdminApi();
-  const organizationId =
-    platformOrgId ?? user?.organization_id ?? authOrganization?.id ?? organizationProfile?.id;
   const fileInputRef = useRef(null);
   const [orgId, setOrgId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -69,35 +72,31 @@ export default function AdminCompanyPage() {
   const load = useCallback(async () => {
     if (authLoading) return;
 
-    if (!organizationId) {
-      setLoading(false);
-      return;
-    }
-
     setError(null);
     setLoading(true);
     try {
-      const path = platformOrgId ? organizationPath("") : organizationPath(`/${organizationId}`);
-      const res = await apiRequest(path);
-      const org = res.organization ?? res;
+      const res = platformOrgId
+        ? await apiRequest(organizationPath(""))
+        : await apiRequest("/erp/organization/profile");
+      const org = organizationFromResponse(res);
+      if (!org?.id) {
+        throw new ApiError("Organization profile could not be loaded.", 422);
+      }
       setOrgId(org.id);
       setHasLogo(Boolean(org.has_logo));
       setForm(mapOrganizationToForm(org));
     } catch (e) {
+      const seed = organizationProfile ?? authOrganization;
+      if (seed?.id) {
+        setOrgId(seed.id);
+        setHasLogo(Boolean(seed.has_logo));
+        setForm(mapOrganizationToForm(seed));
+      }
       setError(e instanceof ApiError ? e.message : "Failed to load company profile");
     } finally {
       setLoading(false);
     }
-  }, [authLoading, organizationId, organizationPath, platformOrgId]);
-
-  useEffect(() => {
-    const seed = organizationProfile ?? authOrganization;
-    if (!seed) return;
-
-    setOrgId((current) => current ?? seed.id ?? null);
-    setHasLogo(Boolean(seed.has_logo));
-    setForm(mapOrganizationToForm(seed));
-  }, [authOrganization, organizationProfile]);
+  }, [authLoading, authOrganization, organizationPath, organizationProfile, platformOrgId]);
 
   useEffect(() => {
     load();
@@ -110,9 +109,9 @@ export default function AdminCompanyPage() {
     setError(null);
     setMessage(null);
     try {
-      const path = platformOrgId ? organizationPath("") : `/organizations/${orgId}`;
+      const path = platformOrgId ? organizationPath("") : "/erp/organization/profile";
       await apiRequest(path, {
-        method: platformOrgId ? "PATCH" : "PUT",
+        method: "PATCH",
         body: {
           org_name: form.org_name.trim(),
           primary_tel: form.primary_tel.trim(),

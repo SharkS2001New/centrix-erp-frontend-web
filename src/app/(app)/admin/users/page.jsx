@@ -108,24 +108,54 @@ export default function AdminUsersPage() {
     if (!organizationId) return;
     setError(null);
     try {
-      const [branchRes, roleRes, routeRes, matrixRes] = await Promise.all([
+      const requests = [
         apiRequest(adminPath("/branches"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
         apiRequest(adminPath("/roles"), { searchParams: { per_page: 200 } }),
-        apiRequest(adminPath("/routes"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
         apiRequest(adminPath("/roles/permissions/matrix")),
-      ]);
-      setBranches(filterByOrganization(branchRes.data, organizationId));
-      setRoles(roleRes.data ?? []);
-      setRoutes(filterByOrganization(routeRes.data ?? [], organizationId));
-      setPermissions(matrixRes.permissions ?? []);
-      setPermissionApplications(matrixRes.applications ?? []);
-      setPermissionGroups(matrixRes.groups ?? []);
+      ];
+
+      if (mobileOrdersEnabled) {
+        requests.push(
+          apiRequest(adminPath("/routes"), {
+            searchParams: { per_page: 200, ...orgListParams(organizationId) },
+          }),
+        );
+      }
+
+      const results = await Promise.allSettled(requests);
+      const [branchRes, roleRes, matrixRes, routeRes] = results;
+
+      if (branchRes.status === "rejected") {
+        throw branchRes.reason;
+      }
+      if (roleRes.status === "rejected") {
+        throw roleRes.reason;
+      }
+      if (matrixRes.status === "rejected") {
+        throw matrixRes.reason;
+      }
+
+      setBranches(filterByOrganization(branchRes.value.data, organizationId));
+      setRoles(roleRes.value.data ?? []);
+      setPermissions(matrixRes.value.permissions ?? []);
+      setPermissionApplications(matrixRes.value.applications ?? []);
+      setPermissionGroups(matrixRes.value.groups ?? []);
+
+      if (mobileOrdersEnabled) {
+        if (routeRes?.status === "fulfilled") {
+          setRoutes(filterByOrganization(routeRes.value.data ?? [], organizationId));
+        } else {
+          setRoutes([]);
+        }
+      } else {
+        setRoutes([]);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load users");
     } finally {
       setLoading(false);
     }
-  }, [organizationId, adminPath]);
+  }, [organizationId, adminPath, mobileOrdersEnabled]);
 
   const loadUsers = useCallback(async () => {
     if (!organizationId) return;
