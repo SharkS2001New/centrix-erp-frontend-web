@@ -26,12 +26,36 @@ const EMPTY_FORM = {
   vat_regno: "",
 };
 
+function mapOrganizationToForm(org) {
+  if (!org) return EMPTY_FORM;
+
+  return {
+    org_name: org.org_name ?? "",
+    company_code: org.company_code ?? "",
+    org_pin: org.org_pin ?? "",
+    org_email: org.org_email ?? "",
+    primary_tel: org.primary_tel ?? "",
+    secondary_tel: org.secondary_tel ?? "",
+    addn_tel1: org.addn_tel1 ?? "",
+    addn_tel2: org.addn_tel2 ?? "",
+    org_address: org.org_address ?? "",
+    vat_regno: org.vat_regno ?? "",
+  };
+}
+
 const readOnlyClass = `${inputClassName()} cursor-not-allowed bg-slate-50 text-slate-700`;
 
 export default function AdminCompanyPage() {
-  const { user, capabilities } = useAuth();
-  const { adminPath, organizationId: platformOrgId, organizationPath, logoUploadPath, logoFileUrl } = useAdminApi();
-  const organizationId = platformOrgId ?? user?.organization_id ?? capabilities?.organization_id;
+  const { user, organization: authOrganization, loading: authLoading } = useAuth();
+  const {
+    organizationId: platformOrgId,
+    organizationPath,
+    logoUploadPath,
+    logoFileUrl,
+    organizationProfile,
+  } = useAdminApi();
+  const organizationId =
+    platformOrgId ?? user?.organization_id ?? authOrganization?.id ?? organizationProfile?.id;
   const fileInputRef = useRef(null);
   const [orgId, setOrgId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -43,10 +67,13 @@ export default function AdminCompanyPage() {
   const [message, setMessage] = useState(null);
 
   const load = useCallback(async () => {
+    if (authLoading) return;
+
     if (!organizationId) {
       setLoading(false);
       return;
     }
+
     setError(null);
     setLoading(true);
     try {
@@ -55,24 +82,22 @@ export default function AdminCompanyPage() {
       const org = res.organization ?? res;
       setOrgId(org.id);
       setHasLogo(Boolean(org.has_logo));
-      setForm({
-        org_name: org.org_name ?? "",
-        company_code: org.company_code ?? "",
-        org_pin: org.org_pin ?? "",
-        org_email: org.org_email ?? "",
-        primary_tel: org.primary_tel ?? "",
-        secondary_tel: org.secondary_tel ?? "",
-        addn_tel1: org.addn_tel1 ?? "",
-        addn_tel2: org.addn_tel2 ?? "",
-        org_address: org.org_address ?? "",
-        vat_regno: org.vat_regno ?? "",
-      });
+      setForm(mapOrganizationToForm(org));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load company profile");
     } finally {
       setLoading(false);
     }
-  }, [organizationId, organizationPath, platformOrgId]);
+  }, [authLoading, organizationId, organizationPath, platformOrgId]);
+
+  useEffect(() => {
+    const seed = organizationProfile ?? authOrganization;
+    if (!seed) return;
+
+    setOrgId((current) => current ?? seed.id ?? null);
+    setHasLogo(Boolean(seed.has_logo));
+    setForm(mapOrganizationToForm(seed));
+  }, [authOrganization, organizationProfile]);
 
   useEffect(() => {
     load();
@@ -162,7 +187,7 @@ export default function AdminCompanyPage() {
         </p>
       ) : null}
 
-      {loading ? (
+      {loading || authLoading ? (
         <p className="text-sm text-slate-500">Loading…</p>
       ) : (
         <form onSubmit={handleSave} className="grid gap-6 lg:grid-cols-[1fr_220px]">
@@ -180,10 +205,12 @@ export default function AdminCompanyPage() {
                 </Field>
               </div>
               <Field label="Company code">
-                <input className={`${readOnlyClass} font-mono uppercase`} value={form.company_code} readOnly disabled />
+                <input className={`${readOnlyClass} font-mono uppercase`} value={form.company_code} readOnly />
+                <p className="mt-1 text-xs text-slate-500">Set at registration and cannot be changed.</p>
               </Field>
               <Field label="Billing email">
-                <input type="email" className={readOnlyClass} value={form.org_email} readOnly disabled />
+                <input type="email" className={readOnlyClass} value={form.org_email} readOnly />
+                <p className="mt-1 text-xs text-slate-500">Managed by platform administration.</p>
               </Field>
               <Field label="Phone *">
                 <input

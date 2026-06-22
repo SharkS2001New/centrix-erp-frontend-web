@@ -12,8 +12,8 @@ const BACKOFFICE_SALES_CHILDREN = ["sales.backend", "sales.dashboard", "sales.re
 export const PROVISIONABLE_WORKSPACES = [
   {
     id: "pos",
-    label: "External POS",
-    description: "Cashier checkout terminal, till sessions, and end of day. Turning this on also enables Backoffice.",
+    label: "External ERP",
+    description: "External POS terminal, mobile field sales, till sessions, and end of day. Turning this on also enables Backoffice.",
     icon: "pos",
   },
   {

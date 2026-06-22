@@ -86,8 +86,8 @@ export function OrganizationTenantProfile({
               className={`${inputClass} font-mono uppercase`}
               value={values.company_code ?? ""}
               readOnly
-              disabled
             />
+            <p className="mt-1 text-xs text-slate-500">Set at registration and cannot be changed.</p>
           </OrgRegisterField>
         )}
         <OrgRegisterField label="Company name *">

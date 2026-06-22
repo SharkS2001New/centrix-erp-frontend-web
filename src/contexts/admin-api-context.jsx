@@ -9,6 +9,7 @@ const AdminApiContext = createContext({
   organizationId: null,
   isPlatformManaged: false,
   tenantCapabilities: null,
+  organizationProfile: null,
   adminPath: (path) => path,
   organizationPath: (suffix = "") => "/organizations",
   logoUploadPath: (organizationId) => `/organizations/${organizationId}/logo`,
@@ -28,6 +29,7 @@ export function AdminApiProvider({ apiPrefix = "", organizationId = null, orgPay
       organizationId: organizationId ?? null,
       isPlatformManaged: Boolean(apiPrefix),
       tenantCapabilities,
+      organizationProfile: orgPayload?.organization ?? null,
       adminPath: (path) => (apiPrefix ? `${apiPrefix}${path}` : path),
       organizationPath: (suffix = "") =>
         apiPrefix ? `${apiPrefix}${suffix}` : `/organizations${suffix}`,
