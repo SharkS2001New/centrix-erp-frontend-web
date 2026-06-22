@@ -79,6 +79,53 @@ export function isStkPushEnabled(moduleSettings, capabilities = null) {
   return parseBooleanSetting(finance.mpesa.enable_stk_push, true);
 }
 
+export function accountingMode(moduleSettings) {
+  const finance = mergeFinanceSettings(moduleSettings);
+  return finance.accounting_mode === "external" ? "external" : "native";
+}
+
+export function usesNativeAccounting(moduleSettings) {
+  return accountingMode(moduleSettings) !== "external";
+}
+
+export function usesExternalAccounting(moduleSettings) {
+  return accountingMode(moduleSettings) === "external";
+}
+
+/** Routes that require the built-in general ledger (hidden when external accounting is enabled). */
+export const NATIVE_ACCOUNTING_ROUTE_PREFIXES = [
+  "/accounting/chart-of-accounts",
+  "/accounting/journal-entries",
+  "/accounting/general-ledger",
+  "/accounting/trial-balance",
+  "/accounting/balance-sheet",
+  "/accounting/profit-loss",
+  "/accounting/cash-flow",
+  "/accounting/fiscal-periods",
+  "/accounting/settings",
+];
+
+/** Routes for external accounting integration (hidden in native ledger mode). */
+export const EXTERNAL_ACCOUNTING_ROUTE_PREFIXES = [
+  "/accounting/export-queue",
+  "/accounting/account-mappings",
+];
+
+export function matchesAccountingRoutePrefix(pathname, prefixes) {
+  if (!pathname) return false;
+  return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+export function canAccessAccountingRoute(pathname, moduleSettings) {
+  if (matchesAccountingRoutePrefix(pathname, NATIVE_ACCOUNTING_ROUTE_PREFIXES)) {
+    return usesNativeAccounting(moduleSettings);
+  }
+  if (matchesAccountingRoutePrefix(pathname, EXTERNAL_ACCOUNTING_ROUTE_PREFIXES)) {
+    return usesExternalAccounting(moduleSettings);
+  }
+  return true;
+}
+
 export function shouldSubmitKraOnCheckout(moduleSettings, capabilities = null) {
   const finance = mergeFinanceSettings(moduleSettings);
   if (!isPlatformKraIntegrationEnabled(moduleSettings, capabilities)) {

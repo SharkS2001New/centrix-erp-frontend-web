@@ -4,6 +4,8 @@ import { shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
 import { anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-registry";
 import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled } from "@/lib/sales-settings";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
+import { usesExternalAccounting, usesNativeAccounting } from "@/lib/finance-settings";
+import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
 import { withNavItemIcons } from "@/lib/nav-item-icons";
 
 function buildReportNavItems() {
@@ -29,7 +31,7 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, group?: string, reportKey?: string }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, group?: string, reportKey?: string }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, items: NavItem[] }} NavSection */
 
@@ -422,6 +424,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.chart_of_accounts.view,
         group: "General ledger",
+        requireNativeAccounting: true,
       },
       {
         href: "/accounting/journal-entries",
@@ -429,6 +432,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.journal_entries.view,
         group: "General ledger",
+        requireNativeAccounting: true,
       },
       {
         href: "/accounting/general-ledger",
@@ -436,6 +440,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.general_ledger.view,
         group: "General ledger",
+        requireNativeAccounting: true,
       },
       {
         href: "/expenses",
@@ -450,6 +455,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.trial_balance.view,
         group: "Financial statements",
+        requireNativeAccounting: true,
       },
       {
         href: "/accounting/balance-sheet",
@@ -457,6 +463,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.balance_sheet.view,
         group: "Financial statements",
+        requireNativeAccounting: true,
       },
       {
         href: "/accounting/profit-loss",
@@ -464,6 +471,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.profit_loss.view,
         group: "Financial statements",
+        requireNativeAccounting: true,
       },
       {
         href: "/accounting/cash-flow",
@@ -471,6 +479,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.cash_flow.view,
         group: "Financial statements",
+        requireNativeAccounting: true,
       },
       {
         href: "/accounting/fiscal-periods",
@@ -478,6 +487,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.fiscal_periods.view,
         group: "Setup",
+        requireNativeAccounting: true,
       },
       {
         href: "/accounting/account-mappings",
@@ -485,6 +495,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.account_mappings.view,
         group: "Setup",
+        requireExternalAccounting: true,
       },
       {
         href: "/accounting/export-queue",
@@ -492,6 +503,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.export_queue.view,
         group: "Setup",
+        requireExternalAccounting: true,
       },
       {
         href: "/accounting/settings",
@@ -499,6 +511,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.settings.view,
         group: "Setup",
+        requireNativeAccounting: true,
       },
     ],
   },
@@ -589,6 +602,7 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Cash advances",
         module: "hr_payroll",
         permission: P.hr.cash_advances.view,
+        requireHrCashAdvances: true,
       },
     ],
   },
@@ -827,6 +841,9 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   if (item.requireUserMobileChannel && !userHasMobileChannel(user?.login_channels)) return false;
   if (item.requireOrgMobileSales && !isOrgMobileSalesEnabled(capabilities)) return false;
   if (item.requireAdmin && !user?.is_admin && !capabilities?.is_admin) return false;
+  if (item.requireNativeAccounting && !usesNativeAccounting(capabilities?.module_settings)) return false;
+  if (item.requireExternalAccounting && !usesExternalAccounting(capabilities?.module_settings)) return false;
+  if (item.requireHrCashAdvances && !isCashAdvanceDeductionsEnabled(capabilities?.module_settings)) return false;
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;
   if (item.moduleAny?.length) {
     if (!item.moduleAny.some((key) => isModuleEnabledForNav(key, isModuleEnabled))) return false;

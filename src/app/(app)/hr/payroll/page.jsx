@@ -31,6 +31,11 @@ import {
   StatutoryDeductionsPanel,
   suggestCurrentPayPeriodForm,
 } from "@/components/hr/hr-shared";
+import {
+  mergeHrPayrollSettings,
+  payrollGraceDays,
+  payrollRunFormDefaults,
+} from "@/lib/hr-settings";
 
 export default function PayrollPage() {
   const router = useRouter();
@@ -57,6 +62,16 @@ export default function PayrollPage() {
   const [periodSaving, setPeriodSaving] = useState(false);
   const [periodError, setPeriodError] = useState(null);
   const [runSchedule, setRunSchedule] = useState(null);
+
+  const hrSettings = useMemo(
+    () => mergeHrPayrollSettings(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
+
+  const graceDays = useMemo(
+    () => payrollGraceDays(capabilities?.module_settings, runSchedule),
+    [capabilities?.module_settings, runSchedule],
+  );
 
   const loadData = useCallback(async () => {
     setError(null);
@@ -137,8 +152,8 @@ export default function PayrollPage() {
     if (codes.size > 0) {
       return sortedPeriods.filter((p) => codes.has(p.period_code));
     }
-    return sortedPeriods.filter((p) => payPeriodRunnableToday(p));
-  }, [sortedPeriods, runSchedule]);
+    return sortedPeriods.filter((p) => payPeriodRunnableToday(p, new Date(), graceDays));
+  }, [sortedPeriods, runSchedule, graceDays]);
 
   const ensurePayPeriodForRun = useCallback(async () => {
     if (!organizationId) {
@@ -146,21 +161,27 @@ export default function PayrollPage() {
     }
     const res = await apiRequest("/pay-periods/ensure-runnable", { method: "POST" });
     const ensured = res.data ?? res.periods ?? [];
-    setRunSchedule(res.schedule ?? runSchedule);
+    const schedule = res.schedule ?? runSchedule;
+    setRunSchedule(schedule);
     setPeriods((prev) => {
       const byId = new Map(prev.map((p) => [p.id, p]));
       for (const p of ensured) byId.set(p.id, p);
       return [...byId.values()];
     });
-    const runnable = ensured.filter((p) => payPeriodRunnableToday(p));
+    const effectiveGrace = payrollGraceDays(capabilities?.module_settings, schedule);
+    const codes = new Set(schedule?.runnable_period_codes ?? []);
+    const runnable =
+      codes.size > 0
+        ? ensured.filter((p) => codes.has(p.period_code))
+        : ensured.filter((p) => payPeriodRunnableToday(p, new Date(), effectiveGrace));
     if (runnable.length === 0) {
       throw new Error(
-        res.schedule?.rules?.join(" ") ||
-          "Payroll cannot run today. Use the last day of the month or the first week of the next month for the prior period.",
+        schedule?.rules?.join(" ") ||
+          `Payroll cannot run today. Use the last day of the month or the first ${effectiveGrace} days of the next month for the prior period.`,
       );
     }
     return runnable;
-  }, [organizationId, runSchedule]);
+  }, [capabilities?.module_settings, organizationId, runSchedule]);
 
   async function openGenerateDrawer() {
     setRunError(null);
@@ -169,6 +190,7 @@ export default function PayrollPage() {
       const available = await ensurePayPeriodForRun();
       setRunForm({
         ...EMPTY_PAYROLL_RUN_FORM,
+        ...payrollRunFormDefaults(capabilities?.module_settings),
         pay_period_id: String(available[0]?.id ?? ""),
       });
       setRunDrawerOpen(true);
@@ -176,7 +198,10 @@ export default function PayrollPage() {
       setRunError(
         err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Could not prepare pay period",
       );
-      setRunForm(EMPTY_PAYROLL_RUN_FORM);
+      setRunForm({
+        ...EMPTY_PAYROLL_RUN_FORM,
+        ...payrollRunFormDefaults(capabilities?.module_settings),
+      });
       setRunDrawerOpen(true);
     } finally {
       setRunPreparing(false);
@@ -256,7 +281,10 @@ export default function PayrollPage() {
       });
       if (created.status === "pending_approval") {
         setRunDrawerOpen(false);
-        setRunForm(EMPTY_PAYROLL_RUN_FORM);
+        setRunForm({
+          ...EMPTY_PAYROLL_RUN_FORM,
+          ...payrollRunFormDefaults(capabilities?.module_settings),
+        });
         router.push(`/hr/payroll/runs/${created.id}`);
         return;
       }
@@ -267,12 +295,15 @@ export default function PayrollPage() {
           include_allowances: runForm.include_allowances,
           include_other_deductions: runForm.include_employee_deductions,
           include_deductions: runForm.include_employee_deductions,
-          include_overtime: runForm.include_overtime,
+          include_overtime: hrSettings.include_overtime_in_payroll ? runForm.include_overtime : false,
           use_attendance_proration: runForm.use_attendance_proration,
         },
       });
       setRunDrawerOpen(false);
-      setRunForm(EMPTY_PAYROLL_RUN_FORM);
+      setRunForm({
+        ...EMPTY_PAYROLL_RUN_FORM,
+        ...payrollRunFormDefaults(capabilities?.module_settings),
+      });
       router.push(`/hr/payroll/runs/${created.id}`);
     } catch (err) {
       setRunError(err instanceof ApiError ? err.message : "Failed to generate payroll");
@@ -572,7 +603,8 @@ export default function PayrollPage() {
             <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
               <p>
                 No pay period is available to run today. Payroll runs on the last day of the month
-                or during the first 7 days of the following month (for the previous month only).
+                or during the first {graceDays} day{graceDays === 1 ? "" : "s"} of the following month
+                (for the previous month only).
               </p>
               {runSchedule?.rules?.map((rule) => (
                 <p key={rule} className="text-xs text-amber-800">
@@ -633,36 +665,56 @@ export default function PayrollPage() {
             onChange={(e) =>
               setRunForm((p) => ({ ...p, use_attendance_proration: e.target.checked }))
             }
+            disabled={hrSettings.require_attendance_for_payroll}
             className="rounded border-slate-300"
           />
           Calculate basic pay from attendance, paid leave, and unpaid days off
+          {hrSettings.require_attendance_for_payroll ? (
+            <span className="text-xs text-slate-500">(required by organization settings)</span>
+          ) : null}
         </label>
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={runForm.include_overtime}
-            onChange={(e) =>
-              setRunForm((p) => ({ ...p, include_overtime: e.target.checked }))
-            }
-            className="rounded border-slate-300"
-          />
-          Include overtime pay in gross (approved and pending, not yet on a payroll run)
-        </label>
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={runForm.include_employee_deductions}
-            onChange={(e) =>
-              setRunForm((p) => ({ ...p, include_employee_deductions: e.target.checked }))
-            }
-            className="rounded border-slate-300"
-          />
-          Include other deductions (SACCO, cash advances — full amounts, not prorated)
-        </label>
+        {hrSettings.include_overtime_in_payroll ? (
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={runForm.include_overtime}
+              onChange={(e) =>
+                setRunForm((p) => ({ ...p, include_overtime: e.target.checked }))
+              }
+              className="rounded border-slate-300"
+            />
+            Include overtime pay in gross (approved and pending, not yet on a payroll run)
+          </label>
+        ) : (
+          <p className="text-xs text-slate-500">Overtime is excluded — disabled in HR organization settings.</p>
+        )}
+        {hrSettings.include_other_deductions_in_payroll ? (
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={runForm.include_employee_deductions}
+              onChange={(e) =>
+                setRunForm((p) => ({ ...p, include_employee_deductions: e.target.checked }))
+              }
+              className="rounded border-slate-300"
+            />
+            Include other deductions (SACCO
+            {hrSettings.enable_cash_advance_deductions && hrSettings.deduct_cash_advances_on_payroll
+              ? ", cash advances"
+              : ""}{" "}
+            — full amounts, not prorated)
+          </label>
+        ) : (
+          <p className="text-xs text-slate-500">
+            Other payroll deductions are excluded — disabled in HR organization settings.
+          </p>
+        )}
         <p className="text-xs text-slate-500">
           SACCO and similar types must use Apply to all employees or be assigned under Deductions.
-          Cash advances deduct the full balance (e.g. KES 2,500) per repayment rules. Only
-          employees with a work shift are included.
+          {hrSettings.enable_cash_advance_deductions && hrSettings.deduct_cash_advances_on_payroll
+            ? " Cash advances deduct the full balance (e.g. KES 2,500) per repayment rules."
+            : ""}{" "}
+          Only employees with a work shift are included.
         </p>
       </FormDrawer>
 

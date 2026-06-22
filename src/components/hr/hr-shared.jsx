@@ -851,8 +851,9 @@ export function payrollRunDeleteLockHint(run) {
 }
 
 /** Client-side check if a pay period may be run today (mirrors API schedule). */
-export function payPeriodRunnableToday(period, date = new Date()) {
+export function payPeriodRunnableToday(period, date = new Date(), graceDays = 7) {
   if (!period?.period_end) return false;
+  const grace = Math.max(1, Number(graceDays) || 7);
   const today = new Date(date);
   today.setHours(0, 0, 0, 0);
   const end = new Date(period.period_end);
@@ -867,7 +868,7 @@ export function payPeriodRunnableToday(period, date = new Date()) {
   const graceMonth = end.getMonth() === 11 ? 0 : end.getMonth() + 1;
   const graceYear = end.getMonth() === 11 ? end.getFullYear() + 1 : end.getFullYear();
   if (today.getFullYear() === graceYear && today.getMonth() === graceMonth) {
-    return today.getDate() <= 7;
+    return today.getDate() <= grace;
   }
   return false;
 }

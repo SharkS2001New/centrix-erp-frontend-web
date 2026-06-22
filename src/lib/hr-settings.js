@@ -19,6 +19,29 @@ export function mergeHrPayrollSettings(moduleSettings) {
   return { ...HR_PAYROLL_DEFAULTS, ...(moduleSettings?.hr_payroll ?? {}) };
 }
 
+export function isCashAdvanceDeductionsEnabled(moduleSettings) {
+  return Boolean(mergeHrPayrollSettings(moduleSettings).enable_cash_advance_deductions);
+}
+
+/** Defaults for the payroll generate drawer — aligned with org HR settings. */
+export function payrollRunFormDefaults(moduleSettings) {
+  const hr = mergeHrPayrollSettings(moduleSettings);
+  return {
+    include_allowances: true,
+    use_attendance_proration: hr.require_attendance_for_payroll,
+    include_overtime: hr.include_overtime_in_payroll,
+    include_employee_deductions: hr.include_other_deductions_in_payroll,
+  };
+}
+
+export function payrollGraceDays(moduleSettings, schedule) {
+  const fromSchedule = schedule?.grace_days_after_month_end;
+  if (fromSchedule != null && Number.isFinite(Number(fromSchedule))) {
+    return Number(fromSchedule);
+  }
+  return mergeHrPayrollSettings(moduleSettings).grace_days_after_month_end;
+}
+
 export function hrPayrollFormFromApi(res) {
   const hr = mergeHrPayrollSettings({ hr_payroll: res?.hr_payroll ?? res });
   return {

@@ -10,6 +10,8 @@ import { isReportModuleEnabled } from "@/lib/backoffice-finance-reports";
 import { anyReportsModuleEnabled } from "@/lib/module-registry";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { defaultWorkspaceId, pathBelongsToWorkspace } from "@/lib/workspaces";
+import { canAccessAccountingRoute } from "@/lib/finance-settings";
+import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
 
 function flattenNavItems() {
   const items = [];
@@ -68,6 +70,17 @@ export function canAccessRoute(pathname, ctx) {
 
   const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(ctx.capabilities, ctx);
   if (workspaceId && !pathBelongsToWorkspace(pathname, workspaceId)) {
+    return false;
+  }
+
+  if (!canAccessAccountingRoute(pathname, ctx.capabilities?.module_settings)) {
+    return false;
+  }
+
+  if (
+    (pathname === "/hr/cash-advances" || pathname.startsWith("/hr/cash-advances/")) &&
+    !isCashAdvanceDeductionsEnabled(ctx.capabilities?.module_settings)
+  ) {
     return false;
   }
 
