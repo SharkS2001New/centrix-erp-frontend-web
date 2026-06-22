@@ -198,7 +198,7 @@ export default function RegisterOrganizationPage() {
           </div>
         </div>
       ) : (
-        <form onSubmit={onSubmit} className="mt-6 max-w-3xl space-y-6">
+        <form onSubmit={onSubmit} className="mt-6 w-full min-w-0 space-y-6">
           {!provisioningEnabled ? (
             <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               Organization registration is disabled on this server. Set{" "}

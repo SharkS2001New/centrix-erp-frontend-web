@@ -187,7 +187,7 @@ export default function ManageOrganizationPage() {
       {loading ? (
         <p className="mt-6 text-sm text-slate-500">Loading…</p>
       ) : (
-        <div className="mt-6 max-w-3xl space-y-6">
+        <div className="mt-6 w-full min-w-0 space-y-6">
           {!administrationEnabled ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950">
               <p className="font-medium">Administration is disabled</p>

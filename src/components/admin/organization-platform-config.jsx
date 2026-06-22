@@ -350,19 +350,27 @@ const REGISTER_ORG_TABS = [
 
 function OrganizationConfigTabBar({ tabs, activeTab, onTabChange }) {
   return (
-    <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-0.5">
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          onClick={() => onTabChange(tab.id)}
-          className={`${PROFILE_TAB_BTN} ${
-            activeTab === tab.id ? PROFILE_TAB_BTN_ACTIVE : PROFILE_TAB_BTN_IDLE
-          }`}
-        >
-          {tab.label}
-        </button>
-      ))}
+    <div className="w-full overflow-x-auto">
+      <div
+        className="flex w-full min-w-[42rem] flex-nowrap gap-1 rounded-lg bg-slate-100 p-0.5"
+        role="tablist"
+        aria-label="Organization configuration"
+      >
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            onClick={() => onTabChange(tab.id)}
+            className={`${PROFILE_TAB_BTN} min-w-0 flex-1 shrink-0 whitespace-nowrap px-2 text-center sm:px-3 ${
+              activeTab === tab.id ? PROFILE_TAB_BTN_ACTIVE : PROFILE_TAB_BTN_IDLE
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -390,7 +398,7 @@ export function OrganizationConfigTabs({
   const [activeTab, setActiveTab] = useState("profile");
 
   return (
-    <div className="space-y-4">
+    <div className="w-full min-w-0 space-y-4">
       <OrganizationConfigTabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
       {activeTab === "profile" ? (
