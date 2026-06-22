@@ -18,6 +18,8 @@ export const HR_PAYROLL_DEFAULTS = {
   company_premises_longitude: null,
   company_premises_radius_metres: 5,
   company_face_match_threshold: 0.72,
+  company_fingerprint_match_threshold: 0.85,
+  company_mobile_verification_method: "face_or_fingerprint",
 };
 
 export function mergeHrPayrollSettings(moduleSettings) {
@@ -71,6 +73,13 @@ export function hrPayrollFormFromApi(res) {
     attendance_capture_mode: hr.attendance_capture_mode || "clock_device",
     company_premises_radius_metres: String(hr.company_premises_radius_metres ?? 5),
     company_face_match_threshold: String(hr.company_face_match_threshold ?? 0.72),
+    company_fingerprint_match_threshold: String(hr.company_fingerprint_match_threshold ?? 0.85),
+    company_mobile_verification_method:
+      hr.company_mobile_verification_method === "device_biometric"
+        ? "fingerprint"
+        : hr.company_mobile_verification_method === "face_or_device_biometric"
+          ? "face_or_fingerprint"
+          : hr.company_mobile_verification_method || "face_or_fingerprint",
   };
 }
 
@@ -93,5 +102,8 @@ export function hrPayrollPayloadFromForm(form) {
     attendance_capture_mode: form.attendance_capture_mode || "clock_device",
     company_premises_radius_metres: Number(form.company_premises_radius_metres) || 5,
     company_face_match_threshold: Number(form.company_face_match_threshold) || 0.72,
+    company_fingerprint_match_threshold: Number(form.company_fingerprint_match_threshold) || 0.85,
+    company_mobile_verification_method:
+      form.company_mobile_verification_method || "face_or_fingerprint",
   };
 }

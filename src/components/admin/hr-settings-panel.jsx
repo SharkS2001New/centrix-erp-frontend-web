@@ -167,17 +167,34 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
                   }
                 >
                   <option value="clock_device">Clock device (fingerprint terminals)</option>
-                  <option value="company_mobile">Company mobile (face + location on shared phone)</option>
+                  <option value="company_mobile">Company mobile (face or fingerprint on shared phone)</option>
                 </select>
                 <p className="mt-1 text-xs text-slate-500">
                   Company mobile uses registered phones only — one phone per branch when you have
-                  multiple branches. Set each branch&apos;s GPS premises on the HR Attendance page,
-                  then register each attendance phone with its branch after copying the Device ID
-                  from the app setup screen.
+                  multiple branches. Face scan matches each employee&apos;s enrolled face profile.
+                  Fingerprint uses a connected scanner and matches the employee&apos;s fingerprint
+                  saved in the system (first scan enrolls). Set branch GPS on HR Attendance, then
+                  register each phone with its branch.
                 </p>
               </Field>
               {form.attendance_capture_mode === "company_mobile" ? (
                 <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Phone verification">
+                    <select
+                      className={inputClassName()}
+                      value={form.company_mobile_verification_method}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          company_mobile_verification_method: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="face_or_fingerprint">Face scan or fingerprint</option>
+                      <option value="face">Face scan only</option>
+                      <option value="fingerprint">Fingerprint only</option>
+                    </select>
+                  </Field>
                   <Field label="Geofence radius (metres)">
                     <input
                       type="number"
@@ -201,6 +218,21 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
                       onChange={(e) =>
                         setForm((f) => ({ ...f, company_face_match_threshold: e.target.value }))
                       }
+                      disabled={form.company_mobile_verification_method === "fingerprint"}
+                    />
+                  </Field>
+                  <Field label="Fingerprint match threshold">
+                    <input
+                      type="number"
+                      min="0.5"
+                      max="0.99"
+                      step="0.01"
+                      className={inputClassName()}
+                      value={form.company_fingerprint_match_threshold}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, company_fingerprint_match_threshold: e.target.value }))
+                      }
+                      disabled={form.company_mobile_verification_method === "face"}
                     />
                   </Field>
                 </div>
