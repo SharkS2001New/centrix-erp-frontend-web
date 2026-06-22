@@ -85,6 +85,20 @@ export function AiActionForm({ formSpec, values, onChange, onSubmit, onCancel, l
           );
         }
 
+        if (field.type === "textarea") {
+          return (
+            <Field key={name} label={label} required={required}>
+              <textarea
+                className={`${inputClassName()} min-h-[72px]`}
+                value={val ?? ""}
+                required={required}
+                placeholder={field.placeholder ?? ""}
+                onChange={(e) => onChange(name, e.target.value)}
+              />
+            </Field>
+          );
+        }
+
         const inputType =
           field.type === "number" ? "number" : field.type === "email" ? "email" : field.type === "date" ? "date" : "text";
 

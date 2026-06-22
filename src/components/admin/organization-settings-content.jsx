@@ -18,6 +18,7 @@ import { NotificationsSettingsPanel } from "@/components/admin/notifications-set
 import { ProcurementSettingsPanel } from "@/components/admin/procurement-settings-panel";
 import { HrSettingsPanel } from "@/components/admin/hr-settings-panel";
 import { SecuritySettingsPanel } from "@/components/admin/security-settings-panel";
+import { LegacyArchiveSettingsPanel } from "@/components/admin/legacy-archive-settings-panel";
 import { visibleOrgSettingsTabs } from "@/lib/org-settings-tabs";
 import { PlatformConfiguredSalesSummary } from "@/components/admin/platform-configured-summary";
 import { isPlatformMpesaStkEnabled } from "@/lib/platform-org-features";
@@ -41,6 +42,7 @@ const TABS = [
   { id: "hr", label: "HR & Payroll" },
   { id: "notifications", label: "Notifications" },
   { id: "security", label: "Security" },
+  { id: "legacy-archive", label: "Legacy archive" },
 ];
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
@@ -590,6 +592,7 @@ export function OrganizationSettingsContent({
           {tab === "hr" ? <HrSettingsPanel {...panelProps} /> : null}
           {tab === "notifications" ? <NotificationsSettingsPanel {...panelProps} /> : null}
           {tab === "security" ? <SecuritySettingsPanel {...panelProps} /> : null}
+          {tab === "legacy-archive" ? <LegacyArchiveSettingsPanel {...panelProps} /> : null}
         </div>
       </div>
     </>

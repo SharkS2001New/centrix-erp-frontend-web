@@ -18,6 +18,7 @@ export const ORG_SETTINGS_TAB_MODULES = {
   hr: ["hr_payroll"],
   notifications: ["admin"],
   security: ["admin"],
+  "legacy-archive": ["admin"],
 };
 
 /** Tabs only shown when platform manages settings on behalf of a tenant without Administration. */
@@ -73,6 +74,9 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
 
     case "hr":
       return moduleEnabled(capabilities, "hr_payroll");
+
+    case "legacy-archive":
+      return platformManaged;
 
     default: {
       const required = ORG_SETTINGS_TAB_MODULES[tabId] ?? ["admin"];

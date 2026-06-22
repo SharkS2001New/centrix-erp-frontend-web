@@ -43,6 +43,7 @@ export {
   OrganizationTenantProfile,
   OrganizationUsersPanel,
   OrganizationStatusPanel,
+  OrganizationDeletePanel,
   PlatformFormSection,
   defaultSalesPlatformState,
   salesPlatformFromApi,

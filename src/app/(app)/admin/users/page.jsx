@@ -289,17 +289,20 @@ export default function AdminUsersPage() {
     }
     if (
       !window.confirm(
-        `Archive "${row.full_name}"? They will be hidden from this list and cannot sign in. Sales and audit history are kept.`,
+        `Delete "${row.full_name}"? Users with sales or activity history are archived; users without records are removed permanently.`,
       )
     ) {
       return;
     }
     try {
-      await apiRequest(adminPath(`/users/${row.id}`), { method: "DELETE" });
+      const res = await apiRequest(adminPath(`/users/${row.id}`), { method: "DELETE" });
       setViewUser(null);
       await reloadAll();
+      if (res?.message) {
+        setError(null);
+      }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to archive user");
+      setError(e instanceof ApiError ? e.message : "Failed to delete user");
     }
   }
 
@@ -488,7 +491,7 @@ export default function AdminUsersPage() {
                           </button>
                         ) : null}
                         <IconButton
-                          label="Archive user"
+                          label="Delete user"
                           danger
                           onClick={() => softDeleteUser(row)}
                           disabled={isProtectedUserAccount(row, user?.id)}
@@ -672,7 +675,7 @@ export default function AdminUsersPage() {
               ? editing.id === user?.id
                 ? "You cannot disable login on your own account."
                 : "Organization administrator accounts must stay enabled."
-              : "Disable login to block sign-in. Use Archive to soft-delete while keeping all history."}
+              : "Disable login to block sign-in. Delete removes users without activity permanently; users with sales history are archived."}
           </p>
         </FormDrawer>
       </CatalogPageShell>

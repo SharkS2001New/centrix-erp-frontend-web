@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { apiRequest, ApiError } from "@/lib/api";
+import { PasswordInput } from "@/components/auth/password-input";
 import {
   OrderWorkflowSettingsEditor,
   orderWorkflowFromApi,
@@ -17,6 +20,7 @@ import {
   sortProvisionableWorkspaces,
   workspaceToggleIcon,
 } from "@/lib/workspace-modules";
+import { OrganizationCachePanel } from "@/components/admin/organization-cache-panel";
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]";
@@ -338,6 +342,7 @@ const MANAGE_ORG_TABS = [
   { id: "status", label: "Organization status" },
   { id: "modules", label: "Applications" },
   { id: "users", label: "Users" },
+  { id: "maintenance", label: "Maintenance" },
 ];
 
 const REGISTER_ORG_TABS = [
@@ -391,6 +396,7 @@ export function OrganizationConfigTabs({
   mobileOrdersEnabled = true,
   organization,
   organizationId,
+  isActive,
   onStatusChange,
   adminPanel,
 }) {
@@ -429,7 +435,11 @@ export function OrganizationConfigTabs({
       ) : null}
 
       {activeTab === "status" && mode === "manage" ? (
-        <OrganizationStatusPanel organization={organization} onChange={onStatusChange} />
+        <OrganizationStatusPanel
+          organization={organization}
+          isActive={isActive}
+          onChange={onStatusChange}
+        />
       ) : null}
 
       {activeTab === "modules" ? (
@@ -448,6 +458,16 @@ export function OrganizationConfigTabs({
           companyCode={tenantValues.company_code}
           detailed
         />
+      ) : null}
+
+      {activeTab === "maintenance" && mode === "manage" ? (
+        <div className="space-y-6">
+          <OrganizationCachePanel organizationId={organizationId ?? organization?.id} />
+          <OrganizationDeletePanel
+            organizationId={organizationId ?? organization?.id}
+            organizationName={organization?.org_name}
+          />
+        </div>
       ) : null}
 
       {activeTab === "admin" && mode === "register" && adminPanel ? adminPanel : null}
@@ -827,6 +847,32 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
     });
   }
 
+  async function deleteUser() {
+    if (
+      !window.confirm(
+        `Delete "${user.full_name}"? Users with sales or activity history are archived; users without records are removed permanently.`,
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const { apiRequest, ApiError } = await import("@/lib/api");
+      await apiRequest(`/admin/organizations/${organizationId}/users/${user.id}`, {
+        method: "DELETE",
+      });
+      await onUpdated?.();
+    } catch (err) {
+      const { ApiError } = await import("@/lib/api");
+      setError(err instanceof ApiError ? err.message : "Could not delete user.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <tr>
@@ -918,6 +964,16 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
             >
               {user.is_active ? "Disable login" : "Enable login"}
             </button>
+            {!user.is_admin ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void deleteUser()}
+                className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                Delete user
+              </button>
+            ) : null}
           </div>
           {saved ? <p className="text-xs text-emerald-700">User details saved.</p> : null}
           {error ? <p className="text-xs text-red-600">{error}</p> : null}
@@ -1002,8 +1058,8 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
   );
 }
 
-export function OrganizationStatusPanel({ organization, onChange }) {
-  const isActive = organization?.is_active !== false;
+export function OrganizationStatusPanel({ organization, isActive: isActiveProp, onChange }) {
+  const isActive = isActiveProp ?? organization?.is_active !== false;
 
   return (
     <PlatformFormSection
@@ -1028,6 +1084,95 @@ export function OrganizationStatusPanel({ organization, onChange }) {
           </span>
         </span>
       </label>
+    </PlatformFormSection>
+  );
+}
+
+export function OrganizationDeletePanel({ organizationId, organizationName }) {
+  const router = useRouter();
+  const [confirmation, setConfirmation] = useState("");
+  const [password, setPassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState(null);
+
+  const nameMatches = confirmation.trim() === (organizationName ?? "").trim();
+  const canDelete = Boolean(organizationId && nameMatches && password.length > 0);
+
+  async function handleDelete() {
+    if (!canDelete) return;
+    if (
+      !window.confirm(
+        "Permanently remove this organization from the platform? All users will be signed out and cannot sign in again.",
+      )
+    ) {
+      return;
+    }
+
+    setDeleting(true);
+    setError(null);
+    try {
+      await apiRequest(`/admin/organizations/${organizationId}`, {
+        method: "DELETE",
+        body: {
+          confirmation: confirmation.trim(),
+          password,
+        },
+      });
+      router.push("/platform");
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not delete organization.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <PlatformFormSection
+      title="Delete organization"
+      description="Removes the organization from the platform. Tenant data remains in the database but users can no longer sign in."
+    >
+      <div className="space-y-4 rounded-lg border border-red-200 bg-red-50/60 px-4 py-4">
+        <p className="text-sm text-red-900">
+          This action signs out every user and removes the organization from the platform list. Type{" "}
+          <span className="font-semibold">{organizationName}</span> and enter your password to confirm.
+        </p>
+
+        <label className="block text-sm">
+          <span className="text-xs font-medium text-slate-600">Organization name</span>
+          <input
+            type="text"
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+            value={confirmation}
+            onChange={(e) => setConfirmation(e.target.value)}
+            placeholder={organizationName ?? "Organization name"}
+            autoComplete="off"
+          />
+        </label>
+
+        <label className="block text-sm">
+          <span className="text-xs font-medium text-slate-600">Your password</span>
+          <PasswordInput
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+        </label>
+
+        {error ? (
+          <p className="rounded-lg border border-red-200 bg-white px-4 py-3 text-sm text-red-700">{error}</p>
+        ) : null}
+
+        <button
+          type="button"
+          disabled={!canDelete || deleting}
+          onClick={() => void handleDelete()}
+          className="inline-flex items-center rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {deleting ? "Deleting…" : "Delete organization"}
+        </button>
+      </div>
     </PlatformFormSection>
   );
 }

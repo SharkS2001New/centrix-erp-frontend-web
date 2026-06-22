@@ -12,7 +12,6 @@ import {
   defaultSalesPlatformState,
 } from "@/components/admin/organization-register-form";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
-import { OrganizationCachePanel } from "@/components/admin/organization-cache-panel";
 import { buildDomainChildrenMap, normalizeDomainModules, patchEnabledModules } from "@/lib/module-registry";
 import { applicationsFromEnabledModules } from "@/lib/workspace-modules";
 
@@ -192,8 +191,8 @@ export default function ManageOrganizationPage() {
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800">
             <p className="font-medium">Organization settings</p>
             <p className="mt-1 text-xs text-slate-600">
-              Configure checkout, finance, distribution, notifications, security, and other operational
-              preferences for this tenant from the platform.
+              Configure checkout, finance, distribution, legacy archive, notifications, security, and other
+              operational preferences for this tenant from the platform.
             </p>
             <Link
               href={`/platform/organizations/${orgId}/settings`}
@@ -244,6 +243,7 @@ export default function ManageOrganizationPage() {
               mobileOrdersEnabled={salesPlatform?.enable_mobile_orders !== false}
               organization={organization}
               organizationId={orgId}
+              isActive={orgActive}
               onStatusChange={({ is_active }) => setOrgActive(is_active)}
             />
 
@@ -268,8 +268,6 @@ export default function ManageOrganizationPage() {
               </Link>
             </div>
           </form>
-
-          <OrganizationCachePanel organizationId={orgId} />
         </div>
       )}
     </CatalogPageShell>
