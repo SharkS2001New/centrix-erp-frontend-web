@@ -27,6 +27,8 @@ import {
   payrollRunCanDelete,
   payrollRunDeleteLockHint,
   payrollRunIsCompleted,
+  payrollRunIsProcessed,
+  payrollRunAwaitingApproval,
   periodLabel,
   StatutoryDeductionsPanel,
   suggestCurrentPayPeriodForm,
@@ -117,13 +119,15 @@ export default function PayrollPage() {
       return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     });
     const monthTotal = monthRuns.reduce((sum, r) => sum + Number(r.total_net ?? 0), 0);
-    const pending = runs.filter((r) => r.status === "draft").length;
-    const processed = runs.filter((r) => payrollRunIsCompleted(r.status)).length;
+    const pendingApproval = runs.filter((r) => payrollRunAwaitingApproval(r.status)).length;
+    const awaitingPayment = runs.filter((r) => payrollRunIsProcessed(r.status)).length;
+    const paid = runs.filter((r) => payrollRunIsCompleted(r.status)).length;
     return {
       monthTotal,
       employees: employees.filter(isPayrollEligible).length,
-      pending,
-      processed,
+      pendingApproval,
+      awaitingPayment,
+      paid,
     };
   }, [runs, employees, periodById]);
 
@@ -357,8 +361,9 @@ export default function PayrollPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard label="Current month" value={formatHrKesFull(stats.monthTotal)} />
               <StatCard label="Employees" value={stats.employees.toLocaleString()} />
-              <StatCard label="Pending approval" value={stats.pending.toLocaleString()} />
-              <StatCard label="Processed" value={stats.processed.toLocaleString()} />
+              <StatCard label="Pending approval" value={stats.pendingApproval.toLocaleString()} />
+              <StatCard label="Awaiting payment" value={stats.awaitingPayment.toLocaleString()} />
+              <StatCard label="Paid runs" value={stats.paid.toLocaleString()} />
             </div>
             {recentRuns.length > 0 && (
               <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -367,6 +372,7 @@ export default function PayrollPage() {
                   {recentRuns.map((run) => {
                     const period = periodById.get(run.pay_period_id) ?? run.pay_period;
                     const done = payrollRunIsCompleted(run.status);
+                    const processed = payrollRunIsProcessed(run.status);
                     return (
                       <li key={run.id}>
                         <button
@@ -380,13 +386,13 @@ export default function PayrollPage() {
                           </div>
                           <span
                             className={`inline-flex items-center gap-1 text-sm ${
-                              done ? "text-[#27500A]" : "text-slate-500"
+                              done ? "text-[#27500A]" : processed ? "text-[#0C447C]" : "text-slate-500"
                             }`}
                           >
                             {done ? (
                               <>
                                 <CheckIcon />
-                                Completed
+                                Paid
                               </>
                             ) : (
                               <PayrollRunStatusBadge status={run.status} />

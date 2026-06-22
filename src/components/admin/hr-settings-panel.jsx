@@ -148,10 +148,63 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
               />
               <Toggle
                 label="Require payroll approval"
-                description="When enabled, processed runs should be approved before marking as paid (future workflow)."
+                description="When enabled, new payroll runs require approval before processing and payment."
                 checked={form.require_payroll_approval}
                 onChange={(v) => setForm((f) => ({ ...f, require_payroll_approval: v }))}
               />
+            </div>
+          ) : null}
+
+          <h3 className="mt-8 text-sm font-medium text-slate-900">Attendance capture</h3>
+          {!loading ? (
+            <div className="mt-4 space-y-4">
+              <Field label="Attendance method">
+                <select
+                  className={inputClassName()}
+                  value={form.attendance_capture_mode}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, attendance_capture_mode: e.target.value }))
+                  }
+                >
+                  <option value="clock_device">Clock device (fingerprint terminals)</option>
+                  <option value="company_mobile">Company mobile (face + location on shared phone)</option>
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Company mobile uses registered phones only — one phone per branch when you have
+                  multiple branches. Set each branch&apos;s GPS premises on the HR Attendance page,
+                  then register each attendance phone with its branch after copying the Device ID
+                  from the app setup screen.
+                </p>
+              </Field>
+              {form.attendance_capture_mode === "company_mobile" ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Geofence radius (metres)">
+                    <input
+                      type="number"
+                      min="1"
+                      max="500"
+                      className={inputClassName()}
+                      value={form.company_premises_radius_metres}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, company_premises_radius_metres: e.target.value }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Face match threshold">
+                    <input
+                      type="number"
+                      min="0.5"
+                      max="0.99"
+                      step="0.01"
+                      className={inputClassName()}
+                      value={form.company_face_match_threshold}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, company_face_match_threshold: e.target.value }))
+                      }
+                    />
+                  </Field>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

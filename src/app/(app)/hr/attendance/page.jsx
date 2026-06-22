@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { P } from "@/lib/permission-codes";
 import {
   CatalogPageShell,
   Field,
@@ -13,12 +14,15 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { HrSelectField } from "@/components/hr/hr-crud-page";
 import { HrTimePickerField } from "@/components/hr/hr-time-picker";
+import { CompanyPremisesPanel } from "@/components/hr/company-premises-panel";
+import { AttendanceMobileDevicesPanel } from "@/components/hr/attendance-mobile-devices-panel";
 import {
   composeEmployeeDisplayName,
   computeAttendanceHours,
   formatTimeForApi,
   isAdminUser,
 } from "@/components/hr/hr-shared";
+import { isCompanyMobileAttendanceEnabled } from "@/lib/hr-settings";
 
 const EMPTY_MANUAL = {
   employee_id: "",
@@ -33,8 +37,10 @@ const EMPTY_MANUAL = {
 const NON_WORK_STATUSES = ["leave", "holiday", "absent"];
 
 export default function HrAttendancePage() {
-  const { user } = useAuth();
+  const { user, capabilities, hasPermission } = useAuth();
   const admin = isAdminUser(user);
+  const canManagePremises = hasPermission(P.hr.manage);
+  const companyMobileEnabled = isCompanyMobileAttendanceEnabled(capabilities?.module_settings);
   const [employees, setEmployees] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [records, setRecords] = useState([]);
@@ -47,28 +53,43 @@ export default function HrAttendancePage() {
   const [manualError, setManualError] = useState(null);
   const [editingRecord, setEditingRecord] = useState(null);
   const [dayHint, setDayHint] = useState(null);
+  const [mobileSessions, setMobileSessions] = useState([]);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [empRes, sessRes, attRes, devRes] = await Promise.all([
+      const requests = [
         apiRequest("/employees", { searchParams: { per_page: 200 } }),
         apiRequest("/attendance/clock-sessions", {
           searchParams: { per_page: 50, open_only: 1 },
         }),
         apiRequest("/employee-attendance", { searchParams: { per_page: 100 } }),
         apiRequest("/attendance-clock-devices", { searchParams: { per_page: 100 } }),
-      ]);
+      ];
+      if (companyMobileEnabled) {
+        requests.push(
+          apiRequest("/attendance/company-mobile-sessions", {
+            searchParams: { per_page: 50 },
+          }),
+        );
+      }
+      const results = await Promise.all(requests);
+      const empRes = results[0];
+      const sessRes = results[1];
+      const attRes = results[2];
+      const devRes = results[3];
+      const mobileRes = results[4];
       setEmployees(empRes.data ?? []);
       setSessions(sessRes.data ?? []);
       setRecords(attRes.data ?? []);
       setClockDevices(devRes.data ?? []);
+      setMobileSessions(mobileRes?.data ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load attendance");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [companyMobileEnabled]);
 
   useEffect(() => {
     load();
@@ -245,7 +266,11 @@ export default function HrAttendancePage() {
   return (
     <CatalogPageShell
       title="Attendance"
-      subtitle="Clock device sessions and manual attendance records"
+      subtitle={
+        companyMobileEnabled
+          ? "Company mobile, clock devices, and manual records"
+          : "Clock device sessions and manual attendance records"
+      }
       action={
         <PrimaryButton type="button" onClick={openCreateManual}>
           Add manual record
@@ -258,8 +283,15 @@ export default function HrAttendancePage() {
         </p>
       )}
 
-      <div className={`mb-8 grid gap-6 ${admin ? "lg:grid-cols-2" : ""}`}>
-        {admin && (
+      {canManagePremises ? (
+        <CompanyPremisesPanel enabled={companyMobileEnabled} />
+      ) : null}
+      {canManagePremises ? (
+        <AttendanceMobileDevicesPanel enabled={companyMobileEnabled} />
+      ) : null}
+
+      <div className={`mb-8 grid gap-6 ${admin && !companyMobileEnabled ? "lg:grid-cols-2" : admin ? "lg:grid-cols-2" : ""}`}>
+        {admin && !companyMobileEnabled && (
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -327,6 +359,37 @@ export default function HrAttendancePage() {
           )}
         </section>
       </div>
+
+      {companyMobileEnabled ? (
+        <section className="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-[15px] font-medium text-slate-900">Company mobile sessions</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Recent face + GPS attendance from the shared company phone.
+          </p>
+          {loading ? (
+            <p className="mt-3 text-sm text-slate-500">Loading…</p>
+          ) : mobileSessions.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500">No company mobile sessions yet.</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-slate-100">
+              {mobileSessions.map((s) => (
+                <li key={s.id} className="py-3">
+                  <p className="font-medium text-slate-900">
+                    {s.employee_name || `#${s.employee_id}`}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {s.is_open ? "On shift" : "Completed"} · In {formatShortDate(s.clock_in_at)}
+                    {s.clock_out_at ? ` · Out ${formatShortDate(s.clock_out_at)}` : ""}
+                    {s.clock_in_geofence_distance_metres != null
+                      ? ` · ${s.clock_in_geofence_distance_metres}m from premises`
+                      : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">

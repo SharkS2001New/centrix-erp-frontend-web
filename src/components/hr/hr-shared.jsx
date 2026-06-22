@@ -823,7 +823,104 @@ export function payrollBreakdownRows(line, employee) {
 }
 
 export function payrollRunIsCompleted(status) {
-  return status === "paid" || status === "processed";
+  return status === "paid";
+}
+
+export function payrollRunIsProcessed(status) {
+  return status === "processed";
+}
+
+export function payrollRunAwaitingApproval(status) {
+  return status === "pending_approval";
+}
+
+/** @returns {{ steps: Array<{ id: string, label: string, complete: boolean, active: boolean }>, voided: boolean }} */
+export function payrollWorkflowSteps(status, requireApproval = false) {
+  if (status === "void") {
+    return { steps: [], voided: true };
+  }
+
+  const steps = requireApproval
+    ? [
+        {
+          id: "approval",
+          label: "Approval",
+          complete: ["approved", "processed", "paid"].includes(status),
+          active: status === "pending_approval",
+        },
+        {
+          id: "process",
+          label: "Process",
+          complete: ["processed", "paid"].includes(status),
+          active: status === "approved",
+        },
+        {
+          id: "pay",
+          label: "Payment",
+          complete: status === "paid",
+          active: status === "processed",
+        },
+      ]
+    : [
+        {
+          id: "process",
+          label: "Process",
+          complete: ["processed", "paid"].includes(status),
+          active: status === "draft",
+        },
+        {
+          id: "pay",
+          label: "Payment",
+          complete: status === "paid",
+          active: status === "processed",
+        },
+      ];
+
+  return { steps, voided: false };
+}
+
+export function PayrollWorkflowSteps({ status, requireApproval = false }) {
+  const { steps, voided } = payrollWorkflowSteps(status, requireApproval);
+
+  if (voided) {
+    return (
+      <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        This payroll run was rejected and cannot continue.
+      </p>
+    );
+  }
+
+  if (steps.length === 0) return null;
+
+  return (
+    <ol className="flex flex-wrap items-center gap-2 text-sm">
+      {steps.map((step, index) => (
+        <li key={step.id} className="flex items-center gap-2">
+          {index > 0 ? <span className="text-slate-300">→</span> : null}
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+              step.complete
+                ? "bg-[#EAF3DE] text-[#27500A]"
+                : step.active
+                  ? "bg-[#E6F1FB] text-[#0C447C]"
+                  : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            {step.complete ? <CheckMiniIcon /> : null}
+            {step.label}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function CheckMiniIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <path d="M20 6L9 17l-5-5" />
+    </svg>
+  );
 }
 
 /** Whether API allows deleting this payroll run (20-minute window after creation). */
@@ -936,8 +1033,8 @@ export function PayrollRunStatusBadge({ status }) {
     draft: "Draft",
     pending_approval: "Awaiting approval",
     approved: "Approved",
-    processed: "Processed",
-    paid: "Completed",
+    processed: "Awaiting payment",
+    paid: "Paid",
     void: "Void",
   };
   return (

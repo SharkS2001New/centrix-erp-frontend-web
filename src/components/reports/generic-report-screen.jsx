@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -68,6 +69,8 @@ function labelizeKey(key) {
 }
 
 export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
+  const urlParams = useSearchParams();
+  const payrollRunId = urlParams.get("payroll_run_id") ?? "";
   const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState(null);
@@ -103,6 +106,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       if (fromDate) searchParams.from_date = fromDate;
       if (toDate) searchParams.to_date = toDate;
       if (branchId) searchParams.branch_id = branchId;
+      if (payrollRunId) searchParams.payroll_run_id = payrollRunId;
 
       const res = await apiRequest(apiPath, { searchParams });
       setRows(res.data ?? []);
@@ -114,7 +118,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, fromDate, toDate, branchId, dateColumn]);
+  }, [apiPath, page, fromDate, toDate, branchId, dateColumn, payrollRunId]);
 
   useEffect(() => {
     loadReport();

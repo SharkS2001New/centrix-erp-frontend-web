@@ -6,10 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
-import { DetailDrawer, IconButton, PrimaryButton, StatCard } from "@/components/catalog/catalog-shared";
+import { Field, DetailDrawer, IconButton, PrimaryButton, StatCard, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   PayrollBreakdownPanel,
   PayrollRunStatusBadge,
+  PayrollWorkflowSteps,
   composeEmployeeDisplayName,
   formatHrKesFull,
   isAdminUser,
@@ -17,14 +18,22 @@ import {
   payrollRunDeleteLockHint,
   periodLabel,
 } from "@/components/hr/hr-shared";
+import { mergeHrPayrollSettings } from "@/lib/hr-settings";
 
 export default function PayrollRunDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, capabilities } = useAuth();
   const admin = isAdminUser(user);
   const canApprove = hasPermission(P.hr.payroll.approve);
+  const canProcess = hasPermission(P.hr.payroll.create) || hasPermission(P.hr.manage);
   const runId = Number(params.id);
+
+  const hrSettings = useMemo(
+    () => mergeHrPayrollSettings(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
+  const requireApproval = Boolean(hrSettings.require_payroll_approval);
 
   const [run, setRun] = useState(null);
   const [lines, setLines] = useState([]);
@@ -33,6 +42,9 @@ export default function PayrollRunDetailPage() {
   const [selectedLine, setSelectedLine] = useState(null);
   const [lineDetail, setLineDetail] = useState(null);
   const [lineLoading, setLineLoading] = useState(false);
+  const [markPaidOpen, setMarkPaidOpen] = useState(false);
+  const [paymentReference, setPaymentReference] = useState("");
+  const [markPaidSaving, setMarkPaidSaving] = useState(false);
 
   const loadData = useCallback(async () => {
     setError(null);
@@ -118,6 +130,38 @@ export default function PayrollRunDetailPage() {
     }
   }
 
+  async function markPaid() {
+    setMarkPaidSaving(true);
+    setError(null);
+    try {
+      await apiRequest(`/payroll/runs/${runId}/mark-paid`, {
+        method: "POST",
+        body: { payment_reference: paymentReference.trim() || null },
+      });
+      setMarkPaidOpen(false);
+      setPaymentReference("");
+      await loadData();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Mark paid failed");
+    } finally {
+      setMarkPaidSaving(false);
+    }
+  }
+
+  const canProcessRun =
+    canProcess &&
+    ((requireApproval && run?.status === "approved") ||
+      (!requireApproval && run?.status === "draft"));
+
+  const approvedBy =
+    run?.approved_by_user?.full_name ??
+    run?.approvedByUser?.full_name ??
+    null;
+  const paidBy =
+    run?.paid_by_user?.full_name ??
+    run?.paidByUser?.full_name ??
+    null;
+
   async function deleteRun() {
     if (!payrollRunCanDelete(run)) {
       setError(payrollRunDeleteLockHint(run) ?? "This payroll run can no longer be deleted.");
@@ -173,6 +217,26 @@ export default function PayrollRunDetailPage() {
               <div className="mt-2">
                 <PayrollRunStatusBadge status={run.status} />
               </div>
+              <div className="mt-3">
+                <PayrollWorkflowSteps status={run.status} requireApproval={requireApproval} />
+              </div>
+              {(run.approved_at || run.paid_at) && (
+                <dl className="mt-3 space-y-1 text-xs text-slate-500">
+                  {run.approved_at ? (
+                    <div>
+                      Approved {formatWorkflowDate(run.approved_at)}
+                      {approvedBy ? ` by ${approvedBy}` : ""}
+                    </div>
+                  ) : null}
+                  {run.paid_at ? (
+                    <div>
+                      Paid {formatWorkflowDate(run.paid_at)}
+                      {paidBy ? ` by ${paidBy}` : ""}
+                      {run.payment_reference ? ` · Ref ${run.payment_reference}` : ""}
+                    </div>
+                  ) : null}
+                </dl>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {run.status === "pending_approval" && canApprove ? (
@@ -189,10 +253,23 @@ export default function PayrollRunDetailPage() {
                   </button>
                 </>
               ) : null}
-              {run.status === "approved" ? (
+              {canProcessRun ? (
                 <PrimaryButton type="button" onClick={processRun} showIcon={false}>
                   Process payroll
                 </PrimaryButton>
+              ) : null}
+              {run.status === "processed" && canApprove ? (
+                <PrimaryButton type="button" onClick={() => setMarkPaidOpen(true)} showIcon={false}>
+                  Mark as paid
+                </PrimaryButton>
+              ) : null}
+              {["processed", "paid"].includes(run.status) && lines.length > 0 ? (
+                <Link
+                  href={`/reports/bank-transfer?payroll_run_id=${run.id}`}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Bank transfer report
+                </Link>
               ) : null}
               {admin && payrollRunCanDelete(run) ? (
                 <button
@@ -293,10 +370,64 @@ export default function PayrollRunDetailPage() {
               loading={lineLoading}
             />
           </DetailDrawer>
+
+          <DetailDrawer
+            title="Mark payroll as paid"
+            subtitle="Confirm bank disbursement or cash payment for this run."
+            open={markPaidOpen}
+            onClose={() => {
+              if (!markPaidSaving) {
+                setMarkPaidOpen(false);
+                setPaymentReference("");
+              }
+            }}
+          >
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600">
+                Net pay total: <span className="font-medium text-slate-900">{formatHrKesFull(run.total_net)}</span>
+              </p>
+              <Field label="Payment reference (optional)">
+                <input
+                  type="text"
+                  className={inputClassName()}
+                  placeholder="Bank batch ref, M-Pesa code, etc."
+                  value={paymentReference}
+                  onChange={(e) => setPaymentReference(e.target.value)}
+                  maxLength={120}
+                />
+              </Field>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={markPaidSaving}
+                  onClick={() => {
+                    setMarkPaidOpen(false);
+                    setPaymentReference("");
+                  }}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <PrimaryButton type="button" onClick={markPaid} disabled={markPaidSaving} showIcon={false}>
+                  {markPaidSaving ? "Saving…" : "Confirm payment"}
+                </PrimaryButton>
+              </div>
+            </div>
+          </DetailDrawer>
         </>
       ) : null}
     </div>
   );
+}
+
+function formatWorkflowDate(value) {
+  return new Date(value).toLocaleString("en-KE", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function ViewIcon() {

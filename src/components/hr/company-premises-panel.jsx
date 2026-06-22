@@ -1,0 +1,233 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiRequest, ApiError } from "@/lib/api";
+import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+
+export function CompanyPremisesPanel({ enabled }) {
+  const [premises, setPremises] = useState(null);
+  const [selectedBranchId, setSelectedBranchId] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [message, setMessage] = useState(null);
+  const [draftLat, setDraftLat] = useState("");
+  const [draftLng, setDraftLng] = useState("");
+
+  const branches = premises?.branches ?? [];
+  const multiBranch = branches.length > 1;
+
+  const selectedBranch = useMemo(
+    () => branches.find((b) => String(b.branch_id) === String(selectedBranchId)) ?? null,
+    [branches, selectedBranchId],
+  );
+
+  const load = useCallback(async () => {
+    if (!enabled) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiRequest("/attendance/company-premises");
+      setPremises(data);
+      const list = data.branches ?? [];
+      setSelectedBranchId((prev) => {
+        if (prev && list.some((b) => String(b.branch_id) === String(prev))) return prev;
+        return list[0]?.branch_id != null ? String(list[0].branch_id) : "";
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load premises location");
+    } finally {
+      setLoading(false);
+    }
+  }, [enabled]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!selectedBranch) {
+      setDraftLat("");
+      setDraftLng("");
+      return;
+    }
+    setDraftLat(selectedBranch.latitude != null ? String(selectedBranch.latitude) : "");
+    setDraftLng(selectedBranch.longitude != null ? String(selectedBranch.longitude) : "");
+  }, [selectedBranch]);
+
+  function captureCurrentLocation() {
+    setMessage(null);
+    setError(null);
+    if (!navigator.geolocation) {
+      setError("Geolocation is not supported in this browser.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setDraftLat(String(pos.coords.latitude));
+        setDraftLng(String(pos.coords.longitude));
+        setMessage("Current location captured. Enter your password and save.");
+      },
+      () => setError("Could not read your location. Allow location access and try again."),
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
+  }
+
+  async function saveLocation(e) {
+    e.preventDefault();
+    if (!selectedBranchId) {
+      setError("Select a branch first.");
+      return;
+    }
+    if (!draftLat || !draftLng) {
+      setError("Capture or enter latitude and longitude first.");
+      return;
+    }
+    if (!password.trim()) {
+      setError("Your password is required to save the branch premises location.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await apiRequest("/attendance/company-premises", {
+        method: "POST",
+        body: {
+          password,
+          branch_id: Number(selectedBranchId),
+          latitude: Number(draftLat),
+          longitude: Number(draftLng),
+          radius_metres: selectedBranch?.radius_metres ?? premises?.default_radius_metres ?? 5,
+        },
+      });
+      setPassword("");
+      setMessage(res.message ?? "Branch premises location saved.");
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to save location");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!enabled) return null;
+
+  return (
+    <section className="mb-8 rounded-xl border border-[#185FA5]/20 bg-[#E6F1FB]/30 p-5 shadow-sm">
+      <h2 className="text-[15px] font-medium text-slate-900">Company mobile attendance — premises</h2>
+      <p className="mt-1 text-sm text-slate-600">
+        Employees mark attendance on the shared company phone using face scan and GPS.
+        {multiBranch
+          ? " Configure premises separately for each branch."
+          : " Save the premises coordinates here (password required)."}
+        {" "}First scan enrolls each employee&apos;s face.
+      </p>
+
+      {error ? (
+        <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
+      {message ? (
+        <p className="mt-4 rounded-lg border border-[#27500A]/20 bg-[#EAF3DE] px-3 py-2 text-sm text-[#27500A]">
+          {message}
+        </p>
+      ) : null}
+
+      {loading ? (
+        <p className="mt-4 text-sm text-slate-500">Loading premises…</p>
+      ) : branches.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-500">No active branches found for this organization.</p>
+      ) : (
+        <form onSubmit={saveLocation} className="mt-4 space-y-4">
+          {multiBranch ? (
+            <Field label="Branch">
+              <select
+                className={inputClassName()}
+                value={selectedBranchId}
+                onChange={(e) => setSelectedBranchId(e.target.value)}
+              >
+                {branches.map((branch) => (
+                  <option key={branch.branch_id} value={String(branch.branch_id)}>
+                    {branch.branch_name}
+                    {branch.has_premises_location ? " — configured" : " — not set"}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label="Latitude">
+              <input
+                type="text"
+                className={inputClassName()}
+                value={draftLat}
+                onChange={(e) => setDraftLat(e.target.value)}
+                placeholder="-1.292100"
+              />
+            </Field>
+            <Field label="Longitude">
+              <input
+                type="text"
+                className={inputClassName()}
+                value={draftLng}
+                onChange={(e) => setDraftLng(e.target.value)}
+                placeholder="36.821900"
+              />
+            </Field>
+            <Field label="Radius (m)">
+              <input
+                type="text"
+                readOnly
+                className={`${inputClassName()} bg-slate-50`}
+                value={String(selectedBranch?.radius_metres ?? premises?.default_radius_metres ?? 5)}
+              />
+            </Field>
+            <Field label="Status">
+              <input
+                type="text"
+                readOnly
+                className={`${inputClassName()} bg-slate-50`}
+                value={selectedBranch?.has_premises_location ? "Configured" : "Not set"}
+              />
+            </Field>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <PrimaryButton type="button" showIcon={false} onClick={captureCurrentLocation}>
+              Use my location
+            </PrimaryButton>
+            <Field label="Your password to confirm">
+              <input
+                type="password"
+                autoComplete="current-password"
+                className={inputClassName()}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Required to save"
+              />
+            </Field>
+            <PrimaryButton type="submit" disabled={saving} showIcon={false}>
+              {saving ? "Saving…" : multiBranch ? "Save branch premises" : "Save premises location"}
+            </PrimaryButton>
+          </div>
+          {draftLat && draftLng ? (
+            <p className="text-xs text-slate-500">
+              Map preview:{" "}
+              <a
+                href={`https://www.google.com/maps?q=${encodeURIComponent(`${draftLat},${draftLng}`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[#185FA5] hover:underline"
+              >
+                Open in Google Maps
+              </a>
+            </p>
+          ) : null}
+        </form>
+      )}
+    </section>
+  );
+}

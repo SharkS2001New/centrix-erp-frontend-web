@@ -13,6 +13,11 @@ export const HR_PAYROLL_DEFAULTS = {
   default_probation_months: 3,
   enable_cash_advance_deductions: true,
   deduct_cash_advances_on_payroll: true,
+  attendance_capture_mode: "clock_device",
+  company_premises_latitude: null,
+  company_premises_longitude: null,
+  company_premises_radius_metres: 5,
+  company_face_match_threshold: 0.72,
 };
 
 export function mergeHrPayrollSettings(moduleSettings) {
@@ -42,6 +47,10 @@ export function payrollGraceDays(moduleSettings, schedule) {
   return mergeHrPayrollSettings(moduleSettings).grace_days_after_month_end;
 }
 
+export function isCompanyMobileAttendanceEnabled(moduleSettings) {
+  return mergeHrPayrollSettings(moduleSettings).attendance_capture_mode === "company_mobile";
+}
+
 export function hrPayrollFormFromApi(res) {
   const hr = mergeHrPayrollSettings({ hr_payroll: res?.hr_payroll ?? res });
   return {
@@ -59,6 +68,9 @@ export function hrPayrollFormFromApi(res) {
     default_probation_months: String(hr.default_probation_months ?? 3),
     enable_cash_advance_deductions: Boolean(hr.enable_cash_advance_deductions),
     deduct_cash_advances_on_payroll: Boolean(hr.deduct_cash_advances_on_payroll),
+    attendance_capture_mode: hr.attendance_capture_mode || "clock_device",
+    company_premises_radius_metres: String(hr.company_premises_radius_metres ?? 5),
+    company_face_match_threshold: String(hr.company_face_match_threshold ?? 0.72),
   };
 }
 
@@ -78,5 +90,8 @@ export function hrPayrollPayloadFromForm(form) {
     default_probation_months: Number(form.default_probation_months) || 0,
     enable_cash_advance_deductions: Boolean(form.enable_cash_advance_deductions),
     deduct_cash_advances_on_payroll: Boolean(form.deduct_cash_advances_on_payroll),
+    attendance_capture_mode: form.attendance_capture_mode || "clock_device",
+    company_premises_radius_metres: Number(form.company_premises_radius_metres) || 5,
+    company_face_match_threshold: Number(form.company_face_match_threshold) || 0.72,
   };
 }
