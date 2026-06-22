@@ -6,9 +6,8 @@ export const PLATFORM_COMPANY_CODE = "PLATFORM";
 /** Permissions that configure a tenant organization — not platform operations. */
 export const ORG_ADMIN_PERMISSION_PREFIXES = ["admin.", "accounting.account_mappings"];
 
-/** Nav/settings scope for tenant org administration. */
+/** Nav/settings scope for tenant org administration (not platform operational settings). */
 export const ORG_ADMIN_SETTINGS_PATH_PREFIXES = [
-  "/admin/settings",
   "/admin/company",
   "/admin/branches",
   "/admin/users",

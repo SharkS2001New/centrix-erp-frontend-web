@@ -42,13 +42,6 @@ const CARDS = [
     icon: "📜",
     permission: P.admin.audit.view,
   },
-  {
-    href: "/admin/settings",
-    title: "Organization settings",
-    description: "Configure sales, inventory, HR, and other org-wide preferences.",
-    icon: "⚙️",
-    permission: P.admin.settings.view,
-  },
 ];
 
 export function AdminOverviewCards() {

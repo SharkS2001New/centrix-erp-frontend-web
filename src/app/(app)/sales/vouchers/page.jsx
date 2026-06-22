@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -234,9 +235,7 @@ export default function VouchersPage() {
       {!vouchersEnabled ? (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Vouchers are disabled for this organization. Enable them under{" "}
-          <Link href="/admin/settings" className="font-medium text-[#185FA5] hover:underline">
-            Administration → System settings → Sales
-          </Link>{" "}
+          <OrgSettingsPlatformHint area="Organization settings → Sales" />.
           to create and redeem voucher codes.
         </div>
       ) : (

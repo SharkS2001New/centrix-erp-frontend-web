@@ -8,6 +8,7 @@ import { useOrgFormat } from "@/lib/org-format";
 import { useAuth } from "@/contexts/auth-context";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
+import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { platformOrgSettingsHref } from "@/lib/platform-admin-nav";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
@@ -29,9 +30,7 @@ export default function KraResponsesPage() {
   const effectiveCapabilities = isPlatformManaged ? tenantCapabilities ?? capabilities : capabilities;
 
   const kraEnabled = isKraDeviceEnabled(effectiveCapabilities?.module_settings, effectiveCapabilities);
-  const settingsHref = isPlatformManaged
-    ? platformOrgSettingsHref(platformOrgId ?? params?.id)
-    : "/admin/settings";
+  const settingsHref = isPlatformManaged ? platformOrgSettingsHref(platformOrgId ?? params?.id) : null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,9 +95,13 @@ export default function KraResponsesPage() {
         ) : (
           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
             KRA device is <strong>disabled</strong>. Enable it under{" "}
-            <Link href={settingsHref} className="font-medium text-[#185FA5] hover:underline">
-              {isPlatformManaged ? "Organization settings → Finance" : "Admin → Settings → Finance"}
-            </Link>{" "}
+            {settingsHref ? (
+              <Link href={settingsHref} className="font-medium text-[#185FA5] hover:underline">
+                Organization settings → Finance
+              </Link>
+            ) : (
+              <OrgSettingsPlatformHint area="Organization settings → Finance" />
+            )}{" "}
             (device IP, serial, PIN) before checkout can submit fiscal receipts.
           </p>
         )}

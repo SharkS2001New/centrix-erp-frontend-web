@@ -50,6 +50,10 @@ export function canAccessRoute(pathname, ctx) {
     return isPlatformShellRoute(pathname);
   }
 
+  if (pathname === "/admin/settings" || pathname.startsWith("/admin/settings/")) {
+    return false;
+  }
+
   if (
     (pathname.startsWith("/admin") || isOrgAdminSettingsPath(pathname)) &&
     !isAdministrationModuleEnabled(ctx.capabilities)

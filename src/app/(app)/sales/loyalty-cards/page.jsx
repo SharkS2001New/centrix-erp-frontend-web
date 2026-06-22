@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -174,9 +175,7 @@ export default function LoyaltyCardsPage() {
       {!pointsEnabled ? (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Redeemable points are disabled. Enable them under{" "}
-          <Link href="/admin/settings" className="font-medium text-[#185FA5] hover:underline">
-            Administration → System settings → Sales
-          </Link>
+          <OrgSettingsPlatformHint area="Organization settings → Sales" />.
           .
         </div>
       ) : null}

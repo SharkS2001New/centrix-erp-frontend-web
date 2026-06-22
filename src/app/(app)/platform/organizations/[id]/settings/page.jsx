@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { OrganizationSettingsContent } from "@/components/admin/organization-settings-content";
@@ -12,7 +12,6 @@ import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 
 export default function PlatformOrganizationSettingsPage() {
   const params = useParams();
-  const router = useRouter();
   const orgId = params?.id;
 
   const [loading, setLoading] = useState(true);
@@ -26,11 +25,6 @@ export default function PlatformOrganizationSettingsPage() {
     setError(null);
     try {
       const res = await apiRequest(`/admin/organizations/${orgId}`);
-      const administrationEnabled = Boolean(res.effective_modules?.admin);
-      if (administrationEnabled) {
-        router.replace(`/platform/organizations/${orgId}`);
-        return;
-      }
       setOrganization(res.organization ?? null);
       setOrgPayload(res);
     } catch (e) {
@@ -38,7 +32,7 @@ export default function PlatformOrganizationSettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [orgId, router]);
+  }, [orgId]);
 
   useEffect(() => {
     load();
@@ -54,7 +48,7 @@ export default function PlatformOrganizationSettingsPage() {
   return (
     <CatalogPageShell
       title={organization ? `${organization.org_name} — settings` : "Organization settings"}
-      subtitle="Manage operational preferences on behalf of this organization. Administration is disabled, so tenant managers cannot access these settings."
+      subtitle="Configure operational preferences for this tenant from the platform. Tenant administrators cannot edit these settings."
     >
       <AdminBreadcrumb
         items={[
@@ -70,11 +64,11 @@ export default function PlatformOrganizationSettingsPage() {
         <p className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       ) : (
         <>
-          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950">
-            <p className="font-medium">Administration is disabled for this organization</p>
-            <p className="mt-1 text-xs text-amber-800">
-              Tenant managers cannot open Administration → Organization settings. You are configuring checkout,
-              finance, notifications, and other preferences on their behalf from the platform.
+          <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800">
+            <p className="font-medium">Platform-managed organization settings</p>
+            <p className="mt-1 text-xs text-slate-600">
+              Sales checkout, finance integrations, distribution rules, notifications, security timeouts, and
+              other company-wide preferences are maintained here — not in the tenant Administration workspace.
             </p>
             <Link
               href={`/platform/organizations/${orgId}`}

@@ -8,7 +8,7 @@ export default function AdminOverviewPage() {
   return (
     <CatalogPageShell
       title="Admin home"
-      subtitle="Shortcuts to company setup, users, access control, and organization settings."
+      subtitle="Shortcuts to company setup, users, and access control."
     >
       <AdminBreadcrumb items={[{ label: "Admin home" }]} />
       <AdminOverviewCards />

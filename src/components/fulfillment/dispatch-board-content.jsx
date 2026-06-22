@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -192,9 +193,7 @@ export function DispatchBoardContent() {
       <CatalogPageShell title="Dispatch board" subtitle="Route planning and delivery assignment">
         <p className="text-sm text-slate-500">
           Distribution operations are disabled. Enable them in{" "}
-          <Link href="/admin/settings" className="text-[#185FA5] hover:underline">
-            Admin → Settings → Distribution
-          </Link>
+          <OrgSettingsPlatformHint area="Organization settings → Distribution" />.
           .
         </p>
       </CatalogPageShell>

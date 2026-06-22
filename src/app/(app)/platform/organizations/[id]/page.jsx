@@ -189,19 +189,35 @@ export default function ManageOrganizationPage() {
         <p className="mt-6 text-sm text-slate-500">Loading…</p>
       ) : (
         <div className="mt-6 w-full min-w-0 space-y-6">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800">
+            <p className="font-medium">Organization settings</p>
+            <p className="mt-1 text-xs text-slate-600">
+              Configure checkout, finance, distribution, notifications, security, and other operational
+              preferences for this tenant from the platform.
+            </p>
+            <Link
+              href={`/platform/organizations/${orgId}/settings`}
+              className="mt-3 inline-flex items-center rounded-lg bg-[#185FA5] px-3 py-2 text-xs font-medium text-white hover:bg-[#134d88]"
+            >
+              Open organization settings
+            </Link>
+            {!administrationEnabled ? (
+              <Link
+                href={`/platform/organizations/${orgId}/admin`}
+                className="mt-3 ml-2 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-100"
+              >
+                Platform admin
+              </Link>
+            ) : null}
+          </div>
+
           {!administrationEnabled ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950">
               <p className="font-medium">Administration is disabled</p>
               <p className="mt-1 text-xs text-amber-800">
-                This organization cannot manage its own operational settings. Configure checkout, finance,
-                notifications, and other preferences on their behalf.
+                Tenant managers cannot open the Administration workspace. Manage users, branches, and roles from
+                Platform admin instead.
               </p>
-              <Link
-                href={`/platform/organizations/${orgId}/settings`}
-                className="mt-3 inline-flex items-center rounded-lg bg-[#185FA5] px-3 py-2 text-xs font-medium text-white hover:bg-[#134d88]"
-              >
-                Organization settings
-              </Link>
               <Link
                 href={`/platform/organizations/${orgId}/admin`}
                 className="mt-3 inline-flex items-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-amber-950 hover:bg-amber-100"

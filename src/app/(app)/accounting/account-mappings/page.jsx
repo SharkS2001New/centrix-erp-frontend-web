@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { apiRequest, ApiError } from "@/lib/api";
 import { accountOptionLabel } from "@/lib/accounting-shared";
 import { CatalogPageShell, PrimaryButton, SearchInput } from "@/components/catalog/catalog-shared";
@@ -126,10 +127,7 @@ export default function AccountMappingsPage() {
 
       {!qboConnected ? (
         <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Connect QuickBooks under{" "}
-          <Link href="/admin/settings" className="font-medium underline">
-            Admin → Settings → Finance
-          </Link>{" "}
+          Connect QuickBooks under <OrgSettingsPlatformHint area="Organization settings → Finance" />{" "}
           to load external accounts for mapping.
         </p>
       ) : null}

@@ -44,7 +44,7 @@ export const PROVISIONABLE_WORKSPACES = [
     id: "admin",
     label: "Administration",
     description:
-      "Users, roles, branches, company setup, and organization settings. When disabled, tenant managers cannot open Administration — you configure those settings from the platform instead.",
+      "Users, roles, branches, company setup, and audit. Organization settings (sales, finance, security, etc.) are configured from the platform.",
     icon: "settings",
   },
 ];

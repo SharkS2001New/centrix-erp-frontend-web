@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -175,9 +176,7 @@ export default function MobileFieldAttendanceScreen() {
           <p className="font-medium">Field attendance is not enabled</p>
           <p className="mt-1">
             Enable <strong>Require sign-in photo and location</strong> under{" "}
-            <Link href="/admin/settings" className="underline">
-              Organization settings → Mobile app
-            </Link>
+            <OrgSettingsPlatformHint area="Organization settings → Mobile app" />.
             .
           </p>
         </div>

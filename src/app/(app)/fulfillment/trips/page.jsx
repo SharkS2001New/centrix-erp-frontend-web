@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -110,10 +111,7 @@ export default function TripsPage() {
     return (
       <CatalogPageShell title="Dispatch trips" subtitle="Route runs and loading lists">
         <p className="text-sm text-slate-500">
-          Enable distribution operations in{" "}
-          <Link href="/admin/settings" className="text-[#185FA5] hover:underline">
-            Admin → Settings → Distribution
-          </Link>
+          Enable distribution operations in <OrgSettingsPlatformHint area="Organization settings → Distribution" />.
           .
         </p>
       </CatalogPageShell>

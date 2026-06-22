@@ -873,21 +873,6 @@ const NAV_SECTION_DEFINITIONS = [
       },
     ],
   },
-  {
-    id: "admin_settings",
-    label: "Settings",
-    icon: "⚙️",
-    collapsible: true,
-    items: [
-      {
-        href: "/admin/settings",
-        label: "Organization settings",
-        module: "admin",
-        permission: P.admin.settings.view,
-        orgAdminOnly: true,
-      },
-    ],
-  },
 ];
 
 export const navSections = withNavItemIcons(NAV_SECTION_DEFINITIONS);

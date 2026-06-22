@@ -48,7 +48,7 @@ const nextConfig = {
       { source: "/sales/z-report", destination: "/sales/till-management?tab=history", permanent: false },
       { source: "/sales/close-session", destination: "/sales/pos", permanent: false },
       { source: "/sales/active-session", destination: "/sales/pos", permanent: false },
-      { source: "/settings", destination: "/admin/settings", permanent: false },
+      { source: "/settings", destination: "/admin", permanent: false },
       { source: "/users", destination: "/admin/users", permanent: false },
       { source: "/purchases", destination: "/lpo", permanent: false },
       { source: "/purchase-orders", destination: "/lpo", permanent: false },

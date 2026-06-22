@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useOrgFormat } from "@/lib/org-format";
@@ -121,9 +122,7 @@ export default function ExportQueuePage() {
               <>
                 <strong>Stub mode</strong> — QuickBooks client credentials are not configured. Exports receive
                 fake IDs (<code className="text-xs">QBO-STUB-…</code>) without calling Intuit. Add credentials in{" "}
-                <Link href="/admin/settings" className="font-medium underline">
-                  Finance settings
-                </Link>
+                <OrgSettingsPlatformHint area="Organization settings → Finance" />
                 , connect OAuth, and map accounts for live export.
               </>
             ) : connected ? (
@@ -133,11 +132,8 @@ export default function ExportQueuePage() {
               </>
             ) : (
               <>
-                QuickBooks credentials are set but not connected. Open{" "}
-                <Link href="/admin/settings" className="font-medium underline">
-                  Finance settings
-                </Link>{" "}
-                to connect OAuth before processing exports.
+                QuickBooks credentials are set but not connected. Ask your platform administrator to connect OAuth in{" "}
+                <OrgSettingsPlatformHint area="Organization settings → Finance" /> before processing exports.
               </>
             )}
           </p>
@@ -172,9 +168,7 @@ export default function ExportQueuePage() {
         <Link href="/accounting/account-mappings" className="font-medium text-[#185FA5] hover:underline">
           Account mappings
         </Link>
-        <Link href="/admin/settings" className="font-medium text-[#185FA5] hover:underline">
-          Finance settings
-        </Link>
+        <OrgSettingsPlatformHint area="Organization settings → Finance" className="font-medium text-slate-700" />
       </div>
 
       <div className={`overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm ${loading ? "opacity-60" : ""}`}>

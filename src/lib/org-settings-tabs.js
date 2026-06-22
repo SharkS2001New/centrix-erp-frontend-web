@@ -5,7 +5,7 @@ import {
   isPlatformMpesaStkEnabled,
 } from "@/lib/platform-org-features";
 
-/** Map organization settings tabs to ERP module keys (super-admin controlled). */
+/** Map organization settings tabs to ERP module keys (platform super-admin controlled). */
 export const ORG_SETTINGS_TAB_MODULES = {
   general: ["admin"],
   sales: ["sales"],
