@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { AuthGuard } from "@/components/auth-guard";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
 import { buildAccessContext } from "@/lib/access-control";
 import { resolveAvailableWorkspaces } from "@/lib/workspaces";
 import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
@@ -38,9 +39,8 @@ function ChooseWorkspaceContent() {
       } catch (err) {
         if (!cancelled) {
           setSwitchError(err instanceof Error ? err.message : "Could not open application");
+          setSwitching(false);
         }
-      } finally {
-        if (!cancelled) setSwitching(false);
       }
     })();
     return () => {
@@ -58,7 +58,6 @@ function ChooseWorkspaceContent() {
       router.replace(target.home_path);
     } catch (err) {
       setSwitchError(err instanceof Error ? err.message : "Could not open application");
-    } finally {
       setSwitching(false);
     }
   }
@@ -68,15 +67,11 @@ function ChooseWorkspaceContent() {
   );
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-slate-500">Loading…</div>
-    );
+    return <WorkspaceOpeningScreen message="Opening" />;
   }
 
   if (switching) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-slate-500">Opening…</div>
-    );
+    return <WorkspaceOpeningScreen message="Opening" />;
   }
 
   if (workspaces.length === 0) {
@@ -105,9 +100,7 @@ function ChooseWorkspaceContent() {
         </AuthShell>
       );
     }
-    return (
-      <div className="flex min-h-screen items-center justify-center text-slate-500">Opening…</div>
-    );
+    return <WorkspaceOpeningScreen message="Opening" />;
   }
 
   return (

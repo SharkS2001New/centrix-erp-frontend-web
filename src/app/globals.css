@@ -1907,3 +1907,24 @@ textarea {
 .animate-lpo-blink {
   animation: lpo-blink 1.1s ease-in-out infinite;
 }
+
+/* Workspace / module opening splash (logo, then "Opening…"). */
+@keyframes workspace-opening-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.workspace-opening-logo {
+  animation: workspace-opening-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.workspace-opening-text {
+  animation: workspace-opening-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.32s both;
+  opacity: 0;
+}
