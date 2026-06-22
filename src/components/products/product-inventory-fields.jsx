@@ -1,6 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import {
+  AdjustStockGuideModal,
+  AdjustStockGuideTrigger,
+} from "@/components/products/adjust-stock-guide-modal";
 import {
   fullPackageLabel,
   smallPackagingLabel,
@@ -21,7 +26,7 @@ function stockFieldKey(location, levelKey) {
   return `${loc}_stock_${levelKey}`;
 }
 
-function StockLocationFields({ location, label, form, onChange, uom, disabled }) {
+function StockLocationFields({ location, label, form, onChange, uom, readOnly = false }) {
   const levels = uom ? uomStockTakeLevels(uom) : [{ key: "small", label: "units" }];
 
   if (levels.length === 1) {
@@ -33,21 +38,16 @@ function StockLocationFields({ location, label, form, onChange, uom, disabled })
           inputMode="decimal"
           value={form[key] ?? ""}
           onChange={(e) => onChange(key, e.target.value)}
-          className={inputClassName()}
+          className={`${inputClassName()} ${readOnly ? "bg-slate-100 text-slate-700" : ""}`}
           placeholder="0"
-          disabled={disabled}
+          readOnly={readOnly}
+          disabled={readOnly}
         />
         <p className="mt-1 text-xs text-slate-500">
-          Count in {levels[0].label}.
+          {readOnly ? "Read-only — updated by inventory transactions." : `Count in ${levels[0].label}.`}
         </p>
       </Field>
     );
-  }
-
-  const counts = {};
-  for (const level of levels) {
-    const key = stockFieldKey(location, level.key);
-    counts[level.key] = form[key] ?? "";
   }
 
   const byKey = {};
@@ -71,9 +71,10 @@ function StockLocationFields({ location, label, form, onChange, uom, disabled })
                 inputMode="decimal"
                 value={form[key] ?? ""}
                 onChange={(e) => onChange(key, e.target.value)}
-                className={inputClassName()}
+                className={`${inputClassName()} ${readOnly ? "bg-slate-100 text-slate-700" : ""}`}
                 placeholder="0"
-                disabled={disabled}
+                readOnly={readOnly}
+                disabled={readOnly}
               />
             </Field>
           );
@@ -84,6 +85,9 @@ function StockLocationFields({ location, label, form, onChange, uom, disabled })
           Total: <span className="font-mono text-slate-700">{preview}</span>
         </p>
       ) : null}
+      {readOnly ? (
+        <p className="text-xs text-slate-500">Read-only — updated by inventory transactions.</p>
+      ) : null}
     </div>
   );
 }
@@ -93,7 +97,10 @@ export function ProductInventoryFields({
   onChange,
   productUom,
   globalReorderLevel = null,
+  stockReadOnly = true,
+  productCode = null,
 }) {
+  const [guideOpen, setGuideOpen] = useState(false);
   const packName = productUom ? fullPackageLabel(productUom) : "full package";
   const smallName = productUom ? smallPackagingLabel(productUom) : "units";
   const hasFull = productUom ? uomHasFullPack(productUom) : false;
@@ -111,8 +118,9 @@ export function ProductInventoryFields({
     <>
       <div className="md:col-span-2 xl:col-span-3 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
         <p className="text-sm text-slate-700">
-          Enter opening stock using the product&apos;s UOM packaging — same as stock take and
-          inventory reports.
+          {stockReadOnly
+            ? "Stock on hand is shown for reference only. Changes must go through inventory transactions so POS, reports, and stock levels stay aligned."
+            : "Enter opening stock using the product's UOM packaging — same as stock take and inventory reports."}
         </p>
         {productUom && uomConversionSummary(productUom) ? (
           <p className="mt-1 text-xs font-medium text-slate-600">
@@ -121,6 +129,11 @@ export function ProductInventoryFields({
         ) : (
           <p className="mt-1 text-xs text-slate-500">Select a unit of measure to see packaging fields.</p>
         )}
+        {stockReadOnly ? (
+          <div className="mt-3">
+            <AdjustStockGuideTrigger onClick={() => setGuideOpen(true)} />
+          </div>
+        ) : null}
       </div>
 
       <div className="md:col-span-1">
@@ -130,6 +143,7 @@ export function ProductInventoryFields({
           form={form}
           onChange={onChange}
           uom={productUom}
+          readOnly={stockReadOnly}
         />
       </div>
 
@@ -140,42 +154,49 @@ export function ProductInventoryFields({
           form={form}
           onChange={onChange}
           uom={productUom}
+          readOnly={stockReadOnly}
         />
       </div>
 
       <div className="md:col-span-2 xl:col-span-3">
-      <Field label={reorderLabel}>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={form.reorder_packs}
-          onChange={(e) => onChange("reorder_packs", e.target.value)}
-          className={inputClassName()}
-          placeholder="0"
-        />
-        <p className="mt-1 text-xs leading-relaxed text-slate-500">
-          {hasFull ? (
-            <>
-              Minimum stock in <strong>{packName}</strong> before a low-stock alert. Example: sugar
-              with 50&nbsp;kg bags — enter <strong>2</strong> to alert when total stock falls below 2
-              bags.
-            </>
-          ) : (
-            <>
-              Minimum stock in <strong>{smallName}</strong> before a low-stock alert is raised.
-            </>
-          )}{" "}
-          Leave at <strong>0</strong> to use the organisation default
-          {globalDisplay != null ? (
-            <>
-              {" "}
-              (<strong>{globalDisplay}</strong> {hasFull ? packName : smallName})
-            </>
-          ) : null}
-          .
-        </p>
-      </Field>
+        <Field label={reorderLabel}>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={form.reorder_packs}
+            onChange={(e) => onChange("reorder_packs", e.target.value)}
+            className={inputClassName()}
+            placeholder="0"
+          />
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">
+            {hasFull ? (
+              <>
+                Minimum stock in <strong>{packName}</strong> before a low-stock alert. Example: sugar
+                with 50&nbsp;kg bags — enter <strong>2</strong> to alert when total stock falls below 2
+                bags.
+              </>
+            ) : (
+              <>
+                Minimum stock in <strong>{smallName}</strong> before a low-stock alert is raised.
+              </>
+            )}{" "}
+            Leave at <strong>0</strong> to use the organisation default
+            {globalDisplay != null ? (
+              <>
+                {" "}
+                (<strong>{globalDisplay}</strong> {hasFull ? packName : smallName})
+              </>
+            ) : null}
+            .
+          </p>
+        </Field>
       </div>
+
+      <AdjustStockGuideModal
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        productCode={productCode}
+      />
     </>
   );
 }

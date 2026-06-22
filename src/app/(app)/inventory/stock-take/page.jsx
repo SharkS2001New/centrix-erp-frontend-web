@@ -50,35 +50,11 @@ async function createStockTakeLines(sessionId, lineBodies) {
   }
 }
 
-async function upsertCurrentStockBatch(branchId, products, stockByCode) {
-  const batchSize = 20;
-  const bodies = products.map((product) => {
-    const stock = stockByCode.get(product.product_code);
-    return {
-      product_code: product.product_code,
-      branch_id: branchId,
-      shop_quantity: reconciledStockQty(stock, "shop", product),
-      store_quantity: reconciledStockQty(stock, "store", product),
-    };
-  });
-
-  for (let i = 0; i < bodies.length; i += batchSize) {
-    const batch = bodies.slice(i, i + batchSize);
-    await Promise.all(
-      batch.map((body) => apiRequest("/current-stock", { method: "POST", body })),
-    );
-  }
-}
-
-/** Use branch stock row when set; fall back to product totals when ledger row is missing or zero. */
-function reconciledStockQty(stockRow, location, product) {
-  const productField = location === "shop" ? "stock_in_shop" : "stock_in_store";
+/** Branch-scoped on-hand quantity from current_stock (ledger cache). */
+function systemStockQty(stockRow, location) {
   const stockField = location === "shop" ? "shop_quantity" : "store_quantity";
-  const fromProduct = Number(product[productField] ?? 0);
-  if (!stockRow) return fromProduct;
-  const fromStock = Number(stockRow[stockField] ?? 0);
-  if (fromStock === 0 && fromProduct > 0) return fromProduct;
-  return fromStock;
+  if (!stockRow) return 0;
+  return Number(stockRow[stockField] ?? 0);
 }
 
 export default function StockTakeListPage() {
@@ -136,7 +112,7 @@ export default function StockTakeListPage() {
       });
 
       const [products, stockRows] = await Promise.all([
-        fetchAllPages("/products"),
+        fetchAllPages("/products", { branch_id: branchId }),
         fetchAllPages("/current-stock", { "filter[branch_id]": branchId }),
       ]);
       const stockByCode = new Map(stockRows.map((row) => [row.product_code, row]));
@@ -145,8 +121,8 @@ export default function StockTakeListPage() {
 
       for (const product of products) {
         const stock = stockByCode.get(product.product_code);
-        const shopQty = reconciledStockQty(stock, "shop", product);
-        const storeQty = reconciledStockQty(stock, "store", product);
+        const shopQty = systemStockQty(stock, "shop");
+        const storeQty = systemStockQty(stock, "store");
 
         const lineDefs =
           loc === "both"
@@ -171,7 +147,6 @@ export default function StockTakeListPage() {
         }
       }
 
-      await upsertCurrentStockBatch(branchId, products, stockByCode);
       await createStockTakeLines(session.id, lineBodies);
 
       setModalOpen(false);

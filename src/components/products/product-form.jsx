@@ -16,7 +16,6 @@ import { baseToDisplayQty } from "@/lib/stock-uom";
 import {
   ProductInventoryFields,
   reorderBaseFromForm,
-  stockBaseFromForm,
   stockHierarchyToForm,
 } from "@/components/products/product-inventory-fields";
 import {
@@ -160,8 +159,6 @@ export function buildProductBody(form, uom = null, { allowDiscounts = true } = {
     discount_percentage: 0,
     discount_value: 0,
     product_weight: parseDecimalInput(form.product_weight) || null,
-    stock_in_shop: stockBaseFromForm(form, "shop", uom),
-    stock_in_store: stockBaseFromForm(form, "store", uom),
     supplier_id: form.supplier_id ? Number(form.supplier_id) : null,
     sell_on_retail: Boolean(form.sell_on_retail),
     vat_id: form.vat_id ? Number(form.vat_id) : undefined,
@@ -719,6 +716,8 @@ export function ProductFormFields({
         onChange={onChange}
         productUom={selectedUom}
         globalReorderLevel={globalReorderLevel}
+        stockReadOnly
+        productCode={mode === "edit" ? form.product_code : null}
       />
 
       {mode === "edit" ? (

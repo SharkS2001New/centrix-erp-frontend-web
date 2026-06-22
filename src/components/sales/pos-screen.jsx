@@ -149,6 +149,10 @@ export function PosScreen({ standalone = false }) {
     hasPosTill,
   } = usePosSession();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
+  const productBranchParams = useMemo(
+    () => (user?.branch_id ? { branch_id: user.branch_id } : {}),
+    [user?.branch_id],
+  );
   const posSalesConfig = useMemo(
     () =>
       getPosSalesConfig(capabilities?.module_settings, {
@@ -635,7 +639,11 @@ export function PosScreen({ standalone = false }) {
     if (!missing.length) return;
     let cancelled = false;
     Promise.all(
-      missing.map((code) => apiRequest(`/products/${encodeURIComponent(code)}`).catch(() => null)),
+      missing.map((code) =>
+        apiRequest(`/products/${encodeURIComponent(code)}`, {
+          searchParams: productBranchParams,
+        }).catch(() => null),
+      ),
     ).then((rows) => {
       if (cancelled) return;
       setProductByCode((prev) => {
@@ -651,7 +659,7 @@ export function PosScreen({ standalone = false }) {
     return () => {
       cancelled = true;
     };
-  }, [cart?.lines, uomById, vatById, productByCode]);
+  }, [cart?.lines, uomById, vatById, productByCode, productBranchParams]);
 
   const loadCashierCart = useCallback(async () => {
     if (!user?.branch_id) return null;
@@ -732,7 +740,7 @@ export function PosScreen({ standalone = false }) {
       setSearching(true);
       try {
         const res = await apiRequest("/products", {
-          searchParams: { per_page: 80, q: trimmed },
+          searchParams: { per_page: 80, q: trimmed, ...productBranchParams },
         });
         if (seq !== searchSeq.current) return;
         const list = (res.data ?? []).map((p) => enrichProductForLpo(p, uomMap, vatMap));
@@ -752,7 +760,7 @@ export function PosScreen({ standalone = false }) {
         if (seq === searchSeq.current) setSearching(false);
       }
     },
-    [uomById, vatById],
+    [uomById, vatById, productBranchParams],
   );
 
   useEffect(() => {
@@ -837,7 +845,9 @@ export function PosScreen({ standalone = false }) {
     );
     if (fromResults) return fromResults;
     try {
-      const row = await apiRequest(`/products/${encodeURIComponent(trimmed)}`);
+      const row = await apiRequest(`/products/${encodeURIComponent(trimmed)}`, {
+        searchParams: productBranchParams,
+      });
       const enriched = enrichProductForLpo(row, uomById, vatById);
       setProductByCode((prev) => ({ ...prev, [enriched.product_code]: enriched }));
       return enriched;
@@ -1791,7 +1801,11 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     const rows = await Promise.all(
-      codes.map((code) => apiRequest(`/products/${encodeURIComponent(code)}`).catch(() => null)),
+      codes.map((code) =>
+        apiRequest(`/products/${encodeURIComponent(code)}`, {
+          searchParams: productBranchParams,
+        }).catch(() => null),
+      ),
     );
     const next = {};
     for (const row of rows) {
@@ -3192,6 +3206,7 @@ export function PosScreen({ standalone = false }) {
         retailByCode={retailByCode}
         uomById={uomById}
         vatById={vatById}
+        branchId={user?.branch_id}
       />
       <PosKeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 

@@ -433,6 +433,12 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.inventory.receipts.view,
       },
       {
+        href: "/inventory/adjustments",
+        label: "Stock adjustments",
+        module: "inventory",
+        permission: P.inventory.adjustments.view,
+      },
+      {
         href: "/inventory/damages",
         label: "Write-offs & damages",
         module: "inventory",

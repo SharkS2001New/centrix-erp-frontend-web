@@ -53,6 +53,7 @@ export const P = {
     movements: { view: "inventory.movements.view" },
     transfers: { view: "inventory.transfers.view", create: "inventory.transfers.create" },
     damages: { view: "inventory.damages.view" },
+    adjustments: { view: "inventory.adjustments.view", create: "inventory.adjustments.create" },
     stock_take: { view: "inventory.stock_take.view" },
   },
   purchasing: {

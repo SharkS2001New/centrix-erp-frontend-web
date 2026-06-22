@@ -768,13 +768,25 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
 
 function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false }) {
   const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [fullName, setFullName] = useState(user.full_name ?? "");
+  const [username, setUsername] = useState(user.username ?? "");
+  const [email, setEmail] = useState(user.email ?? "");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setFullName(user.full_name ?? "");
+    setUsername(user.username ?? "");
+    setEmail(user.email ?? "");
+  }, [user.full_name, user.username, user.email]);
 
   async function updateUser(body) {
     setBusy(true);
     setError(null);
+    setSaved(false);
     try {
       const { apiRequest } = await import("@/lib/api");
       await apiRequest(`/admin/organizations/${organizationId}/users/${user.id}`, {
@@ -782,6 +794,8 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
         body,
       });
       setPassword("");
+      setSaved(true);
+      setEditing(false);
       await onUpdated?.();
     } catch (err) {
       const { ApiError } = await import("@/lib/api");
@@ -789,6 +803,15 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
     } finally {
       setBusy(false);
     }
+  }
+
+  async function saveDetails(e) {
+    e.preventDefault();
+    await updateUser({
+      full_name: fullName.trim(),
+      username: username.trim(),
+      email: email.trim(),
+    });
   }
 
   return (
@@ -837,6 +860,18 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
       <td className="px-4 py-2">
         <div className="flex flex-col items-end gap-2">
           <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setEditing((v) => !v);
+                setError(null);
+                setSaved(false);
+              }}
+              className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-white disabled:opacity-50"
+            >
+              {editing ? "Cancel edit" : "Edit details"}
+            </button>
             <input
               type="password"
               className="w-36 rounded border border-slate-300 px-2 py-1 text-xs"
@@ -861,10 +896,56 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
               {user.is_active ? "Disable login" : "Enable login"}
             </button>
           </div>
+          {saved ? <p className="text-xs text-emerald-700">User details saved.</p> : null}
           {error ? <p className="text-xs text-red-600">{error}</p> : null}
         </div>
       </td>
     </tr>
+      {editing ? (
+        <tr className="bg-slate-50">
+          <td colSpan={9} className="px-4 py-3">
+            <form onSubmit={saveDetails} className="grid gap-3 sm:grid-cols-3">
+              <label className="block text-xs text-slate-600">
+                Full name
+                <input
+                  className={`${inputClass} mt-1`}
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                />
+              </label>
+              <label className="block text-xs text-slate-600">
+                Username
+                <input
+                  className={`${inputClass} mt-1 font-mono`}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
+                  required
+                />
+              </label>
+              <label className="block text-xs text-slate-600">
+                Email
+                <input
+                  type="email"
+                  className={`${inputClass} mt-1`}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </label>
+              <div className="sm:col-span-3">
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="rounded-lg bg-[#185FA5] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#144f8a] disabled:opacity-50"
+                >
+                  {busy ? "Saving…" : "Save user details"}
+                </button>
+              </div>
+            </form>
+          </td>
+        </tr>
+      ) : null}
       {detailed && expanded && user.active_logins?.length > 0 ? (
         <tr className="bg-slate-50">
           <td colSpan={9} className="px-4 py-3">

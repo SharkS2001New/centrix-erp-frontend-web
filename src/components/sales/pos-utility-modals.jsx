@@ -149,7 +149,8 @@ export function PosCalculatorModal({ open, onClose }) {
   );
 }
 
-export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCode, uomById, vatById }) {
+export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCode, uomById, vatById, branchId }) {
+  const productBranchParams = branchId ? { branch_id: branchId } : {};
   const MIN_QUERY_LEN = 3;
   const SEARCH_DEBOUNCE_MS = 350;
 
@@ -189,7 +190,7 @@ export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCod
       setError(null);
       try {
         const res = await apiRequest("/products", {
-          searchParams: { per_page: 12, q: trimmed },
+          searchParams: { per_page: 12, q: trimmed, ...productBranchParams },
         });
         if (seq !== searchSeq.current) return;
         const uomMap = uomById ?? new Map();
@@ -207,7 +208,7 @@ export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCod
     }, SEARCH_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timer);
-  }, [query, uomById, vatById]);
+  }, [query, uomById, vatById, productBranchParams]);
 
   function selectProduct(product) {
     setSelected(product);
@@ -240,10 +241,14 @@ export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCod
       const vatMap = vatById ?? new Map();
       let row = null;
       try {
-        row = await apiRequest(`/products/${encodeURIComponent(trimmed)}`);
+        row = await apiRequest(`/products/${encodeURIComponent(trimmed)}`, {
+          searchParams: productBranchParams,
+        });
       } catch {
         if (trimmed.length >= MIN_QUERY_LEN) {
-          const res = await apiRequest("/products", { searchParams: { per_page: 1, q: trimmed } });
+          const res = await apiRequest("/products", {
+            searchParams: { per_page: 1, q: trimmed, ...productBranchParams },
+          });
           row = (res.data ?? [])[0] ?? null;
         }
       }

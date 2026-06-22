@@ -20,6 +20,7 @@ import { formatReportKes } from "@/lib/reports/format";
 const INVENTORY_LINKS = [
   { href: "/inventory/stock", title: "Current stock", desc: "On-hand quantities and valuation" },
   { href: "/inventory/receipts", title: "Stock receipts", desc: "Goods received into inventory" },
+  { href: "/inventory/adjustments", title: "Stock adjustments", desc: "Increase or decrease shop/store stock" },
   { href: "/inventory/transactions", title: "Movements", desc: "Transfers, adjustments, issues" },
   { href: "/inventory/transfers/new", title: "Transfer stock", desc: "Move stock between locations" },
   { href: "/inventory/damages", title: "Damages", desc: "Write-offs and damaged stock" },

@@ -19,7 +19,7 @@ import { resolveProductAudit } from "@/lib/product-audit";
 import { PermissionGate } from "@/components/permission-gate";
 import { P } from "@/lib/permission-codes";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
-import { productScopeLabel } from "@/lib/catalog-scope";
+import { productScopeLabel, catalogMetaFromCapabilities, isMultiBranchCatalog, defaultProductBranchId } from "@/lib/catalog-scope";
 import { useAuth } from "@/contexts/auth-context";
 
 const PAGE_SIZE = 10;
@@ -206,7 +206,9 @@ function groupProducts(products) {
 
 export default function ProductsPage() {
   const router = useRouter();
-  const { capabilities } = useAuth();
+  const { capabilities, user } = useAuth();
+  const catalogMeta = catalogMetaFromCapabilities(capabilities);
+  const multiBranch = isMultiBranchCatalog(capabilities);
   const [kraSelectMode, setKraSelectMode] = useState(false);
   const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
   const selectionEnabled = kraDeviceEnabled && kraSelectMode;
@@ -222,6 +224,8 @@ export default function ProductsPage() {
   const [suppliers, setSuppliers] = useState([]);
   const [retailPackages, setRetailPackages] = useState([]);
   const [globalReorderThreshold, setGlobalReorderThreshold] = useState(null);
+  const [branches, setBranches] = useState([]);
+  const [stockBranchId, setStockBranchId] = useState("");
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -250,6 +254,23 @@ export default function ProductsPage() {
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsOpen, setColumnsOpen] = useState(false);
 
+  const effectiveStockBranchId = useMemo(() => {
+    if (user?.branch_id) return Number(user.branch_id);
+    const parsed = Number(stockBranchId);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [user?.branch_id, stockBranchId]);
+
+  useEffect(() => {
+    if (user?.branch_id) {
+      setStockBranchId(String(user.branch_id));
+      return;
+    }
+    if (!stockBranchId) {
+      const fallback = defaultProductBranchId(capabilities, user, branches);
+      if (fallback) setStockBranchId(fallback);
+    }
+  }, [user?.branch_id, capabilities, user, branches, stockBranchId]);
+
   useEffect(() => {
     setVisibleColumnIds(readStoredColumnIds());
   }, []);
@@ -271,7 +292,7 @@ export default function ProductsPage() {
   const loadReferenceData = useCallback(async () => {
     setError(null);
     try {
-      const [userRes, catRes, subRes, vatRes, uomRes, supRes, retailRes, settingsRes, statsRes] =
+      const [userRes, catRes, subRes, vatRes, uomRes, supRes, retailRes, settingsRes, branchRes] =
         await Promise.all([
           apiRequest("/users", { searchParams: { per_page: 200 } }),
           apiRequest("/categories", { searchParams: { per_page: 200 } }),
@@ -281,7 +302,7 @@ export default function ProductsPage() {
           apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
           apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }),
           apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
-          apiRequest("/products/catalog-summary").catch(() => null),
+          apiRequest("/branches", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
         ]);
       setUsers(userRes.data ?? []);
       setCategories(catRes.data ?? []);
@@ -290,7 +311,7 @@ export default function ProductsPage() {
       setUoms(uomRes.data ?? []);
       setSuppliers(supRes.data ?? []);
       setRetailPackages(retailRes.data ?? []);
-      if (statsRes) setCatalogStats(statsRes);
+      setBranches(branchRes.data ?? []);
       const settingsRows = settingsRes?.data ?? settingsRes ?? [];
       const settings = Array.isArray(settingsRows) ? settingsRows[0] : settingsRows;
       const threshold = settings?.global_low_stock_threshold;
@@ -303,6 +324,17 @@ export default function ProductsPage() {
       setLoading(false);
     }
   }, []);
+
+  const loadCatalogStats = useCallback(async () => {
+    try {
+      const statsRes = await apiRequest("/products/catalog-summary", {
+        searchParams: effectiveStockBranchId ? { branch_id: effectiveStockBranchId } : {},
+      });
+      setCatalogStats(statsRes);
+    } catch {
+      setCatalogStats(null);
+    }
+  }, [effectiveStockBranchId]);
 
   const loadProducts = useCallback(async () => {
     setListLoading(true);
@@ -321,6 +353,7 @@ export default function ProductsPage() {
             activeFilter === "inactive" ? "inactive" : activeFilter === "all" ? "all" : "active",
           stock_status: stockFilter !== "all" ? stockFilter : undefined,
           pricing: pricingFilter !== "all" ? pricingFilter : undefined,
+          branch_id: effectiveStockBranchId ?? undefined,
         },
       });
       const prodRes = await apiRequest("/products", { searchParams });
@@ -341,14 +374,16 @@ export default function ProductsPage() {
     stockFilter,
     pricingFilter,
     activeFilter,
+    effectiveStockBranchId,
   ]);
 
   const reloadAll = useCallback(async () => {
     await Promise.all([
       loadReferenceData(),
       loadProducts(),
+      loadCatalogStats(),
     ]);
-  }, [loadReferenceData, loadProducts]);
+  }, [loadReferenceData, loadProducts, loadCatalogStats]);
 
   useEffect(() => {
     loadReferenceData();
@@ -357,7 +392,8 @@ export default function ProductsPage() {
   useEffect(() => {
     if (loading) return;
     loadProducts();
-  }, [loading, loadProducts]);
+    loadCatalogStats();
+  }, [loading, loadProducts, loadCatalogStats]);
 
   function openDeleteDialog(product) {
     setDeletingProduct(product);
@@ -460,7 +496,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, categoryFilter, subCategoryFilter, stockFilter, pricingFilter, activeFilter]);
+  }, [debouncedSearch, categoryFilter, subCategoryFilter, stockFilter, pricingFilter, activeFilter, effectiveStockBranchId]);
 
   function toggleAll(checked) {
     if (checked) setSelected(new Set(pageSlice.map((p) => p.product_code)));
@@ -624,6 +660,15 @@ export default function ProductsPage() {
         <StatCard label="Low stock" value={stats.lowStock} hint="below reorder point" />
         <StatCard label="Out of stock" value={stats.outOfStock} hint="zero units on hand" />
       </div>
+      {multiBranch ? (
+        <p className="mt-2 text-xs text-slate-500">
+          Shop, store, and stock filters use{" "}
+          {user?.branch_id
+            ? "your branch"
+            : branches.find((b) => String(b.id) === stockBranchId)?.branch_name ?? "the selected branch"}
+          {" "}ledger balances.
+        </p>
+      ) : null}
 
       {/* Filters */}
       <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -670,6 +715,16 @@ export default function ProductsPage() {
               { value: "out_of_stock", label: "Out of stock" },
             ]}
           />
+          {multiBranch && !user?.branch_id ? (
+            <FilterSelect
+              value={stockBranchId}
+              onChange={(e) => setStockBranchId(e.target.value)}
+              options={branches.map((b) => ({
+                value: String(b.id),
+                label: b.branch_name,
+              }))}
+            />
+          ) : null}
           <FilterSelect
             value={pricingFilter}
             onChange={(e) => setPricingFilter(e.target.value)}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { catalogMetaFromCapabilities } from "@/lib/catalog-scope";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import {
   buildProductBody,
@@ -23,7 +24,7 @@ import { SubcategoryCreateModal } from "@/components/products/subcategory-create
 export default function EditProductPage() {
   const params = useParams();
   const router = useRouter();
-  const { capabilities } = useAuth();
+  const { capabilities, user } = useAuth();
   const allowDiscounts = Boolean(mergeSalesSettings(capabilities?.module_settings).allow_discounts);
   const productCode = decodeURIComponent(params.code);
 
@@ -53,8 +54,14 @@ export default function EditProductPage() {
     setLoadError(null);
     setProductLoading(true);
     try {
+      const branchId =
+        user?.branch_id ??
+        catalogMetaFromCapabilities(capabilities).default_branch_id ??
+        catalogMetaFromCapabilities(capabilities).head_office_branch_id;
       const [productRes, retailPackage] = await Promise.all([
-        apiRequest(`/products/${encodeURIComponent(productCode)}`),
+        apiRequest(`/products/${encodeURIComponent(productCode)}`, {
+          searchParams: branchId ? { branch_id: branchId } : {},
+        }),
         loadRetailPackageForProduct(productCode).catch(() => null),
       ]);
       const product = productRes.data ?? productRes;
@@ -67,7 +74,7 @@ export default function EditProductPage() {
     } finally {
       setProductLoading(false);
     }
-  }, [productCode, uoms]);
+  }, [productCode, uoms, user?.branch_id, capabilities]);
 
   useEffect(() => {
     loadProduct();
