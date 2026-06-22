@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { normalizePermissionId } from "@/lib/permission-ids";
-import { PermissionModuleTable } from "@/components/admin/permission-matrix";
+import { CollapsibleToggle } from "@/components/admin/permission-matrix";
 
 const ACTION_LABELS = {
   view: "View",
@@ -36,6 +37,25 @@ function checkboxClass(state) {
   return undefined;
 }
 
+function PermissionLegend() {
+  return (
+    <div className="theme-subtext mb-3 flex flex-wrap gap-3 text-xs">
+      <span className="inline-flex items-center gap-1.5">
+        <span className="inline-block h-3 w-3 rounded border border-[var(--theme-border)] bg-[var(--theme-surface-muted)]" />
+        From role
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="inline-block h-3 w-3 rounded border border-emerald-500/40 bg-emerald-500/15" />
+        Extra grant
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="inline-block h-3 w-3 rounded border border-red-500/40 bg-red-500/15" />
+        Revoked
+      </span>
+    </div>
+  );
+}
+
 function UserPermissionModuleTable({
   group,
   rolePermissionIds,
@@ -44,64 +64,131 @@ function UserPermissionModuleTable({
   onToggle,
   readOnly = false,
 }) {
+  const [expanded, setExpanded] = useState(true);
   const roleIds =
     rolePermissionIds instanceof Set ? rolePermissionIds : new Set(rolePermissionIds ?? []);
   const granted = grantedIds instanceof Set ? grantedIds : new Set(grantedIds ?? []);
   const denied = deniedIds instanceof Set ? deniedIds : new Set(deniedIds ?? []);
 
   return (
-    <div className="rounded-lg border border-slate-200">
-      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-        <p className="text-sm font-semibold text-slate-900">{group.label}</p>
+    <div className="theme-panel rounded-lg border">
+      <div className="flex items-start gap-2 border-b border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-3 py-3">
+        <CollapsibleToggle
+          expanded={expanded}
+          onToggle={() => setExpanded((value) => !value)}
+          label={group.label}
+        />
+        <div className="min-w-0 flex-1 pt-0.5">
+          <p className="theme-heading text-sm font-semibold">{group.label}</p>
+          <p className="theme-subtext mt-0.5 text-xs">Module — expand to manage linked features</p>
+        </div>
       </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="border-b border-slate-100 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-2">Feature / link</th>
-              {ACTION_ORDER.map((action) => (
-                <th key={action} className="px-3 py-2 text-center">
-                  {ACTION_LABELS[action] ?? action}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {group.features.map((feature) => {
-              const byAction = Object.fromEntries(feature.permissions.map((p) => [p.action, p]));
 
-              return (
-                <tr key={feature.key}>
-                  <td className="px-4 py-2 font-medium text-slate-800">{feature.label}</td>
-                  {ACTION_ORDER.map((action) => {
-                    const perm = byAction[action];
-                    const state = cellState(roleIds, granted, denied, perm?.id);
-                    const checked = perm ? effectiveHas(roleIds, granted, denied, perm.id) : false;
-
-                    return (
-                      <td key={action} className="px-3 py-2 text-center">
-                        {perm ? (
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={readOnly}
-                            onChange={() => onToggle?.(normalizePermissionId(perm.id))}
-                            title={perm.permission_name}
-                            className={checkboxClass(state)}
-                          />
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </td>
-                    );
-                  })}
+      {expanded ? (
+        <div className="ml-4 border-l-2 border-[var(--theme-border)] py-1 pl-4 pr-2">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="theme-table-head-row border-b text-left text-xs font-medium uppercase tracking-wide">
+                <tr>
+                  <th className="px-3 py-2">Feature / link</th>
+                  {ACTION_ORDER.map((action) => (
+                    <th key={action} className="px-3 py-2 text-center">
+                      {ACTION_LABELS[action] ?? action}
+                    </th>
+                  ))}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody className="divide-y divide-[var(--theme-border)]">
+                {group.features.map((feature) => {
+                  const byAction = Object.fromEntries(feature.permissions.map((p) => [p.action, p]));
+
+                  return (
+                    <tr key={feature.key} className="theme-table-body-row">
+                      <td className="theme-heading px-3 py-2 pl-5 font-medium">{feature.label}</td>
+                      {ACTION_ORDER.map((action) => {
+                        const perm = byAction[action];
+                        const state = cellState(roleIds, granted, denied, perm?.id);
+                        const checked = perm ? effectiveHas(roleIds, granted, denied, perm.id) : false;
+
+                        return (
+                          <td key={action} className="px-3 py-2 text-center">
+                            {perm ? (
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={readOnly}
+                                onChange={() => onToggle?.(normalizePermissionId(perm.id))}
+                                title={perm.permission_name}
+                                className={checkboxClass(state)}
+                              />
+                            ) : (
+                              <span className="theme-subtext opacity-50">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function UserApplicationPermissionSection({
+  application,
+  rolePermissionIds,
+  grantedIds,
+  deniedIds,
+  onToggle,
+  readOnly,
+}) {
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <section className="space-y-2">
+      <div
+        className={`theme-panel rounded-lg border px-4 py-3 ${
+          application.standalone
+            ? "border-l-4 border-l-[var(--theme-primary)] bg-[var(--theme-surface-muted)]"
+            : "bg-[var(--theme-surface-muted)]"
+        }`}
+      >
+        <div className="flex items-start gap-2">
+          <CollapsibleToggle
+            expanded={expanded}
+            onToggle={() => setExpanded((value) => !value)}
+            label={application.label}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="theme-heading text-sm font-semibold">{application.label}</p>
+            {application.description ? (
+              <p className="theme-subtext mt-0.5 text-xs">{application.description}</p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {expanded ? (
+        <div className="ml-3 space-y-4 border-l-2 border-[var(--theme-border)] py-1 pl-4">
+          {application.modules.map((group) => (
+            <UserPermissionModuleTable
+              key={`${application.id}-${group.module}`}
+              group={group}
+              rolePermissionIds={rolePermissionIds}
+              grantedIds={grantedIds}
+              deniedIds={deniedIds}
+              onToggle={onToggle}
+              readOnly={readOnly}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -117,51 +204,19 @@ export function UserPermissionMatrix({
   if (applications?.length) {
     return (
       <div>
-        <div className="mb-3 flex flex-wrap gap-3 text-xs text-slate-600">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-3 w-3 rounded border border-slate-300 bg-slate-100" />
-            From role
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-3 w-3 rounded border border-emerald-400 bg-emerald-50" />
-            Extra grant
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-3 w-3 rounded border border-red-300 bg-red-50" />
-            Revoked
-          </span>
-        </div>
+        <PermissionLegend />
 
-        <div className="space-y-8">
+        <div className="space-y-6">
           {applications.map((application) => (
-            <section key={application.id} className="space-y-4">
-              <div
-                className={`rounded-lg border px-4 py-3 ${
-                  application.standalone
-                    ? "border-violet-200 bg-violet-50"
-                    : "border-slate-200 bg-slate-50"
-                }`}
-              >
-                <p className="text-sm font-semibold text-slate-900">{application.label}</p>
-                {application.description ? (
-                  <p className="mt-0.5 text-xs text-slate-600">{application.description}</p>
-                ) : null}
-              </div>
-
-              <div className="space-y-4">
-                {application.modules.map((group) => (
-                  <UserPermissionModuleTable
-                    key={`${application.id}-${group.module}`}
-                    group={group}
-                    rolePermissionIds={rolePermissionIds}
-                    grantedIds={grantedIds}
-                    deniedIds={deniedIds}
-                    onToggle={onToggle}
-                    readOnly={readOnly}
-                  />
-                ))}
-              </div>
-            </section>
+            <UserApplicationPermissionSection
+              key={application.id}
+              application={application}
+              rolePermissionIds={rolePermissionIds}
+              grantedIds={grantedIds}
+              deniedIds={deniedIds}
+              onToggle={onToggle}
+              readOnly={readOnly}
+            />
           ))}
         </div>
       </div>
@@ -174,27 +229,14 @@ export function UserPermissionMatrix({
   const denied = deniedIds instanceof Set ? deniedIds : new Set(deniedIds ?? []);
 
   if (!groups?.length) {
-    return <p className="text-sm text-slate-500">No permissions defined.</p>;
+    return <p className="theme-subtext text-sm">No permissions defined.</p>;
   }
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap gap-3 text-xs text-slate-600">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-3 w-3 rounded border border-slate-300 bg-slate-100" />
-          From role
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-3 w-3 rounded border border-emerald-400 bg-emerald-50" />
-          Extra grant
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-3 w-3 rounded border border-red-300 bg-red-50" />
-          Revoked
-        </span>
-      </div>
+      <PermissionLegend />
 
-      <div className="space-y-6">
+      <div className="space-y-4">
         {groups.map((group) => (
           <UserPermissionModuleTable
             key={group.module}
