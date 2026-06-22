@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { buildAccessContext, resolveHomePath } from "@/lib/access-control";
+import { buildAccessContext, resolveHomePath, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { canAccessRoute } from "@/lib/route-access";
 
 export function RoutePermissionGuard({ children }) {
@@ -11,7 +11,7 @@ export function RoutePermissionGuard({ children }) {
   const router = useRouter();
   const { user, organization, capabilities, loading, hasPermission, isModuleEnabled, isSuperAdmin } =
     useAuth();
-  const requireTillFloat = Boolean(capabilities?.require_till_float);
+  const requireTillFloat = resolveTillFloatNavFlag(capabilities);
 
   const accessCtx = useMemo(
     () =>

@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
-import { buildAccessContext, isPlatformShellUser } from "@/lib/access-control";
+import { buildAccessContext, isPlatformShellUser, resolveTillFloatNavFlag } from "@/lib/access-control";
 import {
   defaultWorkspaceId,
   isPosWorkspace,
@@ -22,7 +22,7 @@ export function WorkspaceGuard({ children }) {
     user,
     organization,
     capabilities,
-    requireTillFloat: capabilities?.require_till_float,
+    requireTillFloat: resolveTillFloatNavFlag(capabilities),
     isSuperAdmin,
   });
 

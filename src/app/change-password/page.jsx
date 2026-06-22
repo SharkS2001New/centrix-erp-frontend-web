@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
+import { resolvePostLoginPath } from "@/lib/workspaces";
 import {
   AuthError,
   AuthField,
@@ -15,7 +17,7 @@ import { PasswordInput } from "@/components/auth/password-input";
 
 export default function ChangePasswordPage() {
   const router = useRouter();
-  const { user, refreshCapabilities } = useAuth();
+  const { user, organization, capabilities, clearMustChangePassword, refreshCapabilities } = useAuth();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState(null);
@@ -41,8 +43,15 @@ export default function ChangePasswordPage() {
           password_confirmation: confirmation,
         },
       });
-      await refreshCapabilities();
-      router.replace("/dashboard");
+      clearMustChangePassword();
+      const caps = capabilities ?? (await refreshCapabilities());
+      const ctx = buildAccessContext({
+        user: { ...user, must_change_password: false },
+        organization,
+        capabilities: caps,
+        requireTillFloat: resolveTillFloatNavFlag(caps),
+      });
+      router.replace(resolvePostLoginPath(ctx, caps));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update password.");
     } finally {

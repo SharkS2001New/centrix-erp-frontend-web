@@ -1,5 +1,5 @@
 import { getSalesOrderQueueWorkflow, salesOrderSidebarNavItems } from "@/lib/order-workflow";
-import { isOrgMobileSalesEnabled, isPosTillFloatRequired } from "@/lib/sales-settings";
+import { isOrgMobileSalesEnabled, isTillFloatWorkflowEnabled } from "@/lib/sales-settings";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { isNavItemVisible, isNavSectionVisible, navSections } from "@/lib/nav-config";
 import { withNavItemIcon } from "@/lib/nav-item-icons";
@@ -15,7 +15,7 @@ export function buildWorkspaceNavSections({
   workspaceId,
   isSuperAdmin,
 }) {
-  const requireTillFloat = isPosTillFloatRequired(capabilities?.module_settings);
+  const requireTillFloat = isTillFloatWorkflowEnabled(capabilities?.module_settings);
   const workflow = getSalesOrderQueueWorkflow(capabilities, "backend");
   const includeMobile =
     isOrgMobileSalesEnabled(capabilities) &&

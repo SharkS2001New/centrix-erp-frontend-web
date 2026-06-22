@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { hasAuthSession } from "@/lib/auth-storage";
 import { useAuth } from "@/contexts/auth-context";
-import { buildAccessContext, resolveHomePath } from "@/lib/access-control";
+import { buildAccessContext, resolveHomePath, resolveTillFloatNavFlag } from "@/lib/access-control";
 
 export default function HomePage() {
   const router = useRouter();
@@ -20,7 +20,7 @@ export default function HomePage() {
       user,
       organization,
       capabilities,
-      requireTillFloat: capabilities?.require_till_float,
+      requireTillFloat: resolveTillFloatNavFlag(capabilities),
       isSuperAdmin,
     });
     router.replace(resolveHomePath(ctx));

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { hasAuthSession } from "@/lib/auth-storage";
+import { hasAuthSession, getStoredUser } from "@/lib/auth-storage";
 import { ApiError, isSessionConflictError } from "@/lib/api";
 import {
   clearStoredCompanyCode,
@@ -55,7 +55,10 @@ function LoginForm() {
 
   useEffect(() => {
     if (hasAuthSession()) {
-      router.replace("/dashboard");
+      const storedUser = getStoredUser();
+      router.replace(
+        storedUser?.must_change_password ? "/change-password" : "/dashboard",
+      );
     }
   }, [router]);
 

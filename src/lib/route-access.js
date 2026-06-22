@@ -37,6 +37,11 @@ const REPORT_ROUTE_RULES = [
 const POS_ROUTE_RULES = [
   { prefix: "/pos", permission: P.pos.terminal.view },
   { prefix: "/sales/pos", permission: P.pos.checkout.create },
+  {
+    prefix: "/sales/end-of-day",
+    permission: P.pos.end_of_day.view,
+    altPermissions: [P.reports.hub.view],
+  },
 ];
 
 /**
@@ -78,7 +83,9 @@ export function canAccessRoute(pathname, ctx) {
 
   for (const rule of POS_ROUTE_RULES) {
     if (pathname === rule.prefix || pathname.startsWith(`${rule.prefix}/`)) {
-      return ctx.hasPermission(rule.permission);
+      if (ctx.hasPermission(rule.permission)) return true;
+      if (rule.altPermissions?.some((code) => ctx.hasPermission(code))) return true;
+      return false;
     }
   }
 

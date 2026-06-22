@@ -19,13 +19,14 @@ import {
   getStoredWorkspace,
   hasAuthSession,
   isScreenLocked,
+  patchStoredUser,
   setSession,
   setStoredWorkspace,
 } from "@/lib/auth-storage";
 import { clearStoredActiveSession } from "@/lib/pos-till";
 import { setStoredCompanyCode } from "@/lib/tenant-config";
 import { resolveGeneralSettings } from "@/lib/format";
-import { buildAccessContext, resolveHasPermission } from "@/lib/access-control";
+import { buildAccessContext, resolveHasPermission, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { resolvePostLoginPath, workspaceLoginChannel, workspacesFromCapabilities } from "@/lib/workspaces";
 import { applyWorkspaceSession } from "@/lib/workspace-session";
 import { WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
@@ -68,6 +69,16 @@ export function AuthProvider({ children }) {
   const refreshCapabilities = useCallback(async () => {
     const caps = await apiRequest("/erp/capabilities");
     setCapabilities(caps);
+    return caps;
+  }, []);
+
+  const clearMustChangePassword = useCallback(() => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, must_change_password: false };
+      patchStoredUser({ must_change_password: false });
+      return next;
+    });
   }, []);
 
   const applyAuthPayload = useCallback(async (res, channel = WEB_LOGIN_CHANNEL) => {
@@ -170,7 +181,7 @@ export function AuthProvider({ children }) {
         user: res.user,
         organization: res.organization,
         capabilities: caps,
-        requireTillFloat: caps?.require_till_float,
+        requireTillFloat: resolveTillFloatNavFlag(caps),
       });
       const workspaces = workspacesFromCapabilities(caps);
       if (workspaces.length === 1) {
@@ -194,11 +205,15 @@ export function AuthProvider({ children }) {
         },
       });
       const caps = await applyAuthPayload(res, WEB_LOGIN_CHANNEL);
+      if (res.must_change_password || res.user?.must_change_password) {
+        router.replace("/change-password");
+        return caps;
+      }
       const ctx = buildAccessContext({
         user: res.user,
         organization: res.organization,
         capabilities: caps,
-        requireTillFloat: caps?.require_till_float,
+        requireTillFloat: resolveTillFloatNavFlag(caps),
       });
       const workspaces = workspacesFromCapabilities(caps);
       const stored = getStoredWorkspace();
@@ -245,6 +260,7 @@ export function AuthProvider({ children }) {
       switchWorkspace,
       logout,
       refreshCapabilities,
+      clearMustChangePassword,
       isModuleEnabled: (key) => capabilities?.modules?.[key] ?? false,
       isSuperAdmin: () => Boolean(user?.is_super_admin || capabilities?.is_super_admin),
       hasPermission: (code) =>
@@ -272,6 +288,7 @@ export function AuthProvider({ children }) {
       switchWorkspace,
       logout,
       refreshCapabilities,
+      clearMustChangePassword,
     ],
   );
 

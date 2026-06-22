@@ -225,6 +225,11 @@ export function isBackofficeTillFloatRequired(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).require_backoffice_till_float);
 }
 
+/** Nav + till admin screens when either external POS or backoffice float workflow is enabled. */
+export function isTillFloatWorkflowEnabled(moduleSettings) {
+  return isPosTillFloatRequired(moduleSettings) || isBackofficeTillFloatRequired(moduleSettings);
+}
+
 /** When true, cashiers count cash without seeing expected amount during close. */
 export function isBlindTillCloseEnabled(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).blind_till_close);

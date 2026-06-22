@@ -5,7 +5,7 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
-import { isPosTillFloatRequired, areSalesDiscountsEnabled } from "@/lib/sales-settings";
+import { isTillFloatWorkflowEnabled, areSalesDiscountsEnabled } from "@/lib/sales-settings";
 import { openPrintWindow } from "@/lib/open-print-window";
 import { formatTillKes, formatTillKesExact } from "@/lib/pos-till";
 import {
@@ -166,7 +166,7 @@ ${meta.showFloat ? `<div class="row"><span>Opening float</span><span>${kesNum(s.
 export function EndOfDayReportScreen() {
   const { user, capabilities } = useAuth();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
-  const requireTillFloat = isPosTillFloatRequired(capabilities?.module_settings);
+  const requireTillFloat = isTillFloatWorkflowEnabled(capabilities?.module_settings);
   const discountsEnabled = areSalesDiscountsEnabled(capabilities?.module_settings);
 
   const [branches, setBranches] = useState([]);

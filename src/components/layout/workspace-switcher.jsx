@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
-import { buildAccessContext } from "@/lib/access-control";
+import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { resolveActiveWorkspace, resolveAvailableWorkspaces, workspaceIcon } from "@/lib/workspaces";
 import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
@@ -39,7 +39,7 @@ export function WorkspaceSwitcher() {
         user,
         organization,
         capabilities,
-        requireTillFloat: capabilities?.require_till_float,
+        requireTillFloat: resolveTillFloatNavFlag(capabilities),
         isSuperAdmin,
       }),
     [capabilities, isSuperAdmin, organization, user],

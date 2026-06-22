@@ -46,6 +46,7 @@ const EMPTY_FORM = {
   branch_id: "",
   role_id: "",
   password: "",
+  must_change_password: true,
   access_scope: "branch",
   login_channels: [...DEFAULT_LOGIN_CHANNELS],
   assigned_route_id: "",
@@ -237,6 +238,7 @@ export default function AdminUsersPage() {
       branch_id: row.branch_id ? String(row.branch_id) : "",
       role_id: row.role_id ? String(row.role_id) : "",
       password: "",
+      must_change_password: true,
       access_scope: row.access_scope ?? "branch",
       login_channels: normalizeLoginChannels(row.login_channels),
       assigned_route_id: row.assigned_route_id ? String(row.assigned_route_id) : "",
@@ -379,7 +381,10 @@ export default function AdminUsersPage() {
       if (!editing || !isProtectedUserAccount(editing, user?.id)) {
         body.is_active = form.is_active;
       }
-      if (form.password.trim()) body.password = form.password;
+      if (form.password.trim()) {
+        body.password = form.password;
+        body.must_change_password = form.must_change_password;
+      }
       if (editing) {
         await apiRequest(adminPath(`/users/${editing.id}`), { method: "PUT", body });
       } else {
@@ -640,12 +645,19 @@ export default function AdminUsersPage() {
               required={!editing}
               minLength={6}
             />
-            {editing ? (
-              <p className="mt-1 text-xs text-slate-500">
-                User must change this password on next sign-in.
-              </p>
-            ) : null}
           </Field>
+          {(!editing || form.password.trim()) ? (
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={form.must_change_password}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, must_change_password: e.target.checked }))
+                }
+              />
+              Require password change on first sign-in
+            </label>
+          ) : null}
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
               type="checkbox"

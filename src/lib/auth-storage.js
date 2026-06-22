@@ -66,6 +66,15 @@ export function setStoredLoginChannel(channel) {
   }
 }
 
+export function patchStoredUser(updates) {
+  if (typeof window === "undefined") return null;
+  const user = getStoredUser();
+  if (!user) return null;
+  const next = { ...user, ...updates };
+  localStorage.setItem(USER_KEY, JSON.stringify(next));
+  return next;
+}
+
 export function getStoredUser() {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem(USER_KEY);

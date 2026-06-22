@@ -9,6 +9,12 @@ import {
   workspaceDefinition,
   workspaceHomePath,
 } from "@/lib/workspaces";
+import { isTillFloatWorkflowEnabled } from "@/lib/sales-settings";
+
+/** Whether till-management nav and routes are enabled for this tenant. */
+export function resolveTillFloatNavFlag(capabilities) {
+  return isTillFloatWorkflowEnabled(capabilities?.module_settings);
+}
 
 /** Routes platform super admins may use (tenant ERP is hidden). */
 export const PLATFORM_SHELL_PREFIXES = ["/platform", "/profile"];

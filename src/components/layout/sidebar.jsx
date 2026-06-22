@@ -8,7 +8,7 @@ import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isNavItemActive, isNavSectionActive, isNavItemVisible } from "@/lib/nav-config";
 import { defaultWorkspaceId, groupNavSectionsByZone } from "@/lib/workspaces";
 import { buildWorkspaceNavSections } from "@/lib/workspace-nav";
-import { isPosTillFloatRequired } from "@/lib/sales-settings";
+import { isTillFloatWorkflowEnabled } from "@/lib/sales-settings";
 import { CentrixLogo } from "@/components/branding/centrix-logo";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { NavItemIcon, NavSectionIcon } from "@/lib/nav-icons";
@@ -307,7 +307,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
       isModuleEnabled,
       hasPermission,
       isSuperAdmin,
-      requireTillFloat: isPosTillFloatRequired(capabilities?.module_settings),
+      requireTillFloat: isTillFloatWorkflowEnabled(capabilities?.module_settings),
       user,
       organization,
       capabilities,

@@ -53,7 +53,6 @@ const nextConfig = {
       { source: "/purchases", destination: "/lpo", permanent: false },
       { source: "/purchase-orders", destination: "/lpo", permanent: false },
       { source: "/finance/expenses", destination: "/expenses", permanent: false },
-      { source: "/inventory/transfers", destination: "/inventory/transfers/new", permanent: false },
       { source: "/admin/organizations/new", destination: "/platform/organizations/new", permanent: false },
       { source: "/admin/organizations/:id", destination: "/platform/organizations/:id", permanent: false },
       { source: "/pos-login", destination: "/login", permanent: false },

@@ -573,6 +573,7 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(true);
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState(null);
   const [createMessage, setCreateMessage] = useState(null);
@@ -613,6 +614,7 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
           email,
           password,
           is_admin: isAdmin,
+          must_change_password: mustChangePassword,
         },
       });
       setCreateMessage(`User ${res.user?.username ?? username} created.`);
@@ -621,6 +623,7 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
       setEmail("");
       setPassword("");
       setIsAdmin(false);
+      setMustChangePassword(true);
       setOpen(false);
       await loadUsers();
     } catch (err) {
@@ -743,6 +746,15 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
             />
             Organization administrator (full access)
           </label>
+          <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={mustChangePassword}
+              onChange={(e) => setMustChangePassword(e.target.checked)}
+              className="rounded"
+            />
+            Require password change on first sign-in
+          </label>
           {createError ? (
             <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</p>
           ) : null}
@@ -773,6 +785,7 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
   const [username, setUsername] = useState(user.username ?? "");
   const [email, setEmail] = useState(user.email ?? "");
   const [password, setPassword] = useState("");
+  const [mustChangePassword, setMustChangePassword] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
@@ -879,10 +892,20 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            <label className="flex items-center gap-1.5 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={mustChangePassword}
+                onChange={(e) => setMustChangePassword(e.target.checked)}
+              />
+              Require change on sign-in
+            </label>
             <button
               type="button"
               disabled={busy || password.length < 6}
-              onClick={() => void updateUser({ password, must_change_password: true })}
+              onClick={() =>
+                void updateUser({ password, must_change_password: mustChangePassword })
+              }
               className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-white disabled:opacity-50"
             >
               Reset password

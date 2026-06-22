@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { buildAccessContext } from "@/lib/access-control";
-import { isPosTillFloatRequired } from "@/lib/sales-settings";
+import { isTillFloatWorkflowEnabled } from "@/lib/sales-settings";
 import {
   buildWorkspaceNavSections,
   flattenNavSearchEntries,
@@ -35,7 +35,7 @@ export function GlobalModuleSearch() {
       isModuleEnabled,
       hasPermission,
       isSuperAdmin,
-      requireTillFloat: isPosTillFloatRequired(capabilities?.module_settings),
+      requireTillFloat: isTillFloatWorkflowEnabled(capabilities?.module_settings),
       user,
       organization,
       capabilities,

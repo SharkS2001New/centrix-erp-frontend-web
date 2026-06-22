@@ -1,20 +1,13 @@
-import { REPORT_DEFINITIONS } from "@/lib/reports/definitions";
-import { HR_REPORT_DEFS } from "@/lib/reports/hr-reports";
-import { DISTRIBUTION_REPORT_DEFS } from "@/lib/reports/distribution-reports";
-import { canViewReport, P, reportPermissionCode } from "@/lib/permission-codes";
+import { buildCatalogReportNavItems } from "@/lib/reports/report-nav";
+import { canViewReport, P } from "@/lib/permission-codes";
 import { shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
-import { reportModuleForSlug, anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-registry";
+import { anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-registry";
 import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled } from "@/lib/sales-settings";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
-import { withNavItemIcons, resolveNavHrefIcon } from "@/lib/nav-item-icons";
-
-function reportNavLabel(key) {
-  const title = REPORT_DEFINITIONS[key]?.title ?? key;
-  return title.replace(/ Report$/i, "");
-}
+import { withNavItemIcons } from "@/lib/nav-item-icons";
 
 function buildReportNavItems() {
-  const items = [
+  return [
     {
       href: "/reports",
       label: "Report overview",
@@ -32,98 +25,8 @@ function buildReportNavItems() {
       permission: P.reports.builder.view,
       requireAnyReportsModule: true,
     },
-    {
-      href: "/reports/customer-statement",
-      label: "Customer Statement",
-      module: "accounting.reports",
-      permission: P.reports.customer_statement.view,
-      group: "Finance reports",
-      reportKey: "customer-statement",
-    },
-    {
-      href: "/reports/subledger-reconciliation",
-      label: "Subledger reconciliation",
-      module: "accounting.reports",
-      permission: P.accounting.general_ledger.view,
-      reportKey: "subledger-reconciliation",
-      group: "Finance reports",
-    },
+    ...buildCatalogReportNavItems(),
   ];
-
-  const REPORT_NAV_GROUPS = [
-    {
-      group: "Sales reports",
-      keys: ["daily-sales", "sales-by-product", "sales-by-customer", "till-sessions"],
-    },
-    {
-      group: "Inventory reports",
-      keys: ["stock-on-hand", "stock-movement"],
-    },
-    {
-      group: "Purchasing reports",
-      keys: ["purchases-by-supplier"],
-    },
-    {
-      group: "Finance reports",
-      keys: ["profit-loss", "top-debtors", "expenses", "vat-collected", "invoice-payments", "ar-aging"],
-    },
-    {
-      group: "Compliance reports",
-      keys: ["kra-receipts"],
-    },
-  ];
-
-  for (const { group, keys } of REPORT_NAV_GROUPS) {
-    for (const key of keys) {
-      const def = REPORT_DEFINITIONS[key];
-      items.push({
-        href: `/reports/${key}`,
-        label:
-          key === "purchases-by-supplier"
-            ? "Purchases summary"
-            : def?.title?.replace(/ Report$/i, "") ?? reportNavLabel(key),
-        module: reportModuleForSlug(key),
-        moduleAny:
-          key === "profit-loss" ||
-          key === "top-debtors" ||
-          key === "expenses" ||
-          key === "invoice-payments" ||
-          key === "ar-aging" ||
-          key === "kra-receipts"
-            ? ["sales.reports", "accounting.reports"]
-            : undefined,
-        permission: reportPermissionCode(key),
-        icon: resolveNavHrefIcon(`/reports/${key}`),
-        reportKey: key,
-        group,
-      });
-    }
-  }
-
-  for (const report of HR_REPORT_DEFS) {
-    items.push({
-      href: `/reports/${report.key}`,
-      label: report.label,
-      module: "hr_payroll.reports",
-      permission: reportPermissionCode(report.key),
-      icon: report.icon,
-      reportKey: report.key,
-    });
-  }
-
-  for (const report of DISTRIBUTION_REPORT_DEFS) {
-    items.push({
-      href: `/reports/${report.key}`,
-      label: report.label,
-      module: "distribution.reports",
-      permission: reportPermissionCode(report.key),
-      icon: report.icon,
-      reportKey: report.key,
-      group: "Distribution reports",
-    });
-  }
-
-  return items;
 }
 
 /** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, group?: string, reportKey?: string }} NavItem */
