@@ -288,13 +288,6 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.sales.orders.view,
         ordersNav: true,
       },
-      {
-        href: "/sales/loading-sheets",
-        label: "Loading list",
-        module: "sales.backend",
-        permission: P.sales.orders.view,
-        requireMobileLoadingSheets: true,
-      },
     ],
   },
   {
@@ -302,7 +295,6 @@ const NAV_SECTION_DEFINITIONS = [
     label: "Field sales",
     icon: "📱",
     collapsible: true,
-    requireUserMobileChannel: true,
     requireOrgMobileSales: true,
     items: [
       {
@@ -311,6 +303,14 @@ const NAV_SECTION_DEFINITIONS = [
         module: "sales.backend",
         permission: P.sales.orders.view,
         mobileOrdersNav: true,
+        requireUserMobileChannel: true,
+      },
+      {
+        href: "/sales/loading-sheets",
+        label: "Loading list",
+        module: "sales.backend",
+        permission: P.sales.orders.view,
+        requireMobileLoadingSheets: true,
       },
       {
         href: "/sales/field-attendance",
