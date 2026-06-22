@@ -12,6 +12,7 @@ import {
   defaultSalesPlatformState,
 } from "@/components/admin/organization-register-form";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { OrganizationCachePanel } from "@/components/admin/organization-cache-panel";
 import { buildDomainChildrenMap, normalizeDomainModules, patchEnabledModules } from "@/lib/module-registry";
 import { applicationsFromEnabledModules } from "@/lib/workspace-modules";
 
@@ -251,6 +252,8 @@ export default function ManageOrganizationPage() {
               </Link>
             </div>
           </form>
+
+          <OrganizationCachePanel organizationId={orgId} />
         </div>
       )}
     </CatalogPageShell>
