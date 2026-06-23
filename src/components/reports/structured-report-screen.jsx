@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
@@ -158,9 +159,9 @@ function StandardReportScreen({ definition }) {
           <strong>{legacyArchiveMeta.label ?? "legacy archive"}</strong>
           {legacyArchiveMeta.cutover_date ? ` (cutover ${legacyArchiveMeta.cutover_date})` : ""}. Legacy rows are
           highlighted in amber. Browse individual sales under{" "}
-          <a href="/reports/legacy-archive" className="font-medium text-[#185FA5] hover:underline">
+          <Link href="/reports/legacy-archive" className="font-medium text-[#185FA5] hover:underline">
             Legacy sales archive
-          </a>
+          </Link>
           .
         </p>
       ) : null}
