@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { ReportBadge } from "@/components/reports/report-screen-shared";
+import { defaultDashboardDateRange } from "@/lib/dashboard-dates";
 import {
   fetchLegacyArchiveSale,
   fetchLegacyArchiveSales,
@@ -12,11 +14,15 @@ import {
   materializeLegacySale,
 } from "@/lib/legacy-archive-api";
 
+const PAGE_SIZE = 20;
+
 const CHANNELS = [
   { key: "pos", label: "POS" },
   { key: "mobile", label: "Mobile" },
   { key: "debtor", label: "Debtor / credit" },
 ];
+
+const defaultRange = defaultDashboardDateRange(29);
 
 function money(value) {
   const n = Number(value ?? 0);
@@ -126,6 +132,16 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
             </table>
           </div>
 
+          {notice ? (
+            <p
+              className={`mt-4 rounded-lg px-3 py-2 text-sm ${
+                notice.type === "error" ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"
+              }`}
+            >
+              {notice.text}
+            </p>
+          ) : null}
+
           <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <p className="font-medium">Returns &amp; credit notes</p>
             <ol className="mt-2 list-decimal space-y-1 pl-4 text-amber-900/90">
@@ -139,17 +155,6 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
         </div>
 
         <div className="flex flex-wrap gap-2 border-t border-slate-200 px-5 py-4">
-          {notice ? (
-            <p
-              className={`mb-2 w-full rounded-lg px-3 py-2 text-sm ${
-                notice.type === "success"
-                  ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
-                  : "border border-red-200 bg-red-50 text-red-700"
-              }`}
-            >
-              {notice.text}
-            </p>
-          ) : null}
           {centrixSaleId ? (
             <Link
               href={`/sales/returns/new?sale_id=${centrixSaleId}`}
@@ -185,49 +190,74 @@ export function LegacyArchiveReportScreen() {
   const [summary, setSummary] = useState(null);
   const [sales, setSales] = useState({ data: [], meta: {} });
   const [channel, setChannel] = useState("pos");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(defaultRange.from);
+  const [toDate, setToDate] = useState(defaultRange.to);
   const [q, setQ] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [loadingSales, setLoadingSales] = useState(true);
   const [error, setError] = useState(null);
   const [selectedSale, setSelectedSale] = useState(null);
+  const [applied, setApplied] = useState({
+    channel: "pos",
+    fromDate: defaultRange.from,
+    toDate: defaultRange.to,
+    q: "",
+    page: 1,
+  });
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
+    fetchLegacyArchiveStatus()
+      .then(setStatus)
+      .catch((err) => setError(err?.message ?? "Could not load legacy archive status."))
+      .finally(() => setLoadingStatus(false));
+  }, []);
+
+  const loadSales = useCallback(async () => {
+    if (!applied.fromDate || !applied.toDate) {
+      setSales({ data: [], meta: {} });
+      setSummary(null);
+      setLoadingSales(false);
+      return;
+    }
+
+    setLoadingSales(true);
     setError(null);
     try {
-      const [st, sumRes, list] = await Promise.all([
-        fetchLegacyArchiveStatus(),
+      const [sumRes, list] = await Promise.all([
         fetchLegacyArchiveSummary({
-          ...(fromDate ? { from_date: fromDate } : {}),
-          ...(toDate ? { to_date: toDate } : {}),
+          from_date: applied.fromDate,
+          to_date: applied.toDate,
         }).catch(() => null),
         fetchLegacyArchiveSales({
-          channel,
-          page: 1,
-          per_page: 50,
-          ...(fromDate ? { from_date: fromDate } : {}),
-          ...(toDate ? { to_date: toDate } : {}),
-          ...(q ? { q } : {}),
-        }).catch(() => ({ data: [], meta: {} })),
+          channel: applied.channel,
+          page: applied.page,
+          per_page: PAGE_SIZE,
+          from_date: applied.fromDate,
+          to_date: applied.toDate,
+          ...(applied.q ? { q: applied.q } : {}),
+        }),
       ]);
-      setStatus(st);
       setSummary(sumRes?.summary ?? null);
       setSales(list);
     } catch (err) {
-      setError(err?.message ?? "Could not load legacy archive.");
+      setError(err?.message ?? "Could not load legacy sales.");
+      setSales({ data: [], meta: {} });
     } finally {
-      setLoading(false);
+      setLoadingSales(false);
     }
-  }, [channel, fromDate, toDate, q]);
+  }, [applied]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadSales();
+  }, [loadSales]);
 
   const openSale = async (row) => {
     try {
-      const detail = await fetchLegacyArchiveSale(row.archive_channel ?? row.channel ?? channel, row.legacy_order_num);
+      const detail = await fetchLegacyArchiveSale(
+        row.archive_channel ?? row.channel ?? applied.channel,
+        row.legacy_order_num,
+      );
       setSelectedSale(detail);
     } catch {
       setSelectedSale(row);
@@ -236,10 +266,20 @@ export function LegacyArchiveReportScreen() {
 
   const handleMaterialized = (saleId) => {
     setSelectedSale((prev) => (prev ? { ...prev, materialized_sale_id: saleId } : prev));
-    load();
+    loadSales();
   };
 
-  if (!loading && status && !status.enabled) {
+  function applyFilters() {
+    setPage(1);
+    setApplied({ channel, fromDate, toDate, q, page: 1 });
+  }
+
+  function handlePageChange(nextPage) {
+    setPage(nextPage);
+    setApplied((prev) => ({ ...prev, page: nextPage }));
+  }
+
+  if (!loadingStatus && status && !status.enabled) {
     return (
       <div>
         <AdminBreadcrumb items={[{ label: "Reports", href: "/reports" }, { label: "Legacy archive" }]} />
@@ -253,6 +293,9 @@ export function LegacyArchiveReportScreen() {
   }
 
   const summaryCards = channelSummaryCards(summary);
+  const salesMeta = sales.meta ?? {};
+  const totalPages = salesMeta.last_page ?? 1;
+  const total = salesMeta.total ?? 0;
 
   return (
     <div>
@@ -260,7 +303,7 @@ export function LegacyArchiveReportScreen() {
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-slate-900">Legacy sales archive</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Browse historical LightStores sales (read-only). Materialize a sale before creating returns or credit notes.
+          Browse historical LightStores sales (read-only). Pick a date range — {PAGE_SIZE} sales load per page.
         </p>
         {status ? (
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -288,7 +331,7 @@ export function LegacyArchiveReportScreen() {
             <div key={row.channel} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-xs font-medium uppercase text-slate-500">{row.channel}</p>
               <p className="mt-1 text-xl font-semibold text-slate-900">{money(row.total_amount)}</p>
-              <p className="text-xs text-slate-500">{row.sale_count} sales</p>
+              <p className="text-xs text-slate-500">{row.sale_count} sales in range</p>
             </div>
           ))}
         </div>
@@ -310,18 +353,20 @@ export function LegacyArchiveReportScreen() {
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">From</label>
+          <label className="mb-1 block text-xs font-medium text-slate-500">From *</label>
           <input
             type="date"
+            required
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">To</label>
+          <label className="mb-1 block text-xs font-medium text-slate-500">To *</label>
           <input
             type="date"
+            required
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
@@ -339,7 +384,7 @@ export function LegacyArchiveReportScreen() {
         </div>
         <button
           type="button"
-          onClick={load}
+          onClick={applyFilters}
           className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white"
         >
           Apply
@@ -358,7 +403,7 @@ export function LegacyArchiveReportScreen() {
             </tr>
           </thead>
           <tbody>
-            {loading ? (
+            {loadingSales ? (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
                   Loading…
@@ -367,7 +412,9 @@ export function LegacyArchiveReportScreen() {
             ) : (sales.data ?? []).length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
-                  No legacy sales for this filter.
+                  {!applied.fromDate || !applied.toDate
+                    ? "Set a from and to date, then click Apply."
+                    : "No legacy sales for this filter."}
                 </td>
               </tr>
             ) : (
@@ -395,6 +442,13 @@ export function LegacyArchiveReportScreen() {
             )}
           </tbody>
         </table>
+        <PaginationBar
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          pageSize={PAGE_SIZE}
+          onChange={handlePageChange}
+        />
       </div>
 
       {selectedSale ? (

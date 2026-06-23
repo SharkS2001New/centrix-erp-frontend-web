@@ -16,7 +16,7 @@ import { ProfitLossReportScreen } from "@/components/reports/profit-loss-report-
 import { ExpensesReportScreen } from "@/components/reports/expenses-report-screen";
 import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 20;
 
 export function StructuredReportScreen({ definition }) {
   if (definition.variant === "profit-loss") {
@@ -31,10 +31,13 @@ export function StructuredReportScreen({ definition }) {
 
 function StandardReportScreen({ definition }) {
   const { user } = useAuth();
-  const [allRows, setAllRows] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [legacyRows, setLegacyRows] = useState([]);
+  const [reportMeta, setReportMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
+  const [legacyPage, setLegacyPage] = useState(1);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [branchId, setBranchId] = useState("");
@@ -42,6 +45,8 @@ function StandardReportScreen({ definition }) {
   const [extraFilters, setExtraFilters] = useState({});
   const [applied, setApplied] = useState({ fromDate: "", toDate: "", branchId: "", extraFilters: {} });
   const [legacyArchiveMeta, setLegacyArchiveMeta] = useState(null);
+
+  const includeLegacy = Boolean(applied.extraFilters?.include_legacy_archive);
 
   useEffect(() => {
     apiRequest("/branches", { searchParams: { per_page: 100 } })
@@ -57,7 +62,7 @@ function StandardReportScreen({ definition }) {
     setLoading(true);
     setError(null);
     try {
-      const searchParams = { per_page: 200, page: 1 };
+      const searchParams = { per_page: PAGE_SIZE, page };
       if (definition.dateColumn) {
         searchParams.date_column = definition.dateColumn;
         if (applied.fromDate) searchParams.from_date = applied.fromDate;
@@ -66,55 +71,71 @@ function StandardReportScreen({ definition }) {
       if (applied.branchId) searchParams.branch_id = applied.branchId;
       if (applied.extraFilters?.include_legacy_archive) {
         searchParams.include_legacy_archive = 1;
+        searchParams.legacy_page = legacyPage;
       }
 
       const res = await apiRequest(definition.apiPath, { searchParams });
-      let rows = res.data ?? [];
+      let centrixRows = res.data ?? [];
       setLegacyArchiveMeta(res.legacy_archive ?? null);
+      setLegacyRows(res.legacy_archive?.data ?? []);
       if (definition.filterRows) {
-        rows = definition.filterRows(rows, applied.extraFilters);
+        centrixRows = definition.filterRows(centrixRows, applied.extraFilters);
       }
-      setAllRows(rows);
-      setPage(1);
+      setRows(centrixRows);
+      setReportMeta({
+        current_page: res.current_page ?? page,
+        last_page: res.last_page ?? 1,
+        total: res.total ?? centrixRows.length,
+        per_page: res.per_page ?? PAGE_SIZE,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
-      setAllRows([]);
+      setRows([]);
+      setLegacyRows([]);
+      setReportMeta(null);
       setLegacyArchiveMeta(null);
     } finally {
       setLoading(false);
     }
-  }, [definition, applied]);
+  }, [definition, applied, page, legacyPage]);
 
   useEffect(() => {
     loadReport();
   }, [loadReport]);
 
-  const pageRows = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return allRows.slice(start, start + PAGE_SIZE);
-  }, [allRows, page]);
+  const totalPages = reportMeta?.last_page ?? 1;
+  const legacyMeta = legacyArchiveMeta?.meta;
+  const legacyTotalPages = legacyMeta?.last_page ?? 1;
 
-  const totalPages = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE));
+  const displayRows = useMemo(() => rows, [rows]);
+  const chartRows = useMemo(
+    () => (includeLegacy ? [...rows, ...legacyRows] : rows),
+    [rows, legacyRows, includeLegacy],
+  );
 
   const kpis = useMemo(() => {
     if (!definition.kpis) return [];
+    const kpiRows = includeLegacy ? [...rows, ...legacyRows] : rows;
     return definition.kpis.map((kpi) => {
-      const result = kpi.compute(allRows);
+      const result = kpi.compute(kpiRows);
       return { id: kpi.id, label: kpi.label, value: result.value, hint: result.hint };
     });
-  }, [allRows, definition.kpis]);
+  }, [rows, legacyRows, includeLegacy, definition.kpis]);
 
   const footerTotals = useMemo(() => {
     if (!definition.footerTotals || !definition.columns) return {};
-    const totals = { [definition.columns[0]?.key]: "Totals" };
+    const totalRows = includeLegacy ? [...rows, ...legacyRows] : rows;
+    const totals = { [definition.columns[0]?.key]: "Totals (this page)" };
     for (const col of definition.columns) {
       if (!col.total) continue;
-      totals[col.key] = formatReportCell(col.key, sumField(allRows, col.key));
+      totals[col.key] = formatReportCell(col.key, sumField(totalRows, col.key));
     }
     return totals;
-  }, [allRows, definition.columns, definition.footerTotals]);
+  }, [rows, legacyRows, includeLegacy, definition.columns, definition.footerTotals]);
 
   function applyFilters() {
+    setPage(1);
+    setLegacyPage(1);
     setApplied({ fromDate, toDate, branchId, extraFilters });
   }
 
@@ -125,6 +146,8 @@ function StandardReportScreen({ definition }) {
     setBranchId(empty.branchId);
     setExtraFilters({});
     setApplied(empty);
+    setPage(1);
+    setLegacyPage(1);
   }
 
   function handleExport() {
@@ -138,7 +161,7 @@ function StandardReportScreen({ definition }) {
           return raw == null ? "" : formatReportCell(col.key, raw);
         },
       })),
-      allRows,
+      [...rows, ...legacyRows],
     );
   }
 
@@ -153,16 +176,22 @@ function StandardReportScreen({ definition }) {
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       ) : null}
 
-      {legacyArchiveMeta?.available && legacyArchiveMeta.appended_rows > 0 ? (
+      {legacyArchiveMeta?.available && (legacyArchiveMeta.meta?.total ?? 0) > 0 ? (
         <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          Included <strong>{legacyArchiveMeta.appended_rows}</strong> row(s) from{" "}
-          <strong>{legacyArchiveMeta.label ?? "legacy archive"}</strong>
-          {legacyArchiveMeta.cutover_date ? ` (cutover ${legacyArchiveMeta.cutover_date})` : ""}. Legacy rows are
-          highlighted in amber. Browse individual sales under{" "}
+          Showing <strong>{legacyRows.length}</strong> of <strong>{legacyArchiveMeta.meta.total}</strong> legacy archive
+          row(s) from <strong>{legacyArchiveMeta.label ?? "legacy archive"}</strong>
+          {legacyArchiveMeta.cutover_date ? ` (cutover ${legacyArchiveMeta.cutover_date})` : ""}. Browse individual
+          sales under{" "}
           <Link href="/reports/legacy-archive" className="font-medium text-[#185FA5] hover:underline">
             Legacy sales archive
           </Link>
           .
+        </p>
+      ) : null}
+
+      {legacyArchiveMeta?.requires_date_range && includeLegacy ? (
+        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          {legacyArchiveMeta.message ?? "Set from and to dates, then filter, to load legacy archive rows."}
         </p>
       ) : null}
 
@@ -198,7 +227,7 @@ function StandardReportScreen({ definition }) {
               return (
                 <ReportBarChart
                   key={chart.title ?? chart.valueKey}
-                  rows={allRows}
+                  rows={chartRows}
                   labelKey={chart.labelKey}
                   valueKey={chart.valueKey}
                   title={chart.title}
@@ -206,7 +235,7 @@ function StandardReportScreen({ definition }) {
               );
             }
             if (chart.type === "donut") {
-              const grouped = aggregateChartRows(allRows, chart.labelKey, chart.valueKey);
+              const grouped = aggregateChartRows(chartRows, chart.labelKey, chart.valueKey);
               const total = grouped.reduce((s, g) => s + g.value, 0);
               const segments = grouped.slice(0, chart.limit ?? 5).map((g, i) => ({
                 label: g.label,
@@ -230,14 +259,29 @@ function StandardReportScreen({ definition }) {
         <p className="text-sm text-slate-500">Loading report…</p>
       ) : (
         <>
-          <ReportTable columns={definition.columns ?? []} rows={pageRows} footerTotals={footerTotals} />
+          <ReportTable columns={definition.columns ?? []} rows={displayRows} footerTotals={footerTotals} />
           <PaginationBar
             page={page}
             totalPages={totalPages}
-            total={allRows.length}
+            total={reportMeta?.total ?? rows.length}
             pageSize={PAGE_SIZE}
             onChange={setPage}
           />
+          {includeLegacy && legacyRows.length > 0 ? (
+            <div className="mt-8">
+              <h2 className="mb-3 text-sm font-semibold text-slate-900">
+                Legacy archive — {legacyArchiveMeta?.label ?? "pre-cutover sales"}
+              </h2>
+              <ReportTable columns={definition.columns ?? []} rows={legacyRows} />
+              <PaginationBar
+                page={legacyPage}
+                totalPages={legacyTotalPages}
+                total={legacyMeta?.total ?? legacyRows.length}
+                pageSize={legacyMeta?.per_page ?? PAGE_SIZE}
+                onChange={setLegacyPage}
+              />
+            </div>
+          ) : null}
         </>
       )}
     </ReportPageShell>

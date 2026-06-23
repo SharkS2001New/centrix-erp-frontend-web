@@ -68,6 +68,8 @@ function labelizeKey(key) {
   return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+const PAGE_SIZE = 20;
+
 const LEGACY_ARCHIVE_REPORT_KEYS = new Set(["sales-by-channel"]);
 
 export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
@@ -85,6 +87,8 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const [branches, setBranches] = useState([]);
   const [includeLegacyArchive, setIncludeLegacyArchive] = useState(false);
   const [legacyArchiveMeta, setLegacyArchiveMeta] = useState(null);
+  const [legacyRows, setLegacyRows] = useState([]);
+  const [legacyPage, setLegacyPage] = useState(1);
 
   const supportsLegacyArchive = LEGACY_ARCHIVE_REPORT_KEYS.has(reportKey);
   const dateColumn = DATE_COLUMNS[reportKey] ?? "sale_date";
@@ -104,7 +108,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     setError(null);
     try {
       const searchParams = {
-        per_page: 50,
+        per_page: PAGE_SIZE,
         page,
         date_column: dateColumn,
       };
@@ -114,21 +118,29 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       if (payrollRunId) searchParams.payroll_run_id = payrollRunId;
       if (supportsLegacyArchive && includeLegacyArchive) {
         searchParams.include_legacy_archive = 1;
+        searchParams.legacy_page = legacyPage;
       }
 
       const res = await apiRequest(apiPath, { searchParams });
       setRows(res.data ?? []);
-      setMeta(res.meta ?? null);
+      setMeta({
+        current_page: res.current_page ?? page,
+        last_page: res.last_page ?? 1,
+        total: res.total ?? (res.data ?? []).length,
+        per_page: res.per_page ?? PAGE_SIZE,
+      });
       setLegacyArchiveMeta(res.legacy_archive ?? null);
+      setLegacyRows(res.legacy_archive?.data ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
       setRows([]);
       setMeta(null);
       setLegacyArchiveMeta(null);
+      setLegacyRows([]);
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, fromDate, toDate, branchId, dateColumn, payrollRunId, supportsLegacyArchive, includeLegacyArchive]);
+  }, [apiPath, page, legacyPage, fromDate, toDate, branchId, dateColumn, payrollRunId, supportsLegacyArchive, includeLegacyArchive]);
 
   useEffect(() => {
     loadReport();
@@ -141,6 +153,8 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
 
   const totalPages = meta?.last_page ?? 1;
   const total = meta?.total ?? rows.length;
+  const legacyMeta = legacyArchiveMeta?.meta;
+  const legacyTotalPages = legacyMeta?.last_page ?? 1;
 
   return (
     <CatalogPageShell
@@ -213,14 +227,18 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
           <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </p>
-        ) : legacyArchiveMeta?.available && legacyArchiveMeta.appended_rows > 0 ? (
+        ) : legacyArchiveMeta?.available && (legacyArchiveMeta.meta?.total ?? 0) > 0 ? (
           <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            Included <strong>{legacyArchiveMeta.appended_rows}</strong> legacy archive row(s). Highlighted rows are
-            from pre-cutover sales — see{" "}
+            Showing <strong>{legacyRows.length}</strong> of <strong>{legacyArchiveMeta.meta.total}</strong> legacy
+            archive row(s) on this page — see{" "}
             <Link href="/reports/legacy-archive" className="font-medium text-[#185FA5] hover:underline">
               Legacy sales archive
             </Link>{" "}
             to materialize individual sales for returns.
+          </p>
+        ) : legacyArchiveMeta?.requires_date_range && includeLegacyArchive ? (
+          <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            {legacyArchiveMeta.message ?? "Set from and to dates to load legacy archive rows."}
           </p>
         ) : null
       }
@@ -259,8 +277,48 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
             </table>
           </div>
         )}
-        <PaginationBar page={page} totalPages={totalPages} total={total} pageSize={50} onChange={setPage} />
+        <PaginationBar page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
       </div>
+      {includeLegacyArchive && legacyRows.length > 0 ? (
+        <div className="mt-6 overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm">
+          <p className="border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm font-medium text-amber-950">
+            Legacy archive rows
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-max border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                  {columns.map((col) => (
+                    <th key={col} className="whitespace-nowrap px-4 py-2.5">
+                      {labelizeKey(col)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {legacyRows.map((row, idx) => (
+                  <tr key={`legacy-${idx}`} className="border-b border-slate-100 bg-amber-50/50 last:border-b-0">
+                    {columns.map((col) => (
+                      <td key={col} className="whitespace-nowrap px-4 py-2.5 text-slate-800">
+                        {formatCell(col, row[col])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <PaginationBar
+            page={legacyPage}
+            totalPages={legacyTotalPages}
+            total={legacyMeta?.total ?? legacyRows.length}
+            pageSize={legacyMeta?.per_page ?? PAGE_SIZE}
+            onChange={(next) => {
+              setLegacyPage(next);
+            }}
+          />
+        </div>
+      ) : null}
     </CatalogPageShell>
   );
 }

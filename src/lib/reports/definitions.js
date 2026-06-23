@@ -33,7 +33,7 @@ export const REPORT_DEFINITIONS = {
       {
         id: "include_legacy_archive",
         type: "checkbox",
-        label: "Include legacy archive (pre-cutover sales)",
+        label: "Include legacy archive (requires date range)",
       },
     ],
     /** @type {ReportColumn[]} */
