@@ -246,10 +246,10 @@ export default function HrKpisPage() {
       {loading ? (
         <p className="text-sm text-slate-500">Loading KPIs…</p>
       ) : tab === "organization" ? (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
                 <th className="px-4 py-3 font-medium">KPI</th>
                 <th className="px-4 py-3 font-medium">Period</th>
                 <th className="px-4 py-3 font-medium text-right">Target</th>
@@ -378,10 +378,10 @@ export default function HrKpisPage() {
                 ))}
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm">
                 <table className="min-w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
                       <th className="px-4 py-3 font-medium">Employee</th>
                       <th className="px-4 py-3 font-medium">Department</th>
                       <th className="px-4 py-3 font-medium text-right">Target</th>

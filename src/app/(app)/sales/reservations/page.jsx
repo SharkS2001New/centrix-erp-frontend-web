@@ -90,7 +90,7 @@ export default function SalesReservationsPage() {
         ) : null
       }
     >
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (
           <p className="px-5 py-8 text-center text-sm text-slate-500">Loading reservations…</p>
         ) : pageSlice.length === 0 ? (
@@ -98,7 +98,7 @@ export default function SalesReservationsPage() {
         ) : (
           <table className="w-full border-collapse text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+              <tr className="theme-table-head-row text-left text-xs font-medium">
                 <th className="px-4 py-2.5">Order</th>
                 <th className="px-4 py-2.5">Product</th>
                 <th className="px-4 py-2.5 text-right">Qty</th>

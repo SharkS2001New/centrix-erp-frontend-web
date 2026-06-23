@@ -191,7 +191,7 @@ export default function TripDetailPage() {
         </p>
       ) : null}
 
-      <div className="mb-6 grid gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-6 grid gap-4 theme-panel rounded-xl border p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <p className="text-xs uppercase text-slate-500">Status</p>
           <p className="mt-1 font-medium capitalize text-slate-900">{statusLabel(trip.status)}</p>
@@ -285,7 +285,7 @@ export default function TripDetailPage() {
       </div>
 
       {showCashSettlement ? (
-        <section className="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
           <h2 className="text-lg font-medium text-slate-900">Cash settlement</h2>
           <p className="mt-1 text-sm text-slate-500">
             Expected COD from unpaid order balances on this trip.
@@ -339,7 +339,7 @@ export default function TripDetailPage() {
         </section>
       ) : null}
 
-      <section className="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Loading list</h2>
         <p className="mt-1 text-sm text-slate-500">
           Aggregated pick quantities from mobile and route orders on this trip · Total{" "}
@@ -370,7 +370,7 @@ export default function TripDetailPage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Delivery stops</h2>
         <p className="mt-1 text-sm text-slate-500">Sequence orders for the driver route run.</p>
         <div className="mt-4">

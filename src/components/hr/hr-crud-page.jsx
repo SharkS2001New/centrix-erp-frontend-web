@@ -10,6 +10,8 @@ import {
   PrimaryButton,
   SearchInput,
   TABLE_HEAD_ROW_CLASS,
+  TABLE_SHELL_CLASS,
+  TABLE_BODY_ROW_CLASS,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
@@ -180,11 +182,7 @@ export function HrCrudPage({
       {loading && rows.length === 0 ? (
         <p className="text-sm text-slate-500">Loading…</p>
       ) : (
-        <div
-          className={`overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm ${
-            loading ? "opacity-60" : ""
-          }`}
-        >
+        <div className={`${TABLE_SHELL_CLASS} overflow-x-auto ${loading ? "opacity-60" : ""}`}>
           <table className="min-w-full text-sm">
             <thead className={TABLE_HEAD_ROW_CLASS}>
               <tr>
@@ -196,7 +194,7 @@ export function HrCrudPage({
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={columns.length + 1} className="px-4 py-8 text-center text-slate-500">
@@ -205,7 +203,7 @@ export function HrCrudPage({
                 </tr>
               ) : (
                 filtered.map((row) => (
-                  <tr key={getRowKey(row)} className="hover:bg-slate-50/80">
+                  <tr key={getRowKey(row)} className={TABLE_BODY_ROW_CLASS}>
                     {columns.map((c) => (
                       <td key={c.key} className="px-4 py-3 text-slate-800">
                         {c.render ? c.render(row, tableExtra) : row[c.key] ?? "—"}

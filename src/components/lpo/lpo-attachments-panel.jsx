@@ -80,7 +80,7 @@ export function LpoAttachmentsPanel({ lpoNo }) {
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="theme-panel rounded-xl border p-6 shadow-sm">
       <h2 className="font-medium text-slate-900">Attachments</h2>
       <p className="mt-1 text-xs text-slate-500">Upload supplier quotes, invoices, and supporting documents.</p>
       {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}

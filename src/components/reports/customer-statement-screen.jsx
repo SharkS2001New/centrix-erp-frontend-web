@@ -108,7 +108,7 @@ export function CustomerStatementScreen() {
       title="Customer Statement"
       subtitle="Running balance from invoices and payments"
     >
-      <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-6 theme-panel rounded-xl border p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-4">
           <Field label="Customer">
             <select
@@ -142,7 +142,7 @@ export function CustomerStatementScreen() {
       {customer ? (
         <>
           <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="theme-panel rounded-xl border p-4 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Customer</p>
               <p className="mt-1 font-semibold text-slate-900">{customer.customer_name}</p>
               <p className="text-sm text-slate-500">#{customer.customer_num}</p>
@@ -153,7 +153,7 @@ export function CustomerStatementScreen() {
                 View profile →
               </Link>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="theme-panel rounded-xl border p-4 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Contact</p>
               <p className="mt-1 text-sm text-slate-700">{customer.phone_number ?? "—"}</p>
               {customer.additional_phone ? (
@@ -161,14 +161,14 @@ export function CustomerStatementScreen() {
               ) : null}
               {customer.town ? <p className="text-sm text-slate-500">{customer.town}</p> : null}
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="theme-panel rounded-xl border p-4 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Branch & route</p>
               <p className="mt-1 text-sm text-slate-700">{customer.branch_name ?? "—"}</p>
               {customer.route_name ? (
                 <p className="text-sm text-slate-500">Route: {customer.route_name}</p>
               ) : null}
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="theme-panel rounded-xl border p-4 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Credit terms</p>
               <p className="mt-1 text-sm text-slate-700">{customer.terms_of_payment ?? "—"}</p>
               {customer.kra_pin ? <p className="text-sm text-slate-500">KRA PIN: {customer.kra_pin}</p> : null}

@@ -24,6 +24,9 @@ export const ORG_SETTINGS_TAB_MODULES = {
 /** Tabs only shown when platform manages settings on behalf of a tenant without Administration. */
 export const PLATFORM_MANAGED_ADMIN_TABS = new Set(["general", "notifications", "security"]);
 
+/** Tabs only platform super-admins may configure (not exposed on tenant /admin/settings). */
+export const PLATFORM_ONLY_ORG_SETTINGS_TABS = new Set(["legacy-archive"]);
+
 function moduleEnabled(capabilities, moduleKey) {
   return Boolean(capabilities?.modules?.[moduleKey]);
 }
@@ -87,7 +90,12 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
 
 /** @param {object} capabilities */
 export function visibleOrgSettingsTabs(allTabs, capabilities, options = {}) {
-  return allTabs.filter((tab) => isOrgSettingsTabVisible(tab.id, capabilities, options));
+  const { platformManaged = false, tenantSelfService = false } = options;
+  let tabs = allTabs.filter((tab) => isOrgSettingsTabVisible(tab.id, capabilities, { platformManaged }));
+  if (tenantSelfService) {
+    tabs = tabs.filter((tab) => !PLATFORM_ONLY_ORG_SETTINGS_TABS.has(tab.id));
+  }
+  return tabs;
 }
 
 /** Build a capabilities-shaped object from platform organization show payload. */

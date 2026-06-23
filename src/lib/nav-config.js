@@ -730,6 +730,14 @@ const NAV_SECTION_DEFINITIONS = [
         orgAdminOnly: true,
       },
       {
+        href: "/admin/settings",
+        label: "Organization settings",
+        module: "admin",
+        permission: "admin.manage",
+        orgAdminOnly: true,
+        requireAdmin: true,
+      },
+      {
         href: "/admin/branches",
         label: "Branches",
         module: "admin",

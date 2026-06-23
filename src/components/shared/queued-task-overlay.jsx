@@ -17,7 +17,7 @@ export function QueuedTaskOverlay({ open, message = "Please wait…", progress =
       aria-live="polite"
       aria-label={message}
     >
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white px-6 py-8 text-center shadow-2xl">
+      <div className="w-full max-w-sm theme-panel rounded-xl border px-6 py-8 text-center shadow-2xl">
         <div
           className="mx-auto h-10 w-10 animate-spin rounded-full border-[3px] border-slate-200 border-t-[#185FA5]"
           aria-hidden="true"

@@ -353,7 +353,7 @@ export function LegacyArchiveReportScreen() {
       {summaryCards.length ? (
         <div className="mb-6 grid gap-3 sm:grid-cols-3">
           {summaryCards.map((row) => (
-            <div key={row.channel} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div key={row.channel} className="theme-panel rounded-xl border p-4 shadow-sm">
               <p className="text-xs font-medium uppercase text-slate-500">
                 {CHANNEL_LABELS[row.channel] ?? row.channel}
               </p>
@@ -364,7 +364,7 @@ export function LegacyArchiveReportScreen() {
         </div>
       ) : null}
 
-      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex flex-wrap items-end gap-3 theme-panel rounded-xl border p-4 shadow-sm">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">Channel</label>
           <select
@@ -418,9 +418,9 @@ export function LegacyArchiveReportScreen() {
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500">
+          <thead className="theme-table-head-row text-left text-xs uppercase">
             <tr>
               <th className="px-4 py-3">Order</th>
               <th className="px-4 py-3">Channel</th>

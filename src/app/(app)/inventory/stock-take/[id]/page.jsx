@@ -326,7 +326,7 @@ export default function StockTakeSessionPage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
                   <th className="px-3 py-2 font-medium" rowSpan={2}>
                     Product / UOM
                   </th>
@@ -347,7 +347,7 @@ export default function StockTakeSessionPage() {
                     </th>
                   ) : null}
                 </tr>
-                <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr className="theme-table-head-row text-xs uppercase tracking-wide">
                   {showShop ? (
                     <>
                       <th className="border-l border-slate-200 px-3 py-1.5 text-right font-medium">

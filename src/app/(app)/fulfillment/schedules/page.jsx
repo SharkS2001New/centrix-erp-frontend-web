@@ -156,7 +156,7 @@ export default function RouteSchedulesPage() {
       ) : (
         <div className="space-y-6">
           {grouped.map(([routeName, items]) => (
-            <section key={routeName} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <section key={routeName} className="theme-panel rounded-xl border p-5 shadow-sm">
               <h2 className="text-base font-medium text-slate-900">{routeName}</h2>
               <div className="mt-3 overflow-x-auto">
                 <table className="min-w-full text-sm">

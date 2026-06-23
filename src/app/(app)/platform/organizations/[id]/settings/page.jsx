@@ -48,7 +48,7 @@ export default function PlatformOrganizationSettingsPage() {
   return (
     <CatalogPageShell
       title={organization ? `${organization.org_name} — settings` : "Organization settings"}
-      subtitle="Configure operational preferences for this tenant from the platform. Tenant administrators cannot edit these settings."
+      subtitle="Platform configuration for module provisioning, order workflow, integration gates, and legacy archive. Tenants manage operational module preferences under Administration → Organization settings."
     >
       <AdminBreadcrumb
         items={[
@@ -67,9 +67,9 @@ export default function PlatformOrganizationSettingsPage() {
           <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800">
             <p className="font-medium">Platform-managed organization settings</p>
             <p className="mt-1 text-xs text-slate-600">
-              Sales checkout, finance integrations, distribution rules, legacy LightStores archive, notifications,
-              security timeouts, and other company-wide preferences are maintained here — not in the tenant
-              Administration workspace.
+              Module provisioning, checkout flow, mobile orders, order pipeline, M-Pesa/KRA/AI feature toggles,
+              and legacy archive are maintained here. Tenants manage day-to-day module preferences under
+              Administration → Organization settings.
             </p>
             <Link
               href={`/platform/organizations/${orgId}`}

@@ -492,7 +492,7 @@ export default function CustomersPage() {
         </p>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading customers…</p>
         ) : (
@@ -500,7 +500,7 @@ export default function CustomersPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[960px] border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                  <tr className="theme-table-head-row text-left text-xs font-medium">
                     {visibleColumns.map((col) => (
                       <th
                         key={col.id}
@@ -578,7 +578,7 @@ function ColumnPicker({ open, onToggle, onClose, visibleColumnIds, onToggleColum
             aria-label="Close column picker"
             onClick={onClose}
           />
-          <div className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+          <div className="absolute right-0 z-20 mt-2 w-56 theme-panel rounded-xl border p-3 shadow-lg">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Show columns

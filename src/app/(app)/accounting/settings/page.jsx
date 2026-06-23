@@ -21,7 +21,7 @@ export default function AccountingSettingsPage() {
         </p>
       ) : null}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <AccountingAutoPostPanel
           saving={saving}
           setSaving={setSaving}
@@ -30,7 +30,7 @@ export default function AccountingSettingsPage() {
         />
       </section>
 
-      <section className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="mt-6 theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">GL account codes</h2>
         <div className="mt-4">
           <AccountCodesPanel saving={saving} setSaving={setSaving} setError={setError} setMessage={setMessage} />

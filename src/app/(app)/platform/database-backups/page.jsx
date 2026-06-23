@@ -194,7 +194,7 @@ export default function PlatformDatabaseBackupsPage() {
         </p>
       ) : null}
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="mt-6 theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-sm font-semibold text-slate-900">Available backups</h2>
           <p className="mt-1 text-sm text-slate-500">

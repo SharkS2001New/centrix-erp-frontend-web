@@ -123,7 +123,7 @@ export default function JournalEntryDetailPage() {
         </p>
       ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="theme-panel rounded-xl border p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Journal Entry</p>
@@ -150,9 +150,9 @@ export default function JournalEntryDetailPage() {
         </dl>
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="mt-6 theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <table className="min-w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+          <thead className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Account</th>
               <th className="px-4 py-3 text-right">Debit</th>

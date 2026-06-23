@@ -16,7 +16,7 @@ const shortcuts = [
 
 export default function NotFoundPage() {
   return (
-    <div className="mx-auto max-w-lg rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+    <div className="mx-auto max-w-lg theme-panel rounded-xl border p-8 shadow-sm">
       <h1 className="text-xl font-semibold text-slate-900">Page not found</h1>
       <p className="mt-2 text-sm text-slate-600">
         This route is not available. Try one of these pages instead:

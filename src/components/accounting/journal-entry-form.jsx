@@ -210,7 +210,7 @@ export function JournalEntryForm({
         </div>
         <div className="overflow-hidden rounded-xl border border-slate-200">
           <table className="min-w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+            <thead className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Account</th>
                 <th className="px-4 py-3 text-right">Debit</th>

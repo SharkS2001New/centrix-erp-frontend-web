@@ -16,7 +16,7 @@ export default function AccountsPayablePage() {
       apiPath="/reports/accounts-payable"
       emptyLabel="No supplier payables outstanding."
       intro={
-        <div className="mb-4 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+        <div className="mb-4 theme-panel rounded-xl border px-5 py-4 shadow-sm">
           <p className="text-sm text-slate-600">
             Supplier payables based on received purchase value minus returns. Payment tracking will reduce balances when supplier payments are recorded.
           </p>

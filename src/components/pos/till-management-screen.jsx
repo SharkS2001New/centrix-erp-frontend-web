@@ -553,7 +553,7 @@ export function TillManagementScreen() {
                 ]}
               />
             </div>
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
               {metaLoading ? (
                 <p className="px-5 py-8 text-center text-sm text-slate-500">Loading tills…</p>
               ) : tillSlice.length === 0 ? (
@@ -561,7 +561,7 @@ export function TillManagementScreen() {
               ) : (
                 <table className="w-full border-collapse text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                    <tr className="theme-table-head-row text-left text-xs font-medium">
                       <th className="px-4 py-2.5">Till code</th>
                       <th className="px-4 py-2.5">Till name</th>
                       <th className="px-4 py-2.5">Branch</th>
@@ -663,7 +663,7 @@ export function TillManagementScreen() {
                 ]}
               />
             </div>
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
               {historyLoading ? (
                 <p className="px-5 py-8 text-center text-sm text-slate-500">Loading sessions…</p>
               ) : historySlice.length === 0 ? (
@@ -671,7 +671,7 @@ export function TillManagementScreen() {
               ) : (
                 <table className="w-full border-collapse text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                    <tr className="theme-table-head-row text-left text-xs font-medium">
                       <th className="px-4 py-2.5">Session</th>
                       <th className="px-4 py-2.5">Till</th>
                       <th className="px-4 py-2.5">Cashier</th>

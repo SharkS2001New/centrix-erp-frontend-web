@@ -414,7 +414,7 @@ export default function ExpensesPage() {
         </p>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading expenses…</p>
         ) : (
@@ -422,7 +422,7 @@ export default function ExpensesPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[800px] border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                  <tr className="theme-table-head-row text-left text-xs font-medium">
                     <th className="px-4 py-2.5">Date</th>
                     <th className="px-4 py-2.5">Expense</th>
                     <th className="px-4 py-2.5">Group</th>
@@ -728,7 +728,7 @@ export default function ExpensesPage() {
 
 function StatCard({ label, value }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+    <div className="theme-panel rounded-xl border px-5 py-4 shadow-sm">
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
       <p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p>
     </div>

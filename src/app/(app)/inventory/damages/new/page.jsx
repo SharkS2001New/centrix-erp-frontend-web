@@ -109,7 +109,7 @@ export default function RecordDamagePage() {
 
       <form
         onSubmit={submit}
-        className="space-y-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+        className="space-y-5 theme-panel rounded-xl border p-6 shadow-sm"
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Reason">

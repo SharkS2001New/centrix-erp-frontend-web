@@ -366,7 +366,7 @@ export function ReportBuilderScreen() {
 
       <div className="grid gap-6 xl:grid-cols-3">
         <div className="space-y-4 xl:col-span-1">
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="theme-panel rounded-xl border p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">1. Data sources</h2>
             <p className="mt-1 text-xs text-slate-500">
               Choose one or more sources (up to {sourceLimit}). Related sources are joined automatically when you
@@ -406,7 +406,7 @@ export function ReportBuilderScreen() {
           </section>
 
           {isMultiSource && availableBlendDimensions.length ? (
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="theme-panel rounded-xl border p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-900">2. Side-by-side metrics (optional)</h2>
               <p className="mt-1 text-xs text-slate-500">
                 By default, sources are joined into one table. Use this only when you want aggregated metrics aligned
@@ -444,7 +444,7 @@ export function ReportBuilderScreen() {
             </section>
           ) : null}
 
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="theme-panel rounded-xl border p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">
               {isMultiSource && availableBlendDimensions.length ? "3. Columns" : isMultiSource ? "2. Columns" : "2. Columns"}
             </h2>
@@ -498,7 +498,7 @@ export function ReportBuilderScreen() {
           </section>
 
           {!isBlendMode && selectedSources.length > 0 ? (
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="theme-panel rounded-xl border p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-900">
                 {isMultiSource && availableBlendDimensions.length ? "4. Group by (optional)" : isMultiSource ? "3. Group by (optional)" : "3. Group by (optional)"}
               </h2>
@@ -525,7 +525,7 @@ export function ReportBuilderScreen() {
             </section>
           ) : null}
 
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="theme-panel rounded-xl border p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">Save template</h2>
             <div className="mt-3 space-y-3">
               <Field label="Report name">
@@ -563,7 +563,7 @@ export function ReportBuilderScreen() {
           </section>
 
           {templates.length ? (
-            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="theme-panel rounded-xl border p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-900">Saved reports</h2>
               <ul className="mt-3 space-y-2 text-sm">
                 {templates.map((t) => (
@@ -580,7 +580,7 @@ export function ReportBuilderScreen() {
         </div>
 
         <div className="xl:col-span-2">
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <section className="theme-panel rounded-xl border p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">Preview</h2>
             <p className="mt-1 text-xs text-slate-500">
               {selectedSources.length} source(s) · {spec.columns.length} column(s)

@@ -294,7 +294,7 @@ export default function PayrollRunDetailPage() {
             <StatCard label="Deductions" value={formatHrKesFull(totalDeductions)} />
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-[15px] font-medium text-slate-900">Employee payroll lines</h2>
               <p className="mt-0.5 text-xs text-slate-500">
@@ -304,7 +304,7 @@ export default function PayrollRunDetailPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                  <tr className="theme-table-head-row text-left text-xs font-medium">
                     <th className="px-4 py-2.5">Employee</th>
                     <th className="px-4 py-2.5 text-right">Gross</th>
                     <th className="px-4 py-2.5 text-right">Deductions</th>

@@ -844,7 +844,7 @@ export function RecordSupplierReturnForm({
       {loadingMeta || loadingDocument ? (
         <p className="text-sm text-slate-500">Loading…</p>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex min-h-0 flex-1 flex-col theme-panel rounded-xl border shadow-sm">
           {!editDocumentId ? (
           <div className="flex shrink-0 flex-wrap gap-1 border-b border-slate-200 px-4 pt-3">
             {RETURN_TABS.map((t) => (

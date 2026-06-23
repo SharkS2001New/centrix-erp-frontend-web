@@ -117,7 +117,7 @@ export function AttendanceMobileDevicesPanel({ enabled }) {
   if (!enabled) return null;
 
   return (
-    <section className="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
       <h2 className="text-[15px] font-medium text-slate-900">Registered attendance phones</h2>
       <p className="mt-1 text-sm text-slate-500">
         Only phones listed here can mark company attendance. Each phone is tied to one branch.

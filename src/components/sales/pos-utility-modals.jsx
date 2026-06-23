@@ -30,7 +30,7 @@ function ModalShell({ title, open, onClose, children, widthClass = "max-w-md" })
       }}
     >
       <div
-        className={`w-full ${widthClass} rounded-xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-600 dark:bg-slate-800`}
+        className={`w-full ${widthClass} theme-panel rounded-xl border p-4 shadow-xl dark:border-slate-600 dark:bg-slate-800`}
         data-pos-shortcut-ignore="true"
       >
         <div className="mb-3 flex items-center justify-between gap-2">

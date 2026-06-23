@@ -123,10 +123,10 @@ export function ProfitLossReportScreen({ definition }) {
       {loading ? (
         <p className="text-sm text-slate-500">Loading report…</p>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
           <table className="w-full border-collapse text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <tr className="theme-table-head-row text-left text-xs font-semibold uppercase tracking-wide">
                 <th className="px-4 py-3">Particulars</th>
                 <th className="px-4 py-3 text-right">This Period</th>
                 <th className="px-4 py-3 text-right">% of Sales</th>

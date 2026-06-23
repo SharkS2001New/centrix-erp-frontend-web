@@ -63,7 +63,7 @@ export function ProfilePanel({ compact = false }) {
 
   return (
     <div className={gridClass}>
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Account</h2>
         <dl className="mt-4 space-y-3 text-sm">
           <div>
@@ -96,7 +96,7 @@ export function ProfilePanel({ compact = false }) {
         </dl>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
           Change password
         </h2>

@@ -309,7 +309,7 @@ export function SupplierFormCard({ children, onSubmit, actions }) {
   return (
     <form
       onSubmit={onSubmit}
-      className="w-full rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:p-8"
+      className="w-full theme-panel rounded-xl border p-6 shadow-sm md:p-8"
     >
       {children}
       {actions}

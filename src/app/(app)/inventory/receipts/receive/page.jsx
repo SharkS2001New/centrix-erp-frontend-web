@@ -283,7 +283,7 @@ export default function ReceiveStockPage() {
         </p>
       ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="theme-panel rounded-xl border p-6 shadow-sm">
         {mode === "lpo" ? (
           <form onSubmit={submitLpo} className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -357,7 +357,7 @@ export default function ReceiveStockPage() {
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
                   <table className="w-full min-w-[720px] border-collapse text-sm">
                     <thead>
-                      <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                      <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
                         <th className="px-3 py-2 font-medium">Product</th>
                         <th className="px-3 py-2 font-medium text-right">Ordered</th>
                         <th className="px-3 py-2 font-medium text-right">Received</th>

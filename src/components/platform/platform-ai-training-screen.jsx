@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { aiFormFromApi, aiPayloadFromForm } from "@/lib/ai-settings";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
 import { aiStartersForWorkspace } from "@/lib/ai-workspace";
 import {
@@ -26,6 +27,9 @@ export function PlatformAiTrainingScreen() {
   const [organizations, setOrganizations] = useState([]);
   const [previewOrgId, setPreviewOrgId] = useState("");
   const [status, setStatus] = useState(null);
+  const [aiForm, setAiForm] = useState(aiFormFromApi({}));
+  const [loadingAiSettings, setLoadingAiSettings] = useState(true);
+  const [savingAiSettings, setSavingAiSettings] = useState(false);
   const [knowledge, setKnowledge] = useState([]);
   const [filterWorkspace, setFilterWorkspace] = useState("");
   const [testWorkspace, setTestWorkspace] = useState("backoffice");
@@ -86,6 +90,18 @@ export function PlatformAiTrainingScreen() {
     }
   }, []);
 
+  const loadAiSettings = useCallback(async () => {
+    setLoadingAiSettings(true);
+    try {
+      const res = await apiRequest(`${apiBase}/settings`);
+      setAiForm(aiFormFromApi(res));
+    } catch {
+      setAiForm(aiFormFromApi({}));
+    } finally {
+      setLoadingAiSettings(false);
+    }
+  }, [apiBase]);
+
   const loadStatus = useCallback(async () => {
     try {
       const query = previewOrgId ? `?preview_organization_id=${encodeURIComponent(previewOrgId)}` : "";
@@ -114,7 +130,8 @@ export function PlatformAiTrainingScreen() {
   useEffect(() => {
     loadOrganizations();
     loadKnowledge();
-  }, [loadOrganizations, loadKnowledge]);
+    loadAiSettings();
+  }, [loadOrganizations, loadKnowledge, loadAiSettings]);
 
   useEffect(() => {
     if (previewOrgId) {
@@ -134,6 +151,25 @@ export function PlatformAiTrainingScreen() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, pendingAction, formSpec]);
+
+  async function saveAiSettings() {
+    setSavingAiSettings(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await apiRequest(`${apiBase}/settings`, {
+        method: "PATCH",
+        body: aiPayloadFromForm(aiForm),
+      });
+      setAiForm(aiFormFromApi(res));
+      await loadStatus();
+      setMessage("Platform AI credentials saved.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to save platform AI settings.");
+    } finally {
+      setSavingAiSettings(false);
+    }
+  }
 
   function resetKnowledgeForm() {
     setForm({ id: null, topic: "", content: "", path: "", workspace_id: "" });
@@ -280,6 +316,77 @@ export function PlatformAiTrainingScreen() {
         </p>
       ) : null}
 
+      <section className="mb-6 theme-panel rounded-xl border p-5 shadow-sm">
+        <h2 className="text-sm font-semibold theme-heading">Platform AI credentials</h2>
+        <p className="mt-1 text-sm theme-subtext">
+          Test keys for the platform training console only. Tenant organizations keep their own AI settings — you do
+          not need to enable AI on a preview tenant to test training notes.
+        </p>
+
+        {loadingAiSettings ? (
+          <p className="mt-4 text-sm theme-subtext">Loading…</p>
+        ) : (
+          <div className="mt-4 space-y-4">
+            <label className="flex items-start gap-3 rounded-lg border px-4 py-3 theme-panel">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={aiForm.enabled}
+                onChange={(e) => setAiForm((f) => ({ ...f, enabled: e.target.checked }))}
+              />
+              <span>
+                <span className="block text-sm font-medium theme-heading">Enable platform AI training</span>
+                <span className="mt-0.5 block text-xs theme-subtext">
+                  When on, the test chat below uses these credentials — independent of any tenant&apos;s AI settings.
+                </span>
+              </span>
+            </label>
+
+            {aiForm.enabled ? (
+              <>
+                <Field label="OpenAI API key">
+                  <input
+                    type="password"
+                    className={inputClassName()}
+                    value={aiForm.api_key}
+                    onChange={(e) => setAiForm((f) => ({ ...f, api_key: e.target.value }))}
+                    placeholder={aiForm.api_key_set ? aiForm.api_key_hint || "••••••••" : "sk-…"}
+                    autoComplete="off"
+                  />
+                  {aiForm.api_key_set && !aiForm.api_key ? (
+                    <p className="mt-1 text-xs theme-subtext">
+                      Leave blank to keep the current key ({aiForm.api_key_hint}).
+                    </p>
+                  ) : null}
+                </Field>
+
+                <Field label="Model (optional)">
+                  <input
+                    className={inputClassName()}
+                    value={aiForm.model}
+                    onChange={(e) => setAiForm((f) => ({ ...f, model: e.target.value }))}
+                    placeholder="gpt-4o-mini"
+                  />
+                </Field>
+
+                <Field label="API base URL (optional)">
+                  <input
+                    className={inputClassName()}
+                    value={aiForm.base_url}
+                    onChange={(e) => setAiForm((f) => ({ ...f, base_url: e.target.value }))}
+                    placeholder="https://api.openai.com/v1"
+                  />
+                </Field>
+              </>
+            ) : null}
+
+            <PrimaryButton type="button" showIcon={false} onClick={saveAiSettings} disabled={savingAiSettings}>
+              {savingAiSettings ? "Saving…" : "Save platform credentials"}
+            </PrimaryButton>
+          </div>
+        )}
+      </section>
+
       <section className="mb-6 rounded-xl border border-indigo-100 bg-indigo-50/60 p-5">
         <h2 className="text-sm font-semibold text-indigo-950">Platform-wide knowledge</h2>
         <p className="mt-1 text-sm text-indigo-900/80">
@@ -296,7 +403,7 @@ export function PlatformAiTrainingScreen() {
       </section>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="theme-panel rounded-xl border p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-900">Training notes</h2>
           <p className="mt-1 text-sm text-slate-500">
             Facts every tenant assistant should know. Optionally limit to a module workspace or related screen path.
@@ -420,18 +527,19 @@ export function PlatformAiTrainingScreen() {
           )}
         </section>
 
-        <section className="flex min-h-[640px] flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
+        <section className="flex min-h-[640px] flex-col theme-panel rounded-xl border shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
             <h2 className="text-sm font-semibold text-slate-900">Test across modules</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Uses platform training notes plus a preview tenant for API access and sample data. Actions are preview-only.
+              Uses platform training credentials above. Pick a tenant only for sample data and permissions context —
+              actions are preview-only and never change tenant AI settings.
             </p>
 
             {loadingOrgs ? (
               <p className="mt-3 text-sm text-slate-500">Loading organizations…</p>
             ) : (
               <label className="mt-3 block text-sm">
-                <span className="mb-1 block font-medium text-slate-700">Preview organization (API key & sample data)</span>
+                <span className="mb-1 block font-medium text-slate-700">Sample data organization</span>
                 <select
                   className="w-full rounded-lg border border-slate-300 px-3 py-2"
                   value={previewOrgId}
@@ -447,19 +555,18 @@ export function PlatformAiTrainingScreen() {
               </label>
             )}
 
-            {previewOrg && !status?.enabled ? (
+            {!status?.enabled ? (
               <p className="mt-2 text-sm text-amber-800">
-                Enable AI for this preview org under{" "}
-                <a href={`/platform/organizations/${previewOrgId}/settings`} className="font-medium underline">
-                  Organization settings → AI
-                </a>
-                .
+                Enable platform AI training and add an API key above before testing chat.
               </p>
-            ) : status?.enabled ? (
+            ) : !previewOrgId ? (
+              <p className="mt-2 text-sm text-amber-800">Select a sample organization to preview answers with tenant data context.</p>
+            ) : (
               <p className="mt-2 text-xs text-slate-500">
-                Chat preview uses {previewOrg?.org_name ?? "tenant"} API settings; answers still include platform notes.
+                Chat preview uses platform credentials with {previewOrg?.org_name ?? "tenant"} sample data — tenant AI
+                settings are not used.
               </p>
-            ) : null}
+            )}
 
             <div className="mt-3 flex flex-wrap gap-1">
               {AI_TRAINING_WORKSPACES.map((ws) => (

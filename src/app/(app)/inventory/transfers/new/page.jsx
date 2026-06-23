@@ -125,7 +125,7 @@ export default function StockTransferPage() {
 
       <form
         onSubmit={submit}
-        className="space-y-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+        className="space-y-5 theme-panel rounded-xl border p-6 shadow-sm"
       >
         <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
           <div className="min-h-[380px] min-w-0 lg:sticky lg:top-6 lg:self-start">

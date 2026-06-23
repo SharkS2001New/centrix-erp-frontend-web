@@ -190,7 +190,7 @@ export default function AdminCompanyPage() {
         <p className="text-sm text-slate-500">Loading…</p>
       ) : (
         <form onSubmit={handleSave} className="grid gap-6 lg:grid-cols-[1fr_220px]">
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="theme-panel rounded-xl border p-6 shadow-sm">
             <h2 className="text-[15px] font-medium text-slate-900">Organization details</h2>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
@@ -272,7 +272,7 @@ export default function AdminCompanyPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="theme-panel rounded-xl border p-6 shadow-sm">
             <h2 className="text-[15px] font-medium text-slate-900">Logo</h2>
             <p className="mt-1 text-sm text-slate-500">PNG, JPG, or WebP up to 2 MB.</p>
             <div className="mt-4 flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-slate-50">

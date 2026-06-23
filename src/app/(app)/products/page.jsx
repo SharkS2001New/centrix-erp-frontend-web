@@ -15,12 +15,19 @@ import {
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
 import {
+  FilterSelect,
   formatShortDate,
+  PaginationBar,
+  PrimaryLink,
+  SearchInput,
+  SECONDARY_BTN_CLASS,
+  StatCard,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
   TABLE_SECTION_ROW_CLASS,
   TABLE_SHELL_CLASS,
   TABLE_SUBSECTION_ROW_CLASS,
+  inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { resolveProductAudit } from "@/lib/product-audit";
 import { PermissionGate } from "@/components/permission-gate";
@@ -110,8 +117,8 @@ function effectiveReorderPoint(product, globalThreshold) {
 function UserDateCell({ name, date }) {
   return (
     <div>
-      <p className="font-medium text-slate-800">{name || "—"}</p>
-      <p className="text-xs text-slate-500">{formatShortDate(date)}</p>
+      <p className="font-medium text-[var(--theme-text)]">{name || "—"}</p>
+      <p className="theme-subtext text-xs">{formatShortDate(date)}</p>
     </div>
   );
 }
@@ -618,21 +625,17 @@ export default function ProductsPage() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Products</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="theme-heading text-2xl font-semibold">Products</h1>
+          <p className="theme-subtext mt-1 text-sm">
             Manage catalogue items, pricing and stock levels
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <ProductImportExport products={enriched} onImported={reloadAll} />
           <PermissionGate permission={P.catalogue.products.create}>
-            <Link
-              href="/products/new"
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-500"
-            >
-              <PlusIcon />
+            <PrimaryLink href="/products/new" permission={P.catalogue.products.create}>
               Add product
-            </Link>
+            </PrimaryLink>
           </PermissionGate>
         </div>
       </div>
@@ -668,7 +671,7 @@ export default function ProductsPage() {
         <StatCard label="Out of stock" value={stats.outOfStock} hint="zero units on hand" />
       </div>
       {multiBranch ? (
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="theme-subtext mt-2 text-xs">
           Shop, store, and stock filters use{" "}
           {user?.branch_id
             ? "your branch"
@@ -679,16 +682,12 @@ export default function ProductsPage() {
 
       {/* Filters */}
       <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="relative flex-1">
-          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="search"
-            placeholder="Search by name or code…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm text-black shadow-sm outline-none placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-          />
-        </div>
+        <SearchInput
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name or code…"
+          className="max-w-none flex-1"
+        />
         <div className="flex flex-wrap gap-2">
           <FilterSelect
             value={categoryFilter}
@@ -761,7 +760,7 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {loading && <p className="mt-8 text-sm text-slate-500">Loading products…</p>}
+      {loading && <p className="theme-subtext mt-8 text-sm">Loading products…</p>}
       {error && (
         <p className="mt-8 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
@@ -802,7 +801,7 @@ export default function ProductsPage() {
               <tbody>
                 {pageSlice.length === 0 ? (
                   <tr>
-                    <td colSpan={tableColCount} className="px-4 py-12 text-center text-slate-500">
+                    <td colSpan={tableColCount} className="theme-subtext px-4 py-12 text-center">
                       No products match your filters.
                     </td>
                   </tr>
@@ -833,17 +832,18 @@ export default function ProductsPage() {
             </table>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-500">
-            <p>
-              Showing{" "}
-              {totalProducts === 0
-                ? "0"
-                : `${(safePage - 1) * PAGE_SIZE + 1}–${Math.min(safePage * PAGE_SIZE, totalProducts)}`}{" "}
-              of {totalProducts} products
-              {listLoading ? " · Updating…" : ""}
+          <PaginationBar
+            page={safePage}
+            totalPages={totalPages}
+            total={totalProducts}
+            pageSize={PAGE_SIZE}
+            onChange={setPage}
+          />
+          {listLoading ? (
+            <p className="theme-subtext border-t border-[var(--theme-border)] px-4 pb-3 text-center text-xs">
+              Updating catalogue…
             </p>
-            <Pagination page={safePage} totalPages={totalPages} onChange={setPage} />
-          </div>
+          ) : null}
         </div>
       )}
 
@@ -1013,14 +1013,14 @@ function ProductRow({
             <div className="flex items-center justify-center gap-1">
               <ActionButton
                 label="View product"
-                className="text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                className="theme-subtext hover:bg-[var(--theme-hover)] hover:text-[var(--theme-text)]"
                 onClick={() => onView?.(product.product_code)}
               >
                 <EyeIcon />
               </ActionButton>
               <ActionButton
                 label="Edit product"
-                className="text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                className="theme-subtext hover:bg-[var(--theme-hover)] hover:text-[var(--theme-text)]"
                 onClick={() => onEdit?.(product)}
               >
                 <PencilIcon />
@@ -1049,11 +1049,11 @@ function renderProductCell(product, columnId, onPriceSaved) {
         <>
           <Link
             href={`/products/${encodeURIComponent(product.product_code)}`}
-            className="font-medium text-slate-900 hover:text-blue-600"
+            className="theme-link font-medium"
           >
             {product.product_name}
           </Link>
-          <p className="mt-0.5 font-mono text-xs text-slate-400">{product.product_code}</p>
+          <p className="theme-subtext mt-0.5 font-mono text-xs">{product.product_code}</p>
           {product.catalog_scope === "branch" || product.branch_id ? (
             <p className="mt-1 text-xs font-medium text-amber-700">{productScopeLabel(product)}</p>
           ) : null}
@@ -1068,12 +1068,12 @@ function renderProductCell(product, columnId, onPriceSaved) {
         />
       );
     case "cost_price":
-      return <span className="text-slate-500">{formatKes(product.last_cost_price)}</span>;
+      return <span className="theme-text-muted">{formatKes(product.last_cost_price)}</span>;
     case "discount":
-      return <span className="text-slate-600">{formatDiscount(product)}</span>;
+      return <span className="theme-text-muted">{formatDiscount(product)}</span>;
     case "weight":
       return (
-        <span className="text-slate-600">
+        <span className="theme-text-muted">
           {product.display_weight != null ? `${formatQty(product.display_weight)} kg` : "—"}
         </span>
       );
@@ -1101,23 +1101,23 @@ function renderProductCell(product, columnId, onPriceSaved) {
       return product.effective_reorder_point != null ? (
         <>
           {formatQty(baseToDisplayQty(product.effective_reorder_point, product.uom_factor))}{" "}
-          <span className="text-xs text-slate-400">{product.uom_label}</span>
+          <span className="theme-subtext text-xs">{product.uom_label}</span>
           {product.uses_global_reorder ? (
-            <span className="mt-0.5 block text-xs text-slate-400">Global default</span>
+            <span className="theme-subtext mt-0.5 block text-xs">Global default</span>
           ) : null}
         </>
       ) : (
         "—"
       );
     case "supplier":
-      return <span className="text-slate-600">{product.supplier_name}</span>;
+      return <span className="theme-text-muted">{product.supplier_name}</span>;
     case "vat":
       return <VatBadge treatment={product.vat_treatment} />;
     case "pricing":
       return <PricingBadge type={product.pricing} />;
     case "alert":
       return product.uses_global_reorder ? (
-        <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-300/50">
+        <span className="inline-flex rounded-full bg-[var(--theme-surface-muted)] px-2 py-0.5 text-xs font-medium text-[var(--theme-text-muted)] ring-1 ring-[var(--theme-border)]">
           Global
         </span>
       ) : (
@@ -1145,7 +1145,7 @@ function ColumnPicker({
       <button
         type="button"
         onClick={onToggle}
-        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+        className={`${SECONDARY_BTN_CLASS} gap-2 px-3 py-2.5`}
       >
         <ColumnsIcon />
         Columns
@@ -1158,9 +1158,9 @@ function ColumnPicker({
             aria-label="Close column picker"
             onClick={onClose}
           />
-          <div className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+          <div className="theme-panel absolute right-0 z-20 mt-2 w-56 rounded-xl border p-3 shadow-lg">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <p className="theme-subtext text-xs font-semibold uppercase tracking-wide">
                 Show columns
               </p>
               <button
@@ -1178,7 +1178,9 @@ function ColumnPicker({
                   <li key={col.id}>
                     <label
                       className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
-                        col.required ? "cursor-not-allowed text-slate-400" : "cursor-pointer hover:bg-slate-50"
+                        col.required
+                          ? "theme-subtext cursor-not-allowed opacity-60"
+                          : "cursor-pointer text-[var(--theme-text-muted)] hover:bg-[var(--theme-hover)]"
                       }`}
                     >
                       <input
@@ -1202,14 +1204,14 @@ function ColumnPicker({
 }
 
 function VatBadge({ treatment }) {
-  if (treatment === "—") return <span className="text-slate-400">—</span>;
+  if (treatment === "—") return <span className="theme-subtext">—</span>;
   const vatable = treatment === "Vatable";
   return (
     <span
       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${
         vatable
           ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
-          : "bg-slate-100 text-slate-600 ring-slate-300/50"
+          : "bg-[var(--theme-surface-muted)] text-[var(--theme-text-muted)] ring-[var(--theme-border)]"
       }`}
     >
       {treatment}
@@ -1254,7 +1256,7 @@ function InlineUnitPriceCell({ productCode, unitPrice, onSaved }) {
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="rounded px-1 text-slate-700 hover:bg-slate-100 hover:text-blue-600"
+        className="theme-text-muted rounded px-1 hover:bg-[var(--theme-hover)] hover:text-[var(--theme-link)]"
         title="Click to update price"
       >
         {formatKes(unitPrice)}
@@ -1270,7 +1272,7 @@ function InlineUnitPriceCell({ productCode, unitPrice, onSaved }) {
         step="any"
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        className="w-28 rounded border border-slate-200 px-2 py-1 text-right text-sm"
+        className={`${inputClassName()} w-28 text-right`}
         autoFocus
         onKeyDown={(e) => {
           if (e.key === "Enter") save();
@@ -1292,7 +1294,7 @@ function InlineUnitPriceCell({ productCode, unitPrice, onSaved }) {
             setEditing(false);
             setError(null);
           }}
-          className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600"
+          className="theme-secondary-btn rounded px-2 py-0.5 text-xs"
         >
           Cancel
         </button>
@@ -1346,35 +1348,9 @@ function ActionButton({ label, className, children, onClick }) {
 
 function ChevronToggle({ expanded }) {
   return (
-    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-500">
+    <span className="theme-subtext inline-flex h-5 w-5 shrink-0 items-center justify-center rounded">
       {expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
     </span>
-  );
-}
-
-function StatCard({ label, value, hint }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p>
-      <p className="mt-0.5 text-xs text-slate-400">{hint}</p>
-    </div>
-  );
-}
-
-function FilterSelect({ value, onChange, options }) {
-  return (
-    <select
-      value={value}
-      onChange={onChange}
-      className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-black shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
   );
 }
 
@@ -1385,88 +1361,11 @@ function PricingBadge({ type }) {
   };
   return (
     <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${styles[type] ?? styles.Wholesale}`}
+      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${styles[type] ?? "bg-[var(--theme-surface-muted)] text-[var(--theme-text-muted)] ring-[var(--theme-border)]"}`}
       title={type === "Sells W/R" ? "Sells wholesale and retail" : "Wholesale only"}
     >
       {type}
     </span>
-  );
-}
-
-function Pagination({ page, totalPages, onChange }) {
-  const pages = buildPageNumbers(page, totalPages);
-
-  return (
-    <div className="flex items-center gap-1">
-      <button
-        type="button"
-        disabled={page <= 1}
-        onClick={() => onChange(page - 1)}
-        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40"
-        aria-label="Previous page"
-      >
-        <ChevronLeftIcon />
-      </button>
-      {pages.map((p, i) =>
-        p === "…" ? (
-          <span key={`ellipsis-${i}`} className="px-2 text-slate-400">
-            …
-          </span>
-        ) : (
-          <button
-            key={p}
-            type="button"
-            onClick={() => onChange(p)}
-            className={`min-w-[2rem] rounded-lg px-2 py-1 text-sm font-medium ${
-              p === page
-                ? "bg-blue-600 text-white"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            {p}
-          </button>
-        ),
-      )}
-      <button
-        type="button"
-        disabled={page >= totalPages}
-        onClick={() => onChange(page + 1)}
-        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40"
-        aria-label="Next page"
-      >
-        <ChevronRightIcon />
-      </button>
-    </div>
-  );
-}
-
-function buildPageNumbers(current, total) {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const pages = [1];
-  if (current > 3) pages.push("…");
-  for (let p = Math.max(2, current - 1); p <= Math.min(total - 1, current + 1); p++) {
-    pages.push(p);
-  }
-  if (current < total - 2) pages.push("…");
-  pages.push(total);
-  return pages;
-}
-
-function SearchIcon({ className }) {
-  return (
-    <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.35-4.35" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
   );
 }
 
@@ -1481,7 +1380,7 @@ function ColumnsIcon() {
 
 function SortIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="theme-subtext">
       <path d="M8 9l4-4 4 4" />
       <path d="M8 15l4 4 4-4" />
     </svg>
@@ -1522,14 +1421,6 @@ function ChevronDownIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
-
-function ChevronLeftIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polyline points="15 18 9 12 15 6" />
     </svg>
   );
 }

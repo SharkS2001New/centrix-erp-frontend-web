@@ -75,7 +75,7 @@ export function LpoFormFields({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="theme-panel rounded-xl border shadow-sm">
       <div className="flex flex-wrap gap-1 border-b border-slate-200 px-4 pt-3">
         {FORM_TABS.map((t) => {
           const locked = t.id === "items" && !headerComplete;

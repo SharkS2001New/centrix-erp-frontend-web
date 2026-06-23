@@ -61,7 +61,7 @@ export default function PlatformOverviewPage() {
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       ) : null}
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="theme-panel rounded-xl border shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-sm font-semibold text-slate-900">Tenant organizations</h2>
           <p className="mt-1 text-sm text-slate-500">

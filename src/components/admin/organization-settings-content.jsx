@@ -20,6 +20,7 @@ import { HrSettingsPanel } from "@/components/admin/hr-settings-panel";
 import { SecuritySettingsPanel } from "@/components/admin/security-settings-panel";
 import { LegacyArchiveSettingsPanel } from "@/components/admin/legacy-archive-settings-panel";
 import { visibleOrgSettingsTabs } from "@/lib/org-settings-tabs";
+import { ORG_SETTINGS_PLATFORM_MESSAGE, TENANT_ORG_SETTINGS_SUBTITLE } from "@/lib/org-settings-access";
 import { PlatformConfiguredSalesSummary } from "@/components/admin/platform-configured-summary";
 import { isPlatformMpesaStkEnabled } from "@/lib/platform-org-features";
 import { useSettingsApi } from "@/contexts/settings-api-context";
@@ -69,7 +70,7 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
 
 function PlaceholderPanel({ title, description }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section className="theme-panel rounded-xl border p-6 shadow-sm">
       <h2 className="text-lg font-medium text-slate-900">{title}</h2>
       <p className="mt-2 text-sm text-slate-500">{description}</p>
     </section>
@@ -79,14 +80,17 @@ function PlaceholderPanel({ title, description }) {
 export function OrganizationSettingsContent({
   capabilities,
   platformManaged = false,
+  tenantSelfService = false,
   onAfterSave,
   breadcrumbItems,
   showShell = true,
   title = "Organization settings",
-  subtitle = "Operational preferences for this company (checkout, finance, HR, inventory). Module access is set by the platform administrator at registration.",
+  subtitle = tenantSelfService
+    ? TENANT_ORG_SETTINGS_SUBTITLE
+    : "Platform configuration for module provisioning, workflows, integration gates, and legacy archive. Tenants manage day-to-day module preferences under Administration → Organization settings.",
 }) {
   const { settingsPath } = useSettingsApi();
-  const [tab, setTab] = useState("sales");
+  const [tab, setTab] = useState(tenantSelfService ? "general" : "sales");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -99,8 +103,8 @@ export function OrganizationSettingsContent({
   const mpesaPlatformEnabled = isPlatformMpesaStkEnabled(capabilities);
 
   const visibleTabs = useMemo(
-    () => visibleOrgSettingsTabs(TABS, capabilities, { platformManaged }),
-    [capabilities, platformManaged],
+    () => visibleOrgSettingsTabs(TABS, capabilities, { platformManaged, tenantSelfService }),
+    [capabilities, platformManaged, tenantSelfService],
   );
 
   useEffect(() => {
@@ -124,8 +128,9 @@ export function OrganizationSettingsContent({
   }, [settingsPath]);
 
   useEffect(() => {
+    if (!visibleTabs.some((item) => item.id === "sales")) return;
     loadSalesSettings();
-  }, [loadSalesSettings]);
+  }, [loadSalesSettings, visibleTabs]);
 
   async function handleSaveSales(e) {
     e.preventDefault();
@@ -170,8 +175,25 @@ export function OrganizationSettingsContent({
         </p>
       ) : null}
 
+      {tenantSelfService ? (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
+          <p className="font-medium text-slate-900">Your organization preferences</p>
+          <p className="mt-1 text-xs text-slate-600">
+            Configure sales, inventory, finance, HR, and other module preferences for your company.{" "}
+            {ORG_SETTINGS_PLATFORM_MESSAGE}
+          </p>
+        </div>
+      ) : null}
+
       <div className="grid gap-6 lg:grid-cols-[200px_1fr]">
-        <nav className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+        {visibleTabs.length === 0 ? (
+          <p className="col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-950">
+            No organization settings are available for this company. Your platform administrator manages
+            preferences because the Administration module is not enabled.
+          </p>
+        ) : (
+          <>
+        <nav className="theme-panel rounded-xl border p-2 shadow-sm">
           {visibleTabs.map((item) => (
             <button
               key={item.id}
@@ -193,7 +215,7 @@ export function OrganizationSettingsContent({
 
           {tab === "sales" ? (
             <form onSubmit={handleSaveSales}>
-              <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <section className="theme-panel rounded-xl border p-6 shadow-sm">
                 <h2 className="text-lg font-medium text-slate-900">Sales settings</h2>
                 <p className="mt-1 text-sm text-slate-500">
                   Day-to-day POS and checkout preferences. Module access and order workflow are platform-controlled.
@@ -594,6 +616,8 @@ export function OrganizationSettingsContent({
           {tab === "security" ? <SecuritySettingsPanel {...panelProps} /> : null}
           {tab === "legacy-archive" ? <LegacyArchiveSettingsPanel {...panelProps} /> : null}
         </div>
+          </>
+        )}
       </div>
     </>
   );

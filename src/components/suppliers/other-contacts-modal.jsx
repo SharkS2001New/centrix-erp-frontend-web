@@ -25,7 +25,7 @@ export function OtherContactsModal({ supplierName, contacts, open, onClose }) {
       <div
         role="dialog"
         aria-labelledby="other-contacts-title"
-        className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-4 shadow-xl"
+        className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 theme-panel rounded-xl border p-4 shadow-xl"
       >
         <div className="flex items-start justify-between gap-2">
           <div>

@@ -7,7 +7,7 @@ export function KenyaLeavePolicyAside({ defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <aside className="rounded-xl border border-slate-200 bg-white shadow-sm">
+    <aside className="theme-panel rounded-xl border shadow-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

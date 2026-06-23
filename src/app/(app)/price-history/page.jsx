@@ -303,7 +303,7 @@ export default function PriceHistoryPage() {
         </p>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading price history…</p>
         ) : productGroups.length === 0 ? (

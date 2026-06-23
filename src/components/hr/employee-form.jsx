@@ -486,7 +486,7 @@ export function EmployeeFormWizard({
     <>
     <form
       onSubmit={handleSubmit}
-      className="flex h-full min-h-[min(640px,calc(100vh-12rem))] w-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm"
+      className="flex h-full min-h-[min(640px,calc(100vh-12rem))] w-full flex-col theme-panel rounded-xl border shadow-sm"
     >
       <div className="shrink-0 border-b border-slate-200 px-6 pt-6 md:px-8">
         <div className="mb-4 rounded-lg bg-[#E6F1FB]/60 px-3 py-2.5">

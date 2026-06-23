@@ -201,7 +201,7 @@ export function ReportsHub() {
 
         <div className="flex flex-col gap-6 lg:flex-row">
           <aside className="shrink-0 lg:w-52">
-            <nav className="space-y-1 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+            <nav className="space-y-1 theme-panel rounded-xl border p-2 shadow-sm">
               <CategoryNavItem
                 label="All categories"
                 count={totalReportCount}
@@ -239,7 +239,7 @@ export function ReportsHub() {
                 ) : null}
               </div>
             ) : (
-              <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <ul className="divide-y divide-slate-100 theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
                 {filteredList.map((r) => (
                   <li key={`${r.categoryId}:${r.key}`} className="flex items-center justify-between gap-4 px-4 py-3">
                     <div className="min-w-0">
@@ -290,7 +290,7 @@ function CategoryCard({ category, onViewAll }) {
   const icon = CATEGORY_ICONS[category.icon] ?? CATEGORY_ICONS.other;
 
   return (
-    <article className="flex flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <article className="flex flex-col theme-panel rounded-xl border p-5 shadow-sm">
       <div className="flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
           {icon}

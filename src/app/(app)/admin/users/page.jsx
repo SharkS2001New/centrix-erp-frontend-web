@@ -458,7 +458,7 @@ export default function AdminUsersPage() {
                 </tr>
               ) : (
                 users.map((row) => (
-                  <tr key={row.id} className="hover:bg-slate-50/80">
+                  <tr key={row.id} className="theme-table-body-row">
                     <td className="px-4 py-3 font-medium text-slate-900">{row.full_name}</td>
                     <td className="px-4 py-3 text-slate-600">{row.email ?? "—"}</td>
                     <td className="px-4 py-3 text-slate-600">

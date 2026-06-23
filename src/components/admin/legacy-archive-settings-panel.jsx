@@ -105,7 +105,7 @@ export function LegacyArchiveSettingsPanel({ saving, setSaving, setError, setMes
 
   return (
     <form onSubmit={saveSettings}>
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Legacy archive (LightStores)</h2>
         <p className="mt-1 text-sm text-slate-500">
           Connect a restored LightStores MySQL database for read-only historical sales. Products, customers,

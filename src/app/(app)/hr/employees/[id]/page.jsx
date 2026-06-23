@@ -176,7 +176,7 @@ export default function EmployeeProfilePage() {
           ) : null}
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="theme-panel rounded-xl border p-5 shadow-sm">
               <h2 className="text-[15px] font-medium text-slate-900">Employment</h2>
               <dl className="mt-4 space-y-3 text-sm">
                 <DetailRow label="Department" value={employee.department?.department_name ?? "—"} />
@@ -234,7 +234,7 @@ export default function EmployeeProfilePage() {
               </dl>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="theme-panel rounded-xl border p-5 shadow-sm">
               <h2 className="text-[15px] font-medium text-slate-900">Kenya tax & IDs</h2>
               <dl className="mt-4 space-y-3 text-sm">
                 <DetailRow label="KRA PIN" value={employee.kra_pin || "—"} mono />
@@ -251,7 +251,7 @@ export default function EmployeeProfilePage() {
             </div>
 
             {salaryPreview && (
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+              <div className="theme-panel rounded-xl border p-5 shadow-sm lg:col-span-2">
                 <h2 className="text-[15px] font-medium text-slate-900">
                   Estimated monthly net (Kenya {salaryPreview.effective_label})
                 </h2>
@@ -275,7 +275,7 @@ export default function EmployeeProfilePage() {
               </div>
             )}
 
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="theme-panel rounded-xl border p-5 shadow-sm">
               <h2 className="text-[15px] font-medium text-slate-900">Payment methods</h2>
               <dl className="mt-4 space-y-3 text-sm">
                 <DetailRow
@@ -314,7 +314,7 @@ export default function EmployeeProfilePage() {
 
             <EmployeeKpisPanel employeeId={employee.id} />
 
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+            <div className="theme-panel rounded-xl border p-5 shadow-sm lg:col-span-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-[15px] font-medium text-slate-900">Payroll history</h2>
                 <Link

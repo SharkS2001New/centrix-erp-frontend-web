@@ -131,7 +131,7 @@ export default function SupplierProfilePage() {
       ) : supplier ? (
         <div className="grid gap-6 lg:grid-cols-[minmax(320px,38%)_minmax(0,1fr)]">
           <div className="space-y-6">
-            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="theme-panel rounded-xl border p-6 shadow-sm">
               <p className="text-2xl font-semibold text-slate-900">{supplier.supplier_name}</p>
               <dl className="mt-6 space-y-4 text-sm">
                 <DetailRow label="Contact Person" value={supplier.contact_person} />
@@ -159,7 +159,7 @@ export default function SupplierProfilePage() {
               </dl>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="theme-panel rounded-xl border p-6 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-900">Purchase Summary</h2>
               <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
                 <StatItem
@@ -185,7 +185,7 @@ export default function SupplierProfilePage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="theme-panel rounded-xl border shadow-sm">
             <div className="flex flex-wrap gap-1 border-b border-slate-200 px-4 pt-3">
               {TABS.map((t) => (
                 <button

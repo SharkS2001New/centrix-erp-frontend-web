@@ -227,7 +227,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
         role="dialog"
         aria-modal="true"
         aria-labelledby="held-orders-title"
-        className="flex h-[min(88vh,860px)] w-[min(98vw,72rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+        className="flex h-[min(88vh,860px)] w-[min(98vw,72rem)] flex-col overflow-hidden theme-panel rounded-xl border shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="shrink-0 border-b border-[var(--theme-primary-hover)] bg-[var(--theme-primary)] px-4 py-3 text-white">
@@ -258,7 +258,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
           </div>
         </header>
 
-        <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+        <div className="shrink-0 theme-table-head-row border-b px-4 py-2.5">
           <input
             type="search"
             value={search}
@@ -294,7 +294,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
               return (
                 <li
                   key={key}
-                  className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+                  className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm"
                 >
                   <details
                     open={index === 0}

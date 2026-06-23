@@ -192,21 +192,21 @@ export default function MobileFieldAttendanceScreen() {
       {error ? <DashboardErrorBanner message={error} /> : null}
 
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
           <p className="text-xs uppercase tracking-wide text-slate-500">Sessions</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">{totals.sessions}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
           <p className="text-xs uppercase tracking-wide text-slate-500">Active now</p>
           <p className="mt-1 text-2xl font-semibold text-emerald-700">{totals.open}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
           <p className="text-xs uppercase tracking-wide text-slate-500">Hours in range</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">{totals.hoursLabel}</p>
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex flex-wrap items-end gap-3 theme-panel rounded-xl border p-4 shadow-sm">
         <Field label="From">
           <input type="date" className={inputClassName()} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
         </Field>
@@ -225,7 +225,7 @@ export default function MobileFieldAttendanceScreen() {
         </PrimaryButton>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>

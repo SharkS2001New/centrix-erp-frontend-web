@@ -108,7 +108,7 @@ export function RouteFormCard({ children, onSubmit, actions }) {
   return (
     <form
       onSubmit={onSubmit}
-      className="max-w-4xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+      className="max-w-4xl theme-panel rounded-xl border p-6 shadow-sm"
     >
       {children}
       {actions}

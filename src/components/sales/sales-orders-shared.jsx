@@ -498,7 +498,7 @@ export function OrderContextMenu({ open, x, y, items, onClose }) {
       />
       <div
         role="menu"
-        className="fixed z-[9999] min-w-[14rem] overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 text-slate-900 shadow-2xl ring-1 ring-black/5"
+        className="fixed z-[9999] min-w-[14rem] overflow-hidden theme-panel rounded-xl border py-1.5 text-slate-900 shadow-2xl ring-1 ring-black/5"
         style={{ top, left }}
         onClick={(event) => event.stopPropagation()}
         onContextMenu={(event) => event.preventDefault()}
@@ -682,7 +682,7 @@ export function OrderListTableRow({
   return (
     <>
       <tr
-        className="border-b border-slate-100 hover:bg-slate-50/80"
+        className="border-b border-slate-100 theme-table-body-row"
         onContextMenu={(event) => {
           event.preventDefault();
           onContextMenu?.(event);
@@ -767,7 +767,7 @@ export function OrderDetailHeader({ sale, workflow }) {
   const isCancelled = sale.status === "cancelled";
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Sales order</p>
@@ -821,7 +821,7 @@ export function OrderFinancialSummary({ sale, payments, totalPaid, balanceDue })
   const orderDiscount = Number(sale.order_discount ?? 0);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm">
       <h2 className="text-sm font-medium text-slate-900">Financial summary</h2>
       <dl className="mt-4 space-y-2 text-sm">
         <SummaryRow label="Order total" value={formatSaleKes(sale.order_total)} bold />
@@ -868,7 +868,7 @@ export function OrderLineItemsTable({ items, uomById }) {
   const rows = items ?? [];
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
       <div className="border-b border-slate-200 px-5 py-4">
         <h2 className="text-sm font-medium text-slate-900">Line items</h2>
         <p className="mt-0.5 text-xs text-slate-500">{rows.length} product(s)</p>
@@ -928,7 +928,7 @@ export function OrderPaymentsSection({
   onRecordPayment,
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-medium text-slate-900">Payments</h2>
@@ -996,7 +996,7 @@ export function OrderMetaPanel({ sale, workflow, routeById, driverById, vehicleB
   const meta = sale.fulfillment_meta;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm">
       <h2 className="text-sm font-medium text-slate-900">Order details</h2>
       <dl className="mt-4 space-y-2 text-sm">
         <SummaryRow label="Workflow status" value={saleStatusLabel(sale.status, workflow)} />

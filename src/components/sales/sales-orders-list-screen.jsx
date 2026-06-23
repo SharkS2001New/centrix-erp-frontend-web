@@ -584,14 +584,14 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
           <OrderSummaryStats summary={summary} hint={summaryHint} />
         ) : null}
 
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
           {loading ? (
             <p className="px-5 py-8 text-center text-sm text-slate-500">Loading orders…</p>
           ) : pageSlice.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-slate-500">No orders match your filters.</p>
           ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50/80 px-4 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 theme-table-head-row border-b px-4 py-2">
                 <p className="text-xs text-slate-500">
                   {pageSlice.length} order{pageSlice.length === 1 ? "" : "s"} on this page · Right-click for actions
                 </p>

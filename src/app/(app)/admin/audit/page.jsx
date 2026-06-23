@@ -248,10 +248,10 @@ export default function AdminAuditPage() {
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+            <thead className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3">User</th>
@@ -279,7 +279,7 @@ export default function AdminAuditPage() {
                 logs.map((log) => (
                   <tr
                     key={log.id}
-                    className="cursor-pointer hover:bg-slate-50/80"
+                    className="cursor-pointer theme-table-body-row"
                     onClick={() => setSelected(log)}
                   >
                     <td className="whitespace-nowrap px-4 py-3 text-slate-600">

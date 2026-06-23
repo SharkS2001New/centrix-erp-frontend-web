@@ -219,9 +219,9 @@ export default function AdminBranchesPage() {
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       ) : null}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm">
         <table className="min-w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+          <thead className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Branch</th>
               <th className="px-4 py-3">Manager</th>
@@ -246,7 +246,7 @@ export default function AdminBranchesPage() {
               </tr>
             ) : (
               filtered.map((branch) => (
-                <tr key={branch.id} className="hover:bg-slate-50/80">
+                <tr key={branch.id} className="theme-table-body-row">
                   <td className="px-4 py-3 font-medium text-slate-900">{branch.branch_name}</td>
                   <td className="px-4 py-3 text-slate-600">{managerName(branch)}</td>
                   <td className="px-4 py-3 text-slate-600">{userCountByBranch.get(branch.id) ?? 0}</td>

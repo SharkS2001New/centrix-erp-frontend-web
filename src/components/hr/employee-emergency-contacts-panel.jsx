@@ -104,7 +104,7 @@ export function EmployeeEmergencyContactsPanel({ employeeId, employee, onUpdated
   const nok = employee?.next_of_kin ?? employee?.nextOfKin;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-[15px] font-medium text-slate-900">Emergency & next of kin</h2>

@@ -119,7 +119,7 @@ export function OrderWorkflowPipeline({ status, onAdvance, busyStatus, workflow,
   const firstStep = steps[0] ?? null;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h3 className="text-sm font-medium text-slate-900">Order workflow</h3>
         <div className="text-right">
@@ -220,7 +220,7 @@ export function ProductTile({ product, onSelect, disabled }) {
       type="button"
       disabled={disabled}
       onClick={() => onSelect?.(product)}
-      className="flex flex-col rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-[var(--theme-primary)]/40 hover:shadow disabled:opacity-50"
+      className="flex flex-col theme-panel rounded-xl border p-4 text-left shadow-sm transition hover:border-[var(--theme-primary)]/40 hover:shadow disabled:opacity-50"
     >
       <p className="line-clamp-2 text-sm font-medium text-slate-900">
         {product.product_name}

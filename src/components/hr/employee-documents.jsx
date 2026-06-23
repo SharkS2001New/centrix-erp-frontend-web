@@ -92,7 +92,7 @@ export function EmployeeDocuments({ employeeId }) {
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-[15px] font-medium text-slate-900">Documents</h2>
         <button

@@ -48,7 +48,7 @@ export function OverviewDashboard() {
         hasPermission(P.reports.hub.view) ? (
           <Link
             href="/reports"
-            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            className="inline-flex items-center theme-secondary-btn rounded-lg border px-4 py-2 text-sm font-medium dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
           >
             All reports
           </Link>

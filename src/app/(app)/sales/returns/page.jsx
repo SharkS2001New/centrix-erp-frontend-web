@@ -173,7 +173,7 @@ export default function SalesReturnsPage() {
         <PrimaryLink href="/sales/returns/new">Create return</PrimaryLink>
       </div>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center">
           <SearchInput
             value={search}
@@ -212,7 +212,7 @@ export default function SalesReturnsPage() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[960px] text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50/80 text-xs font-medium uppercase tracking-wide text-slate-500">
+            <thead className="theme-table-head-row text-xs font-medium uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Return no.</th>
                 <th className="px-4 py-3">Invoice no.</th>
@@ -243,7 +243,7 @@ export default function SalesReturnsPage() {
                     row.sale?.customer_name_override ??
                     "Walk-in";
                   return (
-                    <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50/80">
+                    <tr key={row.id} className="border-t border-slate-100 theme-table-body-row">
                       <td className="px-4 py-3">
                         <button
                           type="button"

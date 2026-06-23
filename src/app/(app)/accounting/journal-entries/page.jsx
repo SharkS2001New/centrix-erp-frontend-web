@@ -79,9 +79,9 @@ export default function JournalEntriesPage() {
         />
       </div>
 
-      <div className={`overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm ${loading || listLoading ? "opacity-60" : ""}`}>
+      <div className={`theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm ${loading || listLoading ? "opacity-60" : ""}`}>
         <table className="min-w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+          <thead className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Reference</th>
               <th className="px-4 py-3">Date</th>
@@ -99,7 +99,7 @@ export default function JournalEntriesPage() {
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50/80">
+                <tr key={row.id} className="theme-table-body-row">
                   <td className="px-4 py-3 font-mono font-medium text-slate-900">{row.entry_number}</td>
                   <td className="px-4 py-3">{formatShortDate(row.entry_date)}</td>
                   <td className="px-4 py-3 text-slate-700">{row.description ?? "—"}</td>

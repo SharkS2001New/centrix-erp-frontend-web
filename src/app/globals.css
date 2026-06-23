@@ -1619,9 +1619,26 @@ html[data-theme="dark"] .text-slate-300 {
 
 html[data-theme="dark"] tr:hover,
 html[data-theme="dark"] .hover\:bg-slate-50:hover,
+html[data-theme="dark"] .hover\:bg-slate-50\/60:hover,
 html[data-theme="dark"] .hover\:bg-slate-50\/80:hover,
 html[data-theme="dark"] .hover\:bg-slate-100:hover {
   background-color: var(--theme-hover) !important;
+}
+
+.theme-badge-neutral {
+  background-color: var(--theme-surface-muted);
+  color: var(--theme-text-muted);
+  --tw-ring-color: var(--theme-border);
+}
+
+.theme-legacy-archive-row {
+  background-color: color-mix(in srgb, rgb(245 158 11) 14%, var(--theme-page-bg));
+}
+
+html[data-theme="dark"] .bg-amber-50\/50,
+html[data-theme="dark"] tr.bg-amber-50\/50,
+html[data-theme="dark"] .theme-legacy-archive-row {
+  background-color: color-mix(in srgb, rgb(245 158 11) 12%, var(--theme-page-bg)) !important;
 }
 
 html[data-theme="dark"] .divide-slate-100 > :not([hidden]) ~ :not([hidden]),

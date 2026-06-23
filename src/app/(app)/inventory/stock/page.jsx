@@ -346,7 +346,7 @@ export default function CurrentStockPage() {
             Columns
           </button>
           {columnsOpen ? (
-            <div className="absolute right-0 z-20 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+            <div className="absolute right-0 z-20 mt-2 w-48 theme-panel rounded-xl border p-3 shadow-lg">
               <ul className="space-y-1">
                 {STOCK_COLUMNS.map((col) => (
                   <li key={col.id}>
@@ -388,7 +388,7 @@ export default function CurrentStockPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
                     {visibleColumns.map((col) => (
                       <th
                         key={col.id}

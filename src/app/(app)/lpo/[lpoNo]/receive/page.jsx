@@ -183,7 +183,7 @@ export default function LpoReceivePage() {
         </div>
       ) : lpo ? (
         <div className="space-y-6">
-          <section className="rounded-xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
+          <section className="theme-panel rounded-xl border px-6 py-5 shadow-sm">
             <div className="overflow-x-auto">
               <dl className="grid min-w-[800px] grid-cols-5 gap-6">
                 <div className="min-w-0">
@@ -216,7 +216,7 @@ export default function LpoReceivePage() {
             </div>
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="theme-panel rounded-xl border p-6 shadow-sm">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-base font-semibold text-slate-900">Items to receive</h2>
               {lines.length > 0 ? (

@@ -66,7 +66,7 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
       <OrganizationLeaveSettingsEditor isAdmin />
 
       <form onSubmit={handleSavePayroll}>
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="theme-panel rounded-xl border p-6 shadow-sm">
           <h2 className="text-lg font-medium text-slate-900">Payroll schedule</h2>
           <p className="mt-1 text-sm text-slate-500">
             When payroll runs are allowed and how long a run can be deleted after creation.

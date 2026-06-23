@@ -2,6 +2,7 @@ import { isNavItemVisible, navSections } from "@/lib/nav-config";
 import { canViewReport, P } from "@/lib/permission-codes";
 import {
   isAdministrationModuleEnabled,
+  isOrgAdministrator,
   isOrgAdminSettingsPath,
   shouldHideOrgAdminFromPlatformSuperAdmin,
 } from "@/lib/admin-scope";
@@ -58,7 +59,21 @@ export function canAccessRoute(pathname, ctx) {
   }
 
   if (pathname === "/admin/settings" || pathname.startsWith("/admin/settings/")) {
-    return false;
+    if (!isAdministrationModuleEnabled(ctx.capabilities)) {
+      return false;
+    }
+    if (
+      shouldHideOrgAdminFromPlatformSuperAdmin({
+        organization: ctx.organization,
+        isSuperAdmin: ctx.isSuperAdmin,
+      })
+    ) {
+      return false;
+    }
+    if (isOrgAdministrator(ctx.user, ctx.capabilities)) {
+      return true;
+    }
+    return ctx.hasPermission("admin.manage");
   }
 
   if (

@@ -186,7 +186,7 @@ export function EmployeeLeaveHub({
   }
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="theme-panel rounded-xl border p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-[15px] font-medium text-slate-900">Leave & off days by employee</h2>
@@ -270,7 +270,7 @@ export function EmployeeLeaveHub({
                     ) : (
                       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
                         <table className="min-w-[560px] w-full text-sm">
-                          <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                          <thead className="theme-table-head-row text-left text-xs font-medium">
                             <tr>
                               <th className="px-3 py-2">Period</th>
                               <th className="px-3 py-2">Deducted from</th>
@@ -282,7 +282,7 @@ export function EmployeeLeaveHub({
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {records.map((record) => (
-                              <tr key={record.id} className="hover:bg-slate-50/80">
+                              <tr key={record.id} className="theme-table-body-row">
                                 <td className="px-3 py-2 text-slate-800">{formatPeriod(record)}</td>
                                 <td className="px-3 py-2 text-slate-700">
                                   {deductFromLabel(record.deduct_from)}

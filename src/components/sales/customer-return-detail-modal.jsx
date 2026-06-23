@@ -76,7 +76,7 @@ export function CustomerReturnDetailModal({
       <div
         role="dialog"
         aria-modal="true"
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden theme-panel rounded-xl border shadow-xl"
       >
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div>

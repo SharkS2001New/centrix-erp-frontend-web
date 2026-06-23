@@ -140,7 +140,7 @@ export function ExpensesReportScreen({ definition }) {
         <p className="text-sm text-slate-500">Loading report…</p>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="theme-panel rounded-xl border p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">By category</h2>
             <div className="mt-4 space-y-3">
               {byCategory.map((item, idx) => (

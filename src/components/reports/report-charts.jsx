@@ -23,7 +23,7 @@ export function ChangeBadge({ pct }) {
 
 export function HubKpiCard({ label, value, changePct }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+    <div className="theme-panel rounded-xl border px-5 py-4 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
         <ChangeBadge pct={changePct} />
@@ -156,7 +156,7 @@ export function ReportBarChart({ rows, labelKey, valueKey, title }) {
   const max = Math.max(...aggregated.map((p) => p.value), 1);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="theme-panel rounded-xl border p-4 shadow-sm">
       {title ? <h3 className="mb-3 text-sm font-medium text-slate-900">{title}</h3> : null}
       <div className="flex h-44 items-end gap-1">
         {aggregated.map((p) => (

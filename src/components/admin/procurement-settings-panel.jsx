@@ -55,7 +55,7 @@ export function ProcurementSettingsPanel({ saving, setSaving, setError, setMessa
 
   return (
     <form onSubmit={handleSave}>
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Procurement settings</h2>
         <p className="mt-1 text-sm text-slate-500">Defaults for LPOs, goods receipt, and supplier workflows.</p>
         {loading ? (

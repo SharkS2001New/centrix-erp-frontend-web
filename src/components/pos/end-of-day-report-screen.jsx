@@ -106,7 +106,7 @@ function PaymentDonut({ payments }) {
 
 function Panel({ title, children, className = "" }) {
   return (
-    <div className={`rounded-xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
+    <div className={`theme-panel rounded-xl border p-5 shadow-sm ${className}`}>
       <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
       <div className="mt-4">{children}</div>
     </div>
@@ -552,7 +552,7 @@ export function EndOfDayReportScreen() {
           </div>
 
           {requireTillFloat ? (
-          <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mt-6 theme-panel rounded-xl border p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-center gap-3 text-center text-sm">
               <div className="rounded-lg bg-[#E6F1FB] px-4 py-3">
                 <p className="text-xs text-slate-500">Net cash expected</p>

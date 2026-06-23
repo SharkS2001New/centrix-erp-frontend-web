@@ -143,7 +143,7 @@ export function EmployeeKpisPanel({ employeeId }) {
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm lg:col-span-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-[15px] font-medium text-slate-900">Performance KPIs</h2>

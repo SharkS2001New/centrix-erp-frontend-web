@@ -34,7 +34,7 @@ export function PosLeaveGuardDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="pos-leave-guard-title"
-        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl"
+        className="w-full max-w-md theme-panel rounded-xl border p-5 shadow-xl"
       >
         <h2 id="pos-leave-guard-title" className="text-base font-semibold text-slate-900">
           Leave point of sale?
@@ -52,7 +52,7 @@ export function PosLeaveGuardDialog({
             type="button"
             disabled={busy}
             onClick={onStay}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="theme-secondary-btn rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
           >
             Stay on POS
           </button>

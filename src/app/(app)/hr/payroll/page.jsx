@@ -366,7 +366,7 @@ export default function PayrollPage() {
               <StatCard label="Paid runs" value={stats.paid.toLocaleString()} />
             </div>
             {recentRuns.length > 0 && (
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="theme-panel rounded-xl border p-5 shadow-sm">
                 <h2 className="text-[15px] font-medium text-slate-900">Recent payroll runs</h2>
                 <ul className="mt-4 divide-y divide-slate-100">
                   {recentRuns.map((run) => {
@@ -439,14 +439,14 @@ export default function PayrollPage() {
       {loading ? (
         <p className="text-sm text-slate-500">Loading payroll…</p>
       ) : tab === "runs" ? (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
             <h2 className="text-[15px] font-medium text-slate-900">Payroll runs</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[800px] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                <tr className="theme-table-head-row text-left text-xs font-medium">
                   <th className="px-4 py-2.5">Period</th>
                   <th className="px-4 py-2.5 text-right">Employees</th>
                   <th className="px-4 py-2.5 text-right">Gross</th>
@@ -508,7 +508,7 @@ export default function PayrollPage() {
           </div>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
             <h2 className="text-[15px] font-medium text-slate-900">Pay periods</h2>
             <p className="mt-0.5 text-xs text-slate-500">
@@ -519,7 +519,7 @@ export default function PayrollPage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                <tr className="theme-table-head-row text-left text-xs font-medium">
                   <th className="px-4 py-2.5">Period</th>
                   <th className="px-4 py-2.5">Dates</th>
                   <th className="px-4 py-2.5">Code</th>

@@ -149,7 +149,7 @@ function ReturnActionDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="return-action-dialog-title"
-        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl"
+        className="w-full max-w-md theme-panel rounded-xl border p-5 shadow-xl"
         onKeyDown={(e) => {
           if (e.key === "Escape" && !saving) onClose();
         }}
@@ -269,7 +269,7 @@ function LineItemsTable({ row }) {
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
       <table className="w-full min-w-[560px] border-collapse text-xs">
         <thead>
-          <tr className="border-b border-slate-200 bg-slate-50 text-left font-medium text-slate-500">
+          <tr className="theme-table-head-row text-left font-medium">
             <th className="px-3 py-2">Product</th>
             <th className="px-3 py-2 text-right">Qty to return</th>
             <th className="px-3 py-2">From</th>
@@ -563,7 +563,7 @@ export default function SupplierReturnsPage() {
         onConfirm={confirmDialogAction}
       />
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading returns…</p>
         ) : filtered.length === 0 ? (
@@ -577,7 +577,7 @@ export default function SupplierReturnsPage() {
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[980px] table-fixed border-collapse text-sm">
-                <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                <thead className="theme-table-head-row text-left text-xs font-medium">
                   <tr>
                     {COLS.map((col) => (
                       <th
@@ -598,7 +598,7 @@ export default function SupplierReturnsPage() {
 
                     return (
                       <Fragment key={row.id}>
-                        <tr className="border-b border-slate-100 bg-white hover:bg-slate-50/80">
+                        <tr className="border-b border-slate-100 bg-white theme-table-body-row">
                           <td className={`${COL.toggle.className} py-3 align-top`}>
                             <button
                               type="button"

@@ -174,7 +174,7 @@ export function RecordSupplierReturnForm({
         ) : (
           <form
             onSubmit={submit}
-            className="mt-6 space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+            className="mt-6 space-y-4 theme-panel rounded-xl border p-6 shadow-sm"
           >
             <Field label="Branch (stock location)">
               <select

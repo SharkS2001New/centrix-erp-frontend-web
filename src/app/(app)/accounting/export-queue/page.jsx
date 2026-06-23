@@ -171,9 +171,9 @@ export default function ExportQueuePage() {
         <OrgSettingsPlatformHint area="Organization settings → Finance" className="font-medium text-slate-700" />
       </div>
 
-      <div className={`overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm ${loading ? "opacity-60" : ""}`}>
+      <div className={`theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm ${loading ? "opacity-60" : ""}`}>
         <table className="min-w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+          <thead className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Entry</th>
               <th className="px-4 py-3">Date</th>
@@ -194,7 +194,7 @@ export default function ExportQueuePage() {
               rows.map((row) => {
                 const isStub = String(row.external_journal_id ?? "").startsWith("QBO-STUB-");
                 return (
-                  <tr key={row.id} className="hover:bg-slate-50/80">
+                  <tr key={row.id} className="theme-table-body-row">
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-900">{row.entry_number}</div>
                       <div className="text-xs text-slate-500">{row.description}</div>

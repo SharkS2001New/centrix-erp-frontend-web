@@ -292,7 +292,7 @@ export default function HrAttendancePage() {
 
       <div className={`mb-8 grid gap-6 ${admin && !companyMobileEnabled ? "lg:grid-cols-2" : admin ? "lg:grid-cols-2" : ""}`}>
         {admin && !companyMobileEnabled && (
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="theme-panel rounded-xl border p-5 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-[15px] font-medium text-slate-900">Clock devices</h2>
@@ -333,7 +333,7 @@ export default function HrAttendancePage() {
         </section>
         )}
 
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="theme-panel rounded-xl border p-5 shadow-sm">
           <h2 className="text-[15px] font-medium text-slate-900">Live clock sessions</h2>
           <p className="mt-1 text-sm text-slate-500">
             Employees currently clocked in on a device (read-only).
@@ -361,7 +361,7 @@ export default function HrAttendancePage() {
       </div>
 
       {companyMobileEnabled ? (
-        <section className="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
           <h2 className="text-[15px] font-medium text-slate-900">Company mobile sessions</h2>
           <p className="mt-1 text-sm text-slate-500">
             Recent face + GPS attendance from the shared company phone.
@@ -391,13 +391,13 @@ export default function HrAttendancePage() {
         </section>
       ) : null}
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-[15px] font-medium text-slate-900">Attendance records</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+            <thead className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Employee</th>
                 <th className="px-4 py-3">Date</th>
@@ -424,7 +424,7 @@ export default function HrAttendancePage() {
                 </tr>
               ) : (
                 records.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50/80">
+                  <tr key={r.id} className="theme-table-body-row">
                     <td className="px-4 py-3">
                       {composeEmployeeDisplayName(r.employee) || r.employee_id}
                     </td>

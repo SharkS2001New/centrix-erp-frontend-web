@@ -197,7 +197,7 @@ export function CustomReportScreen({ templateId }) {
                 color: CHART_COLORS[i % CHART_COLORS.length],
               }));
               return (
-                <div key={chart.title ?? chart.valueKey} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div key={chart.title ?? chart.valueKey} className="theme-panel rounded-xl border p-4 shadow-sm">
                   {chart.title ? <h3 className="mb-3 text-sm font-medium text-slate-900">{chart.title}</h3> : null}
                   <DonutChart segments={segments} />
                 </div>

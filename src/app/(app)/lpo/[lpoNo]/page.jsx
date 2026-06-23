@@ -163,7 +163,7 @@ export default function LpoDetailPage() {
             </p>
           ) : null}
 
-          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="theme-panel rounded-xl border p-6 shadow-sm">
             <h2 className="mb-4 text-sm font-semibold text-slate-900">LPO details</h2>
             <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
               <Detail
@@ -231,7 +231,7 @@ export default function LpoDetailPage() {
             ) : null}
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="theme-panel rounded-xl border p-6 shadow-sm">
             <h2 className="mb-4 text-sm font-semibold text-slate-900">Order items</h2>
             <LpoDetailOrderItemsTable
               lines={lines}
@@ -276,7 +276,7 @@ export default function LpoDetailPage() {
               <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
                 <table className="w-full border-collapse text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                    <tr className="theme-table-head-row text-left text-xs font-medium">
                       <th className="px-3 py-2">Return</th>
                       <th className="px-3 py-2">Products</th>
                       <th className="px-3 py-2">Status</th>
@@ -347,7 +347,7 @@ export default function LpoDetailPage() {
               <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
                 <table className="w-full border-collapse text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                    <tr className="theme-table-head-row text-left text-xs font-medium">
                       <th className="px-3 py-2">Supplier inv #</th>
                       <th className="px-3 py-2">Date</th>
                       <th className="px-3 py-2">Document</th>

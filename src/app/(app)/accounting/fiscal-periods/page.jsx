@@ -102,15 +102,15 @@ export default function FiscalPeriodsPage() {
       ) : null}
 
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="theme-panel rounded-xl border p-4 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Open periods</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">{openCount}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="theme-panel rounded-xl border p-4 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Closed periods</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">{closedCount}</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="theme-panel rounded-xl border p-4 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Year-end close</p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <input
@@ -150,9 +150,9 @@ export default function FiscalPeriodsPage() {
         </button>
       </div>
 
-      <div className={`overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm ${loading ? "opacity-60" : ""}`}>
+      <div className={`theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm ${loading ? "opacity-60" : ""}`}>
         <table className="min-w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+          <thead className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Period</th>
               <th className="px-4 py-3">Start</th>
@@ -170,7 +170,7 @@ export default function FiscalPeriodsPage() {
               </tr>
             ) : (
               periods.map((period) => (
-                <tr key={period.id} className="hover:bg-slate-50/80">
+                <tr key={period.id} className="theme-table-body-row">
                   <td className="px-4 py-3 font-medium text-slate-900">{period.period_name}</td>
                   <td className="px-4 py-3 text-slate-600">{formatShortDate(period.start_date)}</td>
                   <td className="px-4 py-3 text-slate-600">{formatShortDate(period.end_date)}</td>

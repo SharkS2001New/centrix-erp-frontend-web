@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
@@ -162,7 +162,7 @@ function ExportModal({ open, onClose, products }) {
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
+      <div className="theme-panel theme-modal w-full max-w-sm rounded-xl border p-5 shadow-xl">
         <h2 className="text-[15px] font-medium text-slate-900">Export products</h2>
         <p className="mt-2 text-sm text-slate-500">
           Export {products.length} product{products.length === 1 ? "" : "s"} from the current list
@@ -303,7 +303,7 @@ function ImportModal({ open, onClose, onImported }) {
     <>
       {createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
+          <div className="theme-panel theme-modal w-full max-w-md rounded-xl border p-5 shadow-xl">
             <h2 className="text-[15px] font-medium text-slate-900">Import products</h2>
         <p className="mt-2 text-sm text-slate-500">
           Upload a CSV or Excel file. Stock columns are in base pieces (same as the database).
@@ -380,7 +380,7 @@ export function ProductImportExport({ products, onImported }) {
       <button
         type="button"
         onClick={() => setImportOpen(true)}
-        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+        className={`${SECONDARY_BTN_CLASS} gap-2 px-3.5 py-2`}
       >
         <ImportIcon />
         Import
@@ -388,7 +388,7 @@ export function ProductImportExport({ products, onImported }) {
       <button
         type="button"
         onClick={() => setExportOpen(true)}
-        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+        className={`${SECONDARY_BTN_CLASS} gap-2 px-3.5 py-2`}
       >
         <ExportIcon />
         Export

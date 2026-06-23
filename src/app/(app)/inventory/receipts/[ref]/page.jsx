@@ -99,7 +99,7 @@ export default function StockReceiptDetailPage() {
         <p className="text-sm text-slate-500">Receipt not found.</p>
       ) : (
         <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="theme-panel rounded-xl border p-5 shadow-sm">
             <dl className="grid gap-3 text-sm sm:grid-cols-3">
               <div>
                 <dt className="text-xs text-slate-500">Date</dt>
@@ -120,7 +120,7 @@ export default function StockReceiptDetailPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[560px] border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
                     <th className="px-4 py-3 font-medium">Product</th>
                     <th className="px-4 py-3 font-medium text-right">Qty received</th>
                     <th className="px-4 py-3 font-medium text-right">Cost</th>

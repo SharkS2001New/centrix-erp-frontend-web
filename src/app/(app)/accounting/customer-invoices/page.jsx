@@ -101,7 +101,7 @@ export default function CustomerInvoicesPage() {
 
       {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
 
-      <div className={`overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${listLoading ? "opacity-60" : ""}`}>
+      <div className={`theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm ${listLoading ? "opacity-60" : ""}`}>
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
             <tr>

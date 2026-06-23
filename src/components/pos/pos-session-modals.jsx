@@ -39,7 +39,7 @@ function PosSessionDialogShell({
       <div
         role="dialog"
         aria-modal="true"
-        className={`relative z-10 flex max-h-[90vh] w-full flex-col rounded-xl border border-slate-200 bg-white text-slate-900 shadow-xl ${wide ? "max-w-3xl" : "max-w-lg"}`}
+        className={`relative z-10 flex max-h-[90vh] w-full flex-col theme-panel rounded-xl border text-slate-900 shadow-xl ${wide ? "max-w-3xl" : "max-w-lg"}`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="shrink-0 border-b border-slate-200 px-6 py-4">

@@ -241,7 +241,7 @@ export function OpenSessionModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 text-slate-900 shadow-xl">
+      <div className="relative w-full max-w-md theme-panel rounded-xl border p-6 text-slate-900 shadow-xl">
         <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
         <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
 
@@ -405,7 +405,7 @@ export function AddFloatModal({ open, onClose, onSaved, session, busy, error }) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 text-slate-900 shadow-xl">
+      <div className="relative w-full max-w-md theme-panel rounded-xl border p-6 text-slate-900 shadow-xl">
         <h2 className="text-lg font-semibold text-slate-900">Add float</h2>
         <p className="mt-1 text-sm text-slate-500">
           Add extra cash to your session float. The session total will update.
@@ -599,7 +599,7 @@ export function FloatBreakdownModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
-      <div className="relative flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-slate-200 bg-white text-slate-900 shadow-xl">
+      <div className="relative flex max-h-[85vh] w-full max-w-lg flex-col theme-panel rounded-xl border text-slate-900 shadow-xl">
         <div className="border-b border-slate-200 px-6 py-4">
           <h2 className="text-lg font-semibold text-slate-900">Float details</h2>
           <p className="mt-1 text-sm text-slate-500">
@@ -617,7 +617,7 @@ export function FloatBreakdownModal({
           ) : (
             <table className="w-full border-collapse text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                <tr className="theme-table-head-row text-left text-xs font-medium">
                   <th className="px-3 py-2">Date added</th>
                   <th className="px-3 py-2">Payment type</th>
                   <th className="px-3 py-2 text-right">Amount</th>
@@ -648,7 +648,7 @@ export function FloatBreakdownModal({
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Cash movements</p>
               <table className="w-full border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                  <tr className="theme-table-head-row text-left text-xs font-medium">
                     <th className="px-3 py-2">Type</th>
                     <th className="px-3 py-2">Reason</th>
                     <th className="px-3 py-2 text-right">Amount</th>
@@ -961,7 +961,7 @@ export function FloatEntriesTable({ session }) {
   const entries = normalizeFloatEntries(session?.float_breakdown);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
       <div className="border-b border-slate-200 px-5 py-4">
         <h2 className="text-sm font-medium text-slate-900">Float added for the session</h2>
         <p className="mt-0.5 text-xs text-slate-500">
@@ -973,7 +973,7 @@ export function FloatEntriesTable({ session }) {
       ) : (
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+            <tr className="theme-table-head-row text-left text-xs font-medium">
               <th className="px-4 py-2.5">Date added</th>
               <th className="px-4 py-2.5">Payment type</th>
               <th className="px-4 py-2.5 text-right">Amount</th>
@@ -1119,7 +1119,7 @@ export function DeleteTillConfirmModal({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative w-full max-w-lg rounded-xl border border-slate-200 bg-white text-slate-900 shadow-xl"
+        className="relative w-full max-w-lg theme-panel rounded-xl border text-slate-900 shadow-xl"
       >
         <div className="border-b border-slate-200 px-6 py-4">
           <h2 className="text-lg font-semibold text-slate-900">Delete till</h2>

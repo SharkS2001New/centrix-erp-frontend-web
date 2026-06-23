@@ -2,7 +2,19 @@
 
 import Link from "next/link";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { StatCard, Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import {
+  StatCard,
+  Field,
+  PrimaryButton,
+  inputClassName,
+  FILTER_BAR_CLASS,
+  EMPTY_STATE_CLASS,
+  FILTER_RESET_BTN_CLASS,
+  TABLE_SHELL_CLASS,
+  TABLE_HEAD_ROW_CLASS,
+  TABLE_BODY_ROW_CLASS,
+  TABLE_FOOTER_ROW_CLASS,
+} from "@/components/catalog/catalog-shared";
 import { formatReportCell } from "@/lib/reports/format";
 
 const BADGE_TONES = {
@@ -10,7 +22,7 @@ const BADGE_TONES = {
   warning: "bg-amber-50 text-amber-800 ring-amber-600/20",
   danger: "bg-red-50 text-red-700 ring-red-600/20",
   primary: "bg-blue-50 text-blue-700 ring-blue-600/20",
-  neutral: "bg-slate-100 text-slate-700 ring-slate-500/20",
+  neutral: "theme-badge-neutral",
 };
 
 export function ReportBadge({ label, tone = "neutral" }) {
@@ -56,7 +68,7 @@ export function ReportFilterBar({
   loading = false,
 }) {
   return (
-    <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className={`mb-6 ${FILTER_BAR_CLASS}`}>
       <div className="flex flex-wrap items-end gap-4">
         {showDateRange ? (
           <>
@@ -90,7 +102,7 @@ export function ReportFilterBar({
         </Field>
         {extraFilters.map((filter) =>
           filter.type === "checkbox" ? (
-            <label key={filter.id} className="flex cursor-pointer items-center gap-2 pb-2 text-sm text-slate-700">
+            <label key={filter.id} className="flex cursor-pointer items-center gap-2 pb-2 text-sm theme-text-muted">
               <input
                 type="checkbox"
                 checked={Boolean(extraValues[filter.id])}
@@ -104,11 +116,7 @@ export function ReportFilterBar({
           <PrimaryButton type="button" showIcon={false} disabled={loading} onClick={onFilter}>
             {loading ? "Loading…" : "Filter"}
           </PrimaryButton>
-          <button
-            type="button"
-            onClick={onReset}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
+          <button type="button" onClick={onReset} className={FILTER_RESET_BTN_CLASS}>
             Reset
           </button>
         </div>
@@ -119,19 +127,15 @@ export function ReportFilterBar({
 
 export function ReportTable({ columns, rows, footerTotals = {}, emptyLabel = "No rows for this filter." }) {
   if (!rows.length) {
-    return (
-      <div className="rounded-xl border border-slate-200 bg-white px-5 py-10 text-center text-sm text-slate-500 shadow-sm">
-        {emptyLabel}
-      </div>
-    );
+    return <div className={EMPTY_STATE_CLASS}>{emptyLabel}</div>;
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className={TABLE_SHELL_CLASS}>
       <div className="overflow-x-auto">
         <table className="w-full min-w-max border-collapse text-sm">
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <tr className={`${TABLE_HEAD_ROW_CLASS} font-semibold`}>
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -146,7 +150,7 @@ export function ReportTable({ columns, rows, footerTotals = {}, emptyLabel = "No
             {rows.map((row, idx) => (
               <tr
                 key={row.id ?? idx}
-                className={`border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60 ${row.legacy_archive ? "bg-amber-50/50" : ""}`}
+                className={`${TABLE_BODY_ROW_CLASS} ${row.legacy_archive ? "theme-legacy-archive-row" : ""}`}
               >
                 {columns.map((col) => {
                   const badge = col.badge?.(row);
@@ -154,7 +158,7 @@ export function ReportTable({ columns, rows, footerTotals = {}, emptyLabel = "No
                   return (
                     <td
                       key={col.key}
-                      className={`whitespace-nowrap px-4 py-2.5 text-slate-800 ${col.align === "right" ? "text-right" : "text-left"}`}
+                      className={`whitespace-nowrap px-4 py-2.5 theme-text-muted ${col.align === "right" ? "text-right" : "text-left"}`}
                     >
                       {badge ? (
                         <ReportBadge label={badge.label} tone={badge.tone} />
@@ -169,7 +173,7 @@ export function ReportTable({ columns, rows, footerTotals = {}, emptyLabel = "No
           </tbody>
           {Object.keys(footerTotals).length ? (
             <tfoot>
-              <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-900">
+              <tr className={TABLE_FOOTER_ROW_CLASS}>
                 {columns.map((col, idx) => (
                   <td
                     key={col.key}
@@ -199,15 +203,11 @@ export function ReportPageShell({ section, title, subtitle, onExport, children }
       />
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
-          {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
+          <h1 className="text-2xl font-semibold theme-heading">{title}</h1>
+          {subtitle ? <p className="mt-1 text-sm theme-subtext">{subtitle}</p> : null}
         </div>
         {onExport ? (
-          <button
-            type="button"
-            onClick={onExport}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-          >
+          <button type="button" onClick={onExport} className={`${FILTER_RESET_BTN_CLASS} shadow-sm`}>
             Export CSV
           </button>
         ) : null}

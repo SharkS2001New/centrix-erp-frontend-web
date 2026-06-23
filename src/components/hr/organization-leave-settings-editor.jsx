@@ -67,7 +67,7 @@ export function OrganizationLeaveSettingsEditor({ isAdmin }) {
   if (!isAdmin) return null;
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="theme-panel rounded-xl border p-5 shadow-sm">
       <h2 className="text-[15px] font-medium text-slate-900">Organization leave defaults</h2>
       <p className="mt-1 text-sm text-slate-500">
         Kenya statutory defaults for <strong>all employees</strong>. Balances accrue from hire

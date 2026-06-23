@@ -62,7 +62,7 @@ export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage }
 
   return (
     <form onSubmit={handleSave}>
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">General settings</h2>
         <p className="mt-1 text-sm text-slate-500">
           Organization-wide locale, formatting, and document defaults used across modules.

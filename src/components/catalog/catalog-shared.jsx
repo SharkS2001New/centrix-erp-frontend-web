@@ -486,7 +486,17 @@ export const TABLE_HEAD_ROW_CLASS =
 /** Theme-aware table shell — use instead of raw `bg-white` card wrappers. */
 export const TABLE_SHELL_CLASS = "theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm";
 
+export const FILTER_BAR_CLASS = "theme-panel rounded-xl border p-4 shadow-sm";
+
+export const EMPTY_STATE_CLASS =
+  "theme-panel rounded-xl border px-5 py-10 text-center text-sm theme-subtext shadow-sm";
+
+export const FILTER_RESET_BTN_CLASS =
+  "theme-secondary-btn rounded-lg border px-4 py-2 text-sm font-medium";
+
 export const TABLE_BODY_ROW_CLASS = "theme-table-body-row";
+
+export const TABLE_FOOTER_ROW_CLASS = "theme-table-footer font-semibold theme-heading";
 
 /** Category / section grouping rows inside tables. */
 export const TABLE_SECTION_ROW_CLASS = "theme-table-section";

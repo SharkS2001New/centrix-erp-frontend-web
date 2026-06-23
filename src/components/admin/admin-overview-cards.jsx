@@ -8,6 +8,13 @@ import { P } from "@/lib/permission-codes";
 
 const CARDS = [
   {
+    href: "/admin/settings",
+    title: "Organization settings",
+    description: "Sales, inventory, finance, HR, notifications, security, and AI preferences.",
+    icon: "⚙️",
+    permission: "admin.manage",
+  },
+  {
     href: "/admin/company",
     title: "Company profile",
     description: "Manage organization info, registration details, and logo.",

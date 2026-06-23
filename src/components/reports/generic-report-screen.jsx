@@ -243,7 +243,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
         ) : null
       }
     >
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (
           <p className="px-5 py-8 text-center text-sm text-slate-500">Loading report…</p>
         ) : rows.length === 0 ? (
@@ -252,7 +252,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
           <div className="overflow-x-auto">
             <table className="w-full min-w-max border-collapse text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                <tr className="theme-table-head-row text-left text-xs font-medium">
                   {columns.map((col) => (
                     <th key={col} className="whitespace-nowrap px-4 py-2.5">
                       {labelizeKey(col)}
@@ -287,7 +287,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
           <div className="overflow-x-auto">
             <table className="w-full min-w-max border-collapse text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                <tr className="theme-table-head-row text-left text-xs font-medium">
                   {columns.map((col) => (
                     <th key={col} className="whitespace-nowrap px-4 py-2.5">
                       {labelizeKey(col)}

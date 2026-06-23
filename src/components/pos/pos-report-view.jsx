@@ -30,7 +30,7 @@ function FloatBreakdownSection({ session, report, showFloatBreakdown }) {
       : normalizeFloatEntries(session?.float_breakdown);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm">
       <h2 className="text-sm font-medium text-slate-900">Operating float</h2>
       <p className="mt-1 text-xs text-slate-500">
         Total declared float: {formatTillKes(session?.working_amount)}
@@ -40,7 +40,7 @@ function FloatBreakdownSection({ session, report, showFloatBreakdown }) {
       ) : (
         <table className="mt-4 w-full border-collapse text-sm">
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+            <tr className="theme-table-head-row text-left text-xs font-medium">
               <th className="px-3 py-2">Date added</th>
               <th className="px-3 py-2">Payment type</th>
               <th className="px-3 py-2 text-right">Amount</th>
@@ -68,11 +68,11 @@ function CashMovementsSection({ report }) {
   if (movements.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm">
       <h2 className="text-sm font-medium text-slate-900">Cash movements</h2>
       <table className="mt-4 w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+          <tr className="theme-table-head-row text-left text-xs font-medium">
             <th className="px-3 py-2">Type</th>
             <th className="px-3 py-2">Reason</th>
             <th className="px-3 py-2 text-right">Amount</th>
@@ -109,7 +109,7 @@ export function PosReportView({ report, session, tillName, cashierName, showCash
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-medium text-slate-900">Session info</h2>
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <div><dt className="text-slate-500">Till</dt><dd className="font-medium">{tillName ?? "—"}</dd></div>
@@ -122,14 +122,14 @@ export function PosReportView({ report, session, tillName, cashierName, showCash
         </dl>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-medium text-slate-900">Sales summary</h2>
         <div className="mt-4">
           <ReportStatGrid items={salesItems} />
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-medium text-slate-900">Payment summary</h2>
         <div className="mt-4">
           <ReportStatGrid items={paymentItems} />
@@ -140,7 +140,7 @@ export function PosReportView({ report, session, tillName, cashierName, showCash
 
       <CashMovementsSection report={report} />
 
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-medium text-slate-900">Cash summary</h2>
         <dl className="mt-4 space-y-2 text-sm">
           {showFloatBreakdown ? (

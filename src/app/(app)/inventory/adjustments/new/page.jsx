@@ -135,7 +135,7 @@ export default function RecordStockAdjustmentPage() {
 
       <form
         onSubmit={submit}
-        className="space-y-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+        className="space-y-5 theme-panel rounded-xl border p-6 shadow-sm"
       >
         <Field label="Reason / notes">
           <textarea

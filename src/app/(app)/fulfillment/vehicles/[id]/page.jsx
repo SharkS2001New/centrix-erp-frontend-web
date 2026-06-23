@@ -88,7 +88,7 @@ export default function VehicleProfilePage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="theme-panel rounded-xl border p-5 shadow-sm">
               <h2 className="text-[15px] font-medium text-slate-900">Vehicle profile</h2>
               <dl className="mt-4 space-y-3 text-sm">
                 <DetailRow label="Registration" value={vehicle.plate_number || "—"} mono />
@@ -107,7 +107,7 @@ export default function VehicleProfilePage() {
               </dl>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="theme-panel rounded-xl border p-5 shadow-sm">
               <h2 className="text-[15px] font-medium text-slate-900">Recent trips</h2>
               <p className="mt-0.5 text-xs text-slate-500">Completed deliveries linked to this vehicle</p>
               {trips.length === 0 ? (

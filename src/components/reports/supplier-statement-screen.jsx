@@ -130,7 +130,7 @@ export function SupplierStatementScreen() {
 
       {supplier ? (
         <>
-          <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 text-sm">
+          <div className="mb-4 theme-panel rounded-xl border p-4 text-sm">
             <p className="font-semibold text-slate-900">{supplier.supplier_name}</p>
             <p className="mt-1 text-slate-500">
               {supplier.phone_number ? `Phone: ${supplier.phone_number}` : null}

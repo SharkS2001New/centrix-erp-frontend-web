@@ -222,7 +222,7 @@ function OrderSummaryItemsTable({ items, subById, catById, limit, onViewAll }) {
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+              <tr className="theme-table-head-row text-left text-xs font-medium">
                 <th className="px-4 py-2.5">Product</th>
                 <th className="px-4 py-2.5">SKU</th>
                 <th className="px-4 py-2.5 text-right">Qty</th>
@@ -294,7 +294,7 @@ function OrderTotalsPanel({ sale, totalPaid, balanceDue }) {
   const amountPaid = Number(sale?.amount_paid ?? totalPaid ?? 0);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm">
       <h2 className="text-sm font-medium text-slate-900">Order totals</h2>
       <dl className="mt-4 space-y-2 text-sm">
         <TotalsRow label="Subtotal" value={formatSaleKes(subtotal)} />
@@ -347,7 +347,7 @@ function TotalsRow({ label, value, bold = false, paid = false }) {
 
 function OrderTimelinePanel({ events }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm">
       <h2 className="text-sm font-medium text-slate-900">Order timeline</h2>
       {events.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">No timeline events yet.</p>
@@ -405,7 +405,7 @@ function CustomerOrderDetailsPanel({
   const meta = sale?.fulfillment_meta;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="theme-panel rounded-xl border p-5 shadow-sm">
       <div className="grid gap-6 sm:grid-cols-2">
         <div>
           <h3 className="text-sm font-medium text-slate-900">Customer information</h3>
@@ -961,7 +961,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
           ) : null}
 
           {activeTab === "notes" ? (
-            <div className="max-w-2xl rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="max-w-2xl theme-panel rounded-xl border p-5 shadow-sm">
               <h2 className="text-sm font-medium text-slate-900">Notes</h2>
               {sale.comments?.trim() ? (
                 <p className="mt-4 text-sm text-slate-700">{sale.comments}</p>
@@ -972,7 +972,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
           ) : null}
 
           {activeTab === "documents" ? (
-            <div className="max-w-2xl rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="max-w-2xl theme-panel rounded-xl border p-5 shadow-sm">
               <h2 className="text-sm font-medium text-slate-900">Documents</h2>
               <p className="mt-4 text-sm text-slate-500">No documents attached to this order.</p>
             </div>

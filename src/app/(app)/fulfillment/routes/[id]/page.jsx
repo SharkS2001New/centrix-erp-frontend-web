@@ -134,7 +134,7 @@ export default function RouteDetailPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="theme-panel rounded-xl border shadow-sm">
               <div className="border-b border-slate-200 px-5 py-4">
                 <h3 className="text-[15px] font-medium text-slate-900">
                   Sales · {periodLabel.toLowerCase()}
@@ -169,7 +169,7 @@ export default function RouteDetailPage() {
               )}
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="theme-panel rounded-xl border shadow-sm">
               <div className="border-b border-slate-200 px-5 py-4">
                 <h3 className="text-[15px] font-medium text-slate-900">Customers under route</h3>
                 <p className="mt-0.5 text-xs text-slate-500">
@@ -200,7 +200,7 @@ export default function RouteDetailPage() {
             </div>
           </div>
 
-          <dl className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-5 text-sm shadow-sm sm:grid-cols-3">
+          <dl className="mt-4 grid gap-3 theme-panel rounded-xl border p-5 text-sm shadow-sm sm:grid-cols-3">
             <DetailRow label="Markup price" value={`KES ${Number(route.route_markup_price ?? 0).toLocaleString()}`} />
             <DetailRow label="Region" value={route.direction || "—"} />
             <DetailRow label="Route ID" value={`#${route.id}`} />

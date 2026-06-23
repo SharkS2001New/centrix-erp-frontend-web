@@ -88,7 +88,7 @@ export default function DriverProfilePage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="theme-panel rounded-xl border p-5 shadow-sm">
               <h2 className="text-[15px] font-medium text-slate-900">Contact & details</h2>
               <dl className="mt-4 space-y-3 text-sm">
                 <DetailRow label="Phone" value={driver.phone || "—"} />
@@ -120,7 +120,7 @@ export default function DriverProfilePage() {
               </dl>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="theme-panel rounded-xl border p-5 shadow-sm">
               <h2 className="text-[15px] font-medium text-slate-900">Delivery statistics</h2>
               <p className="mt-0.5 text-xs text-slate-500">
                 Orders linked via fulfillment metadata ({deliveries.length} total)

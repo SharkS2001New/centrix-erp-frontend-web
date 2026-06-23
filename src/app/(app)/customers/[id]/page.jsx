@@ -153,7 +153,7 @@ export default function CustomerDetailPage() {
         <p className="text-sm text-slate-500">Loading customer…</p>
       ) : customer ? (
         <div className="grid gap-6 lg:grid-cols-[minmax(480px,42%)_minmax(0,1fr)] xl:grid-cols-[minmax(560px,45%)_minmax(0,1fr)]">
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
+          <div className="theme-panel rounded-xl border p-6 shadow-sm lg:p-8">
             <div className="flex flex-col items-center text-center">
               {customer.shop_image || customer.shop_image_url ? (
                 <div className="h-28 w-28 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm">
@@ -216,7 +216,7 @@ export default function CustomerDetailPage() {
           </div>
 
           <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="theme-panel rounded-xl border shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
               <h3 className="text-[15px] font-medium text-slate-900">Recent orders</h3>
               <p className="mt-0.5 text-xs text-slate-500">

@@ -119,7 +119,7 @@ export default function PodRecordsPage() {
       ) : filtered.length === 0 ? (
         <p className="text-sm text-slate-500">No proof-of-delivery records in this period.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>

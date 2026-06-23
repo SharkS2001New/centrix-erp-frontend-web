@@ -30,7 +30,7 @@ export function AdjustStockGuideModal({ open, onClose, productCode = null }) {
       }}
     >
       <div
-        className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-xl"
+        className="w-full max-w-lg theme-panel rounded-xl border p-5 shadow-xl"
         role="dialog"
         aria-labelledby="adjust-stock-guide-title"
       >

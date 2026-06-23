@@ -23,7 +23,7 @@ export function DeleteProductDialog({ open, product, saving, error, onClose, onC
       <div
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl"
+        className="w-full max-w-md theme-panel rounded-xl border p-5 shadow-xl"
       >
         <h2 className="text-[15px] font-medium text-slate-900">Delete product?</h2>
         <p className="mt-3 text-sm text-slate-600">

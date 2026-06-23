@@ -193,7 +193,7 @@ export default function VehiclesPage() {
       {loading ? (
         <p className="text-sm text-slate-500">Loading vehicles…</p>
       ) : filtered.length === 0 ? (
-        <p className="rounded-xl border border-slate-200 bg-white p-12 text-center text-sm text-slate-500">
+        <p className="theme-panel rounded-xl border p-12 text-center text-sm text-slate-500">
           No vehicles found.
         </p>
       ) : (
@@ -201,7 +201,7 @@ export default function VehiclesPage() {
           {filtered.map((vehicle) => (
             <article
               key={vehicle.id}
-              className="group relative rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-[#B5D4F4] hover:shadow-md"
+              className="group relative theme-panel rounded-xl border p-5 shadow-sm transition hover:border-[#B5D4F4] hover:shadow-md"
             >
               <Link href={`/fulfillment/vehicles/${vehicle.id}`} className="block">
                 <div className="text-3xl">{vehicleEmoji(vehicle.vehicle_name)}</div>
