@@ -33,7 +33,7 @@ import { resolveProductAudit } from "@/lib/product-audit";
 import { PermissionGate } from "@/components/permission-gate";
 import { P } from "@/lib/permission-codes";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
-import { productScopeLabel, catalogMetaFromCapabilities, isMultiBranchCatalog, defaultProductBranchId } from "@/lib/catalog-scope";
+import { productScopeLabel, isMultiBranchCatalog, defaultProductBranchId } from "@/lib/catalog-scope";
 import { useAuth } from "@/contexts/auth-context";
 
 const PAGE_SIZE = 10;
@@ -61,8 +61,11 @@ function defaultVisibleColumnIds() {
 }
 
 function normalizeColumnIds(ids) {
+  if (!Array.isArray(ids)) {
+    return defaultVisibleColumnIds();
+  }
   const valid = new Set(PRODUCT_COLUMNS.map((c) => c.id));
-  const normalized = (ids ?? []).filter((id) => valid.has(id));
+  const normalized = ids.filter((id) => valid.has(id));
   for (const col of PRODUCT_COLUMNS) {
     if (col.required && !normalized.includes(col.id)) normalized.push(col.id);
   }
@@ -162,11 +165,11 @@ function enrichProduct(
   retailByCode,
   globalThreshold,
 ) {
-  const sub = subById.get(product.subcategory_id);
-  const cat = sub ? catById.get(sub.category_id) : null;
-  const vat = vatById.get(product.vat_id);
-  const uom = uomById.get(product.unit_id);
-  const supplier = supplierById.get(product.supplier_id);
+  const sub = subById.get(String(product.subcategory_id ?? ""));
+  const cat = sub ? catById.get(String(sub.category_id ?? "")) : null;
+  const vat = vatById.get(String(product.vat_id ?? ""));
+  const uom = uomById.get(String(product.unit_id ?? ""));
+  const supplier = supplierById.get(String(product.supplier_id ?? ""));
   const retailPackage = retailByCode.get(product.product_code);
   const shop = Number(product.stock_in_shop ?? 0);
   const store = Number(product.stock_in_store ?? 0);
@@ -221,7 +224,6 @@ function groupProducts(products) {
 export default function ProductsPage() {
   const router = useRouter();
   const { capabilities, user } = useAuth();
-  const catalogMeta = catalogMetaFromCapabilities(capabilities);
   const multiBranch = isMultiBranchCatalog(capabilities);
   const [kraSelectMode, setKraSelectMode] = useState(false);
   const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
@@ -243,6 +245,7 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [referenceWarning, setReferenceWarning] = useState(null);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingProduct, setDeletingProduct] = useState(null);
@@ -265,7 +268,7 @@ export default function ProductsPage() {
     "Please wait while products are registered on the KRA device…",
   );
   const [collapsed, setCollapsed] = useState(new Set());
-  const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
+  const [visibleColumnIds, setVisibleColumnIds] = useState(() => defaultVisibleColumnIds());
   const [columnsOpen, setColumnsOpen] = useState(false);
 
   const effectiveStockBranchId = useMemo(() => {
@@ -304,17 +307,19 @@ export default function ProductsPage() {
   const tableColCount = (selectionEnabled ? 1 : 0) + visibleColumns.length;
 
   const loadReferenceData = useCallback(async () => {
-    setError(null);
+    setReferenceWarning(null);
     try {
       const [userRes, catRes, subRes, vatRes, uomRes, supRes, retailRes, settingsRes, branchRes] =
         await Promise.all([
-          apiRequest("/users", { searchParams: { per_page: 200 } }),
-          apiRequest("/categories", { searchParams: { per_page: 200 } }),
-          apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
-          apiRequest("/vats", { searchParams: { per_page: 50 } }),
-          apiRequest("/uoms", { searchParams: { per_page: 100 } }),
-          apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
-          apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }),
+          apiRequest("/users", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+          apiRequest("/categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+          apiRequest("/sub-categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+          apiRequest("/vats", { searchParams: { per_page: 50 } }).catch(() => ({ data: [] })),
+          apiRequest("/uoms", { searchParams: { per_page: 100 } }).catch(() => ({ data: [] })),
+          apiRequest("/suppliers", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+          apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }).catch(() => ({
+            data: [],
+          })),
           apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
           apiRequest("/branches", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
         ]);
@@ -333,7 +338,9 @@ export default function ProductsPage() {
         threshold != null && threshold !== "" ? Number(threshold) : null,
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load products");
+      setReferenceWarning(
+        e instanceof Error ? e.message : "Some catalogue filters could not be loaded.",
+      );
     } finally {
       setLoading(false);
     }
@@ -434,24 +441,24 @@ export default function ProductsPage() {
   }
 
   const subById = useMemo(
-    () => new Map(subCategories.map((s) => [s.id, s])),
+    () => new Map(subCategories.map((s) => [String(s.id), s])),
     [subCategories],
   );
   const catById = useMemo(
-    () => new Map(categories.map((c) => [c.id, c])),
+    () => new Map(categories.map((c) => [String(c.id), c])),
     [categories],
   );
-  const vatById = useMemo(() => new Map(vats.map((v) => [v.id, v])), [vats]);
-  const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
+  const vatById = useMemo(() => new Map(vats.map((v) => [String(v.id), v])), [vats]);
+  const uomById = useMemo(() => new Map(uoms.map((u) => [String(u.id), u])), [uoms]);
   const supplierById = useMemo(
-    () => new Map(suppliers.map((s) => [s.id, s])),
+    () => new Map(suppliers.map((s) => [String(s.id), s])),
     [suppliers],
   );
   const retailByCode = useMemo(
     () => new Map(retailPackages.map((r) => [r.product_code, r])),
     [retailPackages],
   );
-  const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
+  const userById = useMemo(() => new Map(users.map((u) => [String(u.id), u])), [users]);
 
   const enriched = useMemo(
     () =>
@@ -759,6 +766,12 @@ export default function ProductsPage() {
           />
         </div>
       </div>
+
+      {referenceWarning ? (
+        <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {referenceWarning} Filters and labels may be incomplete until reference data loads.
+        </p>
+      ) : null}
 
       {loading && <p className="theme-subtext mt-8 text-sm">Loading products…</p>}
       {error && (

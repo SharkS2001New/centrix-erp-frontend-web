@@ -7,7 +7,7 @@ export function resolveProductAudit(product, userById) {
   const hasUpdater = product.updated_by != null;
   const userId = hasUpdater ? product.updated_by : product.created_by;
   const date = hasUpdater ? product.updated_at : product.created_at;
-  const user = userById?.get?.(userId);
+  const user = userById?.get?.(userId != null ? String(userId) : userId);
 
   return {
     label: hasUpdater ? "Updated by" : "Created by",
