@@ -40,6 +40,7 @@ function StandardReportScreen({ definition }) {
   const [branches, setBranches] = useState([]);
   const [extraFilters, setExtraFilters] = useState({});
   const [applied, setApplied] = useState({ fromDate: "", toDate: "", branchId: "", extraFilters: {} });
+  const [legacyArchiveMeta, setLegacyArchiveMeta] = useState(null);
 
   useEffect(() => {
     apiRequest("/branches", { searchParams: { per_page: 100 } })
@@ -62,9 +63,13 @@ function StandardReportScreen({ definition }) {
         if (applied.toDate) searchParams.to_date = applied.toDate;
       }
       if (applied.branchId) searchParams.branch_id = applied.branchId;
+      if (applied.extraFilters?.include_legacy_archive) {
+        searchParams.include_legacy_archive = 1;
+      }
 
       const res = await apiRequest(definition.apiPath, { searchParams });
       let rows = res.data ?? [];
+      setLegacyArchiveMeta(res.legacy_archive ?? null);
       if (definition.filterRows) {
         rows = definition.filterRows(rows, applied.extraFilters);
       }
@@ -73,6 +78,7 @@ function StandardReportScreen({ definition }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
       setAllRows([]);
+      setLegacyArchiveMeta(null);
     } finally {
       setLoading(false);
     }
@@ -144,6 +150,25 @@ function StandardReportScreen({ definition }) {
     >
       {error ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      ) : null}
+
+      {legacyArchiveMeta?.available && legacyArchiveMeta.appended_rows > 0 ? (
+        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          Included <strong>{legacyArchiveMeta.appended_rows}</strong> row(s) from{" "}
+          <strong>{legacyArchiveMeta.label ?? "legacy archive"}</strong>
+          {legacyArchiveMeta.cutover_date ? ` (cutover ${legacyArchiveMeta.cutover_date})` : ""}. Legacy rows are
+          highlighted in amber. Browse individual sales under{" "}
+          <a href="/reports/legacy-archive" className="font-medium text-[#185FA5] hover:underline">
+            Legacy sales archive
+          </a>
+          .
+        </p>
+      ) : null}
+
+      {legacyArchiveMeta?.available === false && applied.extraFilters?.include_legacy_archive ? (
+        <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          {legacyArchiveMeta.message ?? "Legacy archive is not available for this organization."}
+        </p>
       ) : null}
 
       <ReportFilterBar

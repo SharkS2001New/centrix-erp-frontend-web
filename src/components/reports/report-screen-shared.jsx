@@ -144,7 +144,10 @@ export function ReportTable({ columns, rows, footerTotals = {}, emptyLabel = "No
           </thead>
           <tbody>
             {rows.map((row, idx) => (
-              <tr key={row.id ?? idx} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60">
+              <tr
+                key={row.id ?? idx}
+                className={`border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60 ${row.legacy_archive ? "bg-amber-50/50" : ""}`}
+              >
                 {columns.map((col) => {
                   const badge = col.badge?.(row);
                   const raw = col.accessor(row);

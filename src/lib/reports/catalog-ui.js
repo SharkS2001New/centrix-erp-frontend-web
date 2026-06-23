@@ -4,6 +4,7 @@ export const REPORT_UI_ROUTES = {
   "eod-cashier": "/sales/end-of-day",
   "customer-statement": "/reports/customer-statement",
   "subledger-reconciliation": "/reports/subledger-reconciliation",
+  "legacy-archive": "/reports/legacy-archive",
 };
 
 export function reportHref(key, path) {
@@ -23,6 +24,7 @@ export const REPORT_CATEGORY_DEFS = [
       "sales-by-customer",
       "sales-by-channel",
       "daily-sales",
+      "legacy-archive",
       "sales-pipeline",
       "category-sales",
     ],

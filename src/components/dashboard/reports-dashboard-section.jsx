@@ -18,7 +18,7 @@ import {
 } from "@/components/dashboard/dashboard-shared";
 import { WORKSPACE_DASHBOARD_SCOPES } from "@/lib/workspace-reports";
 
-export function useReportsDashboard({ fromDate, toDate, branchId, enabled = true }) {
+export function useReportsDashboard({ fromDate, toDate, branchId, includeLegacyArchive = false, enabled = true }) {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState(null);
@@ -28,11 +28,12 @@ export function useReportsDashboard({ fromDate, toDate, branchId, enabled = true
     setLoading(true);
     const searchParams = { from_date: fromDate, to_date: toDate };
     if (branchId) searchParams.branch_id = branchId;
+    if (includeLegacyArchive) searchParams.include_legacy_archive = 1;
     apiRequest("/reports/dashboard", { searchParams })
       .then(setDashboard)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load dashboard"))
       .finally(() => setLoading(false));
-  }, [fromDate, toDate, branchId, enabled]);
+  }, [fromDate, toDate, branchId, includeLegacyArchive, enabled]);
 
   return { dashboard, loading, error };
 }
@@ -54,6 +55,7 @@ export function ReportsDashboardSection({
   const [toDate, setToDate] = useState(controlledTo ?? defaults.to);
   const [branchId, setBranchId] = useState(controlledBranch ?? "");
   const [branches, setBranches] = useState([]);
+  const [includeLegacyArchive, setIncludeLegacyArchive] = useState(false);
 
   const effectiveFrom = controlledFrom ?? fromDate;
   const effectiveTo = controlledTo ?? toDate;
@@ -63,6 +65,7 @@ export function ReportsDashboardSection({
     fromDate: effectiveFrom,
     toDate: effectiveTo,
     branchId: effectiveBranch,
+    includeLegacyArchive,
   });
 
   useEffect(() => {
@@ -143,15 +146,45 @@ export function ReportsDashboardSection({
   return (
     <div className={compact ? "space-y-4" : "space-y-6"}>
       {showFilters && controlledFrom === undefined ? (
-        <DashboardDateRangeBar
-          fromDate={fromDate}
-          toDate={toDate}
-          branchId={branchId}
-          branches={branches}
-          onFromDateChange={setFromDate}
-          onToDateChange={setToDate}
-          onBranchChange={setBranchId}
-        />
+        <div className="space-y-3">
+          <DashboardDateRangeBar
+            fromDate={fromDate}
+            toDate={toDate}
+            branchId={branchId}
+            branches={branches}
+            onFromDateChange={setFromDate}
+            onToDateChange={setToDate}
+            onBranchChange={setBranchId}
+          />
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={includeLegacyArchive}
+              onChange={(e) => setIncludeLegacyArchive(e.target.checked)}
+            />
+            Include legacy archive in total sales (reconciliation)
+          </label>
+        </div>
+      ) : null}
+
+      {dashboard?.legacy_archive?.kpis?.total_sales ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          Legacy archive adds{" "}
+          <strong>
+            {Number(dashboard.legacy_archive.kpis.total_sales.archive).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </strong>{" "}
+          to Centrix live sales (
+          <strong>
+            {Number(dashboard.legacy_archive.kpis.total_sales.combined).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </strong>{" "}
+          combined). Browse individual sales under Reports → Legacy sales archive.
+        </p>
       ) : null}
 
       {showKpis && kpiItems.length ? <DashboardKpiGrid items={kpiItems} variant="hub" /> : null}

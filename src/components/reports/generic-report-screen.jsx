@@ -68,6 +68,8 @@ function labelizeKey(key) {
   return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+const LEGACY_ARCHIVE_REPORT_KEYS = new Set(["sales-by-channel"]);
+
 export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const urlParams = useSearchParams();
   const payrollRunId = urlParams.get("payroll_run_id") ?? "";
@@ -81,7 +83,10 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const [toDate, setToDate] = useState("");
   const [branchId, setBranchId] = useState("");
   const [branches, setBranches] = useState([]);
+  const [includeLegacyArchive, setIncludeLegacyArchive] = useState(false);
+  const [legacyArchiveMeta, setLegacyArchiveMeta] = useState(null);
 
+  const supportsLegacyArchive = LEGACY_ARCHIVE_REPORT_KEYS.has(reportKey);
   const dateColumn = DATE_COLUMNS[reportKey] ?? "sale_date";
 
   useEffect(() => {
@@ -107,18 +112,23 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       if (toDate) searchParams.to_date = toDate;
       if (branchId) searchParams.branch_id = branchId;
       if (payrollRunId) searchParams.payroll_run_id = payrollRunId;
+      if (supportsLegacyArchive && includeLegacyArchive) {
+        searchParams.include_legacy_archive = 1;
+      }
 
       const res = await apiRequest(apiPath, { searchParams });
       setRows(res.data ?? []);
       setMeta(res.meta ?? null);
+      setLegacyArchiveMeta(res.legacy_archive ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
       setRows([]);
       setMeta(null);
+      setLegacyArchiveMeta(null);
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, fromDate, toDate, branchId, dateColumn, payrollRunId]);
+  }, [apiPath, page, fromDate, toDate, branchId, dateColumn, payrollRunId, supportsLegacyArchive, includeLegacyArchive]);
 
   useEffect(() => {
     loadReport();
@@ -180,6 +190,19 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
               ))}
             </select>
           </Field>
+          {supportsLegacyArchive ? (
+            <label className="flex cursor-pointer items-center gap-2 pb-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={includeLegacyArchive}
+                onChange={(e) => {
+                  setPage(1);
+                  setIncludeLegacyArchive(e.target.checked);
+                }}
+              />
+              Include legacy archive
+            </label>
+          ) : null}
           <PrimaryButton type="button" showIcon={false} onClick={() => void loadReport()}>
             Refresh
           </PrimaryButton>
@@ -189,6 +212,15 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
         error ? (
           <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
+          </p>
+        ) : legacyArchiveMeta?.available && legacyArchiveMeta.appended_rows > 0 ? (
+          <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            Included <strong>{legacyArchiveMeta.appended_rows}</strong> legacy archive row(s). Highlighted rows are
+            from pre-cutover sales — see{" "}
+            <Link href="/reports/legacy-archive" className="font-medium text-[#185FA5] hover:underline">
+              Legacy sales archive
+            </Link>{" "}
+            to materialize individual sales for returns.
           </p>
         ) : null
       }
@@ -212,7 +244,10 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
               </thead>
               <tbody>
                 {rows.map((row, idx) => (
-                  <tr key={row.id ?? idx} className="border-b border-slate-100 last:border-b-0">
+                  <tr
+                    key={row.id ?? idx}
+                    className={`border-b border-slate-100 last:border-b-0 ${row.legacy_archive ? "bg-amber-50/50" : ""}`}
+                  >
                     {columns.map((col) => (
                       <td key={col} className="whitespace-nowrap px-4 py-2.5 text-slate-800">
                         {formatCell(col, row[col])}
