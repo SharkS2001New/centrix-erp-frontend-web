@@ -20,7 +20,7 @@ export const WORKSPACE_HIDE_REPORTS_HUB = new Set([]);
 
 /** Analytics dashboard routes per workspace (sidebar Dashboard section). */
 export const WORKSPACE_ANALYTICS_HREFS = {
-  backoffice: ["/sales", "/inventory", "/accounting", "/hr"],
+  backoffice: ["/sales", "/inventory"],
   accounting: ["/accounting"],
   hr: ["/hr"],
   distribution: ["/fulfillment"],

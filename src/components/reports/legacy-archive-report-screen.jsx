@@ -17,6 +17,7 @@ import {
 const PAGE_SIZE = 20;
 
 const CHANNELS = [
+  { key: "all", label: "All channels" },
   { key: "pos", label: "POS" },
   { key: "mobile", label: "Mobile" },
   { key: "debtor", label: "Debtor / credit" },
@@ -26,8 +27,8 @@ const defaultRange = defaultDashboardDateRange(29);
 
 const CHANNEL_LABELS = {
   pos: "POS",
-  mobile: "Mobile",
-  debtor: "Debtor",
+  mobile: "MOBILE",
+  debtor: "DEBTOR",
 };
 
 function legacySaleDate(row) {
@@ -96,7 +97,7 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Legacy sale</p>
             <h2 className="text-lg font-semibold text-slate-900">
               {orderLabel}
-              <span className="ml-2 text-sm font-normal text-slate-500">#{orderNum}</span>
+              <span className="sr-only">#{orderNum}</span>
               <span className="ml-2">
                 <ReportBadge label={CHANNEL_LABELS[sale.archive_channel ?? sale.channel] ?? sale.channel} tone="neutral" />
               </span>
@@ -123,6 +124,10 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
               <dd className="font-medium text-slate-900">{money(sale.total_vat)}</dd>
             </div>
             <div>
+              <dt className="text-slate-500">Created by</dt>
+              <dd className="font-medium text-slate-900">{sale.created_by ?? "—"}</dd>
+            </div>
+            <div>
               <dt className="text-slate-500">Payment</dt>
               <dd className="font-medium text-slate-900">{sale.payment_method ?? sale.payment_status ?? "—"}</dd>
             </div>
@@ -135,6 +140,7 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
                 <tr>
                   <th className="px-3 py-2">Product</th>
                   <th className="px-3 py-2 text-right">Qty</th>
+                  <th className="px-3 py-2 text-right">Unit price</th>
                   <th className="px-3 py-2 text-right">Amount</th>
                 </tr>
               </thead>
@@ -143,6 +149,7 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
                   <tr key={i} className="border-t border-slate-100">
                     <td className="px-3 py-2">{line.product_name ?? line.product_code}</td>
                     <td className="px-3 py-2 text-right">{line.quantity}</td>
+                    <td className="px-3 py-2 text-right">{money(line.unit_price)}</td>
                     <td className="px-3 py-2 text-right">{money(line.amount)}</td>
                   </tr>
                 ))}
@@ -207,7 +214,7 @@ export function LegacyArchiveReportScreen() {
   const [status, setStatus] = useState(null);
   const [summary, setSummary] = useState(null);
   const [sales, setSales] = useState({ data: [], meta: {} });
-  const [channel, setChannel] = useState("pos");
+  const [channel, setChannel] = useState("all");
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
   const [q, setQ] = useState("");
@@ -217,7 +224,7 @@ export function LegacyArchiveReportScreen() {
   const [error, setError] = useState(null);
   const [selectedSale, setSelectedSale] = useState(null);
   const [applied, setApplied] = useState({
-    channel: "pos",
+    channel: "all",
     fromDate: defaultRange.from,
     toDate: defaultRange.to,
     q: "",
@@ -248,7 +255,7 @@ export function LegacyArchiveReportScreen() {
           to_date: applied.toDate,
         }).catch(() => null),
         fetchLegacyArchiveSales({
-          channel: applied.channel,
+          channel: applied.q ? "all" : applied.channel,
           page: applied.page,
           per_page: PAGE_SIZE,
           from_date: applied.fromDate,
@@ -272,12 +279,13 @@ export function LegacyArchiveReportScreen() {
 
   const openSale = async (row) => {
     const saleDate = legacySaleDate(row);
-    const channel = applied.channel;
+    const rowChannel = row.archive_channel ?? row.channel ?? applied.channel;
+    if (rowChannel === "all") return;
     try {
-      const detail = await fetchLegacyArchiveSale(channel, row.legacy_order_num, { sale_date: saleDate });
-      setSelectedSale({ ...detail, archive_channel: channel, channel });
+      const detail = await fetchLegacyArchiveSale(rowChannel, row.legacy_order_num, { sale_date: saleDate });
+      setSelectedSale({ ...detail, archive_channel: rowChannel, channel: rowChannel });
     } catch {
-      setSelectedSale({ ...row, archive_channel: channel, channel });
+      setSelectedSale({ ...row, archive_channel: rowChannel, channel: rowChannel });
     }
   };
 
@@ -346,7 +354,9 @@ export function LegacyArchiveReportScreen() {
         <div className="mb-6 grid gap-3 sm:grid-cols-3">
           {summaryCards.map((row) => (
             <div key={row.channel} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-xs font-medium uppercase text-slate-500">{row.channel}</p>
+              <p className="text-xs font-medium uppercase text-slate-500">
+                {CHANNEL_LABELS[row.channel] ?? row.channel}
+              </p>
               <p className="mt-1 text-xl font-semibold text-slate-900">{money(row.total_amount)}</p>
               <p className="text-xs text-slate-500">{row.sale_count} sales in range</p>
             </div>
@@ -395,7 +405,7 @@ export function LegacyArchiveReportScreen() {
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Order #, customer…"
+            placeholder="Order # (P/M/D), customer, cashier…"
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
           />
         </div>
@@ -416,6 +426,7 @@ export function LegacyArchiveReportScreen() {
               <th className="px-4 py-3">Channel</th>
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3">Customer</th>
+              <th className="px-4 py-3">Created by</th>
               <th className="px-4 py-3 text-right">Total</th>
               <th className="px-4 py-3">In Centrix</th>
             </tr>
@@ -423,13 +434,13 @@ export function LegacyArchiveReportScreen() {
           <tbody>
             {loadingSales ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                   Loading…
                 </td>
               </tr>
             ) : (sales.data ?? []).length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                   {!applied.fromDate || !applied.toDate
                     ? "Set a from and to date, then click Apply."
                     : "No legacy sales for this filter."}
@@ -444,13 +455,17 @@ export function LegacyArchiveReportScreen() {
                 >
                   <td className="px-4 py-2.5">
                     <div className="font-medium text-[#185FA5]">{row.legacy_order_label ?? row.legacy_order_num}</div>
-                    <div className="text-xs text-slate-500">#{row.legacy_order_num}</div>
+                    <span className="sr-only">#{row.legacy_order_num}</span>
                   </td>
                   <td className="px-4 py-2.5">
-                    <ReportBadge label={CHANNEL_LABELS[applied.channel] ?? applied.channel} tone="neutral" />
+                    <ReportBadge
+                      label={CHANNEL_LABELS[row.archive_channel ?? row.channel] ?? row.channel}
+                      tone="neutral"
+                    />
                   </td>
                   <td className="px-4 py-2.5">{legacySaleDate(row)}</td>
                   <td className="px-4 py-2.5">{row.customer_name ?? "—"}</td>
+                  <td className="px-4 py-2.5">{row.created_by ?? "—"}</td>
                   <td className="px-4 py-2.5 text-right">{money(row.order_total)}</td>
                   <td className="px-4 py-2.5">
                     {row.materialized_sale_id ? (

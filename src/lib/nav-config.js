@@ -45,6 +45,7 @@ const NAV_SECTION_DEFINITIONS = [
     collapsible: true,
     items: [
       { href: "/platform", label: "Overview", exact: true, superAdminOnly: true },
+      { href: "/platform/ai-training", label: "AI training", superAdminOnly: true },
       { href: "/platform/active-users", label: "Active users", superAdminOnly: true },
       { href: "/platform/database-backups", label: "Database backups", superAdminOnly: true },
       { href: "/platform/organizations/new", label: "Register organization", superAdminOnly: true },
@@ -75,20 +76,6 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Inventory analytics",
         module: "inventory.dashboard",
         permission: P.inventory.stock.view,
-        exact: true,
-      },
-      {
-        href: "/accounting",
-        label: "Finance overview",
-        module: "accounting",
-        permission: P.accounting.dashboard.view,
-        exact: true,
-      },
-      {
-        href: "/hr",
-        label: "HR Overview",
-        module: "hr_payroll",
-        permission: P.hr.employees.view,
         exact: true,
       },
       {
@@ -398,6 +385,13 @@ const NAV_SECTION_DEFINITIONS = [
     collapsible: true,
     items: [
       {
+        href: "/accounting",
+        label: "Finance overview",
+        module: "accounting",
+        permission: P.accounting.dashboard.view,
+        exact: true,
+      },
+      {
         href: "/accounting/customer-invoices",
         label: "Customer invoices",
         module: "payments",
@@ -521,6 +515,13 @@ const NAV_SECTION_DEFINITIONS = [
     icon: "👥",
     collapsible: true,
     items: [
+      {
+        href: "/hr",
+        label: "HR Overview",
+        module: "hr_payroll",
+        permission: P.hr.employees.view,
+        exact: true,
+      },
       {
         href: "/hr/employees",
         label: "Employees",

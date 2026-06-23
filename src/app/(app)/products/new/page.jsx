@@ -17,11 +17,12 @@ import {
   useProductFormResources,
   validateRetailPackage,
 } from "@/components/products/product-form";
+import { resolveOpeningStockBranchId } from "@/components/products/product-inventory-fields";
 import { SubcategoryCreateModal } from "@/components/products/subcategory-create-modal";
 
 export default function NewProductPage() {
   const router = useRouter();
-  const { capabilities } = useAuth();
+  const { capabilities, user } = useAuth();
   const allowDiscounts = Boolean(mergeSalesSettings(capabilities?.module_settings).allow_discounts);
   const {
     categories,
@@ -127,7 +128,10 @@ export default function NewProductPage() {
     setFormError(null);
     try {
       const uom = uoms.find((u) => String(u.id) === String(form.unit_id)) ?? null;
-      const body = buildProductBody(form, uom, { allowDiscounts });
+      const body = buildProductBody(form, uom, {
+        allowDiscounts,
+        openingStockBranchId: resolveOpeningStockBranchId(form, user),
+      });
       const res = await apiRequest("/products", { method: "POST", body });
       const saved = res.data ?? res;
       const code = saved.product_code ?? form.product_code.trim();

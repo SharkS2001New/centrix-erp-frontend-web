@@ -1634,6 +1634,32 @@ html[data-theme="dark"] .bg-slate-50\/80 {
   background-color: var(--theme-page-bg) !important;
 }
 
+html[data-theme="dark"] .bg-slate-100\/80,
+html[data-theme="dark"] tr.bg-slate-100\/80 {
+  background-color: var(--theme-page-bg) !important;
+  color: var(--theme-text-muted) !important;
+}
+
+html[data-theme="dark"] .bg-slate-50\/40,
+html[data-theme="dark"] tr.bg-slate-50\/40,
+html[data-theme="dark"] .bg-slate-50\/50 {
+  background-color: var(--theme-page-bg) !important;
+}
+
+html[data-theme="dark"] .bg-blue-50\/60,
+html[data-theme="dark"] tr.bg-blue-50\/60 {
+  background-color: var(--theme-surface-muted) !important;
+  color: var(--theme-text-muted) !important;
+}
+
+html[data-theme="dark"] .text-blue-800 {
+  color: var(--theme-text-muted) !important;
+}
+
+html[data-theme="dark"] .text-blue-600\/70 {
+  color: var(--theme-text-subtle) !important;
+}
+
 html[data-theme="dark"] thead.bg-slate-100,
 html[data-theme="dark"] tr.bg-slate-50,
 html[data-theme="light"] thead.bg-slate-50,

@@ -14,7 +14,14 @@ import {
 } from "@/components/products/kra-product-upload-bar";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
-import { formatShortDate } from "@/components/catalog/catalog-shared";
+import {
+  formatShortDate,
+  TABLE_BODY_ROW_CLASS,
+  TABLE_HEAD_ROW_CLASS,
+  TABLE_SECTION_ROW_CLASS,
+  TABLE_SHELL_CLASS,
+  TABLE_SUBSECTION_ROW_CLASS,
+} from "@/components/catalog/catalog-shared";
 import { resolveProductAudit } from "@/lib/product-audit";
 import { PermissionGate } from "@/components/permission-gate";
 import { P } from "@/lib/permission-codes";
@@ -762,11 +769,11 @@ export default function ProductsPage() {
       )}
 
       {!loading && !error && (
-        <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className={`mt-6 ${TABLE_SHELL_CLASS}`}>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50/80 text-xs font-medium uppercase tracking-wide text-slate-500">
-                <tr>
+              <thead>
+                <tr className={TABLE_HEAD_ROW_CLASS}>
                   {selectionEnabled ? (
                     <th className="w-10 px-3 py-3">
                       <input
@@ -881,16 +888,16 @@ function CategoryGroup({
   return (
     <>
       {showCategoryHeader && (
-        <tr className="bg-slate-100/80">
+        <tr className={TABLE_SECTION_ROW_CLASS}>
           <td colSpan={tableColCount} className="px-4 py-2.5">
             <button
               type="button"
               onClick={() => onToggleSection(categoryKey)}
-              className="flex w-full items-center gap-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600"
+              className="theme-subtext flex w-full items-center gap-2 text-left text-xs font-semibold uppercase tracking-wide"
             >
               <ChevronToggle expanded={!categoryCollapsed} />
               {categoryName}
-              <span className="font-normal normal-case text-slate-400">
+              <span className="font-normal normal-case opacity-80">
                 ({productCount} products)
               </span>
             </button>
@@ -944,16 +951,16 @@ function SubCategoryGroup({
 
   return (
     <>
-      <tr className="bg-blue-50/60">
+      <tr className={TABLE_SUBSECTION_ROW_CLASS}>
         <td colSpan={tableColCount} className="px-4 py-2">
           <button
             type="button"
             onClick={() => onToggleSection(subKey)}
-            className={`flex w-full items-center gap-2 text-left text-xs font-medium text-blue-800 ${showCategoryHeader ? "pl-4" : ""}`}
+            className={`theme-subtext flex w-full items-center gap-2 text-left text-xs font-medium ${showCategoryHeader ? "pl-4" : ""}`}
           >
             <ChevronToggle expanded={!subCollapsed} />
             {subName}
-            <span className="font-normal text-blue-600/70">({items.length})</span>
+            <span className="font-normal opacity-80">({items.length})</span>
           </button>
         </td>
       </tr>
@@ -988,7 +995,7 @@ function ProductRow({
   onPriceSaved,
 }) {
   return (
-    <tr className="border-t border-slate-100 hover:bg-slate-50/80">
+    <tr className={TABLE_BODY_ROW_CLASS}>
       {selectionEnabled ? (
         <td className="px-3 py-3">
           <input

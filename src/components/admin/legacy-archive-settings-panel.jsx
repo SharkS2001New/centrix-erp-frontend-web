@@ -164,6 +164,21 @@ export function LegacyArchiveSettingsPanel({ saving, setSaving, setError, setMes
               </p>
             </Field>
 
+            <Field label="Legacy company code (org_info)">
+              <input
+                type="text"
+                className={inputClassName()}
+                value={form.legacy_company_code}
+                onChange={(e) => setForm((f) => ({ ...f, legacy_company_code: e.target.value.toUpperCase() }))}
+                placeholder="PVT-RG73J971"
+                disabled={!form.enabled}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Company code stored in the legacy LightStores <code className="text-xs">org_info</code> table. Set this
+                when the Centrix sign-in code differs (e.g. MOON). Auto-filled when you rename the tenant company code.
+              </p>
+            </Field>
+
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
               <button
                 type="button"

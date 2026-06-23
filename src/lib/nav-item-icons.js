@@ -7,6 +7,7 @@ import { formatNavLabel } from "@/lib/nav-label-format";
 export const NAV_HREF_ICONS = {
   // Platform
   "/platform": "platform",
+  "/platform/ai-training": "star",
   "/platform/active-users": "users",
   "/platform/database-backups": "database",
   "/platform/organizations/new": "plus",

@@ -16,6 +16,8 @@ import { baseToDisplayQty } from "@/lib/stock-uom";
 import {
   ProductInventoryFields,
   reorderBaseFromForm,
+  resolveOpeningStockBranchId,
+  stockBaseFromForm,
   stockHierarchyToForm,
 } from "@/components/products/product-inventory-fields";
 import {
@@ -145,7 +147,7 @@ export function productToForm(product, retailPackage = null, uom = null) {
   };
 }
 
-export function buildProductBody(form, uom = null, { allowDiscounts = true } = {}) {
+export function buildProductBody(form, uom = null, { allowDiscounts = true, openingStockBranchId = null } = {}) {
   const unitPrice = parseDecimalInput(form.unit_price);
   const body = {
     product_code: form.product_code.trim(),
@@ -182,6 +184,18 @@ export function buildProductBody(form, uom = null, { allowDiscounts = true } = {
     } else {
       body.discount_percentage = parseDecimalInput(form.discount_percentage);
       body.discount_value = 0;
+    }
+  }
+
+  if (openingStockBranchId != null) {
+    const shopQty = stockBaseFromForm(form, "shop", uom);
+    const storeQty = stockBaseFromForm(form, "store", uom);
+    if (shopQty > 0 || storeQty > 0) {
+      body.opening_stock = {
+        branch_id: openingStockBranchId,
+        shop_quantity: shopQty,
+        store_quantity: storeQty,
+      };
     }
   }
 
@@ -716,7 +730,7 @@ export function ProductFormFields({
         onChange={onChange}
         productUom={selectedUom}
         globalReorderLevel={globalReorderLevel}
-        stockReadOnly
+        stockReadOnly={mode !== "create"}
         productCode={mode === "edit" ? form.product_code : null}
       />
 

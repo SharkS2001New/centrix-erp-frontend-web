@@ -15,6 +15,10 @@ import {
   PencilIcon,
   PrimaryButton,
   SearchInput,
+  TABLE_BODY_ROW_CLASS,
+  TABLE_HEAD_ROW_CLASS,
+  TABLE_SECTION_ROW_CLASS,
+  TABLE_SHELL_CLASS,
   TrashIcon,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
@@ -305,7 +309,7 @@ export default function CategoriesPage() {
         </p>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className={TABLE_SHELL_CLASS}>
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading…</p>
         ) : (
@@ -313,7 +317,7 @@ export default function CategoriesPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[800px] border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                  <tr className={TABLE_HEAD_ROW_CLASS}>
                     <th className="w-10 px-4 py-2.5">
                       <input
                         type="checkbox"
@@ -354,7 +358,7 @@ export default function CategoriesPage() {
                         return (
                           <tr
                             key={key}
-                            className="border-b border-slate-100 bg-slate-50/40 hover:bg-slate-50"
+                            className={TABLE_SECTION_ROW_CLASS}
                           >
                             <td className="px-4 py-3">
                               <input
@@ -426,7 +430,7 @@ export default function CategoriesPage() {
                       return (
                         <tr
                           key={key}
-                          className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
+                          className={TABLE_BODY_ROW_CLASS}
                         >
                           <td className="px-4 py-3">
                             <input

@@ -34,6 +34,11 @@ export default function PlatformOverviewPage() {
       subtitle="Register and manage tenant organizations — profile, sales behaviour, modules, and users."
       action={
         <div className="flex flex-wrap gap-2">
+          <Link href="/platform/ai-training">
+            <PrimaryButton type="button" showIcon={false} className="!bg-indigo-600 hover:!bg-indigo-700">
+              AI training
+            </PrimaryButton>
+          </Link>
           <Link href="/platform/active-users">
             <PrimaryButton type="button" showIcon={false} className="!bg-amber-500 hover:!bg-amber-600">
               Active users

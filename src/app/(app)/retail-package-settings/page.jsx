@@ -13,6 +13,9 @@ import {
   PencilIcon,
   PrimaryButton,
   SearchInput,
+  TABLE_BODY_ROW_CLASS,
+  TABLE_HEAD_ROW_CLASS,
+  TABLE_SHELL_CLASS,
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
@@ -297,7 +300,7 @@ export default function RetailPackageSettingsPage() {
         </p>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className={TABLE_SHELL_CLASS}>
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading package settings…</p>
         ) : (
@@ -305,7 +308,7 @@ export default function RetailPackageSettingsPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[800px] border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                  <tr className={TABLE_HEAD_ROW_CLASS}>
                     <th className="px-3.5 py-2.5">Product</th>
                     <th className="px-3.5 py-2.5">UOM</th>
                     <th className="px-3.5 py-2.5">Retail tiers</th>
@@ -325,7 +328,7 @@ export default function RetailPackageSettingsPage() {
                     pageSlice.map((row) => (
                       <tr
                         key={row.id}
-                        className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
+                        className={TABLE_BODY_ROW_CLASS}
                       >
                         <td className="px-3.5 py-3">
                           <div className="font-medium text-slate-900">{row.product_name}</div>

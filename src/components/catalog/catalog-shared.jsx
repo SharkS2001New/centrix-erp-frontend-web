@@ -483,6 +483,18 @@ export const COMPACT_INPUT_CLASS =
 export const TABLE_HEAD_ROW_CLASS =
   "theme-table-head-row text-left text-xs font-medium uppercase tracking-wide";
 
+/** Theme-aware table shell — use instead of raw `bg-white` card wrappers. */
+export const TABLE_SHELL_CLASS = "theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm";
+
+export const TABLE_BODY_ROW_CLASS = "theme-table-body-row";
+
+/** Category / section grouping rows inside tables. */
+export const TABLE_SECTION_ROW_CLASS = "theme-table-section";
+
+/** Nested subsection rows (e.g. sub-category under category). */
+export const TABLE_SUBSECTION_ROW_CLASS =
+  "theme-table-section bg-[var(--theme-surface-muted)]";
+
 export const SECONDARY_BTN_CLASS =
   "theme-secondary-btn inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed";
 

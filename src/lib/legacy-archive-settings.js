@@ -7,6 +7,7 @@ export const EMPTY_LEGACY_ARCHIVE_FORM = {
   password: "",
   label: "LightStores archive",
   cutover_date: "",
+  legacy_company_code: "",
   password_configured: false,
 };
 
@@ -22,6 +23,7 @@ export function legacyArchiveFormFromApi(res) {
     password: "",
     label: la.label ?? "LightStores archive",
     cutover_date: la.cutover_date ?? "",
+    legacy_company_code: la.legacy_company_code ?? "",
     password_configured: Boolean(la.password_configured),
   };
 }
@@ -33,6 +35,7 @@ export function legacyArchivePayloadFromForm(form) {
     database: form.database.trim() || null,
     label: form.label.trim() || null,
     cutover_date: form.cutover_date || null,
+    legacy_company_code: form.legacy_company_code.trim() || null,
     host: form.host.trim() || null,
     port: form.port.trim() ? Number(form.port) : null,
     username: form.username.trim() || null,

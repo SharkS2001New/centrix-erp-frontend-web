@@ -25,6 +25,9 @@ import {
   PencilIcon,
   PrimaryButton,
   SearchInput,
+  TABLE_BODY_ROW_CLASS,
+  TABLE_HEAD_ROW_CLASS,
+  TABLE_SHELL_CLASS,
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
 
@@ -313,14 +316,14 @@ export default function UomsPage() {
         </p>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className={TABLE_SHELL_CLASS}>
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading units…</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                <tr className={TABLE_HEAD_ROW_CLASS}>
                   <th className="px-4 py-2.5">Hierarchy</th>
                   <th className="px-4 py-2.5">Example stock</th>
                   <th className="px-4 py-2.5">Type</th>
@@ -342,7 +345,7 @@ export default function UomsPage() {
                     return (
                       <tr
                         key={uom.id}
-                        className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
+                        className={TABLE_BODY_ROW_CLASS}
                       >
                         <td className="px-4 py-3 text-slate-700">
                           <span className="font-medium text-slate-900">{uomHierarchyChain(uom)}</span>

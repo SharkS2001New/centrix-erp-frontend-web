@@ -58,18 +58,18 @@ export const WORKSPACE_SECTION_IDS = {
     "reports",
   ],
   admin: ["admin_dashboard", "admin_organization", "admin_users", "admin_finance_tax", "admin_settings"],
-  accounting: ["dashboard", "accounting", "reports"],
-  hr: ["dashboard", "hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"],
+  accounting: ["accounting", "reports"],
+  hr: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"],
   distribution: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "reports"],
 };
 
 /** Sidebar zone headers for workspaces that still use grouped sections. */
 export const WORKSPACE_NAV_ZONES = {
   accounting: [
-    { label: null, sectionIds: ["dashboard", "accounting", "reports"] },
+    { label: null, sectionIds: ["accounting", "reports"] },
   ],
   hr: [
-    { label: null, sectionIds: ["dashboard", "hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"] },
+    { label: null, sectionIds: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"] },
   ],
   distribution: [
     {

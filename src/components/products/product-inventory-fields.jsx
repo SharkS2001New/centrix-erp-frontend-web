@@ -116,8 +116,8 @@ export function ProductInventoryFields({
 
   return (
     <>
-      <div className="md:col-span-2 xl:col-span-3 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
-        <p className="text-sm text-slate-700">
+      <div className="theme-panel md:col-span-2 xl:col-span-3 rounded-lg border p-4">
+        <p className="theme-subtext text-sm">
           {stockReadOnly
             ? "Stock on hand is shown for reference only. Changes must go through inventory transactions so POS, reports, and stock levels stay aligned."
             : "Enter opening stock using the product's UOM packaging — same as stock take and inventory reports."}
@@ -199,6 +199,14 @@ export function ProductInventoryFields({
       />
     </>
   );
+}
+
+export function resolveOpeningStockBranchId(form, user) {
+  if (form.catalog_scope === "branch" && form.branch_id) {
+    return Number(form.branch_id);
+  }
+
+  return user?.branch_id ?? 1;
 }
 
 export function stockBaseFromForm(form, location, uom) {
