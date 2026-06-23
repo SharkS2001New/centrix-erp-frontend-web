@@ -32,9 +32,10 @@ function downloadBlob(blob, filename) {
 
 export default function PlatformDatabaseBackupsPage() {
   const [backups, setBackups] = useState([]);
-  const [googleDriveEnabled, setGoogleDriveEnabled] = useState(false);
+  const [driveStatus, setDriveStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [warning, setWarning] = useState(null);
   const [busyFilename, setBusyFilename] = useState(null);
   const [creating, setCreating] = useState(false);
   const [success, setSuccess] = useState(null);
@@ -46,7 +47,7 @@ export default function PlatformDatabaseBackupsPage() {
     try {
       const res = await apiRequest("/admin/database-backups");
       setBackups(res.data ?? []);
-      setGoogleDriveEnabled(Boolean(res.google_drive_enabled));
+      setDriveStatus(res.google_drive ?? null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load database backups.");
     } finally {
@@ -80,6 +81,7 @@ export default function PlatformDatabaseBackupsPage() {
 
     setCreating(true);
     setError(null);
+    setWarning(null);
     setSuccess(null);
     try {
       const res = await runQueuedTask(
@@ -96,7 +98,15 @@ export default function PlatformDatabaseBackupsPage() {
           timeoutMs: 3_900_000,
         },
       );
-      setSuccess(res.message ?? "Database backup completed.");
+      if (res.google_drive_error) {
+        setWarning(`Backup saved on server, but Google Drive upload failed: ${res.google_drive_error}`);
+      } else if (res.google_drive_skipped_reason) {
+        setWarning(`Backup saved on server. Google Drive upload was skipped: ${res.google_drive_skipped_reason}`);
+      } else if (res.google_drive?.web_view_link) {
+        setSuccess(`${res.message ?? "Database backup completed."} Open in Drive: ${res.google_drive.web_view_link}`);
+      } else {
+        setSuccess(res.message ?? "Database backup completed.");
+      }
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Database backup failed.");
@@ -121,10 +131,56 @@ export default function PlatformDatabaseBackupsPage() {
 
       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
         Scheduled backups run daily via the API server cron job. Files are stored on the server
-        {googleDriveEnabled ? " and uploaded to Google Drive when configured." : "."}
+        {driveStatus?.upload_ready
+          ? " and uploaded to Google Drive after each backup."
+          : "."}
         {" "}
         Large files may be emailed as a notification only (without attachment).
       </div>
+
+      {driveStatus && !driveStatus.upload_ready ? (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-medium">Google Drive upload is not active</p>
+          {driveStatus.issues?.length ? (
+            <ul className="mt-2 list-inside list-disc space-y-1 text-amber-900">
+              {driveStatus.issues.map((issue) => (
+                <li key={issue}>{issue}</li>
+              ))}
+            </ul>
+          ) : null}
+          {driveStatus.setup_notes?.length ? (
+            <ul className="mt-2 list-inside list-disc space-y-1 text-amber-900">
+              {driveStatus.setup_notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          ) : null}
+          <p className="mt-2 text-xs text-amber-800">
+            Configure <span className="font-mono">BACKUP_GOOGLE_DRIVE_*</span> on the API server, then run{" "}
+            <span className="font-mono">php artisan config:clear</span> if you use config cache.
+          </p>
+        </div>
+      ) : driveStatus?.upload_ready ? (
+        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <p className="font-medium">Google Drive upload is configured</p>
+          {driveStatus.service_account_email ? (
+            <p className="mt-1 text-emerald-800">
+              Service account: <span className="font-mono">{driveStatus.service_account_email}</span>
+            </p>
+          ) : null}
+          {driveStatus.setup_notes?.map((note) => (
+            <p key={note} className="mt-1 text-emerald-800">
+              {note}
+            </p>
+          ))}
+        </div>
+      ) : null}
+
+      {warning ? (
+        <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          {warning}
+        </p>
+      ) : null}
 
       {error ? (
         <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
