@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { ReportBadge } from "@/components/reports/report-screen-shared";
 import {
@@ -35,6 +34,7 @@ function channelSummaryCards(summary) {
 
 function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
   const [materializing, setMaterializing] = useState(false);
+  const [notice, setNotice] = useState(null);
 
   if (!sale) return null;
 
@@ -43,13 +43,20 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
 
   const handleMaterialize = async () => {
     setMaterializing(true);
+    setNotice(null);
     try {
       const result = await materializeLegacySale(sale.archive_channel ?? sale.channel, sale.legacy_order_num);
       const saleId = result?.sale?.id;
-      toast.success("Sale copied into Centrix for returns and credit notes.");
+      setNotice({
+        type: "success",
+        text: "Sale copied into Centrix for returns and credit notes.",
+      });
       onMaterialized?.(saleId);
     } catch (err) {
-      toast.error(err?.message ?? "Could not materialize sale.");
+      setNotice({
+        type: "error",
+        text: err?.message ?? "Could not materialize sale.",
+      });
     } finally {
       setMaterializing(false);
     }
@@ -132,6 +139,17 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
         </div>
 
         <div className="flex flex-wrap gap-2 border-t border-slate-200 px-5 py-4">
+          {notice ? (
+            <p
+              className={`mb-2 w-full rounded-lg px-3 py-2 text-sm ${
+                notice.type === "success"
+                  ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border border-red-200 bg-red-50 text-red-700"
+              }`}
+            >
+              {notice.text}
+            </p>
+          ) : null}
           {centrixSaleId ? (
             <Link
               href={`/sales/returns/new?sale_id=${centrixSaleId}`}
@@ -171,10 +189,12 @@ export function LegacyArchiveReportScreen() {
   const [toDate, setToDate] = useState("");
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedSale, setSelectedSale] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [st, sumRes, list] = await Promise.all([
         fetchLegacyArchiveStatus(),
@@ -195,7 +215,7 @@ export function LegacyArchiveReportScreen() {
       setSummary(sumRes?.summary ?? null);
       setSales(list);
     } catch (err) {
-      toast.error(err?.message ?? "Could not load legacy archive.");
+      setError(err?.message ?? "Could not load legacy archive.");
     } finally {
       setLoading(false);
     }
@@ -257,6 +277,10 @@ export function LegacyArchiveReportScreen() {
           </div>
         ) : null}
       </div>
+
+      {error ? (
+        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      ) : null}
 
       {summaryCards.length ? (
         <div className="mb-6 grid gap-3 sm:grid-cols-3">
