@@ -12,15 +12,16 @@ export async function fetchLegacyArchiveSales(params = {}) {
   return apiRequest("/reports/legacy-archive/sales", { searchParams: params });
 }
 
-export async function fetchLegacyArchiveSale(channel, legacyOrderNum) {
+export async function fetchLegacyArchiveSale(channel, legacyOrderNum, params = {}) {
   return apiRequest(
     `/reports/legacy-archive/sales/${encodeURIComponent(channel)}/${encodeURIComponent(legacyOrderNum)}`,
+    { searchParams: params },
   );
 }
 
-export async function materializeLegacySale(channel, legacyOrderNum) {
+export async function materializeLegacySale(channel, legacyOrderNum, saleDate) {
   return apiRequest("/reports/legacy-archive/sales/materialize", {
     method: "POST",
-    body: { channel, legacy_order_num: legacyOrderNum },
+    body: { channel, legacy_order_num: legacyOrderNum, sale_date: saleDate },
   });
 }

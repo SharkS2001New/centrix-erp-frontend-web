@@ -24,6 +24,18 @@ const CHANNELS = [
 
 const defaultRange = defaultDashboardDateRange(29);
 
+const CHANNEL_LABELS = {
+  pos: "POS",
+  mobile: "Mobile",
+  debtor: "Debtor",
+};
+
+function legacySaleDate(row) {
+  const value = row?.legacy_sale_date ?? row?.sale_date;
+  if (!value) return null;
+  return String(value).slice(0, 10);
+}
+
 function money(value) {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
@@ -45,13 +57,18 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
   if (!sale) return null;
 
   const orderLabel = sale.legacy_order_label ?? sale.legacy_order_num;
+  const orderNum = sale.legacy_order_num;
   const centrixSaleId = sale.materialized_sale_id ?? sale.centrix_sale_id;
 
   const handleMaterialize = async () => {
     setMaterializing(true);
     setNotice(null);
     try {
-      const result = await materializeLegacySale(sale.archive_channel ?? sale.channel, sale.legacy_order_num);
+      const result = await materializeLegacySale(
+        sale.archive_channel ?? sale.channel,
+        orderNum,
+        legacySaleDate(sale),
+      );
       const saleId = result?.sale?.id;
       setNotice({
         type: "success",
@@ -79,11 +96,12 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Legacy sale</p>
             <h2 className="text-lg font-semibold text-slate-900">
               {orderLabel}
+              <span className="ml-2 text-sm font-normal text-slate-500">#{orderNum}</span>
               <span className="ml-2">
-                <ReportBadge label={sale.archive_channel ?? sale.channel} tone="neutral" />
+                <ReportBadge label={CHANNEL_LABELS[sale.archive_channel ?? sale.channel] ?? sale.channel} tone="neutral" />
               </span>
             </h2>
-            <p className="mt-1 text-sm text-slate-500">{sale.sale_date}</p>
+            <p className="mt-1 text-sm text-slate-500">{legacySaleDate(sale)}</p>
           </div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
             ✕
@@ -253,14 +271,13 @@ export function LegacyArchiveReportScreen() {
   }, [loadSales]);
 
   const openSale = async (row) => {
+    const saleDate = legacySaleDate(row);
+    const channel = applied.channel;
     try {
-      const detail = await fetchLegacyArchiveSale(
-        row.archive_channel ?? row.channel ?? applied.channel,
-        row.legacy_order_num,
-      );
-      setSelectedSale(detail);
+      const detail = await fetchLegacyArchiveSale(channel, row.legacy_order_num, { sale_date: saleDate });
+      setSelectedSale({ ...detail, archive_channel: channel, channel });
     } catch {
-      setSelectedSale(row);
+      setSelectedSale({ ...row, archive_channel: channel, channel });
     }
   };
 
@@ -396,6 +413,7 @@ export function LegacyArchiveReportScreen() {
           <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3">Order</th>
+              <th className="px-4 py-3">Channel</th>
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3">Customer</th>
               <th className="px-4 py-3 text-right">Total</th>
@@ -405,13 +423,13 @@ export function LegacyArchiveReportScreen() {
           <tbody>
             {loadingSales ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                   Loading…
                 </td>
               </tr>
             ) : (sales.data ?? []).length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                   {!applied.fromDate || !applied.toDate
                     ? "Set a from and to date, then click Apply."
                     : "No legacy sales for this filter."}
@@ -420,14 +438,18 @@ export function LegacyArchiveReportScreen() {
             ) : (
               (sales.data ?? []).map((row) => (
                 <tr
-                  key={`${row.archive_channel ?? row.channel}-${row.legacy_order_num}`}
+                  key={`${row.archive_channel ?? row.channel}-${row.legacy_order_num}-${row.legacy_sale_date ?? row.sale_date}`}
                   className="cursor-pointer border-b border-slate-100 hover:bg-slate-50"
                   onClick={() => openSale(row)}
                 >
-                  <td className="px-4 py-2.5 font-medium text-[#185FA5]">
-                    {row.legacy_order_label ?? row.legacy_order_num}
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium text-[#185FA5]">{row.legacy_order_label ?? row.legacy_order_num}</div>
+                    <div className="text-xs text-slate-500">#{row.legacy_order_num}</div>
                   </td>
-                  <td className="px-4 py-2.5">{row.sale_date}</td>
+                  <td className="px-4 py-2.5">
+                    <ReportBadge label={CHANNEL_LABELS[applied.channel] ?? applied.channel} tone="neutral" />
+                  </td>
+                  <td className="px-4 py-2.5">{legacySaleDate(row)}</td>
                   <td className="px-4 py-2.5">{row.customer_name ?? "—"}</td>
                   <td className="px-4 py-2.5 text-right">{money(row.order_total)}</td>
                   <td className="px-4 py-2.5">
