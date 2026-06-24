@@ -13,6 +13,8 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 
+const PAGE_SIZE = 10;
+
 function legacyReturnStatusLabel(summary) {
   if (!summary?.has_returns) return "No returns";
   if (summary?.fully_returned) return "Fully returned";

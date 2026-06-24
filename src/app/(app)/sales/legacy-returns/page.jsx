@@ -28,6 +28,7 @@ export default function LegacyReturnsPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
+  const [rows, setRows] = useState([]);
   const [detailRow, setDetailRow] = useState(null);
 
   const loadData = useCallback(async () => {
