@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -21,7 +21,7 @@ function legacyReturnStatusLabel(summary) {
   return "Partially returned";
 }
 
-export default function LegacyOrdersPage() {
+function LegacyOrdersContent() {
   const searchParams = useSearchParams();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -203,5 +203,13 @@ export default function LegacyOrdersPage() {
 
       <PaginationBar page={safePage} totalPages={totalPages} onPageChange={setPage} />
     </div>
+  );
+}
+
+export default function LegacyOrdersPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-slate-500">Loading legacy orders…</p>}>
+      <LegacyOrdersContent />
+    </Suspense>
   );
 }

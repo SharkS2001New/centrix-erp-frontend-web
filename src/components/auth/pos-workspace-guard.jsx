@@ -59,7 +59,9 @@ export function PosWorkspaceGuard({ children }) {
     const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
     if (!isPosWorkspace(workspaceId)) return;
     if (loginChannel === POS_LOGIN_CHANNEL) return;
-    switchWorkspace("pos").catch(() => {});
+    switchWorkspace("pos").catch((err) => {
+      console.error("Failed to switch to POS session", err);
+    });
   }, [capabilities, ctx, loading, loginChannel, platformUser, storedWorkspace, switchWorkspace]);
 
   if (loading || platformUser) {

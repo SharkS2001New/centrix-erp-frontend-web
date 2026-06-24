@@ -1,9 +1,10 @@
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { LegacyReturnForm } from "@/components/sales/legacy-return-form";
 
-export default function NewLegacyReturnPage() {
+function NewLegacyReturnContent() {
   const searchParams = useSearchParams();
   const saleId = searchParams.get("sale_id") ?? "";
 
@@ -17,5 +18,13 @@ export default function NewLegacyReturnPage() {
       </div>
       <LegacyReturnForm initialSaleId={saleId} />
     </div>
+  );
+}
+
+export default function NewLegacyReturnPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-slate-500">Loading legacy return…</p>}>
+      <NewLegacyReturnContent />
+    </Suspense>
   );
 }

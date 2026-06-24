@@ -13,19 +13,20 @@ export function AttendanceMobileDeviceIdHelpModal({ open, onClose }) {
     >
       <div className="space-y-4 text-sm text-slate-700">
         <p>
-          Each shared attendance phone gets a unique ID from the Centrix mobile app. Register that
+          Each shared attendance phone gets a unique ID from the CentrixMobile App. Register that
           exact ID here so only authorized phones can mark attendance.
         </p>
         <ol className="list-decimal space-y-2 pl-5">
           <li>
-            Install and open the <strong>Centrix</strong> app on the shared Android phone.
+            Install and open the <strong>CentrixMobile App</strong> on the shared phone.
           </li>
           <li>
-            Sign in with your organization code and complete attendance-phone setup if prompted.
+            On first launch, enter your API URL and <strong>organization code</strong>, choose{" "}
+            <strong>Attendance</strong> as the phone type, and select the branch this phone serves.
           </li>
           <li>
             On the <strong>Attendance phone setup</strong> screen, copy the <strong>Device ID</strong>{" "}
-            shown (tap copy if available).
+            shown (tap <strong>Copy Device ID</strong>).
           </li>
           <li>
             Paste it into <strong>Device ID</strong> when registering the phone below. It usually

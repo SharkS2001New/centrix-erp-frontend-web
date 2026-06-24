@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -18,7 +18,7 @@ import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 
 const PAGE_SIZE = 10;
 
-export default function LegacyReturnsPage() {
+function LegacyReturnsContent() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -270,5 +270,13 @@ export default function LegacyReturnsPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function LegacyReturnsPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-slate-500">Loading legacy returns…</p>}>
+      <LegacyReturnsContent />
+    </Suspense>
   );
 }
