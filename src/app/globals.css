@@ -527,6 +527,32 @@ html[data-theme="dark"] .app-topbar-search svg {
   color: #878a99;
 }
 
+html[data-theme="light"] .app-topbar-background-task {
+  background: #f3f6f9;
+  border-color: #e9ebec;
+}
+
+html[data-theme="light"] .app-topbar-background-task p:first-of-type {
+  color: #212529;
+}
+
+html[data-theme="light"] .app-topbar-background-task p:last-of-type {
+  color: #878a99;
+}
+
+html[data-theme="dark"] .app-topbar-background-task {
+  background: #2a2f34;
+  border-color: #32383e;
+}
+
+html[data-theme="dark"] .app-topbar-background-task p:first-of-type {
+  color: #e9ecef;
+}
+
+html[data-theme="dark"] .app-topbar-background-task p:last-of-type {
+  color: #878a99;
+}
+
 html[data-theme="light"] .velzon-apps-dropdown,
 html[data-theme="light"] .velzon-user-dropdown {
   background: #ffffff;

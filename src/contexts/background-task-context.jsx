@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   backgroundTaskErrorMessage,
   cancelBackgroundTask,
@@ -11,59 +10,60 @@ import {
 } from "@/lib/background-task";
 import { resolveBackgroundTaskMessage } from "@/lib/background-task-messages";
 import { ApiError } from "@/lib/api";
-import { BackgroundTaskIndicator } from "@/components/shared/background-task-indicator";
-import { BackgroundTaskNavDialog } from "@/components/shared/background-task-nav-dialog";
+import { BackgroundTaskExpandedModal } from "@/components/shared/background-task-expanded-modal";
+import { BackgroundTaskNoticeDialog } from "@/components/shared/background-task-notice-dialog";
 
 const BackgroundTaskContext = createContext(null);
 
-const NAV_BACK = "__back__";
+const TASK_BUSY_MESSAGE = "Another background task is already running. Wait for it to finish before starting a new one.";
 
-function isInternalAppHref(href) {
-  if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
-    return false;
+function taskErrorMessage(error) {
+  if (error instanceof ApiError) {
+    return error.message;
   }
-  if (href.startsWith("http://") || href.startsWith("https://")) {
-    return false;
+  if (error instanceof Error && error.message) {
+    return error.message;
   }
-  return href.startsWith("/");
-}
-
-function normalizeNavHref(href) {
-  if (typeof href === "string") {
-    return href;
-  }
-  if (href && typeof href === "object" && typeof href.pathname === "string") {
-    return href.pathname;
-  }
-  return null;
+  return "Background task failed.";
 }
 
 export function BackgroundTaskProvider({ children }) {
-  const router = useRouter();
   const [activeTask, setActiveTask] = useState(null);
-  const [overlayDismissed, setOverlayDismissed] = useState(false);
-  const [pendingNavHref, setPendingNavHref] = useState(null);
+  const [expanded, setExpanded] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [taskLocked, setTaskLocked] = useState(false);
   const abortRef = useRef(null);
-  const routerMethodsRef = useRef(null);
 
   const clearActiveTask = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     setActiveTask(null);
-    setOverlayDismissed(false);
+    setExpanded(false);
+  }, []);
+
+  const dismissNotice = useCallback(() => {
+    setNotice(null);
   }, []);
 
   const runBackgroundTask = useCallback(
     async (requestFn, opts = {}) => {
-      if (activeTask) {
-        throw new Error("Another background task is already running.");
+      if (taskLocked || activeTask) {
+        const busyError = new Error(TASK_BUSY_MESSAGE);
+        setNotice({
+          type: "error",
+          title: "Task already running",
+          message: TASK_BUSY_MESSAGE,
+        });
+        throw busyError;
       }
 
+      setTaskLocked(true);
       const controller = new AbortController();
       abortRef.current = controller;
       const label = opts.label ?? opts.message ?? "Working in the background…";
 
-      setOverlayDismissed(false);
+      setNotice(null);
+      setExpanded(true);
       setActiveTask({
         id: "pending",
         label,
@@ -72,19 +72,23 @@ export function BackgroundTaskProvider({ children }) {
         status: "pending",
       });
 
+      let taskId = null;
+      let downloadFilename = opts.downloadFilename ?? "export";
+
       try {
         const res = await requestFn();
         if (!isQueuedTaskResponse(res)) {
+          setTaskLocked(false);
           clearActiveTask();
           return res;
         }
 
-        const taskId = String(res.task_id);
+        taskId = String(res.task_id);
         setActiveTask({
           id: taskId,
           label,
-          progress: 2,
-          message: "Started fetching…",
+          progress: 0,
+          message: "Queued…",
           status: "running",
         });
 
@@ -119,27 +123,48 @@ export function BackgroundTaskProvider({ children }) {
           task,
         };
 
+        downloadFilename = merged.filename ?? downloadFilename;
+
         if (opts.downloadOnComplete && taskId) {
-          await downloadBackgroundTaskFile(
-            taskId,
-            merged.filename ?? opts.downloadFilename ?? "export",
-          );
+          await downloadBackgroundTaskFile(taskId, downloadFilename);
         }
 
         clearActiveTask();
+        setNotice({
+          type: "success",
+          title: "Background task completed",
+          taskLabel: label,
+          message: opts.downloadOnComplete
+            ? `Your file "${downloadFilename}" has been downloaded.`
+            : "The task finished successfully.",
+          downloadTaskId: opts.downloadOnComplete ? taskId : undefined,
+          downloadFilename,
+        });
+
         opts.onComplete?.(merged);
         return merged;
       } catch (error) {
-        if (controller.signal.aborted || error?.name === "AbortError") {
-          clearActiveTask();
-          throw new Error("Background task was cancelled.");
-        }
+        const cancelled = controller.signal.aborted || error?.name === "AbortError";
+        const message = cancelled ? "Background task was cancelled." : taskErrorMessage(error);
+
         clearActiveTask();
+
+        if (!cancelled) {
+          setNotice({
+            type: "error",
+            title: "Background task failed",
+            taskLabel: label,
+            message,
+          });
+        }
+
         opts.onError?.(error);
-        throw error;
+        throw error instanceof Error ? error : new Error(message);
+      } finally {
+        setTaskLocked(false);
       }
     },
-    [activeTask, clearActiveTask],
+    [activeTask, clearActiveTask, taskLocked],
   );
 
   const cancelActiveTask = useCallback(async () => {
@@ -154,111 +179,31 @@ export function BackgroundTaskProvider({ children }) {
       }
     }
 
+    setTaskLocked(false);
     clearActiveTask();
   }, [activeTask?.id, clearActiveTask]);
 
+  const expandActiveTask = useCallback(() => {
+    if (!activeTask) return;
+    setExpanded(true);
+  }, [activeTask]);
+
   const minimizeActiveTask = useCallback(() => {
     if (!activeTask) return;
-    setOverlayDismissed(true);
+    setExpanded(false);
   }, [activeTask]);
 
-  const confirmNavigation = useCallback(
-    async (shouldCancel) => {
-      const href = pendingNavHref;
-      setPendingNavHref(null);
-      if (!href) return;
-
-      if (shouldCancel) {
-        await cancelActiveTask();
-        if (href === NAV_BACK) {
-          router.back();
-        } else {
-          router.push(href);
-        }
-      }
-    },
-    [cancelActiveTask, pendingNavHref, router],
-  );
-
-  const queueNavigation = useCallback((href) => {
-    const normalized = normalizeNavHref(href);
-    if (!normalized || !isInternalAppHref(normalized)) {
-      return false;
+  const downloadAgain = useCallback(async (taskId, filename) => {
+    try {
+      await downloadBackgroundTaskFile(taskId, filename);
+    } catch (error) {
+      setNotice({
+        type: "error",
+        title: "Download failed",
+        message: taskErrorMessage(error),
+      });
     }
-    if (normalized === window.location.pathname) {
-      return false;
-    }
-    setPendingNavHref(normalized);
-    return true;
   }, []);
-
-  useEffect(() => {
-    if (!activeTask) return undefined;
-
-    const handler = (event) => {
-      const anchor = event.target?.closest?.("a[href]");
-      if (!anchor) return;
-
-      const href = anchor.getAttribute("href");
-      if (!isInternalAppHref(href)) return;
-      if (href === window.location.pathname) return;
-      if (anchor.target === "_blank") return;
-      if (anchor.dataset.backgroundNav === "allow") return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      setPendingNavHref(href);
-    };
-
-    document.addEventListener("click", handler, true);
-    return () => document.removeEventListener("click", handler, true);
-  }, [activeTask]);
-
-  useEffect(() => {
-    if (!activeTask) {
-      if (routerMethodsRef.current) {
-        router.push = routerMethodsRef.current.push;
-        router.replace = routerMethodsRef.current.replace;
-        router.back = routerMethodsRef.current.back;
-        routerMethodsRef.current = null;
-      }
-      return undefined;
-    }
-
-    if (!routerMethodsRef.current) {
-      routerMethodsRef.current = {
-        push: router.push.bind(router),
-        replace: router.replace.bind(router),
-        back: router.back.bind(router),
-      };
-    }
-
-    const original = routerMethodsRef.current;
-
-    router.push = (href, options) => {
-      if (queueNavigation(href)) {
-        return Promise.resolve(false);
-      }
-      return original.push(href, options);
-    };
-
-    router.replace = (href, options) => {
-      if (queueNavigation(href)) {
-        return Promise.resolve(false);
-      }
-      return original.replace(href, options);
-    };
-
-    router.back = () => {
-      setPendingNavHref(NAV_BACK);
-    };
-
-    return () => {
-      router.push = original.push;
-      router.replace = original.replace;
-      router.back = original.back;
-    };
-  }, [activeTask, queueNavigation, router]);
 
   useEffect(() => {
     if (!activeTask) return undefined;
@@ -275,37 +220,43 @@ export function BackgroundTaskProvider({ children }) {
   const value = useMemo(
     () => ({
       activeTask,
-      overlayDismissed,
-      busy: Boolean(activeTask),
+      expanded,
+      busy: Boolean(activeTask) || taskLocked,
+      notice,
       runBackgroundTask,
       cancelActiveTask,
+      expandActiveTask,
       minimizeActiveTask,
-      queueNavigation,
+      taskLocked,
+      dismissNotice,
     }),
     [
       activeTask,
-      overlayDismissed,
       cancelActiveTask,
+      dismissNotice,
+      expandActiveTask,
+      expanded,
       minimizeActiveTask,
-      queueNavigation,
+      notice,
       runBackgroundTask,
+      taskLocked,
     ],
   );
 
   return (
     <BackgroundTaskContext.Provider value={value}>
       {children}
-      {!overlayDismissed ? (
-        <BackgroundTaskIndicator
+      {expanded && activeTask ? (
+        <BackgroundTaskExpandedModal
           task={activeTask}
-          onCancel={() => void cancelActiveTask()}
           onMinimize={minimizeActiveTask}
+          onCancel={() => void cancelActiveTask()}
         />
       ) : null}
-      <BackgroundTaskNavDialog
-        open={Boolean(pendingNavHref)}
-        onStay={() => confirmNavigation(false)}
-        onCancelAndLeave={() => void confirmNavigation(true)}
+      <BackgroundTaskNoticeDialog
+        notice={notice}
+        onDismiss={dismissNotice}
+        onDownloadAgain={(taskId, filename) => void downloadAgain(taskId, filename)}
       />
     </BackgroundTaskContext.Provider>
   );

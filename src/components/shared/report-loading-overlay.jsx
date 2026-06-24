@@ -5,8 +5,7 @@ import { createPortal } from "react-dom";
 import { useBackgroundTasksOptional } from "@/contexts/background-task-context";
 
 /**
- * Centered progressive preloader for report/data screens (no cancel or background mode).
- * Hidden while a background export/task overlay is active to avoid duplicate preloaders.
+ * Centered preloader for report/data screens — spinner and status text only (no fake progress).
  */
 export function ReportLoadingOverlay({
   loading,
@@ -15,40 +14,13 @@ export function ReportLoadingOverlay({
 }) {
   const backgroundTasks = useBackgroundTasksOptional();
   const [visible, setVisible] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [message, setMessage] = useState(subtitle);
-  const intervalRef = useRef(null);
   const wasLoadingRef = useRef(false);
 
   useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
     if (loading) {
       wasLoadingRef.current = true;
       setVisible(true);
-      setProgress(6);
-      setMessage(subtitle);
-
-      let value = 6;
-      intervalRef.current = setInterval(() => {
-        value = Math.min(90, value + (value < 35 ? 8 : value < 65 ? 5 : 2));
-        setProgress(value);
-        if (value >= 55 && value < 78) {
-          setMessage("Processing results…");
-        } else if (value >= 78) {
-          setMessage("Almost ready…");
-        }
-      }, 360);
-
-      return () => {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-      };
+      return undefined;
     }
 
     if (!wasLoadingRef.current) {
@@ -56,16 +28,9 @@ export function ReportLoadingOverlay({
     }
 
     wasLoadingRef.current = false;
-    setProgress(100);
-    setMessage("Done");
-    const doneTimer = setTimeout(() => {
-      setVisible(false);
-      setProgress(0);
-      setMessage(subtitle);
-    }, 280);
-
+    const doneTimer = setTimeout(() => setVisible(false), 200);
     return () => clearTimeout(doneTimer);
-  }, [loading, subtitle]);
+  }, [loading]);
 
   if (backgroundTasks?.busy) return null;
   if (!visible || typeof document === "undefined") return null;
@@ -82,16 +47,7 @@ export function ReportLoadingOverlay({
           aria-hidden="true"
         />
         <p className="mt-4 text-sm font-semibold text-slate-900">{title}</p>
-        <p className="mt-1 text-sm text-slate-600">{message}</p>
-        <div className="mt-4">
-          <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full rounded-full bg-[#185FA5] transition-all duration-300"
-              style={{ width: `${Math.min(100, Math.max(4, progress))}%` }}
-            />
-          </div>
-          <p className="mt-1.5 text-xs text-slate-500">{Math.round(progress)}%</p>
-        </div>
+        <p className="mt-1 text-sm text-slate-600">{loading ? subtitle : "Done"}</p>
       </div>
     </div>,
     document.body,

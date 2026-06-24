@@ -1,44 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
-function useDisplayProgress(task) {
-  const [simulated, setSimulated] = useState(0);
-  const serverProgress = Number(task?.progress ?? 0);
-
-  useEffect(() => {
-    if (!task) {
-      setSimulated(0);
-      return undefined;
-    }
-
-    setSimulated((current) => Math.max(current, 6, serverProgress));
-
-    const timer = setInterval(() => {
-      setSimulated((current) => {
-        const floor = Math.max(current, serverProgress);
-        if (floor >= 92) {
-          return floor;
-        }
-        const step = floor < 40 ? 6 : floor < 70 ? 3 : 1;
-        return Math.min(92, floor + step);
-      });
-    }, 450);
-
-    return () => clearInterval(timer);
-  }, [task?.id, serverProgress]);
-
-  return Math.min(100, Math.max(simulated, serverProgress));
-}
-
 /**
- * Page-centered background task indicator. Can be minimized so work continues with an inline bar.
+ * Full-screen background task preloader (real server progress only).
  */
-export function BackgroundTaskIndicator({ task, onCancel, onMinimize }) {
-  const progress = useDisplayProgress(task);
-
+export function BackgroundTaskExpandedModal({ task, onMinimize, onCancel }) {
   if (!task || typeof document === "undefined") return null;
+
+  const progress = Math.min(100, Math.max(0, Number(task.progress ?? 0)));
+  const hasProgress = progress > 0;
 
   return createPortal(
     <div
@@ -52,18 +23,26 @@ export function BackgroundTaskIndicator({ task, onCancel, onMinimize }) {
           aria-hidden="true"
         />
         <p className="mt-4 text-sm font-semibold text-slate-900">{task.label}</p>
-        <p className="mt-1 text-sm text-slate-600">{task.message}</p>
+        <p className="mt-1 text-sm text-slate-600">{task.message ?? "Working…"}</p>
         <p className="mt-2 text-xs text-slate-500">
-          You can keep working or open another page. Leaving will ask whether to cancel this task.
+          You can keep working or open another page. Use Run in background to move progress to the header bar.
         </p>
         <div className="mt-4">
           <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full rounded-full bg-[#185FA5] transition-all duration-300"
-              style={{ width: `${Math.min(100, Math.max(4, progress))}%` }}
-            />
+            {hasProgress ? (
+              <div
+                className="h-full rounded-full bg-[#185FA5] transition-all duration-300"
+                style={{ width: `${Math.max(2, progress)}%` }}
+              />
+            ) : (
+              <div className="h-full w-1/3 animate-pulse rounded-full bg-[#185FA5]/70" />
+            )}
           </div>
-          <p className="mt-1.5 text-xs text-slate-500">{Math.round(progress)}%</p>
+          {hasProgress ? (
+            <p className="mt-1.5 text-xs text-slate-500">{Math.round(progress)}%</p>
+          ) : (
+            <p className="mt-1.5 text-xs text-slate-500">Waiting for server…</p>
+          )}
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
           <button

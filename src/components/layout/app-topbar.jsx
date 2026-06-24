@@ -3,6 +3,7 @@
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { GlobalModuleSearch } from "@/components/layout/global-module-search";
+import { BackgroundTaskHeaderBar } from "@/components/shared/background-task-header-bar";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 
 function MenuIcon({ className }) {
@@ -37,6 +38,7 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
           </button>
 
           <GlobalModuleSearch />
+          <BackgroundTaskHeaderBar />
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">

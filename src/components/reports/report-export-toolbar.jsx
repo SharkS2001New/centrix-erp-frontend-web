@@ -41,9 +41,8 @@ export function ReportExportToolbar({
   disabled = false,
 }) {
   const { organization } = useAuth();
-  const { runBackgroundTask } = useBackgroundTasks();
+  const { runBackgroundTask, busy: backgroundBusy } = useBackgroundTasks();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
 
   const organizationName =
     organization?.org_name ?? organization?.name ?? meta.organizationName ?? "";
@@ -51,7 +50,6 @@ export function ReportExportToolbar({
   async function runExport(kind) {
     if (!columns?.length) return;
     setBusy(true);
-    setError(null);
 
     const exportFormat = kind === "print" ? "pdf" : kind;
     const label =
@@ -96,17 +94,14 @@ export function ReportExportToolbar({
           downloadFilename: `${slugifyReportFilename(filename || title)}.${exportFormat === "pdf" ? "pdf" : exportFormat === "csv" ? "csv" : "xlsx"}`,
         },
       );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Export failed.";
-      if (!message.includes("cancelled")) {
-        setError(message);
-      }
+    } catch {
+      /* Global background-task notice handles errors and success */
     } finally {
       setBusy(false);
     }
   }
 
-  const blocked = disabled || busy || !columns?.length;
+  const blocked = disabled || busy || backgroundBusy || !columns?.length;
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -136,7 +131,6 @@ export function ReportExportToolbar({
           CSV
         </button>
       </div>
-      {error ? <p className="text-xs text-red-600">{error}</p> : null}
     </div>
   );
 }
