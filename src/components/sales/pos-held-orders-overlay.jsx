@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { apiRequest } from "@/lib/api";
+import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { formatShortDate, INPUT_CLASS, TABLE_HEAD_ROW_CLASS, workspaceCardClassName } from "@/components/catalog/catalog-shared";
 import {
   saleLineDisplayUnitPrice,
@@ -81,10 +82,10 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
 
       const missing = list.filter((sale) => !sale?.items?.length);
       if (missing.length) {
-        const loaded = await Promise.all(
-          missing.map((sale) =>
-            apiRequest(`/sales/${sale.id}`).catch(() => null),
-          ),
+        const loaded = await mapWithConcurrency(
+          missing,
+          (sale) => apiRequest(`/sales/${sale.id}`).catch(() => null),
+          3,
         );
         setDetailsById((prev) => {
           const next = { ...prev };

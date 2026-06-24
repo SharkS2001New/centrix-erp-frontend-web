@@ -46,6 +46,7 @@ export const NAV_BOOTSTRAP_ICONS = {
   check: "check-circle",
   shield: "shield-lock",
   archive: "archive",
+  chat: "chat-dots",
 };
 
 const HREF_ICON_FALLBACK_RULES = [

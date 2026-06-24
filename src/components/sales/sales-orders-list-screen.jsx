@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
@@ -227,8 +228,10 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
 
       const missing = list.filter((sale) => !sale?.items?.length);
       if (missing.length) {
-        const loaded = await Promise.all(
-          missing.map((sale) => apiRequest(`/sales/${sale.id}`).catch(() => null)),
+        const loaded = await mapWithConcurrency(
+          missing,
+          (sale) => apiRequest(`/sales/${sale.id}`).catch(() => null),
+          3,
         );
         setDetailsById((prev) => {
           const next = { ...prev };
@@ -291,7 +294,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   async function expandAllOnPage(slice) {
     const ids = slice.map((sale) => String(sale.id));
     setExpandedIds(new Set(ids));
-    await Promise.all(slice.map((sale) => loadOrderDetail(sale.id)));
+    await mapWithConcurrency(slice, (sale) => loadOrderDetail(sale.id), 3);
   }
 
   function collapseAll() {

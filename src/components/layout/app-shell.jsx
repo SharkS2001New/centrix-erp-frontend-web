@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { AuthGuard } from "@/components/auth-guard";
 import { WorkspaceGuard } from "@/components/auth/workspace-guard";
 import { RoutePermissionGuard } from "@/components/route-permission-guard";
+import { BackgroundTaskProvider } from "@/contexts/background-task-context";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
@@ -50,6 +51,7 @@ export function AppShell({ children }) {
     <AuthGuard>
       <WorkspaceGuard>
         <RoutePermissionGuard>
+          <BackgroundTaskProvider>
           <div className="app-shell-bg flex h-screen overflow-hidden">
             <Sidebar
               collapsed={sidebarCollapsed}
@@ -82,6 +84,7 @@ export function AppShell({ children }) {
             </div>
             <AiAssistPanel />
           </div>
+          </BackgroundTaskProvider>
         </RoutePermissionGuard>
       </WorkspaceGuard>
     </AuthGuard>

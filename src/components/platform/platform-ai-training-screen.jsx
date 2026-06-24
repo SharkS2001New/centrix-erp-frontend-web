@@ -1,44 +1,67 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { CatalogPageShell, Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
-import { aiFormFromApi, aiPayloadFromForm } from "@/lib/ai-settings";
+import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
 import { aiStartersForWorkspace } from "@/lib/ai-workspace";
 import {
-  AI_TRAINING_WORKSPACES,
   AI_TRAINING_WORKSPACE_OPTIONS,
+  AI_TRAINING_WORKSPACES,
   aiTrainingApiBase,
   aiTrainingWorkspacePath,
 } from "@/lib/platform-ai-training";
 import { PLATFORM_COMPANY_CODE } from "@/lib/admin-scope";
+import {
+  PlatformAiTrainingAlerts,
+  PlatformAiTrainingNav,
+} from "@/components/platform/platform-ai-training-nav";
 
 const PREVIEW_ORG_STORAGE_KEY = "platform-ai-training-preview-org-id";
+
+const TRAINING_TABS = [
+  { id: "knowledge", label: "Knowledge" },
+  { id: "test", label: "Test console" },
+];
 
 function workspaceLabel(id) {
   return AI_TRAINING_WORKSPACES.find((w) => w.id === id)?.label ?? id;
 }
 
+function PlatformAiTrainingTabs({ activeTab, onChange }) {
+  return (
+    <div className="mb-6 flex flex-wrap gap-2 border-b border-[var(--theme-border)] pb-3">
+      {TRAINING_TABS.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          onClick={() => onChange(tab.id)}
+          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+            activeTab === tab.id
+              ? "bg-indigo-600 text-white"
+              : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function PlatformAiTrainingScreen() {
   const apiBase = aiTrainingApiBase();
+  const [activeTab, setActiveTab] = useState("knowledge");
 
-  const [organizations, setOrganizations] = useState([]);
-  const [previewOrgId, setPreviewOrgId] = useState("");
-  const [status, setStatus] = useState(null);
-  const [aiForm, setAiForm] = useState(aiFormFromApi({}));
-  const [loadingAiSettings, setLoadingAiSettings] = useState(true);
-  const [savingAiSettings, setSavingAiSettings] = useState(false);
   const [knowledge, setKnowledge] = useState([]);
   const [filterWorkspace, setFilterWorkspace] = useState("");
-  const [testWorkspace, setTestWorkspace] = useState("backoffice");
-  const [loadingOrgs, setLoadingOrgs] = useState(true);
+  const [status, setStatus] = useState(null);
   const [loadingKnowledge, setLoadingKnowledge] = useState(false);
   const [savingKnowledge, setSavingKnowledge] = useState(false);
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
-
   const [form, setForm] = useState({
     id: null,
     topic: "",
@@ -47,6 +70,10 @@ export function PlatformAiTrainingScreen() {
     workspace_id: "",
   });
 
+  const [organizations, setOrganizations] = useState([]);
+  const [previewOrgId, setPreviewOrgId] = useState("");
+  const [testWorkspace, setTestWorkspace] = useState("backoffice");
+  const [loadingOrgs, setLoadingOrgs] = useState(true);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
@@ -70,6 +97,35 @@ export function PlatformAiTrainingScreen() {
   );
 
   const starters = useMemo(() => aiStartersForWorkspace(testWorkspace), [testWorkspace]);
+  const noteCount = status?.knowledge_count ?? knowledge.length;
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const query =
+        activeTab === "test" && previewOrgId
+          ? `?preview_organization_id=${encodeURIComponent(previewOrgId)}`
+          : "";
+      const res = await apiRequest(`${apiBase}/status${query}`);
+      setStatus(res);
+    } catch {
+      setStatus(null);
+    }
+  }, [apiBase, activeTab, previewOrgId]);
+
+  const loadKnowledge = useCallback(async () => {
+    setLoadingKnowledge(true);
+    setError(null);
+    try {
+      const query = filterWorkspace ? `?workspace_id=${encodeURIComponent(filterWorkspace)}` : "";
+      const res = await apiRequest(`${apiBase}/knowledge${query}`);
+      setKnowledge(res.data ?? []);
+    } catch (e) {
+      setKnowledge([]);
+      setError(e instanceof ApiError ? e.message : "Failed to load training notes.");
+    } finally {
+      setLoadingKnowledge(false);
+    }
+  }, [apiBase, filterWorkspace]);
 
   const loadOrganizations = useCallback(async () => {
     setLoadingOrgs(true);
@@ -90,86 +146,35 @@ export function PlatformAiTrainingScreen() {
     }
   }, []);
 
-  const loadAiSettings = useCallback(async () => {
-    setLoadingAiSettings(true);
-    try {
-      const res = await apiRequest(`${apiBase}/settings`);
-      setAiForm(aiFormFromApi(res));
-    } catch {
-      setAiForm(aiFormFromApi({}));
-    } finally {
-      setLoadingAiSettings(false);
-    }
-  }, [apiBase]);
-
-  const loadStatus = useCallback(async () => {
-    try {
-      const query = previewOrgId ? `?preview_organization_id=${encodeURIComponent(previewOrgId)}` : "";
-      const res = await apiRequest(`${apiBase}/status${query}`);
-      setStatus(res);
-    } catch (e) {
-      setStatus(null);
-    }
-  }, [apiBase, previewOrgId]);
-
-  const loadKnowledge = useCallback(async () => {
-    setLoadingKnowledge(true);
-    setError(null);
-    try {
-      const query = filterWorkspace ? `?workspace_id=${encodeURIComponent(filterWorkspace)}` : "";
-      const res = await apiRequest(`${apiBase}/knowledge${query}`);
-      setKnowledge(res.data ?? []);
-    } catch (e) {
-      setKnowledge([]);
-      setError(e instanceof ApiError ? e.message : "Failed to load training notes.");
-    } finally {
-      setLoadingKnowledge(false);
-    }
-  }, [apiBase, filterWorkspace]);
-
   useEffect(() => {
-    loadOrganizations();
     loadKnowledge();
-    loadAiSettings();
-  }, [loadOrganizations, loadKnowledge, loadAiSettings]);
-
-  useEffect(() => {
-    if (previewOrgId) {
-      window.sessionStorage.setItem(PREVIEW_ORG_STORAGE_KEY, previewOrgId);
-    }
-    loadStatus();
-    setMessages([]);
-    setPendingAction(null);
-    setFormSpec(null);
-    setFormValues({});
-  }, [previewOrgId, loadStatus]);
+    loadOrganizations();
+  }, [loadKnowledge, loadOrganizations]);
 
   useEffect(() => {
     loadKnowledge();
   }, [filterWorkspace, loadKnowledge]);
 
   useEffect(() => {
+    loadStatus();
+  }, [loadStatus]);
+
+  useEffect(() => {
+    if (previewOrgId) {
+      window.sessionStorage.setItem(PREVIEW_ORG_STORAGE_KEY, previewOrgId);
+    }
+    if (activeTab === "test") {
+      loadStatus();
+      setMessages([]);
+      setPendingAction(null);
+      setFormSpec(null);
+      setFormValues({});
+    }
+  }, [previewOrgId, activeTab, loadStatus]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, pendingAction, formSpec]);
-
-  async function saveAiSettings() {
-    setSavingAiSettings(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const res = await apiRequest(`${apiBase}/settings`, {
-        method: "PATCH",
-        body: aiPayloadFromForm(aiForm),
-      });
-      setAiForm(aiFormFromApi(res));
-      await loadStatus();
-      setMessage("Platform AI credentials saved.");
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to save platform AI settings.");
-    } finally {
-      setSavingAiSettings(false);
-    }
-  }
 
   function resetKnowledgeForm() {
     setForm({ id: null, topic: "", content: "", path: "", workspace_id: "" });
@@ -261,12 +266,12 @@ export function PlatformAiTrainingScreen() {
 
   const sendChat = useCallback(
     async (text, { previewForm = false } = {}) => {
-      const message = text.trim();
-      if (!message || !previewOrgId || chatLoading) return;
+      const messageText = text.trim();
+      if (!messageText || !previewOrgId || chatLoading) return;
       setChatError(null);
       setChatLoading(true);
       if (!previewForm) {
-        setMessages((prev) => [...prev, { role: "user", content: message }]);
+        setMessages((prev) => [...prev, { role: "user", content: messageText }]);
       }
       setInput("");
       try {
@@ -276,7 +281,7 @@ export function PlatformAiTrainingScreen() {
             preview_organization_id: Number(previewOrgId),
             workspace_id: testWorkspace,
             pathname: aiTrainingWorkspacePath(testWorkspace),
-            message,
+            message: messageText,
             history: messages.slice(-10),
             pending_action: pendingAction ?? undefined,
             form_values: previewForm && Object.keys(formValues).length ? formValues : undefined,
@@ -303,251 +308,170 @@ export function PlatformAiTrainingScreen() {
   return (
     <CatalogPageShell
       title="AI training"
-      subtitle="Platform-wide knowledge for the ERP assistant — the same answers for every tenant organization."
+      subtitle="Platform-wide knowledge and test console for the ERP assistant — shared across every tenant."
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "AI training" }]} />
 
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      ) : null}
-      {message ? (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {message}
-        </p>
-      ) : null}
+      <PlatformAiTrainingNav />
+      <PlatformAiTrainingTabs activeTab={activeTab} onChange={setActiveTab} />
+      <PlatformAiTrainingAlerts error={error} message={message} />
 
-      <section className="mb-8 max-w-3xl theme-panel rounded-xl border p-5 shadow-sm">
-        <h2 className="text-sm font-semibold theme-heading">Platform AI credentials</h2>
-        <p className="mt-1 text-sm theme-subtext">
-          Test keys for the platform training console only. Tenant organizations keep their own AI settings — you do
-          not need to enable AI on a preview tenant to test training notes.
-        </p>
-
-        {loadingAiSettings ? (
-          <p className="mt-4 text-sm theme-subtext">Loading…</p>
-        ) : (
-          <div className="mt-4 space-y-4">
-            <label className="flex items-start gap-3 rounded-lg border px-4 py-3 theme-panel">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={aiForm.enabled}
-                onChange={(e) => setAiForm((f) => ({ ...f, enabled: e.target.checked }))}
-              />
-              <span>
-                <span className="block text-sm font-medium theme-heading">Enable platform AI training</span>
-                <span className="mt-0.5 block text-xs theme-subtext">
-                  When on, the test chat below uses these credentials — independent of any tenant&apos;s AI settings.
-                </span>
-              </span>
-            </label>
-
-            {aiForm.enabled ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <Field label="OpenAI API key">
-                    <input
-                      type="password"
-                      className={inputClassName()}
-                      value={aiForm.api_key}
-                      onChange={(e) => setAiForm((f) => ({ ...f, api_key: e.target.value }))}
-                      placeholder={aiForm.api_key_set ? aiForm.api_key_hint || "••••••••" : "sk-…"}
-                      autoComplete="off"
-                    />
-                    {aiForm.api_key_set && !aiForm.api_key ? (
-                      <p className="mt-1 text-xs theme-subtext">
-                        Leave blank to keep the current key ({aiForm.api_key_hint}).
-                      </p>
-                    ) : null}
-                  </Field>
-                </div>
-
-                <Field label="Model (optional)">
-                  <input
-                    className={inputClassName()}
-                    value={aiForm.model}
-                    onChange={(e) => setAiForm((f) => ({ ...f, model: e.target.value }))}
-                    placeholder="gpt-4o-mini"
-                  />
-                </Field>
-
-                <Field label="API base URL (optional)">
-                  <input
-                    className={inputClassName()}
-                    value={aiForm.base_url}
-                    onChange={(e) => setAiForm((f) => ({ ...f, base_url: e.target.value }))}
-                    placeholder="https://api.openai.com/v1"
-                  />
-                </Field>
-              </div>
-            ) : null}
-
-            <PrimaryButton type="button" showIcon={false} onClick={saveAiSettings} disabled={savingAiSettings}>
-              {savingAiSettings ? "Saving…" : "Save platform credentials"}
-            </PrimaryButton>
-          </div>
-        )}
-      </section>
-
-      <section className="mb-8 rounded-xl border border-indigo-100 bg-indigo-50/40 p-6 shadow-sm">
-        <div className="border-b border-indigo-100 pb-5">
-          <h2 className="text-base font-semibold text-indigo-950">Platform-wide knowledge</h2>
-          <p className="mt-2 max-w-4xl text-sm text-indigo-900/80">
-            Training notes you save here are injected into the AI context for <strong>every organization</strong> on
-            this ERP. Use them for how the product works, standard workflows, and consistent terminology — not
-            tenant-specific data like customer names or prices.
-          </p>
-          {status ? (
+      {activeTab === "knowledge" ? (
+        <section className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-6 shadow-sm">
+          <div className="border-b border-indigo-100 pb-5">
+            <h2 className="text-base font-semibold text-indigo-950">Platform-wide knowledge</h2>
+            <p className="mt-2 max-w-4xl text-sm text-indigo-900/80">
+              Use these notes for how the product works, standard workflows, and consistent terminology — not
+              tenant-specific data like customer names or prices.
+            </p>
             <p className="mt-2 text-xs text-indigo-800">
-              {status.knowledge_count ?? knowledge.length} platform note
-              {(status.knowledge_count ?? knowledge.length) === 1 ? "" : "s"} active
+              {noteCount} platform note{noteCount === 1 ? "" : "s"} active
             </p>
-          ) : null}
-        </div>
-
-        <div className="mt-6 grid gap-8 xl:grid-cols-2 xl:items-start">
-          <div className="theme-panel min-h-0 rounded-xl border bg-white p-5 shadow-sm">
-            <h3 className="text-sm font-semibold text-slate-900">
-              {form.id ? "Edit training note" : "Add training note"}
-            </h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Facts every tenant assistant should know. Optionally limit to a module workspace or related screen path.
-            </p>
-
-            <form onSubmit={saveKnowledge} className="mt-4 flex min-h-[min(70vh,640px)] flex-col gap-3">
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700">Topic</span>
-                <input
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                  value={form.topic}
-                  onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
-                  placeholder="e.g. How GRN works"
-                  required
-                />
-              </label>
-              <label className="block min-h-0 flex-1 text-sm">
-                <span className="mb-1 block font-medium text-slate-700">Content</span>
-                <textarea
-                  className="min-h-[min(42vh,360px)] w-full flex-1 rounded-lg border border-slate-300 px-3 py-2"
-                  value={form.content}
-                  onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-                  placeholder="What should every organization's assistant know?"
-                  required
-                />
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-700">Related path (optional)</span>
-                  <input
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                    value={form.path}
-                    onChange={(e) => setForm((f) => ({ ...f, path: e.target.value }))}
-                    placeholder="/purchases"
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-700">Module scope</span>
-                  <select
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                    value={form.workspace_id}
-                    onChange={(e) => setForm((f) => ({ ...f, workspace_id: e.target.value }))}
-                  >
-                    {AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => (
-                      <option key={opt.value || "all"} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <div className="flex flex-wrap gap-2 pt-1">
-                <PrimaryButton type="submit" showIcon={false} disabled={savingKnowledge}>
-                  {form.id ? "Update note" : "Save platform note"}
-                </PrimaryButton>
-                {form.id ? (
-                  <button
-                    type="button"
-                    onClick={resetKnowledgeForm}
-                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                  >
-                    Cancel edit
-                  </button>
-                ) : null}
-              </div>
-            </form>
           </div>
 
-          <div className="theme-panel flex min-h-[min(70vh,640px)] flex-col rounded-xl border bg-white p-5 shadow-sm">
-            <div className="flex shrink-0 items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-slate-900">Saved notes</h3>
-              <select
-                className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
-                value={filterWorkspace}
-                onChange={(e) => setFilterWorkspace(e.target.value)}
-              >
-                {AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => (
-                  <option key={opt.value || "all"} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+          <div className="mt-6 grid gap-8 xl:grid-cols-2 xl:items-start">
+            <div className="theme-panel min-h-0 rounded-xl border bg-white p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-slate-900">
+                {form.id ? "Edit training note" : "Add training note"}
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Facts every tenant assistant should know. Optionally limit to a module workspace or related screen path.
+              </p>
+
+              <form onSubmit={saveKnowledge} className="mt-4 flex min-h-[min(70vh,640px)] flex-col gap-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block font-medium text-slate-700">Topic</span>
+                  <input
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                    value={form.topic}
+                    onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
+                    placeholder="e.g. How GRN works"
+                    required
+                  />
+                </label>
+                <label className="block min-h-0 flex-1 text-sm">
+                  <span className="mb-1 block font-medium text-slate-700">Content</span>
+                  <textarea
+                    className="min-h-[min(42vh,360px)] w-full flex-1 rounded-lg border border-slate-300 px-3 py-2"
+                    value={form.content}
+                    onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
+                    placeholder="What should every organization's assistant know?"
+                    required
+                  />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-700">Related path (optional)</span>
+                    <input
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                      value={form.path}
+                      onChange={(e) => setForm((f) => ({ ...f, path: e.target.value }))}
+                      placeholder="/purchases"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-700">Module scope</span>
+                    <select
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                      value={form.workspace_id}
+                      onChange={(e) => setForm((f) => ({ ...f, workspace_id: e.target.value }))}
+                    >
+                      {AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => (
+                        <option key={opt.value || "all"} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <PrimaryButton type="submit" showIcon={false} disabled={savingKnowledge}>
+                    {form.id ? "Update note" : "Save platform note"}
+                  </PrimaryButton>
+                  {form.id ? (
+                    <button
+                      type="button"
+                      onClick={resetKnowledgeForm}
+                      className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Cancel edit
+                    </button>
+                  ) : null}
+                </div>
+              </form>
             </div>
 
-            {loadingKnowledge ? (
-              <p className="mt-4 text-sm text-slate-500">Loading…</p>
-            ) : knowledge.length === 0 ? (
-              <p className="mt-4 text-sm text-slate-500">No platform training notes yet.</p>
-            ) : (
-              <ul className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-                {knowledge.map((entry) => (
-                  <li key={entry.id} className="rounded-lg border border-slate-200 p-3 text-sm">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium text-slate-900">{entry.topic}</p>
-                        <p className="mt-1 whitespace-pre-wrap text-slate-600">{entry.content}</p>
-                        <p className="mt-2 text-xs text-slate-500">
-                          Platform-wide
-                          {entry.workspace_id ? ` · ${workspaceLabel(entry.workspace_id)}` : " · All modules"}
-                          {entry.path ? ` · ${entry.path}` : ""}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 gap-1">
-                        <button
-                          type="button"
-                          onClick={() => editEntry(entry)}
-                          className="rounded px-2 py-1 text-xs text-[#185FA5] hover:bg-slate-100"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteEntry(entry.id)}
-                          className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      </section>
+            <div className="theme-panel flex min-h-[min(70vh,640px)] flex-col rounded-xl border bg-white p-5 shadow-sm">
+              <div className="flex shrink-0 items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-slate-900">Saved notes</h3>
+                <select
+                  className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                  value={filterWorkspace}
+                  onChange={(e) => setFilterWorkspace(e.target.value)}
+                >
+                  {AI_TRAINING_WORKSPACE_OPTIONS.map((opt) => (
+                    <option key={opt.value || "all"} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-      <section className="flex min-h-[560px] flex-col theme-panel rounded-xl border shadow-sm">
+              {loadingKnowledge ? (
+                <p className="mt-4 text-sm text-slate-500">Loading…</p>
+              ) : knowledge.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-500">No platform training notes yet.</p>
+              ) : (
+                <ul className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                  {knowledge.map((entry) => (
+                    <li key={entry.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-slate-900">{entry.topic}</p>
+                          <p className="mt-1 whitespace-pre-wrap text-slate-600">{entry.content}</p>
+                          <p className="mt-2 text-xs text-slate-500">
+                            Platform-wide
+                            {entry.workspace_id ? ` · ${workspaceLabel(entry.workspace_id)}` : " · All modules"}
+                            {entry.path ? ` · ${entry.path}` : ""}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => editEntry(entry)}
+                            className="rounded px-2 py-1 text-xs text-[#185FA5] hover:bg-slate-100"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteEntry(entry.id)}
+                            className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="flex min-h-[560px] flex-col theme-panel rounded-xl border shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
             <h2 className="text-sm font-semibold text-slate-900">Test across modules</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Uses platform training credentials above. Pick a tenant only for sample data and permissions context —
-              actions are preview-only and never change tenant AI settings.
+              Uses platform training credentials. Pick a tenant for sample data and permissions context — actions are
+              preview-only and never change tenant AI settings.
             </p>
 
             {loadingOrgs ? (
               <p className="mt-3 text-sm text-slate-500">Loading organizations…</p>
             ) : (
-              <label className="mt-3 block text-sm">
+              <label className="mt-3 block max-w-md text-sm">
                 <span className="mb-1 block font-medium text-slate-700">Sample data organization</span>
                 <select
                   className="w-full rounded-lg border border-slate-300 px-3 py-2"
@@ -565,13 +489,19 @@ export function PlatformAiTrainingScreen() {
             )}
 
             {!status?.enabled ? (
-              <p className="mt-2 text-sm text-amber-800">
-                Enable platform AI training and add an API key above before testing chat.
+              <p className="mt-3 text-sm text-amber-800">
+                Enable platform AI training and add an API key on the{" "}
+                <Link href="/platform/ai-training/credentials" className="font-medium underline">
+                  Credentials
+                </Link>{" "}
+                page before testing chat.
               </p>
             ) : !previewOrgId ? (
-              <p className="mt-2 text-sm text-amber-800">Select a sample organization to preview answers with tenant data context.</p>
+              <p className="mt-3 text-sm text-amber-800">
+                Select a sample organization to preview answers with tenant data context.
+              </p>
             ) : (
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="mt-3 text-xs text-slate-500">
                 Chat preview uses platform credentials with {previewOrg?.org_name ?? "tenant"} sample data — tenant AI
                 settings are not used.
               </p>
@@ -694,6 +624,7 @@ export function PlatformAiTrainingScreen() {
             </div>
           </form>
         </section>
+      )}
     </CatalogPageShell>
   );
 }

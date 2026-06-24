@@ -8,6 +8,7 @@ export const NAV_HREF_ICONS = {
   // Platform
   "/platform": "platform",
   "/platform/ai-training": "star",
+  "/platform/ai-training/credentials": "shield",
   "/platform/active-users": "users",
   "/platform/database-backups": "database",
   "/platform/organizations/new": "plus",

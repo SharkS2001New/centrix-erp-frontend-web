@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useQueuedTask } from "@/lib/use-queued-task";
 import {
   FormModal,
   PrimaryButton,
@@ -50,15 +51,16 @@ export default function StockTakeSessionPage() {
   const [saving, setSaving] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const { runQueuedTask, overlayNode } = useQueuedTask("Saving stock take counts…");
 
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
-      const [sess, lineRes, prodRes, uomRes] = await Promise.all([
+      const [sess, loadedLines, prodRes, uomRes] = await Promise.all([
         apiRequest(`/stock-take-sessions/${sessionId}`),
-        apiRequest("/stock-take-lines", {
-          searchParams: { per_page: 500, "filter[session_id]": sessionId },
+        fetchAllPaginatedRowsSmart("/stock-take-lines", {
+          "filter[session_id]": sessionId,
         }),
         apiRequest("/products", { searchParams: { per_page: 500 } }),
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
@@ -70,17 +72,17 @@ export default function StockTakeSessionPage() {
           : sess?.stock_location === "store"
             ? ["store"]
             : ["shop", "store"];
-      const loadedLines = (lineRes.data ?? []).filter((line) =>
+      const filteredLines = loadedLines.filter((line) =>
         allowedLocations.includes(line.stock_location),
       );
-      setLines(loadedLines);
+      setLines(filteredLines);
       setProducts(prodRes.data ?? []);
       setUoms(uomRes.data ?? []);
 
       const prodMap = new Map((prodRes.data ?? []).map((p) => [p.product_code, p]));
       const uomMap = new Map((uomRes.data ?? []).map((u) => [u.id, u]));
       const initial = {};
-      for (const line of loadedLines) {
+      for (const line of filteredLines) {
         const product = prodMap.get(line.product_code);
         const uom = product ? uomMap.get(product.unit_id) : null;
         const levels = uomStockTakeLevels(uom);
@@ -185,17 +187,40 @@ export default function StockTakeSessionPage() {
     setSaving(true);
     setError(null);
     try {
-      for (const line of lines) {
-        const baseValue = countedBaseForLine(line);
-        if (Math.abs(baseValue - Number(line.counted_quantity)) < 0.0001) continue;
-        await apiRequest(`/stock-take-lines/${line.id}`, {
-          method: "PUT",
-          body: { counted_quantity: baseValue },
-        });
+      const payloadLines = lines
+        .map((line) => ({
+          id: line.id,
+          counted_quantity: countedBaseForLine(line),
+        }))
+        .filter(
+          (line) =>
+            Math.abs(
+              line.counted_quantity -
+                Number(lines.find((entry) => entry.id === line.id)?.counted_quantity ?? 0),
+            ) >= 0.0001,
+        );
+
+      if (!payloadLines.length) {
+        return;
       }
+
+      const saveRequest = () =>
+        apiRequest(`/inventory/stock-take/${sessionId}/save-counts`, {
+          method: "POST",
+          body: { lines: payloadLines },
+        });
+
+      if (payloadLines.length > 25) {
+        await runQueuedTask(saveRequest, {
+          message: `Saving ${payloadLines.length} stock take lines…`,
+        });
+      } else {
+        await saveRequest();
+      }
+
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save counts");
+      setError(e instanceof ApiError ? e.message : "Failed to save counts");
     } finally {
       setSaving(false);
     }
@@ -430,6 +455,7 @@ export default function StockTakeSessionPage() {
           <p className="mt-2 text-sm text-slate-500">Counts match system quantities.</p>
         )}
       </FormModal>
+      {overlayNode}
     </InventoryPageShell>
   );
 }

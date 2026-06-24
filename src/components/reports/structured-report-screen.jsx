@@ -6,7 +6,7 @@ import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { formatReportCell, sumField } from "@/lib/reports/format";
-import { fetchAllPaginatedRows } from "@/lib/reports/export";
+import { loadFullReportDataset } from "@/lib/paginated-fetch";
 import {
   ReportFilterBar,
   ReportKpiGrid,
@@ -56,7 +56,10 @@ function StandardReportScreen({ definition }) {
   }, []);
 
   useEffect(() => {
-    if (user?.branch_id && !branchId) setBranchId(String(user.branch_id));
+    if (!user?.branch_id) return;
+    const id = String(user.branch_id);
+    if (!branchId) setBranchId(id);
+    setApplied((prev) => (prev.branchId ? prev : { ...prev, branchId: id }));
   }, [user?.branch_id, branchId]);
 
   const loadReport = useCallback(async () => {
@@ -119,7 +122,12 @@ function StandardReportScreen({ definition }) {
     const kpiRows = includeLegacy ? [...rows, ...legacyRows] : rows;
     return definition.kpis.map((kpi) => {
       const result = kpi.compute(kpiRows);
-      return { id: kpi.id, label: kpi.label, value: result.value, hint: result.hint };
+      return {
+        id: kpi.id,
+        label: kpi.label,
+        value: result.value ?? "—",
+        hint: result.hint,
+      };
     });
   }, [rows, legacyRows, includeLegacy, definition.kpis]);
 
@@ -156,7 +164,7 @@ function StandardReportScreen({ definition }) {
     return branches.find((b) => String(b.id) === String(branchIdValue))?.branch_name ?? "";
   }
 
-  const fetchAllReportRows = useCallback(async () => {
+  const exportSearchParams = useMemo(() => {
     const searchParams = { per_page: 200 };
     if (definition.dateColumn) {
       searchParams.date_column = definition.dateColumn;
@@ -164,34 +172,20 @@ function StandardReportScreen({ definition }) {
       if (applied.toDate) searchParams.to_date = applied.toDate;
     }
     if (applied.branchId) searchParams.branch_id = applied.branchId;
+    return searchParams;
+  }, [applied, definition.dateColumn]);
 
-    const centrixRows = await fetchAllPaginatedRows(definition.apiPath, searchParams);
+  const fetchAllReportRows = useCallback(async () => {
+    const centrixRows = await loadFullReportDataset(definition.apiPath, exportSearchParams, {
+      message: `Loading ${definition.title}…`,
+    });
 
-    let legacyAll = [];
-    if (applied.extraFilters?.include_legacy_archive && legacyArchiveMeta?.available) {
-      let legacyPageNum = 1;
-      let legacyLastPage = 1;
-      do {
-        const res = await apiRequest(definition.apiPath, {
-          searchParams: {
-            ...searchParams,
-            include_legacy_archive: 1,
-            legacy_page: legacyPageNum,
-            page: 1,
-          },
-        });
-        legacyAll.push(...(res.legacy_archive?.data ?? []));
-        legacyLastPage = res.legacy_archive?.meta?.last_page ?? 1;
-        legacyPageNum += 1;
-      } while (legacyPageNum <= legacyLastPage);
-    }
-
-    let combined = [...centrixRows, ...legacyAll];
+    let combined = [...centrixRows];
     if (definition.filterRows) {
       combined = definition.filterRows(combined, applied.extraFilters);
     }
     return combined;
-  }, [applied, definition, legacyArchiveMeta?.available]);
+  }, [applied.extraFilters, definition, exportSearchParams]);
 
   return (
     <ReportPageShell
@@ -206,7 +200,16 @@ function StandardReportScreen({ definition }) {
                 ...col,
                 accessor: (row) => formatReportCell(col.key, col.accessor(row)),
               })),
-              getRows: fetchAllReportRows,
+              ...(definition.filterRows
+                ? { getRows: fetchAllReportRows }
+                : {
+                    exportSource: {
+                      path: definition.apiPath,
+                      searchParams: exportSearchParams,
+                      legacyMerge:
+                        applied.extraFilters?.include_legacy_archive && legacyArchiveMeta?.available,
+                    },
+                  }),
               meta: {
                 fromDate: applied.fromDate,
                 toDate: applied.toDate,

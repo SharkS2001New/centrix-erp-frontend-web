@@ -127,7 +127,13 @@ export const REPORT_DEFINITIONS = {
         id: "low",
         label: "Low Stock Items",
         compute: (rows) => ({
-          value: String(rows.filter((r) => r.product_alert === "REORDER" && Number(r.total_base_units) > 0).length),
+          value: String(
+            rows.filter((r) => {
+              const qty = Number(r.total_base_units) || 0;
+              if (qty <= 0) return true;
+              return r.product_alert === "REORDER";
+            }).length,
+          ),
           tone: "warning",
         }),
       },
@@ -142,8 +148,72 @@ export const REPORT_DEFINITIONS = {
     ],
     filterRows: (rows, filters) => {
       if (!filters.lowStockOnly) return rows;
-      return rows.filter((r) => r.product_alert === "REORDER" || Number(r.total_base_units) <= 0);
+      return rows.filter((r) => {
+        const qty = Number(r.total_base_units) || 0;
+        return qty <= 0 || r.product_alert === "REORDER";
+      });
     },
+  },
+
+  "low-stock": {
+    title: "Low Stock / Reorder Report",
+    subtitle: "Products at or below reorder point, including out of stock",
+    section: "Inventory",
+    apiPath: "/reports/low-stock",
+    dateColumn: null,
+    showDateRange: false,
+    columns: [
+      { key: "product_code", label: "Product Code", accessor: (r) => r.product_code },
+      { key: "product_name", label: "Product Name", accessor: (r) => r.product_name },
+      {
+        key: "total_base_units",
+        label: "On Hand Qty",
+        accessor: (r) => r.total_base_units ?? r.total_quantity,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "reorder_point",
+        label: "Reorder Point",
+        accessor: (r) => r.reorder_point,
+        align: "right",
+      },
+      {
+        key: "status",
+        label: "Status",
+        accessor: (r) => stockStatus(r).label,
+        badge: (r) => stockStatus(r),
+      },
+    ],
+    kpis: [
+      {
+        id: "items",
+        label: "Alert items",
+        compute: (rows) => ({ value: String(rows.length), tone: "warning" }),
+      },
+      {
+        id: "out",
+        label: "Out of stock",
+        compute: (rows) => ({
+          value: String(rows.filter((r) => Number(r.total_base_units ?? r.total_quantity) <= 0).length),
+          tone: "danger",
+        }),
+      },
+      {
+        id: "low",
+        label: "Below reorder",
+        compute: (rows) => ({
+          value: String(
+            rows.filter((r) => {
+              const qty = Number(r.total_base_units ?? r.total_quantity) || 0;
+              return qty > 0 && Number(r.reorder_point) > 0 && qty <= Number(r.reorder_point);
+            }).length,
+          ),
+          tone: "warning",
+        }),
+      },
+    ],
+    footerTotals: ["total_base_units"],
   },
 
   "profit-loss": {
@@ -340,7 +410,9 @@ function sum(rows, field) {
 }
 
 function kes(value) {
-  return `KES ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return `KES ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function formatQty(value) {

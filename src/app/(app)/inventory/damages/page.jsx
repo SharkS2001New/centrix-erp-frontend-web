@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { useAuth } from "@/contexts/auth-context";
 import {
   Field,
@@ -46,21 +47,9 @@ export default function DamagesPage() {
     setError(null);
     setLoading(true);
     try {
-      const all = [];
-      let pageNum = 1;
-      let lastPage = 1;
-      do {
-        const res = await apiRequest("/damages", {
-          searchParams: {
-            per_page: 200,
-            page: pageNum,
-            "filter[branch_id]": branchId,
-          },
-        });
-        all.push(...(res.data ?? []));
-        lastPage = res.last_page ?? 1;
-        pageNum += 1;
-      } while (pageNum <= lastPage);
+      const all = await fetchAllPaginatedRowsSmart("/damages", {
+        "filter[branch_id]": branchId,
+      });
       setRows(all);
       const [prodRes, uomRes] = await Promise.all([
         apiRequest("/products", { searchParams: { per_page: 500 } }),

@@ -70,28 +70,6 @@ const LEGACY_EXPORT_COLUMNS = [
   },
 ];
 
-async function fetchAllLegacySales(applied) {
-  const all = [];
-  let pageNum = 1;
-  let lastPage = 1;
-
-  do {
-    const list = await fetchLegacyArchiveSales({
-      channel: applied.q ? "all" : applied.channel,
-      page: pageNum,
-      per_page: 200,
-      from_date: applied.fromDate,
-      to_date: applied.toDate,
-      ...(applied.q ? { q: applied.q } : {}),
-    });
-    all.push(...(list.data ?? []));
-    lastPage = list.meta?.last_page ?? 1;
-    pageNum += 1;
-  } while (pageNum <= lastPage);
-
-  return all;
-}
-
 function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
   const [materializing, setMaterializing] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -393,7 +371,15 @@ export function LegacyArchiveReportScreen() {
             title="Legacy sales archive"
             subtitle="Historical LightStores sales"
             columns={LEGACY_EXPORT_COLUMNS}
-            getRows={() => fetchAllLegacySales(applied)}
+            exportSource={{
+              source: "legacy_archive_sales",
+              searchParams: {
+                channel: applied.q ? "all" : applied.channel,
+                from_date: applied.fromDate,
+                to_date: applied.toDate,
+                ...(applied.q ? { q: applied.q } : {}),
+              },
+            }}
             meta={{
               fromDate: applied.fromDate,
               toDate: applied.toDate,

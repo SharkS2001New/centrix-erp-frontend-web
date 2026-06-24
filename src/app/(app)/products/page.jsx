@@ -35,6 +35,7 @@ import { P } from "@/lib/permission-codes";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
 import { productScopeLabel, isMultiBranchCatalog, defaultProductBranchId } from "@/lib/catalog-scope";
 import { useAuth } from "@/contexts/auth-context";
+import { loadReferenceDataPhased, fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 
 const PAGE_SIZE = 10;
 const COLUMN_STORAGE_KEY = "centrix-erp-products-visible-columns";
@@ -309,20 +310,29 @@ export default function ProductsPage() {
   const loadReferenceData = useCallback(async () => {
     setReferenceWarning(null);
     try {
-      const [userRes, catRes, subRes, vatRes, uomRes, supRes, retailRes, settingsRes, branchRes] =
-        await Promise.all([
-          apiRequest("/users", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-          apiRequest("/categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-          apiRequest("/sub-categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-          apiRequest("/vats", { searchParams: { per_page: 50 } }).catch(() => ({ data: [] })),
-          apiRequest("/uoms", { searchParams: { per_page: 100 } }).catch(() => ({ data: [] })),
-          apiRequest("/suppliers", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-          apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }).catch(() => ({
-            data: [],
-          })),
-          apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
-          apiRequest("/branches", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-        ]);
+      const { criticalResults, deferredResults } = await loadReferenceDataPhased({
+        critical: [
+          () => apiRequest("/categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+          () => apiRequest("/sub-categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+          () => apiRequest("/branches", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+        ],
+        deferred: [
+          () => apiRequest("/users", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+          () => apiRequest("/vats", { searchParams: { per_page: 50 } }).catch(() => ({ data: [] })),
+          () => apiRequest("/uoms", { searchParams: { per_page: 100 } }).catch(() => ({ data: [] })),
+          () => apiRequest("/suppliers", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+          () =>
+            apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }).catch(() => ({
+              data: [],
+            })),
+          () => apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
+        ],
+        concurrency: 3,
+      });
+
+      const [catRes, subRes, branchRes] = criticalResults;
+      const [userRes, vatRes, uomRes, supRes, retailRes, settingsRes] = deferredResults;
+
       setUsers(userRes.data ?? []);
       setCategories(catRes.data ?? []);
       setSubCategories(subRes.data ?? []);
@@ -493,8 +503,8 @@ export default function ProductsPage() {
     ],
   );
 
-  const loadProductsForExport = useCallback(async () => {
-    const baseParams = buildPageParams({
+  const buildExportSearchParams = useCallback(() => {
+    return buildPageParams({
       page: 1,
       perPage: 200,
       q: debouncedSearch,
@@ -510,54 +520,14 @@ export default function ProductsPage() {
         branch_id: effectiveStockBranchId ?? undefined,
       },
     });
-
-    const all = [];
-    let pageNum = 1;
-    let lastPage = 1;
-    do {
-      const prodRes = await apiRequest("/products", {
-        searchParams: { ...baseParams, page: pageNum, per_page: 200 },
-      });
-      const parsed = parsePaginator(prodRes);
-      all.push(...parsed.items);
-      lastPage = parsed.totalPages;
-      pageNum += 1;
-    } while (pageNum <= lastPage);
-
-    return all.map((p) => {
-      const row = enrichProduct(
-        p,
-        subById,
-        catById,
-        vatById,
-        uomById,
-        supplierById,
-        retailByCode,
-        globalReorderThreshold,
-      );
-      const audit = resolveProductAudit(p, userById);
-      return {
-        ...row,
-        audit_name: audit.name,
-        audit_date: audit.date,
-      };
-    });
   }, [
-    debouncedSearch,
-    categoryFilter,
-    subCategoryFilter,
-    stockFilter,
-    pricingFilter,
     activeFilter,
+    categoryFilter,
+    debouncedSearch,
     effectiveStockBranchId,
-    subById,
-    catById,
-    vatById,
-    uomById,
-    supplierById,
-    retailByCode,
-    globalReorderThreshold,
-    userById,
+    pricingFilter,
+    stockFilter,
+    subCategoryFilter,
   ]);
 
   const stats = useMemo(() => {
@@ -707,7 +677,7 @@ export default function ProductsPage() {
         <div className="flex flex-wrap items-center gap-2">
           <ProductImportExport
             totalCount={totalProducts}
-            loadProductsForExport={loadProductsForExport}
+            exportSearchParams={buildExportSearchParams}
             onImported={reloadAll}
           />
           <PermissionGate permission={P.catalogue.products.create}>

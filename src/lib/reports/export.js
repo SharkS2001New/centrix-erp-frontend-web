@@ -1,5 +1,5 @@
 import { formatShortDate } from "@/components/catalog/catalog-shared";
-import { apiRequest } from "@/lib/api";
+import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { openPrintWindow } from "@/lib/open-print-window";
 
 function escapeHtml(value) {
@@ -196,21 +196,8 @@ export function downloadReportCsv(filename, meta, columns, rows) {
 }
 
 /** Fetch all pages from a paginated report API (max 200 per page). */
-export async function fetchAllPaginatedRows(apiPath, baseSearchParams = {}) {
-  const all = [];
-  let pageNum = 1;
-  let lastPage = 1;
-
-  do {
-    const res = await apiRequest(apiPath, {
-      searchParams: { ...baseSearchParams, page: pageNum, per_page: 200 },
-    });
-    all.push(...(res.data ?? []));
-    lastPage = res.last_page ?? res.meta?.last_page ?? 1;
-    pageNum += 1;
-  } while (pageNum <= lastPage);
-
-  return all;
+export async function fetchAllPaginatedRows(apiPath, baseSearchParams = {}, options = {}) {
+  return fetchAllPaginatedRowsSmart(apiPath, baseSearchParams, options);
 }
 
 export function slugifyReportFilename(value) {

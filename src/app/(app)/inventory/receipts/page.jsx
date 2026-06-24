@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
+import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PaginationBar, PrimaryLink, inputClassName } from "@/components/catalog/catalog-shared";
 import { P } from "@/lib/permission-codes";
@@ -34,21 +35,9 @@ export default function StockReceiptsPage() {
     setError(null);
     setLoading(true);
     try {
-      const all = [];
-      let pageNum = 1;
-      let lastPage = 1;
-      do {
-        const res = await apiRequest("/stock-receipts", {
-          searchParams: {
-            per_page: 200,
-            page: pageNum,
-            "filter[branch_id]": branchId,
-          },
-        });
-        all.push(...(res.data ?? []));
-        lastPage = res.last_page ?? 1;
-        pageNum += 1;
-      } while (pageNum <= lastPage);
+      const all = await fetchAllPaginatedRowsSmart("/stock-receipts", {
+        "filter[branch_id]": branchId,
+      });
       setRows(all);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load stock receipts");

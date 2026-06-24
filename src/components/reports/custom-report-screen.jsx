@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { loadFullReportDataset } from "@/lib/paginated-fetch";
 import { useAuth } from "@/contexts/auth-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { defaultWorkspaceId } from "@/lib/workspaces";
@@ -60,8 +61,10 @@ export function CustomReportScreen({ templateId }) {
         if (applied.toDate) searchParams.to_date = applied.toDate;
       }
       if (applied.branchId) searchParams.branch_id = applied.branchId;
-      const res = await apiRequest(definition.apiPath, { searchParams });
-      setAllRows(res.data ?? []);
+      const rows = await loadFullReportDataset(definition.apiPath, searchParams, {
+        message: `Loading ${definition.title}…`,
+      });
+      setAllRows(rows);
       setPage(1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
@@ -130,6 +133,16 @@ export function CustomReportScreen({ templateId }) {
   const branchLabel = branches.find((b) => String(b.id) === applied.branchId)?.branch_name
     ?? (applied.branchId ? "" : "All branches");
 
+  const exportSearchParams = useMemo(() => {
+    const searchParams = { workspace_id: workspaceId };
+    if (definition?.showDateRange) {
+      if (applied.fromDate) searchParams.from_date = applied.fromDate;
+      if (applied.toDate) searchParams.to_date = applied.toDate;
+    }
+    if (applied.branchId) searchParams.branch_id = applied.branchId;
+    return searchParams;
+  }, [applied, definition?.showDateRange, workspaceId]);
+
   if (!definition && !error) {
     return <div className="p-6 text-sm text-slate-500">Loading report…</div>;
   }
@@ -149,7 +162,10 @@ export function CustomReportScreen({ templateId }) {
           ...col,
           accessor: (row) => formatReportCell(col.key, col.accessor(row)),
         })),
-        getRows: async () => allRows,
+        exportSource: {
+          path: definition.apiPath,
+          searchParams: exportSearchParams,
+        },
         meta: {
           fromDate: applied.fromDate,
           toDate: applied.toDate,

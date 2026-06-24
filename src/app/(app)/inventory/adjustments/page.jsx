@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
+import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { useAuth } from "@/contexts/auth-context";
 import {
   Field,
@@ -42,23 +43,11 @@ export default function StockAdjustmentsPage() {
     setError(null);
     setLoading(true);
     try {
-      const all = [];
-      let pageNum = 1;
-      let lastPage = 1;
-      do {
-        const res = await apiRequest("/inventory-transactions", {
-          searchParams: {
-            per_page: 200,
-            page: pageNum,
-            "filter[branch_id]": branchId,
-            "filter[transaction_type]": "ADJUSTMENT",
-            "filter[reference_type]": "adjustment",
-          },
-        });
-        all.push(...(res.data ?? []));
-        lastPage = res.last_page ?? 1;
-        pageNum += 1;
-      } while (pageNum <= lastPage);
+      const all = await fetchAllPaginatedRowsSmart("/inventory-transactions", {
+        "filter[branch_id]": branchId,
+        "filter[transaction_type]": "ADJUSTMENT",
+        "filter[reference_type]": "adjustment",
+      });
       setRows(all);
 
       const [prodRes, uomRes] = await Promise.all([

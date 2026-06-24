@@ -14,7 +14,6 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { accountOptionLabel, formatAccountingAmount } from "@/lib/accounting-shared";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
-import { fetchAllPaginatedRows } from "@/lib/reports/export";
 
 function formatCell(key, value) {
   if (value == null || value === "") return "—";
@@ -148,14 +147,14 @@ export function AccountingReportScreen({
     }));
   }, [columns]);
 
-  const fetchAllRowsForExport = useCallback(async () => {
+  const exportSearchParams = useMemo(() => {
     const searchParams = {};
     if (fromDate) searchParams.from_date = fromDate;
     if (toDate) searchParams.to_date = toDate;
     if (branchId) searchParams.branch_id = branchId;
     if (accountId) searchParams.account_id = accountId;
-    return fetchAllPaginatedRows(apiPath, searchParams);
-  }, [accountId, apiPath, branchId, fromDate, toDate]);
+    return searchParams;
+  }, [accountId, branchId, fromDate, toDate]);
 
   const totalPages = meta?.last_page ?? 1;
   const total = meta?.total ?? rows.length;
@@ -171,7 +170,10 @@ export function AccountingReportScreen({
             title={title}
             subtitle={subtitle ?? ""}
             columns={exportColumns}
-            getRows={fetchAllRowsForExport}
+            exportSource={{
+              path: apiPath,
+              searchParams: exportSearchParams,
+            }}
             meta={{
               fromDate,
               toDate,

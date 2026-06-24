@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useQueuedTask } from "@/lib/use-queued-task";
 import { useAuth } from "@/contexts/auth-context";
 import {
   Field,
@@ -19,43 +20,6 @@ import {
   InventoryTableShell,
   SESSION_STATUS_LABELS,
 } from "@/components/inventory/inventory-shared";
-
-async function fetchAllPages(path, searchParams = {}) {
-  const all = [];
-  let pageNum = 1;
-  let lastPage = 1;
-  do {
-    const res = await apiRequest(path, {
-      searchParams: { ...searchParams, page: pageNum, per_page: 200 },
-    });
-    all.push(...(res.data ?? []));
-    lastPage = res.last_page ?? 1;
-    pageNum += 1;
-  } while (pageNum <= lastPage);
-  return all;
-}
-
-async function createStockTakeLines(sessionId, lineBodies) {
-  const batchSize = 20;
-  for (let i = 0; i < lineBodies.length; i += batchSize) {
-    const batch = lineBodies.slice(i, i + batchSize);
-    await Promise.all(
-      batch.map((body) =>
-        apiRequest("/stock-take-lines", {
-          method: "POST",
-          body: { session_id: sessionId, ...body },
-        }),
-      ),
-    );
-  }
-}
-
-/** Branch-scoped on-hand quantity from current_stock (ledger cache). */
-function systemStockQty(stockRow, location) {
-  const stockField = location === "shop" ? "shop_quantity" : "store_quantity";
-  if (!stockRow) return 0;
-  return Number(stockRow[stockField] ?? 0);
-}
 
 export default function StockTakeListPage() {
   const router = useRouter();
@@ -74,6 +38,10 @@ export default function StockTakeListPage() {
     session_code: "",
     stock_location: "both",
   });
+
+  const { runQueuedTask, overlayNode } = useQueuedTask(
+    "Please wait while stock take lines are prepared…",
+  );
 
   const load = useCallback(async () => {
     setError(null);
@@ -111,43 +79,13 @@ export default function StockTakeListPage() {
         },
       });
 
-      const [products, stockRows] = await Promise.all([
-        fetchAllPages("/products", { branch_id: branchId }),
-        fetchAllPages("/current-stock", { "filter[branch_id]": branchId }),
-      ]);
-      const stockByCode = new Map(stockRows.map((row) => [row.product_code, row]));
-      const loc = form.stock_location;
-      const lineBodies = [];
-
-      for (const product of products) {
-        const stock = stockByCode.get(product.product_code);
-        const shopQty = systemStockQty(stock, "shop");
-        const storeQty = systemStockQty(stock, "store");
-
-        const lineDefs =
-          loc === "both"
-            ? [
-                { location: "shop", qty: shopQty },
-                { location: "store", qty: storeQty },
-              ]
-            : [
-                {
-                  location: loc,
-                  qty: Number(loc === "shop" ? shopQty : storeQty),
-                },
-              ];
-
-        for (const line of lineDefs) {
-          lineBodies.push({
-            product_code: product.product_code,
-            stock_location: line.location,
-            system_quantity: line.qty,
-            counted_quantity: line.qty,
-          });
-        }
-      }
-
-      await createStockTakeLines(session.id, lineBodies);
+      await runQueuedTask(
+        () =>
+          apiRequest(`/inventory/stock-take/${session.id}/initialize`, {
+            method: "POST",
+          }),
+        { message: "Please wait while stock take lines are prepared…" },
+      );
 
       setModalOpen(false);
       setForm({ session_code: "", stock_location: "both" });
@@ -336,6 +274,7 @@ export default function StockTakeListPage() {
           />
         </Field>
       </FormModal>
+      {overlayNode}
     </InventoryPageShell>
   );
 }

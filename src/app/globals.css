@@ -1191,6 +1191,28 @@ html[data-theme="dark"] .pos-workspace-standalone {
   box-shadow: none;
 }
 
+.pos-order-edit-input {
+  border-radius: 0.5rem;
+  border: 1px solid var(--pos-btn-border, var(--theme-border-strong, var(--theme-border)));
+  background-color: var(--pos-btn-fill, var(--theme-surface));
+  color: var(--theme-text);
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+  font-weight: 600;
+  min-height: 2.25rem;
+}
+
+.pos-order-edit-input:focus {
+  outline: none;
+  border-color: var(--theme-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-primary) 20%, transparent);
+}
+
+.pos-order-edit-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .pos-header-order-badge {
   border-radius: 0.375rem;
   border: 1px solid var(--theme-border-strong, var(--theme-border));

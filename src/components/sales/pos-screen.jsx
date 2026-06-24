@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
@@ -518,6 +519,9 @@ export function PosScreen({ standalone = false }) {
   const [paymentError, setPaymentError] = useState(null);
   const [completedSale, setCompletedSale] = useState(null);
   const [orderEditError, setOrderEditError] = useState(null);
+  const [sessionPosOrders, setSessionPosOrders] = useState([]);
+  const [editOrderNo, setEditOrderNo] = useState("");
+  const [editBrowseIndex, setEditBrowseIndex] = useState(0);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [priceCheckerOpen, setPriceCheckerOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -541,6 +545,46 @@ export function PosScreen({ standalone = false }) {
   const showCartToolbar =
     !standalone &&
     (heldOrdersCount > 0 || (requireTillFloat && activeSession));
+
+  const canGoPreviousOrder = sessionPosOrders.length > 0 && editBrowseIndex < sessionPosOrders.length - 1;
+  const canGoNextOrder = sessionPosOrders.length > 0 && editBrowseIndex > 0;
+  const hasSessionOrders = sessionPosOrders.length > 0;
+
+  function rememberCompletedPosOrder(sale) {
+    if (!sale?.id || !enablePosOrderEdit) return;
+    const status = String(sale.status ?? "").toLowerCase();
+    if (!["completed", "paid", "delivered"].includes(status)) return;
+    const entry = { id: sale.id, order_num: sale.order_num };
+    setSessionPosOrders((prev) => {
+      const next = [entry, ...prev.filter((row) => row.id !== entry.id)];
+      return next.slice(0, 40);
+    });
+    setEditBrowseIndex(0);
+    setEditOrderNo(String(sale.order_num ?? ""));
+  }
+
+  useEffect(() => {
+    if (!enablePosOrderEdit || !standalone) return;
+    apiRequest("/sales", {
+      searchParams: {
+        per_page: 40,
+        channel: "pos",
+        status: "completed",
+        sort: "-order_num",
+        with_items: 0,
+      },
+    })
+      .then((res) => {
+        const orders = (res.data ?? [])
+          .filter((row) => row?.id && row?.order_num != null)
+          .map((row) => ({ id: row.id, order_num: row.order_num }));
+        if (!orders.length) return;
+        setSessionPosOrders(orders);
+        setEditBrowseIndex(0);
+        setEditOrderNo(String(orders[0].order_num));
+      })
+      .catch(() => {});
+  }, [enablePosOrderEdit, standalone]);
 
   const cartSummary = useMemo(() => {
     const rows = cart?.lines ?? [];
@@ -648,12 +692,13 @@ export function PosScreen({ standalone = false }) {
     ];
     if (!missing.length) return;
     let cancelled = false;
-    Promise.all(
-      missing.map((code) =>
+    mapWithConcurrency(
+      missing,
+      (code) =>
         apiRequest(`/products/${encodeURIComponent(code)}`, {
           searchParams: productBranchParams,
         }).catch(() => null),
-      ),
+      4,
     ).then((rows) => {
       if (cancelled) return;
       setProductByCode((prev) => {
@@ -1811,12 +1856,13 @@ export function PosScreen({ standalone = false }) {
       setProductByCode({});
       return;
     }
-    const rows = await Promise.all(
-      codes.map((code) =>
+    const rows = await mapWithConcurrency(
+      codes,
+      (code) =>
         apiRequest(`/products/${encodeURIComponent(code)}`, {
           searchParams: productBranchParams,
         }).catch(() => null),
-      ),
+      4,
     );
     const next = {};
     for (const row of rows) {
@@ -1880,6 +1926,7 @@ export function PosScreen({ standalone = false }) {
         },
       });
       setCompletedSale(sale);
+      rememberCompletedPosOrder(sale);
       setCart(null);
       setSelectedLineId(null);
       try {
@@ -2119,6 +2166,17 @@ export function PosScreen({ standalone = false }) {
       setEditingLineRef(null);
       setPaymentOpen(false);
       setCompletedSale(null);
+      const orderNum = restoredCart?.held_order_num ?? restoredCart?.next_order_num;
+      if (orderNum != null) {
+        setEditOrderNo(String(orderNum));
+        const saleIdNum = Number(saleId);
+        setSessionPosOrders((prev) => {
+          const entry = { id: saleIdNum, order_num: orderNum };
+          const next = [entry, ...prev.filter((row) => row.id !== entry.id)];
+          return next.slice(0, 40);
+        });
+        setEditBrowseIndex(0);
+      }
       const label = restoredCart?.held_order_num ?? saleId;
       setStatusMessage(`Order #${label} loaded for editing — update lines and complete checkout.`);
     } catch (e) {
@@ -2168,9 +2226,35 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
-  function handleEditLastOrder() {
-    if (!completedSale?.id) return;
-    void restoreOrderForEdit(completedSale.id);
+  async function handleEditSelectedOrder() {
+    const trimmed = editOrderNo.trim();
+    if (!trimmed) return;
+    const fromSession = sessionPosOrders.find((row) => String(row.order_num) === trimmed);
+    if (fromSession?.id) {
+      await restoreOrderForEdit(fromSession.id);
+      return;
+    }
+    await handleEditByOrderNumber(trimmed);
+  }
+
+  function goPreviousOrder() {
+    if (!canGoPreviousOrder) return;
+    const nextIndex = editBrowseIndex + 1;
+    const row = sessionPosOrders[nextIndex];
+    if (!row) return;
+    setEditBrowseIndex(nextIndex);
+    setEditOrderNo(String(row.order_num));
+    setOrderEditError(null);
+  }
+
+  function goNextOrder() {
+    if (!canGoNextOrder) return;
+    const nextIndex = editBrowseIndex - 1;
+    const row = sessionPosOrders[nextIndex];
+    if (!row) return;
+    setEditBrowseIndex(nextIndex);
+    setEditOrderNo(String(row.order_num));
+    setOrderEditError(null);
   }
 
   function openCompletePayment() {
@@ -2318,18 +2402,6 @@ export function PosScreen({ standalone = false }) {
               <div className="shrink-0">
                 <CentrixLogoHeader markSize={28} title={PRODUCT_NAME} />
               </div>
-              {enablePosOrderEdit ? (
-                <div className="min-w-0 flex-1 lg:max-w-md">
-                  <PosOrderEditBar
-                    enabled
-                    busy={busy}
-                    lastOrderNum={completedSale?.order_num}
-                    onEditLast={handleEditLastOrder}
-                    onEditByOrderNumber={handleEditByOrderNumber}
-                    error={orderEditError}
-                  />
-                </div>
-              ) : null}
               <div className="flex min-w-0 flex-1 items-center justify-center gap-2 overflow-x-auto px-1">
                 <button
                   type="button"
@@ -2378,6 +2450,22 @@ export function PosScreen({ standalone = false }) {
                 >
                   Reprint last receipt
                 </button>
+                {enablePosOrderEdit ? (
+                  <PosOrderEditBar
+                    enabled
+                    busy={busy}
+                    orderNo={editOrderNo}
+                    onOrderNoChange={setEditOrderNo}
+                    onSubmit={() => void handleEditSelectedOrder()}
+                    onPrevious={goPreviousOrder}
+                    onNext={goNextOrder}
+                    canGoPrevious={canGoPreviousOrder}
+                    canGoNext={canGoNextOrder}
+                    hasOrders={hasSessionOrders}
+                    buttonClassName={posHeaderBtnClassName}
+                    error={orderEditError}
+                  />
+                ) : null}
                 {showStandaloneTillActions && requireTillFloat ? (
                   <>
                     <button

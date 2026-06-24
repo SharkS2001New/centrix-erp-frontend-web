@@ -5,9 +5,14 @@ import { createPortal } from "react-dom";
 import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
-import { openPrintWindow } from "@/lib/open-print-window";
-import { downloadExcelFromObjects, downloadExcelFromRows, readExcelFile } from "@/lib/spreadsheet";
-import { baseToDisplayQty } from "@/lib/stock-uom";
+import { useBackgroundTasks } from "@/contexts/background-task-context";
+import {
+  PRODUCT_CATALOG_EXPORT_COLUMNS,
+  queueReportExport,
+  serializeExportMeta,
+} from "@/lib/report-export-api";
+import { downloadExcelFromRows, readExcelFile } from "@/lib/spreadsheet";
+import { reportPrintedAt } from "@/lib/reports/export";
 
 const SAMPLE_HEADERS = [
   "product_code",
@@ -103,93 +108,53 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-function productExportRows(products) {
-  return products.map((p) => ({
-    "Product code": p.product_code,
-    "Product name": p.product_name,
-    Category: p.category_name ?? "",
-    Subcategory: p.subcategory_name ?? "",
-    "Unit price": p.unit_price ?? "",
-    "Cost price": p.last_cost_price ?? "",
-    Discount: p.discount_type === "fixed" ? p.discount_value : p.discount_percentage,
-    "Shop stock": baseToDisplayQty(p.shop_qty, p.uom_factor),
-    "Store stock": baseToDisplayQty(p.store_qty, p.uom_factor),
-    Unit: p.uom_label ?? "",
-    Supplier: p.supplier_name ?? "",
-    VAT: p.vat_treatment ?? "",
-    Pricing: p.pricing ?? "",
-    Active: p.is_active ? "Yes" : "No",
-  }));
-}
-
-function ExportModal({ open, onClose, totalCount, loadProductsForExport }) {
+function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
+  const { runBackgroundTask } = useBackgroundTasks();
   const [exporting, setExporting] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   if (!open) return null;
 
-  async function resolveProducts() {
-    setLoading(true);
+  async function runCatalogExport(format) {
+    setExporting(true);
     setError(null);
     try {
-      return await loadProductsForExport();
-    } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to load products";
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function exportExcel() {
-    setExporting(true);
-    try {
-      const products = await resolveProducts();
-      const rows = productExportRows(products);
-      await downloadExcelFromObjects(
-        `products-${new Date().toISOString().slice(0, 10)}.xlsx`,
-        "Products",
-        rows,
+      const stamp = new Date().toISOString().slice(0, 10);
+      const exportFormat = format === "pdf" ? "pdf" : "xlsx";
+      await runBackgroundTask(
+        () =>
+          queueReportExport({
+            format: exportFormat,
+            source: "product_catalog",
+            filename: `products-${stamp}`,
+            columns: PRODUCT_CATALOG_EXPORT_COLUMNS,
+            meta: serializeExportMeta({
+              title: "Products",
+              subtitle: "Product catalogue export",
+              printedAt: reportPrintedAt(),
+            }),
+            search_params: exportSearchParams?.() ?? {},
+          }),
+        {
+          label: "Exporting products",
+          message: "Started fetching…",
+          downloadOnComplete: true,
+          downloadFilename: `products-${stamp}.${exportFormat === "pdf" ? "pdf" : "xlsx"}`,
+        },
       );
       onClose();
-    } catch {
-      /* error state set in resolveProducts */
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Export failed";
+      if (!message.includes("cancelled")) {
+        setError(message);
+      }
     } finally {
       setExporting(false);
     }
   }
 
-  async function exportPdf() {
-    setExporting(true);
-    try {
-      const products = await resolveProducts();
-      const rows = productExportRows(products);
-      const headers = rows.length ? Object.keys(rows[0]) : [];
-      const html = `<!DOCTYPE html><html><head><title>Products</title>
-      <style>
-        body { font-family: system-ui, sans-serif; padding: 24px; color: #111; }
-        h1 { font-size: 18px; margin-bottom: 16px; }
-        table { width: 100%; border-collapse: collapse; font-size: 11px; }
-        th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
-        th { background: #f8fafc; }
-      </style></head><body>
-      <h1>Products (${rows.length})</h1>
-      <table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
-      <tbody>${rows.map((row) => `<tr>${headers.map((h) => `<td>${row[h] ?? ""}</td>`).join("")}</tr>`).join("")}</tbody>
-      </table></body></html>`;
-      openPrintWindow(html, "width=900,height=720");
-      onClose();
-    } catch {
-      /* error state set in resolveProducts */
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  const busy = exporting || loading;
+  const busy = exporting;
   const countLabel = totalCount ?? 0;
 
   return createPortal(
@@ -207,7 +172,7 @@ function ExportModal({ open, onClose, totalCount, loadProductsForExport }) {
           <button
             type="button"
             disabled={busy || countLabel === 0}
-            onClick={exportExcel}
+            onClick={() => void runCatalogExport("excel")}
             className="rounded-lg bg-[#185FA5] py-2.5 text-sm font-medium text-white hover:bg-[#144f8a] disabled:opacity-50"
           >
             {busy ? "Preparing export…" : "Excel spreadsheet (.xlsx)"}
@@ -215,7 +180,7 @@ function ExportModal({ open, onClose, totalCount, loadProductsForExport }) {
           <button
             type="button"
             disabled={busy || countLabel === 0}
-            onClick={exportPdf}
+            onClick={() => void runCatalogExport("pdf")}
             className="rounded-lg border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             {busy ? "Preparing export…" : "PDF (print)"}
@@ -407,7 +372,7 @@ function ImportModal({ open, onClose, onImported }) {
   );
 }
 
-export function ProductImportExport({ totalCount, loadProductsForExport, onImported }) {
+export function ProductImportExport({ totalCount, exportSearchParams, onImported }) {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
 
@@ -438,7 +403,7 @@ export function ProductImportExport({ totalCount, loadProductsForExport, onImpor
         open={exportOpen}
         onClose={() => setExportOpen(false)}
         totalCount={totalCount}
-        loadProductsForExport={loadProductsForExport}
+        exportSearchParams={exportSearchParams}
       />
     </>
   );

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { loadFullReportDataset } from "@/lib/paginated-fetch";
 import { useAuth } from "@/contexts/auth-context";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { formatReportCell, sumField } from "@/lib/reports/format";
@@ -45,8 +46,10 @@ export function ExpensesReportScreen({ definition }) {
       if (applied.fromDate) searchParams.from_date = applied.fromDate;
       if (applied.toDate) searchParams.to_date = applied.toDate;
       if (applied.branchId) searchParams.branch_id = applied.branchId;
-      const res = await apiRequest(definition.apiPath, { searchParams });
-      setAllRows(res.data ?? []);
+      const rows = await loadFullReportDataset(definition.apiPath, searchParams, {
+        message: `Loading ${definition.title}…`,
+      });
+      setAllRows(rows);
       setPage(1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
@@ -54,7 +57,7 @@ export function ExpensesReportScreen({ definition }) {
     } finally {
       setLoading(false);
     }
-  }, [applied, definition.apiPath]);
+  }, [applied, definition.apiPath, definition.title]);
 
   useEffect(() => {
     loadReport();
@@ -108,7 +111,15 @@ export function ExpensesReportScreen({ definition }) {
           ...col,
           accessor: (row) => formatReportCell(col.key, col.accessor(row)),
         })),
-        getRows: async () => allRows,
+        exportSource: {
+          path: definition.apiPath,
+          searchParams: {
+            date_column: "expense_date",
+            ...(applied.fromDate ? { from_date: applied.fromDate } : {}),
+            ...(applied.toDate ? { to_date: applied.toDate } : {}),
+            ...(applied.branchId ? { branch_id: applied.branchId } : {}),
+          },
+        },
         meta: {
           fromDate: applied.fromDate,
           toDate: applied.toDate,

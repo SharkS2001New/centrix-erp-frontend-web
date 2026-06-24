@@ -35,7 +35,7 @@ export function StatCard({ label, value, hint }) {
   return (
     <div className="theme-panel rounded-xl border px-5 py-4 shadow-sm">
       <p className="theme-subtext text-xs font-medium uppercase tracking-wide">{label}</p>
-      <p className="theme-heading mt-1 text-2xl font-semibold">{value}</p>
+      <p className="theme-heading mt-1 text-2xl font-semibold">{value ?? "—"}</p>
       {hint ? <p className="theme-subtext mt-0.5 text-xs">{hint}</p> : null}
     </div>
   );

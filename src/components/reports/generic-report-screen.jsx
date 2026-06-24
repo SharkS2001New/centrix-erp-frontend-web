@@ -6,7 +6,6 @@ import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
-import { fetchAllPaginatedRows } from "@/lib/reports/export";
 import {
   CatalogPageShell,
   Field,
@@ -168,47 +167,14 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       }));
   }, [rows, legacyRows]);
 
-  const fetchAllRowsForExport = useCallback(async () => {
+  const exportSearchParams = useMemo(() => {
     const searchParams = { date_column: dateColumn };
     if (fromDate) searchParams.from_date = fromDate;
     if (toDate) searchParams.to_date = toDate;
     if (branchId) searchParams.branch_id = branchId;
     if (payrollRunId) searchParams.payroll_run_id = payrollRunId;
-
-    const centrixRows = await fetchAllPaginatedRows(apiPath, searchParams);
-
-    let legacyAll = [];
-    if (supportsLegacyArchive && includeLegacyArchive && legacyArchiveMeta?.available) {
-      let legacyPageNum = 1;
-      let legacyLastPage = 1;
-      do {
-        const res = await apiRequest(apiPath, {
-          searchParams: {
-            ...searchParams,
-            per_page: 200,
-            page: 1,
-            include_legacy_archive: 1,
-            legacy_page: legacyPageNum,
-          },
-        });
-        legacyAll.push(...(res.legacy_archive?.data ?? []));
-        legacyLastPage = res.legacy_archive?.meta?.last_page ?? 1;
-        legacyPageNum += 1;
-      } while (legacyPageNum <= legacyLastPage);
-    }
-
-    return [...centrixRows, ...legacyAll];
-  }, [
-    apiPath,
-    branchId,
-    dateColumn,
-    fromDate,
-    includeLegacyArchive,
-    legacyArchiveMeta?.available,
-    payrollRunId,
-    supportsLegacyArchive,
-    toDate,
-  ]);
+    return searchParams;
+  }, [branchId, dateColumn, fromDate, payrollRunId, toDate]);
 
   const totalPages = meta?.last_page ?? 1;
   const total = meta?.total ?? rows.length;
@@ -226,7 +192,12 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
             title={label ?? "Report"}
             subtitle={subtitle ?? ""}
             columns={exportColumns}
-            getRows={fetchAllRowsForExport}
+            exportSource={{
+              path: apiPath,
+              searchParams: exportSearchParams,
+              legacyMerge:
+                supportsLegacyArchive && includeLegacyArchive && legacyArchiveMeta?.available,
+            }}
             meta={{
               fromDate,
               toDate,

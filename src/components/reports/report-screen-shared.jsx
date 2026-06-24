@@ -214,6 +214,7 @@ export function ReportPageShell({ section, title, subtitle, exportConfig, onExpo
             subtitle={subtitle ?? exportConfig.subtitle}
             columns={exportConfig.columns}
             getRows={exportConfig.getRows}
+            exportSource={exportConfig.exportSource}
             meta={exportConfig.meta}
             footerRow={exportConfig.footerRow}
             disabled={exportConfig.disabled}

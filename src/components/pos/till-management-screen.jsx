@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import { usePosSession } from "@/contexts/pos-session-context";
@@ -296,15 +297,17 @@ export function TillManagementScreen() {
       setUsers(filterByOrganization(userRes.data, organizationId));
       const sessions = sessionRes.data ?? [];
       setOpenSessions(sessions);
-      const reportEntries = await Promise.all(
-        sessions.map(async (session) => {
+      const reportEntries = await mapWithConcurrency(
+        sessions,
+        async (session) => {
           try {
             const report = await apiRequest(`/pos/sessions/${session.id}/x-report`);
             return [session.id, report];
           } catch {
             return [session.id, null];
           }
-        }),
+        },
+        3,
       );
       setSessionReports(new Map(reportEntries));
     } catch (e) {

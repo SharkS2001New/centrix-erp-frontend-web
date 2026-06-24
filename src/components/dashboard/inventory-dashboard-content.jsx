@@ -52,7 +52,11 @@ export function InventoryDashboardContent() {
   }, []);
 
   const stats = useMemo(() => {
-    const low = stockRows.filter((r) => r.product_alert === "REORDER" && Number(r.total_base_units) > 0).length;
+    const low = stockRows.filter((r) => {
+      const qty = Number(r.total_base_units) || 0;
+      if (qty <= 0) return true;
+      return r.product_alert === "REORDER";
+    }).length;
     const out = stockRows.filter((r) => Number(r.total_base_units) <= 0).length;
     const totalQty = stockRows.reduce((sum, r) => sum + Number(r.total_base_units ?? 0), 0);
     return {

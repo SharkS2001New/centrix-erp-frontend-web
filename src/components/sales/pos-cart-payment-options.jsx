@@ -222,12 +222,14 @@ export function PosCartPaymentOptions({
       return undefined;
     }
     let cancelled = false;
+    let delayMs = 3000;
 
     async function tick() {
       if (cancelled) return;
       await checkMpesaPayments({ silent: true });
       if (!cancelled) {
-        pollTimerRef.current = window.setTimeout(tick, 3000);
+        pollTimerRef.current = window.setTimeout(tick, delayMs);
+        delayMs = Math.min(12000, Math.floor(delayMs * 1.25));
       }
     }
 

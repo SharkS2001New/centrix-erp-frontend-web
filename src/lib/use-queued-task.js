@@ -1,55 +1,38 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { runQueuedTask } from "@/lib/background-task";
-import { QueuedTaskOverlay } from "@/components/shared/queued-task-overlay";
+import { useCallback } from "react";
+import { useBackgroundTasksOptional } from "@/contexts/background-task-context";
+import { runQueuedTask as runQueuedTaskDirect } from "@/lib/background-task";
 
 const DEFAULT_MESSAGE = "Please wait while we process your request…";
 
 /**
- * Run queued API work with a blocking full-screen preloader.
+ * Run queued API work with the global non-blocking background indicator when available.
  * @param {string} [defaultMessage]
  */
 export function useQueuedTask(defaultMessage = DEFAULT_MESSAGE) {
-  const [overlay, setOverlay] = useState(null);
+  const backgroundTasks = useBackgroundTasksOptional();
 
   const run = useCallback(
     async (requestFn, opts = {}) => {
-      const message = opts.message ?? defaultMessage;
-      setOverlay({ message, progress: null });
-      try {
-        return await runQueuedTask(requestFn, {
-          ...opts,
-          onProgress: (task) => {
-            opts.onProgress?.(task);
-            setOverlay((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    progress: Number(task.progress ?? prev.progress ?? 0),
-                  }
-                : prev,
-            );
-          },
-        });
-      } finally {
-        setOverlay(null);
-      }
-    },
-    [defaultMessage],
-  );
+      const message = opts.message ?? opts.label ?? defaultMessage;
 
-  const overlayNode = (
-    <QueuedTaskOverlay
-      open={Boolean(overlay)}
-      message={overlay?.message ?? defaultMessage}
-      progress={overlay?.progress}
-    />
+      if (backgroundTasks) {
+        return backgroundTasks.runBackgroundTask(requestFn, {
+          ...opts,
+          label: message,
+          message,
+        });
+      }
+
+      return runQueuedTaskDirect(requestFn, { ...opts, message });
+    },
+    [backgroundTasks, defaultMessage],
   );
 
   return {
     runQueuedTask: run,
-    overlayNode,
-    busy: Boolean(overlay),
+    overlayNode: null,
+    busy: backgroundTasks?.busy ?? false,
   };
 }

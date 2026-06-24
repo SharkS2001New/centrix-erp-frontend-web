@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useBackgroundTasks } from "@/contexts/background-task-context";
+import { queueReportBuilderPreview } from "@/lib/report-export-api";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { WORKSPACE_BUILDER_LABEL } from "@/lib/workspace-reports";
 import { CatalogPageShell, Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
@@ -96,6 +98,7 @@ function PreviewFeedback({ feedback }) {
 
 export function ReportBuilderScreen() {
   const router = useRouter();
+  const { runBackgroundTask } = useBackgroundTasks();
   const workspaceId = getStoredWorkspace() ?? "backoffice";
   const workspaceLabel = WORKSPACE_BUILDER_LABEL[workspaceId] ?? "Workspace data";
   const maxSources = 4;
@@ -290,10 +293,17 @@ export function ReportBuilderScreen() {
     setError(null);
     setPreviewFeedback(null);
     try {
-      const res = await apiRequest("/reports/builder/preview", {
-        method: "POST",
-        body: { spec, per_page: 25, workspace_id: workspaceId },
-      });
+      const res = await runBackgroundTask(
+        () =>
+          queueReportBuilderPreview(spec, {
+            per_page: 200,
+            workspace_id: workspaceId,
+          }),
+        {
+          label: "Building report preview",
+          message: "Started fetching…",
+        },
+      );
       const rows = res.data ?? [];
       setPreviewRows(rows);
       if (rows.length === 0) {
