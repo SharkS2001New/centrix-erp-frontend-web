@@ -965,6 +965,33 @@ html[data-theme="light"] .theme-input:focus {
   color: color-mix(in srgb, #ef4444 75%, var(--theme-text));
 }
 
+.theme-alert-success {
+  border: 1px solid color-mix(in srgb, #22c55e 35%, var(--theme-border));
+  background-color: color-mix(in srgb, #22c55e 12%, var(--theme-page-bg));
+  color: color-mix(in srgb, #22c55e 55%, var(--theme-text));
+}
+
+.theme-tab-active {
+  background-color: var(--theme-primary-subtle);
+  color: var(--theme-primary);
+  font-weight: 500;
+}
+
+.theme-tab-inactive {
+  color: var(--theme-text-muted);
+}
+
+.theme-tab-inactive:hover {
+  background-color: var(--theme-hover);
+  color: var(--theme-text);
+}
+
+.theme-inset-panel {
+  background-color: var(--theme-surface);
+  border-color: var(--theme-border);
+  color: var(--theme-text);
+}
+
 .pos-search-select-panel {
   background-color: var(--theme-page-bg);
   border-color: var(--theme-border);

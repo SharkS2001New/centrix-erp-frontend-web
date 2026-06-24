@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { AiActionForm, buildInitialFormValues } from "@/components/ai/ai-action-form";
 import { aiStartersForWorkspace } from "@/lib/ai-workspace";
 import {
@@ -38,10 +38,8 @@ function PlatformAiTrainingTabs({ activeTab, onChange }) {
           key={tab.id}
           type="button"
           onClick={() => onChange(tab.id)}
-          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-            activeTab === tab.id
-              ? "bg-indigo-600 text-white"
-              : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+          className={`rounded-lg px-3 py-1.5 text-xs transition ${
+            activeTab === tab.id ? "theme-tab-active" : "theme-tab-inactive"
           }`}
         >
           {tab.label}
@@ -317,32 +315,32 @@ export function PlatformAiTrainingScreen() {
       <PlatformAiTrainingAlerts error={error} message={message} />
 
       {activeTab === "knowledge" ? (
-        <section className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-6 shadow-sm">
-          <div className="border-b border-indigo-100 pb-5">
-            <h2 className="text-base font-semibold text-indigo-950">Platform-wide knowledge</h2>
-            <p className="mt-2 max-w-4xl text-sm text-indigo-900/80">
+        <section className="theme-panel rounded-xl border p-6 shadow-sm">
+          <div className="border-b border-[var(--theme-border)] pb-5">
+            <h2 className="theme-heading text-base font-semibold">Platform-wide knowledge</h2>
+            <p className="theme-subtext mt-2 max-w-4xl text-sm">
               Use these notes for how the product works, standard workflows, and consistent terminology — not
               tenant-specific data like customer names or prices.
             </p>
-            <p className="mt-2 text-xs text-indigo-800">
+            <p className="theme-text-muted mt-2 text-xs">
               {noteCount} platform note{noteCount === 1 ? "" : "s"} active
             </p>
           </div>
 
           <div className="mt-6 grid gap-8 xl:grid-cols-2 xl:items-start">
-            <div className="theme-panel min-h-0 rounded-xl border bg-white p-5 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-900">
+            <div className="theme-inset-panel min-h-0 rounded-xl border p-5 shadow-sm">
+              <h3 className="theme-heading text-sm font-semibold">
                 {form.id ? "Edit training note" : "Add training note"}
               </h3>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="theme-subtext mt-1 text-sm">
                 Facts every tenant assistant should know. Optionally limit to a module workspace or related screen path.
               </p>
 
               <form onSubmit={saveKnowledge} className="mt-4 flex min-h-[min(70vh,640px)] flex-col gap-3">
                 <label className="block text-sm">
-                  <span className="mb-1 block font-medium text-slate-700">Topic</span>
+                  <span className="theme-heading mb-1 block font-medium">Topic</span>
                   <input
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                    className={inputClassName()}
                     value={form.topic}
                     onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
                     placeholder="e.g. How GRN works"
@@ -350,9 +348,9 @@ export function PlatformAiTrainingScreen() {
                   />
                 </label>
                 <label className="block min-h-0 flex-1 text-sm">
-                  <span className="mb-1 block font-medium text-slate-700">Content</span>
+                  <span className="theme-heading mb-1 block font-medium">Content</span>
                   <textarea
-                    className="min-h-[min(42vh,360px)] w-full flex-1 rounded-lg border border-slate-300 px-3 py-2"
+                    className={`${inputClassName()} min-h-[min(42vh,360px)] flex-1`}
                     value={form.content}
                     onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
                     placeholder="What should every organization's assistant know?"
@@ -361,18 +359,18 @@ export function PlatformAiTrainingScreen() {
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="block text-sm">
-                    <span className="mb-1 block font-medium text-slate-700">Related path (optional)</span>
+                    <span className="theme-heading mb-1 block font-medium">Related path (optional)</span>
                     <input
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                      className={inputClassName()}
                       value={form.path}
                       onChange={(e) => setForm((f) => ({ ...f, path: e.target.value }))}
                       placeholder="/purchases"
                     />
                   </label>
                   <label className="block text-sm">
-                    <span className="mb-1 block font-medium text-slate-700">Module scope</span>
+                    <span className="theme-heading mb-1 block font-medium">Module scope</span>
                     <select
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                      className={inputClassName()}
                       value={form.workspace_id}
                       onChange={(e) => setForm((f) => ({ ...f, workspace_id: e.target.value }))}
                     >
@@ -392,7 +390,7 @@ export function PlatformAiTrainingScreen() {
                     <button
                       type="button"
                       onClick={resetKnowledgeForm}
-                      className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                      className="theme-secondary-btn rounded-lg px-4 py-2 text-sm"
                     >
                       Cancel edit
                     </button>
@@ -401,11 +399,11 @@ export function PlatformAiTrainingScreen() {
               </form>
             </div>
 
-            <div className="theme-panel flex min-h-[min(70vh,640px)] flex-col rounded-xl border bg-white p-5 shadow-sm">
+            <div className="theme-inset-panel flex min-h-[min(70vh,640px)] flex-col rounded-xl border p-5 shadow-sm">
               <div className="flex shrink-0 items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-slate-900">Saved notes</h3>
+                <h3 className="theme-heading text-sm font-semibold">Saved notes</h3>
                 <select
-                  className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                  className={`${inputClassName()} px-2 py-1 text-xs`}
                   value={filterWorkspace}
                   onChange={(e) => setFilterWorkspace(e.target.value)}
                 >
@@ -418,18 +416,18 @@ export function PlatformAiTrainingScreen() {
               </div>
 
               {loadingKnowledge ? (
-                <p className="mt-4 text-sm text-slate-500">Loading…</p>
+                <p className="theme-subtext mt-4 text-sm">Loading…</p>
               ) : knowledge.length === 0 ? (
-                <p className="mt-4 text-sm text-slate-500">No platform training notes yet.</p>
+                <p className="theme-subtext mt-4 text-sm">No platform training notes yet.</p>
               ) : (
                 <ul className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                   {knowledge.map((entry) => (
-                    <li key={entry.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+                    <li key={entry.id} className="rounded-lg border border-[var(--theme-border)] p-3 text-sm">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-medium text-slate-900">{entry.topic}</p>
-                          <p className="mt-1 whitespace-pre-wrap text-slate-600">{entry.content}</p>
-                          <p className="mt-2 text-xs text-slate-500">
+                          <p className="theme-heading font-medium">{entry.topic}</p>
+                          <p className="theme-text-muted mt-1 whitespace-pre-wrap">{entry.content}</p>
+                          <p className="theme-subtext mt-2 text-xs">
                             Platform-wide
                             {entry.workspace_id ? ` · ${workspaceLabel(entry.workspace_id)}` : " · All modules"}
                             {entry.path ? ` · ${entry.path}` : ""}
@@ -439,14 +437,14 @@ export function PlatformAiTrainingScreen() {
                           <button
                             type="button"
                             onClick={() => editEntry(entry)}
-                            className="rounded px-2 py-1 text-xs text-[#185FA5] hover:bg-slate-100"
+                            className="theme-link rounded px-2 py-1 text-xs hover:bg-[var(--theme-hover)]"
                           >
                             Edit
                           </button>
                           <button
                             type="button"
                             onClick={() => deleteEntry(entry.id)}
-                            className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                            className="rounded px-2 py-1 text-xs text-red-500 hover:bg-[color-mix(in_srgb,#ef4444_12%,var(--theme-page-bg))]"
                           >
                             Delete
                           </button>
@@ -460,21 +458,21 @@ export function PlatformAiTrainingScreen() {
           </div>
         </section>
       ) : (
-        <section className="flex min-h-[560px] flex-col theme-panel rounded-xl border shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-4">
-            <h2 className="text-sm font-semibold text-slate-900">Test across modules</h2>
-            <p className="mt-1 text-sm text-slate-500">
+        <section className="theme-panel flex min-h-[560px] flex-col rounded-xl border shadow-sm">
+          <div className="border-b border-[var(--theme-border)] px-5 py-4">
+            <h2 className="theme-heading text-sm font-semibold">Test across modules</h2>
+            <p className="theme-subtext mt-1 text-sm">
               Uses platform training credentials. Pick a tenant for sample data and permissions context — actions are
               preview-only and never change tenant AI settings.
             </p>
 
             {loadingOrgs ? (
-              <p className="mt-3 text-sm text-slate-500">Loading organizations…</p>
+              <p className="theme-subtext mt-3 text-sm">Loading organizations…</p>
             ) : (
               <label className="mt-3 block max-w-md text-sm">
-                <span className="mb-1 block font-medium text-slate-700">Sample data organization</span>
+                <span className="theme-heading mb-1 block font-medium">Sample data organization</span>
                 <select
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                  className={inputClassName()}
                   value={previewOrgId}
                   onChange={(e) => setPreviewOrgId(e.target.value)}
                 >
@@ -489,19 +487,19 @@ export function PlatformAiTrainingScreen() {
             )}
 
             {!status?.enabled ? (
-              <p className="mt-3 text-sm text-amber-800">
+              <p className="theme-text-muted mt-3 text-sm">
                 Enable platform AI training and add an API key on the{" "}
-                <Link href="/platform/ai-training/credentials" className="font-medium underline">
+                <Link href="/platform/ai-training/credentials" className="theme-link font-medium underline">
                   Credentials
                 </Link>{" "}
                 page before testing chat.
               </p>
             ) : !previewOrgId ? (
-              <p className="mt-3 text-sm text-amber-800">
+              <p className="theme-text-muted mt-3 text-sm">
                 Select a sample organization to preview answers with tenant data context.
               </p>
             ) : (
-              <p className="mt-3 text-xs text-slate-500">
+              <p className="theme-subtext mt-3 text-xs">
                 Chat preview uses platform credentials with {previewOrg?.org_name ?? "tenant"} sample data — tenant AI
                 settings are not used.
               </p>
@@ -513,10 +511,8 @@ export function PlatformAiTrainingScreen() {
                   key={ws.id}
                   type="button"
                   onClick={() => switchTestWorkspace(ws.id)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                    testWorkspace === ws.id
-                      ? "bg-indigo-600 text-white"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  className={`rounded-lg px-3 py-1.5 text-xs transition ${
+                    testWorkspace === ws.id ? "theme-tab-active" : "theme-tab-inactive"
                   }`}
                 >
                   {ws.label}
@@ -528,8 +524,8 @@ export function PlatformAiTrainingScreen() {
           <div className="flex-1 space-y-3 overflow-y-auto p-4">
             {messages.length === 0 ? (
               <div className="space-y-2">
-                <p className="text-sm text-slate-600">
-                  Testing <span className="font-medium">{workspaceLabel(testWorkspace)}</span> with platform knowledge
+                <p className="theme-text-muted text-sm">
+                  Testing <span className="theme-heading font-medium">{workspaceLabel(testWorkspace)}</span> with platform knowledge
                 </p>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {starters.slice(0, 4).map((q) => (
@@ -538,7 +534,7 @@ export function PlatformAiTrainingScreen() {
                       type="button"
                       onClick={() => sendChat(q)}
                       disabled={!status?.enabled || !previewOrgId}
-                      className="rounded-lg border border-slate-200 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      className="theme-secondary-btn rounded-lg border px-3 py-2 text-left text-sm disabled:opacity-50"
                     >
                       {q}
                     </button>
@@ -551,7 +547,9 @@ export function PlatformAiTrainingScreen() {
               <div
                 key={i}
                 className={`rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
-                  m.role === "user" ? "ml-8 bg-indigo-50 text-indigo-900" : "mr-4 bg-slate-100 text-slate-800"
+                  m.role === "user"
+                    ? "ml-8 bg-[var(--theme-primary-subtle)] theme-heading"
+                    : "mr-4 bg-[var(--theme-surface-muted)] theme-text-muted"
                 }`}
               >
                 {m.content}
@@ -561,7 +559,7 @@ export function PlatformAiTrainingScreen() {
             {formSpec?.fields?.length ? (
               <div className="mr-4">
                 {pendingAction?.summary ? (
-                  <p className="mb-1 text-sm font-medium text-slate-800">{pendingAction.summary}</p>
+                  <p className="theme-heading mb-1 text-sm font-medium">{pendingAction.summary}</p>
                 ) : null}
                 <AiActionForm
                   formSpec={{ ...formSpec, submit_label: "Preview confirm (no save)" }}
@@ -573,19 +571,19 @@ export function PlatformAiTrainingScreen() {
                 />
               </div>
             ) : pendingAction ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
-                <p className="font-medium text-amber-950">Proposed action (preview)</p>
-                <p className="mt-1 text-amber-900">{pendingAction.summary ?? pendingAction.type}</p>
+              <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3 text-sm">
+                <p className="theme-heading font-medium">Proposed action (preview)</p>
+                <p className="theme-text-muted mt-1">{pendingAction.summary ?? pendingAction.type}</p>
               </div>
             ) : null}
 
-            {chatLoading ? <p className="text-center text-xs text-slate-500">Thinking…</p> : null}
-            {chatError ? <p className="text-center text-xs text-red-600">{chatError}</p> : null}
+            {chatLoading ? <p className="theme-subtext text-center text-xs">Thinking…</p> : null}
+            {chatError ? <p className="text-center text-xs text-red-500">{chatError}</p> : null}
             <div ref={bottomRef} />
           </div>
 
           <form
-            className="border-t border-slate-200 p-3"
+            className="border-t border-[var(--theme-border)] p-3"
             onSubmit={(e) => {
               e.preventDefault();
               sendChat(input);
@@ -593,7 +591,7 @@ export function PlatformAiTrainingScreen() {
           >
             <textarea
               rows={3}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className={inputClassName()}
               placeholder={
                 previewOrgId
                   ? `Ask something in ${workspaceLabel(testWorkspace)}…`
@@ -610,7 +608,7 @@ export function PlatformAiTrainingScreen() {
                   setMessages([]);
                   clearChatState();
                 }}
-                className="text-xs text-slate-500 hover:text-slate-700"
+                className="theme-subtext text-xs hover:text-[var(--theme-text)]"
               >
                 Clear chat
               </button>
