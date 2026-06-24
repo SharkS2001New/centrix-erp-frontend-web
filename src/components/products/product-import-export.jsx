@@ -122,14 +122,32 @@ function productExportRows(products) {
   }));
 }
 
-function ExportModal({ open, onClose, products }) {
+function ExportModal({ open, onClose, totalCount, loadProductsForExport }) {
   const [exporting, setExporting] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   if (!open) return null;
+
+  async function resolveProducts() {
+    setLoading(true);
+    setError(null);
+    try {
+      return await loadProductsForExport();
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Failed to load products";
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function exportExcel() {
     setExporting(true);
     try {
+      const products = await resolveProducts();
       const rows = productExportRows(products);
       await downloadExcelFromObjects(
         `products-${new Date().toISOString().slice(0, 10)}.xlsx`,
@@ -137,15 +155,20 @@ function ExportModal({ open, onClose, products }) {
         rows,
       );
       onClose();
+    } catch {
+      /* error state set in resolveProducts */
     } finally {
       setExporting(false);
     }
   }
 
-  function exportPdf() {
-    const rows = productExportRows(products);
-    const headers = rows.length ? Object.keys(rows[0]) : [];
-    const html = `<!DOCTYPE html><html><head><title>Products</title>
+  async function exportPdf() {
+    setExporting(true);
+    try {
+      const products = await resolveProducts();
+      const rows = productExportRows(products);
+      const headers = rows.length ? Object.keys(rows[0]) : [];
+      const html = `<!DOCTYPE html><html><head><title>Products</title>
       <style>
         body { font-family: system-ui, sans-serif; padding: 24px; color: #111; }
         h1 { font-size: 18px; margin-bottom: 16px; }
@@ -157,39 +180,51 @@ function ExportModal({ open, onClose, products }) {
       <table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
       <tbody>${rows.map((row) => `<tr>${headers.map((h) => `<td>${row[h] ?? ""}</td>`).join("")}</tr>`).join("")}</tbody>
       </table></body></html>`;
-    openPrintWindow(html, "width=900,height=720");
-    onClose();
+      openPrintWindow(html, "width=900,height=720");
+      onClose();
+    } catch {
+      /* error state set in resolveProducts */
+    } finally {
+      setExporting(false);
+    }
   }
+
+  const busy = exporting || loading;
+  const countLabel = totalCount ?? 0;
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="theme-panel theme-modal w-full max-w-sm rounded-xl border p-5 shadow-xl">
         <h2 className="text-[15px] font-medium text-slate-900">Export products</h2>
         <p className="mt-2 text-sm text-slate-500">
-          Export {products.length} product{products.length === 1 ? "" : "s"} from the current list
-          (respects your filters).
+          Export all {countLabel.toLocaleString()} product{countLabel === 1 ? "" : "s"} matching your
+          current filters.
         </p>
+        {error ? (
+          <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+        ) : null}
         <div className="mt-4 flex flex-col gap-2">
           <button
             type="button"
-            disabled={exporting || products.length === 0}
+            disabled={busy || countLabel === 0}
             onClick={exportExcel}
             className="rounded-lg bg-[#185FA5] py-2.5 text-sm font-medium text-white hover:bg-[#144f8a] disabled:opacity-50"
           >
-            Excel spreadsheet (.xlsx)
+            {busy ? "Preparing export…" : "Excel spreadsheet (.xlsx)"}
           </button>
           <button
             type="button"
-            disabled={products.length === 0}
+            disabled={busy || countLabel === 0}
             onClick={exportPdf}
             className="rounded-lg border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
-            PDF (print)
+            {busy ? "Preparing export…" : "PDF (print)"}
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg py-2 text-sm text-slate-500 hover:text-slate-700"
+            disabled={busy}
+            className="rounded-lg py-2 text-sm text-slate-500 hover:text-slate-700 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -372,7 +407,7 @@ function ImportModal({ open, onClose, onImported }) {
   );
 }
 
-export function ProductImportExport({ products, onImported }) {
+export function ProductImportExport({ totalCount, loadProductsForExport, onImported }) {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
 
@@ -399,7 +434,12 @@ export function ProductImportExport({ products, onImported }) {
         onClose={() => setImportOpen(false)}
         onImported={onImported}
       />
-      <ExportModal open={exportOpen} onClose={() => setExportOpen(false)} products={products} />
+      <ExportModal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        totalCount={totalCount}
+        loadProductsForExport={loadProductsForExport}
+      />
     </>
   );
 }

@@ -16,6 +16,7 @@ import {
   TABLE_FOOTER_ROW_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { formatReportCell } from "@/lib/reports/format";
+import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 
 const BADGE_TONES = {
   success: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
@@ -191,7 +192,7 @@ export function ReportTable({ columns, rows, footerTotals = {}, emptyLabel = "No
   );
 }
 
-export function ReportPageShell({ section, title, subtitle, onExport, children }) {
+export function ReportPageShell({ section, title, subtitle, exportConfig, onExport, children }) {
   return (
     <div>
       <AdminBreadcrumb
@@ -206,7 +207,18 @@ export function ReportPageShell({ section, title, subtitle, onExport, children }
           <h1 className="text-2xl font-semibold theme-heading">{title}</h1>
           {subtitle ? <p className="mt-1 text-sm theme-subtext">{subtitle}</p> : null}
         </div>
-        {onExport ? (
+        {exportConfig ? (
+          <ReportExportToolbar
+            filename={exportConfig.filename}
+            title={title}
+            subtitle={subtitle ?? exportConfig.subtitle}
+            columns={exportConfig.columns}
+            getRows={exportConfig.getRows}
+            meta={exportConfig.meta}
+            footerRow={exportConfig.footerRow}
+            disabled={exportConfig.disabled}
+          />
+        ) : onExport ? (
           <button type="button" onClick={onExport} className={`${FILTER_RESET_BTN_CLASS} shadow-sm`}>
             Export CSV
           </button>

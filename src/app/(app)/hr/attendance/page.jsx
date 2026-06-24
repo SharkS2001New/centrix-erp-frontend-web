@@ -58,32 +58,61 @@ export default function HrAttendancePage() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const requests = [
-        apiRequest("/employees", { searchParams: { per_page: 200 } }),
-        apiRequest("/attendance/clock-sessions", {
-          searchParams: { per_page: 50, open_only: 1 },
-        }),
-        apiRequest("/employee-attendance", { searchParams: { per_page: 100 } }),
-        apiRequest("/attendance-clock-devices", { searchParams: { per_page: 100 } }),
+      const requestDefs = [
+        { key: "employees", promise: apiRequest("/employees", { searchParams: { per_page: 200 } }) },
+        {
+          key: "sessions",
+          promise: apiRequest("/attendance/clock-sessions", {
+            searchParams: { per_page: 50, open_only: 1 },
+          }),
+        },
+        {
+          key: "attendance",
+          promise: apiRequest("/employee-attendance", { searchParams: { per_page: 100 } }),
+        },
+        {
+          key: "devices",
+          promise: apiRequest("/attendance-clock-devices", { searchParams: { per_page: 100 } }),
+        },
       ];
       if (companyMobileEnabled) {
-        requests.push(
-          apiRequest("/attendance/company-mobile-sessions", {
+        requestDefs.push({
+          key: "mobileSessions",
+          promise: apiRequest("/attendance/company-mobile-sessions", {
             searchParams: { per_page: 50 },
           }),
-        );
+        });
       }
-      const results = await Promise.all(requests);
-      const empRes = results[0];
-      const sessRes = results[1];
-      const attRes = results[2];
-      const devRes = results[3];
-      const mobileRes = results[4];
-      setEmployees(empRes.data ?? []);
-      setSessions(sessRes.data ?? []);
-      setRecords(attRes.data ?? []);
-      setClockDevices(devRes.data ?? []);
-      setMobileSessions(mobileRes?.data ?? []);
+
+      const results = await Promise.allSettled(requestDefs.map((item) => item.promise));
+      const failures = [];
+
+      results.forEach((result, index) => {
+        const { key } = requestDefs[index];
+        if (result.status === "rejected") {
+          const message =
+            result.reason instanceof ApiError
+              ? result.reason.message
+              : result.reason instanceof Error
+                ? result.reason.message
+                : "Request failed";
+          failures.push(`${key}: ${message}`);
+          return;
+        }
+
+        const res = result.value;
+        if (key === "employees") setEmployees(res.data ?? []);
+        if (key === "sessions") setSessions(res.data ?? []);
+        if (key === "attendance") setRecords(res.data ?? []);
+        if (key === "devices") setClockDevices(res.data ?? []);
+        if (key === "mobileSessions") setMobileSessions(res.data ?? []);
+      });
+
+      if (failures.length === requestDefs.length) {
+        setError(failures[0] ?? "Failed to load attendance");
+      } else if (failures.length) {
+        setError(`Some attendance data could not be loaded (${failures.join("; ")}).`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load attendance");
     } finally {

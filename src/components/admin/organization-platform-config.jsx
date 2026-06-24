@@ -213,6 +213,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_ai: true,
     stock_deduct_on: "order_completed",
     require_pos_till_float: false,
+    enable_pos_order_edit: false,
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
   };
 }
@@ -227,6 +228,7 @@ export function salesPlatformFromApi(apiPayload) {
     enable_ai: apiPayload.enable_ai !== false,
     stock_deduct_on: apiPayload.stock_deduct_on ?? "order_completed",
     require_pos_till_float: Boolean(apiPayload.require_pos_till_float ?? false),
+    enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
   };
 }
@@ -272,6 +274,12 @@ export function OrganizationPlatformSalesSettings({
             description="When on, cashiers on the external POS workspace (/pos) must open a till session and declare operating float before sales. Backoffice create order uses a separate setting below. X/Z reports and end-of-day include float breakdown."
             checked={Boolean(salesPlatform?.require_pos_till_float)}
             onChange={(v) => patch({ require_pos_till_float: v })}
+          />
+          <Toggle
+            label="Allow editing completed POS orders"
+            description="When on, cashiers on external POS can reload a completed order by number to correct mistakes. Stock is restored, a KRA credit note is issued when the original sale was fiscalized, and checkout creates a new sale."
+            checked={Boolean(salesPlatform?.enable_pos_order_edit)}
+            onChange={(v) => patch({ enable_pos_order_edit: v })}
           />
           <Toggle
             label="Enable M-Pesa STK Push"

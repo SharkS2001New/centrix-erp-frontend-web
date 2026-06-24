@@ -5,7 +5,8 @@ import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
-import { exportRowsToCsv, formatReportCell, sumField } from "@/lib/reports/format";
+import { formatReportCell, sumField } from "@/lib/reports/format";
+import { fetchAllPaginatedRows } from "@/lib/reports/export";
 import {
   ReportFilterBar,
   ReportKpiGrid,
@@ -150,27 +151,72 @@ function StandardReportScreen({ definition }) {
     setLegacyPage(1);
   }
 
-  function handleExport() {
-    if (!definition.columns) return;
-    exportRowsToCsv(
-      `${definition.key ?? "report"}.csv`,
-      definition.columns.map((col) => ({
-        label: col.label,
-        accessor: (row) => {
-          const raw = col.accessor(row);
-          return raw == null ? "" : formatReportCell(col.key, raw);
-        },
-      })),
-      [...rows, ...legacyRows],
-    );
+  function branchLabel(branchIdValue) {
+    if (!branchIdValue) return "All branches";
+    return branches.find((b) => String(b.id) === String(branchIdValue))?.branch_name ?? "";
   }
+
+  const fetchAllReportRows = useCallback(async () => {
+    const searchParams = { per_page: 200 };
+    if (definition.dateColumn) {
+      searchParams.date_column = definition.dateColumn;
+      if (applied.fromDate) searchParams.from_date = applied.fromDate;
+      if (applied.toDate) searchParams.to_date = applied.toDate;
+    }
+    if (applied.branchId) searchParams.branch_id = applied.branchId;
+
+    const centrixRows = await fetchAllPaginatedRows(definition.apiPath, searchParams);
+
+    let legacyAll = [];
+    if (applied.extraFilters?.include_legacy_archive && legacyArchiveMeta?.available) {
+      let legacyPageNum = 1;
+      let legacyLastPage = 1;
+      do {
+        const res = await apiRequest(definition.apiPath, {
+          searchParams: {
+            ...searchParams,
+            include_legacy_archive: 1,
+            legacy_page: legacyPageNum,
+            page: 1,
+          },
+        });
+        legacyAll.push(...(res.legacy_archive?.data ?? []));
+        legacyLastPage = res.legacy_archive?.meta?.last_page ?? 1;
+        legacyPageNum += 1;
+      } while (legacyPageNum <= legacyLastPage);
+    }
+
+    let combined = [...centrixRows, ...legacyAll];
+    if (definition.filterRows) {
+      combined = definition.filterRows(combined, applied.extraFilters);
+    }
+    return combined;
+  }, [applied, definition, legacyArchiveMeta?.available]);
 
   return (
     <ReportPageShell
       section={definition.section}
       title={definition.title}
       subtitle={definition.subtitle}
-      onExport={definition.columns ? handleExport : undefined}
+      exportConfig={
+        definition.columns
+          ? {
+              filename: definition.key ?? "report",
+              columns: definition.columns.map((col) => ({
+                ...col,
+                accessor: (row) => formatReportCell(col.key, col.accessor(row)),
+              })),
+              getRows: fetchAllReportRows,
+              meta: {
+                fromDate: applied.fromDate,
+                toDate: applied.toDate,
+                branchName: branchLabel(applied.branchId),
+              },
+              footerRow: Object.keys(footerTotals).length ? footerTotals : null,
+              disabled: loading,
+            }
+          : undefined
+      }
     >
       {error ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>

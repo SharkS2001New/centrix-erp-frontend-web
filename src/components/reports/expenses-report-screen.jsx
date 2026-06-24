@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
-import { exportRowsToCsv, formatReportCell, sumField } from "@/lib/reports/format";
+import { formatReportCell, sumField } from "@/lib/reports/format";
 import {
   ReportFilterBar,
   ReportKpiGrid,
@@ -94,21 +94,29 @@ export function ExpensesReportScreen({ definition }) {
     footerTotals[col.key] = formatReportCell(col.key, sumField(allRows, col.key));
   }
 
+  const branchLabel = branches.find((b) => String(b.id) === applied.branchId)?.branch_name
+    ?? (applied.branchId ? "" : "All branches");
+
   return (
     <ReportPageShell
       section={definition.section}
       title={definition.title}
       subtitle={definition.subtitle}
-      onExport={() =>
-        exportRowsToCsv(
-          "expenses.csv",
-          (definition.columns ?? []).map((col) => ({
-            label: col.label,
-            accessor: (row) => formatReportCell(col.key, col.accessor(row)),
-          })),
-          allRows,
-        )
-      }
+      exportConfig={{
+        filename: definition.key ?? "expenses",
+        columns: (definition.columns ?? []).map((col) => ({
+          ...col,
+          accessor: (row) => formatReportCell(col.key, col.accessor(row)),
+        })),
+        getRows: async () => allRows,
+        meta: {
+          fromDate: applied.fromDate,
+          toDate: applied.toDate,
+          branchName: branchLabel,
+        },
+        footerRow: Object.keys(footerTotals).length ? footerTotals : null,
+        disabled: loading,
+      }}
     >
       {error ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>

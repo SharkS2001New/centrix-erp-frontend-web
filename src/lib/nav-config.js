@@ -214,11 +214,18 @@ const NAV_SECTION_DEFINITIONS = [
     ],
   },
   {
-    id: "after_sales",
-    label: "After sales",
-    icon: "↩️",
+    id: "legacy_system",
+    label: "Legacy orders (Old system)",
+    icon: "🗃️",
     collapsible: true,
     items: [
+      {
+        href: "/reports/legacy-archive",
+        label: "Legacy sales archive",
+        module: "sales.reports",
+        permission: P.reports.hub.view,
+        reportKey: "legacy-archive",
+      },
       {
         href: "/sales/legacy-orders",
         label: "Legacy orders",
@@ -231,6 +238,14 @@ const NAV_SECTION_DEFINITIONS = [
         module: "sales.backend",
         permission: P.sales.returns.view,
       },
+    ],
+  },
+  {
+    id: "after_sales",
+    label: "After sales",
+    icon: "↩️",
+    collapsible: true,
+    items: [
       {
         href: "/sales/returns",
         label: "Returns & credit notes",
@@ -276,13 +291,6 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Customers",
         module: "customers_suppliers",
         permission: P.customers.customers.view,
-      },
-      {
-        href: "/reports/customer-statement",
-        label: "Customer Statement",
-        module: "customers_suppliers",
-        permission: P.customers.customers.view,
-        reportKey: "customer-statement",
       },
     ],
   },

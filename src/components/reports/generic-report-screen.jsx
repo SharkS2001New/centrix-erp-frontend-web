@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
+import { fetchAllPaginatedRows } from "@/lib/reports/export";
 import {
   CatalogPageShell,
   Field,
@@ -151,6 +153,63 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     return Object.keys(rows[0]).filter((k) => !k.startsWith("_"));
   }, [rows]);
 
+  const branchLabel = branches.find((b) => String(b.id) === branchId)?.branch_name
+    ?? (branchId ? "" : "All branches");
+
+  const exportColumns = useMemo(() => {
+    const sample = rows[0] ?? legacyRows[0];
+    if (!sample) return [];
+    return Object.keys(sample)
+      .filter((k) => !k.startsWith("_"))
+      .map((key) => ({
+        key,
+        label: labelizeKey(key),
+        accessor: (row) => formatCell(key, row[key]),
+      }));
+  }, [rows, legacyRows]);
+
+  const fetchAllRowsForExport = useCallback(async () => {
+    const searchParams = { date_column: dateColumn };
+    if (fromDate) searchParams.from_date = fromDate;
+    if (toDate) searchParams.to_date = toDate;
+    if (branchId) searchParams.branch_id = branchId;
+    if (payrollRunId) searchParams.payroll_run_id = payrollRunId;
+
+    const centrixRows = await fetchAllPaginatedRows(apiPath, searchParams);
+
+    let legacyAll = [];
+    if (supportsLegacyArchive && includeLegacyArchive && legacyArchiveMeta?.available) {
+      let legacyPageNum = 1;
+      let legacyLastPage = 1;
+      do {
+        const res = await apiRequest(apiPath, {
+          searchParams: {
+            ...searchParams,
+            per_page: 200,
+            page: 1,
+            include_legacy_archive: 1,
+            legacy_page: legacyPageNum,
+          },
+        });
+        legacyAll.push(...(res.legacy_archive?.data ?? []));
+        legacyLastPage = res.legacy_archive?.meta?.last_page ?? 1;
+        legacyPageNum += 1;
+      } while (legacyPageNum <= legacyLastPage);
+    }
+
+    return [...centrixRows, ...legacyAll];
+  }, [
+    apiPath,
+    branchId,
+    dateColumn,
+    fromDate,
+    includeLegacyArchive,
+    legacyArchiveMeta?.available,
+    payrollRunId,
+    supportsLegacyArchive,
+    toDate,
+  ]);
+
   const totalPages = meta?.last_page ?? 1;
   const total = meta?.total ?? rows.length;
   const legacyMeta = legacyArchiveMeta?.meta;
@@ -160,6 +219,23 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     <CatalogPageShell
       title={label ?? "Report"}
       subtitle={subtitle ?? undefined}
+      action={
+        exportColumns.length ? (
+          <ReportExportToolbar
+            filename={reportKey ?? label ?? "report"}
+            title={label ?? "Report"}
+            subtitle={subtitle ?? ""}
+            columns={exportColumns}
+            getRows={fetchAllRowsForExport}
+            meta={{
+              fromDate,
+              toDate,
+              branchName: branchLabel,
+            }}
+            disabled={loading}
+          />
+        ) : null
+      }
       toolbar={
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <Link href="/reports" className="text-sm text-[#185FA5] hover:underline">

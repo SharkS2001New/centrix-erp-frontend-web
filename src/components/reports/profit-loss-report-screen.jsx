@@ -88,11 +88,41 @@ export function ProfitLossReportScreen({ definition }) {
     { id: "net", label: "Net Profit", value: formatReportKes(totals.net_profit) },
   ];
 
+  const branchLabel = branches.find((b) => String(b.id) === applied.branchId)?.branch_name
+    ?? (applied.branchId ? "" : "All branches");
+
+  const exportColumns = [
+    { key: "label", label: "Particulars", accessor: (row) => row.label },
+    {
+      key: "amount",
+      label: "This Period",
+      align: "right",
+      accessor: (row) => `${formatReportKes(Math.abs(row.amount))}${row.amount < 0 ? " (Dr)" : ""}`,
+    },
+    {
+      key: "pct",
+      label: "% of Sales",
+      align: "right",
+      accessor: (row) => pct(Math.abs(row.amount), totals.gross_revenue),
+    },
+  ];
+
   return (
     <ReportPageShell
       section={definition.section}
       title={definition.title}
       subtitle={definition.subtitle}
+      exportConfig={{
+        filename: definition.key ?? "profit-loss",
+        columns: exportColumns,
+        getRows: async () => statementRows,
+        meta: {
+          fromDate: applied.fromDate,
+          toDate: applied.toDate,
+          branchName: branchLabel,
+        },
+        disabled: loading,
+      }}
     >
       {error ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>

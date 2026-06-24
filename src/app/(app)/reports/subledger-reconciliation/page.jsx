@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useOrgFormat } from "@/lib/org-format";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
+import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 
 function ReconcileCard({ title, data, currency }) {
   if (!data) return null;
@@ -57,10 +58,55 @@ export default function SubledgerReconciliationPage() {
     load();
   }, [load]);
 
+  const exportColumns = useMemo(
+    () => [
+      { key: "account", label: "Account", accessor: (row) => row.account },
+      { key: "control_code", label: "Control account", accessor: (row) => row.control_code },
+      { key: "gl_balance", label: "GL balance", accessor: (row) => row.gl_balance, align: "right" },
+      { key: "subledger_total", label: "Subledger total", accessor: (row) => row.subledger_total, align: "right" },
+      { key: "variance", label: "Variance", accessor: (row) => row.variance, align: "right" },
+      { key: "status", label: "Status", accessor: (row) => row.status },
+    ],
+    [],
+  );
+
+  const exportRows = useMemo(() => {
+    if (!data) return [];
+    const rows = [];
+    for (const key of ["ar", "ap"]) {
+      const entry = data[key];
+      if (!entry) continue;
+      rows.push({
+        account: entry.label ?? key.toUpperCase(),
+        control_code: entry.control_account_code ?? "—",
+        gl_balance: currency(entry.gl_balance),
+        subledger_total: currency(entry.subledger_total),
+        variance: currency(entry.variance),
+        status: entry.reconciled ? "Reconciled" : "Variance detected",
+      });
+    }
+    return rows;
+  }, [currency, data]);
+
   return (
     <CatalogPageShell
       title="Subledger reconciliation"
       subtitle="Compare GL control accounts to AR/AP subledgers"
+      action={
+        exportRows.length ? (
+          <ReportExportToolbar
+            filename="subledger-reconciliation"
+            title="Subledger reconciliation"
+            subtitle="GL control accounts vs AR/AP subledgers"
+            columns={exportColumns}
+            getRows={async () => exportRows}
+            meta={{
+              extraLines: data?.as_of ? [`As of ${data.as_of}`] : [],
+            }}
+            disabled={loading}
+          />
+        ) : null
+      }
     >
       <Link href="/reports" className="text-sm text-[#185FA5] hover:underline">
         ← Reports hub

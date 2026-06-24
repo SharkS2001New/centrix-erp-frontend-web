@@ -13,6 +13,8 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { accountOptionLabel, formatAccountingAmount } from "@/lib/accounting-shared";
+import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
+import { fetchAllPaginatedRows } from "@/lib/reports/export";
 
 function formatCell(key, value) {
   if (value == null || value === "") return "—";
@@ -129,6 +131,32 @@ export function AccountingReportScreen({
     );
   }, [rows]);
 
+  const branchLabel = branches.find((b) => String(b.id) === branchId)?.branch_name
+    ?? (branchId ? "" : "All branches");
+
+  const accountLabel = accounts.find((a) => String(a.id) === accountId);
+
+  const exportColumns = useMemo(() => {
+    if (!columns.length) return [];
+    return columns.map((key) => ({
+      key,
+      label: labelizeKey(key),
+      accessor: (row) => {
+        if (row.is_header && key !== "section") return "";
+        return formatCell(key, row[key]);
+      },
+    }));
+  }, [columns]);
+
+  const fetchAllRowsForExport = useCallback(async () => {
+    const searchParams = {};
+    if (fromDate) searchParams.from_date = fromDate;
+    if (toDate) searchParams.to_date = toDate;
+    if (branchId) searchParams.branch_id = branchId;
+    if (accountId) searchParams.account_id = accountId;
+    return fetchAllPaginatedRows(apiPath, searchParams);
+  }, [accountId, apiPath, branchId, fromDate, toDate]);
+
   const totalPages = meta?.last_page ?? 1;
   const total = meta?.total ?? rows.length;
 
@@ -136,6 +164,24 @@ export function AccountingReportScreen({
     <CatalogPageShell
       title={title}
       subtitle={subtitle ?? `Accounting > ${title}`}
+      action={
+        exportColumns.length ? (
+          <ReportExportToolbar
+            filename={title}
+            title={title}
+            subtitle={subtitle ?? ""}
+            columns={exportColumns}
+            getRows={fetchAllRowsForExport}
+            meta={{
+              fromDate,
+              toDate,
+              branchName: branchLabel,
+              extraLines: accountLabel ? [`Account: ${accountOptionLabel(accountLabel)}`] : [],
+            }}
+            disabled={loading}
+          />
+        ) : null
+      }
       toolbar={
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <Link href={backHref} className="text-sm text-[#185FA5] hover:underline">

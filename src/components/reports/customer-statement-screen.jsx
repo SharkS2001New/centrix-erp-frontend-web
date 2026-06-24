@@ -107,6 +107,21 @@ export function CustomerStatementScreen() {
       section="Finance"
       title="Customer Statement"
       subtitle="Running balance from invoices and payments"
+      exportConfig={
+        appliedCustomer
+          ? {
+              filename: `customer-statement-${appliedCustomer}`,
+              columns,
+              getRows: async () => lines,
+              meta: {
+                extraLines: customer
+                  ? [`Customer: ${customer.customer_name} (#${customer.customer_num})`]
+                  : [],
+              },
+              disabled: loading || !customer,
+            }
+          : undefined
+      }
     >
       <div className="mb-6 theme-panel rounded-xl border p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-4">

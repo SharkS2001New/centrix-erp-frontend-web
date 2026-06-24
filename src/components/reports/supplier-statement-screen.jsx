@@ -87,11 +87,55 @@ export function SupplierStatementScreen() {
     { key: "amount_paid", label: "Amount", accessor: (r) => formatReportKes(r.amount_paid), align: "right" },
   ];
 
+  const exportColumns = [
+    { key: "section", label: "Section", accessor: (r) => r.section },
+    { key: "date", label: "Date", accessor: (r) => r.date },
+    { key: "reference", label: "Reference", accessor: (r) => r.reference },
+    { key: "detail", label: "Status / Method", accessor: (r) => r.detail },
+    { key: "amount", label: "Amount", accessor: (r) => r.amount, align: "right" },
+    { key: "balance", label: "Balance", accessor: (r) => r.balance, align: "right" },
+  ];
+
   return (
     <ReportPageShell
       section="Purchasing"
       title="Supplier Statement"
       subtitle="Purchases, payments, and balance for a supplier"
+      exportConfig={
+        appliedSupplierId
+          ? {
+              filename: `supplier-statement-${appliedSupplierId}`,
+              columns: exportColumns,
+              getRows: async () => [
+                ...purchases.map((row) => ({
+                  section: "Purchase",
+                  date: formatShortDate(row.order_date),
+                  reference: row.lpo_no,
+                  detail: row.status_name ?? "—",
+                  amount: formatReportKes(row.total_amount),
+                  balance: formatReportKes(row.balance_due),
+                })),
+                ...payments.map((row) => ({
+                  section: "Payment",
+                  date: formatShortDate(row.date_paid),
+                  reference: row.reference_number ?? "—",
+                  detail: row.payment_method ?? "—",
+                  amount: formatReportKes(row.amount_paid),
+                  balance: "—",
+                })),
+              ],
+              meta: {
+                extraLines: supplier
+                  ? [
+                      `Supplier: ${supplier.supplier_name}`,
+                      `Balance due: ${formatReportKes(supplier.current_balance ?? 0)}`,
+                    ]
+                  : [],
+              },
+              disabled: loading || !supplier,
+            }
+          : undefined
+      }
     >
       <form
         className="mb-6 flex flex-wrap items-end gap-3"

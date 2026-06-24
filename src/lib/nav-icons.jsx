@@ -45,6 +45,7 @@ export const NAV_BOOTSTRAP_ICONS = {
   layers: "layers",
   check: "check-circle",
   shield: "shield-lock",
+  archive: "archive",
 };
 
 const HREF_ICON_FALLBACK_RULES = [
@@ -62,6 +63,7 @@ const SECTION_FALLBACK_ICON = {
   pricing_tax: "percent",
   sales_orders: "receipt",
   field_sales: "mobile",
+  legacy_system: "archive",
   after_sales: "return",
   promotions: "tag",
   customers: "hr",

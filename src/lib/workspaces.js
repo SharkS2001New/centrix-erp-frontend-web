@@ -49,6 +49,7 @@ export const WORKSPACE_SECTION_IDS = {
     "pricing_tax",
     "sales_orders",
     "field_sales",
+    "legacy_system",
     "after_sales",
     "promotions",
     "customers",

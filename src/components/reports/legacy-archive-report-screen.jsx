@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { ReportBadge } from "@/components/reports/report-screen-shared";
+import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { defaultDashboardDateRange } from "@/lib/dashboard-dates";
 import {
   fetchLegacyArchiveSale,
@@ -49,6 +50,46 @@ function channelSummaryCards(summary) {
     total_amount: row.order_total,
     sale_count: row.transactions,
   }));
+}
+
+const LEGACY_EXPORT_COLUMNS = [
+  { key: "order", label: "Order", accessor: (r) => r.legacy_order_label ?? r.legacy_order_num },
+  {
+    key: "channel",
+    label: "Channel",
+    accessor: (r) => CHANNEL_LABELS[r.archive_channel ?? r.channel] ?? r.channel,
+  },
+  { key: "date", label: "Date", accessor: (r) => legacySaleDate(r) ?? "—" },
+  { key: "customer", label: "Customer", accessor: (r) => r.customer_name ?? "—" },
+  { key: "created_by", label: "Created by", accessor: (r) => r.created_by ?? "—" },
+  { key: "total", label: "Total", align: "right", accessor: (r) => money(r.order_total) },
+  {
+    key: "materialized",
+    label: "In Centrix",
+    accessor: (r) => (r.materialized_sale_id ? "Yes" : "Archive only"),
+  },
+];
+
+async function fetchAllLegacySales(applied) {
+  const all = [];
+  let pageNum = 1;
+  let lastPage = 1;
+
+  do {
+    const list = await fetchLegacyArchiveSales({
+      channel: applied.q ? "all" : applied.channel,
+      page: pageNum,
+      per_page: 200,
+      from_date: applied.fromDate,
+      to_date: applied.toDate,
+      ...(applied.q ? { q: applied.q } : {}),
+    });
+    all.push(...(list.data ?? []));
+    lastPage = list.meta?.last_page ?? 1;
+    pageNum += 1;
+  } while (pageNum <= lastPage);
+
+  return all;
 }
 
 function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
@@ -325,24 +366,41 @@ export function LegacyArchiveReportScreen() {
   return (
     <div>
       <AdminBreadcrumb items={[{ label: "Reports", href: "/reports" }, { label: "Legacy archive" }]} />
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Legacy sales archive</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Browse historical LightStores sales (read-only). Pick a date range — {PAGE_SIZE} sales load per page.
-        </p>
-        {status ? (
-          <div className="mt-3 flex flex-wrap gap-2 text-xs">
-            <ReportBadge
-              label={status.available ? "Archive reachable" : "Archive unreachable"}
-              tone={status.available ? "success" : "danger"}
-            />
-            {status.label ? <ReportBadge label={status.label} tone="neutral" /> : null}
-            {status.counts
-              ? Object.entries(status.counts).map(([key, count]) => (
-                  <ReportBadge key={key} label={`${key.replace("sales_", "")}: ${count}`} tone="neutral" />
-                ))
-              : null}
-          </div>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Legacy sales archive</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Browse historical LightStores sales (read-only). Pick a date range — {PAGE_SIZE} sales load per page.
+          </p>
+          {status ? (
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              <ReportBadge
+                label={status.available ? "Archive reachable" : "Archive unreachable"}
+                tone={status.available ? "success" : "danger"}
+              />
+              {status.label ? <ReportBadge label={status.label} tone="neutral" /> : null}
+              {status.counts
+                ? Object.entries(status.counts).map(([key, count]) => (
+                    <ReportBadge key={key} label={`${key.replace("sales_", "")}: ${count}`} tone="neutral" />
+                  ))
+                : null}
+            </div>
+          ) : null}
+        </div>
+        {applied.fromDate && applied.toDate ? (
+          <ReportExportToolbar
+            filename="legacy-sales-archive"
+            title="Legacy sales archive"
+            subtitle="Historical LightStores sales"
+            columns={LEGACY_EXPORT_COLUMNS}
+            getRows={() => fetchAllLegacySales(applied)}
+            meta={{
+              fromDate: applied.fromDate,
+              toDate: applied.toDate,
+              extraLines: applied.q ? [`Search: ${applied.q}`] : [],
+            }}
+            disabled={loadingSales}
+          />
         ) : null}
       </div>
 

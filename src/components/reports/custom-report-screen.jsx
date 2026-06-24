@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { defaultWorkspaceId } from "@/lib/workspaces";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
-import { exportRowsToCsv, formatReportCell, formatReportKes, sumField } from "@/lib/reports/format";
+import { formatReportCell, formatReportKes, sumField } from "@/lib/reports/format";
 import {
   ReportFilterBar,
   ReportKpiGrid,
@@ -127,16 +127,8 @@ export function CustomReportScreen({ templateId }) {
     setApplied(empty);
   }
 
-  function handleExport() {
-    exportRowsToCsv(
-      `${definition?.title ?? "custom-report"}.csv`,
-      columns.map((col) => ({
-        label: col.label,
-        accessor: (row) => formatReportCell(col.key, col.accessor(row)),
-      })),
-      allRows,
-    );
-  }
+  const branchLabel = branches.find((b) => String(b.id) === applied.branchId)?.branch_name
+    ?? (applied.branchId ? "" : "All branches");
 
   if (!definition && !error) {
     return <div className="p-6 text-sm text-slate-500">Loading report…</div>;
@@ -151,7 +143,21 @@ export function CustomReportScreen({ templateId }) {
       section={definition.section}
       title={definition.title}
       subtitle={definition.subtitle}
-      onExport={handleExport}
+      exportConfig={{
+        filename: definition.title,
+        columns: columns.map((col) => ({
+          ...col,
+          accessor: (row) => formatReportCell(col.key, col.accessor(row)),
+        })),
+        getRows: async () => allRows,
+        meta: {
+          fromDate: applied.fromDate,
+          toDate: applied.toDate,
+          branchName: branchLabel,
+        },
+        footerRow: Object.keys(footerTotals).length ? footerTotals : null,
+        disabled: loading,
+      }}
     >
       {error ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>

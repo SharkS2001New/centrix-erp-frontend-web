@@ -70,6 +70,7 @@ import { PosPaymentPanel } from "./pos-payment-panel";
 import { PosProductSearch } from "./pos-product-search";
 import { PosCartPaymentOptions, posCartPaymentPromptsEnabled } from "./pos-cart-payment-options";
 import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
+import { PosOrderEditBar } from "./pos-order-edit-bar";
 import { PosSaveOrderDialog } from "./pos-save-order-dialog";
 import { PosLeaveGuardDialog } from "./pos-leave-guard-dialog";
 import { PosActionButton } from "./pos-action-button";
@@ -199,6 +200,9 @@ export function PosScreen({ standalone = false }) {
     ? posSalesConfig.requireTillFloat
     : posSalesConfig.requireBackofficeTillFloat;
   const salesWorkspace = standalone ? "pos" : "backoffice";
+  const enablePosOrderEdit =
+    standalone &&
+    (capabilities?.pos_order_edit_enabled === true || posSalesConfig.enablePosOrderEdit);
   const blindTillClose = posSalesConfig.blindTillClose;
   const canChooseOrderType = addRouteMarkupPrices && posOrderTypeMode === "toggle";
   const lockedToRouteOrder = addRouteMarkupPrices && posOrderTypeMode === "route";
@@ -513,6 +517,7 @@ export function PosScreen({ standalone = false }) {
   const [saveOrderError, setSaveOrderError] = useState(null);
   const [paymentError, setPaymentError] = useState(null);
   const [completedSale, setCompletedSale] = useState(null);
+  const [orderEditError, setOrderEditError] = useState(null);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [priceCheckerOpen, setPriceCheckerOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -2100,6 +2105,74 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
+  async function restoreOrderForEdit(saleId, { replace = false } = {}) {
+    setBusy(true);
+    setOrderEditError(null);
+    try {
+      const restoredCart = await apiRequest(`/sales/orders/${saleId}/restore-to-cart`, {
+        method: "POST",
+        body: { replace },
+      });
+      setCart(restoredCart);
+      setSelectedLineId(null);
+      setEditingLineId(null);
+      setEditingLineRef(null);
+      setPaymentOpen(false);
+      setCompletedSale(null);
+      const label = restoredCart?.held_order_num ?? saleId;
+      setStatusMessage(`Order #${label} loaded for editing — update lines and complete checkout.`);
+    } catch (e) {
+      const message = e instanceof ApiError ? e.message : "Could not load order for editing";
+      if (!replace && message.toLowerCase().includes("already has items")) {
+        const ok = window.confirm(
+          "Your cart already has items. Replace them with this order?",
+        );
+        if (ok) {
+          setBusy(false);
+          return restoreOrderForEdit(saleId, { replace: true });
+        }
+      }
+      setOrderEditError(message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleEditByOrderNumber(orderNum) {
+    const trimmed = String(orderNum ?? "").trim();
+    if (!trimmed) return;
+
+    setOrderEditError(null);
+    setBusy(true);
+    try {
+      const res = await apiRequest("/sales", {
+        searchParams: {
+          per_page: 25,
+          channel: "pos",
+          q: trimmed,
+          with_items: 0,
+        },
+      });
+      const match = (res.data ?? []).find(
+        (row) => String(row.order_num) === trimmed && (row.channel ?? "pos") === "pos",
+      );
+      if (!match?.id) {
+        setOrderEditError(`No POS order found with number ${trimmed}.`);
+        return;
+      }
+      await restoreOrderForEdit(match.id);
+    } catch (e) {
+      setOrderEditError(e instanceof ApiError ? e.message : "Order lookup failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleEditLastOrder() {
+    if (!completedSale?.id) return;
+    void restoreOrderForEdit(completedSale.id);
+  }
+
   function openCompletePayment() {
     if (!cart?.lines?.length || cartStockBlocked) return;
     setPaymentError(null);
@@ -2245,6 +2318,18 @@ export function PosScreen({ standalone = false }) {
               <div className="shrink-0">
                 <CentrixLogoHeader markSize={28} title={PRODUCT_NAME} />
               </div>
+              {enablePosOrderEdit ? (
+                <div className="min-w-0 flex-1 lg:max-w-md">
+                  <PosOrderEditBar
+                    enabled
+                    busy={busy}
+                    lastOrderNum={completedSale?.order_num}
+                    onEditLast={handleEditLastOrder}
+                    onEditByOrderNumber={handleEditByOrderNumber}
+                    error={orderEditError}
+                  />
+                </div>
+              ) : null}
               <div className="flex min-w-0 flex-1 items-center justify-center gap-2 overflow-x-auto px-1">
                 <button
                   type="button"

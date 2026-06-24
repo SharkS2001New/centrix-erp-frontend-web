@@ -8,6 +8,7 @@ import { getStoredWorkspace } from "@/lib/auth-storage";
 import { WORKSPACE_BUILDER_LABEL } from "@/lib/workspace-reports";
 import { CatalogPageShell, Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 
 function emptySpec() {
   return {
@@ -350,6 +351,15 @@ export function ReportBuilderScreen() {
     ? Object.keys(previewRows[0])
     : spec.columns.map((c) => c.alias ?? c.field);
 
+  const previewExportColumns = useMemo(() => {
+    if (!previewRows[0]) return [];
+    return previewKeys.map((key) => ({
+      key,
+      label: key,
+      accessor: (row) => (row[key] == null ? "—" : String(row[key])),
+    }));
+  }, [previewKeys, previewRows]);
+
   const blendLabel = availableBlendDimensions.find((d) => d.key === spec.blend_by)?.label;
   const normalizedGroupBy = spec.group_by.map((g) => normalizeGroupByEntry(g, spec.source));
 
@@ -581,14 +591,28 @@ export function ReportBuilderScreen() {
 
         <div className="xl:col-span-2">
           <section className="theme-panel rounded-xl border p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">Preview</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              {selectedSources.length} source(s) · {spec.columns.length} column(s)
-              {isBlendMode && blendLabel ? ` · side-by-side by ${blendLabel.toLowerCase()}` : ""}
-              {!isBlendMode && normalizedGroupBy.length
-                ? ` · grouped by ${normalizedGroupBy.length} field(s)`
-                : ""}
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Preview</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  {selectedSources.length} source(s) · {spec.columns.length} column(s)
+                  {isBlendMode && blendLabel ? ` · side-by-side by ${blendLabel.toLowerCase()}` : ""}
+                  {!isBlendMode && normalizedGroupBy.length
+                    ? ` · grouped by ${normalizedGroupBy.length} field(s)`
+                    : ""}
+                </p>
+              </div>
+              {previewExportColumns.length ? (
+                <ReportExportToolbar
+                  filename={name.trim() || "report-preview"}
+                  title={name.trim() || "Report preview"}
+                  subtitle={description.trim() || workspaceLabel}
+                  columns={previewExportColumns}
+                  getRows={async () => previewRows}
+                  disabled={previewLoading}
+                />
+              ) : null}
+            </div>
             {previewLoading ? (
               <p className="mt-4 text-sm text-slate-500">Loading preview…</p>
             ) : previewRows.length ? (

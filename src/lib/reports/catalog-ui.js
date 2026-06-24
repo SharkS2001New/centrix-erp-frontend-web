@@ -24,7 +24,6 @@ export const REPORT_CATEGORY_DEFS = [
       "sales-by-customer",
       "sales-by-channel",
       "daily-sales",
-      "legacy-archive",
       "sales-pipeline",
       "category-sales",
     ],

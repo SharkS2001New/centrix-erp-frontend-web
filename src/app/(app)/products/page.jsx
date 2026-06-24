@@ -493,6 +493,73 @@ export default function ProductsPage() {
     ],
   );
 
+  const loadProductsForExport = useCallback(async () => {
+    const baseParams = buildPageParams({
+      page: 1,
+      perPage: 200,
+      q: debouncedSearch,
+      filters: {
+        subcategory_id: subCategoryFilter !== "all" ? subCategoryFilter : undefined,
+        category_id: categoryFilter !== "all" ? categoryFilter : undefined,
+      },
+      extra: {
+        status:
+          activeFilter === "inactive" ? "inactive" : activeFilter === "all" ? "all" : "active",
+        stock_status: stockFilter !== "all" ? stockFilter : undefined,
+        pricing: pricingFilter !== "all" ? pricingFilter : undefined,
+        branch_id: effectiveStockBranchId ?? undefined,
+      },
+    });
+
+    const all = [];
+    let pageNum = 1;
+    let lastPage = 1;
+    do {
+      const prodRes = await apiRequest("/products", {
+        searchParams: { ...baseParams, page: pageNum, per_page: 200 },
+      });
+      const parsed = parsePaginator(prodRes);
+      all.push(...parsed.items);
+      lastPage = parsed.totalPages;
+      pageNum += 1;
+    } while (pageNum <= lastPage);
+
+    return all.map((p) => {
+      const row = enrichProduct(
+        p,
+        subById,
+        catById,
+        vatById,
+        uomById,
+        supplierById,
+        retailByCode,
+        globalReorderThreshold,
+      );
+      const audit = resolveProductAudit(p, userById);
+      return {
+        ...row,
+        audit_name: audit.name,
+        audit_date: audit.date,
+      };
+    });
+  }, [
+    debouncedSearch,
+    categoryFilter,
+    subCategoryFilter,
+    stockFilter,
+    pricingFilter,
+    activeFilter,
+    effectiveStockBranchId,
+    subById,
+    catById,
+    vatById,
+    uomById,
+    supplierById,
+    retailByCode,
+    globalReorderThreshold,
+    userById,
+  ]);
+
   const stats = useMemo(() => {
     const total = catalogStats?.total ?? totalProducts;
     const active = catalogStats?.active ?? total;
@@ -638,7 +705,11 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ProductImportExport products={enriched} onImported={reloadAll} />
+          <ProductImportExport
+            totalCount={totalProducts}
+            loadProductsForExport={loadProductsForExport}
+            onImported={reloadAll}
+          />
           <PermissionGate permission={P.catalogue.products.create}>
             <PrimaryLink href="/products/new" permission={P.catalogue.products.create}>
               Add product

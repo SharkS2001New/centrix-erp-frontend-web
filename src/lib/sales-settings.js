@@ -38,6 +38,7 @@ const SALES_DEFAULTS = {
   require_pos_till_float: false,
   require_backoffice_till_float: false,
   blind_till_close: false,
+  enable_pos_order_edit: false,
   order_document_type: "receipt",
   invoice_valid_days: 7,
   receipt_copies: 1,
@@ -271,6 +272,11 @@ export function resolvePosOrderTypeMode(sales) {
   return "normal";
 }
 
+export function isPosOrderEditEnabled(moduleSettings, capabilities = null) {
+  if (capabilities?.pos_order_edit_enabled === false) return false;
+  return Boolean(mergeSalesSettings(moduleSettings).enable_pos_order_edit);
+}
+
 export function mergeSalesSettings(moduleSettings) {
   const sales = { ...SALES_DEFAULTS, ...(moduleSettings?.sales ?? {}) };
   sales.pos_order_type_mode = resolvePosOrderTypeMode(sales);
@@ -350,6 +356,7 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
       : "normal",
     requirePosTillFloat: Boolean(sales.require_pos_till_float),
     requireBackofficeTillFloat: Boolean(sales.require_backoffice_till_float),
+    enablePosOrderEdit: isPosOrderEditEnabled(moduleSettings),
     blindTillClose: Boolean(sales.blind_till_close),
     receiptCopies: Number(sales.receipt_copies ?? 1),
     showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),

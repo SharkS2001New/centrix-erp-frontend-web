@@ -47,6 +47,11 @@ export const NAV_HREF_ICONS = {
   "/sales/returns": "return",
   "/sales/reservations": "calendar",
 
+  // Legacy (old system)
+  "/reports/legacy-archive": "archive",
+  "/sales/legacy-orders": "list",
+  "/sales/legacy-returns": "return",
+
   // Promotions
   "/sales/vouchers": "tag",
   "/sales/loyalty-cards": "star",
