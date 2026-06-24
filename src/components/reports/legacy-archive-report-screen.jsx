@@ -6,6 +6,7 @@ import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { ReportBadge } from "@/components/reports/report-screen-shared";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
+import { BackgroundTaskInlineProgress } from "@/components/shared/background-task-inline-progress";
 import { defaultDashboardDateRange } from "@/lib/dashboard-dates";
 import {
   fetchLegacyArchiveSale,
@@ -445,13 +446,16 @@ export function LegacyArchiveReportScreen() {
         </div>
         <div className="min-w-[12rem] flex-1">
           <label className="mb-1 block text-xs font-medium text-slate-500">Search</label>
-          <input
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Order # (P/M/D), customer, cashier…"
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Order # (P/M/D), customer, cashier…"
+              className="min-w-[12rem] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <BackgroundTaskInlineProgress className="max-w-xs" />
+          </div>
         </div>
         <button
           type="button"

@@ -91,6 +91,7 @@ export function ReportExportToolbar({
         {
           label,
           message: "Started fetching…",
+          timeoutMs: 1_800_000,
           downloadOnComplete: true,
           downloadFilename: `${slugifyReportFilename(filename || title)}.${exportFormat === "pdf" ? "pdf" : exportFormat === "csv" ? "csv" : "xlsx"}`,
         },

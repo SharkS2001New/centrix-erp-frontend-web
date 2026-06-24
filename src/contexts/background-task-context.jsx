@@ -13,8 +13,11 @@ import { resolveBackgroundTaskMessage } from "@/lib/background-task-messages";
 import { ApiError } from "@/lib/api";
 import { BackgroundTaskIndicator } from "@/components/shared/background-task-indicator";
 import { BackgroundTaskNavDialog } from "@/components/shared/background-task-nav-dialog";
+import { BackgroundTaskCancelDialog } from "@/components/shared/background-task-cancel-dialog";
 
 const BackgroundTaskContext = createContext(null);
+
+const NAV_BACK = "__back__";
 
 function isInternalAppHref(href) {
   if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
@@ -26,16 +29,31 @@ function isInternalAppHref(href) {
   return href.startsWith("/");
 }
 
+function normalizeNavHref(href) {
+  if (typeof href === "string") {
+    return href;
+  }
+  if (href && typeof href === "object" && typeof href.pathname === "string") {
+    return href.pathname;
+  }
+  return null;
+}
+
 export function BackgroundTaskProvider({ children }) {
   const router = useRouter();
   const [activeTask, setActiveTask] = useState(null);
+  const [overlayDismissed, setOverlayDismissed] = useState(false);
   const [pendingNavHref, setPendingNavHref] = useState(null);
+  const [pendingCancel, setPendingCancel] = useState(false);
   const abortRef = useRef(null);
+  const routerMethodsRef = useRef(null);
 
   const clearActiveTask = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     setActiveTask(null);
+    setOverlayDismissed(false);
+    setPendingCancel(false);
   }, []);
 
   const runBackgroundTask = useCallback(
@@ -48,6 +66,7 @@ export function BackgroundTaskProvider({ children }) {
       abortRef.current = controller;
       const label = opts.label ?? opts.message ?? "Working in the background…";
 
+      setOverlayDismissed(false);
       setActiveTask({
         id: "pending",
         label,
@@ -73,7 +92,9 @@ export function BackgroundTaskProvider({ children }) {
         });
 
         const task = await waitForBackgroundTask(taskId, {
-          ...opts,
+          timeoutMs: opts.timeoutMs ?? 1_800_000,
+          intervalMs: opts.intervalMs,
+          maxIntervalMs: opts.maxIntervalMs,
           signal: controller.signal,
           onProgress: (nextTask) => {
             opts.onProgress?.(nextTask);
@@ -139,6 +160,16 @@ export function BackgroundTaskProvider({ children }) {
     clearActiveTask();
   }, [activeTask?.id, clearActiveTask]);
 
+  const requestCancelActiveTask = useCallback(() => {
+    if (!activeTask) return;
+    setPendingCancel(true);
+  }, [activeTask]);
+
+  const minimizeActiveTask = useCallback(() => {
+    if (!activeTask) return;
+    setOverlayDismissed(true);
+  }, [activeTask]);
+
   const confirmNavigation = useCallback(
     async (shouldCancel) => {
       const href = pendingNavHref;
@@ -147,11 +178,27 @@ export function BackgroundTaskProvider({ children }) {
 
       if (shouldCancel) {
         await cancelActiveTask();
-        router.push(href);
+        if (href === NAV_BACK) {
+          router.back();
+        } else {
+          router.push(href);
+        }
       }
     },
     [cancelActiveTask, pendingNavHref, router],
   );
+
+  const queueNavigation = useCallback((href) => {
+    const normalized = normalizeNavHref(href);
+    if (!normalized || !isInternalAppHref(normalized)) {
+      return false;
+    }
+    if (normalized === window.location.pathname) {
+      return false;
+    }
+    setPendingNavHref(normalized);
+    return true;
+  }, []);
 
   useEffect(() => {
     if (!activeTask) return undefined;
@@ -175,24 +222,106 @@ export function BackgroundTaskProvider({ children }) {
     return () => document.removeEventListener("click", handler, true);
   }, [activeTask]);
 
+  useEffect(() => {
+    if (!activeTask) {
+      if (routerMethodsRef.current) {
+        router.push = routerMethodsRef.current.push;
+        router.replace = routerMethodsRef.current.replace;
+        router.back = routerMethodsRef.current.back;
+        routerMethodsRef.current = null;
+      }
+      return undefined;
+    }
+
+    if (!routerMethodsRef.current) {
+      routerMethodsRef.current = {
+        push: router.push.bind(router),
+        replace: router.replace.bind(router),
+        back: router.back.bind(router),
+      };
+    }
+
+    const original = routerMethodsRef.current;
+
+    router.push = (href, options) => {
+      if (queueNavigation(href)) {
+        return Promise.resolve(false);
+      }
+      return original.push(href, options);
+    };
+
+    router.replace = (href, options) => {
+      if (queueNavigation(href)) {
+        return Promise.resolve(false);
+      }
+      return original.replace(href, options);
+    };
+
+    router.back = () => {
+      setPendingNavHref(NAV_BACK);
+    };
+
+    return () => {
+      router.push = original.push;
+      router.replace = original.replace;
+      router.back = original.back;
+    };
+  }, [activeTask, queueNavigation, router]);
+
+  useEffect(() => {
+    if (!activeTask) return undefined;
+
+    const onBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [activeTask]);
+
   const value = useMemo(
     () => ({
       activeTask,
+      overlayDismissed,
       busy: Boolean(activeTask),
       runBackgroundTask,
       cancelActiveTask,
+      requestCancelActiveTask,
+      minimizeActiveTask,
+      queueNavigation,
     }),
-    [activeTask, cancelActiveTask, runBackgroundTask],
+    [
+      activeTask,
+      overlayDismissed,
+      cancelActiveTask,
+      minimizeActiveTask,
+      queueNavigation,
+      requestCancelActiveTask,
+      runBackgroundTask,
+    ],
   );
 
   return (
     <BackgroundTaskContext.Provider value={value}>
       {children}
-      <BackgroundTaskIndicator task={activeTask} onCancel={() => void cancelActiveTask()} />
+      {!overlayDismissed ? (
+        <BackgroundTaskIndicator
+          task={activeTask}
+          onCancel={requestCancelActiveTask}
+          onMinimize={minimizeActiveTask}
+        />
+      ) : null}
       <BackgroundTaskNavDialog
         open={Boolean(pendingNavHref)}
         onStay={() => confirmNavigation(false)}
         onCancelAndLeave={() => void confirmNavigation(true)}
+      />
+      <BackgroundTaskCancelDialog
+        open={pendingCancel}
+        taskLabel={activeTask?.label}
+        onDismiss={() => setPendingCancel(false)}
+        onConfirm={() => void cancelActiveTask()}
       />
     </BackgroundTaskContext.Provider>
   );

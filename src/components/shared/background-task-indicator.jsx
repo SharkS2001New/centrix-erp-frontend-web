@@ -3,10 +3,9 @@
 import { createPortal } from "react-dom";
 
 /**
- * Page-centered, non-blocking background task indicator.
- * Does not cover the full viewport — navigation remains possible (with confirmation).
+ * Page-centered background task indicator. Can be minimized so work continues with an inline bar.
  */
-export function BackgroundTaskIndicator({ task, onCancel }) {
+export function BackgroundTaskIndicator({ task, onCancel, onMinimize }) {
   if (!task || typeof document === "undefined") return null;
 
   const progress = Number(task.progress ?? 0);
@@ -38,13 +37,22 @@ export function BackgroundTaskIndicator({ task, onCancel }) {
             <p className="mt-1.5 text-xs text-slate-500">{Math.round(progress)}%</p>
           ) : null}
         </div>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="mt-4 text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline"
-        >
-          Cancel task
-        </button>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={onMinimize}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Run in background
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline"
+          >
+            Cancel task
+          </button>
+        </div>
       </div>
     </div>,
     document.body,
