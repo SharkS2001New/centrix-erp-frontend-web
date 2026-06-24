@@ -1,7 +1,8 @@
 "use client";
 
-import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { openPrintWindow } from "@/lib/open-print-window";
