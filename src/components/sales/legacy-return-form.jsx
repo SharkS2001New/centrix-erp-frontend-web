@@ -226,8 +226,8 @@ export function LegacyReturnForm({
             onChange={(e) => setRefundMethod(e.target.value)}
           >
             {REFUND_METHODS.map((method) => (
-              <option key={method} value={method}>
-                {method}
+              <option key={method.value} value={method.value}>
+                {method.label}
               </option>
             ))}
           </select>
