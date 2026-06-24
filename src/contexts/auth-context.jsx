@@ -29,7 +29,7 @@ import { resolveGeneralSettings } from "@/lib/format";
 import { buildAccessContext, resolveHasPermission, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { resolvePostLoginPath, workspaceLoginChannel, workspacesFromCapabilities } from "@/lib/workspaces";
 import { applyWorkspaceSession } from "@/lib/workspace-session";
-import { WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
+import { POS_LOGIN_CHANNEL, WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
 import { useCookieAuth } from "@/lib/auth-config";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
@@ -89,7 +89,7 @@ export function AuthProvider({ children }) {
     setMemberships(res.memberships ?? []);
     setLoginChannel(channel);
     try {
-      const caps = await apiRequest("/erp/capabilities");
+      const caps = res.capabilities ?? (await apiRequest("/erp/capabilities"));
       setCapabilities(caps);
       return caps;
     } catch (e) {
@@ -142,7 +142,7 @@ export function AuthProvider({ children }) {
     async (companyCode, username, password, options = {}) => {
       const { forceLogout = false } = options;
 
-      if (useCookieAuth && !forceLogout) {
+      if (useCookieAuth && !forceLogout && hasAuthSession()) {
         await revokeServerAuthSession();
       }
 
@@ -185,7 +185,12 @@ export function AuthProvider({ children }) {
       });
       const workspaces = workspacesFromCapabilities(caps);
       if (workspaces.length === 1) {
-        await switchWorkspace(workspaces[0].id);
+        const only = workspaces[0];
+        if (workspaceLoginChannel(only.id) === POS_LOGIN_CHANNEL) {
+          await switchWorkspace(only.id);
+        } else {
+          setStoredWorkspace(only.id);
+        }
       } else if (workspaces.length > 1) {
         setStoredWorkspace(null);
       }

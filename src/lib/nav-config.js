@@ -220,6 +220,18 @@ const NAV_SECTION_DEFINITIONS = [
     collapsible: true,
     items: [
       {
+        href: "/sales/legacy-orders",
+        label: "Legacy orders",
+        module: "sales.backend",
+        permission: P.sales.returns.view,
+      },
+      {
+        href: "/sales/legacy-returns",
+        label: "Legacy returns",
+        module: "sales.backend",
+        permission: P.sales.returns.view,
+      },
+      {
         href: "/sales/returns",
         label: "Returns & credit notes",
         module: "sales.backend",
