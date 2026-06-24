@@ -177,12 +177,8 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
                   the selected method only. Configure devices and premises below, then save settings.
                 </p>
               </Field>
-              {form.attendance_capture_mode === "clock_device" ? (
-                <AttendanceClockDevicesSettings />
-              ) : null}
               {form.attendance_capture_mode === "company_mobile" ? (
-                <>
-                  <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Phone verification">
                     <select
                       className={inputClassName()}
@@ -240,9 +236,6 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
                     />
                   </Field>
                 </div>
-                  <CompanyPremisesPanel embedded />
-                  <AttendanceMobileDevicesPanel embedded />
-                </>
               ) : null}
             </div>
           ) : null}
@@ -319,6 +312,17 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
           </div>
         </section>
       </form>
+
+      {!loading && form.attendance_capture_mode === "clock_device" ? (
+        <AttendanceClockDevicesSettings />
+      ) : null}
+
+      {!loading && form.attendance_capture_mode === "company_mobile" ? (
+        <div className="space-y-4">
+          <CompanyPremisesPanel embedded />
+          <AttendanceMobileDevicesPanel embedded />
+        </div>
+      ) : null}
 
       <section className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
         <p className="font-medium text-slate-800">Kenya statutory rates</p>

@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { AttendanceMobileDeviceIdHelpModal } from "@/components/hr/attendance-mobile-device-id-help-modal";
 
 export function AttendanceMobileDevicesPanel({ embedded = false }) {
+  const { organizationApiPath } = useSettingsApi();
   const [devices, setDevices] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -26,9 +28,11 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
     setError(null);
     try {
       const [deviceRes, branchRes, premisesRes] = await Promise.all([
-        apiRequest("/attendance-mobile-devices", { searchParams: { per_page: 100 } }),
-        apiRequest("/branches", { searchParams: { per_page: 200 } }),
-        apiRequest("/attendance/company-premises").catch(() => ({ branches: [] })),
+        apiRequest(organizationApiPath("/attendance-mobile-devices"), {
+          searchParams: { per_page: 100 },
+        }),
+        apiRequest(organizationApiPath("/branches"), { searchParams: { per_page: 200 } }),
+        apiRequest(organizationApiPath("/attendance/company-premises")).catch(() => ({ branches: [] })),
       ]);
       setDevices(deviceRes.data ?? []);
       const branchList = branchRes.data ?? premisesRes.branches ?? [];
@@ -42,7 +46,7 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [organizationApiPath]);
 
   useEffect(() => {
     load();
@@ -55,8 +59,7 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
     return (branchId) => map.get(String(branchId)) ?? "—";
   }, [branches]);
 
-  async function registerDevice(e) {
-    e.preventDefault();
+  async function registerDevice() {
     if (!form.device_identifier.trim()) {
       setError("Device identifier is required.");
       return;
@@ -68,7 +71,7 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
     setSaving(true);
     setError(null);
     try {
-      await apiRequest("/attendance-mobile-devices", {
+      await apiRequest(organizationApiPath("/attendance-mobile-devices"), {
         method: "POST",
         body: {
           device_identifier: form.device_identifier.trim(),
@@ -94,7 +97,7 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
   async function toggleDevice(device) {
     setError(null);
     try {
-      await apiRequest(`/attendance-mobile-devices/${device.id}`, {
+      await apiRequest(organizationApiPath(`/attendance-mobile-devices/${device.id}`), {
         method: "PUT",
         body: { is_active: !device.is_active },
       });
@@ -108,7 +111,9 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
     if (!confirm(`Remove attendance phone "${device.device_label || device.device_identifier}"?`)) return;
     setError(null);
     try {
-      await apiRequest(`/attendance-mobile-devices/${device.id}`, { method: "DELETE" });
+      await apiRequest(organizationApiPath(`/attendance-mobile-devices/${device.id}`), {
+        method: "DELETE",
+      });
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to remove phone");
@@ -145,7 +150,7 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
         </p>
       ) : null}
 
-      <form onSubmit={registerDevice} className="mt-4 grid gap-4 lg:grid-cols-5">
+      <div className="mt-4 grid gap-4 lg:grid-cols-5">
         <Field label="Device ID">
           <input
             className={inputClassName()}
@@ -171,7 +176,11 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
               })}
             </select>
           </Field>
-        ) : null}
+        ) : (
+          <Field label="Branch">
+            <p className="text-sm text-amber-700">Add an active branch before registering a phone.</p>
+          </Field>
+        )}
         <Field label="Label">
           <input
             className={inputClassName()}
@@ -189,11 +198,16 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
           />
         </Field>
         <div className="flex items-end">
-          <PrimaryButton type="submit" disabled={saving} showIcon={false}>
+          <PrimaryButton
+            type="button"
+            disabled={saving || !branches.length}
+            showIcon={false}
+            onClick={() => void registerDevice()}
+          >
             {saving ? "Saving…" : "Register phone"}
           </PrimaryButton>
         </div>
-      </form>
+      </div>
 
       {loading ? (
         <p className="mt-4 text-sm text-slate-500">Loading phones…</p>

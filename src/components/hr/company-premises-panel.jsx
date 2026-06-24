@@ -2,14 +2,46 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 
+function geolocationErrorMessage(error) {
+  if (!error) {
+    return "Could not read your location. Allow location access and try again.";
+  }
+  switch (error.code) {
+    case error.PERMISSION_DENIED:
+      return "Location permission denied. Allow location for this site in your browser settings, then try again.";
+    case error.POSITION_UNAVAILABLE:
+      return "Location unavailable on this device. Enter latitude and longitude manually, or try again with a clearer GPS signal.";
+    case error.TIMEOUT:
+      return "Location request timed out. Try again or enter coordinates manually.";
+    default:
+      return error.message || "Could not read your location. Allow location access and try again.";
+  }
+}
+
+function requestCurrentPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Geolocation is not supported in this browser."));
+      return;
+    }
+
+    const options = { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 };
+
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+}
+
 export function CompanyPremisesPanel({ embedded = false }) {
+  const { organizationApiPath } = useSettingsApi();
   const [premises, setPremises] = useState(null);
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
   const [draftLat, setDraftLat] = useState("");
@@ -27,7 +59,7 @@ export function CompanyPremisesPanel({ embedded = false }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiRequest("/attendance/company-premises");
+      const data = await apiRequest(organizationApiPath("/attendance/company-premises"));
       setPremises(data);
       const list = data.branches ?? [];
       setSelectedBranchId((prev) => {
@@ -39,7 +71,7 @@ export function CompanyPremisesPanel({ embedded = false }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [organizationApiPath]);
 
   useEffect(() => {
     load();
@@ -55,26 +87,29 @@ export function CompanyPremisesPanel({ embedded = false }) {
     setDraftLng(selectedBranch.longitude != null ? String(selectedBranch.longitude) : "");
   }, [selectedBranch]);
 
-  function captureCurrentLocation() {
+  async function captureCurrentLocation() {
     setMessage(null);
     setError(null);
-    if (!navigator.geolocation) {
-      setError("Geolocation is not supported in this browser.");
+
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setError("Location capture requires HTTPS. Open Centrix over a secure (https://) connection.");
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setDraftLat(String(pos.coords.latitude));
-        setDraftLng(String(pos.coords.longitude));
-        setMessage("Current location captured. Enter your password and save.");
-      },
-      () => setError("Could not read your location. Allow location access and try again."),
-      { enableHighAccuracy: true, timeout: 15000 },
-    );
+
+    setLocating(true);
+    try {
+      const pos = await requestCurrentPosition();
+      setDraftLat(String(pos.coords.latitude));
+      setDraftLng(String(pos.coords.longitude));
+      setMessage("Current location captured. Enter your password and save.");
+    } catch (err) {
+      setError(geolocationErrorMessage(err));
+    } finally {
+      setLocating(false);
+    }
   }
 
-  async function saveLocation(e) {
-    e.preventDefault();
+  async function saveLocation() {
     if (!selectedBranchId) {
       setError("Select a branch first.");
       return;
@@ -91,7 +126,7 @@ export function CompanyPremisesPanel({ embedded = false }) {
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest("/attendance/company-premises", {
+      const res = await apiRequest(organizationApiPath("/attendance/company-premises"), {
         method: "POST",
         body: {
           password,
@@ -144,7 +179,7 @@ export function CompanyPremisesPanel({ embedded = false }) {
       ) : branches.length === 0 ? (
         <p className="mt-4 text-sm text-slate-500">No active branches found for this organization.</p>
       ) : (
-        <form onSubmit={saveLocation} className="mt-4 space-y-4">
+        <div className="mt-4 space-y-4">
           {multiBranch ? (
             <Field label="Branch">
               <select
@@ -199,8 +234,13 @@ export function CompanyPremisesPanel({ embedded = false }) {
             </Field>
           </div>
           <div className="flex flex-wrap items-end gap-3">
-            <PrimaryButton type="button" showIcon={false} onClick={captureCurrentLocation}>
-              Use my location
+            <PrimaryButton
+              type="button"
+              showIcon={false}
+              disabled={locating}
+              onClick={() => void captureCurrentLocation()}
+            >
+              {locating ? "Locating…" : "Use my location"}
             </PrimaryButton>
             <Field label="Your password to confirm">
               <input
@@ -212,7 +252,12 @@ export function CompanyPremisesPanel({ embedded = false }) {
                 placeholder="Required to save"
               />
             </Field>
-            <PrimaryButton type="submit" disabled={saving} showIcon={false}>
+            <PrimaryButton
+              type="button"
+              disabled={saving}
+              showIcon={false}
+              onClick={() => void saveLocation()}
+            >
               {saving ? "Saving…" : multiBranch ? "Save branch premises" : "Save premises location"}
             </PrimaryButton>
           </div>
@@ -229,7 +274,7 @@ export function CompanyPremisesPanel({ embedded = false }) {
               </a>
             </p>
           ) : null}
-        </form>
+        </div>
       )}
     </section>
   );

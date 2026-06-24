@@ -2,12 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { useAuth } from "@/contexts/auth-context";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, FormModal, inputClassName } from "@/components/catalog/catalog-shared";
 
 export function AttendanceClockDevicesSettings() {
-  const { user, capabilities } = useAuth();
-  const organizationId = user?.organization_id ?? capabilities?.organization_id;
+  const { organizationApiPath } = useSettingsApi();
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -21,7 +20,9 @@ export function AttendanceClockDevicesSettings() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiRequest("/attendance-clock-devices", { searchParams: { per_page: 100 } });
+      const res = await apiRequest(organizationApiPath("/attendance-clock-devices"), {
+        searchParams: { per_page: 100 },
+      });
       setDevices(res.data ?? []);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load clock devices");
@@ -29,30 +30,24 @@ export function AttendanceClockDevicesSettings() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [organizationApiPath]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  async function register(e) {
-    e.preventDefault();
+  async function register() {
     if (!deviceNo.trim()) {
       setError("Device number is required.");
-      return;
-    }
-    if (!organizationId) {
-      setError("No organization on your account.");
       return;
     }
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
-      await apiRequest("/attendance-clock-devices", {
+      await apiRequest(organizationApiPath("/attendance-clock-devices"), {
         method: "POST",
         body: {
-          organization_id: organizationId,
           device_no: deviceNo.trim(),
           location: location.trim() || null,
           is_active: true,
@@ -116,7 +111,7 @@ export function AttendanceClockDevicesSettings() {
         </ul>
       )}
 
-      <form onSubmit={register} className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Device number">
           <input
             type="text"
@@ -136,11 +131,16 @@ export function AttendanceClockDevicesSettings() {
           />
         </Field>
         <div className="sm:col-span-2">
-          <PrimaryButton type="submit" disabled={saving} showIcon={false}>
+          <PrimaryButton
+            type="button"
+            disabled={saving}
+            showIcon={false}
+            onClick={() => void register()}
+          >
             {saving ? "Saving…" : "Add clock device"}
           </PrimaryButton>
         </div>
-      </form>
+      </div>
 
       <AttendanceClockDeviceHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
