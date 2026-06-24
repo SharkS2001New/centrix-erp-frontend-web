@@ -13,6 +13,8 @@ import {
   ReportPageShell,
   ReportTable,
 } from "@/components/reports/report-screen-shared";
+import { ReportLoadingOverlay } from "@/components/shared/report-loading-overlay";
+import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
 import { ProfitLossReportScreen } from "@/components/reports/profit-loss-report-screen";
 import { ExpensesReportScreen } from "@/components/reports/expenses-report-screen";
 import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
@@ -79,19 +81,14 @@ function StandardReportScreen({ definition }) {
       }
 
       const res = await apiRequest(definition.apiPath, { searchParams });
-      let centrixRows = res.data ?? [];
+      let centrixRows = normalizeReportRows(res);
       setLegacyArchiveMeta(res.legacy_archive ?? null);
       setLegacyRows(res.legacy_archive?.data ?? []);
       if (definition.filterRows) {
         centrixRows = definition.filterRows(centrixRows, applied.extraFilters);
       }
       setRows(centrixRows);
-      setReportMeta({
-        current_page: res.current_page ?? page,
-        last_page: res.last_page ?? 1,
-        total: res.total ?? centrixRows.length,
-        per_page: res.per_page ?? PAGE_SIZE,
-      });
+      setReportMeta(normalizeReportMeta(res, page, PAGE_SIZE));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
       setRows([]);
@@ -188,7 +185,9 @@ function StandardReportScreen({ definition }) {
   }, [applied.extraFilters, definition, exportSearchParams]);
 
   return (
-    <ReportPageShell
+    <>
+      <ReportLoadingOverlay loading={loading} title={`Loading ${definition.title}…`} />
+      <ReportPageShell
       section={definition.section}
       title={definition.title}
       subtitle={definition.subtitle}
@@ -304,9 +303,7 @@ function StandardReportScreen({ definition }) {
         </div>
       ) : null}
 
-      {loading ? (
-        <p className="text-sm text-slate-500">Loading report…</p>
-      ) : (
+      {loading ? null : (
         <>
           <ReportTable columns={definition.columns ?? []} rows={displayRows} footerTotals={footerTotals} />
           <PaginationBar
@@ -334,6 +331,7 @@ function StandardReportScreen({ definition }) {
         </>
       )}
     </ReportPageShell>
+    </>
   );
 }
 

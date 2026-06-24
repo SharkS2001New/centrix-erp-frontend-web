@@ -6,6 +6,15 @@ import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { AttendanceMobileDeviceIdHelpModal } from "@/components/hr/attendance-mobile-device-id-help-modal";
 
+function normalizeDeviceIdentifier(identifier, platform) {
+  const id = String(identifier ?? "").trim().toLowerCase();
+  if (!id) return "";
+  if (/^(android|ios):/.test(id)) return id;
+  const p = String(platform ?? "").trim().toLowerCase();
+  if (p === "android" || p === "ios") return `${p}:${id}`;
+  return id;
+}
+
 export function AttendanceMobileDevicesPanel({ embedded = false }) {
   const { organizationApiPath } = useSettingsApi();
   const [devices, setDevices] = useState([]);
@@ -71,10 +80,11 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
     setSaving(true);
     setError(null);
     try {
+      const deviceIdentifier = normalizeDeviceIdentifier(form.device_identifier, form.platform);
       await apiRequest(organizationApiPath("/attendance-mobile-devices"), {
         method: "POST",
         body: {
-          device_identifier: form.device_identifier.trim(),
+          device_identifier: deviceIdentifier,
           branch_id: Number(form.branch_id),
           device_label: form.device_label.trim() || null,
           platform: form.platform.trim() || null,
@@ -156,7 +166,7 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
             className={inputClassName()}
             value={form.device_identifier}
             onChange={(e) => setForm((f) => ({ ...f, device_identifier: e.target.value }))}
-            placeholder="android:… or ios:…"
+            placeholder="android:… (paste full ID from phone)"
           />
         </Field>
         {multiBranch || branches.length > 0 ? (

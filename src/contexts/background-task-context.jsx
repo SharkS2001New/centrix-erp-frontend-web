@@ -13,7 +13,6 @@ import { resolveBackgroundTaskMessage } from "@/lib/background-task-messages";
 import { ApiError } from "@/lib/api";
 import { BackgroundTaskIndicator } from "@/components/shared/background-task-indicator";
 import { BackgroundTaskNavDialog } from "@/components/shared/background-task-nav-dialog";
-import { BackgroundTaskCancelDialog } from "@/components/shared/background-task-cancel-dialog";
 
 const BackgroundTaskContext = createContext(null);
 
@@ -44,7 +43,6 @@ export function BackgroundTaskProvider({ children }) {
   const [activeTask, setActiveTask] = useState(null);
   const [overlayDismissed, setOverlayDismissed] = useState(false);
   const [pendingNavHref, setPendingNavHref] = useState(null);
-  const [pendingCancel, setPendingCancel] = useState(false);
   const abortRef = useRef(null);
   const routerMethodsRef = useRef(null);
 
@@ -53,7 +51,6 @@ export function BackgroundTaskProvider({ children }) {
     abortRef.current = null;
     setActiveTask(null);
     setOverlayDismissed(false);
-    setPendingCancel(false);
   }, []);
 
   const runBackgroundTask = useCallback(
@@ -159,11 +156,6 @@ export function BackgroundTaskProvider({ children }) {
 
     clearActiveTask();
   }, [activeTask?.id, clearActiveTask]);
-
-  const requestCancelActiveTask = useCallback(() => {
-    if (!activeTask) return;
-    setPendingCancel(true);
-  }, [activeTask]);
 
   const minimizeActiveTask = useCallback(() => {
     if (!activeTask) return;
@@ -287,7 +279,6 @@ export function BackgroundTaskProvider({ children }) {
       busy: Boolean(activeTask),
       runBackgroundTask,
       cancelActiveTask,
-      requestCancelActiveTask,
       minimizeActiveTask,
       queueNavigation,
     }),
@@ -297,7 +288,6 @@ export function BackgroundTaskProvider({ children }) {
       cancelActiveTask,
       minimizeActiveTask,
       queueNavigation,
-      requestCancelActiveTask,
       runBackgroundTask,
     ],
   );
@@ -308,7 +298,7 @@ export function BackgroundTaskProvider({ children }) {
       {!overlayDismissed ? (
         <BackgroundTaskIndicator
           task={activeTask}
-          onCancel={requestCancelActiveTask}
+          onCancel={() => void cancelActiveTask()}
           onMinimize={minimizeActiveTask}
         />
       ) : null}
@@ -316,12 +306,6 @@ export function BackgroundTaskProvider({ children }) {
         open={Boolean(pendingNavHref)}
         onStay={() => confirmNavigation(false)}
         onCancelAndLeave={() => void confirmNavigation(true)}
-      />
-      <BackgroundTaskCancelDialog
-        open={pendingCancel}
-        taskLabel={activeTask?.label}
-        onDismiss={() => setPendingCancel(false)}
-        onConfirm={() => void cancelActiveTask()}
       />
     </BackgroundTaskContext.Provider>
   );

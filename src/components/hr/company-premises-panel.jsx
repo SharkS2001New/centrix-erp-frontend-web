@@ -11,7 +11,7 @@ function geolocationErrorMessage(error) {
   }
   switch (error.code) {
     case error.PERMISSION_DENIED:
-      return "Location permission denied. Allow location for this site in your browser settings, then try again.";
+      return "Location access was blocked. When your browser asks, choose Allow. If you don't see a prompt, open this site's permissions from the address bar and enable Location.";
     case error.POSITION_UNAVAILABLE:
       return "Location unavailable on this device. Enter latitude and longitude manually, or try again with a clearer GPS signal.";
     case error.TIMEOUT:

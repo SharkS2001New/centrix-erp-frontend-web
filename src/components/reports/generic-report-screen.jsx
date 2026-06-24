@@ -6,6 +6,8 @@ import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
+import { ReportLoadingOverlay } from "@/components/shared/report-loading-overlay";
+import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
 import {
   CatalogPageShell,
   Field,
@@ -71,6 +73,8 @@ function labelizeKey(key) {
 
 const PAGE_SIZE = 20;
 
+const REPORTS_WITHOUT_DATE_FILTER = new Set(["price-list"]);
+
 const LEGACY_ARCHIVE_REPORT_KEYS = new Set(["sales-by-channel"]);
 
 export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
@@ -92,6 +96,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const [legacyPage, setLegacyPage] = useState(1);
 
   const supportsLegacyArchive = LEGACY_ARCHIVE_REPORT_KEYS.has(reportKey);
+  const showDateFilters = !REPORTS_WITHOUT_DATE_FILTER.has(reportKey);
   const dateColumn = DATE_COLUMNS[reportKey] ?? "sale_date";
 
   useEffect(() => {
@@ -111,10 +116,12 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       const searchParams = {
         per_page: PAGE_SIZE,
         page,
-        date_column: dateColumn,
       };
-      if (fromDate) searchParams.from_date = fromDate;
-      if (toDate) searchParams.to_date = toDate;
+      if (showDateFilters) {
+        searchParams.date_column = dateColumn;
+        if (fromDate) searchParams.from_date = fromDate;
+        if (toDate) searchParams.to_date = toDate;
+      }
       if (branchId) searchParams.branch_id = branchId;
       if (payrollRunId) searchParams.payroll_run_id = payrollRunId;
       if (supportsLegacyArchive && includeLegacyArchive) {
@@ -123,13 +130,9 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       }
 
       const res = await apiRequest(apiPath, { searchParams });
-      setRows(res.data ?? []);
-      setMeta({
-        current_page: res.current_page ?? page,
-        last_page: res.last_page ?? 1,
-        total: res.total ?? (res.data ?? []).length,
-        per_page: res.per_page ?? PAGE_SIZE,
-      });
+      const centrixRows = normalizeReportRows(res);
+      setRows(centrixRows);
+      setMeta(normalizeReportMeta(res, page, PAGE_SIZE));
       setLegacyArchiveMeta(res.legacy_archive ?? null);
       setLegacyRows(res.legacy_archive?.data ?? []);
     } catch (e) {
@@ -141,7 +144,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, legacyPage, fromDate, toDate, branchId, dateColumn, payrollRunId, supportsLegacyArchive, includeLegacyArchive]);
+  }, [apiPath, page, legacyPage, fromDate, toDate, branchId, dateColumn, payrollRunId, supportsLegacyArchive, includeLegacyArchive, showDateFilters]);
 
   useEffect(() => {
     loadReport();
@@ -168,13 +171,16 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   }, [rows, legacyRows]);
 
   const exportSearchParams = useMemo(() => {
-    const searchParams = { date_column: dateColumn };
-    if (fromDate) searchParams.from_date = fromDate;
-    if (toDate) searchParams.to_date = toDate;
+    const searchParams = {};
+    if (showDateFilters) {
+      searchParams.date_column = dateColumn;
+      if (fromDate) searchParams.from_date = fromDate;
+      if (toDate) searchParams.to_date = toDate;
+    }
     if (branchId) searchParams.branch_id = branchId;
     if (payrollRunId) searchParams.payroll_run_id = payrollRunId;
     return searchParams;
-  }, [branchId, dateColumn, fromDate, payrollRunId, toDate]);
+  }, [branchId, dateColumn, fromDate, payrollRunId, showDateFilters, toDate]);
 
   const totalPages = meta?.last_page ?? 1;
   const total = meta?.total ?? rows.length;
@@ -182,7 +188,9 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const legacyTotalPages = legacyMeta?.last_page ?? 1;
 
   return (
-    <CatalogPageShell
+    <>
+      <ReportLoadingOverlay loading={loading} title={`Loading ${label ?? "report"}…`} />
+      <CatalogPageShell
       title={label ?? "Report"}
       subtitle={subtitle ?? undefined}
       action={
@@ -212,28 +220,32 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
           <Link href="/reports" className="text-sm text-[#185FA5] hover:underline">
             ← All reports
           </Link>
-          <Field label="From">
-            <input
-              type="date"
-              className={inputClassName()}
-              value={fromDate}
-              onChange={(e) => {
-                setPage(1);
-                setFromDate(e.target.value);
-              }}
-            />
-          </Field>
-          <Field label="To">
-            <input
-              type="date"
-              className={inputClassName()}
-              value={toDate}
-              onChange={(e) => {
-                setPage(1);
-                setToDate(e.target.value);
-              }}
-            />
-          </Field>
+          {showDateFilters ? (
+            <>
+              <Field label="From">
+                <input
+                  type="date"
+                  className={inputClassName()}
+                  value={fromDate}
+                  onChange={(e) => {
+                    setPage(1);
+                    setFromDate(e.target.value);
+                  }}
+                />
+              </Field>
+              <Field label="To">
+                <input
+                  type="date"
+                  className={inputClassName()}
+                  value={toDate}
+                  onChange={(e) => {
+                    setPage(1);
+                    setToDate(e.target.value);
+                  }}
+                />
+              </Field>
+            </>
+          ) : null}
           <Field label="Branch">
             <select
               className={inputClassName()}
@@ -291,9 +303,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       }
     >
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        {loading ? (
-          <p className="px-5 py-8 text-center text-sm text-slate-500">Loading report…</p>
-        ) : rows.length === 0 ? (
+        {!loading && rows.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-slate-500">No rows for this filter.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -367,5 +377,6 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
         </div>
       ) : null}
     </CatalogPageShell>
+    </>
   );
 }

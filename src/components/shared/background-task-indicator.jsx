@@ -1,14 +1,44 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+
+function useDisplayProgress(task) {
+  const [simulated, setSimulated] = useState(0);
+  const serverProgress = Number(task?.progress ?? 0);
+
+  useEffect(() => {
+    if (!task) {
+      setSimulated(0);
+      return undefined;
+    }
+
+    setSimulated((current) => Math.max(current, 6, serverProgress));
+
+    const timer = setInterval(() => {
+      setSimulated((current) => {
+        const floor = Math.max(current, serverProgress);
+        if (floor >= 92) {
+          return floor;
+        }
+        const step = floor < 40 ? 6 : floor < 70 ? 3 : 1;
+        return Math.min(92, floor + step);
+      });
+    }, 450);
+
+    return () => clearInterval(timer);
+  }, [task?.id, serverProgress]);
+
+  return Math.min(100, Math.max(simulated, serverProgress));
+}
 
 /**
  * Page-centered background task indicator. Can be minimized so work continues with an inline bar.
  */
 export function BackgroundTaskIndicator({ task, onCancel, onMinimize }) {
-  if (!task || typeof document === "undefined") return null;
+  const progress = useDisplayProgress(task);
 
-  const progress = Number(task.progress ?? 0);
+  if (!task || typeof document === "undefined") return null;
 
   return createPortal(
     <div
@@ -33,9 +63,7 @@ export function BackgroundTaskIndicator({ task, onCancel, onMinimize }) {
               style={{ width: `${Math.min(100, Math.max(4, progress))}%` }}
             />
           </div>
-          {progress > 0 ? (
-            <p className="mt-1.5 text-xs text-slate-500">{Math.round(progress)}%</p>
-          ) : null}
+          <p className="mt-1.5 text-xs text-slate-500">{Math.round(progress)}%</p>
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
           <button
