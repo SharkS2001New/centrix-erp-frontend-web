@@ -15,7 +15,6 @@ import {
   totalReturnAmount,
 } from "@/components/sales/customer-returns-shared";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
-import { useAuth } from "@/contexts/auth-context";
 
 export function LegacyReturnForm({
   initialSaleId = "",
