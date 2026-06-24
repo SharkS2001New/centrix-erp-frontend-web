@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
@@ -14,15 +15,15 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { HrSelectField } from "@/components/hr/hr-crud-page";
 import { HrTimePickerField } from "@/components/hr/hr-time-picker";
-import { CompanyPremisesPanel } from "@/components/hr/company-premises-panel";
-import { AttendanceMobileDevicesPanel } from "@/components/hr/attendance-mobile-devices-panel";
 import {
   composeEmployeeDisplayName,
   computeAttendanceHours,
   formatTimeForApi,
-  isAdminUser,
 } from "@/components/hr/hr-shared";
-import { isCompanyMobileAttendanceEnabled } from "@/lib/hr-settings";
+import {
+  formatAttendanceSource,
+  isCompanyMobileAttendanceEnabled,
+} from "@/lib/hr-settings";
 
 const EMPTY_MANUAL = {
   employee_id: "",
@@ -37,23 +38,20 @@ const EMPTY_MANUAL = {
 const NON_WORK_STATUSES = ["leave", "holiday", "absent"];
 
 export default function HrAttendancePage() {
-  const { user, capabilities, hasPermission } = useAuth();
-  const admin = isAdminUser(user);
-  const canManagePremises = hasPermission(P.hr.manage);
+  const { capabilities, hasPermission } = useAuth();
+  const canManageSettings = hasPermission(P.hr.manage);
   const companyMobileEnabled = isCompanyMobileAttendanceEnabled(capabilities?.module_settings);
   const [employees, setEmployees] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [clockDevices, setClockDevices] = useState([]);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualForm, setManualForm] = useState(EMPTY_MANUAL);
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState(null);
   const [editingRecord, setEditingRecord] = useState(null);
   const [dayHint, setDayHint] = useState(null);
-  const [mobileSessions, setMobileSessions] = useState([]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -61,25 +59,23 @@ export default function HrAttendancePage() {
       const requestDefs = [
         { key: "employees", promise: apiRequest("/employees", { searchParams: { per_page: 200 } }) },
         {
-          key: "sessions",
-          promise: apiRequest("/attendance/clock-sessions", {
-            searchParams: { per_page: 50, open_only: 1 },
-          }),
-        },
-        {
           key: "attendance",
           promise: apiRequest("/employee-attendance", { searchParams: { per_page: 100 } }),
         },
-        {
-          key: "devices",
-          promise: apiRequest("/attendance-clock-devices", { searchParams: { per_page: 100 } }),
-        },
       ];
+
       if (companyMobileEnabled) {
         requestDefs.push({
-          key: "mobileSessions",
+          key: "sessions",
           promise: apiRequest("/attendance/company-mobile-sessions", {
-            searchParams: { per_page: 50 },
+            searchParams: { per_page: 50, open_only: 1 },
+          }),
+        });
+      } else {
+        requestDefs.push({
+          key: "sessions",
+          promise: apiRequest("/attendance/clock-sessions", {
+            searchParams: { per_page: 50, open_only: 1 },
           }),
         });
       }
@@ -96,16 +92,14 @@ export default function HrAttendancePage() {
               : result.reason instanceof Error
                 ? result.reason.message
                 : "Request failed";
-          failures.push(`${key}: ${message}`);
+          failures.push(message);
           return;
         }
 
         const res = result.value;
         if (key === "employees") setEmployees(res.data ?? []);
-        if (key === "sessions") setSessions(res.data ?? []);
         if (key === "attendance") setRecords(res.data ?? []);
-        if (key === "devices") setClockDevices(res.data ?? []);
-        if (key === "mobileSessions") setMobileSessions(res.data ?? []);
+        if (key === "sessions") setSessions(res.data ?? []);
       });
 
       if (failures.length === requestDefs.length) {
@@ -124,10 +118,14 @@ export default function HrAttendancePage() {
     load();
   }, [load]);
 
-  const openSessions = useMemo(
-    () => sessions.filter((s) => !s.clock_out_at),
-    [sessions],
-  );
+  const openSessions = useMemo(() => {
+    if (companyMobileEnabled) {
+      return sessions.filter((s) => s.is_open !== false && !s.clock_out_at);
+    }
+    return sessions.filter(
+      (s) => !s.clock_out_at && (!s.source || s.source === "clock_device"),
+    );
+  }, [companyMobileEnabled, sessions]);
 
   const timesRequired = !NON_WORK_STATUSES.includes(manualForm.status);
 
@@ -169,21 +167,6 @@ export default function HrAttendancePage() {
       cancelled = true;
     };
   }, [manualForm.employee_id, manualForm.attendance_date]);
-
-  const activeDevices = useMemo(
-    () => clockDevices.filter((d) => d.is_active !== false),
-    [clockDevices],
-  );
-
-  const sessionsByDevice = useMemo(() => {
-    const map = new Map();
-    for (const s of openSessions) {
-      const key = s.device_identifier || "—";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(s);
-    }
-    return map;
-  }, [openSessions]);
 
   function openCreateManual() {
     setEditingRecord(null);
@@ -237,9 +220,7 @@ export default function HrAttendancePage() {
       return;
     }
     if (timesRequired && computedHours == null) {
-      setManualError(
-        hoursHint ?? "Check-out must be after check-in on the same day.",
-      );
+      setManualError(hoursHint ?? "Check-out must be after check-in on the same day.");
       return;
     }
     if (dayHint?.has_existing_attendance && dayHint.existing_attendance?.id !== editingRecord?.id) {
@@ -251,33 +232,24 @@ export default function HrAttendancePage() {
     setManualSaving(true);
     setManualError(null);
     try {
+      const body = {
+        employee_id: Number(manualForm.employee_id),
+        attendance_date: manualForm.attendance_date,
+        check_in: checkInApi,
+        check_out: checkOutApi,
+        status: manualForm.status,
+        hours_worked: timesRequired ? computedHours : 0,
+        notes: manualForm.notes.trim() || null,
+      };
       if (editingRecord) {
         await apiRequest(`/employee-attendance/${editingRecord.id}`, {
           method: "PUT",
-          body: {
-            employee_id: Number(manualForm.employee_id),
-            attendance_date: manualForm.attendance_date,
-            check_in: checkInApi,
-            check_out: checkOutApi,
-            status: manualForm.status,
-            source: editingRecord.source ?? "manual",
-            hours_worked: timesRequired ? computedHours : 0,
-            notes: manualForm.notes.trim() || null,
-          },
+          body: { ...body, source: editingRecord.source ?? "manual" },
         });
       } else {
         await apiRequest("/employee-attendance", {
           method: "POST",
-          body: {
-            employee_id: Number(manualForm.employee_id),
-            attendance_date: manualForm.attendance_date,
-            check_in: checkInApi,
-            check_out: checkOutApi,
-            status: manualForm.status,
-            source: "manual",
-            hours_worked: timesRequired ? computedHours : 0,
-            notes: manualForm.notes.trim() || null,
-          },
+          body: { ...body, source: "manual" },
         });
       }
       setManualOpen(false);
@@ -297,8 +269,8 @@ export default function HrAttendancePage() {
       title="Attendance"
       subtitle={
         companyMobileEnabled
-          ? "Company mobile, clock devices, and manual records"
-          : "Clock device sessions and manual attendance records"
+          ? "Company mobile live sessions and manual records"
+          : "Clock device live sessions and manual records"
       }
       action={
         <PrimaryButton type="button" onClick={openCreateManual}>
@@ -306,119 +278,65 @@ export default function HrAttendancePage() {
         </PrimaryButton>
       }
     >
-      {error && (
+      {error ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </p>
-      )}
-
-      {canManagePremises ? (
-        <CompanyPremisesPanel enabled={companyMobileEnabled} />
-      ) : null}
-      {canManagePremises ? (
-        <AttendanceMobileDevicesPanel enabled={companyMobileEnabled} />
       ) : null}
 
-      <div className={`mb-8 grid gap-6 ${admin && !companyMobileEnabled ? "lg:grid-cols-2" : admin ? "lg:grid-cols-2" : ""}`}>
-        {admin && !companyMobileEnabled && (
-        <section className="theme-panel rounded-xl border p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-[15px] font-medium text-slate-900">Clock devices</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Terminals post clock-in/out via the device API when an employee uses a fingerprint.
-                This screen shows registered devices only — not manual clocking.
-              </p>
-            </div>
-            <span className="shrink-0 rounded-full bg-[#EAF3DE] px-2.5 py-1 text-xs font-medium text-[#27500A]">
-              {activeDevices.length > 0 ? "In use" : "No devices"}
-            </span>
-          </div>
-          {loading ? (
-            <p className="mt-4 text-sm text-slate-500">Loading…</p>
-          ) : activeDevices.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500">
-              No clock devices registered. Add a device number and location below.
-            </p>
-          ) : (
-            <ul className="mt-4 divide-y divide-slate-100">
-              {activeDevices.map((d) => {
-                const open = sessionsByDevice.get(d.device_no)?.length ?? 0;
-                return (
-                  <li key={d.id} className="py-3">
-                    <p className="font-medium text-slate-900">{d.device_no}</p>
-                    <p className="text-sm text-slate-500">{d.location || "Location not set"}</p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      {open > 0
-                        ? `${open} open session${open === 1 ? "" : "s"} on this device`
-                        : "Idle — ready for clock-in"}
-                    </p>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {admin && <ClockDeviceRegisterForm onRegistered={load} />}
-        </section>
+      {canManageSettings ? (
+        <p className="mb-4 text-sm text-slate-600">
+          Attendance capture mode and device setup are in{" "}
+          <Link href="/admin/settings" className="font-medium text-[#185FA5] hover:underline">
+            Admin → Settings → HR &amp; Payroll
+          </Link>
+          .
+        </p>
+      ) : null}
+
+      <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
+        <h2 className="text-[15px] font-medium text-slate-900">
+          {companyMobileEnabled ? "Live company mobile sessions" : "Live clock sessions"}
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          {companyMobileEnabled
+            ? "Employees currently on shift via the registered company phone (read-only)."
+            : "Employees currently clocked in on a terminal (read-only)."}
+        </p>
+        {loading ? (
+          <p className="mt-3 text-sm text-slate-500">Loading…</p>
+        ) : openSessions.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">No open sessions.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-slate-100">
+            {openSessions.map((s) => (
+              <li key={s.id} className="py-3">
+                <p className="font-medium text-slate-900">
+                  {companyMobileEnabled
+                    ? s.employee_name || `#${s.employee_id}`
+                    : composeEmployeeDisplayName(s.employee) || `#${s.employee_id}`}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {companyMobileEnabled ? (
+                    <>
+                      On shift · In {formatShortDate(s.clock_in_at)}{" "}
+                      {String(s.clock_in_at).slice(11, 16)}
+                      {s.clock_in_geofence_distance_metres != null
+                        ? ` · ${s.clock_in_geofence_distance_metres}m from premises`
+                        : ""}
+                    </>
+                  ) : (
+                    <>
+                      Device {s.device_identifier || "—"} · In{" "}
+                      {formatShortDate(s.clock_in_at)} {String(s.clock_in_at).slice(11, 16)}
+                    </>
+                  )}
+                </p>
+              </li>
+            ))}
+          </ul>
         )}
-
-        <section className="theme-panel rounded-xl border p-5 shadow-sm">
-          <h2 className="text-[15px] font-medium text-slate-900">Live clock sessions</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Employees currently clocked in on a device (read-only).
-          </p>
-          {loading ? (
-            <p className="mt-3 text-sm text-slate-500">Loading…</p>
-          ) : openSessions.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-500">No open sessions.</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-slate-100">
-              {openSessions.map((s) => (
-                <li key={s.id} className="py-3">
-                  <p className="font-medium text-slate-900">
-                    {composeEmployeeDisplayName(s.employee) || `#${s.employee_id}`}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Device {s.device_identifier || "—"} · In{" "}
-                    {formatShortDate(s.clock_in_at)} {String(s.clock_in_at).slice(11, 16)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
-
-      {companyMobileEnabled ? (
-        <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
-          <h2 className="text-[15px] font-medium text-slate-900">Company mobile sessions</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Recent face + GPS attendance from the shared company phone.
-          </p>
-          {loading ? (
-            <p className="mt-3 text-sm text-slate-500">Loading…</p>
-          ) : mobileSessions.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-500">No company mobile sessions yet.</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-slate-100">
-              {mobileSessions.map((s) => (
-                <li key={s.id} className="py-3">
-                  <p className="font-medium text-slate-900">
-                    {s.employee_name || `#${s.employee_id}`}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {s.is_open ? "On shift" : "Completed"} · In {formatShortDate(s.clock_in_at)}
-                    {s.clock_out_at ? ` · Out ${formatShortDate(s.clock_out_at)}` : ""}
-                    {s.clock_in_geofence_distance_metres != null
-                      ? ` · ${s.clock_in_geofence_distance_metres}m from premises`
-                      : ""}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      ) : null}
+      </section>
 
       <section className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
@@ -461,9 +379,7 @@ export default function HrAttendancePage() {
                     <td className="px-4 py-3">{r.check_in?.slice?.(0, 5) ?? "—"}</td>
                     <td className="px-4 py-3">{r.check_out?.slice?.(0, 5) ?? "—"}</td>
                     <td className="px-4 py-3">{r.hours_worked ?? "—"}</td>
-                    <td className="px-4 py-3 capitalize">
-                      {r.source === "clock_device" ? "Clock device" : "Manual"}
-                    </td>
+                    <td className="px-4 py-3">{formatAttendanceSource(r.source)}</td>
                     <td className="px-4 py-3 capitalize">{r.status}</td>
                     <td className="px-4 py-3 text-right">
                       <button
@@ -521,15 +437,17 @@ export default function HrAttendancePage() {
             className={inputClassName()}
           />
         </Field>
-        {dayHint?.has_existing_attendance && dayHint.existing_attendance?.id !== editingRecord?.id && (
+        {dayHint?.has_existing_attendance && dayHint.existing_attendance?.id !== editingRecord?.id ? (
           <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
             Attendance already exists for this employee on this date (
             {dayHint.existing_attendance?.status ?? "recorded"}
-            {dayHint.existing_attendance?.source === "clock_device" ? ", clock device" : ""}
+            {dayHint.existing_attendance?.source
+              ? `, ${formatAttendanceSource(dayHint.existing_attendance.source).toLowerCase()}`
+              : ""}
             ). You cannot add a second record — edit the existing one in the table below.
           </p>
-        )}
-        {dayHint && !dayHint.has_existing_attendance && (
+        ) : null}
+        {dayHint && !dayHint.has_existing_attendance ? (
           <p
             className={`rounded-lg px-3 py-2 text-sm ${
               dayHint.should_work
@@ -540,7 +458,7 @@ export default function HrAttendancePage() {
             {dayHint.reason ??
               (dayHint.should_work ? "Scheduled working day" : dayHint.suggested_status)}
           </p>
-        )}
+        ) : null}
         <HrSelectField
           label="Status"
           value={manualForm.status}
@@ -554,7 +472,7 @@ export default function HrAttendancePage() {
             { value: "holiday", label: "Holiday / off day" },
           ]}
         />
-        {timesRequired && (
+        {timesRequired ? (
           <>
             <HrTimePickerField
               label="Check in"
@@ -586,7 +504,7 @@ export default function HrAttendancePage() {
               </p>
             </Field>
           </>
-        )}
+        ) : null}
         <Field label="Notes">
           <input
             type="text"
@@ -597,83 +515,5 @@ export default function HrAttendancePage() {
         </Field>
       </FormDrawer>
     </CatalogPageShell>
-  );
-}
-
-function ClockDeviceRegisterForm({ onRegistered }) {
-  const { user, capabilities } = useAuth();
-  const organizationId = user?.organization_id ?? capabilities?.organization_id;
-  const [deviceNo, setDeviceNo] = useState("");
-  const [location, setLocation] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState(null);
-
-  async function register(e) {
-    e.preventDefault();
-    if (!deviceNo.trim()) {
-      setMsg("Device number is required.");
-      return;
-    }
-    if (!organizationId) {
-      setMsg("No organization on your account.");
-      return;
-    }
-    setSaving(true);
-    setMsg(null);
-    try {
-      await apiRequest("/attendance-clock-devices", {
-        method: "POST",
-        body: {
-          organization_id: organizationId,
-          device_no: deviceNo.trim(),
-          location: location.trim() || null,
-          is_active: true,
-        },
-      });
-      setDeviceNo("");
-      setLocation("");
-      setMsg("Device registered.");
-      await onRegistered();
-    } catch (err) {
-      setMsg(err instanceof ApiError ? err.message : "Could not register device");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form onSubmit={register} className="mt-5 border-t border-slate-100 pt-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-        Register device
-      </p>
-      <div className="mt-2 grid gap-2 sm:grid-cols-2">
-        <Field label="Device no.">
-          <input
-            type="text"
-            value={deviceNo}
-            onChange={(e) => setDeviceNo(e.target.value)}
-            placeholder="TERMINAL-01"
-            className={inputClassName()}
-          />
-        </Field>
-        <Field label="Location">
-          <input
-            type="text"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="Main branch — reception"
-            className={inputClassName()}
-          />
-        </Field>
-      </div>
-      {msg && <p className="mt-2 text-xs text-slate-600">{msg}</p>}
-      <button
-        type="submit"
-        disabled={saving}
-        className="mt-2 text-sm font-medium text-[#185FA5] hover:underline disabled:opacity-50"
-      >
-        {saving ? "Saving…" : "Add clock device"}
-      </button>
-    </form>
   );
 }

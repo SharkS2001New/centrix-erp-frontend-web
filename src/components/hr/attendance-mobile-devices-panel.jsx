@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { AttendanceMobileDeviceIdHelpModal } from "@/components/hr/attendance-mobile-device-id-help-modal";
 
-export function AttendanceMobileDevicesPanel({ enabled }) {
+export function AttendanceMobileDevicesPanel({ embedded = false }) {
   const [devices, setDevices] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -16,11 +17,11 @@ export function AttendanceMobileDevicesPanel({ enabled }) {
     branch_id: "",
   });
   const [saving, setSaving] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const multiBranch = branches.length > 1;
 
   const load = useCallback(async () => {
-    if (!enabled) return;
     setLoading(true);
     setError(null);
     try {
@@ -41,7 +42,7 @@ export function AttendanceMobileDevicesPanel({ enabled }) {
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -114,15 +115,29 @@ export function AttendanceMobileDevicesPanel({ enabled }) {
     }
   }
 
-  if (!enabled) return null;
+  const shellClass = embedded
+    ? "mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4"
+    : "mb-8 theme-panel rounded-xl border p-5 shadow-sm";
 
   return (
-    <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
-      <h2 className="text-[15px] font-medium text-slate-900">Registered attendance phones</h2>
-      <p className="mt-1 text-sm text-slate-500">
-        Only phones listed here can mark company attendance. Each phone is tied to one branch.
-        Install the app on the shared phone, complete setup, and copy the device ID shown on that phone.
-      </p>
+    <section className={shellClass}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className={embedded ? "text-sm font-medium text-slate-900" : "text-[15px] font-medium text-slate-900"}>
+            Registered attendance phones
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Only phones listed here can mark attendance. Each phone is tied to one branch.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setHelpOpen(true)}
+          className="text-xs font-medium text-[#185FA5] hover:underline"
+        >
+          How to get Device ID
+        </button>
+      </div>
 
       {error ? (
         <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -223,6 +238,7 @@ export function AttendanceMobileDevicesPanel({ enabled }) {
           ))}
         </ul>
       )}
+      <AttendanceMobileDeviceIdHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </section>
   );
 }

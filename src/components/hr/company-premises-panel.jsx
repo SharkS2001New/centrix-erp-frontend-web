@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 
-export function CompanyPremisesPanel({ enabled }) {
+export function CompanyPremisesPanel({ embedded = false }) {
   const [premises, setPremises] = useState(null);
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [password, setPassword] = useState("");
@@ -24,7 +24,6 @@ export function CompanyPremisesPanel({ enabled }) {
   );
 
   const load = useCallback(async () => {
-    if (!enabled) return;
     setLoading(true);
     setError(null);
     try {
@@ -40,7 +39,7 @@ export function CompanyPremisesPanel({ enabled }) {
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -112,11 +111,15 @@ export function CompanyPremisesPanel({ enabled }) {
     }
   }
 
-  if (!enabled) return null;
+  const shellClass = embedded
+    ? "mt-4 space-y-4 rounded-xl border border-[#185FA5]/20 bg-[#E6F1FB]/30 p-4"
+    : "mb-8 rounded-xl border border-[#185FA5]/20 bg-[#E6F1FB]/30 p-5 shadow-sm";
 
   return (
-    <section className="mb-8 rounded-xl border border-[#185FA5]/20 bg-[#E6F1FB]/30 p-5 shadow-sm">
-      <h2 className="text-[15px] font-medium text-slate-900">Company mobile attendance — premises</h2>
+    <section className={shellClass}>
+      <h2 className={embedded ? "text-sm font-medium text-slate-900" : "text-[15px] font-medium text-slate-900"}>
+        Branch premises (GPS)
+      </h2>
       <p className="mt-1 text-sm text-slate-600">
         Employees mark attendance on the shared company phone using face scan and GPS.
         {multiBranch

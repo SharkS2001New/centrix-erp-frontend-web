@@ -53,6 +53,17 @@ export function isCompanyMobileAttendanceEnabled(moduleSettings) {
   return mergeHrPayrollSettings(moduleSettings).attendance_capture_mode === "company_mobile";
 }
 
+export function isClockDeviceAttendanceEnabled(moduleSettings) {
+  return mergeHrPayrollSettings(moduleSettings).attendance_capture_mode !== "company_mobile";
+}
+
+export function formatAttendanceSource(source) {
+  if (source === "company_mobile") return "Company mobile";
+  if (source === "clock_device") return "Clock device";
+  if (source === "manual") return "Manual";
+  return source ? String(source).replace(/_/g, " ") : "—";
+}
+
 export function hrPayrollFormFromApi(res) {
   const hr = mergeHrPayrollSettings({ hr_payroll: res?.hr_payroll ?? res });
   return {

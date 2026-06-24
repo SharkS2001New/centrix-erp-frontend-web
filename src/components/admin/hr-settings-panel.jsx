@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { hrPayrollFormFromApi, hrPayrollPayloadFromForm } from "@/lib/hr-settings";
 import { OrganizationLeaveSettingsEditor } from "@/components/hr/organization-leave-settings-editor";
+import { AttendanceClockDevicesSettings } from "@/components/hr/attendance-clock-devices-settings";
+import { AttendanceMobileDevicesPanel } from "@/components/hr/attendance-mobile-devices-panel";
+import { CompanyPremisesPanel } from "@/components/hr/company-premises-panel";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 
@@ -167,18 +170,19 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
                   }
                 >
                   <option value="clock_device">Clock device (fingerprint terminals)</option>
-                  <option value="company_mobile">Company mobile (face or fingerprint on shared phone)</option>
+                  <option value="company_mobile">Company mobile (shared phone)</option>
                 </select>
                 <p className="mt-1 text-xs text-slate-500">
-                  Company mobile uses registered phones only — one phone per branch when you have
-                  multiple branches. Face scan matches each employee&apos;s enrolled face profile.
-                  Fingerprint uses a connected scanner and matches the employee&apos;s fingerprint
-                  saved in the system (first scan enrolls). Set branch GPS on HR Attendance, then
-                  register each phone with its branch.
+                  Choose one method for your organization. The Attendance page shows live sessions for
+                  the selected method only. Configure devices and premises below, then save settings.
                 </p>
               </Field>
+              {form.attendance_capture_mode === "clock_device" ? (
+                <AttendanceClockDevicesSettings />
+              ) : null}
               {form.attendance_capture_mode === "company_mobile" ? (
-                <div className="grid gap-4 sm:grid-cols-2">
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Phone verification">
                     <select
                       className={inputClassName()}
@@ -236,6 +240,9 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
                     />
                   </Field>
                 </div>
+                  <CompanyPremisesPanel embedded />
+                  <AttendanceMobileDevicesPanel embedded />
+                </>
               ) : null}
             </div>
           ) : null}
