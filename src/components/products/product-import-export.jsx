@@ -110,51 +110,40 @@ function downloadBlob(blob, filename) {
 
 function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
   const { runBackgroundTask } = useBackgroundTasks();
-  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState(null);
 
   if (!open) return null;
 
-  async function runCatalogExport(format) {
-    setExporting(true);
+  function runCatalogExport(format) {
     setError(null);
-    try {
-      const stamp = new Date().toISOString().slice(0, 10);
-      const exportFormat = format === "pdf" ? "pdf" : "xlsx";
-      await runBackgroundTask(
-        () =>
-          queueReportExport({
-            format: exportFormat,
-            source: "product_catalog",
-            filename: `products-${stamp}`,
-            columns: PRODUCT_CATALOG_EXPORT_COLUMNS,
-            meta: serializeExportMeta({
-              title: "Products",
-              subtitle: "Product catalogue export",
-              printedAt: reportPrintedAt(),
-            }),
-            search_params: exportSearchParams?.() ?? {},
+    const stamp = new Date().toISOString().slice(0, 10);
+    const exportFormat = format === "pdf" ? "pdf" : "xlsx";
+    onClose();
+    void runBackgroundTask(
+      () =>
+        queueReportExport({
+          format: exportFormat,
+          source: "product_catalog",
+          filename: `products-${stamp}`,
+          columns: PRODUCT_CATALOG_EXPORT_COLUMNS,
+          meta: serializeExportMeta({
+            title: "Products",
+            subtitle: "Product catalogue export",
+            printedAt: reportPrintedAt(),
           }),
-        {
-          label: "Exporting products",
-          message: "Started fetching…",
-          downloadOnComplete: true,
-          downloadFilename: `products-${stamp}.${exportFormat === "pdf" ? "pdf" : "xlsx"}`,
-        },
-      );
-      onClose();
-    } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Export failed";
-      if (!message.includes("cancelled")) {
-        setError(message);
-      }
-    } finally {
-      setExporting(false);
-    }
+          search_params: exportSearchParams?.() ?? {},
+        }),
+      {
+        label: "Exporting products",
+        message: "Started fetching…",
+        downloadOnComplete: true,
+        downloadFilename: `products-${stamp}.${exportFormat === "pdf" ? "pdf" : "xlsx"}`,
+      },
+    ).catch(() => {
+      /* Global background-task notice handles errors and success */
+    });
   }
 
-  const busy = exporting;
   const countLabel = totalCount ?? 0;
 
   return createPortal(
@@ -171,25 +160,24 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
         <div className="mt-4 flex flex-col gap-2">
           <button
             type="button"
-            disabled={busy || countLabel === 0}
-            onClick={() => void runCatalogExport("excel")}
+            disabled={countLabel === 0}
+            onClick={() => runCatalogExport("excel")}
             className="rounded-lg bg-[#185FA5] py-2.5 text-sm font-medium text-white hover:bg-[#144f8a] disabled:opacity-50"
           >
-            {busy ? "Preparing export…" : "Excel spreadsheet (.xlsx)"}
+            Excel spreadsheet (.xlsx)
           </button>
           <button
             type="button"
-            disabled={busy || countLabel === 0}
-            onClick={() => void runCatalogExport("pdf")}
+            disabled={countLabel === 0}
+            onClick={() => runCatalogExport("pdf")}
             className="rounded-lg border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
-            {busy ? "Preparing export…" : "PDF (print)"}
+            PDF (print)
           </button>
           <button
             type="button"
             onClick={onClose}
-            disabled={busy}
-            className="rounded-lg py-2 text-sm text-slate-500 hover:text-slate-700 disabled:opacity-50"
+            className="rounded-lg py-2 text-sm text-slate-500 hover:text-slate-700"
           >
             Cancel
           </button>
