@@ -161,8 +161,9 @@ export function PosScreen({ standalone = false }) {
     () =>
       getPosSalesConfig(capabilities?.module_settings, {
         allowNegativeStock: capabilities?.allow_negative_stock,
+        capabilities,
       }),
-    [capabilities?.module_settings, capabilities?.allow_negative_stock],
+    [capabilities?.module_settings, capabilities?.allow_negative_stock, capabilities],
   );
   const allowDiscounts = posSalesConfig.allowDiscounts;
   const allowEditLineDiscount = posSalesConfig.allowEditLineDiscount;
@@ -201,9 +202,7 @@ export function PosScreen({ standalone = false }) {
     ? posSalesConfig.requireTillFloat
     : posSalesConfig.requireBackofficeTillFloat;
   const salesWorkspace = standalone ? "pos" : "backoffice";
-  const enablePosOrderEdit =
-    standalone &&
-    (capabilities?.pos_order_edit_enabled === true || posSalesConfig.enablePosOrderEdit);
+  const enablePosOrderEdit = standalone && posSalesConfig.enablePosOrderEdit;
   const blindTillClose = posSalesConfig.blindTillClose;
   const canChooseOrderType = addRouteMarkupPrices && posOrderTypeMode === "toggle";
   const lockedToRouteOrder = addRouteMarkupPrices && posOrderTypeMode === "route";
@@ -2450,22 +2449,6 @@ export function PosScreen({ standalone = false }) {
                 >
                   Reprint last receipt
                 </button>
-                {enablePosOrderEdit ? (
-                  <PosOrderEditBar
-                    enabled
-                    busy={busy}
-                    orderNo={editOrderNo}
-                    onOrderNoChange={setEditOrderNo}
-                    onSubmit={() => void handleEditSelectedOrder()}
-                    onPrevious={goPreviousOrder}
-                    onNext={goNextOrder}
-                    canGoPrevious={canGoPreviousOrder}
-                    canGoNext={canGoNextOrder}
-                    hasOrders={hasSessionOrders}
-                    buttonClassName={posHeaderBtnClassName}
-                    error={orderEditError}
-                  />
-                ) : null}
                 {showStandaloneTillActions && requireTillFloat ? (
                   <>
                     <button
@@ -2769,6 +2752,23 @@ export function PosScreen({ standalone = false }) {
           <div className="min-h-0 flex-1 overflow-y-auto">
           {/* Line entry form */}
           <div className="pos-line-entry grid shrink-0 grid-cols-2 gap-x-4 gap-y-4 border-b border-[var(--theme-border)] p-4 text-sm">
+            {enablePosOrderEdit ? (
+              <div className="col-span-2">
+                <PosOrderEditBar
+                  enabled
+                  busy={busy}
+                  orderNo={editOrderNo}
+                  onOrderNoChange={setEditOrderNo}
+                  onSubmit={() => void handleEditSelectedOrder()}
+                  onPrevious={goPreviousOrder}
+                  onNext={goNextOrder}
+                  canGoPrevious={canGoPreviousOrder}
+                  canGoNext={canGoNextOrder}
+                  hasOrders={hasSessionOrders}
+                  error={orderEditError}
+                />
+              </div>
+            ) : null}
             <div className="col-span-2 space-y-4">
               <PosProductSearch
                 inputRef={searchInputRef}

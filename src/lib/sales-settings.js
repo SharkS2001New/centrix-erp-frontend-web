@@ -273,8 +273,14 @@ export function resolvePosOrderTypeMode(sales) {
 }
 
 export function isPosOrderEditEnabled(moduleSettings, capabilities = null) {
-  if (capabilities?.pos_order_edit_enabled === false) return false;
-  return Boolean(mergeSalesSettings(moduleSettings).enable_pos_order_edit);
+  const fromModule = Boolean(mergeSalesSettings(moduleSettings).enable_pos_order_edit);
+  if (capabilities?.pos_order_edit_enabled === true || fromModule) {
+    return true;
+  }
+  if (capabilities?.pos_order_edit_enabled === false) {
+    return false;
+  }
+  return fromModule;
 }
 
 export function mergeSalesSettings(moduleSettings) {
@@ -356,7 +362,7 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
       : "normal",
     requirePosTillFloat: Boolean(sales.require_pos_till_float),
     requireBackofficeTillFloat: Boolean(sales.require_backoffice_till_float),
-    enablePosOrderEdit: isPosOrderEditEnabled(moduleSettings),
+    enablePosOrderEdit: isPosOrderEditEnabled(moduleSettings, options.capabilities ?? null),
     blindTillClose: Boolean(sales.blind_till_close),
     receiptCopies: Number(sales.receipt_copies ?? 1),
     showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
