@@ -11,6 +11,20 @@ import {
   formatMixedStockDisplay,
   uomLabelFrom,
 } from "@/lib/stock-uom";
+import {
+  APP_TIMEZONE,
+  calendarDateInTimezone,
+  formatAppDateTime,
+  formatInTimezone,
+  todayCalendarDate,
+} from "@/lib/datetime";
+
+export {
+  APP_TIMEZONE as NAIROBI_TZ,
+  calendarDateInTimezone as nairobiCalendarDate,
+  formatAppDateTime as formatMovementDateTime,
+  todayCalendarDate,
+};
 
 export function formatInventoryKes(value, settings = GENERAL_DEFAULTS) {
   if (value == null || value === "") return "—";
@@ -153,45 +167,20 @@ export function formatReceiptDate(value) {
   return formatMovementDate(value);
 }
 
-export const NAIROBI_TZ = "Africa/Nairobi";
-
-/** Calendar date (YYYY-MM-DD) in Africa/Nairobi for a timestamp. */
-export function nairobiCalendarDate(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat("en-CA", { timeZone: NAIROBI_TZ }).format(date);
+export function formatMovementDate(value) {
+  if (!value) return "—";
+  return (
+    formatInTimezone(value, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }) ?? "—"
+  );
 }
 
 function addDaysToCalendarDate(isoDate, deltaDays) {
   const ms = Date.parse(`${isoDate}T12:00:00+03:00`) + deltaDays * 86_400_000;
-  return nairobiCalendarDate(new Date(ms));
-}
-
-export function formatMovementDate(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("en-KE", {
-    timeZone: NAIROBI_TZ,
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-export function formatMovementDateTime(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("en-KE", {
-    timeZone: NAIROBI_TZ,
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return calendarDateInTimezone(new Date(ms), APP_TIMEZONE);
 }
 
 export const LOCATION_OPTIONS = [

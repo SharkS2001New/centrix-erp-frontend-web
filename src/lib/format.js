@@ -1,4 +1,13 @@
 import { mergeGeneralSettings, GENERAL_DEFAULTS } from "@/lib/general-settings";
+import {
+  calendarDateInTimezone,
+  formatAppDate,
+  formatAppDateTimeWithSettings,
+  normalizeDateInput,
+  todayCalendarDate,
+} from "@/lib/datetime";
+
+export { todayCalendarDate, normalizeDateInput, calendarDateInTimezone };
 
 export function resolveGeneralSettings(capabilities) {
   return mergeGeneralSettings({
@@ -48,34 +57,9 @@ export function formatOrgCurrencyCompact(value, settings) {
 }
 
 export function formatOrgDate(value, settings) {
-  if (!value) return "—";
-  const general = settings ?? {};
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = String(date.getFullYear());
-
-  switch (general.date_format) {
-    case "MM/DD/YYYY":
-      return `${month}/${day}/${year}`;
-    case "YYYY-MM-DD":
-      return `${year}-${month}-${day}`;
-    case "DD/MM/YYYY":
-    default:
-      return `${day}/${month}/${year}`;
-  }
+  return formatAppDate(value, resolveOrgSettings(settings));
 }
 
 export function formatOrgDateTime(value, settings) {
-  if (!value) return "—";
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-
-  const datePart = formatOrgDate(date, settings);
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-
-  return `${datePart} ${hours}:${minutes}`;
+  return formatAppDateTimeWithSettings(value, resolveOrgSettings(settings));
 }

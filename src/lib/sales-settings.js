@@ -362,6 +362,8 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
       : "normal",
     requirePosTillFloat: Boolean(sales.require_pos_till_float),
     requireBackofficeTillFloat: Boolean(sales.require_backoffice_till_float),
+    /** @deprecated Use requirePosTillFloat or requireBackofficeTillFloat for the active workspace. */
+    requireTillFloat: Boolean(sales.require_pos_till_float),
     enablePosOrderEdit: isPosOrderEditEnabled(moduleSettings, options.capabilities ?? null),
     blindTillClose: Boolean(sales.blind_till_close),
     receiptCopies: Number(sales.receipt_copies ?? 1),

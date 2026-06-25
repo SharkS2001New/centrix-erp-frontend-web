@@ -15,26 +15,29 @@ import {
   StatCard,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import {
+  formatAppDate,
+  formatAppDateTime,
+  formatInTimezone,
+  todayCalendarDate,
+} from "@/lib/datetime";
 
 function todayIsoDate() {
-  return new Date().toISOString().slice(0, 10);
+  return todayCalendarDate();
 }
 
 function formatReportDate(value) {
-  if (!value) return "—";
-  return new Date(value).toLocaleDateString("en-KE", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return formatAppDate(value);
 }
 
 function formatReportTime(value) {
   if (!value) return "—";
-  return new Date(value).toLocaleTimeString("en-KE", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return (
+    formatInTimezone(value, {
+      hour: "numeric",
+      minute: "2-digit",
+    }) ?? "—"
+  );
 }
 
 function formatDuration(start, end) {
@@ -145,7 +148,7 @@ h1{font-size:20px;margin:0 0 4px} .muted{color:#64748b;font-size:12px}
 ${meta.organizationName ? `<h1>${meta.organizationName}</h1>` : ""}
 <h1${meta.organizationName ? ' style="font-size:16px;margin-top:8px"' : ""}>End of Day Sales Report</h1>
 <p class="muted">${meta.branchName ?? "All branches"} · ${meta.cashierName ?? "All cashiers"} · ${formatReportDate(report?.sale_date)}</p>
-<p class="muted">Printed: ${new Date().toLocaleString("en-KE")}</p>
+<p class="muted">Printed: ${formatAppDateTime(new Date())}</p>
 <div class="grid">
 <div class="box"><strong>Sales</strong>
 <div class="row"><span>Gross</span><span>${kesNum(s.gross_sales)}</span></div>
@@ -650,7 +653,7 @@ export function EndOfDayReportScreen() {
           ) : null}
 
           <p className="mt-6 text-xs text-slate-500">
-            Report generated on {new Date().toLocaleString("en-KE")} by {user?.full_name ?? user?.username ?? "—"}
+            Report generated on {formatAppDateTime(new Date())} by {user?.full_name ?? user?.username ?? "—"}
           </p>
         </>
       )}

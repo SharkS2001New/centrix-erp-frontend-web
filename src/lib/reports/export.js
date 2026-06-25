@@ -1,4 +1,5 @@
 import { formatShortDate } from "@/components/catalog/catalog-shared";
+import { formatAppDateTime } from "@/lib/datetime";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { openPrintWindow } from "@/lib/open-print-window";
 
@@ -11,7 +12,7 @@ function escapeHtml(value) {
 }
 
 export function reportPrintedAt() {
-  return new Date().toLocaleString("en-KE", { dateStyle: "medium", timeStyle: "short" });
+  return formatAppDateTime(new Date());
 }
 
 /** @param {object} options */

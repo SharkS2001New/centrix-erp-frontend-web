@@ -5,10 +5,10 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
+import { formatAppDateTime } from "@/lib/datetime";
 
 function formatTime(iso) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return formatAppDateTime(iso);
 }
 
 function ApplicationBadge({ label }) {

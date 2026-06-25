@@ -42,6 +42,8 @@ import { formatSaleKes } from "@/lib/sales";
 import { getChannelWorkflow, workflowPipelineSteps } from "@/lib/order-workflow";
 import {
   getPosSalesConfig,
+  isBackofficeTillFloatRequired,
+  isPosTillFloatRequired,
   posChannelFromStockSource,
   resolveCheckoutStatus,
   resolveSaveOrderStatus,
@@ -199,8 +201,9 @@ export function PosScreen({ standalone = false }) {
   const addRouteMarkupPrices = posSalesConfig.addRouteMarkupPrices;
   const posOrderTypeMode = posSalesConfig.posOrderTypeMode;
   const requireTillFloat = standalone
-    ? posSalesConfig.requireTillFloat
-    : posSalesConfig.requireBackofficeTillFloat;
+    ? isPosTillFloatRequired(capabilities?.module_settings)
+    : isBackofficeTillFloatRequired(capabilities?.module_settings);
+  const canManageTillSession = hasPosTill || (standalone && requireTillFloat);
   const salesWorkspace = standalone ? "pos" : "backoffice";
   const enablePosOrderEdit = standalone && posSalesConfig.enablePosOrderEdit;
   const blindTillClose = posSalesConfig.blindTillClose;
@@ -1902,10 +1905,17 @@ export function PosScreen({ standalone = false }) {
     setSellFromShop(fromShop);
   }
 
+  function promptTillFloatSession(message) {
+    setPaymentError(message);
+    setSessionError(null);
+    setFloatModalOpen(true);
+    loadPosTillMeta();
+  }
+
   async function handleCheckout(body) {
     if (!cart?.id) return null;
     if (requireTillFloat && !activeSession) {
-      setPaymentError(
+      promptTillFloatSession(
         suspendedSession
           ? "Resume your suspended session before completing sales."
           : "Open a till session and declare your operating float before completing sales.",
@@ -1946,7 +1956,15 @@ export function PosScreen({ standalone = false }) {
       }
       return sale;
     } catch (e) {
-      setPaymentError(e instanceof ApiError ? e.message : "Checkout failed");
+      const message = e instanceof ApiError ? e.message : "Checkout failed";
+      setPaymentError(message);
+      if (
+        requireTillFloat &&
+        /operating float|till session/i.test(message)
+      ) {
+        setFloatModalOpen(true);
+        loadPosTillMeta();
+      }
       return null;
     } finally {
       setBusy(false);
@@ -2425,7 +2443,7 @@ export function PosScreen({ standalone = false }) {
                     }}
                     className={posHeaderBtnClassName}
                   >
-                    Float
+                    Float details
                   </button>
                 ) : null}
                 <button
@@ -2533,7 +2551,7 @@ export function PosScreen({ standalone = false }) {
 
       <OpenSessionModal
         open={
-          hasPosTill &&
+          canManageTillSession &&
           !activeSession &&
           !suspendedSession &&
           !sessionLoading &&

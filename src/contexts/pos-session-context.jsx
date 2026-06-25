@@ -31,8 +31,8 @@ export function PosSessionProvider({ children }) {
   const hasPosTill = useMemo(() => {
     const perms = capabilities?.permissions ?? {};
     return Boolean(
-      perms["pos.till_management.create"] ??
-        perms["pos.till"] ??
+      perms["pos.till"] ||
+        perms["pos.till_management.create"] ||
         capabilities?.modules?.["sales.pos"],
     );
   }, [capabilities]);
