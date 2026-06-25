@@ -1,10 +1,13 @@
+import { Suspense } from "react";
 import { AppShell } from "@/components/layout/app-shell";
-import { MustChangePasswordGuard } from "@/components/auth/must-change-password-guard";
+import { PasswordExpiryGuard } from "@/components/auth/password-expiry-guard";
 
 export default function AppLayout({ children }) {
   return (
     <AppShell>
-      <MustChangePasswordGuard>{children}</MustChangePasswordGuard>
+      <Suspense fallback={null}>
+        <PasswordExpiryGuard>{children}</PasswordExpiryGuard>
+      </Suspense>
     </AppShell>
   );
 }

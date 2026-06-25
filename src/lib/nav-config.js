@@ -575,6 +575,13 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.hr.attendance.view,
       },
       {
+        href: "/hr/field-attendance",
+        label: "Field attendance",
+        module: "hr_payroll",
+        permission: P.hr.attendance.view,
+        requireMobileFieldAttendance: true,
+      },
+      {
         href: "/hr/leave",
         label: "Leave",
         module: "hr_payroll",

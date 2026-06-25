@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
@@ -15,13 +15,36 @@ import {
 } from "@/components/auth/auth-shell";
 import { PasswordInput } from "@/components/auth/password-input";
 
-export default function ChangePasswordPage() {
+function ChangePasswordForm() {
   const router = useRouter();
-  const { user, organization, capabilities, clearMustChangePassword, refreshCapabilities } = useAuth();
+  const searchParams = useSearchParams();
+  const reason = searchParams.get("reason");
+  const isExpired = reason === "expired";
+  const {
+    user,
+    organization,
+    capabilities,
+    clearMustChangePassword,
+    applyPasswordExpiry,
+    refreshCapabilities,
+  } = useAuth();
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+
+  async function redirectAfterSuccess(nextUser) {
+    clearMustChangePassword();
+    const caps = capabilities ?? (await refreshCapabilities());
+    const ctx = buildAccessContext({
+      user: nextUser,
+      organization,
+      capabilities: caps,
+      requireTillFloat: resolveTillFloatNavFlag(caps),
+    });
+    router.replace(resolvePostLoginPath(ctx, caps));
+  }
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -34,24 +57,36 @@ export default function ChangePasswordPage() {
       setError("Password confirmation does not match.");
       return;
     }
+    if (isExpired && !currentPassword.trim()) {
+      setError("Enter your current password.");
+      return;
+    }
+
     setSubmitting(true);
     try {
-      await apiRequest("/auth/set-required-password", {
+      if (isExpired || (!user?.must_change_password && currentPassword)) {
+        const res = await apiRequest("/auth/change-password", {
+          method: "POST",
+          body: {
+            current_password: currentPassword,
+            password,
+            password_confirmation: confirmation,
+          },
+        });
+        applyPasswordExpiry(res.password_expiry ?? null);
+        await redirectAfterSuccess({ ...user, must_change_password: false });
+        return;
+      }
+
+      const res = await apiRequest("/auth/set-required-password", {
         method: "POST",
         body: {
           password,
           password_confirmation: confirmation,
         },
       });
-      clearMustChangePassword();
-      const caps = capabilities ?? (await refreshCapabilities());
-      const ctx = buildAccessContext({
-        user: { ...user, must_change_password: false },
-        organization,
-        capabilities: caps,
-        requireTillFloat: resolveTillFloatNavFlag(caps),
-      });
-      router.replace(resolvePostLoginPath(ctx, caps));
+      applyPasswordExpiry(res.password_expiry ?? null);
+      await redirectAfterSuccess({ ...user, must_change_password: false });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update password.");
     } finally {
@@ -59,12 +94,25 @@ export default function ChangePasswordPage() {
     }
   }
 
+  const title = isExpired ? "Change your password" : "Set a new password";
+  const subtitle = isExpired
+    ? "Your password has expired. Enter your current password and choose a new one to continue."
+    : `Hi ${user?.full_name ?? user?.username ?? "there"} — choose a new password before continuing.`;
+
   return (
-    <AuthShell
-      title="Set a new password"
-      subtitle={`Hi ${user?.full_name ?? user?.username ?? "there"} — choose a new password before continuing.`}
-    >
+    <AuthShell title={title} subtitle={subtitle}>
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        {isExpired ? (
+          <AuthField label="Current password">
+            <PasswordInput
+              className={authInputClass()}
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </AuthField>
+        ) : null}
         <AuthField label="New password">
           <PasswordInput
             className={authInputClass()}
@@ -91,5 +139,13 @@ export default function ChangePasswordPage() {
         </AuthSubmitButton>
       </form>
     </AuthShell>
+  );
+}
+
+export default function ChangePasswordPage() {
+  return (
+    <Suspense fallback={<AuthShell title="Change password" subtitle="Loading…" />}>
+      <ChangePasswordForm />
+    </Suspense>
   );
 }

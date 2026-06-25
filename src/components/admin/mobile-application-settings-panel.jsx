@@ -155,7 +155,7 @@ export function MobileApplicationSettingsPanel({ saving, setSaving, setError, se
               </p>
               <Toggle
                 label="Require sign-in photo and location"
-                description="When enabled, sales reps must take a photo and capture GPS when signing in and signing out on the mobile app. Sessions and worked hours appear under Sales → Field attendance."
+                description="When enabled, sales reps must take a photo and capture GPS when signing in and signing out on the mobile app. Sessions appear under HR → Time & attendance → Field attendance and Sales → Field sales → Field attendance."
                 checked={form.mobile_enable_field_attendance}
                 onChange={(v) => setForm((f) => ({ ...f, mobile_enable_field_attendance: v }))}
               />

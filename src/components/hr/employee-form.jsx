@@ -33,6 +33,7 @@ import {
   defaultBranchId,
   shouldShowBranchSelect,
 } from "@/components/customers/customer-form";
+import { shouldShowMobileFieldAttendance } from "@/lib/sales-settings";
 
 export {
   EMPTY_EMPLOYEE_FORM,
@@ -269,7 +270,8 @@ export function EmployeeFormWizard({
   const [deptForm, setDeptForm] = useState(EMPTY_DEPARTMENT_FORM);
   const [deptSaving, setDeptSaving] = useState(false);
   const [deptError, setDeptError] = useState(null);
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
+  const fieldAttendanceEnabled = shouldShowMobileFieldAttendance(capabilities);
 
   const tabOptions = { showBranchSelect };
   const currentTab = EMPLOYEE_FORM_TABS[tabIndex];
@@ -840,6 +842,12 @@ export function EmployeeFormWizard({
                 }))}
                 placeholder="Search user…"
               />
+              {fieldAttendanceEnabled ? (
+                <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">
+                  For mobile sales reps: link their login here so field attendance counts in HR and
+                  payroll. Without this link, sign-in sessions stay in Field attendance only.
+                </p>
+              ) : null}
             </Field>
             <Field label="Confirmation date">
               <input

@@ -13,32 +13,24 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
+import { FieldRepHrLinkageBanner } from "@/components/hr/field-rep-hr-linkage-banner";
 import { CustomerLocationMapEmbed } from "@/components/customers/customer-location-map-embed";
+import { EntityPhotoDisplay } from "@/components/media/entity-photo-display";
 import { GpsLocationLabel } from "@/components/shared/gps-location-label";
 import { hasValidCustomerLocation } from "@/lib/customer-location";
+import { formatAppDateTime, calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
+import { P } from "@/lib/permission-codes";
+import { formatAttendanceSource, attendanceSourceBadgeClass } from "@/lib/hr-settings";
 import { shouldShowMobileFieldAttendance } from "@/lib/sales-settings";
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function daysAgoIso(days) {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+function daysAgoCalendarDate(days) {
+  const today = todayCalendarDate();
+  const ms = Date.parse(`${today}T12:00:00+03:00`) - days * 86_400_000;
+  return calendarDateInTimezone(new Date(ms)) ?? today;
 }
 
 function formatDateTime(value) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString("en-KE", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatAppDateTime(value);
 }
 
 function toLocalInputValue(value) {
@@ -56,7 +48,7 @@ function fromLocalInputValue(value) {
   return d.toISOString();
 }
 
-function AttendanceLocationBlock({ latitude, longitude, address, photoUrl, label }) {
+function AttendanceLocationBlock({ latitude, longitude, address, photoFileUrl, label }) {
   const hasCoords = hasValidCustomerLocation(latitude, longitude);
 
   return (
@@ -74,23 +66,35 @@ function AttendanceLocationBlock({ latitude, longitude, address, photoUrl, label
       {hasCoords ? (
         <CustomerLocationMapEmbed latitude={latitude} longitude={longitude} heightClass="h-40 mt-3" />
       ) : null}
-      {photoUrl ? (
-        <img src={photoUrl} alt={label} className="mt-2 max-h-48 rounded-lg border object-cover" />
+      {photoFileUrl ? (
+        <div className="mt-2 max-h-48 overflow-hidden rounded-lg border bg-slate-900/40">
+          <EntityPhotoDisplay
+            fileUrl={photoFileUrl}
+            alt={label}
+            className="max-h-48 w-full object-cover"
+            placeholderClassName="flex h-24 items-center justify-center px-2 text-center text-xs text-slate-400"
+          />
+        </div>
       ) : null}
     </div>
   );
 }
 
-export default function MobileFieldAttendanceScreen() {
+export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
+  const isHr = variant === "hr";
+  const apiBase = isHr ? "/attendance/field-sessions" : "/sales/mobile-field-attendance";
   const { capabilities, hasPermission } = useAuth();
   const allowed = shouldShowMobileFieldAttendance(capabilities);
-  const canEdit = hasPermission?.("sales.manage");
+  const canEdit = isHr
+    ? hasPermission?.(P.hr.manage)
+    : hasPermission?.("sales.manage");
 
-  const [fromDate, setFromDate] = useState(daysAgoIso(7));
-  const [toDate, setToDate] = useState(todayIso());
+  const [fromDate, setFromDate] = useState(daysAgoCalendarDate(7));
+  const [toDate, setToDate] = useState(todayCalendarDate());
   const [search, setSearch] = useState("");
   const [openOnly, setOpenOnly] = useState(false);
   const [rows, setRows] = useState([]);
+  const [hrLinkage, setHrLinkage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -110,15 +114,18 @@ export default function MobileFieldAttendanceScreen() {
       if (search.trim()) params.set("q", search.trim());
       if (openOnly) params.set("open_only", "1");
 
-      const res = await apiRequest(`/sales/mobile-field-attendance?${params.toString()}`);
+      const res = await apiRequest(`${apiBase}?${params.toString()}`);
       setRows(Array.isArray(res?.data) ? res.data : []);
+      if (isHr && res?.hr_linkage) {
+        setHrLinkage(res.hr_linkage);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load field attendance");
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [fromDate, toDate, search, openOnly]);
+  }, [apiBase, fromDate, toDate, search, openOnly, isHr]);
 
   useEffect(() => {
     if (!allowed) return;
@@ -155,7 +162,7 @@ export default function MobileFieldAttendanceScreen() {
         sign_in_at: fromLocalInputValue(editForm.sign_in_at),
         sign_out_at: fromLocalInputValue(editForm.sign_out_at),
       };
-      const updated = await apiRequest(`/sales/mobile-field-attendance/${selected.id}`, {
+      const updated = await apiRequest(`${apiBase}/${selected.id}`, {
         method: "PATCH",
         body,
       });
@@ -171,13 +178,19 @@ export default function MobileFieldAttendanceScreen() {
 
   if (!allowed) {
     return (
-      <CatalogPageShell title="Field attendance" subtitle="Mobile sales rep sign-in records">
+      <CatalogPageShell
+        title="Field attendance"
+        subtitle={
+          isHr
+            ? "Mobile sales rep sign-in records (part of HR attendance)"
+            : "Mobile sales rep sign-in records"
+        }
+      >
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
           <p className="font-medium">Field attendance is not enabled</p>
           <p className="mt-1">
             Enable <strong>Require sign-in photo and location</strong> under{" "}
             <OrgSettingsPlatformHint area="Organization settings → Mobile app" />.
-            .
           </p>
         </div>
       </CatalogPageShell>
@@ -187,9 +200,31 @@ export default function MobileFieldAttendanceScreen() {
   return (
     <CatalogPageShell
       title="Field attendance"
-      subtitle="Sign-in and sign-out sessions from the mobile app with photos, GPS, and worked hours"
+      subtitle={
+        isHr
+          ? "Mobile rep sessions with photos, GPS, and worked hours — part of HR attendance"
+          : "Sign-in and sign-out sessions from the mobile app with photos, GPS, and worked hours"
+      }
     >
+      {isHr ? (
+        <p className="mb-4 text-sm text-slate-600">
+          Also available under{" "}
+          <Link href="/sales/field-attendance" className="font-medium text-[#185FA5] hover:underline">
+            Sales → Field attendance
+          </Link>{" "}
+          for field sales teams.
+        </p>
+      ) : (
+        <p className="mb-4 text-sm text-slate-600">
+          HR view:{" "}
+          <Link href="/hr/field-attendance" className="font-medium text-[#185FA5] hover:underline">
+            Time &amp; attendance → Field attendance
+          </Link>
+          .
+        </p>
+      )}
       {error ? <DashboardErrorBanner message={error} /> : null}
+      {isHr ? <FieldRepHrLinkageBanner linkage={hrLinkage} canManage={canEdit} /> : null}
 
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
@@ -255,6 +290,16 @@ export default function MobileFieldAttendanceScreen() {
                 <tr key={row.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{row.user_name || row.username || "—"}</div>
+                    <span
+                      className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${attendanceSourceBadgeClass(row.source || "field_rep")}`}
+                    >
+                      {formatAttendanceSource(row.source || "field_rep", row.source_label)}
+                    </span>
+                    {row.hr_link && !row.hr_link.counts_toward_payroll ? (
+                      <p className="mt-1 text-[11px] font-medium text-amber-700">
+                        Not in HR / payroll — link employee profile
+                      </p>
+                    ) : null}
                     <GpsLocationLabel
                       latitude={row.sign_in_latitude}
                       longitude={row.sign_in_longitude}
@@ -303,6 +348,11 @@ export default function MobileFieldAttendanceScreen() {
                 <p className="text-sm text-slate-500">
                   Worked {selected.work_label} ({selected.work_hours ?? 0} h)
                 </p>
+                {isHr && selected.hr_link && !selected.hr_link.counts_toward_payroll ? (
+                  <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    {selected.hr_link.hint}
+                  </p>
+                ) : null}
               </div>
               <button
                 type="button"
@@ -319,14 +369,14 @@ export default function MobileFieldAttendanceScreen() {
                 latitude={selected.sign_in_latitude}
                 longitude={selected.sign_in_longitude}
                 address={selected.sign_in_address}
-                photoUrl={selected.sign_in_photo_url}
+                photoFileUrl={selected.sign_in_photo_url}
               />
               <AttendanceLocationBlock
                 label="Sign-out location"
                 latitude={selected.sign_out_latitude}
                 longitude={selected.sign_out_longitude}
                 address={selected.sign_out_address}
-                photoUrl={selected.sign_out_photo_url}
+                photoFileUrl={selected.sign_out_photo_url}
               />
             </div>
 
@@ -359,7 +409,7 @@ export default function MobileFieldAttendanceScreen() {
               </form>
             ) : (
               <p className="mt-4 text-sm text-slate-500">
-                You need sales manage permission to edit attendance times.
+                You need {isHr ? "HR manage" : "sales manage"} permission to edit attendance times.
               </p>
             )}
           </div>

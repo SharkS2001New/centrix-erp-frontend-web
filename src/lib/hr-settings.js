@@ -57,11 +57,20 @@ export function isClockDeviceAttendanceEnabled(moduleSettings) {
   return mergeHrPayrollSettings(moduleSettings).attendance_capture_mode !== "company_mobile";
 }
 
-export function formatAttendanceSource(source) {
-  if (source === "company_mobile") return "Company mobile";
-  if (source === "clock_device") return "Clock device";
+export function formatAttendanceSource(source, sourceLabel) {
+  if (sourceLabel) return sourceLabel;
+  if (source === "field_rep") return "Field rep";
+  if (source === "company_mobile") return "Company phone";
+  if (source === "clock_device") return "Clock";
   if (source === "manual") return "Manual";
   return source ? String(source).replace(/_/g, " ") : "—";
+}
+
+export function attendanceSourceBadgeClass(source) {
+  if (source === "field_rep") return "bg-violet-100 text-violet-800";
+  if (source === "company_mobile") return "bg-sky-100 text-sky-800";
+  if (source === "clock_device") return "bg-amber-100 text-amber-900";
+  return "bg-slate-100 text-slate-700";
 }
 
 export function hrPayrollFormFromApi(res) {

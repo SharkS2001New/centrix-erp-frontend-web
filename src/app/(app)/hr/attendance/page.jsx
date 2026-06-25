@@ -15,15 +15,19 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { HrSelectField } from "@/components/hr/hr-crud-page";
 import { HrTimePickerField } from "@/components/hr/hr-time-picker";
+import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
+import { FieldRepHrLinkageBanner } from "@/components/hr/field-rep-hr-linkage-banner";
 import {
   composeEmployeeDisplayName,
   computeAttendanceHours,
   formatTimeForApi,
 } from "@/components/hr/hr-shared";
 import {
+  attendanceSourceBadgeClass,
   formatAttendanceSource,
   isCompanyMobileAttendanceEnabled,
 } from "@/lib/hr-settings";
+import { shouldShowMobileFieldAttendance } from "@/lib/sales-settings";
 
 const EMPTY_MANUAL = {
   employee_id: "",
@@ -41,9 +45,11 @@ export default function HrAttendancePage() {
   const { capabilities, hasPermission } = useAuth();
   const canManageSettings = hasPermission(P.hr.manage);
   const companyMobileEnabled = isCompanyMobileAttendanceEnabled(capabilities?.module_settings);
+  const fieldAttendanceEnabled = shouldShowMobileFieldAttendance(capabilities);
   const [employees, setEmployees] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [records, setRecords] = useState([]);
+  const [fieldRepLinkage, setFieldRepLinkage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [manualOpen, setManualOpen] = useState(false);
@@ -80,6 +86,13 @@ export default function HrAttendancePage() {
         });
       }
 
+      if (fieldAttendanceEnabled) {
+        requestDefs.push({
+          key: "fieldRepLinkage",
+          promise: apiRequest("/attendance/field-rep-hr-linkage", { searchParams: { days: 30 } }),
+        });
+      }
+
       const results = await Promise.allSettled(requestDefs.map((item) => item.promise));
       const failures = [];
 
@@ -100,6 +113,7 @@ export default function HrAttendancePage() {
         if (key === "employees") setEmployees(res.data ?? []);
         if (key === "attendance") setRecords(res.data ?? []);
         if (key === "sessions") setSessions(res.data ?? []);
+        if (key === "fieldRepLinkage") setFieldRepLinkage(res ?? null);
       });
 
       if (failures.length === requestDefs.length) {
@@ -112,7 +126,7 @@ export default function HrAttendancePage() {
     } finally {
       setLoading(false);
     }
-  }, [companyMobileEnabled]);
+  }, [companyMobileEnabled, fieldAttendanceEnabled]);
 
   useEffect(() => {
     load();
@@ -284,6 +298,10 @@ export default function HrAttendancePage() {
         </p>
       ) : null}
 
+      {fieldAttendanceEnabled ? (
+        <FieldRepHrLinkageBanner linkage={fieldRepLinkage} canManage={canManageSettings} />
+      ) : null}
+
       {canManageSettings ? (
         <p className="mb-4 text-sm text-slate-600">
           Attendance capture mode and device setup are in{" "}
@@ -291,6 +309,24 @@ export default function HrAttendancePage() {
             Admin → Settings → HR &amp; Payroll
           </Link>
           .
+        </p>
+      ) : null}
+
+      {fieldAttendanceEnabled ? (
+        <p className="mb-4 text-sm text-slate-600">
+          When a rep is linked to an employee, closed field sessions appear here with a{" "}
+          <span className="inline-flex rounded-full bg-violet-100 px-1.5 py-0.5 text-xs font-medium text-violet-800">
+            Field rep
+          </span>{" "}
+          badge and count toward payroll like other attendance. Session detail:{" "}
+          <Link href="/hr/field-attendance" className="font-medium text-[#185FA5] hover:underline">
+            Field attendance
+          </Link>
+          {" "}(also under{" "}
+          <Link href="/sales/field-attendance" className="font-medium text-[#185FA5] hover:underline">
+            Sales → Field attendance
+          </Link>
+          ).
         </p>
       ) : null}
 
@@ -379,7 +415,13 @@ export default function HrAttendancePage() {
                     <td className="px-4 py-3">{r.check_in?.slice?.(0, 5) ?? "—"}</td>
                     <td className="px-4 py-3">{r.check_out?.slice?.(0, 5) ?? "—"}</td>
                     <td className="px-4 py-3">{r.hours_worked ?? "—"}</td>
-                    <td className="px-4 py-3">{formatAttendanceSource(r.source)}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${attendanceSourceBadgeClass(r.source)}`}
+                      >
+                        {formatAttendanceSource(r.source, r.source_label)}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 capitalize">{r.status}</td>
                     <td className="px-4 py-3 text-right">
                       <button
@@ -442,7 +484,7 @@ export default function HrAttendancePage() {
             Attendance already exists for this employee on this date (
             {dayHint.existing_attendance?.status ?? "recorded"}
             {dayHint.existing_attendance?.source
-              ? `, ${formatAttendanceSource(dayHint.existing_attendance.source).toLowerCase()}`
+              ? `, ${formatAttendanceSource(dayHint.existing_attendance.source, dayHint.existing_attendance.source_label).toLowerCase()}`
               : ""}
             ). You cannot add a second record — edit the existing one in the table below.
           </p>

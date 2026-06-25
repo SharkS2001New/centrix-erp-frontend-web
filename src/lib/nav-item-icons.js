@@ -102,6 +102,7 @@ export const NAV_HREF_ICONS = {
   "/hr/departments": "folder",
   "/hr/positions": "list",
   "/hr/attendance": "clock",
+  "/hr/field-attendance": "map",
   "/hr/leave": "calendar",
   "/hr/shifts": "clipboard",
   "/hr/overtime": "trend",

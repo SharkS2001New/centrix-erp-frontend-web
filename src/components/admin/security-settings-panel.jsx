@@ -119,6 +119,41 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage,
                 onChange={(e) => setForm((f) => ({ ...f, password_min_length: e.target.value }))}
               />
             </Field>
+            <Toggle
+              label="Require periodic password change"
+              description="Prompt users to update passwords after the configured number of days."
+              checked={form.password_expiry_enabled}
+              onChange={(v) => setForm((f) => ({ ...f, password_expiry_enabled: v }))}
+            />
+            {form.password_expiry_enabled ? (
+              <>
+                <Field label="Password expires after (days)">
+                  <input
+                    type="number"
+                    min="30"
+                    max="730"
+                    className={`${inputClassName()} w-32`}
+                    value={form.password_expiry_days}
+                    onChange={(e) => setForm((f) => ({ ...f, password_expiry_days: e.target.value }))}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Default is 90 days (about 3 months).</p>
+                </Field>
+                <Field label="Reminder skips before lockout">
+                  <input
+                    type="number"
+                    min="0"
+                    max="10"
+                    className={`${inputClassName()} w-32`}
+                    value={form.password_expiry_max_skips}
+                    onChange={(e) => setForm((f) => ({ ...f, password_expiry_max_skips: e.target.value }))}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Users can skip or defer the prompt this many times; the next reminder requires a password
+                    change with the current password.
+                  </p>
+                </Field>
+              </>
+            ) : null}
           </div>
         )}
         <div className="mt-6">

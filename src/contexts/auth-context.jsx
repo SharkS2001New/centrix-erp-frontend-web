@@ -81,6 +81,18 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
+  const applyPasswordExpiry = useCallback((status) => {
+    setCapabilities((prev) => (prev ? { ...prev, password_expiry: status } : prev));
+  }, []);
+
+  const skipPasswordExpiry = useCallback(async () => {
+    const res = await apiRequest("/auth/skip-password-expiry", { method: "POST" });
+    applyPasswordExpiry(res.password_expiry ?? null);
+    return res;
+  }, [applyPasswordExpiry]);
+
+  const passwordExpiry = capabilities?.password_expiry ?? null;
+
   const applyAuthPayload = useCallback(async (res, channel = WEB_LOGIN_CHANNEL) => {
     setSession(res.token, res.user, res.organization, res.memberships ?? [], channel);
     setStoredCompanyCode(res.organization?.company_code);
@@ -177,6 +189,10 @@ export function AuthProvider({ children }) {
         router.replace("/change-password");
         return caps;
       }
+      if (res.password_expiry?.forced) {
+        router.replace("/change-password?reason=expired");
+        return caps;
+      }
       const ctx = buildAccessContext({
         user: res.user,
         organization: res.organization,
@@ -212,6 +228,10 @@ export function AuthProvider({ children }) {
       const caps = await applyAuthPayload(res, WEB_LOGIN_CHANNEL);
       if (res.must_change_password || res.user?.must_change_password) {
         router.replace("/change-password");
+        return caps;
+      }
+      if (res.password_expiry?.forced) {
+        router.replace("/change-password?reason=expired");
         return caps;
       }
       const ctx = buildAccessContext({
@@ -266,6 +286,9 @@ export function AuthProvider({ children }) {
       logout,
       refreshCapabilities,
       clearMustChangePassword,
+      applyPasswordExpiry,
+      skipPasswordExpiry,
+      passwordExpiry,
       isModuleEnabled: (key) => capabilities?.modules?.[key] ?? false,
       isSuperAdmin: () => Boolean(user?.is_super_admin || capabilities?.is_super_admin),
       hasPermission: (code) =>
@@ -294,6 +317,9 @@ export function AuthProvider({ children }) {
       logout,
       refreshCapabilities,
       clearMustChangePassword,
+      applyPasswordExpiry,
+      skipPasswordExpiry,
+      passwordExpiry,
     ],
   );
 

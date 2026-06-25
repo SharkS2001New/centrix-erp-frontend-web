@@ -1,17 +1,20 @@
 "use client";
 
+import { Suspense } from "react";
 import { PosAuthGuard } from "@/components/auth/pos-auth-guard";
 import { PosWorkspaceGuard } from "@/components/auth/pos-workspace-guard";
-import { MustChangePasswordGuard } from "@/components/auth/must-change-password-guard";
+import { PasswordExpiryGuard } from "@/components/auth/password-expiry-guard";
 
 export function PosShell({ children }) {
   return (
     <PosAuthGuard>
-      <MustChangePasswordGuard>
-        <PosWorkspaceGuard>
-          <div className="flex h-screen min-h-0 flex-col overflow-hidden app-main-bg">{children}</div>
-        </PosWorkspaceGuard>
-      </MustChangePasswordGuard>
+      <Suspense fallback={null}>
+        <PasswordExpiryGuard>
+          <PosWorkspaceGuard>
+            <div className="flex h-screen min-h-0 flex-col overflow-hidden app-main-bg">{children}</div>
+          </PosWorkspaceGuard>
+        </PasswordExpiryGuard>
+      </Suspense>
     </PosAuthGuard>
   );
 }

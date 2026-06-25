@@ -24,7 +24,7 @@ function accessLabel(user, capabilities) {
 }
 
 export function ProfilePanel({ compact = false }) {
-  const { user, organization, capabilities } = useAuth();
+  const { user, organization, capabilities, applyPasswordExpiry, refreshCapabilities } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
@@ -46,6 +46,8 @@ export function ProfilePanel({ compact = false }) {
           password_confirmation: passwordConfirmation,
         },
       });
+      applyPasswordExpiry(res.password_expiry ?? null);
+      await refreshCapabilities().catch(() => {});
       setSuccess(res.message);
       setCurrentPassword("");
       setPassword("");
