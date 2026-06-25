@@ -124,6 +124,39 @@ export function recalcReturnLine(line) {
   };
 }
 
+/** Legacy returns credit the original sale line total — not qty × recomputed unit price. */
+export function recalcLegacyReturnLine(line) {
+  const returnQty = Math.max(0, Number(line.return_qty) || 0);
+  const maxQty =
+    line.max_return_qty != null
+      ? Number(line.max_return_qty)
+      : Number(line.quantity_sold) || 0;
+  const clampedQty = maxQty > 0 ? Math.min(returnQty, maxQty) : returnQty;
+  const lineTotal = Number(line.line_total);
+  const remainingQty = Number(line.max_return_qty ?? line.quantity_sold) || 0;
+
+  let amount;
+  if (Number.isFinite(lineTotal) && lineTotal > 0 && remainingQty > 0) {
+    amount =
+      clampedQty + 0.0001 >= remainingQty
+        ? lineTotal
+        : Math.round(lineTotal * (clampedQty / remainingQty) * 100) / 100;
+  } else {
+    const unitPrice = Number(line.unit_price) || 0;
+    amount = Math.round(clampedQty * unitPrice * 100) / 100;
+  }
+
+  const unitPrice =
+    clampedQty > 0 ? Math.round((amount / clampedQty) * 100) / 100 : Number(line.unit_price) || 0;
+
+  return {
+    ...line,
+    return_qty: clampedQty,
+    unit_price: unitPrice,
+    amount,
+  };
+}
+
 export function totalReturnAmount(lines) {
   return (lines ?? []).reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
 }

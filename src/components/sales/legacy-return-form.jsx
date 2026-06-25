@@ -12,6 +12,7 @@ import {
   RETURN_REASONS,
   customerReturnLineQtyLabel,
   recalcReturnLine,
+  recalcLegacyReturnLine,
   totalReturnAmount,
 } from "@/components/sales/customer-returns-shared";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
@@ -71,10 +72,10 @@ export function LegacyReturnForm({
       setKraInvoiceNumber(known);
       setLines(
         (linesRes.lines ?? []).map((line) =>
-          recalcReturnLine({
+          recalcLegacyReturnLine({
             ...line,
-            return_qty: 0,
-            amount: 0,
+            return_qty: line.return_qty ?? line.max_return_qty ?? 0,
+            amount: line.amount ?? line.line_total ?? 0,
           }),
         ),
       );
@@ -96,7 +97,7 @@ export function LegacyReturnForm({
 
   function updateLine(index, patch) {
     setLines((prev) =>
-      prev.map((line, i) => (i === index ? recalcReturnLine({ ...line, ...patch }) : line)),
+      prev.map((line, i) => (i === index ? recalcLegacyReturnLine({ ...line, ...patch }) : line)),
     );
   }
 
