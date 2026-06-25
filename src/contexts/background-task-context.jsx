@@ -114,7 +114,8 @@ export function BackgroundTaskProvider({ children }) {
         }
 
         if (task.status === "cancelled") {
-          throw new Error("Background task was cancelled.");
+          clearActiveTask();
+          return null;
         }
 
         const merged = {
@@ -144,7 +145,10 @@ export function BackgroundTaskProvider({ children }) {
         opts.onComplete?.(merged);
         return merged;
       } catch (error) {
-        const cancelled = controller.signal.aborted || error?.name === "AbortError";
+        const cancelled =
+          controller.signal.aborted
+          || error?.name === "AbortError"
+          || (error instanceof Error && error.message.includes("cancelled"));
         const message = cancelled ? "Background task was cancelled." : taskErrorMessage(error);
 
         clearActiveTask();
@@ -158,6 +162,10 @@ export function BackgroundTaskProvider({ children }) {
           });
         }
 
+        if (cancelled) {
+          return null;
+        }
+
         opts.onError?.(error);
         throw error instanceof Error ? error : new Error(message);
       } finally {
@@ -169,7 +177,6 @@ export function BackgroundTaskProvider({ children }) {
 
   const cancelActiveTask = useCallback(async () => {
     const taskId = activeTask?.id;
-    abortRef.current?.abort();
 
     if (taskId && taskId !== "pending") {
       try {
@@ -179,6 +186,7 @@ export function BackgroundTaskProvider({ children }) {
       }
     }
 
+    abortRef.current?.abort();
     setTaskLocked(false);
     clearActiveTask();
   }, [activeTask?.id, clearActiveTask]);

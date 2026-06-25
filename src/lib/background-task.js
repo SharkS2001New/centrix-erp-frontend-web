@@ -103,7 +103,7 @@ export async function runQueuedTask(requestFn, opts = {}) {
     throw new ApiError(backgroundTaskErrorMessage(task), 422, task);
   }
   if (task.status === "cancelled") {
-    throw new Error("Background task was cancelled.");
+    return null;
   }
 
   return {
