@@ -78,7 +78,9 @@ import { PosSaveOrderDialog } from "./pos-save-order-dialog";
 import { PosLeaveGuardDialog } from "./pos-leave-guard-dialog";
 import { PosActionButton } from "./pos-action-button";
 import { CloseSessionModal, XReportModal, ZReportModal } from "@/components/pos/pos-session-modals";
-import { FloatBreakdownModal, OpenSessionModal } from "@/components/pos/till-session-ui";
+import { FloatBreakdownModal, OpenSessionModal, RecordSessionExpenseModal } from "@/components/pos/till-session-ui";
+import { dedupeErrorMessage, buildExpensesHref } from "@/lib/expenses-link";
+import Link from "next/link";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
@@ -226,6 +228,7 @@ export function PosScreen({ standalone = false }) {
   const [posOpenSessions, setPosOpenSessions] = useState([]);
   const [floatModalOpen, setFloatModalOpen] = useState(false);
   const [floatDetailsOpen, setFloatDetailsOpen] = useState(false);
+  const [recordExpenseOpen, setRecordExpenseOpen] = useState(false);
   const [xReportOpen, setXReportOpen] = useState(false);
   const [xReportLoading, setXReportLoading] = useState(false);
   const [closeSessionOpen, setCloseSessionOpen] = useState(false);
@@ -2197,7 +2200,7 @@ export function PosScreen({ standalone = false }) {
       const label = restoredCart?.held_order_num ?? saleId;
       setStatusMessage(`Order #${label} loaded for editing — update lines and complete checkout.`);
     } catch (e) {
-      const message = e instanceof ApiError ? e.message : "Could not load order for editing";
+      const message = dedupeErrorMessage(e instanceof ApiError ? e.message : "Could not load order for editing");
       if (!replace && message.toLowerCase().includes("already has items")) {
         const ok = window.confirm(
           "Your cart already has items. Replace them with this order?",
@@ -2237,7 +2240,7 @@ export function PosScreen({ standalone = false }) {
       }
       await restoreOrderForEdit(match.id);
     } catch (e) {
-      setOrderEditError(e instanceof ApiError ? e.message : "Order lookup failed");
+      setOrderEditError(e instanceof ApiError ? dedupeErrorMessage(e.message) : "Order lookup failed");
     } finally {
       setBusy(false);
     }
@@ -2434,17 +2437,30 @@ export function PosScreen({ standalone = false }) {
                   ) : null}
                 </button>
                 {requireTillFloat && activeSession ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setSessionError(null);
-                      setFloatDetailsOpen(true);
-                    }}
-                    className={posHeaderBtnClassName}
-                  >
-                    Float details
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setSessionError(null);
+                        setFloatDetailsOpen(true);
+                      }}
+                      className={posHeaderBtnClassName}
+                    >
+                      Float details
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || sessionBusy}
+                      onClick={() => {
+                        setSessionError(null);
+                        setRecordExpenseOpen(true);
+                      }}
+                      className={posHeaderBtnClassName}
+                    >
+                      Record expense
+                    </button>
+                  </>
                 ) : null}
                 <button
                   type="button"
@@ -2598,9 +2614,20 @@ export function PosScreen({ standalone = false }) {
         onCashMovement={recordCashMovement}
         cashMovementBusy={sessionBusy}
         cashMovementError={sessionError}
+      />
+
+      <RecordSessionExpenseModal
+        open={recordExpenseOpen}
+        onClose={() => {
+          setSessionError(null);
+          setRecordExpenseOpen(false);
+        }}
+        session={activeSession}
+        tillName={activeTill ? tillDisplayName(activeTill) : null}
+        cashierName={user?.full_name ?? user?.username ?? null}
         onRecordExpense={activeSession ? recordSessionExpense : null}
-        recordExpenseBusy={sessionBusy}
-        recordExpenseError={sessionError}
+        busy={sessionBusy}
+        error={sessionError}
       />
 
       <XReportModal
@@ -2985,18 +3012,37 @@ export function PosScreen({ standalone = false }) {
                   </button>
                 ) : null}
                 {requireTillFloat && activeSession ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setSessionError(null);
-                      setFloatDetailsOpen(true);
-                    }}
-                    className={cartToolbarBtnClassName}
-                  >
-                    Float details
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setSessionError(null);
+                        setFloatDetailsOpen(true);
+                      }}
+                      className={cartToolbarBtnClassName}
+                    >
+                      Float details
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || sessionBusy}
+                      onClick={() => {
+                        setSessionError(null);
+                        setRecordExpenseOpen(true);
+                      }}
+                      className={cartToolbarBtnClassName}
+                    >
+                      Record expense
+                    </button>
+                  </>
                 ) : null}
+                <Link
+                  href={buildExpensesHref()}
+                  className={cartToolbarBtnClassName}
+                >
+                  Expenses
+                </Link>
               </>
             ) : null}
             {!standalone && requireTillFloat && activeSession && hasPosTill ? (

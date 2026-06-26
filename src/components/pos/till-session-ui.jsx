@@ -468,58 +468,33 @@ export function AddFloatModal({ open, onClose, onSaved, session, busy, error }) 
   );
 }
 
-export function FloatBreakdownModal({
+export function RecordSessionExpenseModal({
   open,
   onClose,
   session,
   tillName,
   cashierName,
-  onCorrectFloat,
-  canAddFloat = false,
-  onAddFloat,
-  addFloatBusy = false,
-  addFloatError = null,
-  onCashMovement,
-  cashMovementBusy = false,
-  cashMovementError = null,
   onRecordExpense,
-  recordExpenseBusy = false,
-  recordExpenseError = null,
+  busy = false,
+  error = null,
 }) {
-  const [addingFloat, setAddingFloat] = useState(false);
-  const [recordingMovement, setRecordingMovement] = useState(false);
-  const [recordingExpense, setRecordingExpense] = useState(false);
   const [expenseGroups, setExpenseGroups] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [expenseGroupId, setExpenseGroupId] = useState("");
   const [expenseDescription, setExpenseDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [paymentType, setPaymentType] = useState("CASH");
-  const [movementType, setMovementType] = useState("drop");
-  const [movementReason, setMovementReason] = useState("");
   const [expensePaymentMethodId, setExpensePaymentMethodId] = useState("");
-
-  const entries = normalizeFloatEntries(session?.float_breakdown);
-  const movements = Array.isArray(session?.cash_movements) ? session.cash_movements : [];
-  const total = sumFloatEntries(entries) || Number(session?.working_amount ?? 0);
-  const nextTotal = total + (Number(amount) || 0);
 
   useEffect(() => {
     if (!open) return;
-    setAddingFloat(false);
-    setRecordingMovement(false);
-    setRecordingExpense(false);
-    setAmount("");
-    setPaymentType("CASH");
-    setMovementType("drop");
-    setMovementReason("");
     setExpenseDescription("");
+    setAmount("");
     setExpenseGroupId("");
     setExpensePaymentMethodId("");
-  }, [open, session?.id, session?.working_amount]);
+  }, [open, session?.id]);
 
   useEffect(() => {
-    if (!open || !recordingExpense) return;
+    if (!open) return;
     let cancelled = false;
     Promise.all([
       apiRequest("/pos/expense-groups"),
@@ -543,7 +518,142 @@ export function FloatBreakdownModal({
     return () => {
       cancelled = true;
     };
-  }, [open, recordingExpense]);
+  }, [open]);
+
+  if (!open) return null;
+
+  async function handleSaveExpense() {
+    if (!amount || Number(amount) <= 0 || !onRecordExpense || !expenseGroupId || !expensePaymentMethodId) return;
+    try {
+      await onRecordExpense({
+        expense_group_id: Number(expenseGroupId),
+        expense_amount: Number(amount),
+        description: expenseDescription.trim() || null,
+        payment_method_id: Number(expensePaymentMethodId),
+      });
+      onClose();
+    } catch {
+      /* error from parent */
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
+      <div className="relative w-full max-w-md theme-panel rounded-xl border p-6 text-slate-900 shadow-xl">
+        <h2 className="text-lg font-semibold text-slate-900">Record expense</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          {tillName ? `${tillName} · ` : ""}
+          {cashierName ?? "Cashier"}
+          {session?.id ? ` · Session #${session.id}` : ""}
+        </p>
+        <p className="mt-2 text-xs text-slate-500">
+          Cash paid out from the till during this session. This reduces expected cash on your X/Z report.
+        </p>
+
+        <div className="mt-5 space-y-4">
+          {error ? (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          ) : null}
+          <Field label="Category">
+            <select
+              className={inputClassName()}
+              value={expenseGroupId}
+              onChange={(e) => setExpenseGroupId(e.target.value)}
+              disabled={busy}
+            >
+              {expenseGroups.map((group) => (
+                <option key={group.id} value={group.id}>{group.group_name}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Description (optional)">
+            <input
+              className={inputClassName()}
+              value={expenseDescription}
+              onChange={(e) => setExpenseDescription(e.target.value)}
+              disabled={busy}
+              placeholder="e.g. Petty cash — lunch supplies"
+            />
+          </Field>
+          <Field label="Amount (KES)">
+            <input
+              type="number"
+              min={0.01}
+              step="0.01"
+              className={inputClassName()}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              disabled={busy}
+            />
+          </Field>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <PrimaryButton
+            type="button"
+            showIcon={false}
+            disabled={
+              busy ||
+              !amount ||
+              Number(amount) <= 0 ||
+              !expenseGroupId ||
+              !expensePaymentMethodId
+            }
+            onClick={() => void handleSaveExpense()}
+          >
+            {busy ? "Saving…" : "Save expense"}
+          </PrimaryButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function FloatBreakdownModal({
+  open,
+  onClose,
+  session,
+  tillName,
+  cashierName,
+  onCorrectFloat,
+  canAddFloat = false,
+  onAddFloat,
+  addFloatBusy = false,
+  addFloatError = null,
+  onCashMovement,
+  cashMovementBusy = false,
+  cashMovementError = null,
+}) {
+  const [addingFloat, setAddingFloat] = useState(false);
+  const [recordingMovement, setRecordingMovement] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [paymentType, setPaymentType] = useState("CASH");
+  const [movementType, setMovementType] = useState("drop");
+  const [movementReason, setMovementReason] = useState("");
+
+  const entries = normalizeFloatEntries(session?.float_breakdown);
+  const movements = Array.isArray(session?.cash_movements) ? session.cash_movements : [];
+  const total = sumFloatEntries(entries) || Number(session?.working_amount ?? 0);
+  const nextTotal = total + (Number(amount) || 0);
+
+  useEffect(() => {
+    if (!open) return;
+    setAddingFloat(false);
+    setRecordingMovement(false);
+    setAmount("");
+    setPaymentType("CASH");
+    setMovementType("drop");
+    setMovementReason("");
+  }, [open, session?.id, session?.working_amount]);
 
   if (!open) return null;
 
@@ -560,23 +670,6 @@ export function FloatBreakdownModal({
       cancelAddFloat();
     } catch {
       /* addFloatError from parent keeps the form open */
-    }
-  }
-
-  async function handleSaveExpense() {
-    if (!amount || Number(amount) <= 0 || !onRecordExpense || !expenseGroupId || !expensePaymentMethodId) return;
-    try {
-      await onRecordExpense({
-        expense_group_id: Number(expenseGroupId),
-        expense_amount: Number(amount),
-        description: expenseDescription.trim() || null,
-        payment_method_id: Number(expensePaymentMethodId),
-      });
-      setRecordingExpense(false);
-      setAmount("");
-      setExpenseDescription("");
-    } catch {
-      /* recordExpenseError from parent */
     }
   }
 
@@ -789,94 +882,16 @@ export function FloatBreakdownModal({
               </div>
             </div>
           ) : null}
-
-          {recordingExpense ? (
-            <div className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm font-medium text-slate-900">Record session expense</p>
-              <p className="text-xs text-slate-500">
-                Cash paid out from the till during this session. This reduces expected cash on your X/Z report.
-              </p>
-              {recordExpenseError ? (
-                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {recordExpenseError}
-                </p>
-              ) : null}
-              <Field label="Category">
-                <select
-                  className={inputClassName()}
-                  value={expenseGroupId}
-                  onChange={(e) => setExpenseGroupId(e.target.value)}
-                  disabled={recordExpenseBusy}
-                >
-                  {expenseGroups.map((group) => (
-                    <option key={group.id} value={group.id}>{group.group_name}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Description (optional)">
-                <input
-                  className={inputClassName()}
-                  value={expenseDescription}
-                  onChange={(e) => setExpenseDescription(e.target.value)}
-                  disabled={recordExpenseBusy}
-                  placeholder="e.g. Petty cash — lunch supplies"
-                />
-              </Field>
-              <Field label="Amount (KES)">
-                <input
-                  type="number"
-                  min={0.01}
-                  step="0.01"
-                  className={inputClassName()}
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  disabled={recordExpenseBusy}
-                />
-              </Field>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRecordingExpense(false);
-                    setAmount("");
-                    setExpenseDescription("");
-                  }}
-                  disabled={recordExpenseBusy}
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-white disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <PrimaryButton
-                  type="button"
-                  showIcon={false}
-                  disabled={
-                    recordExpenseBusy ||
-                    !amount ||
-                    Number(amount) <= 0 ||
-                    !expenseGroupId ||
-                    !expensePaymentMethodId
-                  }
-                  onClick={() => void handleSaveExpense()}
-                >
-                  {recordExpenseBusy ? "Saving…" : "Save expense"}
-                </PrimaryButton>
-              </div>
-            </div>
-          ) : null}
         </div>
         <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-6 py-4">
           <div className="flex flex-wrap gap-2">
-            {(canAddFloat || onRecordExpense || onCashMovement) &&
-            !addingFloat &&
-            !recordingMovement &&
-            !recordingExpense ? (
+            {(canAddFloat || onCashMovement) && !addingFloat && !recordingMovement ? (
               <>
                 {canAddFloat ? (
                   <button
                     type="button"
                     onClick={() => {
                       setRecordingMovement(false);
-                      setRecordingExpense(false);
                       setAddingFloat(true);
                     }}
                     className="rounded-lg border border-[#185FA5]/30 bg-[#E6F1FB] px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#0C447C] hover:bg-[#185FA5]/10"
@@ -889,25 +904,11 @@ export function FloatBreakdownModal({
                     type="button"
                     onClick={() => {
                       setAddingFloat(false);
-                      setRecordingExpense(false);
                       setRecordingMovement(true);
                     }}
                     className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-700 hover:bg-slate-50"
                   >
                     Cash movement
-                  </button>
-                ) : null}
-                {onRecordExpense ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAddingFloat(false);
-                      setRecordingMovement(false);
-                      setRecordingExpense(true);
-                    }}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-700 hover:bg-slate-50"
-                  >
-                    Record expense
                   </button>
                 ) : null}
               </>

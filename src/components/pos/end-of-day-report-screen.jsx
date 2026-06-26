@@ -9,6 +9,7 @@ import { isTillFloatWorkflowEnabled, areSalesDiscountsEnabled } from "@/lib/sale
 import { openPrintWindow } from "@/lib/open-print-window";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { formatTillKes, formatTillKesExact } from "@/lib/pos-till";
+import { buildExpensesHref } from "@/lib/expenses-link";
 import {
   FilterSelect,
   PrimaryButton,
@@ -108,10 +109,13 @@ function PaymentDonut({ payments }) {
   );
 }
 
-function Panel({ title, children, className = "" }) {
+function Panel({ title, children, className = "", action = null }) {
   return (
     <div className={`theme-panel rounded-xl border p-5 shadow-sm ${className}`}>
-      <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+        {action}
+      </div>
       <div className="mt-4">{children}</div>
     </div>
   );
@@ -155,7 +159,9 @@ ${meta.organizationName ? `<h1>${meta.organizationName}</h1>` : ""}
 ${meta.showDiscounts ? `<div class="row"><span>Discounts</span><span>${kesNum(s.total_discounts)}</span></div>` : ""}
 <div class="row"><span>Refunds</span><span>${kesNum(s.total_refunds)}</span></div>
 <div class="row"><span>Net sales</span><span>${kesNum(s.net_sales)}</span></div>
+${Number(s.total_vat) > 0 ? `<div class="row"><span>VAT total</span><span>${kesNum(s.total_vat)}</span></div>` : ""}
 ${meta.showFloat ? `<div class="row"><span>Opening float</span><span>${kesNum(s.opening_float)}</span></div>` : ""}
+${meta.showFloat && s.net_sales_minus_float != null ? `<div class="row"><span>Net sales minus float</span><span>${kesNum(s.net_sales_minus_float)}</span></div>` : ""}
 <div class="row"><span>Net cash expected</span><span>${kesNum(s.net_cash_expected)}</span></div>
 </div>
 <div class="box"><strong>Payments</strong>
@@ -179,9 +185,14 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
   if (discountsEnabled) push("Sales", "Total discounts", kesNum(s.total_discounts));
   push("Sales", "Total refunds", kesNum(s.total_refunds));
   push("Sales", "Net sales", kesNum(s.net_sales));
+  if (Number(s.total_vat) > 0) push("Sales", "VAT total", kesNum(s.total_vat));
   push("Sales", "Transactions", String(s.transactions ?? 0));
   if (requireTillFloat) push("Sales", "Opening float", kesNum(s.opening_float));
+  if (requireTillFloat && s.net_sales_minus_float != null) {
+    push("Sales", "Net sales minus float", kesNum(s.net_sales_minus_float));
+  }
   if (requireTillFloat) push("Sales", "Net cash expected", kesNum(s.net_cash_expected));
+  if (Number(s.session_expenses) > 0) push("Sales", "Session expenses", kesNum(s.session_expenses));
 
   push("Payments", "Cash", kesNum(p.cash));
   push("Payments", "M-Pesa", kesNum(p.mpesa));
@@ -238,6 +249,8 @@ export function EndOfDayReportScreen() {
   const [branchId, setBranchId] = useState("");
   const [cashierId, setCashierId] = useState("");
   const [saleDate, setSaleDate] = useState(todayIsoDate());
+  const [reportMode, setReportMode] = useState("daily");
+  const [saleMonth, setSaleMonth] = useState(() => todayIsoDate().slice(0, 7));
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -281,7 +294,12 @@ export function EndOfDayReportScreen() {
     setLoading(true);
     setError(null);
     try {
-      const params = { sale_date: saleDate };
+      const params = {};
+      if (reportMode === "monthly") {
+        params.sale_month = saleMonth;
+      } else {
+        params.sale_date = saleDate;
+      }
       if (branchId) params.branch_id = branchId;
       if (cashierId) params.cashier_id = cashierId;
       const data = await apiRequest("/reports/eod-report", { searchParams: params });
@@ -292,11 +310,11 @@ export function EndOfDayReportScreen() {
     } finally {
       setLoading(false);
     }
-  }, [saleDate, branchId, cashierId]);
+  }, [saleDate, saleMonth, reportMode, branchId, cashierId]);
 
   useEffect(() => {
-    if (saleDate) load();
-  }, [load, saleDate]);
+    if (reportMode === "monthly" ? saleMonth : saleDate) load();
+  }, [load, saleDate, saleMonth, reportMode]);
 
   const summary = report?.summary ?? {};
   const payments = report?.payments ?? {};
@@ -315,17 +333,22 @@ export function EndOfDayReportScreen() {
     [payments],
   );
 
+  const isMonthly = reportMode === "monthly" || report?.report_mode === "monthly";
+  const periodStart = report?.period_start ?? (isMonthly ? `${saleMonth}-01` : saleDate);
+  const periodEnd = report?.period_end ?? saleDate;
+  const expensesHref = buildExpensesHref({ fromDate: periodStart, toDate: periodEnd });
+
   const eodExportMeta = useMemo(
     () => ({
-      fromDate: saleDate,
-      toDate: saleDate,
+      fromDate: periodStart,
+      toDate: periodEnd,
       branchName,
       extraLines: [
         cashierName ? `Cashier: ${cashierName}` : "Cashier: All cashiers",
-        `Report date: ${formatReportDate(saleDate)}`,
+        isMonthly ? `Report month: ${saleMonth}` : `Report date: ${formatReportDate(saleDate)}`,
       ],
     }),
-    [branchName, cashierName, saleDate],
+    [branchName, cashierName, isMonthly, periodEnd, periodStart, saleDate, saleMonth],
   );
 
   const getEodExportRows = useCallback(
@@ -371,9 +394,14 @@ export function EndOfDayReportScreen() {
             {" / "}
             <span className="text-slate-700">End of Day Sales</span>
           </p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">End of Day Sales Report</h1>
+          <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+            {isMonthly ? "Monthly Sales Report" : "End of Day Sales Report"}
+          </h1>
           <p className="mt-1 text-sm text-slate-500">
-            {branchName} · {formatReportDate(saleDate)}
+            {branchName} ·{" "}
+            {isMonthly
+              ? `${formatReportDate(periodStart)} – ${formatReportDate(periodEnd)}`
+              : formatReportDate(saleDate)}
             {cashierName ? ` · ${cashierName}` : " · All cashiers"}
           </p>
         </div>
@@ -401,14 +429,37 @@ export function EndOfDayReportScreen() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Date</label>
-            <input
-              type="date"
-              className={`${inputClassName()} w-40`}
-              value={saleDate}
-              onChange={(e) => setSaleDate(e.target.value)}
+            <label className="mb-1 block text-xs font-medium text-slate-500">Period</label>
+            <FilterSelect
+              value={reportMode}
+              onChange={(e) => setReportMode(e.target.value)}
+              options={[
+                { value: "daily", label: "Daily" },
+                { value: "monthly", label: "Monthly" },
+              ]}
             />
           </div>
+          {reportMode === "monthly" ? (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Month</label>
+              <input
+                type="month"
+                className={`${inputClassName()} w-40`}
+                value={saleMonth}
+                onChange={(e) => setSaleMonth(e.target.value)}
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Date</label>
+              <input
+                type="date"
+                className={`${inputClassName()} w-40`}
+                value={saleDate}
+                onChange={(e) => setSaleDate(e.target.value)}
+              />
+            </div>
+          )}
           <button
             type="button"
             onClick={load}
@@ -418,9 +469,9 @@ export function EndOfDayReportScreen() {
           </button>
           {report ? (
             <ReportExportToolbar
-              filename={`eod-report-${saleDate}`}
-              title="End of Day Sales Report"
-              subtitle={`${branchName} · ${formatReportDate(saleDate)}`}
+              filename={isMonthly ? `eod-report-${saleMonth}` : `eod-report-${saleDate}`}
+              title={isMonthly ? "Monthly Sales Report" : "End of Day Sales Report"}
+              subtitle={`${branchName} · ${isMonthly ? saleMonth : formatReportDate(saleDate)}`}
               columns={EOD_EXPORT_COLUMNS}
               getRows={getEodExportRows}
               meta={eodExportMeta}
@@ -458,6 +509,12 @@ export function EndOfDayReportScreen() {
               value={formatTillKes(summary.net_sales)}
               hint={discountsEnabled ? "After discounts & refunds" : "After refunds"}
             />
+            {Number(summary.total_vat) > 0 ? (
+              <StatCard label="VAT total" value={formatTillKes(summary.total_vat)} hint="Tax collected" />
+            ) : null}
+            {Number(report?.total_expenses) > 0 ? (
+              <StatCard label="Total expenses" value={formatTillKes(report.total_expenses)} hint="All expense groups" />
+            ) : null}
           </div>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
@@ -469,8 +526,17 @@ export function EndOfDayReportScreen() {
               <SummaryRow label="Total refunds" value={`-${formatTillKes(summary.total_refunds)}`} tone="danger" />
               <div className="my-2 border-t border-slate-100" />
               <SummaryRow label="Net sales" value={formatTillKes(summary.net_sales)} tone="success" bold />
+              {Number(summary.total_vat) > 0 ? (
+                <SummaryRow label="VAT total" value={formatTillKes(summary.total_vat)} />
+              ) : null}
               {requireTillFloat ? (
                 <SummaryRow label="Opening float" value={formatTillKes(summary.opening_float)} />
+              ) : null}
+              {requireTillFloat && summary.net_sales_minus_float != null ? (
+                <SummaryRow label="Net sales minus float" value={formatTillKes(summary.net_sales_minus_float)} tone="primary" />
+              ) : null}
+              {Number(summary.session_expenses) > 0 ? (
+                <SummaryRow label="Session expenses" value={`-${formatTillKes(summary.session_expenses)}`} tone="danger" />
               ) : null}
               {requireTillFloat ? (
                 <div className="mt-2 rounded-lg bg-[#E6F1FB] px-3 py-2">
@@ -594,7 +660,14 @@ export function EndOfDayReportScreen() {
             </Panel>
             ) : null}
 
-            <Panel title="Expenses summary">
+            <Panel
+              title="Expenses summary"
+              action={
+                <Link href={expensesHref} className="text-xs font-medium text-[#185FA5] hover:underline">
+                  View expenses
+                </Link>
+              }
+            >
               {(report.expenses ?? []).length === 0 ? (
                 <p className="text-sm text-slate-500">No expenses recorded.</p>
               ) : (
@@ -625,6 +698,33 @@ export function EndOfDayReportScreen() {
               </div>
             </Panel>
           </div>
+
+          {isMonthly && (report?.daily_breakdown ?? []).length > 0 ? (
+            <Panel title="Daily breakdown" className="mt-6">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
+                    <th className="pb-2 pr-3">Date</th>
+                    <th className="pb-2 pr-3 text-right">Transactions</th>
+                    <th className="pb-2 pr-3 text-right">Gross sales</th>
+                    <th className="pb-2 pr-3 text-right">VAT</th>
+                    <th className="pb-2 text-right">Cash</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(report.daily_breakdown ?? []).map((row) => (
+                    <tr key={row.sale_date} className="border-b border-slate-100 last:border-b-0">
+                      <td className="py-2.5 pr-3 text-slate-800">{formatReportDate(row.sale_date)}</td>
+                      <td className="py-2.5 pr-3 text-right text-slate-700">{row.transactions ?? 0}</td>
+                      <td className="py-2.5 pr-3 text-right font-medium text-slate-900">{formatTillKes(row.gross_sales)}</td>
+                      <td className="py-2.5 pr-3 text-right text-slate-700">{formatTillKes(row.total_vat)}</td>
+                      <td className="py-2.5 text-right text-slate-700">{formatTillKes(row.cash_collected)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
+          ) : null}
 
           {requireTillFloat ? (
           <div className="mt-6 theme-panel rounded-xl border p-5 shadow-sm">

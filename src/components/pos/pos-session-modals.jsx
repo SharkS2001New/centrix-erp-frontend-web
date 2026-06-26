@@ -53,6 +53,13 @@ function PosSessionDialogShell({
   );
 }
 
+function sessionExpenseDate(session) {
+  if (!session) return null;
+  if (session.session_date) return String(session.session_date).slice(0, 10);
+  if (session.opened_at) return String(session.opened_at).slice(0, 10);
+  return null;
+}
+
 function deferModalAction(fn) {
   window.setTimeout(() => fn(), 0);
 }
@@ -152,6 +159,8 @@ export function XReportModal({
             tillName={tillName}
             cashierName={cashierName}
             showFloatBreakdown={showFloatBreakdown}
+            expensesFromDate={sessionExpenseDate(session)}
+            expensesToDate={sessionExpenseDate(session)}
           />
           <p className="mt-4 text-center text-xs text-slate-500">
             Session still open — this is not an end-of-day Z report.
@@ -468,6 +477,8 @@ export function ZReportModal({
             showCashReconciliation
             variance={variance}
             showFloatBreakdown={showFloatBreakdown}
+            expensesFromDate={sessionExpenseDate(session)}
+            expensesToDate={sessionExpenseDate(session)}
           />
         </>
       ) : null}

@@ -71,6 +71,12 @@ export function printPosTillReport({
   const rows = [
     line("Transactions", String(sales.transactions ?? 0)),
     line("Net Sales", formatTillKes(sales.net_sales ?? sales.net).replace(/^KES\s*/, "")),
+    ...(Number(sales.total_vat) > 0
+      ? [line("VAT total", formatTillKes(sales.total_vat).replace(/^KES\s*/, ""))]
+      : []),
+    ...(showFloatBreakdown && sales.net_sales_minus_float != null
+      ? [line("Net sales minus float", formatTillKes(sales.net_sales_minus_float).replace(/^KES\s*/, ""))]
+      : []),
     line("Refunds", formatTillKes(sales.refunds).replace(/^KES\s*/, "")),
     ...(Number(sales.debtor_collections) > 0
       ? [line("Debtor collections", formatTillKes(sales.debtor_collections).replace(/^KES\s*/, ""))]

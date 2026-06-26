@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { formatTillKes, formatTillKesExact, formatSessionDateTime, formatSessionTime, normalizeFloatEntries, formatFloatEntryDate } from "@/lib/pos-till";
+import { buildExpensesHref } from "@/lib/expenses-link";
 import { ReportStatGrid } from "@/components/pos/pos-shared";
 
 function paymentSummaryItems(report) {
@@ -92,13 +94,20 @@ function CashMovementsSection({ report }) {
   );
 }
 
-export function PosReportView({ report, session, tillName, cashierName, showCashReconciliation = false, variance = null, showFloatBreakdown = false }) {
+export function PosReportView({ report, session, tillName, cashierName, showCashReconciliation = false, variance = null, showFloatBreakdown = false, expensesFromDate = null, expensesToDate = null }) {
   const sales = report?.sales ?? {};
   const till = report?.till ?? {};
+  const expensesHref = buildExpensesHref({ fromDate: expensesFromDate, toDate: expensesToDate });
 
   const salesItems = [
     { label: "Transactions", value: sales.transactions ?? 0 },
     { label: "Net sales", value: formatTillKes(sales.net_sales ?? sales.net) },
+    ...(Number(sales.total_vat) > 0
+      ? [{ label: "VAT total", value: formatTillKes(sales.total_vat) }]
+      : []),
+    ...(showFloatBreakdown && sales.net_sales_minus_float != null
+      ? [{ label: "Net sales minus float", value: formatTillKes(sales.net_sales_minus_float) }]
+      : []),
     { label: "Refunds", value: formatTillKes(sales.refunds) },
     ...(Number(sales.debtor_collections) > 0
       ? [{ label: "Debtor collections", value: formatTillKes(sales.debtor_collections) }]
@@ -140,6 +149,18 @@ export function PosReportView({ report, session, tillName, cashierName, showCash
 
       <CashMovementsSection report={report} />
 
+      {Number(report?.session_expenses) > 0 ? (
+        <div className="theme-panel rounded-xl border p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-medium text-slate-900">Session expenses</h2>
+            <Link href={expensesHref} className="text-xs font-medium text-[#185FA5] hover:underline">
+              View expenses
+            </Link>
+          </div>
+          <p className="mt-3 text-sm font-medium text-red-700">−{formatTillKes(report.session_expenses)}</p>
+        </div>
+      ) : null}
+
       <div className="theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-medium text-slate-900">Cash summary</h2>
         <dl className="mt-4 space-y-2 text-sm">
@@ -167,6 +188,14 @@ export function PosReportView({ report, session, tillName, cashierName, showCash
           ) : null}
         </dl>
       </div>
+
+      {expensesFromDate ? (
+        <div className="flex justify-end">
+          <Link href={expensesHref} className="text-sm font-medium text-[#185FA5] hover:underline">
+            View expenses
+          </Link>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -91,6 +92,10 @@ function expenseDateRange(dateFilter) {
 
 export default function ExpensesPage() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const urlFromDate = searchParams.get("from_date") ?? "";
+  const urlToDate = searchParams.get("to_date") ?? "";
+  const hasUrlDateRange = Boolean(urlFromDate && urlToDate);
 
   const [expenses, setExpenses] = useState([]);
   const [totalExpenses, setTotalExpenses] = useState(0);
@@ -152,7 +157,9 @@ export default function ExpensesPage() {
 
       const extra = {
         status: statusFilter,
-        ...expenseDateRange(dateFilter),
+        ...(hasUrlDateRange
+          ? { from_date: urlFromDate, to_date: urlToDate }
+          : expenseDateRange(dateFilter)),
       };
 
       const searchParams = buildPageParams({
@@ -172,7 +179,7 @@ export default function ExpensesPage() {
     } finally {
       setListLoading(false);
     }
-  }, [page, debouncedSearch, groupFilter, dateFilter, statusFilter]);
+  }, [page, debouncedSearch, groupFilter, dateFilter, statusFilter, hasUrlDateRange, urlFromDate, urlToDate]);
 
   useEffect(() => {
     loadReferenceData();

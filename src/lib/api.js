@@ -60,6 +60,23 @@ export function isSessionConflictError(error) {
   );
 }
 
+function dedupeRepeatedText(text) {
+  const trimmed = String(text ?? "").trim();
+  if (!trimmed) return trimmed;
+
+  const sentences = trimmed.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (sentences.length >= 2 && sentences.every((sentence) => sentence === sentences[0])) {
+    return sentences[0];
+  }
+
+  const mid = Math.floor(trimmed.length / 2);
+  const first = trimmed.slice(0, mid).trim();
+  const second = trimmed.slice(mid).trim().replace(/^\.\s*/, "");
+  if (first && second === first) return first;
+
+  return trimmed;
+}
+
 /** Prefer first Laravel validation message over generic text. */
 export function formatApiErrorMessage(data, fallback = "Request failed") {
   if (typeof data === "object" && data !== null) {
@@ -73,10 +90,11 @@ export function formatApiErrorMessage(data, fallback = "Request failed") {
     }
     if (typeof data.message === "string" && data.message.trim()) {
       const detail = typeof data.detail === "string" && data.detail.trim() ? data.detail.trim() : "";
-      if (detail && detail !== data.message.trim()) {
-        return `${data.message.trim()} ${detail}`;
+      const message = data.message.trim();
+      if (detail && detail !== message && !message.includes(detail) && !detail.includes(message)) {
+        return `${message} ${detail}`;
       }
-      return data.message.trim();
+      return dedupeRepeatedText(message);
     }
     if (typeof data.detail === "string" && data.detail.trim()) {
       return data.detail.trim();
