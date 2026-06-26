@@ -12,7 +12,7 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { LockScreenOverlay } from "@/components/auth/lock-screen-overlay";
 import { apiRequest, ApiError, formatApiErrorMessage } from "@/lib/api";
-import { isScreenLocked, setScreenLocked } from "@/lib/auth-storage";
+import { isScreenLocked, setScreenLocked, getStoredUser } from "@/lib/auth-storage";
 
 const LockScreenContext = createContext(null);
 
@@ -23,7 +23,10 @@ const DEFAULT_SESSION_IDLE_MINUTES = 60;
 
 export function LockScreenProvider({ children }) {
   const { user, loading, logout, screenLockMinutes, sessionIdleMinutes } = useAuth();
-  const [locked, setLocked] = useState(false);
+  const [locked, setLocked] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return isScreenLocked();
+  });
   const [unlocking, setUnlocking] = useState(false);
   const [error, setError] = useState(null);
   const lockTimeoutRef = useRef(null);
@@ -38,18 +41,16 @@ export function LockScreenProvider({ children }) {
   }, [locked]);
 
   useEffect(() => {
-    if (!loading && user && isScreenLocked()) {
+    if (loading) return;
+    if (user && isScreenLocked()) {
       setLocked(true);
+      return;
     }
-  }, [loading, user]);
-
-  useEffect(() => {
     if (!user) {
-      setScreenLocked(false);
       setLocked(false);
       setError(null);
     }
-  }, [user]);
+  }, [loading, user]);
 
   const lockScreen = useCallback(() => {
     setScreenLocked(true);
@@ -141,12 +142,14 @@ export function LockScreenProvider({ children }) {
     [locked, lockScreen, unlockScreen, unlocking, error],
   );
 
+  const lockUser = user ?? (locked ? getStoredUser() : null);
+
   return (
     <LockScreenContext.Provider value={value}>
       {children}
-      {locked && user ? (
+      {locked && lockUser ? (
         <LockScreenOverlay
-          user={user}
+          user={lockUser}
           unlocking={unlocking}
           error={error}
           onUnlock={unlockScreen}

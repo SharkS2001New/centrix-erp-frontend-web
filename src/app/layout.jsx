@@ -23,6 +23,11 @@ export default function RootLayout({ children }) {
       suppressHydrationWarning
     >
       <body className="theme-body h-full overflow-hidden font-sans antialiased">
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(sessionStorage.getItem("pos_erp_screen_locked")==="1"){document.documentElement.classList.add("screen-locked");}}catch(e){}`,
+          }}
+        />
         <Providers>{children}</Providers>
       </body>
     </html>
