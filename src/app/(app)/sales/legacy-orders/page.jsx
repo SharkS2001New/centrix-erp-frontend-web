@@ -1,9 +1,12 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { ORDER_MIN_TOTAL_OPTIONS } from "@/components/sales/sales-orders-shared";
 import {
   FilterSelect,
   PaginationBar,
@@ -13,7 +16,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 25;
 
 function legacyReturnStatusLabel(summary) {
   if (!summary?.has_returns) return "No returns";
@@ -24,31 +27,49 @@ function legacyReturnStatusLabel(summary) {
 function LegacyOrdersContent() {
   const searchParams = useSearchParams();
   const [rows, setRows] = useState([]);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [returnsFilter, setReturnsFilter] = useState("all");
+  const [minTotalFilter, setMinTotalFilter] = useState("");
   const [page, setPage] = useState(1);
 
   const loadData = useCallback(async () => {
+    setListLoading(true);
     setError(null);
     try {
-      const params = { per_page: 200 };
-      if (fromDate) params.from_date = fromDate;
-      if (toDate) params.to_date = toDate;
-      if (returnsFilter === "with_returns") params.has_returns = true;
-      if (returnsFilter === "no_returns") params.has_returns = false;
+      const extra = {};
+      if (fromDate) extra.from_date = fromDate;
+      if (toDate) extra.to_date = toDate;
+      if (returnsFilter === "with_returns") extra.has_returns = true;
+      if (returnsFilter === "no_returns") extra.has_returns = false;
+      if (minTotalFilter) extra.min_order_total = minTotalFilter;
+
+      const params = buildPageParams({
+        page,
+        perPage: PAGE_SIZE,
+        q: debouncedSearch,
+        extra,
+      });
 
       const res = await apiRequest("/legacy-orders", { searchParams: params });
-      setRows(res.data ?? []);
+      const parsed = parsePaginator(res);
+      setRows(parsed.items);
+      setTotalOrders(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load legacy orders");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [fromDate, toDate, returnsFilter]);
+  }, [page, debouncedSearch, fromDate, toDate, returnsFilter, minTotalFilter]);
 
   useEffect(() => {
     loadData();
@@ -56,26 +77,7 @@ function LegacyOrdersContent() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, fromDate, toDate, returnsFilter]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((row) => {
-      const customer = (row.customer?.customer_name ?? row.customer_name_override ?? "").toLowerCase();
-      const legacy = String(row.fulfillment_meta?.legacy_order_label ?? "").toLowerCase();
-      return (
-        String(row.order_num ?? "").includes(q) ||
-        customer.includes(q) ||
-        legacy.includes(q) ||
-        formatReceiptNumber(row).toLowerCase().includes(q)
-      );
-    });
-  }, [rows, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  }, [debouncedSearch, fromDate, toDate, returnsFilter, minTotalFilter]);
 
   const highlightSaleId = searchParams.get("sale_id");
 
@@ -114,12 +116,20 @@ function LegacyOrdersContent() {
         />
         <FilterSelect
           value={returnsFilter}
-          onChange={setReturnsFilter}
+          onChange={(e) => setReturnsFilter(e.target.value)}
           options={[
             { value: "all", label: "All orders" },
             { value: "with_returns", label: "With returns" },
             { value: "no_returns", label: "No returns yet" },
           ]}
+        />
+        <FilterSelect
+          value={minTotalFilter || "all"}
+          onChange={(e) => setMinTotalFilter(e.target.value === "all" ? "" : e.target.value)}
+          options={ORDER_MIN_TOTAL_OPTIONS.map((o) => ({
+            value: o.value || "all",
+            label: o.label,
+          }))}
         />
       </div>
 
@@ -143,14 +153,14 @@ function LegacyOrdersContent() {
                   Loading…
                 </td>
               </tr>
-            ) : pageSlice.length === 0 ? (
+            ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
-                  No materialized legacy orders found.
+                  {listLoading ? "Loading…" : "No materialized legacy orders found."}
                 </td>
               </tr>
             ) : (
-              pageSlice.map((row) => {
+              rows.map((row) => {
                 const summary = row.legacy_return_summary ?? {};
                 const highlighted = highlightSaleId && String(row.id) === highlightSaleId;
                 return (
@@ -201,7 +211,13 @@ function LegacyOrdersContent() {
         </table>
       </div>
 
-      <PaginationBar page={safePage} totalPages={totalPages} onPageChange={setPage} />
+      <PaginationBar
+        page={page}
+        totalPages={totalPages}
+        total={totalOrders}
+        pageSize={PAGE_SIZE}
+        onChange={setPage}
+      />
     </div>
   );
 }

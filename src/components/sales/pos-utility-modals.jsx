@@ -49,106 +49,6 @@ function ModalShell({ title, open, onClose, children, widthClass = "max-w-md" })
   );
 }
 
-export function PosCalculatorModal({ open, onClose }) {
-  const [display, setDisplay] = useState("0");
-  const [stored, setStored] = useState(null);
-  const [op, setOp] = useState(null);
-
-  useEffect(() => {
-    if (open) {
-      setDisplay("0");
-      setStored(null);
-      setOp(null);
-    }
-  }, [open]);
-
-  function inputDigit(digit) {
-    setDisplay((prev) => (prev === "0" ? digit : `${prev}${digit}`));
-  }
-
-  function inputDot() {
-    setDisplay((prev) => (prev.includes(".") ? prev : `${prev}.`));
-  }
-
-  function clearAll() {
-    setDisplay("0");
-    setStored(null);
-    setOp(null);
-  }
-
-  function applyOp(nextOp) {
-    const current = Number(display);
-    if (stored == null || op == null) {
-      setStored(current);
-      setOp(nextOp);
-      setDisplay("0");
-      return;
-    }
-    const result = compute(stored, current, op);
-    setDisplay(String(result));
-    setStored(result);
-    setOp(nextOp);
-  }
-
-  function equals() {
-    if (stored == null || op == null) return;
-    const result = compute(stored, Number(display), op);
-    setDisplay(String(result));
-    setStored(null);
-    setOp(null);
-  }
-
-  function compute(a, b, operator) {
-    switch (operator) {
-      case "+":
-        return a + b;
-      case "-":
-        return a - b;
-      case "*":
-        return a * b;
-      case "/":
-        return b === 0 ? 0 : a / b;
-      default:
-        return b;
-    }
-  }
-
-  function onKey(label) {
-    if (label === "C") return clearAll();
-    if (label === "=") return equals();
-    if (label === "+") return applyOp("+");
-    if (label === "−") return applyOp("-");
-    if (label === "×") return applyOp("*");
-    if (label === "÷") return applyOp("/");
-    if (label === ".") return inputDot();
-    return inputDigit(label);
-  }
-
-  return (
-    <ModalShell title="Calculator (F5)" open={open} onClose={onClose} widthClass="max-w-xs">
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right text-2xl font-semibold tabular-nums text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white">
-        {display}
-      </div>
-      <div className="mt-3 grid grid-cols-4 gap-2">
-        {["C", "÷", "×", "−", "7", "8", "9", "+", "4", "5", "6", "=", "1", "2", "3", "=", "0", ".", "="].map(
-          (label, index) => (
-            <button
-              key={`${label}-${index}`}
-              type="button"
-              onClick={() => onKey(label)}
-              className={`rounded-lg border border-slate-200 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-700 ${
-                label === "=" ? "col-span-1 row-span-1 bg-[var(--theme-primary)] text-white hover:bg-[var(--theme-primary-hover)]" : "bg-white dark:bg-slate-800"
-              } ${label === "0" ? "col-span-2" : ""}`}
-            >
-              {label}
-            </button>
-          ),
-        )}
-      </div>
-    </ModalShell>
-  );
-}
-
 export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCode, uomById, vatById, branchId }) {
   const productBranchParams = branchId ? { branch_id: branchId } : {};
   const MIN_QUERY_LEN = 3;
@@ -270,7 +170,7 @@ export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCod
     : null;
 
   return (
-    <ModalShell title="Price checker (F9)" open={open} onClose={onClose} widthClass="max-w-2xl">
+    <ModalShell title="Price checker" open={open} onClose={onClose} widthClass="max-w-2xl">
       <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
         Type at least 3 characters to search. Select a product to view price and stock.
       </p>
@@ -373,39 +273,3 @@ export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCod
     </ModalShell>
   );
 }
-
-const SHORTCUT_ROWS = [
-  ["F5", "Calculator"],
-  ["F8", "New order"],
-  ["F9", "Price checker"],
-  ["F10", "Complete payment"],
-  ["F12", "Retail / wholesale toggle"],
-  ["Alt + H", "Hold order"],
-  ["Alt + F", "Float details"],
-  ["Alt + P", "Print / reprint receipt"],
-  ["Delete", "Void selected line"],
-  ["Esc", "Focus product search"],
-  ["F1", "This shortcuts list"],
-];
-
-export function PosKeyboardShortcutsModal({ open, onClose }) {
-  return (
-    <ModalShell title="POS keyboard shortcuts" open={open} onClose={onClose} widthClass="max-w-sm">
-      <div className="space-y-1 text-sm">
-        {SHORTCUT_ROWS.map(([key, label]) => (
-          <div
-            key={key}
-            className="flex items-center justify-between gap-3 border-b border-slate-100 py-1.5 last:border-0 dark:border-slate-700"
-          >
-            <kbd className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-[11px] text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200">
-              {key}
-            </kbd>
-            <span className="text-right text-slate-600 dark:text-slate-300">{label}</span>
-          </div>
-        ))}
-      </div>
-    </ModalShell>
-  );
-}
-
-export { SHORTCUT_ROWS };

@@ -30,10 +30,9 @@ const MAIN_TABS = [
   { id: "activity", label: "Stock, sales & purchases" },
 ];
 
-const TAB_BTN =
-  "rounded-md px-3 py-1 text-xs font-medium transition";
-const TAB_BTN_ACTIVE = "bg-white text-[#185FA5] shadow-sm";
-const TAB_BTN_IDLE = "text-slate-600 hover:text-slate-900";
+const TAB_BTN = "rounded-md px-3 py-1 text-xs font-medium transition";
+const TAB_BTN_ACTIVE = "theme-tab-active shadow-sm";
+const TAB_BTN_IDLE = "theme-tab-inactive";
 
 const ACTIVITY_VIEWS = [
   {
@@ -288,7 +287,7 @@ function StatusBadge({ active }) {
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ${
         active
           ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
-          : "bg-slate-100 text-slate-600 ring-slate-300/50"
+          : "bg-[var(--theme-surface-muted)] text-[var(--theme-text-muted)] ring-[var(--theme-border)]"
       }`}
     >
       {active ? "Active" : "Inactive"}
@@ -311,20 +310,23 @@ function StockBadge({ tone, label }) {
   );
 }
 
-function MetricCard({ label, value, hint, accent = "slate" }) {
+function MetricCard({ label, value, hint, accent = "default" }) {
   const accents = {
-    slate: "border-slate-200",
-    blue: "border-[#B5D4F4] bg-gradient-to-br from-[#E6F1FB]/80 to-white",
-    green: "border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-white",
-    violet: "border-violet-200 bg-gradient-to-br from-violet-50/60 to-white",
+    default: "border-[var(--theme-border)] bg-[var(--theme-surface)]",
+    primary:
+      "border-[var(--theme-border)] bg-gradient-to-br from-[var(--theme-primary-subtle)] to-[var(--theme-surface)]",
+    success:
+      "border-[color-mix(in_srgb,#22c55e_30%,var(--theme-border))] bg-gradient-to-br from-[color-mix(in_srgb,#22c55e_10%,var(--theme-surface))] to-[var(--theme-surface)]",
+    accent:
+      "border-[var(--theme-border)] bg-gradient-to-br from-[var(--theme-primary-muted)] to-[var(--theme-surface)]",
   };
   return (
     <div
-      className={`rounded-xl border p-4 shadow-sm ${accents[accent] ?? accents.slate} bg-white`}
+      className={`rounded-xl border p-4 shadow-sm ${accents[accent] ?? accents.default}`}
     >
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1.5 text-xl font-semibold tabular-nums text-slate-900">{value}</p>
-      {hint ? <p className="mt-1 text-xs text-slate-500">{hint}</p> : null}
+      <p className="theme-subtext text-xs font-medium uppercase tracking-wide">{label}</p>
+      <p className="theme-heading mt-1.5 text-xl font-semibold tabular-nums">{value}</p>
+      {hint ? <p className="theme-subtext mt-1 text-xs">{hint}</p> : null}
     </div>
   );
 }
@@ -332,9 +334,9 @@ function MetricCard({ label, value, hint, accent = "slate" }) {
 function SectionCard({ title, description, children }) {
   return (
     <section className="theme-panel rounded-xl border shadow-sm">
-      <div className="border-b border-slate-100 px-5 py-3.5">
-        <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
-        {description ? <p className="mt-0.5 text-xs text-slate-500">{description}</p> : null}
+      <div className="border-b border-[var(--theme-border)] px-5 py-3.5">
+        <h2 className="theme-heading text-sm font-semibold">{title}</h2>
+        {description ? <p className="theme-subtext mt-0.5 text-xs">{description}</p> : null}
       </div>
       <dl className="grid gap-x-8 gap-y-4 p-5 sm:grid-cols-2 lg:grid-cols-3">{children}</dl>
     </section>
@@ -344,8 +346,8 @@ function SectionCard({ title, description, children }) {
 function DetailItem({ label, children }) {
   return (
     <div className="min-w-0">
-      <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</dt>
-      <dd className="mt-1 text-sm font-medium text-slate-900">{children}</dd>
+      <dt className="theme-subtext text-xs font-medium uppercase tracking-wide">{label}</dt>
+      <dd className="theme-heading mt-1 text-sm font-medium">{children}</dd>
     </div>
   );
 }
@@ -353,8 +355,8 @@ function DetailItem({ label, children }) {
 function UserDateCell({ name, date }) {
   return (
     <div>
-      <p className="font-medium text-slate-900">{name || "—"}</p>
-      <p className="mt-0.5 text-xs font-normal text-slate-500">{formatShortDate(date)}</p>
+      <p className="theme-heading font-medium">{name || "—"}</p>
+      <p className="theme-subtext mt-0.5 text-xs font-normal">{formatShortDate(date)}</p>
     </div>
   );
 }
@@ -378,15 +380,15 @@ function ActivityRow({ date, label, subtitle, tone, href }) {
   const styles = {
     in: "bg-emerald-100 text-emerald-700",
     out: "bg-red-100 text-red-700",
-    neutral: "bg-slate-100 text-slate-600",
+    neutral: "bg-[var(--theme-surface-muted)] text-[var(--theme-text-muted)]",
   };
   const symbols = { in: "+", out: "−", neutral: "·" };
   const labelNode = href ? (
-    <Link href={href} className="text-sm font-medium text-[#185FA5] hover:underline">
+    <Link href={href} className="theme-link text-sm font-medium hover:underline">
       {label}
     </Link>
   ) : (
-    <p className="text-sm font-medium text-slate-800">{label}</p>
+    <p className="theme-heading text-sm font-medium">{label}</p>
   );
   return (
     <li className="flex items-center gap-3 py-3.5">
@@ -397,8 +399,8 @@ function ActivityRow({ date, label, subtitle, tone, href }) {
       </span>
       <div className="min-w-0 flex-1">
         {labelNode}
-        {subtitle ? <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p> : null}
-        <p className="text-xs text-slate-500">{date}</p>
+        {subtitle ? <p className="theme-subtext mt-0.5 text-xs">{subtitle}</p> : null}
+        <p className="theme-subtext text-xs">{date}</p>
       </div>
     </li>
   );
@@ -406,11 +408,11 @@ function ActivityRow({ date, label, subtitle, tone, href }) {
 
 function SaleActivityRow({ date, label, subtitle, href, quantity }) {
   const labelNode = href ? (
-    <Link href={href} className="text-sm font-medium text-[#185FA5] hover:underline">
+    <Link href={href} className="theme-link text-sm font-medium hover:underline">
       {label}
     </Link>
   ) : (
-    <span className="text-sm font-medium text-slate-800">{label}</span>
+    <span className="theme-heading text-sm font-medium">{label}</span>
   );
 
   return (
@@ -422,11 +424,11 @@ function SaleActivityRow({ date, label, subtitle, href, quantity }) {
         <div className="min-w-0 shrink-0">{labelNode}</div>
         <div className="pointer-events-none absolute inset-x-0 flex justify-center">
           <div className="px-2 text-center">
-            <p className="text-sm text-slate-700">{subtitle ?? "—"}</p>
-            <p className="mt-0.5 text-xs text-slate-500">{date}</p>
+            <p className="theme-text-muted text-sm">{subtitle ?? "—"}</p>
+            <p className="theme-subtext mt-0.5 text-xs">{date}</p>
           </div>
         </div>
-        <div className="ml-auto min-w-0 shrink-0 text-right text-xs text-slate-500">
+        <div className="theme-subtext ml-auto min-w-0 shrink-0 text-right text-xs">
           {quantity}
         </div>
       </div>
@@ -436,9 +438,9 @@ function SaleActivityRow({ date, label, subtitle, href, quantity }) {
 
 function ActivityViewIntro({ title, description }) {
   return (
-    <div className="border-b border-slate-100 px-5 py-3">
-      <h3 className="text-sm font-medium text-slate-800">{title}</h3>
-      <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{description}</p>
+    <div className="border-b border-[var(--theme-border)] px-5 py-3">
+      <h3 className="theme-heading text-sm font-medium">{title}</h3>
+      <p className="theme-subtext mt-0.5 text-xs leading-relaxed">{description}</p>
     </div>
   );
 }
@@ -446,12 +448,12 @@ function ActivityViewIntro({ title, description }) {
 function EmptyTabState({ message }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
-      <div className="rounded-full bg-slate-100 p-3 text-slate-400">
+      <div className="rounded-full bg-[var(--theme-surface-muted)] p-3 text-[var(--theme-text-subtle)]">
         <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
         </svg>
       </div>
-      <p className="mt-3 text-sm text-slate-500">{message}</p>
+      <p className="theme-subtext mt-3 text-sm">{message}</p>
     </div>
   );
 }
@@ -709,14 +711,14 @@ export default function ProductDetailPage() {
     return (
       <div className="theme-workspace min-h-full">
         <div className="animate-pulse space-y-4">
-          <div className="h-4 w-32 rounded bg-slate-200" />
-          <div className="h-28 rounded-xl bg-white shadow-sm" />
+          <div className="h-4 w-32 rounded bg-[var(--theme-surface-muted)]" />
+          <div className="h-28 rounded-xl bg-[var(--theme-surface)] shadow-sm" />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-24 rounded-xl bg-white shadow-sm" />
+              <div key={i} className="h-24 rounded-xl bg-[var(--theme-surface)] shadow-sm" />
             ))}
           </div>
-          <div className="h-64 rounded-xl bg-white shadow-sm" />
+          <div className="h-64 rounded-xl bg-[var(--theme-surface)] shadow-sm" />
         </div>
       </div>
     );
@@ -725,7 +727,7 @@ export default function ProductDetailPage() {
   if (error || !enriched) {
     return (
       <div className="p-8">
-        <Link href="/products" className="text-sm text-[#185FA5] hover:underline">
+        <Link href="/products" className="theme-link text-sm hover:underline">
           ← Back to products
         </Link>
         <p className="mt-4 text-sm text-red-600">{error ?? "Product not found"}</p>
@@ -751,40 +753,40 @@ export default function ProductDetailPage() {
   return (
     <div className="theme-workspace min-h-full">
       <div className="mb-6">
-        <Link href="/products" className="text-sm text-[#185FA5] hover:text-[#144f8a]">
+        <Link href="/products" className="theme-link text-sm hover:underline">
           ← Back to products
         </Link>
       </div>
 
       {/* Hero */}
       <div className="mb-6 theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        <div className="bg-gradient-to-r from-[#E6F1FB] via-white to-white px-5 py-5 md:px-6">
+        <div className="bg-gradient-to-r from-[var(--theme-primary-subtle)] via-[var(--theme-surface)] to-[var(--theme-surface)] px-5 py-5 md:px-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge active={enriched.is_active} />
                 <StockBadge tone={stock.tone} label={stock.label} />
-                {enriched.sell_on_retail_label === "Yes" ? (
-                  <span className="inline-flex rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-medium text-violet-700 ring-1 ring-violet-600/20">
+                {enriched.sell_on_retail_label === "Sells W/R" ? (
+                  <span className="inline-flex rounded-full bg-[var(--theme-primary-subtle)] px-2.5 py-0.5 text-xs font-medium text-[var(--theme-accent-text)] ring-1 ring-[var(--theme-border)]">
                     Retail
                   </span>
                 ) : null}
               </div>
-              <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">
+              <h1 className="theme-heading mt-3 text-2xl font-semibold tracking-tight">
                 {enriched.product_name}
               </h1>
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
-                <span className="font-mono text-slate-800">{enriched.product_code}</span>
-                <span className="text-slate-300">·</span>
+              <div className="theme-text-muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                <span className="theme-heading font-mono">{enriched.product_code}</span>
+                <span className="text-[var(--theme-border-strong)]">·</span>
                 <span>{enriched.category_name}</span>
-                <span className="text-slate-300">/</span>
+                <span className="text-[var(--theme-border-strong)]">/</span>
                 <span>{enriched.subcategory_name}</span>
               </div>
             </div>
             <div className="flex shrink-0 gap-2">
               <Link
                 href={`/products/${encodeURIComponent(productCode)}/edit`}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#144f8a]"
+                className="theme-primary-btn inline-flex items-center gap-2 px-4 py-2 text-sm font-medium shadow-sm"
               >
                 <PencilIcon />
                 Edit
@@ -804,8 +806,8 @@ export default function ProductDetailPage() {
 
       {/* Main tabs */}
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        <div className="border-b border-slate-100 px-4 py-2">
-          <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-0.5">
+        <div className="border-b border-[var(--theme-border)] px-4 py-2">
+          <div className="flex flex-wrap gap-1 rounded-lg bg-[var(--theme-surface-muted)] p-0.5">
             {MAIN_TABS.map((t) => (
               <button
                 key={t.id}
@@ -828,7 +830,7 @@ export default function ProductDetailPage() {
                 label="Total stock"
                 value={enriched.stock_total_text}
                 hint={`Shop: ${enriched.stock_shop_text} · Store: ${enriched.stock_store_text}`}
-                accent="blue"
+                accent="primary"
               />
               <MetricCard
                 label="Stock value (cost)"
@@ -838,7 +840,7 @@ export default function ProductDetailPage() {
                     ? `${formatQty(stockValue.packQty)} ${priceUnitLabel} × ${formatKes(enriched.last_cost_price)}`
                     : undefined
                 }
-                accent="green"
+                accent="success"
               />
               <MetricCard
                 label={`Wholesale price / ${priceUnitLabel}`}
@@ -848,7 +850,7 @@ export default function ProductDetailPage() {
                     ? `${profitMargin}% margin · ${enriched.pricing_mode}`
                     : enriched.pricing_mode
                 }
-                accent="violet"
+                accent="accent"
               />
               <MetricCard
                 label="Stock value (selling)"
@@ -873,7 +875,7 @@ export default function ProductDetailPage() {
                 <DetailItem label="Unit of measure">
                   <span>{enriched.uom_hierarchy}</span>
                   {enriched.uom_conversion ? (
-                    <span className="mt-0.5 block text-xs text-slate-500">{enriched.uom_conversion}</span>
+                    <span className="theme-subtext mt-0.5 block text-xs">{enriched.uom_conversion}</span>
                   ) : null}
                 </DetailItem>
                 <DetailItem label="Supplier">{enriched.supplier_name}</DetailItem>
@@ -925,33 +927,36 @@ export default function ProductDetailPage() {
             </div>
 
             {retail ? (
-              <section className="rounded-xl border border-[#B5D4F4] bg-gradient-to-br from-[#E6F1FB]/40 to-white shadow-sm">
-                <div className="border-b border-[#B5D4F4]/60 px-5 py-3.5">
-                  <h2 className="text-sm font-semibold text-[#0C447C]">Retail package settings</h2>
-                  <p className="mt-0.5 text-xs text-[#0C447C]/70">
+              <section className="rounded-xl border border-[var(--theme-border)] bg-gradient-to-br from-[var(--theme-primary-subtle)] to-[var(--theme-surface)] shadow-sm">
+                <div className="border-b border-[var(--theme-border)] px-5 py-3.5">
+                  <h2 className="theme-accent-label text-sm font-semibold">Retail package settings</h2>
+                  <p className="theme-subtext mt-0.5 text-xs">
                     Tier markups on wholesale price per {priceUnitLabel} — quantities use UOM measure
                     levels
                   </p>
                 </div>
                 <div className="p-5">
                   {retailTierLines.length > 0 ? (
-                    <ul className="space-y-2 text-sm text-slate-700">
+                    <ul className="theme-text-muted space-y-2 text-sm">
                       {retailTierLines.map((line, i) => (
-                        <li key={i} className="rounded-lg border border-slate-100 bg-white px-3 py-2">
+                        <li
+                          key={i}
+                          className="theme-inset-panel rounded-lg border px-3 py-2"
+                        >
                           {line}
                         </li>
                       ))}
-                      <li className="text-xs text-slate-500">
+                      <li className="theme-subtext text-xs">
                         Outside all tiers = wholesale ({formatKes(enriched.unit_price)} per{" "}
                         {priceUnitLabel}, no markup).
                       </li>
                     </ul>
                   ) : (
-                    <p className="text-sm text-slate-500">No retail tiers configured.</p>
+                    <p className="theme-subtext text-sm">No retail tiers configured.</p>
                   )}
                   <Link
                     href="/retail-package-settings"
-                    className="mt-3 inline-block text-xs font-medium text-[#185FA5] hover:underline"
+                    className="theme-link mt-3 inline-block text-xs font-medium hover:underline"
                   >
                     Edit in Retail package settings →
                   </Link>
@@ -968,8 +973,8 @@ export default function ProductDetailPage() {
           </div>
         ) : (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-2">
-              <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-0.5">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-border)] px-4 py-2">
+              <div className="flex flex-wrap gap-1 rounded-lg bg-[var(--theme-surface-muted)] p-0.5">
                 {ACTIVITY_VIEWS.map((t) => (
                   <button
                     key={t.id}
@@ -983,7 +988,7 @@ export default function ProductDetailPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="theme-subtext text-xs">
                 {activeActivity.countLabel(activityCount)}
               </p>
             </div>
@@ -996,13 +1001,13 @@ export default function ProductDetailPage() {
             <div className="px-5 py-2">
               {activityView === "stock" ? (
                 tabLoading ? (
-                  <p className="py-8 text-center text-sm text-slate-500">
+                  <p className="theme-subtext py-8 text-center text-sm">
                     {activeActivity.loadingMessage}
                   </p>
                 ) : stockRows.length === 0 ? (
                   <EmptyTabState message={activeActivity.emptyMessage} />
                 ) : (
-                  <ul className="divide-y divide-slate-100">
+                  <ul className="divide-y divide-[var(--theme-border)]">
                     {stockRows.map((row) => (
                       <ActivityRow
                         key={row.id}
@@ -1022,13 +1027,13 @@ export default function ProductDetailPage() {
 
               {activityView === "purchases" ? (
                 tabLoading ? (
-                  <p className="py-8 text-center text-sm text-slate-500">
+                  <p className="theme-subtext py-8 text-center text-sm">
                     {activeActivity.loadingMessage}
                   </p>
                 ) : purchaseRows.length === 0 ? (
                   <EmptyTabState message={activeActivity.emptyMessage} />
                 ) : (
-                  <ul className="divide-y divide-slate-100">
+                  <ul className="divide-y divide-[var(--theme-border)]">
                     {purchaseRows.map((row) => (
                       <ActivityRow
                         key={row.id}
@@ -1045,13 +1050,13 @@ export default function ProductDetailPage() {
 
               {activityView === "sales" ? (
                 tabLoading ? (
-                  <p className="py-8 text-center text-sm text-slate-500">
+                  <p className="theme-subtext py-8 text-center text-sm">
                     {activeActivity.loadingMessage}
                   </p>
                 ) : saleRows.length === 0 ? (
                   <EmptyTabState message={activeActivity.emptyMessage} />
                 ) : (
-                  <ul className="divide-y divide-slate-100">
+                  <ul className="divide-y divide-[var(--theme-border)]">
                     {saleRows.map((row) => (
                       <SaleActivityRow
                         key={row.id}

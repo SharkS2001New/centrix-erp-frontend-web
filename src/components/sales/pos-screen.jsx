@@ -86,8 +86,6 @@ import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { PosStatusFooter } from "./pos-status-footer";
 import {
-  PosCalculatorModal,
-  PosKeyboardShortcutsModal,
   PosPriceCheckerModal,
 } from "./pos-utility-modals";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
@@ -527,9 +525,7 @@ export function PosScreen({ standalone = false }) {
   const [sessionPosOrders, setSessionPosOrders] = useState([]);
   const [editOrderNo, setEditOrderNo] = useState("");
   const [editBrowseIndex, setEditBrowseIndex] = useState(0);
-  const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [priceCheckerOpen, setPriceCheckerOpen] = useState(false);
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [leaveGuardOpen, setLeaveGuardOpen] = useState(false);
   const [leaveGuardBusy, setLeaveGuardBusy] = useState(false);
   const pendingLeaveHrefRef = useRef(null);
@@ -2290,9 +2286,7 @@ export function PosScreen({ standalone = false }) {
         || saveOrderOpen
         || heldOrdersOpen
         || leaveGuardOpen
-        || calculatorOpen
         || priceCheckerOpen
-        || shortcutsOpen
         || floatModalOpen
         || floatDetailsOpen
         || xReportOpen
@@ -2311,16 +2305,8 @@ export function PosScreen({ standalone = false }) {
     function onKeyDown(e) {
       if (isModalOpen()) {
         if (e.key === "Escape") {
-          if (shortcutsOpen) setShortcutsOpen(false);
-          else if (calculatorOpen) setCalculatorOpen(false);
-          else if (priceCheckerOpen) setPriceCheckerOpen(false);
+          if (priceCheckerOpen) setPriceCheckerOpen(false);
         }
-        return;
-      }
-
-      if (e.key === "F1") {
-        e.preventDefault();
-        setShortcutsOpen(true);
         return;
       }
 
@@ -2332,11 +2318,6 @@ export function PosScreen({ standalone = false }) {
 
       if (isTypingTarget(e.target)) return;
 
-      if (e.key === "F5") {
-        e.preventDefault();
-        setCalculatorOpen(true);
-        return;
-      }
       if (e.key === "F8") {
         e.preventDefault();
         void handleNewOrder();
@@ -2385,9 +2366,7 @@ export function PosScreen({ standalone = false }) {
     saveOrderOpen,
     heldOrdersOpen,
     leaveGuardOpen,
-    calculatorOpen,
     priceCheckerOpen,
-    shortcutsOpen,
     floatModalOpen,
     floatDetailsOpen,
     xReportOpen,
@@ -3446,7 +3425,6 @@ export function PosScreen({ standalone = false }) {
         onClearAndLeave={() => void clearCartAndLeave()}
       />
 
-      <PosCalculatorModal open={calculatorOpen} onClose={() => setCalculatorOpen(false)} />
       <PosPriceCheckerModal
         open={priceCheckerOpen}
         onClose={() => setPriceCheckerOpen(false)}
@@ -3456,13 +3434,11 @@ export function PosScreen({ standalone = false }) {
         vatById={vatById}
         branchId={user?.branch_id}
       />
-      <PosKeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
       {standalone ? (
         <PosStatusFooter
           user={user}
           organization={organization ?? capabilities?.organization}
-          onShowShortcuts={() => setShortcutsOpen(true)}
         />
       ) : null}
     </div>

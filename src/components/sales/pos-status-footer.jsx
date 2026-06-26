@@ -17,7 +17,6 @@ function formatClock(date) {
 export function PosStatusFooter({
   user,
   organization,
-  onShowShortcuts,
 }) {
   const [now, setNow] = useState(() => new Date());
   const [browserOnline, setBrowserOnline] = useState(
@@ -103,13 +102,6 @@ export function PosStatusFooter({
           />
           {systemOnline ? "Online" : "Offline"}
         </span>
-        <button
-          type="button"
-          onClick={onShowShortcuts}
-          className="text-sm font-medium text-[var(--theme-primary)] hover:underline dark:text-sky-300"
-        >
-          Shortcuts (F1)
-        </button>
       </div>
     </footer>
   );

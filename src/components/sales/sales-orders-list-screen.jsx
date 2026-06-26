@@ -32,6 +32,7 @@ import {
   OrderSummaryStats,
   buildOrderContextMenuItems,
   indexSalesWithItems,
+  ORDER_MIN_TOTAL_OPTIONS,
   saleBranchLabel,
   summarizeOrders,
 } from "@/components/sales/sales-orders-shared";
@@ -90,6 +91,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   const debouncedSearch = useDebouncedValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [minTotalFilter, setMinTotalFilter] = useState("");
   const [fromDate, setFromDate] = useState(() => isoDate());
   const [toDate, setToDate] = useState(() => isoDate());
   const [appliedFromDate, setAppliedFromDate] = useState(() => isoDate());
@@ -206,6 +208,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       if (routeOrdersOnly) extra.route_orders = 1;
       if (appliedFromDate) extra.from_date = appliedFromDate;
       if (appliedToDate) extra.to_date = appliedToDate;
+      if (minTotalFilter) extra.min_order_total = minTotalFilter;
       if (!routeOrdersOnly && effectiveSourceFilter && effectiveSourceFilter !== "all") {
         extra.order_source = effectiveSourceFilter;
       }
@@ -256,6 +259,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
     effectiveStatusFilter,
     queueConfig,
     routeOrdersOnly,
+    minTotalFilter,
   ]);
 
   useEffect(() => {
@@ -456,7 +460,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter, sourceFilter, appliedFromDate, appliedToDate, queueSlug]);
+  }, [debouncedSearch, statusFilter, sourceFilter, minTotalFilter, appliedFromDate, appliedToDate, queueSlug]);
 
   useEffect(() => {
     if (queueConfig?.lockSourceFilter && queueConfig.fixedSourceFilter) {
@@ -567,6 +571,19 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
                 </select>
               </Field>
             ) : null}
+            <Field label="Order total">
+              <select
+                value={minTotalFilter}
+                onChange={(e) => setMinTotalFilter(e.target.value)}
+                className={FILTER_CONTROL_CLASS}
+              >
+                {ORDER_MIN_TOTAL_OPTIONS.map((o) => (
+                  <option key={o.value || "all"} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
           </div>
         </div>
       }

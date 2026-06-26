@@ -47,6 +47,17 @@ export const PAYMENT_STATUS_FILTER_OPTIONS = [
   { value: "paid", label: PAYMENT_STATUS_LABELS.paid },
 ];
 
+/** Minimum order total presets for order list filters (value = amount in KES). */
+export const ORDER_MIN_TOTAL_OPTIONS = [
+  { value: "", label: "All totals" },
+  { value: "10000", label: "Above KES 10,000" },
+  { value: "25000", label: "Above KES 25,000" },
+  { value: "50000", label: "Above KES 50,000" },
+  { value: "100000", label: "Above KES 100,000" },
+  { value: "250000", label: "Above KES 250,000" },
+  { value: "500000", label: "Above KES 500,000" },
+];
+
 export const ORDER_SOURCE_FILTER_OPTIONS = [
   { value: "all", label: "All sources" },
   { value: "backoffice", label: "Backoffice" },

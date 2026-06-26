@@ -92,7 +92,7 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
       const saleId = result?.sale?.id;
       setNotice({
         type: "success",
-        text: "Sale copied into Centrix for returns and credit notes.",
+        text: "Legacy sale copied into Centrix with original quantities and amounts preserved.",
       });
       onMaterialized?.(saleId);
     } catch (err) {
@@ -187,12 +187,17 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
           ) : null}
 
           <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-            <p className="font-medium">Returns &amp; credit notes</p>
-            <ol className="mt-2 list-decimal space-y-1 pl-4 text-amber-900/90">
-              <li>Click <strong>Materialize into Centrix</strong> to copy this sale into the live database.</li>
+            <p className="font-medium">Legacy accuracy &amp; returns</p>
+            <p className="mt-2 text-amber-900/90">
+              Centrix copies this order <strong>exactly as recorded in LightStores</strong> — same quantities,
+              unit prices, line amounts, and VAT. Centrix does not recalculate pricing; it is only used to process
+              returns and KRA credit notes against the original figures.
+            </p>
+            <ol className="mt-3 list-decimal space-y-1 pl-4 text-amber-900/90">
+              <li>Click <strong>Materialize into Centrix</strong> to copy the sale into the live database.</li>
               <li>
-                Then open <strong>Create return / credit note</strong> — same flow as any Centrix sale at{" "}
-                <code className="rounded bg-amber-100 px-1">Sales → Customer returns</code>.
+                Then open <strong>Create legacy return / credit note</strong> at{" "}
+                <code className="rounded bg-amber-100 px-1">Sales → Legacy returns</code>.
               </li>
             </ol>
           </div>
@@ -201,10 +206,10 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
         <div className="flex flex-wrap gap-2 border-t border-slate-200 px-5 py-4">
           {centrixSaleId ? (
             <Link
-              href={`/sales/returns/new?sale_id=${centrixSaleId}`}
+              href={`/sales/legacy-returns/new?sale_id=${centrixSaleId}`}
               className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#144a85]"
             >
-              Create return / credit note
+              Create legacy return / credit note
             </Link>
           ) : (
             <button
