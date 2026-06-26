@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { posModalOverlayClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
+import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { apiRequest } from "@/lib/api";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
@@ -77,11 +77,14 @@ export function PosSaveOrderDialog({
   if (!open || !mounted) return null;
 
   return renderPosModalPortal(
-    <div className={`${posModalOverlayClass(embedded)} flex items-center justify-center bg-black/40 p-4`}>
+    <div className={`${posModalOverlayClass(embedded)}${embedded ? "" : " bg-black/40"}`}>
+      {!embedded ? (
+        <button type="button" className="absolute inset-0" aria-label="Close" onClick={onClose} />
+      ) : null}
       <div
         role="dialog"
         aria-modal="true"
-        className="theme-modal flex w-full max-w-md flex-col overflow-hidden rounded-lg border shadow-2xl"
+        className={`${posModalPanelClass(embedded, "theme-modal flex w-full max-w-md flex-col overflow-hidden rounded-lg border shadow-2xl")}`}
       >
         <div className={`px-4 py-3 text-white ${isHold ? "bg-amber-700" : "bg-[var(--theme-primary)]"}`}>
           <h2 className="text-center text-sm font-bold tracking-wide">
@@ -203,6 +206,5 @@ export function PosSaveOrderDialog({
         </div>
       </div>
     </div>,
-    embedded,
   );
 }

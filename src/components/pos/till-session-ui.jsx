@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
-import { posModalOverlayClass } from "@/lib/pos-modal-shell";
+import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import {
   FLOAT_PAYMENT_TYPES,
   formatFloatEntryDate,
@@ -240,10 +240,12 @@ export function OpenSessionModal({
 
   if (!open) return null;
 
-  return (
-    <div className={`${posModalOverlayClass(embedded)} flex items-center justify-center p-4`}>
-      <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
-      <div className="relative w-full max-w-md theme-panel rounded-xl border p-6 text-slate-900 shadow-xl">
+  return renderPosModalPortal(
+    <div className={posModalOverlayClass(embedded)}>
+      {!embedded ? (
+        <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
+      ) : null}
+      <div className={posModalPanelClass(embedded, "w-full max-w-md theme-panel rounded-xl border p-6 text-slate-900 shadow-xl")}>
         <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
         <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
 
@@ -540,10 +542,12 @@ export function RecordSessionExpenseModal({
     }
   }
 
-  return (
-    <div className={`${posModalOverlayClass(embedded)} flex items-center justify-center p-4`}>
-      <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
-      <div className="relative w-full max-w-md theme-panel rounded-xl border p-6 text-slate-900 shadow-xl">
+  return renderPosModalPortal(
+    <div className={posModalOverlayClass(embedded)}>
+      {!embedded ? (
+        <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
+      ) : null}
+      <div className={posModalPanelClass(embedded, "w-full max-w-md theme-panel rounded-xl border p-6 text-slate-900 shadow-xl")}>
         <h2 className="text-lg font-semibold text-slate-900">Record expense</h2>
         <p className="mt-1 text-sm text-slate-500">
           {tillName ? `${tillName} · ` : ""}
@@ -693,10 +697,12 @@ export function FloatBreakdownModal({
     }
   }
 
-  return (
-    <div className={`${posModalOverlayClass(embedded)} flex items-center justify-center p-4`}>
-      <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
-      <div className="relative flex max-h-[85vh] w-full max-w-lg flex-col theme-panel rounded-xl border text-slate-900 shadow-xl">
+  return renderPosModalPortal(
+    <div className={posModalOverlayClass(embedded)}>
+      {!embedded ? (
+        <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
+      ) : null}
+      <div className={posModalPanelClass(embedded, "flex max-h-[85vh] w-full max-w-lg flex-col theme-panel rounded-xl border text-slate-900 shadow-xl")}>
         <div className="border-b border-slate-200 px-6 py-4">
           <h2 className="text-lg font-semibold text-slate-900">Float details</h2>
           <p className="mt-1 text-sm text-slate-500">

@@ -12,6 +12,7 @@ import { AppTopbar } from "@/components/layout/app-topbar";
 import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
 import { AppLoadingOverlay } from "@/components/shared/app-loading-overlay";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
+import { beginPageNavigation, endPageNavigation, getAppLoadingState } from "@/lib/app-loading";
 
 const SIDEBAR_COLLAPSED_KEY = "velzon-sidebar-collapsed";
 
@@ -40,6 +41,18 @@ export function AppShell({ children }) {
 
   useEffect(() => {
     setMobileSidebarOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    beginPageNavigation();
+    const idle = window.setTimeout(() => {
+      if (getAppLoadingState().pending === 0) endPageNavigation();
+    }, 400);
+    const safety = window.setTimeout(() => endPageNavigation(), 3000);
+    return () => {
+      window.clearTimeout(idle);
+      window.clearTimeout(safety);
+    };
   }, [pathname]);
 
   function toggleSidebar() {

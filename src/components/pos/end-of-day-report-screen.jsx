@@ -13,7 +13,9 @@ import { buildExpensesHref } from "@/lib/expenses-link";
 import {
   FilterSelect,
   PrimaryButton,
+  SECONDARY_BTN_CLASS,
   StatCard,
+  EMPTY_STATE_CLASS,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import {
@@ -64,7 +66,7 @@ function PaymentDonut({ payments }) {
   const total = segments.reduce((sum, s) => sum + s.value, 0);
   if (total <= 0) {
     return (
-      <div className="flex h-40 items-center justify-center text-sm text-slate-500">
+      <div className="flex h-40 items-center justify-center text-sm theme-subtext">
         No payments recorded
       </div>
     );
@@ -93,13 +95,13 @@ function PaymentDonut({ payments }) {
           {segments.map((s) => {
             const pct = total > 0 ? ((s.value / total) * 100).toFixed(1) : "0.0";
             return (
-              <tr key={s.key} className="border-b border-slate-100 last:border-b-0">
+              <tr key={s.key} className="border-b border-[var(--theme-border)] last:border-b-0">
                 <td className="py-2 pr-3">
                   <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
                   {s.label}
                 </td>
-                <td className="py-2 text-right font-medium text-black">{formatTillKes(s.value)}</td>
-                <td className="py-2 pl-3 text-right text-slate-500">{pct}%</td>
+                <td className="py-2 text-right font-medium text-[var(--theme-text)]">{formatTillKes(s.value)}</td>
+                <td className="theme-subtext py-2 pl-3 text-right">{pct}%</td>
               </tr>
             );
           })}
@@ -113,7 +115,7 @@ function Panel({ title, children, className = "", action = null }) {
   return (
     <div className={`theme-panel rounded-xl border p-5 shadow-sm ${className}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+        <h2 className="theme-heading text-sm font-semibold">{title}</h2>
         {action}
       </div>
       <div className="mt-4">{children}</div>
@@ -124,16 +126,40 @@ function Panel({ title, children, className = "", action = null }) {
 function SummaryRow({ label, value, tone = "default", bold = false }) {
   const toneClass =
     tone === "danger"
-      ? "text-red-600"
+      ? "text-red-600 dark:text-red-400"
       : tone === "success"
-        ? "text-emerald-700"
+        ? "text-emerald-600 dark:text-emerald-400"
         : tone === "primary"
-          ? "text-[#185FA5]"
-          : "text-black";
+          ? "text-[var(--theme-primary)]"
+          : "text-[var(--theme-text)]";
   return (
     <div className={`flex items-center justify-between gap-3 py-2 text-sm ${bold ? "font-semibold" : ""}`}>
-      <span className="text-slate-600">{label}</span>
+      <span className="theme-subtext">{label}</span>
       <span className={toneClass}>{value}</span>
+    </div>
+  );
+}
+
+function HighlightMetric({ label, value, variant = "primary" }) {
+  const shellClass =
+    variant === "danger"
+      ? "theme-alert-error"
+      : variant === "success"
+        ? "theme-alert-success"
+        : variant === "warning"
+          ? "border border-[var(--theme-border)] bg-[var(--theme-surface-muted)]"
+          : "border border-[var(--theme-border)] bg-[var(--theme-primary-subtle)]";
+  const valueClass =
+    variant === "primary"
+      ? "text-[var(--theme-primary)]"
+      : variant === "warning"
+        ? "text-amber-600 dark:text-amber-400"
+        : "";
+
+  return (
+    <div className={`rounded-lg px-4 py-3 text-center ${shellClass}`}>
+      <p className="theme-subtext text-xs">{label}</p>
+      <p className={`text-lg font-semibold ${valueClass || "text-[var(--theme-text)]"}`}>{value}</p>
     </div>
   );
 }
@@ -408,15 +434,15 @@ export function EndOfDayReportScreen() {
     <div className="theme-workspace min-h-full">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs text-slate-500">
-            <Link href="/reports" className="hover:text-[#185FA5]">Reports</Link>
+          <p className="theme-subtext text-xs">
+            <Link href="/reports" className="theme-link hover:underline">Reports</Link>
             {" / "}
-            <span className="text-slate-700">End of Day Sales</span>
+            <span className="text-[var(--theme-text-muted)]">End of Day Sales</span>
           </p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+          <h1 className="theme-heading mt-1 text-2xl font-semibold">
             {isMonthly ? "Monthly Sales Report" : "End of Day Sales Report"}
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="theme-subtext mt-1 text-sm">
             {branchName} ·{" "}
             {isMonthly
               ? `${formatReportDate(periodStart)} – ${formatReportDate(periodEnd)}`
@@ -426,7 +452,7 @@ export function EndOfDayReportScreen() {
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Branch</label>
+            <label className="theme-subtext mb-1 block text-xs font-medium">Branch</label>
             <FilterSelect
               value={branchId}
               onChange={(e) => {
@@ -440,7 +466,7 @@ export function EndOfDayReportScreen() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Cashier</label>
+            <label className="theme-subtext mb-1 block text-xs font-medium">Cashier</label>
             <FilterSelect
               value={cashierId}
               onChange={(e) => setCashierId(e.target.value)}
@@ -448,7 +474,7 @@ export function EndOfDayReportScreen() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Period</label>
+            <label className="theme-subtext mb-1 block text-xs font-medium">Period</label>
             <FilterSelect
               value={reportMode}
               onChange={(e) => setReportMode(e.target.value)}
@@ -460,7 +486,7 @@ export function EndOfDayReportScreen() {
           </div>
           {reportMode === "monthly" ? (
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Month</label>
+              <label className="theme-subtext mb-1 block text-xs font-medium">Month</label>
               <input
                 type="month"
                 className={`${inputClassName()} w-40`}
@@ -470,7 +496,7 @@ export function EndOfDayReportScreen() {
             </div>
           ) : (
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Date</label>
+              <label className="theme-subtext mb-1 block text-xs font-medium">Date</label>
               <input
                 type="date"
                 className={`${inputClassName()} w-40`}
@@ -479,11 +505,7 @@ export function EndOfDayReportScreen() {
               />
             </div>
           )}
-          <button
-            type="button"
-            onClick={load}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-black hover:bg-slate-50"
-          >
+          <button type="button" onClick={load} className={SECONDARY_BTN_CLASS}>
             Filter
           </button>
           {report ? (
@@ -505,13 +527,13 @@ export function EndOfDayReportScreen() {
       </div>
 
       {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+        <p className="theme-alert-error mb-4 rounded-lg px-4 py-3 text-sm">{error}</p>
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-slate-500">Loading end-of-day report…</p>
+        <p className="theme-subtext text-sm">Loading end-of-day report…</p>
       ) : !report ? (
-        <p className="rounded-xl border border-dashed border-slate-300 bg-white px-5 py-8 text-center text-sm text-slate-500">
+        <p className={`${EMPTY_STATE_CLASS} border-dashed`}>
           No report data for the selected date.
         </p>
       ) : (
@@ -550,7 +572,7 @@ export function EndOfDayReportScreen() {
                 <SummaryRow label="Total discounts" value={`-${formatTillKes(summary.total_discounts)}`} tone="danger" />
               ) : null}
               <SummaryRow label="Total refunds" value={`-${formatTillKes(summary.total_refunds)}`} tone="danger" />
-              <div className="my-2 border-t border-slate-100" />
+              <div className="my-2 border-t border-[var(--theme-border)]" />
               <SummaryRow label="Net sales" value={formatTillKes(summary.net_sales)} tone="success" bold />
               {Number(summary.total_vat) > 0 ? (
                 <SummaryRow label="VAT total" value={formatTillKes(summary.total_vat)} />
@@ -565,7 +587,7 @@ export function EndOfDayReportScreen() {
                 <SummaryRow label="Session expenses" value={`-${formatTillKes(summary.session_expenses)}`} tone="danger" />
               ) : null}
               {requireTillFloat ? (
-                <div className="mt-2 rounded-lg bg-[#E6F1FB] px-3 py-2">
+                <div className="mt-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-primary-subtle)] px-3 py-2">
                   <SummaryRow label="Net cash expected" value={formatTillKesExact(summary.net_cash_expected)} tone="primary" bold />
                 </div>
               ) : null}
@@ -573,7 +595,7 @@ export function EndOfDayReportScreen() {
 
             <Panel title="Payment summary">
               <PaymentDonut payments={payments} />
-              <p className="mt-3 text-right text-xs text-slate-500">
+              <p className="theme-subtext mt-3 text-right text-xs">
                 Total collected {formatTillKes(paymentTotal)}
               </p>
             </Panel>
@@ -590,11 +612,11 @@ export function EndOfDayReportScreen() {
 
             <Panel title="Cashier sales">
               {(report.cashiers ?? []).length === 0 ? (
-                <p className="text-sm text-slate-500">No cashier sales for this date.</p>
+                <p className="theme-subtext text-sm">No cashier sales for this date.</p>
               ) : (
                 <table className="w-full border-collapse text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
+                    <tr className="theme-subtext border-b border-[var(--theme-border)] text-left text-xs font-medium">
                       <th className="pb-2 pr-3">Cashier</th>
                       <th className="pb-2 pr-3 text-right">Total sales</th>
                       <th className="pb-2 pr-3 text-right">Transactions</th>
@@ -610,28 +632,28 @@ export function EndOfDayReportScreen() {
                       return (
                         <tr
                           key={row.cashier_id}
-                          className={`border-b border-slate-100 last:border-b-0 ${
-                            isSelected ? "bg-[#E6F1FB]" : ""
+                          className={`border-b border-[var(--theme-border)] last:border-b-0 ${
+                            isSelected ? "bg-[var(--theme-primary-subtle)]" : ""
                           }`}
                         >
                           <td className="py-2.5 pr-3">
                             <button
                               type="button"
                               onClick={() => setCashierId(String(row.cashier_id))}
-                              className="font-medium text-[#185FA5] hover:underline"
+                              className="theme-link font-medium hover:underline"
                             >
                               {row.cashier ?? "—"}
                             </button>
                           </td>
-                          <td className="py-2.5 pr-3 text-right font-medium text-slate-900">
+                          <td className="py-2.5 pr-3 text-right font-medium text-[var(--theme-text)]">
                             {formatTillKes(row.gross_sales)}
                           </td>
-                          <td className="py-2.5 pr-3 text-right text-slate-700">{row.transactions ?? 0}</td>
-                          <td className="py-2.5 pr-3 text-right text-slate-700">{formatTillKes(row.cash_collected)}</td>
-                          <td className="py-2.5 pr-3 text-right text-slate-700">{formatTillKes(row.mpesa_collected)}</td>
-                          <td className="py-2.5 text-right text-slate-700">{formatTillKes(row.bank_collected)}</td>
+                          <td className="theme-text-muted py-2.5 pr-3 text-right">{row.transactions ?? 0}</td>
+                          <td className="theme-text-muted py-2.5 pr-3 text-right">{formatTillKes(row.cash_collected)}</td>
+                          <td className="theme-text-muted py-2.5 pr-3 text-right">{formatTillKes(row.mpesa_collected)}</td>
+                          <td className="theme-text-muted py-2.5 text-right">{formatTillKes(row.bank_collected)}</td>
                           {requireTillFloat ? (
-                            <td className="py-2.5 pl-3 text-right text-slate-700">
+                            <td className="theme-text-muted py-2.5 pl-3 text-right">
                               {formatTillKes(row.opening_float)}
                             </td>
                           ) : null}
@@ -645,7 +667,7 @@ export function EndOfDayReportScreen() {
                 <button
                   type="button"
                   onClick={() => setCashierId("")}
-                  className="mt-3 text-xs font-medium text-[#185FA5] hover:underline"
+                  className="theme-link mt-3 text-xs font-medium hover:underline"
                 >
                   Clear cashier filter — show all cashiers
                 </button>
@@ -655,11 +677,11 @@ export function EndOfDayReportScreen() {
             {requireTillFloat ? (
             <Panel title="Till & cashier summary" className="lg:col-span-2">
               {(report.tills ?? []).length === 0 ? (
-                <p className="text-sm text-slate-500">No till sessions for this date.</p>
+                <p className="theme-subtext text-sm">No till sessions for this date.</p>
               ) : (
                 <table className="w-full border-collapse text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
+                    <tr className="theme-subtext border-b border-[var(--theme-border)] text-left text-xs font-medium">
                       <th className="pb-2 pr-3">Till</th>
                       <th className="pb-2 pr-3">Cashier</th>
                       <th className="pb-2 pr-3 text-right">Total sales</th>
@@ -669,15 +691,15 @@ export function EndOfDayReportScreen() {
                   </thead>
                   <tbody>
                     {(report.tills ?? []).map((row, i) => (
-                      <tr key={`${row.till_number}-${i}`} className="border-b border-slate-100 last:border-b-0">
-                        <td className="py-2.5 pr-3 font-medium text-slate-900">
+                      <tr key={`${row.till_number}-${i}`} className="border-b border-[var(--theme-border)] last:border-b-0">
+                        <td className="py-2.5 pr-3 font-medium text-[var(--theme-text)]">
                           {row.till_number}
                           {row.till_name ? ` · ${row.till_name}` : ""}
                         </td>
-                        <td className="py-2.5 pr-3 text-slate-700">{row.cashier ?? "—"}</td>
-                        <td className="py-2.5 pr-3 text-right text-slate-900">{formatTillKes(row.gross_sales)}</td>
-                        <td className="py-2.5 text-right text-slate-700">{row.transactions ?? 0}</td>
-                        <td className="py-2.5 pl-3 text-right text-slate-700">{formatTillKes(row.opening_float)}</td>
+                        <td className="theme-text-muted py-2.5 pr-3">{row.cashier ?? "—"}</td>
+                        <td className="py-2.5 pr-3 text-right text-[var(--theme-text)]">{formatTillKes(row.gross_sales)}</td>
+                        <td className="theme-text-muted py-2.5 text-right">{row.transactions ?? 0}</td>
+                        <td className="theme-text-muted py-2.5 pl-3 text-right">{formatTillKes(row.opening_float)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -689,26 +711,26 @@ export function EndOfDayReportScreen() {
             <Panel
               title="Expenses summary"
               action={
-                <Link href={expensesHref} className="text-xs font-medium text-[#185FA5] hover:underline">
+                <Link href={expensesHref} className="theme-link text-xs font-medium hover:underline">
                   View expenses
                 </Link>
               }
             >
               {(report.expenses ?? []).length === 0 ? (
-                <p className="text-sm text-slate-500">No expenses recorded.</p>
+                <p className="theme-subtext text-sm">No expenses recorded.</p>
               ) : (
                 <>
                   <table className="w-full border-collapse text-sm">
                     <tbody>
                       {(report.expenses ?? []).map((row) => (
-                        <tr key={row.group_name} className="border-b border-slate-100 last:border-b-0">
-                          <td className="py-2 text-slate-700">{row.group_name ?? "Other"}</td>
-                          <td className="py-2 text-right font-medium text-black">{formatTillKes(row.amount)}</td>
+                        <tr key={row.group_name} className="border-b border-[var(--theme-border)] last:border-b-0">
+                          <td className="theme-text-muted py-2">{row.group_name ?? "Other"}</td>
+                          <td className="py-2 text-right font-medium text-[var(--theme-text)]">{formatTillKes(row.amount)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  <div className="mt-3 border-t border-slate-200 pt-2">
+                  <div className="mt-3 border-t border-[var(--theme-border)] pt-2">
                     <SummaryRow label="Total expenses" value={formatTillKes(report.total_expenses)} tone="danger" bold />
                   </div>
                 </>
@@ -719,7 +741,7 @@ export function EndOfDayReportScreen() {
               <SummaryRow label="Opening debtors" value="—" />
               <SummaryRow label="New sales (credit)" value={formatTillKes(report.debtors?.new_credit_sales)} />
               <SummaryRow label="Payments received" value={formatTillKes(report.debtors?.payments_received)} tone="success" />
-              <div className="mt-2 border-t border-slate-100 pt-2">
+              <div className="mt-2 border-t border-[var(--theme-border)] pt-2">
                 <SummaryRow label="Closing debtors" value={formatTillKes(report.debtors?.closing)} tone="danger" bold />
               </div>
             </Panel>
@@ -729,7 +751,7 @@ export function EndOfDayReportScreen() {
             <Panel title="Daily breakdown" className="mt-6">
               <table className="w-full border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
+                  <tr className="theme-subtext border-b border-[var(--theme-border)] text-left text-xs font-medium">
                     <th className="pb-2 pr-3">Date</th>
                     <th className="pb-2 pr-3 text-right">Transactions</th>
                     <th className="pb-2 pr-3 text-right">Gross sales</th>
@@ -739,12 +761,12 @@ export function EndOfDayReportScreen() {
                 </thead>
                 <tbody>
                   {(report.daily_breakdown ?? []).map((row) => (
-                    <tr key={row.sale_date} className="border-b border-slate-100 last:border-b-0">
-                      <td className="py-2.5 pr-3 text-slate-800">{formatReportDate(row.sale_date)}</td>
-                      <td className="py-2.5 pr-3 text-right text-slate-700">{row.transactions ?? 0}</td>
-                      <td className="py-2.5 pr-3 text-right font-medium text-slate-900">{formatTillKes(row.gross_sales)}</td>
-                      <td className="py-2.5 pr-3 text-right text-slate-700">{formatTillKes(row.total_vat)}</td>
-                      <td className="py-2.5 text-right text-slate-700">{formatTillKes(row.cash_collected)}</td>
+                    <tr key={row.sale_date} className="border-b border-[var(--theme-border)] last:border-b-0">
+                      <td className="py-2.5 pr-3 text-[var(--theme-text)]">{formatReportDate(row.sale_date)}</td>
+                      <td className="theme-text-muted py-2.5 pr-3 text-right">{row.transactions ?? 0}</td>
+                      <td className="py-2.5 pr-3 text-right font-medium text-[var(--theme-text)]">{formatTillKes(row.gross_sales)}</td>
+                      <td className="theme-text-muted py-2.5 pr-3 text-right">{formatTillKes(row.total_vat)}</td>
+                      <td className="theme-text-muted py-2.5 text-right">{formatTillKes(row.cash_collected)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -755,30 +777,34 @@ export function EndOfDayReportScreen() {
           {requireTillFloat ? (
           <div className="mt-6 theme-panel rounded-xl border p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-center gap-3 text-center text-sm">
-              <div className="rounded-lg bg-[#E6F1FB] px-4 py-3">
-                <p className="text-xs text-slate-500">Net cash expected</p>
-                <p className="text-lg font-semibold text-[#185FA5]">{formatTillKes(summary.net_cash_expected)}</p>
-              </div>
-              <span className="text-xl text-slate-400">−</span>
-              <div className="rounded-lg bg-red-50 px-4 py-3">
-                <p className="text-xs text-slate-500">Total expenses</p>
-                <p className="text-lg font-semibold text-red-700">{formatTillKes(report.total_expenses)}</p>
-              </div>
-              <span className="text-xl text-slate-400">−</span>
-              <div className="rounded-lg bg-amber-50 px-4 py-3">
-                <p className="text-xs text-slate-500">Closing debtors</p>
-                <p className="text-lg font-semibold text-amber-800">{formatTillKes(report.debtors?.closing)}</p>
-              </div>
-              <span className="text-xl text-slate-400">=</span>
-              <div className="rounded-lg bg-emerald-50 px-4 py-3">
-                <p className="text-xs text-slate-500">Net position</p>
-                <p className="text-lg font-semibold text-emerald-800">{formatTillKes(report.net_position)}</p>
-              </div>
+              <HighlightMetric
+                label="Net cash expected"
+                value={formatTillKes(summary.net_cash_expected)}
+                variant="primary"
+              />
+              <span className="theme-subtext text-xl">−</span>
+              <HighlightMetric
+                label="Total expenses"
+                value={formatTillKes(report.total_expenses)}
+                variant="danger"
+              />
+              <span className="theme-subtext text-xl">−</span>
+              <HighlightMetric
+                label="Closing debtors"
+                value={formatTillKes(report.debtors?.closing)}
+                variant="warning"
+              />
+              <span className="theme-subtext text-xl">=</span>
+              <HighlightMetric
+                label="Net position"
+                value={formatTillKes(report.net_position)}
+                variant="success"
+              />
             </div>
           </div>
           ) : null}
 
-          <p className="mt-6 text-xs text-slate-500">
+          <p className="theme-subtext mt-6 text-xs">
             Report generated on {formatAppDateTime(new Date())} by {user?.full_name ?? user?.username ?? "—"}
           </p>
         </>

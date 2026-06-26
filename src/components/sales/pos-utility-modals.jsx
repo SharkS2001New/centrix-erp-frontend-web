@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { enrichProductForLpo } from "@/components/lpo/lpo-product-utils";
 import { formatSaleKes } from "@/lib/sales";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { posListUnitPrice } from "@/lib/pos-line";
-import { posModalOverlayClass } from "@/lib/pos-modal-shell";
+import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 
 function ModalShell({ title, open, onClose, children, widthClass = "max-w-md", embedded = false }) {
   useEffect(() => {
@@ -23,15 +23,20 @@ function ModalShell({ title, open, onClose, children, widthClass = "max-w-md", e
 
   if (!open) return null;
 
-  return (
-    <div
-      className={`${posModalOverlayClass(embedded, "z-[200]")} flex items-center justify-center bg-black/40 p-4`}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
+  return renderPosModalPortal(
+    <div className={`${posModalOverlayClass(embedded, "z-[200]")}${embedded ? "" : " bg-black/40"}`}>
+      {!embedded ? (
+        <button
+          type="button"
+          className="absolute inset-0"
+          aria-label="Close"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) onClose();
+          }}
+        />
+      ) : null}
       <div
-        className={`w-full ${widthClass} theme-panel rounded-xl border p-4 shadow-xl dark:border-slate-600 dark:bg-slate-800`}
+        className={`${posModalPanelClass(embedded, `w-full ${widthClass} theme-panel rounded-xl border p-4 shadow-xl`)}`}
         data-pos-shortcut-ignore="true"
       >
         <div className="mb-3 flex items-center justify-between gap-2">
@@ -46,7 +51,7 @@ function ModalShell({ title, open, onClose, children, widthClass = "max-w-md", e
         </div>
         {children}
       </div>
-    </div>
+    </div>,
   );
 }
 
@@ -60,7 +65,10 @@ export function PosPriceCheckerModal({
   branchId,
   embedded = false,
 }) {
-  const productBranchParams = branchId ? { branch_id: branchId } : {};
+  const productBranchParams = useMemo(
+    () => (branchId ? { branch_id: branchId } : {}),
+    [branchId],
+  );
   const MIN_QUERY_LEN = 3;
   const SEARCH_DEBOUNCE_MS = 350;
 

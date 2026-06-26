@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { posModalOverlayClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
+import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { apiRequest } from "@/lib/api";
 import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { formatShortDate, INPUT_CLASS, TABLE_HEAD_ROW_CLASS, workspaceCardClassName } from "@/components/catalog/catalog-shared";
@@ -218,18 +218,22 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
   if (!open || !mounted) return null;
 
   return renderPosModalPortal(
-    <div
-      className={`${posModalOverlayClass(embedded)} flex items-center justify-center bg-black/40 p-4`}
-      onClick={() => {
-        if (!busyOrderId) onClose?.();
-      }}
-    >
+    <div className={`${posModalOverlayClass(embedded)}${embedded ? "" : " bg-black/40"}`}>
+      {!embedded ? (
+        <button
+          type="button"
+          className="absolute inset-0"
+          aria-label="Close"
+          onClick={() => {
+            if (!busyOrderId) onClose?.();
+          }}
+        />
+      ) : null}
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="held-orders-title"
-        className="flex h-[min(88vh,860px)] w-[min(98vw,72rem)] flex-col overflow-hidden theme-panel rounded-xl border shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        className={`${posModalPanelClass(embedded, "flex h-[min(88vh,860px)] w-[min(98vw,72rem)] flex-col overflow-hidden theme-panel rounded-xl border shadow-2xl")}`}
       >
         <header className="shrink-0 border-b border-[var(--theme-primary-hover)] bg-[var(--theme-primary)] px-4 py-3 text-white">
           <div className="flex items-center justify-between gap-4">
@@ -401,6 +405,5 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
         ) : null}
       </div>
     </div>,
-    embedded,
   );
 }

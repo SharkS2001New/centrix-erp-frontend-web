@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { posModalOverlayClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
+import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
 import { formatSaleKes } from "@/lib/sales";
 import { resolveCheckoutStatus } from "@/lib/sales-settings";
@@ -88,8 +88,11 @@ function PosDialogShell({ title, children, footer, overlay, onClose, saving, emb
   }, [onClose, saving]);
 
   return renderPosModalPortal(
-    <div className={`${posModalOverlayClass(embedded)} flex items-center justify-center bg-black/40 p-4`}>
-      <div role="dialog" aria-modal="true" className={POS_DIALOG_SHELL}>
+    <div className={`${posModalOverlayClass(embedded)}${embedded ? "" : " bg-black/40"}`}>
+      {!embedded ? (
+        <button type="button" className="absolute inset-0" aria-label="Close" onClick={onClose} />
+      ) : null}
+      <div role="dialog" aria-modal="true" className={`${posModalPanelClass(embedded)} ${POS_DIALOG_SHELL}`}>
         <div className={POS_DIALOG_HEADER}>
           <h2 className="text-center text-sm font-bold tracking-wide">{title}</h2>
         </div>
@@ -98,7 +101,6 @@ function PosDialogShell({ title, children, footer, overlay, onClose, saving, emb
         {overlay}
       </div>
     </div>,
-    embedded,
   );
 }
 

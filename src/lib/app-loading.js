@@ -2,6 +2,8 @@
 
 let pendingCount = 0;
 let activeLabel = "Loading…";
+/** True briefly after route changes — only GETs during this window show the global overlay. */
+let pageNavigationActive = false;
 /** @type {Set<(state: { pending: number, label: string }) => void>} */
 const listeners = new Set();
 
@@ -17,6 +19,20 @@ export function subscribeAppLoading(listener) {
   return () => listeners.delete(listener);
 }
 
+/** Call when the app route changes (page open / navigation). */
+export function beginPageNavigation() {
+  pageNavigationActive = true;
+}
+
+/** Ends the page-navigation loading window (also called when all loaders finish). */
+export function endPageNavigation() {
+  pageNavigationActive = false;
+}
+
+export function isPageNavigationLoading() {
+  return pageNavigationActive;
+}
+
 export function beginAppLoading(label) {
   pendingCount += 1;
   if (label) activeLabel = label;
@@ -25,7 +41,10 @@ export function beginAppLoading(label) {
 
 export function endAppLoading() {
   pendingCount = Math.max(0, pendingCount - 1);
-  if (pendingCount === 0) activeLabel = "Loading…";
+  if (pendingCount === 0) {
+    activeLabel = "Loading…";
+    endPageNavigation();
+  }
   emit();
 }
 

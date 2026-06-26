@@ -1,6 +1,6 @@
 import { getToken, clearSession, isScreenLocked } from "./auth-storage";
 import { apiFetchCredentials, useCookieAuth } from "./auth-config";
-import { beginAppLoading, endAppLoading } from "./app-loading";
+import { beginAppLoading, endAppLoading, isPageNavigationLoading } from "./app-loading";
 import { emitSystemIssue } from "./system-issue-dispatcher";
 import { logApiErrorIssue, logSlowRequestIssue } from "./system-issue-reports";
 
@@ -118,11 +118,20 @@ export function formatApiErrorMessage(data, fallback = "Request failed") {
   return fallback || "Request failed";
 }
 
+function shouldUseGlobalLoading(options, method) {
+  if (options.loading === true) return true;
+  if (options.loading === false) return false;
+  // In-page actions (POST/PATCH/DELETE, POS cart updates, etc.) use local busy states.
+  if (method !== "GET") return false;
+  // GET requests only show the full-page preloader during initial page navigation.
+  return isPageNavigationLoading();
+}
+
 export async function apiRequest(path, options = {}) {
-  const useLoading = options.loading !== false;
+  const method = options.method ?? "GET";
+  const useLoading = shouldUseGlobalLoading(options, method);
   const trackIssues = options.reportIssues !== false;
   const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
-  const method = options.method ?? "GET";
   const apiPath = path.startsWith("http") ? new URL(path).pathname : path;
 
   if (useLoading) beginAppLoading(options.loadingLabel ?? "Loading…");

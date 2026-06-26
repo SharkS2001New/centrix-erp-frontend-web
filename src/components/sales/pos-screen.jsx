@@ -292,12 +292,14 @@ export function PosScreen({ standalone = false }) {
   );
 
   useEffect(() => {
+    // Only auto-prompt on standalone POS — backoffice users can declare float from the banner.
+    if (!standalone) return;
     if (!requireTillFloat || activeSession || suspendedSession || sessionLoading || zReportOpen || floatModalDismissedRef.current) {
       return;
     }
     setFloatModalOpen(true);
     loadPosTillMeta();
-  }, [requireTillFloat, activeSession, suspendedSession, sessionLoading, zReportOpen, loadPosTillMeta]);
+  }, [standalone, requireTillFloat, activeSession, suspendedSession, sessionLoading, zReportOpen, loadPosTillMeta]);
 
   async function handlePosOpenSession(payload) {
     try {

@@ -8,7 +8,7 @@ import { useBackgroundTasksOptional } from "@/contexts/background-task-context";
 const SHOW_DELAY_MS = 300;
 
 /**
- * Global centered preloader for API activity across the application.
+ * Global centered preloader — shown only during page navigation GET requests (see api.js).
  */
 export function AppLoadingOverlay() {
   const backgroundTasks = useBackgroundTasksOptional();

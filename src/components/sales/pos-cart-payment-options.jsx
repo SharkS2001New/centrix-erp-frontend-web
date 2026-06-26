@@ -5,7 +5,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { formatSaleKes } from "@/lib/sales";
 
 import { INPUT_CLASS, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
-import { posModalOverlayClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
+import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 
 const inputCls = INPUT_CLASS;
 const cancelBtnClass = `${SECONDARY_BTN_CLASS} px-3 py-2.5 text-xs font-bold uppercase`;
@@ -32,9 +32,9 @@ function focusWithoutScroll(el) {
 
 function PayOptionDialog({ open, title, onClose, children, footer, embedded = false }) {
   useLayoutEffect(() => {
-    if (!open) return undefined;
+    if (!open || embedded) return undefined;
     return lockBodyScroll();
-  }, [open]);
+  }, [open, embedded]);
 
   useEffect(() => {
     if (!open) return;
@@ -49,15 +49,15 @@ function PayOptionDialog({ open, title, onClose, children, footer, embedded = fa
 
   return renderPosModalPortal(
     <div
-      className={`${posModalOverlayClass(embedded, "z-[100]")} flex items-center justify-center bg-black/40 p-4`}
-      onMouseDown={(e) => {
+      className={`${posModalOverlayClass(embedded, "z-[100]")}${embedded ? "" : " bg-black/40"}`}
+      onMouseDown={embedded ? undefined : (e) => {
         if (e.target === e.currentTarget) onClose?.();
       }}
     >
       <div
         role="dialog"
         aria-modal="true"
-        className="theme-modal w-full max-w-sm overflow-hidden rounded-lg border shadow-2xl"
+        className={`${posModalPanelClass(embedded, "theme-modal w-full max-w-sm overflow-hidden rounded-lg border shadow-2xl")}`}
       >
         <div className="theme-dialog-header px-4 py-3">
           <h3 className="text-center text-sm font-bold uppercase tracking-wide">{title}</h3>
@@ -68,7 +68,6 @@ function PayOptionDialog({ open, title, onClose, children, footer, embedded = fa
         ) : null}
       </div>
     </div>,
-    embedded,
   );
 }
 
