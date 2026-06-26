@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { posModalOverlayClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
+import { createPortal } from "react-dom";
 
 export function PosLeaveGuardDialog({
   open,
@@ -25,12 +25,17 @@ export function PosLeaveGuardDialog({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, busy, onStay]);
 
-  if (!open || !mounted) return null;
+  if (!open || !mounted || typeof document === "undefined") return null;
 
   const itemLabel = lineCount === 1 ? "1 item" : `${lineCount} items`;
 
-  return renderPosModalPortal(
-    <div className={`${posModalOverlayClass(embedded, "z-[60]")} flex items-center justify-center bg-black/45 p-4`}>
+  // Always portal to body so the dialog is visible over AppShell sidebar/topbar (embedded POS
+  // modals use absolute positioning inside .pos-workspace and are easy to miss).
+  return createPortal(
+    <div
+      data-pos-leave-guard
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 p-4"
+    >
       <div
         role="dialog"
         aria-modal="true"
@@ -76,6 +81,6 @@ export function PosLeaveGuardDialog({
         </div>
       </div>
     </div>,
-    embedded,
+    document.body,
   );
 }

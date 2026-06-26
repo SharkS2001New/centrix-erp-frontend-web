@@ -4,19 +4,22 @@ import { useNetworkStatus } from "@/hooks/use-network-status";
 
 /**
  * Sticky banner when the browser or API is unreachable, or latency is high.
+ * Keeps probing while visible and hides automatically when connectivity recovers.
  * @param {{ className?: string, reportOutages?: boolean }} props
  */
 export function NetworkStatusBanner({ className = "", reportOutages = true }) {
-  const { status, latencyMs, refresh } = useNetworkStatus({ reportOutages });
+  const { status, latencyMs, checking, refresh } = useNetworkStatus({ reportOutages });
 
-  if (status === "online" || status === "checking") {
+  if (status === "online") {
     return null;
   }
 
   const isOffline = status === "offline";
-  const message = isOffline
-    ? "No internet or server unreachable. Changes may not save until you are back online."
-    : `Slow connection${latencyMs ? ` (${(latencyMs / 1000).toFixed(1)}s)` : ""}. Some actions may take longer.`;
+  const message = checking
+    ? "Checking connection…"
+    : isOffline
+      ? "No internet or server unreachable. Changes may not save until you are back online."
+      : `Slow connection${latencyMs ? ` (${(latencyMs / 1000).toFixed(1)}s)` : ""}. Some actions may take longer.`;
 
   return (
     <div
@@ -27,14 +30,18 @@ export function NetworkStatusBanner({ className = "", reportOutages = true }) {
       } ${className}`}
       role="status"
       aria-live="polite"
+      aria-busy={checking ? "true" : "false"}
     >
       <p className="font-medium">{message}</p>
       <button
         type="button"
-        onClick={() => void refresh()}
-        className="shrink-0 rounded-md border border-current/20 px-2.5 py-1 text-xs font-medium hover:bg-black/5 dark:hover:bg-white/10"
+        disabled={checking}
+        onClick={() => {
+          void refresh();
+        }}
+        className="shrink-0 rounded-md border border-current/20 px-2.5 py-1 text-xs font-medium hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-white/10"
       >
-        Retry
+        {checking ? "Checking…" : "Retry"}
       </button>
     </div>
   );

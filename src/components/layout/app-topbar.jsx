@@ -17,7 +17,11 @@ function MenuIcon({ className }) {
 export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSidebarOpen = false }) {
   return (
     <>
-      <header className="app-topbar flex h-[70px] shrink-0 items-center gap-3 border-b px-4 md:px-5">
+      <header
+        data-app-shell-nav
+        data-pos-leave-ignore="true"
+        className="app-topbar flex h-[70px] shrink-0 items-center gap-3 border-b px-4 md:px-5"
+      >
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <button
             type="button"

@@ -1769,36 +1769,52 @@ export function PosScreen({ standalone = false }) {
 
     window.addEventListener("beforeunload", onBeforeUnload);
 
-    // Backoffice create order lives inside AppShell — never hijack sidebar/topbar navigation.
+    // Backoffice create order lives inside AppShell — sidebar/topbar must always navigate freely.
     if (!standalone) {
       return () => {
         window.removeEventListener("beforeunload", onBeforeUnload);
       };
     }
 
+    function shouldIgnoreLeaveIntercept(target) {
+      if (!(target instanceof Element)) return true;
+      return Boolean(
+        target.closest("[data-app-shell-nav]")
+        || target.closest("[data-sidebar-subnav-root]")
+        || target.closest("[data-pos-leave-ignore]")
+        || target.closest("[data-pos-leave-guard]"),
+      );
+    }
+
+    function isPosRoute(pathname) {
+      return (
+        pathname === "/sales/pos"
+        || pathname.startsWith("/sales/pos/")
+        || pathname === "/pos"
+        || pathname.startsWith("/pos/")
+      );
+    }
+
     function onDocumentClick(e) {
+      if (shouldIgnoreLeaveIntercept(e.target)) return;
+
       const anchor = e.target.closest("a[href]");
       if (!anchor || anchor.dataset.posLeaveIgnore === "true") return;
-      if (anchor.closest("[data-pos-leave-guard]")) return;
-      if (anchor.closest("[data-sidebar-subnav-root]")) return;
+      if (shouldIgnoreLeaveIntercept(anchor)) return;
+
       const href = anchor.getAttribute("href");
       if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
         return;
       }
+
       let pathname = href;
       try {
         pathname = new URL(href, window.location.href).pathname;
       } catch {
         return;
       }
-      if (
-        pathname === "/sales/pos"
-        || pathname.startsWith("/sales/pos/")
-        || pathname === "/pos"
-        || pathname.startsWith("/pos/")
-      ) {
-        return;
-      }
+      if (isPosRoute(pathname)) return;
+
       e.preventDefault();
       e.stopPropagation();
       pendingLeaveHrefRef.current = href.startsWith("/") ? href : pathname;
@@ -3040,6 +3056,7 @@ export function PosScreen({ standalone = false }) {
                 ) : null}
                 <Link
                   href={buildExpensesHref()}
+                  data-pos-leave-ignore="true"
                   className={cartToolbarBtnClassName}
                 >
                   Expenses

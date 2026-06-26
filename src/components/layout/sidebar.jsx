@@ -449,6 +449,8 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
   return (
     <div
       data-sidebar-subnav-root
+      data-app-shell-nav
+      data-pos-leave-ignore="true"
       className={`fixed inset-y-0 left-0 z-40 flex shrink-0 transition-transform duration-200 lg:static ${visibilityClass}`}
     >
       <aside
