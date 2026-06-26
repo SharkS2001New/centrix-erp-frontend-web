@@ -8,7 +8,7 @@ import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { isTillFloatWorkflowEnabled, areSalesDiscountsEnabled } from "@/lib/sales-settings";
 import { openPrintWindow } from "@/lib/open-print-window";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
-import { formatTillKes, formatTillKesExact } from "@/lib/pos-till";
+import { formatTillKes, formatTillKesExact, resolveNetSalesMinusFloat } from "@/lib/pos-till";
 import { buildExpensesHref } from "@/lib/expenses-link";
 import {
   FilterSelect,
@@ -161,7 +161,7 @@ ${meta.showDiscounts ? `<div class="row"><span>Discounts</span><span>${kesNum(s.
 <div class="row"><span>Net sales</span><span>${kesNum(s.net_sales)}</span></div>
 ${Number(s.total_vat) > 0 ? `<div class="row"><span>VAT total</span><span>${kesNum(s.total_vat)}</span></div>` : ""}
 ${meta.showFloat ? `<div class="row"><span>Opening float</span><span>${kesNum(s.opening_float)}</span></div>` : ""}
-${meta.showFloat && s.net_sales_minus_float != null ? `<div class="row"><span>Net sales minus float</span><span>${kesNum(s.net_sales_minus_float)}</span></div>` : ""}
+${meta.showFloat ? `<div class="row"><span>Net sales minus float</span><span>${kesNum(resolveNetSalesMinusFloat({ netSales: s.net_sales, openingFloat: s.opening_float, netSalesMinusFloat: s.net_sales_minus_float }))}</span></div>` : ""}
 <div class="row"><span>Net cash expected</span><span>${kesNum(s.net_cash_expected)}</span></div>
 </div>
 <div class="box"><strong>Payments</strong>
@@ -188,8 +188,18 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
   if (Number(s.total_vat) > 0) push("Sales", "VAT total", kesNum(s.total_vat));
   push("Sales", "Transactions", String(s.transactions ?? 0));
   if (requireTillFloat) push("Sales", "Opening float", kesNum(s.opening_float));
-  if (requireTillFloat && s.net_sales_minus_float != null) {
-    push("Sales", "Net sales minus float", kesNum(s.net_sales_minus_float));
+  if (requireTillFloat) {
+    push(
+      "Sales",
+      "Net sales minus float",
+      kesNum(
+        resolveNetSalesMinusFloat({
+          netSales: s.net_sales,
+          openingFloat: s.opening_float,
+          netSalesMinusFloat: s.net_sales_minus_float,
+        }),
+      ),
+    );
   }
   if (requireTillFloat) push("Sales", "Net cash expected", kesNum(s.net_cash_expected));
   if (Number(s.session_expenses) > 0) push("Sales", "Session expenses", kesNum(s.session_expenses));
@@ -318,6 +328,15 @@ export function EndOfDayReportScreen() {
 
   const summary = report?.summary ?? {};
   const payments = report?.payments ?? {};
+  const netSalesMinusFloat = useMemo(
+    () =>
+      resolveNetSalesMinusFloat({
+        netSales: summary.net_sales,
+        openingFloat: summary.opening_float,
+        netSalesMinusFloat: summary.net_sales_minus_float,
+      }),
+    [summary.net_sales, summary.opening_float, summary.net_sales_minus_float],
+  );
   const branchName =
     report?.branch_name ?? branches.find((b) => String(b.id) === branchId)?.branch_name ?? "All branches";
   const cashierName =
@@ -509,6 +528,13 @@ export function EndOfDayReportScreen() {
               value={formatTillKes(summary.net_sales)}
               hint={discountsEnabled ? "After discounts & refunds" : "After refunds"}
             />
+            {requireTillFloat ? (
+              <StatCard
+                label="Net sales minus float"
+                value={formatTillKes(netSalesMinusFloat)}
+                hint="Net sales after operating float"
+              />
+            ) : null}
             {Number(summary.total_vat) > 0 ? (
               <StatCard label="VAT total" value={formatTillKes(summary.total_vat)} hint="Tax collected" />
             ) : null}
@@ -532,8 +558,8 @@ export function EndOfDayReportScreen() {
               {requireTillFloat ? (
                 <SummaryRow label="Opening float" value={formatTillKes(summary.opening_float)} />
               ) : null}
-              {requireTillFloat && summary.net_sales_minus_float != null ? (
-                <SummaryRow label="Net sales minus float" value={formatTillKes(summary.net_sales_minus_float)} tone="primary" />
+              {requireTillFloat ? (
+                <SummaryRow label="Net sales minus float" value={formatTillKes(netSalesMinusFloat)} tone="primary" bold />
               ) : null}
               {Number(summary.session_expenses) > 0 ? (
                 <SummaryRow label="Session expenses" value={`-${formatTillKes(summary.session_expenses)}`} tone="danger" />

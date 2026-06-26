@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { formatTillKes, formatTillKesExact, formatSessionDateTime, formatSessionTime, normalizeFloatEntries, formatFloatEntryDate } from "@/lib/pos-till";
+import { formatTillKes, formatTillKesExact, formatSessionDateTime, formatSessionTime, normalizeFloatEntries, formatFloatEntryDate, resolveNetSalesMinusFloat } from "@/lib/pos-till";
 import { buildExpensesHref } from "@/lib/expenses-link";
 import { ReportStatGrid } from "@/components/pos/pos-shared";
 
@@ -98,15 +98,24 @@ export function PosReportView({ report, session, tillName, cashierName, showCash
   const sales = report?.sales ?? {};
   const till = report?.till ?? {};
   const expensesHref = buildExpensesHref({ fromDate: expensesFromDate, toDate: expensesToDate });
+  const netSales = Number(sales.net_sales ?? sales.net ?? 0);
+  const openingFloat = Number(till.opening_float ?? session?.working_amount ?? 0);
+  const netSalesMinusFloat = showFloatBreakdown
+    ? resolveNetSalesMinusFloat({
+        netSales,
+        openingFloat,
+        netSalesMinusFloat: sales.net_sales_minus_float,
+      })
+    : null;
 
   const salesItems = [
     { label: "Transactions", value: sales.transactions ?? 0 },
-    { label: "Net sales", value: formatTillKes(sales.net_sales ?? sales.net) },
+    { label: "Net sales", value: formatTillKes(netSales) },
+    ...(showFloatBreakdown
+      ? [{ label: "Net sales minus float", value: formatTillKes(netSalesMinusFloat) }]
+      : []),
     ...(Number(sales.total_vat) > 0
       ? [{ label: "VAT total", value: formatTillKes(sales.total_vat) }]
-      : []),
-    ...(showFloatBreakdown && sales.net_sales_minus_float != null
-      ? [{ label: "Net sales minus float", value: formatTillKes(sales.net_sales_minus_float) }]
       : []),
     { label: "Refunds", value: formatTillKes(sales.refunds) },
     ...(Number(sales.debtor_collections) > 0

@@ -273,7 +273,7 @@ export function receiptDetailHref(ref) {
 }
 
 export function isoDate(value = new Date()) {
-  return nairobiCalendarDate(value) ?? "";
+  return calendarDateInTimezone(value) ?? "";
 }
 
 export function defaultDateRange(days = 7) {
@@ -286,7 +286,7 @@ export function rowInDateRange(row, from, to, dateKeys = ["created_at", "damage_
   for (const key of dateKeys) {
     const raw = row[key];
     if (!raw) continue;
-    const day = nairobiCalendarDate(raw);
+    const day = calendarDateInTimezone(raw);
     if (!day) continue;
     if (from && day < from) return false;
     if (to && day > to) return false;

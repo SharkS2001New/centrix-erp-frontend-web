@@ -18,6 +18,18 @@ export function formatTillKesExact(value) {
   })}`;
 }
 
+/** Net sales after deducting operating float (always >= 0). */
+export function resolveNetSalesMinusFloat({
+  netSales,
+  openingFloat,
+  netSalesMinusFloat,
+} = {}) {
+  if (netSalesMinusFloat != null && netSalesMinusFloat !== "") {
+    return Math.max(0, Number(netSalesMinusFloat));
+  }
+  return Math.max(0, Number(netSales ?? 0) - Number(openingFloat ?? 0));
+}
+
 export function tillDisplayName(till) {
   if (!till) return "—";
   return till.till_name?.trim() || till.till_number || `Till #${till.id}`;

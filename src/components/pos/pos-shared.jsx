@@ -1,5 +1,5 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
-import { formatTillKes, formatTillKesExact, tillDisplayName, normalizeFloatEntries, formatFloatEntryDate, resolveTillReportBundle } from "@/lib/pos-till";
+import { formatTillKes, formatTillKesExact, tillDisplayName, normalizeFloatEntries, formatFloatEntryDate, resolveTillReportBundle, resolveNetSalesMinusFloat } from "@/lib/pos-till";
 import { openPrintWindow } from "@/lib/open-print-window";
 
 function escapeHtml(value) {
@@ -60,6 +60,14 @@ export function printPosTillReport({
   const till = report.till ?? {};
   const opened = session?.opened_at;
   const closed = session?.closed_at;
+  const netSales = Number(sales.net_sales ?? sales.net ?? 0);
+  const netSalesMinusFloat = showFloatBreakdown
+    ? resolveNetSalesMinusFloat({
+        netSales,
+        openingFloat: till.opening_float ?? session?.working_amount,
+        netSalesMinusFloat: sales.net_sales_minus_float,
+      })
+    : null;
   const dateStr = opened
     ? new Date(opened).toLocaleDateString("en-KE", {
         day: "numeric",
@@ -70,12 +78,12 @@ export function printPosTillReport({
 
   const rows = [
     line("Transactions", String(sales.transactions ?? 0)),
-    line("Net Sales", formatTillKes(sales.net_sales ?? sales.net).replace(/^KES\s*/, "")),
+    line("Net Sales", formatTillKes(netSales).replace(/^KES\s*/, "")),
+    ...(showFloatBreakdown
+      ? [line("Net sales minus float", formatTillKes(netSalesMinusFloat).replace(/^KES\s*/, ""))]
+      : []),
     ...(Number(sales.total_vat) > 0
       ? [line("VAT total", formatTillKes(sales.total_vat).replace(/^KES\s*/, ""))]
-      : []),
-    ...(showFloatBreakdown && sales.net_sales_minus_float != null
-      ? [line("Net sales minus float", formatTillKes(sales.net_sales_minus_float).replace(/^KES\s*/, ""))]
       : []),
     line("Refunds", formatTillKes(sales.refunds).replace(/^KES\s*/, "")),
     ...(Number(sales.debtor_collections) > 0
