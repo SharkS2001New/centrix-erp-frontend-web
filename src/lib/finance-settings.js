@@ -212,6 +212,20 @@ export function financeFormFromApi(res) {
   };
 }
 
+/** Draft KRA device fields for POST /kra/device-health (uses saved PIN when masked). */
+export function kraDeviceHealthPayloadFromForm(form) {
+  const payload = {
+    kra_device_ip: String(form.kra_device_ip ?? "").trim(),
+    kra_serial_number: String(form.kra_serial_number ?? "").trim(),
+    kra_device_test_mode: Boolean(form.kra_device_test_mode),
+  };
+  const pin = String(form.kra_pin_number ?? "").trim();
+  if (pin && pin !== "********") {
+    payload.kra_pin_number = pin;
+  }
+  return payload;
+}
+
 export function financePayloadFromForm(form) {
   const mpesa = { ...form.mpesa };
   if (mpesa.consumer_secret === "********") delete mpesa.consumer_secret;

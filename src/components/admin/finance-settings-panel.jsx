@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { financeFormFromApi, financePayloadFromForm, isPlatformKraIntegrationEnabled, isPlatformMpesaStkEnabled } from "@/lib/finance-settings";
+import { financeFormFromApi, financePayloadFromForm, isPlatformKraIntegrationEnabled, isPlatformMpesaStkEnabled, kraDeviceHealthPayloadFromForm } from "@/lib/finance-settings";
 import { accountingSettingsFromApi, accountingSettingsPayload } from "@/lib/accounting-settings";
-import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
 import { ExternalAccountingIntegrationPanel } from "@/components/admin/external-accounting-integration-panel";
 import { AccountingAutoPostPanel } from "@/components/admin/accounting-auto-post-panel";
 import { useSettingsApi } from "@/contexts/settings-api-context";
@@ -43,6 +43,8 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
   const [form, setForm] = useState(financeFormFromApi({}));
   const [autoPostForm, setAutoPostForm] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [kraHealthTesting, setKraHealthTesting] = useState(false);
+  const [kraHealthResult, setKraHealthResult] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -60,6 +62,29 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
   const kraAllowed = isPlatformKraIntegrationEnabled({ finance: form }, capabilities);
   const mpesaAllowed = isPlatformMpesaStkEnabled({ finance: form }, capabilities);
   const hasFinanceContent = hasAccounting || kraAllowed || mpesaAllowed;
+
+  async function testKraDeviceHealth() {
+    setKraHealthTesting(true);
+    setKraHealthResult(null);
+    setError(null);
+    try {
+      const res = await apiRequest("/kra/device-health", {
+        method: "POST",
+        body: kraDeviceHealthPayloadFromForm(form),
+      });
+      setKraHealthResult({
+        ok: true,
+        message: res.message ?? "KRA device is reachable.",
+        httpStatus: res.http_status,
+        url: res.url,
+      });
+    } catch (e) {
+      const message = e instanceof ApiError ? e.message : "KRA device health check failed.";
+      setKraHealthResult({ ok: false, message });
+    } finally {
+      setKraHealthTesting(false);
+    }
+  }
 
   async function saveFinanceSettings() {
     setSaving(true);
@@ -149,12 +174,37 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
                       placeholder="/api/register-plu"
                     />
                   </Field>
-                  <div className="flex items-end">
-                    <Toggle
-                      label="Test mode on device"
-                      checked={Boolean(form.kra_device_test_mode)}
-                      onChange={(v) => setForm((f) => ({ ...f, kra_device_test_mode: v }))}
-                    />
+                  <div className="flex flex-col gap-2 sm:col-span-2">
+                    <div className="flex flex-wrap items-end gap-2">
+                      <div className="min-w-[220px] flex-1">
+                        <Toggle
+                          label="Test mode on device"
+                          checked={Boolean(form.kra_device_test_mode)}
+                          onChange={(v) => setForm((f) => ({ ...f, kra_device_test_mode: v }))}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        disabled={kraHealthTesting || !form.kra_device_ip.trim()}
+                        onClick={() => void testKraDeviceHealth()}
+                        className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
+                      >
+                        {kraHealthTesting ? "Testing…" : "Test connection"}
+                      </button>
+                    </div>
+                    {kraHealthResult ? (
+                      <p
+                        className={`text-sm ${kraHealthResult.ok ? "text-emerald-700" : "text-red-700"}`}
+                      >
+                        {kraHealthResult.message}
+                        {kraHealthResult.httpStatus ? ` (HTTP ${kraHealthResult.httpStatus})` : ""}
+                      </p>
+                    ) : (
+                      <p className="theme-subtext text-xs">
+                        Calls <code className="rounded bg-slate-100 px-1 py-0.5">/api/health</code> on the
+                        device URL to verify this server can reach your KRA fiscal device.
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : null}
