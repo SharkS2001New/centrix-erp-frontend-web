@@ -6,7 +6,6 @@ import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
-import { ReportLoadingOverlay } from "@/components/shared/report-loading-overlay";
 import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
 import {
   CatalogPageShell,
@@ -179,8 +178,11 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     }
     if (branchId) searchParams.branch_id = branchId;
     if (payrollRunId) searchParams.payroll_run_id = payrollRunId;
+    if (supportsLegacyArchive && includeLegacyArchive) {
+      searchParams.include_legacy_archive = 1;
+    }
     return searchParams;
-  }, [branchId, dateColumn, fromDate, payrollRunId, showDateFilters, toDate]);
+  }, [branchId, dateColumn, fromDate, payrollRunId, showDateFilters, toDate, supportsLegacyArchive, includeLegacyArchive]);
 
   const totalPages = meta?.last_page ?? 1;
   const total = meta?.total ?? rows.length;
@@ -189,7 +191,6 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
 
   return (
     <>
-      <ReportLoadingOverlay loading={loading} title={`Loading ${label ?? "report"}…`} />
       <CatalogPageShell
       title={label ?? "Report"}
       subtitle={subtitle ?? undefined}
@@ -203,9 +204,11 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
             exportSource={{
               path: apiPath,
               searchParams: exportSearchParams,
+              estimatedRowCount: total,
               legacyMerge:
                 supportsLegacyArchive && includeLegacyArchive && legacyArchiveMeta?.available,
             }}
+            estimatedRowCount={total}
             meta={{
               fromDate,
               toDate,

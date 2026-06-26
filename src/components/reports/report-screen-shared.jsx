@@ -217,6 +217,7 @@ export function ReportPageShell({ section, title, subtitle, exportConfig, onExpo
             exportSource={exportConfig.exportSource}
             meta={exportConfig.meta}
             footerRow={exportConfig.footerRow}
+            estimatedRowCount={exportConfig.estimatedRowCount}
             disabled={exportConfig.disabled}
           />
         ) : onExport ? (

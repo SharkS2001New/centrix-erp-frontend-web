@@ -6,8 +6,9 @@ import { enrichProductForLpo } from "@/components/lpo/lpo-product-utils";
 import { formatSaleKes } from "@/lib/sales";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { posListUnitPrice } from "@/lib/pos-line";
+import { posModalOverlayClass } from "@/lib/pos-modal-shell";
 
-function ModalShell({ title, open, onClose, children, widthClass = "max-w-md" }) {
+function ModalShell({ title, open, onClose, children, widthClass = "max-w-md", embedded = false }) {
   useEffect(() => {
     if (!open) return undefined;
     function onKey(e) {
@@ -24,7 +25,7 @@ function ModalShell({ title, open, onClose, children, widthClass = "max-w-md" })
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
+      className={`${posModalOverlayClass(embedded, "z-[200]")} flex items-center justify-center bg-black/40 p-4`}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -49,7 +50,16 @@ function ModalShell({ title, open, onClose, children, widthClass = "max-w-md" })
   );
 }
 
-export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCode, uomById, vatById, branchId }) {
+export function PosPriceCheckerModal({
+  open,
+  onClose,
+  sellWholesale,
+  retailByCode,
+  uomById,
+  vatById,
+  branchId,
+  embedded = false,
+}) {
   const productBranchParams = branchId ? { branch_id: branchId } : {};
   const MIN_QUERY_LEN = 3;
   const SEARCH_DEBOUNCE_MS = 350;
@@ -170,7 +180,7 @@ export function PosPriceCheckerModal({ open, onClose, sellWholesale, retailByCod
     : null;
 
   return (
-    <ModalShell title="Price checker" open={open} onClose={onClose} widthClass="max-w-2xl">
+    <ModalShell title="Price checker" open={open} onClose={onClose} widthClass="max-w-2xl" embedded={embedded}>
       <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
         Type at least 3 characters to search. Select a product to view price and stock.
       </p>

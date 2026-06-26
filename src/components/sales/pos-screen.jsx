@@ -44,6 +44,7 @@ import {
   getPosSalesConfig,
   isBackofficeTillFloatRequired,
   isPosTillFloatRequired,
+  isWorkspaceTillFloatRequired,
   posChannelFromStockSource,
   resolveCheckoutStatus,
   resolveSaveOrderStatus,
@@ -294,7 +295,9 @@ export function PosScreen({ standalone = false }) {
   );
 
   useEffect(() => {
-    if (!requireTillFloat || activeSession || suspendedSession || sessionLoading || zReportOpen) return;
+    if (!requireTillFloat || activeSession || suspendedSession || sessionLoading || zReportOpen || floatModalDismissedRef.current) {
+      return;
+    }
     setFloatModalOpen(true);
     loadPosTillMeta();
   }, [requireTillFloat, activeSession, suspendedSession, sessionLoading, zReportOpen, loadPosTillMeta]);
@@ -529,6 +532,7 @@ export function PosScreen({ standalone = false }) {
   const [leaveGuardOpen, setLeaveGuardOpen] = useState(false);
   const [leaveGuardBusy, setLeaveGuardBusy] = useState(false);
   const pendingLeaveHrefRef = useRef(null);
+  const floatModalDismissedRef = useRef(false);
 
   const [orderDiscountDraft, setOrderDiscountDraft] = useState("");
 
@@ -2560,8 +2564,10 @@ export function PosScreen({ standalone = false }) {
         }
         onClose={() => {
           setSessionError(null);
+          floatModalDismissedRef.current = true;
           setFloatModalOpen(false);
         }}
+        embedded={!standalone}
         tills={posTills}
         branches={posBranches}
         user={user}
@@ -2587,6 +2593,7 @@ export function PosScreen({ standalone = false }) {
           setSessionError(null);
           setFloatDetailsOpen(false);
         }}
+        embedded={!standalone}
         session={activeSession}
         tillName={activeTill ? tillDisplayName(activeTill) : null}
         cashierName={user?.full_name ?? user?.username ?? null}
@@ -2605,6 +2612,7 @@ export function PosScreen({ standalone = false }) {
           setSessionError(null);
           setRecordExpenseOpen(false);
         }}
+        embedded={!standalone}
         session={activeSession}
         tillName={activeTill ? tillDisplayName(activeTill) : null}
         cashierName={user?.full_name ?? user?.username ?? null}
@@ -2627,6 +2635,7 @@ export function PosScreen({ standalone = false }) {
         organizationName={organizationName}
         loading={xReportLoading}
         error={sessionError}
+        embedded={!standalone}
       />
 
       <CloseSessionModal
@@ -2643,6 +2652,7 @@ export function PosScreen({ standalone = false }) {
         requireTillFloat={requireTillFloat}
         blindTillClose={blindTillClose}
         onClosed={handleSessionClosed}
+        embedded={!standalone}
       />
 
       <ZReportModal
@@ -2653,6 +2663,7 @@ export function PosScreen({ standalone = false }) {
         showFloatBreakdown={requireTillFloat}
         fallbackCashierName={posCashierName}
         fallbackTillName={zReportTillName}
+        embedded={!standalone}
       />
 
       <div
@@ -3383,6 +3394,7 @@ export function PosScreen({ standalone = false }) {
         error={paymentError}
         onComplete={handleCheckout}
         onContinueNextOrder={handleContinueNextOrder}
+        embedded={!standalone}
       />
 
       <PosSaveOrderDialog
@@ -3401,6 +3413,7 @@ export function PosScreen({ standalone = false }) {
           hold: orderDialogMode === "hold",
         })}
         workflowPipeline={workflowPipelineSteps(channelWorkflow)}
+        embedded={!standalone}
       />
 
       <PosHeldOrdersOverlay
@@ -3415,6 +3428,7 @@ export function PosScreen({ standalone = false }) {
           setStatusMessage("Held order restored to cart — ready to complete or edit.");
           void loadHeldOrdersCount();
         }}
+        embedded={!standalone}
       />
 
       <PosLeaveGuardDialog
@@ -3427,6 +3441,7 @@ export function PosScreen({ standalone = false }) {
         }}
         onLeaveKeepReservation={() => completeLeaveNavigation()}
         onClearAndLeave={() => void clearCartAndLeave()}
+        embedded={!standalone}
       />
 
       <PosPriceCheckerModal
@@ -3437,6 +3452,7 @@ export function PosScreen({ standalone = false }) {
         uomById={uomById}
         vatById={vatById}
         branchId={user?.branch_id}
+        embedded={!standalone}
       />
 
       {standalone ? (

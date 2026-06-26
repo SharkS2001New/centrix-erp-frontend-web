@@ -6,9 +6,12 @@ import { AuthGuard } from "@/components/auth-guard";
 import { WorkspaceGuard } from "@/components/auth/workspace-guard";
 import { RoutePermissionGuard } from "@/components/route-permission-guard";
 import { BackgroundTaskProvider } from "@/contexts/background-task-context";
+import { SystemIssueProvider } from "@/contexts/system-issue-context";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
+import { AppLoadingOverlay } from "@/components/shared/app-loading-overlay";
+import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
 
 const SIDEBAR_COLLAPSED_KEY = "velzon-sidebar-collapsed";
 
@@ -51,6 +54,7 @@ export function AppShell({ children }) {
     <AuthGuard>
       <WorkspaceGuard>
         <RoutePermissionGuard>
+          <SystemIssueProvider>
           <BackgroundTaskProvider>
           <div className="app-shell-bg flex h-screen overflow-hidden">
             <Sidebar
@@ -72,6 +76,7 @@ export function AppShell({ children }) {
                 mobileSidebarOpen={mobileSidebarOpen}
                 onToggleSidebar={toggleSidebar}
               />
+              <NetworkStatusBanner />
               <main
                 className={
                   isPos
@@ -83,8 +88,10 @@ export function AppShell({ children }) {
               </main>
             </div>
             <AiAssistPanel />
+            <AppLoadingOverlay />
           </div>
           </BackgroundTaskProvider>
+          </SystemIssueProvider>
         </RoutePermissionGuard>
       </WorkspaceGuard>
     </AuthGuard>

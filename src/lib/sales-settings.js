@@ -226,6 +226,16 @@ export function isBackofficeTillFloatRequired(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).require_backoffice_till_float);
 }
 
+/**
+ * Till float for the active sales UI — external POS (/pos) and backoffice create order (/sales/pos)
+ * use separate admin settings and must not be conflated.
+ */
+export function isWorkspaceTillFloatRequired(moduleSettings, { standalone = false } = {}) {
+  return standalone
+    ? isPosTillFloatRequired(moduleSettings)
+    : isBackofficeTillFloatRequired(moduleSettings);
+}
+
 /** Nav + till admin screens when either external POS or backoffice float workflow is enabled. */
 export function isTillFloatWorkflowEnabled(moduleSettings) {
   return isPosTillFloatRequired(moduleSettings) || isBackofficeTillFloatRequired(moduleSettings);

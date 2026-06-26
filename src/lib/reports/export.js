@@ -2,6 +2,12 @@ import { formatShortDate } from "@/components/catalog/catalog-shared";
 import { formatAppDateTime } from "@/lib/datetime";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { openPrintWindow } from "@/lib/open-print-window";
+import {
+  buildReportOrgHeaderHtml,
+  buildReportWatermarkHtml,
+  reportDetailMetaLines,
+  reportDocumentStyles,
+} from "@/lib/reports/report-branding";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -52,36 +58,31 @@ export function normalizeExportColumns(columns) {
   }));
 }
 
-/** @param {object} meta @param {ReturnType<normalizeExportColumns>} columns @param {object[]} rows */
-export function buildReportPrintHtml({ meta, columns, rows, footerRow = null }) {
+/** @param {object} meta @param {ReturnType<normalizeExportColumns>} columns @param {object[]} rows @param {object} [options] */
+export function buildReportPrintHtml({ meta, columns, rows, footerRow = null, branding = null }) {
   const headers = columns.map((col) => col.label);
   const period =
     meta.fromDate || meta.toDate
       ? `${meta.fromDate ? formatShortDate(meta.fromDate) : "—"} – ${meta.toDate ? formatShortDate(meta.toDate) : "—"}`
       : "";
 
-  const metaLines = [
-    meta.organizationName,
-    meta.title,
-    meta.subtitle,
-    period ? `Period: ${period}` : "",
-    meta.branchName ? `Branch: ${meta.branchName}` : "",
-    ...(meta.extraLines ?? []),
-    `Printed: ${meta.printedAt}`,
-  ].filter(Boolean);
+  const detailMeta = {
+    ...meta,
+    periodLine: period ? `Period: ${period}` : "",
+    branchLine: meta.branchName ? `Branch: ${meta.branchName}` : "",
+    printedLine: `Printed: ${meta.printedAt}`,
+  };
+  const metaLines = reportDetailMetaLines(detailMeta, branding);
+  const orgHeaderHtml = branding ? buildReportOrgHeaderHtml(branding) : "";
+  const watermarkHtml = branding ? buildReportWatermarkHtml(branding) : "";
+  const footerText = branding?.documentFooterText?.trim?.() || "";
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(meta.title)}</title>
 <style>
-  body { font-family: system-ui, sans-serif; padding: 24px; color: #111; }
-  .meta { margin-bottom: 20px; }
-  .meta h1 { font-size: 18px; margin: 0 0 4px; }
-  .meta p { margin: 2px 0; font-size: 12px; color: #475569; }
-  table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
-  th { background: #f8fafc; }
-  td.num, th.num { text-align: right; }
-  tfoot td { font-weight: 600; background: #f8fafc; }
+${reportDocumentStyles()}
 </style></head><body>
+${watermarkHtml}
+${orgHeaderHtml}
 <div class="meta">
   ${metaLines.map((line, index) => (index === 0 ? `<h1>${escapeHtml(line)}</h1>` : `<p>${escapeHtml(line)}</p>`)).join("")}
 </div>
@@ -113,7 +114,9 @@ ${
         .join("")}</tr></tfoot>`
     : ""
 }
-</table></body></html>`;
+</table>
+${footerText ? `<div class="doc-footer">${escapeHtml(footerText)}</div>` : ""}
+</body></html>`;
 }
 
 export function printReportTable(options) {

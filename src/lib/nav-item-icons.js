@@ -10,6 +10,7 @@ export const NAV_HREF_ICONS = {
   "/platform/ai-training": "star",
   "/platform/ai-training/credentials": "shield",
   "/platform/active-users": "users",
+  "/platform/system-issues": "alert",
   "/platform/database-backups": "database",
   "/platform/organizations/new": "plus",
 

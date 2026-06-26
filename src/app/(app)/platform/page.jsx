@@ -44,6 +44,11 @@ export default function PlatformOverviewPage() {
               Active users
             </PrimaryButton>
           </Link>
+          <Link href="/platform/system-issues">
+            <PrimaryButton type="button" showIcon={false} className="!bg-red-600 hover:!bg-red-700">
+              System errors & reports
+            </PrimaryButton>
+          </Link>
           <Link href="/platform/database-backups">
             <PrimaryButton type="button" showIcon={false} className="!bg-slate-700 hover:!bg-slate-800">
               Database backups

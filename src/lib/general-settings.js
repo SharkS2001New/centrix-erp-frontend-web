@@ -11,6 +11,7 @@ export const GENERAL_DEFAULTS = {
   default_country_code: "KE",
   document_footer_text: "",
   show_organization_on_documents: true,
+  document_header_display: "auto",
 };
 
 export const CURRENCY_OPTIONS = [{ value: "KES", label: "KES — Kenyan Shilling" }];
@@ -41,6 +42,13 @@ export const THOUSANDS_SEPARATOR_OPTIONS = [
   { value: "none", label: "None (1234.56)" },
 ];
 
+export const DOCUMENT_HEADER_DISPLAY_OPTIONS = [
+  { value: "auto", label: "Logo when available, otherwise company name" },
+  { value: "logo", label: "Company logo only" },
+  { value: "name", label: "Company name only" },
+  { value: "logo_and_name", label: "Logo and company name" },
+];
+
 export const FISCAL_MONTH_OPTIONS = [
   { value: "1", label: "January" },
   { value: "4", label: "April" },
@@ -67,6 +75,7 @@ export function generalFormFromApi(res) {
     default_country_code: general.default_country_code || "KE",
     document_footer_text: general.document_footer_text || "",
     show_organization_on_documents: Boolean(general.show_organization_on_documents),
+    document_header_display: general.document_header_display || "auto",
   };
 }
 
@@ -84,5 +93,6 @@ export function generalPayloadFromForm(form) {
     default_country_code: form.default_country_code || "KE",
     document_footer_text: form.document_footer_text?.trim() || "",
     show_organization_on_documents: Boolean(form.show_organization_on_documents),
+    document_header_display: form.document_header_display || "auto",
   };
 }

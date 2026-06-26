@@ -2,12 +2,16 @@ import { apiRequest, ApiError, apiFetchBlob } from "@/lib/api";
 
 /** @param {string} taskId */
 export function fetchBackgroundTask(taskId) {
-  return apiRequest(`/background-tasks/${taskId}`);
+  return apiRequest(`/background-tasks/${taskId}`, { loading: false, reportIssues: false });
 }
 
 /** @param {string} taskId */
 export function cancelBackgroundTask(taskId) {
-  return apiRequest(`/background-tasks/${taskId}/cancel`, { method: "POST" });
+  return apiRequest(`/background-tasks/${taskId}/cancel`, {
+    method: "POST",
+    loading: false,
+    reportIssues: false,
+  });
 }
 
 /** @param {string} taskId @param {string} [filename] */

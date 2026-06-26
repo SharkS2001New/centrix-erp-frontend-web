@@ -1,8 +1,15 @@
 import { getToken, clearSession, isScreenLocked } from "./auth-storage";
 import { apiFetchCredentials, useCookieAuth } from "./auth-config";
+import { beginAppLoading, endAppLoading } from "./app-loading";
+import { emitSystemIssue } from "./system-issue-dispatcher";
+import { logApiErrorIssue, logSlowRequestIssue } from "./system-issue-reports";
 
 const baseUrl = () =>
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+
+export function apiV1BaseUrl() {
+  return baseUrl();
+}
 
 /** Clear HttpOnly session cookie on the API (cookie-auth mode only). */
 export async function revokeServerAuthSession() {
@@ -112,68 +119,148 @@ export function formatApiErrorMessage(data, fallback = "Request failed") {
 }
 
 export async function apiRequest(path, options = {}) {
-  const url = new URL(path.startsWith("http") ? path : `${baseUrl()}${path}`);
-  if (options.searchParams) {
-    for (const [k, v] of Object.entries(options.searchParams)) {
-      if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
-    }
-  }
+  const useLoading = options.loading !== false;
+  const trackIssues = options.reportIssues !== false;
+  const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+  const method = options.method ?? "GET";
+  const apiPath = path.startsWith("http") ? new URL(path).pathname : path;
 
-  const token = options.token ?? getToken();
-  const headers = {
-    Accept: "application/json",
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  if (options.body !== undefined) {
-    headers["Content-Type"] = "application/json";
-  }
+  if (useLoading) beginAppLoading(options.loadingLabel ?? "Loading…");
 
-  const res = await fetch(url.toString(), {
-    method: options.method ?? "GET",
-    headers,
-    credentials: apiFetchCredentials(),
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
-
-  const text = await res.text();
-  let data = null;
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = text;
-    }
-  }
-
-  if (!res.ok) {
-    if (res.status === 401 && typeof window !== "undefined") {
-      const code = data?.code;
-      const locked = isScreenLocked();
-      const stayOnPageWhileLocked =
-        locked && code !== "session_active_elsewhere";
-
-      if (!stayOnPageWhileLocked) {
-        if (!isAuthEndpoint(path)) {
-          await revokeServerAuthSession();
-        }
-        clearSession();
-        localStorage.removeItem("pos_erp_active_session");
-        const loginPath = "/login";
-        if (!window.location.pathname.startsWith(loginPath)) {
-          const reason =
-            code === "session_idle_timeout"
-              ? "idle"
-              : code === "session_active_elsewhere"
-                ? "session"
-                : "auth";
-          window.location.assign(`${loginPath}?reason=${reason}`);
-        }
+  try {
+    const url = new URL(path.startsWith("http") ? path : `${baseUrl()}${path}`);
+    if (options.searchParams) {
+      for (const [k, v] of Object.entries(options.searchParams)) {
+        if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
       }
     }
-    throw new ApiError(formatApiErrorMessage(data, res.statusText), res.status, data);
-  }
 
-  return data;
+    const token = options.token ?? getToken();
+    const headers = {
+      Accept: "application/json",
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (options.body !== undefined) {
+      headers["Content-Type"] = "application/json";
+    }
+
+    const res = await fetch(url.toString(), {
+      method,
+      headers,
+      credentials: apiFetchCredentials(),
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+
+    const text = await res.text();
+    let data = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+    }
+
+    const durationMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
+
+    if (!res.ok) {
+      if (res.status === 401 && typeof window !== "undefined") {
+        const code = data?.code;
+        const locked = isScreenLocked();
+        const stayOnPageWhileLocked =
+          locked && code !== "session_active_elsewhere";
+
+        if (!stayOnPageWhileLocked) {
+          if (!isAuthEndpoint(path)) {
+            await revokeServerAuthSession();
+          }
+          clearSession();
+          localStorage.removeItem("pos_erp_active_session");
+          const loginPath = "/login";
+          if (!window.location.pathname.startsWith(loginPath)) {
+            const reason =
+              code === "session_idle_timeout"
+                ? "idle"
+                : code === "session_active_elsewhere"
+                  ? "session"
+                  : "auth";
+            window.location.assign(`${loginPath}?reason=${reason}`);
+          }
+        }
+      }
+
+      const errorMessage = formatApiErrorMessage(data, res.statusText);
+      if (trackIssues) {
+        const report = await logApiErrorIssue({
+          path: apiPath,
+          method,
+          status: res.status,
+          message: errorMessage,
+          durationMs,
+        });
+        if (report?.id) {
+          emitSystemIssue({
+            type: "error",
+            message: errorMessage,
+            reportId: report.id,
+            apiPath,
+            httpMethod: method,
+            httpStatus: res.status,
+            durationMs,
+          });
+        }
+      }
+      throw new ApiError(errorMessage, res.status, data);
+    }
+
+    if (trackIssues) {
+      const slowReport = await logSlowRequestIssue({
+        path: apiPath,
+        method,
+        status: res.status,
+        durationMs,
+      });
+      if (slowReport?.id) {
+        emitSystemIssue({
+          type: "slow",
+          message: `Slow response (${Math.round(durationMs / 1000)}s)`,
+          reportId: slowReport.id,
+          apiPath,
+          httpMethod: method,
+          httpStatus: res.status,
+          durationMs,
+        });
+      }
+    }
+
+    return data;
+  } catch (error) {
+    if (trackIssues && !(error instanceof ApiError)) {
+      const durationMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
+      const message = error instanceof Error ? error.message : "Network request failed";
+      const report = await logApiErrorIssue({
+        path: apiPath,
+        method,
+        status: 0,
+        message,
+        durationMs,
+      });
+      if (report?.id) {
+        emitSystemIssue({
+          type: "error",
+          message,
+          reportId: report.id,
+          apiPath,
+          httpMethod: method,
+          httpStatus: 0,
+          durationMs,
+        });
+      }
+    }
+    throw error;
+  } finally {
+    if (useLoading) endAppLoading();
+  }
 }
 
 /** Multipart upload (e.g. customer shop image). */

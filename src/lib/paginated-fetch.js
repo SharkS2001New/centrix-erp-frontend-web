@@ -1,11 +1,23 @@
 import { apiRequest } from "@/lib/api";
 import { runQueuedTask } from "@/lib/background-task";
 import { queueReportRun } from "@/lib/report-export-api";
+import { sanitizeExportSearchParams } from "@/lib/report-export-limits";
 
 const DEFAULT_PER_PAGE = 200;
 const QUEUED_PAGE_THRESHOLD = 3;
 const QUEUED_ROW_THRESHOLD = 200;
 const PAGE_DELAY_MS = 60;
+
+async function resolveQueuedTaskRows(taskId, taskResult) {
+  if (taskResult?.data_path) {
+    const res = await apiRequest(`/background-tasks/${taskId}/data`, { loading: false, reportIssues: false });
+    return res.rows ?? [];
+  }
+  if (Array.isArray(taskResult?.rows)) {
+    return taskResult.rows;
+  }
+  return [];
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -52,14 +64,19 @@ export async function loadFullReportDataset(apiPath, baseSearchParams = {}, opti
   }
 
   const queued = await runQueuedTask(
-    () => queueReportRun(apiPath, baseSearchParams),
+    () => queueReportRun(apiPath, sanitizeExportSearchParams(baseSearchParams)),
     {
       message: options.message ?? "Loading full report…",
       onProgress: options.onProgress,
     },
   );
 
-  return queued.rows ?? [];
+  if (!queued?.task?.id && !queued?.task_id) {
+    return queued?.rows ?? [];
+  }
+
+  const taskId = String(queued.task?.id ?? queued.task_id);
+  return resolveQueuedTaskRows(taskId, queued);
 }
 
 /**
@@ -88,7 +105,7 @@ export async function fetchAllPaginatedRowsSmart(apiPath, baseSearchParams = {},
         method: "POST",
         body: {
           path: apiPath,
-          search_params: baseSearchParams,
+          search_params: sanitizeExportSearchParams(baseSearchParams),
         },
       }),
     {
@@ -97,7 +114,12 @@ export async function fetchAllPaginatedRowsSmart(apiPath, baseSearchParams = {},
     },
   );
 
-  return queued.rows ?? [];
+  if (!queued?.task?.id && !queued?.task_id) {
+    return queued?.rows ?? [];
+  }
+
+  const taskId = String(queued.task?.id ?? queued.task_id);
+  return resolveQueuedTaskRows(taskId, queued);
 }
 
 /**

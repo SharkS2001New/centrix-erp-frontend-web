@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import { reportPrintedAt, slugifyReportFilename } from "@/lib/reports/export";
+import { sanitizeExportSearchParams } from "@/lib/report-export-limits";
 
 /** @param {Array<{ key?: string, label: string, align?: string }>} columns */
 export function serializeExportColumns(columns) {
@@ -58,9 +59,14 @@ export function buildReportExportRequest({
   if (exportSource) {
     body.source = exportSource.source ?? "api";
     if (exportSource.path) body.path = exportSource.path;
-    if (exportSource.searchParams) body.search_params = exportSource.searchParams;
+    if (exportSource.searchParams) {
+      body.search_params = sanitizeExportSearchParams(exportSource.searchParams);
+    }
     if (exportSource.legacyMerge) {
       body.legacy_merge = { enabled: true };
+    }
+    if (exportSource.estimatedRowCount != null) {
+      body.estimated_row_count = Number(exportSource.estimatedRowCount) || 0;
     }
     return body;
   }
@@ -90,7 +96,10 @@ export async function queueReportExport(body, getRows = null) {
 export async function queueReportRun(path, searchParams = {}) {
   return apiRequest("/background-tasks/report-run", {
     method: "POST",
-    body: { path, search_params: searchParams },
+    body: {
+      path,
+      search_params: sanitizeExportSearchParams(searchParams),
+    },
   });
 }
 

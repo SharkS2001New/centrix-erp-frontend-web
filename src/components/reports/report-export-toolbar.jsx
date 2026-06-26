@@ -10,7 +10,9 @@ import {
   reportPrintedAt,
   slugifyReportFilename,
 } from "@/lib/reports/export";
+import { resolveReportBranding } from "@/lib/reports/report-branding";
 import { buildReportExportRequest, queueReportExport } from "@/lib/report-export-api";
+import { canExportPdf, PDF_EXPORT_MAX_ROWS } from "@/lib/report-export-limits";
 
 /**
  * @param {object} props
@@ -27,6 +29,7 @@ import { buildReportExportRequest, queueReportExport } from "@/lib/report-export
  * }} [props.exportSource]
  * @param {object} [props.meta]
  * @param {object} [props.footerRow]
+ * @param {number} [props.estimatedRowCount]
  * @param {boolean} [props.disabled]
  */
 export function ReportExportToolbar({
@@ -38,20 +41,31 @@ export function ReportExportToolbar({
   exportSource = null,
   meta = {},
   footerRow = null,
+  estimatedRowCount = null,
   disabled = false,
 }) {
-  const { organization } = useAuth();
+  const { organization, generalSettings } = useAuth();
   const { runBackgroundTask, busy: backgroundBusy } = useBackgroundTasks();
   const [busy, setBusy] = useState(false);
+  const [exportError, setExportError] = useState(null);
+
+  const pdfAllowed = canExportPdf(estimatedRowCount);
 
   const organizationName =
     organization?.org_name ?? organization?.name ?? meta.organizationName ?? "";
+  const branding = resolveReportBranding({ organization, generalSettings: generalSettings() });
 
   async function runExport(kind) {
     if (!columns?.length) return;
-    setBusy(true);
-
     const exportFormat = kind === "print" ? "pdf" : kind;
+    if ((exportFormat === "pdf" || kind === "print") && !pdfAllowed) {
+      setExportError(
+        `PDF is limited to ${PDF_EXPORT_MAX_ROWS.toLocaleString()} rows. Use Excel or CSV for this report.`,
+      );
+      return;
+    }
+    setBusy(true);
+    setExportError(null);
     const label =
       exportFormat === "pdf"
         ? `Preparing PDF for ${title}`
@@ -61,7 +75,7 @@ export function ReportExportToolbar({
 
     try {
       const fullMeta = buildReportMeta({
-        organizationName,
+        organizationName: branding.organizationName || organizationName,
         title,
         subtitle,
         printedAt: reportPrintedAt(),
@@ -79,8 +93,10 @@ export function ReportExportToolbar({
         })),
         meta: fullMeta,
         footerRow,
-        organizationName,
-        exportSource,
+        organizationName: branding.organizationName || organizationName,
+        exportSource: exportSource
+          ? { ...exportSource, estimatedRowCount }
+          : null,
         getRows: exportSource ? null : getRows,
       });
 
@@ -108,9 +124,14 @@ export function ReportExportToolbar({
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          disabled={blocked}
+          disabled={blocked || !pdfAllowed}
+          title={
+            !pdfAllowed
+              ? `PDF supports up to ${PDF_EXPORT_MAX_ROWS.toLocaleString()} rows`
+              : undefined
+          }
           onClick={() => void runExport("print")}
-          className={`${FILTER_RESET_BTN_CLASS} shadow-sm`}
+          className={`${FILTER_RESET_BTN_CLASS} shadow-sm disabled:opacity-50`}
         >
           {busy ? "Preparing…" : "Print / PDF"}
         </button>
@@ -131,6 +152,12 @@ export function ReportExportToolbar({
           CSV
         </button>
       </div>
+      {exportError ? <p className="max-w-xs text-right text-xs text-amber-800">{exportError}</p> : null}
+      {!pdfAllowed && estimatedRowCount ? (
+        <p className="max-w-xs text-right text-xs text-slate-500">
+          ~{Number(estimatedRowCount).toLocaleString()} rows — use Excel or CSV for full export.
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { posModalOverlayClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { apiRequest } from "@/lib/api";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
@@ -17,6 +17,7 @@ export function PosSaveOrderDialog({
   mode = "save",
   saveStatusLabel = "",
   workflowPipeline = [],
+  embedded = false,
 }) {
   const isHold = mode === "hold";
   const [mounted, setMounted] = useState(false);
@@ -75,8 +76,8 @@ export function PosSaveOrderDialog({
 
   if (!open || !mounted) return null;
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+  return renderPosModalPortal(
+    <div className={`${posModalOverlayClass(embedded)} flex items-center justify-center bg-black/40 p-4`}>
       <div
         role="dialog"
         aria-modal="true"
@@ -202,6 +203,6 @@ export function PosSaveOrderDialog({
         </div>
       </div>
     </div>,
-    document.body,
+    embedded,
   );
 }

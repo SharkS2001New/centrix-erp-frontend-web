@@ -6,6 +6,7 @@ import {
   CURRENCY_OPTIONS,
   DATE_FORMAT_OPTIONS,
   DECIMAL_PLACES_OPTIONS,
+  DOCUMENT_HEADER_DISPLAY_OPTIONS,
   FISCAL_MONTH_OPTIONS,
   LANGUAGE_OPTIONS,
   THOUSANDS_SEPARATOR_OPTIONS,
@@ -206,6 +207,19 @@ export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage }
                 checked={form.show_organization_on_documents}
                 onChange={(v) => setForm((f) => ({ ...f, show_organization_on_documents: v }))}
               />
+              <Field label="Report and document header">
+                <select
+                  className={inputClassName()}
+                  value={form.document_header_display}
+                  onChange={(e) => setForm((f) => ({ ...f, document_header_display: e.target.value }))}
+                >
+                  {DOCUMENT_HEADER_DISPLAY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
             </div>
           </>
         )}

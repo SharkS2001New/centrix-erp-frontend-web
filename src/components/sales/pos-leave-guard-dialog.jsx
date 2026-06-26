@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { posModalOverlayClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 
 export function PosLeaveGuardDialog({
   open,
   lineCount = 0,
   busy = false,
+  embedded = false,
   onStay,
   onLeaveKeepReservation,
   onClearAndLeave,
@@ -28,8 +29,8 @@ export function PosLeaveGuardDialog({
 
   const itemLabel = lineCount === 1 ? "1 item" : `${lineCount} items`;
 
-  return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4">
+  return renderPosModalPortal(
+    <div className={`${posModalOverlayClass(embedded, "z-[60]")} flex items-center justify-center bg-black/45 p-4`}>
       <div
         role="dialog"
         aria-modal="true"
@@ -75,6 +76,6 @@ export function PosLeaveGuardDialog({
         </div>
       </div>
     </div>,
-    document.body,
+    embedded,
   );
 }

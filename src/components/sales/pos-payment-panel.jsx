@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { posModalOverlayClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { parseDecimalInput, INPUT_CLASS } from "@/components/catalog/catalog-shared";
 import { formatSaleKes } from "@/lib/sales";
 import { resolveCheckoutStatus } from "@/lib/sales-settings";
@@ -77,7 +78,7 @@ function isCheckoutProcessing(saving, step) {
   return saving || step === "saving";
 }
 
-function PosDialogShell({ title, children, footer, overlay, onClose, saving }) {
+function PosDialogShell({ title, children, footer, overlay, onClose, saving, embedded = false }) {
   useEffect(() => {
     function onKeyDown(e) {
       if (e.key === "Escape" && !saving) onClose?.();
@@ -86,8 +87,8 @@ function PosDialogShell({ title, children, footer, overlay, onClose, saving }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose, saving]);
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+  return renderPosModalPortal(
+    <div className={`${posModalOverlayClass(embedded)} flex items-center justify-center bg-black/40 p-4`}>
       <div role="dialog" aria-modal="true" className={POS_DIALOG_SHELL}>
         <div className={POS_DIALOG_HEADER}>
           <h2 className="text-center text-sm font-bold tracking-wide">{title}</h2>
@@ -97,7 +98,7 @@ function PosDialogShell({ title, children, footer, overlay, onClose, saving }) {
         {overlay}
       </div>
     </div>,
-    document.body,
+    embedded,
   );
 }
 
@@ -141,6 +142,7 @@ export function PosPaymentPanel({
   error,
   onComplete,
   onContinueNextOrder,
+  embedded = false,
 }) {
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState("payment");
@@ -843,6 +845,7 @@ export function PosPaymentPanel({
       saving={isCheckoutProcessing(saving, step)}
       onClose={handleShellClose}
       overlay={dialogOverlay}
+      embedded={embedded}
       footer={
         <div className={`relative z-10 ${POS_DIALOG_FOOTER}`}>
           <button

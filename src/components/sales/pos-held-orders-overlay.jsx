@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
+import { posModalOverlayClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { apiRequest } from "@/lib/api";
 import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { formatShortDate, INPUT_CLASS, TABLE_HEAD_ROW_CLASS, workspaceCardClassName } from "@/components/catalog/catalog-shared";
@@ -32,7 +32,7 @@ function indexSalesWithItems(list) {
   return map;
 }
 
-export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange }) {
+export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange, embedded = false }) {
   const [mounted, setMounted] = useState(false);
   const [rows, setRows] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -217,9 +217,9 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
 
   if (!open || !mounted) return null;
 
-  return createPortal(
+  return renderPosModalPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className={`${posModalOverlayClass(embedded)} flex items-center justify-center bg-black/40 p-4`}
       onClick={() => {
         if (!busyOrderId) onClose?.();
       }}
@@ -401,6 +401,6 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange 
         ) : null}
       </div>
     </div>,
-    document.body,
+    embedded,
   );
 }

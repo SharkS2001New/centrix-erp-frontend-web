@@ -17,12 +17,13 @@ function PosSessionDialogShell({
   footer,
   wide = false,
   closeOnBackdrop = true,
+  embedded = false,
   layerClassName = "z-50",
 }) {
   if (!open) return null;
 
   return (
-    <div className={`fixed inset-0 flex items-center justify-center p-4 ${layerClassName}`}>
+    <div className={`${embedded ? "absolute" : "fixed"} inset-0 flex items-center justify-center p-4 ${layerClassName}`}>
       <button
         type="button"
         className="absolute inset-0 bg-black/40"
@@ -104,6 +105,7 @@ export function XReportModal({
   organizationName = DEFAULT_PRINT_ORG_NAME,
   loading = false,
   error = null,
+  embedded = false,
 }) {
   const { report: resolvedReport } = useMemo(
     () => resolveTillReportBundle({ ...(reportPayload ?? {}), session: session ?? reportPayload?.session }),
@@ -128,6 +130,7 @@ export function XReportModal({
       open={open}
       onClose={onClose}
       wide
+      embedded={embedded}
       title="X report"
       subtitle="Interim snapshot — session remains open"
       footer={
@@ -182,6 +185,7 @@ export function CloseSessionModal({
   requireTillFloat = false,
   blindTillClose = false,
   onClosed,
+  embedded = false,
 }) {
   const formRef = useRef(null);
   const [actualCash, setActualCash] = useState("");
@@ -232,6 +236,7 @@ export function CloseSessionModal({
       open={open}
       onClose={onClose}
       layerClassName="z-[90]"
+      embedded={embedded}
       title="Close POS session"
       subtitle={
         blindTillClose
@@ -352,6 +357,7 @@ export function ZReportModal({
   showFloatBreakdown = false,
   fallbackCashierName = null,
   fallbackTillName = null,
+  embedded = false,
 }) {
   const [loaded, setLoaded] = useState(null);
   const [till, setTill] = useState(null);
@@ -441,6 +447,7 @@ export function ZReportModal({
       wide
       closeOnBackdrop={false}
       layerClassName="z-[100]"
+      embedded={embedded}
       title="Z report"
       subtitle="End-of-day report for the closed session — print before closing"
       footer={

@@ -67,7 +67,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const refreshCapabilities = useCallback(async () => {
-    const caps = await apiRequest("/erp/capabilities");
+    const caps = await apiRequest("/erp/capabilities", { loading: false, reportIssues: false });
     setCapabilities(caps);
     return caps;
   }, []);

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { posModalOverlayClass } from "@/lib/pos-modal-shell";
 import {
   FLOAT_PAYMENT_TYPES,
   formatFloatEntryDate,
@@ -200,6 +201,7 @@ export function OpenSessionModal({
   pendingTillLabel = null,
   autoAssignTill = false,
   requireTillFloat = true,
+  embedded = false,
   title = "Open POS session",
   subtitle = "Start your shift before taking sales on the till.",
 }) {
@@ -239,7 +241,7 @@ export function OpenSessionModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className={`${posModalOverlayClass(embedded)} flex items-center justify-center p-4`}>
       <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
       <div className="relative w-full max-w-md theme-panel rounded-xl border p-6 text-slate-900 shadow-xl">
         <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
@@ -477,6 +479,7 @@ export function RecordSessionExpenseModal({
   onRecordExpense,
   busy = false,
   error = null,
+  embedded = false,
 }) {
   const [expenseGroups, setExpenseGroups] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
@@ -538,7 +541,7 @@ export function RecordSessionExpenseModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className={`${posModalOverlayClass(embedded)} flex items-center justify-center p-4`}>
       <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
       <div className="relative w-full max-w-md theme-panel rounded-xl border p-6 text-slate-900 shadow-xl">
         <h2 className="text-lg font-semibold text-slate-900">Record expense</h2>
@@ -632,6 +635,7 @@ export function FloatBreakdownModal({
   onCashMovement,
   cashMovementBusy = false,
   cashMovementError = null,
+  embedded = false,
 }) {
   const [addingFloat, setAddingFloat] = useState(false);
   const [recordingMovement, setRecordingMovement] = useState(false);
@@ -690,7 +694,7 @@ export function FloatBreakdownModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className={`${posModalOverlayClass(embedded)} flex items-center justify-center p-4`}>
       <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
       <div className="relative flex max-h-[85vh] w-full max-w-lg flex-col theme-panel rounded-xl border text-slate-900 shadow-xl">
         <div className="border-b border-slate-200 px-6 py-4">

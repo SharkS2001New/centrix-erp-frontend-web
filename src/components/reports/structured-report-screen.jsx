@@ -13,7 +13,6 @@ import {
   ReportPageShell,
   ReportTable,
 } from "@/components/reports/report-screen-shared";
-import { ReportLoadingOverlay } from "@/components/shared/report-loading-overlay";
 import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
 import { ProfitLossReportScreen } from "@/components/reports/profit-loss-report-screen";
 import { ExpensesReportScreen } from "@/components/reports/expenses-report-screen";
@@ -162,7 +161,7 @@ function StandardReportScreen({ definition }) {
   }
 
   const exportSearchParams = useMemo(() => {
-    const searchParams = { per_page: 200 };
+    const searchParams = {};
     if (definition.dateColumn) {
       searchParams.date_column = definition.dateColumn;
       if (applied.fromDate) searchParams.from_date = applied.fromDate;
@@ -186,7 +185,6 @@ function StandardReportScreen({ definition }) {
 
   return (
     <>
-      <ReportLoadingOverlay loading={loading} title={`Loading ${definition.title}…`} />
       <ReportPageShell
       section={definition.section}
       title={definition.title}
@@ -205,10 +203,12 @@ function StandardReportScreen({ definition }) {
                     exportSource: {
                       path: definition.apiPath,
                       searchParams: exportSearchParams,
+                      estimatedRowCount: reportMeta?.total ?? rows.length,
                       legacyMerge:
                         applied.extraFilters?.include_legacy_archive && legacyArchiveMeta?.available,
                     },
                   }),
+              estimatedRowCount: reportMeta?.total ?? rows.length,
               meta: {
                 fromDate: applied.fromDate,
                 toDate: applied.toDate,
