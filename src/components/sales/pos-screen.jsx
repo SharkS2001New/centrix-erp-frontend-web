@@ -1929,7 +1929,11 @@ export function PosScreen({ standalone = false }) {
         body: {
           ...body,
           sales_workspace: salesWorkspace,
-          submit_kra: shouldSubmitKraOnCheckout(capabilities?.module_settings, capabilities),
+          submit_kra: shouldSubmitKraOnCheckout(
+            capabilities?.module_settings,
+            capabilities,
+            cartSummary?.total,
+          ),
           ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
         },
       });

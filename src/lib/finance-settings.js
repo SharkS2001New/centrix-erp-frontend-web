@@ -6,6 +6,7 @@ const FINANCE_DEFAULTS = {
   kra_device_test_mode: false,
   kra_plu_register_path: "/api/register-plu",
   default_submit_kra: true,
+  kra_bypass_above_amount: null,
   accounting_mode: "native",
   accounting_provider: null,
   accounting_sync_direction: "export",
@@ -57,9 +58,34 @@ export function isPlatformKraIntegrationEnabled(moduleSettings, capabilities) {
   return finance.enable_kra_integration !== false;
 }
 
-export function isKraDeviceEnabled(moduleSettings, capabilities) {
+export function isKraDeviceConfigured(moduleSettings, capabilities) {
   if (!isPlatformKraIntegrationEnabled(moduleSettings, capabilities)) return false;
   return Boolean(mergeFinanceSettings(moduleSettings).enable_kra_device);
+}
+
+/** @deprecated Use isKraDeviceConfigured */
+export function isKraDeviceEnabled(moduleSettings, capabilities) {
+  return isKraDeviceConfigured(moduleSettings, capabilities);
+}
+
+export function isKraFiscalizationActive(moduleSettings, capabilities) {
+  if (!isKraDeviceConfigured(moduleSettings, capabilities)) return false;
+  const finance = mergeFinanceSettings(moduleSettings);
+  return finance.default_submit_kra !== false;
+}
+
+export function kraBypassAboveAmount(moduleSettings) {
+  const finance = mergeFinanceSettings(moduleSettings);
+  const raw = finance.kra_bypass_above_amount;
+  if (raw === null || raw === undefined || raw === "") return null;
+  const amount = Number(raw);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+export function isKraBypassedForOrderTotal(moduleSettings, orderTotal) {
+  const threshold = kraBypassAboveAmount(moduleSettings);
+  if (threshold == null) return false;
+  return Number(orderTotal) >= threshold;
 }
 
 function parseBooleanSetting(value, defaultValue = true) {
@@ -126,7 +152,7 @@ export function canAccessAccountingRoute(pathname, moduleSettings) {
   return true;
 }
 
-export function shouldSubmitKraOnCheckout(moduleSettings, capabilities = null) {
+export function shouldSubmitKraOnCheckout(moduleSettings, capabilities = null, orderTotal = null) {
   const finance = mergeFinanceSettings(moduleSettings);
   if (!isPlatformKraIntegrationEnabled(moduleSettings, capabilities)) {
     return false;
@@ -134,7 +160,13 @@ export function shouldSubmitKraOnCheckout(moduleSettings, capabilities = null) {
   if (!finance.enable_kra_device) {
     return false;
   }
-  return finance.default_submit_kra !== false;
+  if (finance.default_submit_kra === false) {
+    return false;
+  }
+  if (orderTotal != null && isKraBypassedForOrderTotal(moduleSettings, orderTotal)) {
+    return false;
+  }
+  return true;
 }
 
 export function financeFormFromApi(res) {
@@ -149,6 +181,10 @@ export function financeFormFromApi(res) {
     kra_device_test_mode: Boolean(finance.kra_device_test_mode),
     kra_plu_register_path: String(finance.kra_plu_register_path ?? "/api/register-plu"),
     default_submit_kra: finance.default_submit_kra !== false,
+    kra_bypass_above_amount:
+      finance.kra_bypass_above_amount == null || finance.kra_bypass_above_amount === ""
+        ? ""
+        : String(finance.kra_bypass_above_amount),
     accounting_mode: finance.accounting_mode === "external" ? "external" : "native",
     accounting_provider: finance.accounting_mode === "external" ? "quickbooks" : "",
     accounting_sync_direction: finance.accounting_sync_direction ?? "export",
@@ -192,6 +228,12 @@ export function financePayloadFromForm(form) {
     kra_device_test_mode: Boolean(form.kra_device_test_mode),
     kra_plu_register_path: form.kra_plu_register_path.trim() || "/api/register-plu",
     default_submit_kra: Boolean(form.default_submit_kra),
+    kra_bypass_above_amount: (() => {
+      const raw = String(form.kra_bypass_above_amount ?? "").trim();
+      if (!raw) return null;
+      const amount = Number(raw);
+      return Number.isFinite(amount) && amount > 0 ? amount : null;
+    })(),
     accounting_mode: form.accounting_mode === "external" ? "external" : "native",
     accounting_provider: form.accounting_mode === "external" ? "quickbooks" : null,
     accounting_sync_direction: form.accounting_sync_direction || "export",

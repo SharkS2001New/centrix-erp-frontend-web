@@ -7,7 +7,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useOrgFormat } from "@/lib/org-format";
 import { useAuth } from "@/contexts/auth-context";
 import { useAdminApi } from "@/contexts/admin-api-context";
-import { isKraDeviceEnabled } from "@/lib/finance-settings";
+import { isKraDeviceConfigured, isKraFiscalizationActive } from "@/lib/finance-settings";
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { platformOrgSettingsHref } from "@/lib/platform-admin-nav";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
@@ -28,7 +28,11 @@ export default function KraResponsesPage() {
 
   const effectiveCapabilities = isPlatformManaged ? tenantCapabilities ?? capabilities : capabilities;
 
-  const kraEnabled = isKraDeviceEnabled(effectiveCapabilities?.module_settings, effectiveCapabilities);
+  const kraConfigured = isKraDeviceConfigured(effectiveCapabilities?.module_settings, effectiveCapabilities);
+  const kraFiscalizationActive = isKraFiscalizationActive(
+    effectiveCapabilities?.module_settings,
+    effectiveCapabilities,
+  );
   const settingsHref = isPlatformManaged ? platformOrgSettingsHref(platformOrgId ?? params?.id) : null;
 
   const load = useCallback(async () => {
@@ -78,22 +82,41 @@ export default function KraResponsesPage() {
       ) : null}
 
       <div className="mb-4 space-y-2">
-        {kraEnabled ? (
+        {kraConfigured ? (
           <p
             className={`rounded-lg border px-3 py-2 text-sm ${
-              deviceStatus?.reachable
-                ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                : "border-amber-200 bg-amber-50 text-amber-900"
+              !kraFiscalizationActive
+                ? "border-slate-200 bg-slate-50 text-slate-800"
+                : deviceStatus?.reachable
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                  : "border-amber-200 bg-amber-50 text-amber-900"
             }`}
           >
-            KRA device integration is <strong>enabled</strong>
+            KRA device is <strong>configured</strong>
             {deviceStatus?.device_ip ? ` (${deviceStatus.device_ip})` : ""}.
+            {kraFiscalizationActive ? (
+              <>
+                {" "}
+                Sales fiscalization is <strong>on</strong>.
+              </>
+            ) : (
+              <>
+                {" "}
+                Sales fiscalization is <strong>off</strong> — new sales will not call the device.
+              </>
+            )}
+            {deviceStatus?.bypass_above_amount ? (
+              <>
+                {" "}
+                Orders at or above KES {Number(deviceStatus.bypass_above_amount).toLocaleString()} bypass KRA.
+              </>
+            ) : null}
             {deviceStatus?.message ? ` ${deviceStatus.message}` : ""}
             {deviceStatus?.test_mode ? " Test mode is on." : ""}
           </p>
         ) : (
           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-            KRA device is <strong>disabled</strong>. Enable it under{" "}
+            KRA device is <strong>not configured</strong>. Set it up under{" "}
             {settingsHref ? (
               <Link href={settingsHref} className="font-medium text-[#185FA5] hover:underline">
                 Organization settings → Finance

@@ -106,13 +106,14 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
           <div>
             <h3 className="text-sm font-medium text-slate-900">KRA fiscal device</h3>
             <p className="mt-1 text-sm text-slate-500">
-              When enabled, completed POS sales are signed through your on-prem KRA device. When disabled, sales use
-              normal VAT line calculations without calling the device.
+              Configure your on-prem KRA device connection, then control whether sales are fiscalized through it.
+              When fiscalization is off, the device stays configured but POS and other modules complete sales without
+              calling the device.
             </p>
             <div className="mt-3 space-y-3">
               <Toggle
-                label="Organization uses KRA device"
-                description="Checkout POSTs to the device at /api/complete-workflow. Failed submissions block the sale."
+                label="KRA device configured"
+                description="Stores device IP, serial number, and shop PIN. Required before connection checks or PLU registration."
                 checked={Boolean(form.enable_kra_device)}
                 onChange={(v) => setForm((f) => ({ ...f, enable_kra_device: v }))}
               />
@@ -157,12 +158,33 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
                   </div>
                 </div>
               ) : null}
-              <Toggle
-                label="Submit to KRA on checkout by default"
-                description="When the device is enabled, POS checkout includes fiscal submission unless overridden."
-                checked={Boolean(form.default_submit_kra)}
-                onChange={(v) => setForm((f) => ({ ...f, default_submit_kra: v }))}
-              />
+              {form.enable_kra_device ? (
+                <>
+                  <Toggle
+                    label="Use KRA device for sales"
+                    description="When on, completed sales are signed through the device (unless bypassed below). When off, sales use normal VAT calculations without calling the device."
+                    checked={Boolean(form.default_submit_kra)}
+                    onChange={(v) => setForm((f) => ({ ...f, default_submit_kra: v }))}
+                  />
+                  <Field label="Bypass KRA for orders at or above (KES)">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      className={inputClassName()}
+                      value={form.kra_bypass_above_amount ?? ""}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, kra_bypass_above_amount: e.target.value }))
+                      }
+                      placeholder="e.g. 50000"
+                    />
+                    <p className="theme-subtext mt-1 text-xs">
+                      Leave blank to always fiscalize eligible sales. Example: 50000 skips KRA when the order total
+                      is KES 50,000 or more.
+                    </p>
+                  </Field>
+                </>
+              ) : null}
             </div>
           </div>
           ) : null}
