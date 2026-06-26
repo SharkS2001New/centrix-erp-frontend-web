@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { isKraDeviceEnabled } from "@/lib/finance-settings";
+import { useQueuedTask } from "@/lib/use-queued-task";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import {
   FilterSelect,
@@ -24,6 +26,10 @@ export default function SalesReturnsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { capabilities } = useAuth();
+  const { runQueuedTask } = useQueuedTask(
+    "Please wait while the credit note is submitted to the KRA device…",
+  );
+  const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -111,7 +117,15 @@ export default function SalesReturnsPage() {
     setActionError(null);
     setSuccessMessage(null);
     try {
-      await apiRequest(`/customer-returns/${row.id}/approve`, { method: "POST" });
+      const approveRequest = () =>
+        apiRequest(`/customer-returns/${row.id}/approve`, { method: "POST" });
+      if (kraDeviceEnabled) {
+        await runQueuedTask(approveRequest, {
+          message: "Please wait while the credit note is submitted to the KRA device…",
+        });
+      } else {
+        await approveRequest();
+      }
       setSuccessMessage(
         `${row.return_no} approved. Stock restored, order adjusted, and credit note issued.`,
       );

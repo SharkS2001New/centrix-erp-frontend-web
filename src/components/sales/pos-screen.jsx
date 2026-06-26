@@ -53,6 +53,7 @@ import {
   isStkPushEnabled,
   shouldSubmitKraOnCheckout,
 } from "@/lib/finance-settings";
+import { useQueuedTask } from "@/lib/use-queued-task";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import {
   canAdjustCartLineQuantity,
@@ -153,6 +154,9 @@ export function PosScreen({ standalone = false }) {
     loading: sessionLoading,
     hasPosTill,
   } = usePosSession();
+  const { runQueuedTask } = useQueuedTask(
+    "Please wait while the receipt is submitted to the KRA device…",
+  );
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const productBranchParams = useMemo(
     () => (user?.branch_id ? { branch_id: user.branch_id } : {}),
@@ -1949,19 +1953,27 @@ export function PosScreen({ standalone = false }) {
     setBusy(true);
     setPaymentError(null);
     try {
-      const sale = await apiRequest(`/sales/carts/${cart.id}/checkout`, {
-        method: "POST",
-        body: {
-          ...body,
-          sales_workspace: salesWorkspace,
-          submit_kra: shouldSubmitKraOnCheckout(
-            capabilities?.module_settings,
-            capabilities,
-            cartSummary?.total,
-          ),
-          ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
-        },
-      });
+      const submitKra = shouldSubmitKraOnCheckout(
+        capabilities?.module_settings,
+        capabilities,
+        cartSummary?.total,
+      );
+      const checkoutBody = {
+        ...body,
+        sales_workspace: salesWorkspace,
+        submit_kra: submitKra,
+        ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
+      };
+      const checkoutRequest = () =>
+        apiRequest(`/sales/carts/${cart.id}/checkout`, {
+          method: "POST",
+          body: checkoutBody,
+        });
+      const sale = submitKra
+        ? await runQueuedTask(checkoutRequest, {
+            message: "Please wait while the receipt is submitted to the KRA device…",
+          })
+        : await checkoutRequest();
       setCompletedSale(sale);
       rememberCompletedPosOrder(sale);
       setCart(null);
