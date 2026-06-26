@@ -200,7 +200,9 @@ function LegacyReturnsContent() {
                     <td className="px-3 py-2 text-xs">
                       {creditNote?.kra_status === "success"
                         ? "Fiscalized"
-                        : creditNote?.kra_status ?? "—"}
+                        : creditNote?.kra_status === "failed"
+                          ? "Failed"
+                          : creditNote?.kra_status ?? "—"}
                     </td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
                       <button
@@ -228,7 +230,13 @@ function LegacyReturnsContent() {
         </table>
       </div>
 
-      <PaginationBar page={safePage} totalPages={totalPages} onPageChange={setPage} />
+      <PaginationBar
+        page={safePage}
+        totalPages={totalPages}
+        total={filtered.length}
+        pageSize={PAGE_SIZE}
+        onChange={setPage}
+      />
 
       {detailRow ? (
         <div className="theme-panel rounded-lg border p-4 text-sm">
@@ -267,6 +275,13 @@ function LegacyReturnsContent() {
               </li>
             ))}
           </ul>
+          {(detailRow.credit_note ?? detailRow.creditNote)?.kra_status === "failed" &&
+          (detailRow.credit_note ?? detailRow.creditNote)?.kra_error_message ? (
+            <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              KRA device error:{" "}
+              {(detailRow.credit_note ?? detailRow.creditNote).kra_error_message}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useQueuedTask } from "@/lib/use-queued-task";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
@@ -26,6 +27,9 @@ export function LegacyReturnForm({
   const router = useRouter();
   const { capabilities } = useAuth();
   const kraEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
+  const { runQueuedTask } = useQueuedTask(
+    "Please wait while the credit note is submitted to the KRA device…",
+  );
 
   const [saleId, setSaleId] = useState(initialSaleId);
   const [sale, setSale] = useState(null);
@@ -151,7 +155,10 @@ export function LegacyReturnForm({
         body.kra_original_invoice_number = kraInvoiceNumber.trim();
       }
 
-      const created = await apiRequest("/legacy-returns", { method: "POST", body });
+      const created = await runQueuedTask(
+        () => apiRequest("/legacy-returns", { method: "POST", body }),
+        { message: "Please wait while the credit note is submitted to the KRA device…" },
+      );
       onSaved?.(created);
       router.push(`/sales/legacy-returns?return_id=${created.id}`);
     } catch (e) {
