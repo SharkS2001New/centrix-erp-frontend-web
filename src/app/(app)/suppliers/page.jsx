@@ -29,6 +29,7 @@ import {
   readStoredColumnIds,
   renderSupplierCell,
 } from "@/components/suppliers/suppliers-columns";
+import { SupplierImportExport } from "@/components/suppliers/supplier-import-export";
 import { OtherContactsModal } from "@/components/suppliers/other-contacts-modal";
 
 function PlusIcon() {
@@ -140,6 +141,18 @@ export default function SuppliersPage() {
     await Promise.all([loadReferenceData(), loadSuppliers()]);
   }
 
+  const buildExportSearchParams = useCallback(() => {
+    const extra = {};
+    if (statusFilter === "active") extra.is_active = 1;
+    if (statusFilter === "inactive") extra.is_active = 0;
+    return buildPageParams({
+      page: 1,
+      perPage: 200,
+      q: debouncedSearch,
+      extra,
+    });
+  }, [debouncedSearch, statusFilter]);
+
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 
   const enriched = useMemo(
@@ -207,6 +220,11 @@ export default function SuppliersPage() {
       subtitle="Supplier accounts and amount owing from purchases"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <SupplierImportExport
+            totalCount={totalSuppliers}
+            exportSearchParams={buildExportSearchParams}
+            onImported={reloadAll}
+          />
           <Link
             href="/reports/supplier-statement"
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"

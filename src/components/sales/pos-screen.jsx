@@ -1760,6 +1760,8 @@ export function PosScreen({ standalone = false }) {
   }
 
   useEffect(() => {
+    // Backoffice POS lives inside AppShell — never block sidebar, topbar, or workspace switching.
+    if (!standalone) return undefined;
     if (!cartHasReservedItems || leaveGuardOpen) return undefined;
 
     function onBeforeUnload(e) {
@@ -1769,15 +1771,10 @@ export function PosScreen({ standalone = false }) {
 
     window.addEventListener("beforeunload", onBeforeUnload);
 
-    // Backoffice create order lives inside AppShell — sidebar/topbar must always navigate freely.
-    if (!standalone) {
-      return () => {
-        window.removeEventListener("beforeunload", onBeforeUnload);
-      };
-    }
-
     function shouldIgnoreLeaveIntercept(target) {
       if (!(target instanceof Element)) return true;
+      // AppShell chrome is outside `.pos-workspace`; standalone POS fills the viewport.
+      if (!target.closest(".pos-workspace")) return true;
       return Boolean(
         target.closest("[data-app-shell-nav]")
         || target.closest("[data-sidebar-subnav-root]")
@@ -3455,18 +3452,19 @@ export function PosScreen({ standalone = false }) {
         embedded={!standalone}
       />
 
-      <PosLeaveGuardDialog
-        open={leaveGuardOpen}
-        lineCount={cartLineCount}
-        busy={leaveGuardBusy}
-        onStay={() => {
-          pendingLeaveHrefRef.current = null;
-          setLeaveGuardOpen(false);
-        }}
-        onLeaveKeepReservation={() => completeLeaveNavigation()}
-        onClearAndLeave={() => void clearCartAndLeave()}
-        embedded={!standalone}
-      />
+      {standalone ? (
+        <PosLeaveGuardDialog
+          open={leaveGuardOpen}
+          lineCount={cartLineCount}
+          busy={leaveGuardBusy}
+          onStay={() => {
+            pendingLeaveHrefRef.current = null;
+            setLeaveGuardOpen(false);
+          }}
+          onLeaveKeepReservation={() => completeLeaveNavigation()}
+          onClearAndLeave={() => void clearCartAndLeave()}
+        />
+      ) : null}
 
       <PosPriceCheckerModal
         open={priceCheckerOpen}

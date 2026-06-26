@@ -17,13 +17,12 @@ import {
   StatCard,
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
-import {
-  EmployeeStatusBadge,
-  composeEmployeeDisplayName,
+import { composeEmployeeDisplayName,
   formatHrKesFull,
   formatShiftExpectedHours,
   formatWorkShiftLabel,
 } from "@/components/hr/hr-shared";
+import { EmployeeImportExport } from "@/components/hr/employee-import-export";
 
 const PAGE_SIZE = 10;
 
@@ -143,12 +142,19 @@ export default function HrEmployeesPage() {
       title="Employees"
       subtitle="Manage staff records and departments"
       action={
-        <Link
+        <div className="flex flex-wrap items-center gap-2">
+          <EmployeeImportExport
+            totalCount={totalEmployees}
+            exportSearchParams={buildExportSearchParams}
+            onImported={reloadAll}
+          />
+          <Link
           href="/hr/employees/new"
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
         >
           Add employee
         </Link>
+        </div>
       }
       banner={
         !loading ? (

@@ -15,6 +15,8 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { exportColumnsFromHrCrud } from "@/lib/catalog-list-exports";
 
 /**
  * Lightweight HR list + create/edit sidebar drawer (Retail Package Manager pattern).
@@ -39,6 +41,8 @@ export function HrCrudPage({
   addButtonLabel = "Add new",
   drawerCreateTitle,
   renderRowActions,
+  exportEnabled = true,
+  exportFilename,
 }) {
   const { user, capabilities } = useAuth();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
@@ -149,6 +153,7 @@ export function HrCrudPage({
     ? `Edit ${title ?? "record"}`
     : (drawerCreateTitle ?? `Add ${title ?? "record"}`);
   const submitLabel = editing ? "Save changes" : addButtonLabel;
+  const exportColumns = useMemo(() => exportColumnsFromHrCrud(columns), [columns]);
 
   const content = (
     <>
@@ -171,6 +176,17 @@ export function HrCrudPage({
         <PrimaryButton type="button" onClick={openCreate}>
           {addButtonLabel}
         </PrimaryButton>
+        {embedded && exportEnabled && exportColumns.length > 0 ? (
+          <CatalogListExport
+            title={title ?? "Records"}
+            filename={exportFilename ?? title}
+            apiPath={apiPath}
+            columns={exportColumns}
+            totalCount={rows.length}
+            getSearchParams={() => ({ per_page: 200, ...(listSearchParams ?? {}) })}
+            disabled={loading}
+          />
+        ) : null}
       </div>
 
       {error && (
@@ -256,7 +272,23 @@ export function HrCrudPage({
   }
 
   return (
-    <CatalogPageShell title={title} subtitle={subtitle}>
+    <CatalogPageShell
+      title={title}
+      subtitle={subtitle}
+      action={
+        exportEnabled && exportColumns.length > 0 ? (
+          <CatalogListExport
+            title={title ?? "Records"}
+            filename={exportFilename ?? title}
+            apiPath={apiPath}
+            columns={exportColumns}
+            totalCount={rows.length}
+            getSearchParams={() => ({ per_page: 200, ...(listSearchParams ?? {}) })}
+            disabled={loading}
+          />
+        ) : null
+      }
+    >
       {content}
     </CatalogPageShell>
   );

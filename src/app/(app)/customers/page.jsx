@@ -7,6 +7,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { formatCustomerKes } from "@/components/customers/customer-form";
+import { CustomerImportExport } from "@/components/customers/customer-import-export";
 import {
   CatalogPageShell,
   FilterSelect,
@@ -354,6 +355,17 @@ export default function CustomersPage() {
     await Promise.all([loadReferenceData(), loadCustomers()]);
   }, [loadReferenceData, loadCustomers]);
 
+  const buildExportSearchParams = useCallback(() => {
+    const status =
+      deletedFilter === "deleted" ? "inactive" : deletedFilter === "all" ? "all" : "active";
+    return buildPageParams({
+      page: 1,
+      perPage: 100,
+      q: debouncedSearch,
+      extra: { status },
+    });
+  }, [debouncedSearch, deletedFilter]);
+
   useEffect(() => {
     loadReferenceData();
   }, [loadReferenceData]);
@@ -429,6 +441,11 @@ export default function CustomersPage() {
       subtitle="Manage debtors and route customers"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <CustomerImportExport
+            totalCount={totalCustomers}
+            exportSearchParams={buildExportSearchParams}
+            onImported={reloadAll}
+          />
           <Link
             href="/reports/customer-statement"
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"

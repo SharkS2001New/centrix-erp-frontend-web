@@ -117,7 +117,7 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
   function runCatalogExport(format) {
     setError(null);
     const stamp = new Date().toISOString().slice(0, 10);
-    const exportFormat = format === "pdf" ? "pdf" : "xlsx";
+    const exportFormat = format === "pdf" ? "pdf" : "csv";
     onClose();
     void runBackgroundTask(
       () =>
@@ -137,7 +137,7 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
         label: "Exporting products",
         message: "Started fetching…",
         downloadOnComplete: true,
-        downloadFilename: `products-${stamp}.${exportFormat === "pdf" ? "pdf" : "xlsx"}`,
+        downloadFilename: `products-${stamp}.${exportFormat === "pdf" ? "pdf" : exportFormat}`,
       },
     ).catch(() => {
       /* Global background-task notice handles errors and success */
@@ -161,10 +161,10 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
           <button
             type="button"
             disabled={countLabel === 0}
-            onClick={() => runCatalogExport("excel")}
+            onClick={() => runCatalogExport("csv")}
             className="rounded-lg bg-[#185FA5] py-2.5 text-sm font-medium text-white hover:bg-[#144f8a] disabled:opacity-50"
           >
-            Excel spreadsheet (.xlsx)
+            CSV (.csv)
           </button>
           <button
             type="button"

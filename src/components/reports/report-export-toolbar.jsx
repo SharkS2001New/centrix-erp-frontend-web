@@ -60,7 +60,7 @@ export function ReportExportToolbar({
     const exportFormat = kind === "print" ? "pdf" : kind;
     if ((exportFormat === "pdf" || kind === "print") && !pdfAllowed) {
       setExportError(
-        `PDF is limited to ${PDF_EXPORT_MAX_ROWS.toLocaleString()} rows. Use Excel or CSV for this report.`,
+        `PDF is limited to ${PDF_EXPORT_MAX_ROWS.toLocaleString()} rows. Use CSV for this report.`,
       );
       return;
     }
@@ -69,9 +69,7 @@ export function ReportExportToolbar({
     const label =
       exportFormat === "pdf"
         ? `Preparing PDF for ${title}`
-        : exportFormat === "csv"
-          ? `Preparing CSV for ${title}`
-          : `Preparing Excel for ${title}`;
+        : `Preparing CSV for ${title}`;
 
     try {
       const fullMeta = buildReportMeta({
@@ -107,7 +105,7 @@ export function ReportExportToolbar({
           message: "Started fetching…",
           timeoutMs: 1_800_000,
           downloadOnComplete: true,
-          downloadFilename: `${slugifyReportFilename(filename || title)}.${exportFormat === "pdf" ? "pdf" : exportFormat === "csv" ? "csv" : "xlsx"}`,
+          downloadFilename: `${slugifyReportFilename(filename || title)}.${exportFormat === "pdf" ? "pdf" : "csv"}`,
         },
       );
     } catch {
@@ -138,14 +136,6 @@ export function ReportExportToolbar({
         <button
           type="button"
           disabled={blocked}
-          onClick={() => void runExport("excel")}
-          className={`${FILTER_RESET_BTN_CLASS} shadow-sm`}
-        >
-          Excel
-        </button>
-        <button
-          type="button"
-          disabled={blocked}
           onClick={() => void runExport("csv")}
           className={`${FILTER_RESET_BTN_CLASS} shadow-sm`}
         >
@@ -155,7 +145,7 @@ export function ReportExportToolbar({
       {exportError ? <p className="max-w-xs text-right text-xs text-amber-800">{exportError}</p> : null}
       {!pdfAllowed && estimatedRowCount ? (
         <p className="max-w-xs text-right text-xs text-slate-500">
-          ~{Number(estimatedRowCount).toLocaleString()} rows — use Excel or CSV for full export.
+          ~{Number(estimatedRowCount).toLocaleString()} rows — use CSV for full export.
         </p>
       ) : null}
     </div>

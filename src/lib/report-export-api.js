@@ -27,7 +27,7 @@ export function serializeExportMeta(meta = {}, organizationName = "") {
 
 /**
  * @param {object} options
- * @param {"xlsx"|"csv"|"pdf"|"print"} options.format
+ * @param {"csv"|"pdf"|"print"} options.format
  * @param {string} options.filename
  * @param {Array} options.columns
  * @param {object} [options.meta]
@@ -129,4 +129,37 @@ export const PRODUCT_CATALOG_EXPORT_COLUMNS = [
   { key: "vat_treatment", label: "VAT" },
   { key: "pricing", label: "Pricing" },
   { key: "is_active", label: "Active" },
+];
+
+export const CUSTOMER_CATALOG_EXPORT_COLUMNS = [
+  { key: "customer_num", label: "Customer #" },
+  { key: "customer_name", label: "Name" },
+  { key: "customer_type", label: "Type" },
+  { key: "phone_number", label: "Phone" },
+  { key: "additional_phone", label: "Alt. phone" },
+  { key: "town", label: "Town" },
+  { key: "route_name", label: "Route" },
+  { key: "credit_limit", label: "Credit limit", align: "right" },
+  { key: "current_balance", label: "Balance", align: "right" },
+  { key: "kra_pin", label: "KRA PIN" },
+  { key: "terms_of_payment", label: "Payment terms" },
+  { key: "branch_name", label: "Branch" },
+  { key: "latitude", label: "Latitude" },
+  { key: "longitude", label: "Longitude" },
+  { key: "is_active", label: "Active" },
+];
+
+export const SUPPLIER_CATALOG_EXPORT_COLUMNS = [
+  { key: "supplier_code", label: "Supplier code" },
+  { key: "supplier_name", label: "Supplier" },
+  { key: "contact_person", label: "Contact" },
+  { key: "phone", label: "Phone" },
+  { key: "alternate_phone", label: "Alt. phone" },
+  { key: "email", label: "Email" },
+  { key: "town", label: "Town" },
+  { key: "tax_pin", label: "KRA PIN" },
+  { key: "address", label: "Address" },
+  { key: "current_balance", label: "Amount owing", align: "right" },
+  { key: "other_contacts", label: "Other contacts" },
+  { key: "is_active", label: "Status" },
 ];

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -12,6 +12,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { formatAccountingAmount } from "@/lib/accounting-shared";
+import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 
 const GAAP_SUMMARY_LABELS = {
   net_operating: "Net operating cash",
@@ -73,10 +74,62 @@ export default function CashFlowPage() {
     load();
   }, [load]);
 
+  const exportColumns = useMemo(
+    () =>
+      mode === "gaap"
+        ? [
+            { key: "section", label: "Section" },
+            { key: "line_label", label: "Line" },
+            { key: "amount", label: "Amount", align: "right" },
+          ]
+        : [
+            { key: "entry_date", label: "Date" },
+            { key: "entry_number", label: "Entry" },
+            { key: "account_code", label: "Account code" },
+            { key: "account_name", label: "Account" },
+            { key: "cash_in", label: "Cash in", align: "right" },
+            { key: "cash_out", label: "Cash out", align: "right" },
+            { key: "net_cash_change", label: "Net", align: "right" },
+          ],
+    [mode],
+  );
+
+  const exportSearchParams = useMemo(() => {
+    const searchParams = {};
+    if (fromDate) searchParams.from_date = fromDate;
+    if (toDate) searchParams.to_date = toDate;
+    if (branchId) searchParams.branch_id = branchId;
+    if (mode === "gaap") searchParams.method = "gaap";
+    return searchParams;
+  }, [branchId, fromDate, mode, toDate]);
+
+  const branchLabel = branches.find((b) => String(b.id) === String(branchId))?.branch_name ?? "";
+
   return (
     <CatalogPageShell
       title="Cash Flow Statement"
       subtitle="Accounting > Cash Flow"
+      action={
+        rows.length > 0 ? (
+          <ReportExportToolbar
+            filename="Cash Flow Statement"
+            title="Cash Flow Statement"
+            subtitle={mode === "gaap" ? "GAAP (indirect)" : "Cash detail"}
+            columns={exportColumns}
+            exportSource={{
+              path: "/reports/cash-flow",
+              searchParams: exportSearchParams,
+              estimatedRowCount: rows.length,
+            }}
+            meta={{
+              fromDate,
+              toDate,
+              branchName: branchLabel,
+            }}
+            disabled={loading}
+          />
+        ) : null
+      }
       toolbar={
         <div className="mb-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2">

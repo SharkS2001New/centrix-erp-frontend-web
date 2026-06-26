@@ -123,44 +123,6 @@ export function printReportTable(options) {
   openPrintWindow(buildReportPrintHtml(options), "width=900,height=720");
 }
 
-export async function downloadReportExcel(filename, sheetName, meta, columns, rows) {
-  const ExcelJS = (await import("exceljs")).default;
-  const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet(sheetName.slice(0, 31) || "Report");
-
-  const push = (value) => sheet.addRow([value]);
-
-  if (meta.organizationName) push(meta.organizationName);
-  push(meta.title);
-  if (meta.subtitle) push(meta.subtitle);
-  if (meta.fromDate || meta.toDate) {
-    push(
-      `Period: ${meta.fromDate ? formatShortDate(meta.fromDate) : "—"} – ${meta.toDate ? formatShortDate(meta.toDate) : "—"}`,
-    );
-  }
-  if (meta.branchName) push(`Branch: ${meta.branchName}`);
-  for (const line of meta.extraLines ?? []) push(line);
-  push(`Printed: ${meta.printedAt}`);
-  sheet.addRow([]);
-
-  const headers = columns.map((col) => col.label);
-  sheet.addRow(headers);
-  for (const row of rows) {
-    sheet.addRow(columns.map((col) => col.getValue(row)));
-  }
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 export function downloadReportCsv(filename, meta, columns, rows) {
   const headerLines = [];
   if (meta.organizationName) headerLines.push(`"${meta.organizationName.replace(/"/g, '""')}"`);
