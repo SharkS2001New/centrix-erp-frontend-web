@@ -1,4 +1,3 @@
-import { apiFetchCredentials, useCookieAuth } from "./auth-config";
 import { apiV1BaseUrl } from "./api";
 
 /** How often to probe API reachability while the app tab is visible and healthy. */
@@ -30,7 +29,8 @@ export async function pingApiHealth() {
       method: "GET",
       signal: controller.signal,
       headers: { Accept: "application/json" },
-      credentials: useCookieAuth ? apiFetchCredentials() : "omit",
+      // Public probe — omit cookies so cross-origin POS installs are not blocked by CORS credentials rules.
+      credentials: "omit",
       cache: "no-store",
     });
     const latencyMs = Math.round(

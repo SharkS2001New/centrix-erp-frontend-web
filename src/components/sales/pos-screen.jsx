@@ -53,7 +53,7 @@ import {
   isStkPushEnabled,
   shouldSubmitKraOnCheckout,
 } from "@/lib/finance-settings";
-import { useQueuedTask } from "@/lib/use-queued-task";
+import { useBlockingWait } from "@/lib/use-blocking-wait";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import {
   canAdjustCartLineQuantity,
@@ -154,8 +154,8 @@ export function PosScreen({ standalone = false }) {
     loading: sessionLoading,
     hasPosTill,
   } = usePosSession();
-  const { runQueuedTask } = useQueuedTask(
-    "Please wait while the receipt is submitted to the KRA device…",
+  const { runBlockingTask, overlayNode: checkoutWaitOverlay } = useBlockingWait(
+    "Completing sale…",
   );
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const productBranchParams = useMemo(
@@ -1970,8 +1970,9 @@ export function PosScreen({ standalone = false }) {
           body: checkoutBody,
         });
       const sale = submitKra
-        ? await runQueuedTask(checkoutRequest, {
-            message: "Please wait while the receipt is submitted to the KRA device…",
+        ? await runBlockingTask(checkoutRequest, {
+            message: "Completing sale…",
+            detail: "Submitting receipt to the KRA device. Please wait.",
           })
         : await checkoutRequest();
       setCompletedSale(sale);
@@ -3497,6 +3498,8 @@ export function PosScreen({ standalone = false }) {
           organization={organization ?? capabilities?.organization}
         />
       ) : null}
+
+      {checkoutWaitOverlay}
     </div>
   );
 }

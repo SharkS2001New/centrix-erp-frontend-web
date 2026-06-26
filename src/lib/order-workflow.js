@@ -231,6 +231,19 @@ export function workflowPipelineSteps(workflow) {
   );
 }
 
+/** Last enabled pipeline step for this org/channel — orders here are "finished". */
+export function lastPipelineStatus(workflow) {
+  const steps = workflowPipelineSteps(workflow);
+  return steps.length ? steps[steps.length - 1].key : null;
+}
+
+export function isTerminalStatus(status, workflow) {
+  const key = String(status ?? "").toLowerCase();
+  if (!key || key === "cancelled" || key === "held" || key === "draft") return false;
+  const last = lastPipelineStatus(workflow);
+  return last != null && key === last;
+}
+
 export function workflowTransitions(workflow) {
   return workflow?.transitions ?? DEFAULT_ORDER_WORKFLOW.transitions;
 }
@@ -309,7 +322,7 @@ export function nextTransitionOptions(status, workflow) {
 
 /** Next forward workflow step for list-row confirm actions. */
 export function primaryWorkflowAdvanceStatus(status, workflow) {
-  if (!status || status === "cancelled" || status === "completed") return null;
+  if (!status || status === "cancelled" || isTerminalStatus(status, workflow)) return null;
 
   const steps = workflowPipelineSteps(workflow);
   const currentIdx = pipelineStatusIndex(status, workflow);
@@ -336,9 +349,7 @@ export function primaryWorkflowAdvanceStatus(status, workflow) {
 }
 
 /**
- * Resolve order status from payment amount — applies to all orders (save or checkout).
- * POS immediate pay (cash/M-Pesa/banks) with full payment → completed.
- * Credit / partial-payment settings → unpaid | partially paid | paid/completed.
+ * Resolve order status from payment amount — uses the org workflow checkout mapping.
  */
 export function resolveCheckoutStatus({
   channel = "pos",
@@ -355,15 +366,8 @@ export function resolveCheckoutStatus({
   const orderTotal = Number(total) || 0;
   const fullyPaid = paid + 0.01 >= orderTotal && orderTotal > 0;
   const partialPay = paid > 0.01 && !fullyPaid;
-  const immediate = isImmediatePaymentMethod(paymentMethodCode, isCredit);
 
   if (fullyPaid) {
-    if (isCredit) {
-      return pickEnabledStatus(checkout.full_paid ?? "paid", wf);
-    }
-    if (immediate && channel === "pos") {
-      return pickEnabledStatus("completed", wf);
-    }
     return pickEnabledStatus(checkout.full_paid ?? "paid", wf);
   }
   if (partialPay) {
@@ -582,8 +586,8 @@ export function buildOrderWorkflowTimeline(sale, workflow, options = {}) {
         detail: resolveDetail(step),
         at: resolveTimestamp(i, isCurrent),
         actor: payments[0]?.recorded_by_name ?? actor,
-        complete: !isCurrent || currentStatus === "completed",
-        current: isCurrent && currentStatus !== "completed",
+        complete: !isCurrent || isTerminalStatus(currentStatus, workflow),
+        current: isCurrent && !isTerminalStatus(currentStatus, workflow),
       });
     }
   }
