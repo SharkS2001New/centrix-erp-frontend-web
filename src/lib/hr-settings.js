@@ -19,6 +19,7 @@ export const HR_PAYROLL_DEFAULTS = {
   company_premises_radius_metres: 5,
   company_face_match_threshold: 0.72,
   company_fingerprint_match_threshold: 0.85,
+  company_fingerprint_auto_enroll_on_clock: true,
   company_mobile_verification_method: "face_or_fingerprint",
 };
 
@@ -94,6 +95,7 @@ export function hrPayrollFormFromApi(res) {
     company_premises_radius_metres: String(hr.company_premises_radius_metres ?? 5),
     company_face_match_threshold: String(hr.company_face_match_threshold ?? 0.72),
     company_fingerprint_match_threshold: String(hr.company_fingerprint_match_threshold ?? 0.85),
+    company_fingerprint_auto_enroll_on_clock: hr.company_fingerprint_auto_enroll_on_clock !== false,
     company_mobile_verification_method:
       hr.company_mobile_verification_method === "device_biometric"
         ? "fingerprint"
@@ -123,6 +125,7 @@ export function hrPayrollPayloadFromForm(form) {
     company_premises_radius_metres: Number(form.company_premises_radius_metres) || 5,
     company_face_match_threshold: Number(form.company_face_match_threshold) || 0.72,
     company_fingerprint_match_threshold: Number(form.company_fingerprint_match_threshold) || 0.85,
+    company_fingerprint_auto_enroll_on_clock: Boolean(form.company_fingerprint_auto_enroll_on_clock),
     company_mobile_verification_method:
       form.company_mobile_verification_method || "face_or_fingerprint",
   };

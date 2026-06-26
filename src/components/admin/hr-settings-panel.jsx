@@ -235,6 +235,24 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
                       disabled={form.company_mobile_verification_method === "face"}
                     />
                   </Field>
+                  <label className="flex items-start gap-2 text-sm text-slate-700 sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={form.company_fingerprint_auto_enroll_on_clock !== false}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          company_fingerprint_auto_enroll_on_clock: e.target.checked,
+                        }))
+                      }
+                      disabled={form.company_mobile_verification_method === "face"}
+                    />
+                    <span>
+                      Allow fingerprint enrollment on first clock-in. When off, only employees
+                      with an enrolled fingerprint in the system can mark attendance.
+                    </span>
+                  </label>
                 </div>
               ) : null}
             </div>
