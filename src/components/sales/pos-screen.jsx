@@ -1767,10 +1767,20 @@ export function PosScreen({ standalone = false }) {
       e.returnValue = "";
     }
 
+    window.addEventListener("beforeunload", onBeforeUnload);
+
+    // Backoffice create order lives inside AppShell — never hijack sidebar/topbar navigation.
+    if (!standalone) {
+      return () => {
+        window.removeEventListener("beforeunload", onBeforeUnload);
+      };
+    }
+
     function onDocumentClick(e) {
       const anchor = e.target.closest("a[href]");
       if (!anchor || anchor.dataset.posLeaveIgnore === "true") return;
       if (anchor.closest("[data-pos-leave-guard]")) return;
+      if (anchor.closest("[data-sidebar-subnav-root]")) return;
       const href = anchor.getAttribute("href");
       if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
         return;
@@ -1795,13 +1805,12 @@ export function PosScreen({ standalone = false }) {
       setLeaveGuardOpen(true);
     }
 
-    window.addEventListener("beforeunload", onBeforeUnload);
     document.addEventListener("click", onDocumentClick, true);
     return () => {
       window.removeEventListener("beforeunload", onBeforeUnload);
       document.removeEventListener("click", onDocumentClick, true);
     };
-  }, [cartHasReservedItems, leaveGuardOpen]);
+  }, [standalone, cartHasReservedItems, leaveGuardOpen]);
 
   async function handleEditSelectedLine(lineId = selectedLineId) {
     if (!lineId || !cart?.lines?.length || busy) return;
@@ -2973,6 +2982,7 @@ export function PosScreen({ standalone = false }) {
             enablePoints={enableRedeemablePoints}
             enableMpesa={enableMpesaOnPos}
             enableStkPush={enableStkPushOnPos}
+            embedded={!standalone}
             onCartUpdated={setCart}
             onMessage={setStatusMessage}
             onPaymentApplied={() => setPaymentOpen(true)}

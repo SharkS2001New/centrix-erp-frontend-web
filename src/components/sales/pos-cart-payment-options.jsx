@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatSaleKes } from "@/lib/sales";
 
 import { INPUT_CLASS, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
+import { posModalOverlayClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 
 const inputCls = INPUT_CLASS;
 const cancelBtnClass = `${SECONDARY_BTN_CLASS} px-3 py-2.5 text-xs font-bold uppercase`;
@@ -30,7 +30,7 @@ function focusWithoutScroll(el) {
   el?.focus({ preventScroll: true });
 }
 
-function PayOptionDialog({ open, title, onClose, children, footer }) {
+function PayOptionDialog({ open, title, onClose, children, footer, embedded = false }) {
   useLayoutEffect(() => {
     if (!open) return undefined;
     return lockBodyScroll();
@@ -47,9 +47,9 @@ function PayOptionDialog({ open, title, onClose, children, footer }) {
 
   if (!open || typeof document === "undefined") return null;
 
-  return createPortal(
+  return renderPosModalPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+      className={`${posModalOverlayClass(embedded, "z-[100]")} flex items-center justify-center bg-black/40 p-4`}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose?.();
       }}
@@ -68,7 +68,7 @@ function PayOptionDialog({ open, title, onClose, children, footer }) {
         ) : null}
       </div>
     </div>,
-    document.body,
+    embedded,
   );
 }
 
@@ -131,6 +131,7 @@ export function PosCartPaymentOptions({
   enablePoints,
   enableMpesa,
   enableStkPush = false,
+  embedded = false,
   onCartUpdated,
   onMessage,
   onPaymentApplied,
@@ -726,6 +727,7 @@ export function PosCartPaymentOptions({
 
       <PayOptionDialog
         open={Boolean(activeDialog)}
+        embedded={embedded}
         title={
           activeDialog === "mpesa"
             ? "M-Pesa"

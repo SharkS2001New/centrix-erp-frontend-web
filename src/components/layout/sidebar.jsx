@@ -103,6 +103,7 @@ function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = fals
   return (
     <Link
       href={item.href}
+      data-pos-leave-ignore="true"
       onClick={onNavigate}
       className={`app-sidebar-link flex items-center gap-2.5 py-1.5 text-[13px] leading-snug transition ${
         nested
@@ -176,6 +177,7 @@ function StandaloneNavSection({ section, pathname, onNavigate }) {
   return (
     <Link
       href={item.href}
+      data-pos-leave-ignore="true"
       onClick={onNavigate}
       className={`app-sidebar-section-toggle flex w-full items-center gap-3 px-[18px] py-2.5 text-left text-[14px] font-normal transition ${
         active ? "app-sidebar-section-active" : ""
@@ -229,6 +231,7 @@ function CollapsibleNavSection({
       return (
         <Link
           href={item.href}
+          data-pos-leave-ignore="true"
           onClick={onNavigate}
           className={`app-sidebar-icon-btn flex w-full items-center justify-center py-3 transition ${
             active ? "app-sidebar-icon-btn-active" : ""
@@ -458,7 +461,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
             iconOnly ? "justify-center px-0" : "px-[22px]"
           }`}
         >
-          <Link href="/dashboard" className="flex items-center" title={PRODUCT_NAME}>
+          <Link href="/dashboard" data-pos-leave-ignore="true" className="flex items-center" title={PRODUCT_NAME}>
             <CentrixLogo collapsed={iconOnly} />
           </Link>
         </div>
