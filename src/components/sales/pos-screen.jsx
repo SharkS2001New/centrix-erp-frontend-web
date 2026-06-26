@@ -42,8 +42,6 @@ import { formatSaleKes } from "@/lib/sales";
 import { getChannelWorkflow, workflowPipelineSteps } from "@/lib/order-workflow";
 import {
   getPosSalesConfig,
-  isBackofficeTillFloatRequired,
-  isPosTillFloatRequired,
   isWorkspaceTillFloatRequired,
   posChannelFromStockSource,
   resolveCheckoutStatus,
@@ -201,9 +199,8 @@ export function PosScreen({ standalone = false }) {
   const allowNegativeStock = posSalesConfig.allowNegativeStock;
   const addRouteMarkupPrices = posSalesConfig.addRouteMarkupPrices;
   const posOrderTypeMode = posSalesConfig.posOrderTypeMode;
-  const requireTillFloat = standalone
-    ? isPosTillFloatRequired(capabilities?.module_settings)
-    : isBackofficeTillFloatRequired(capabilities?.module_settings);
+  // External POS (/pos) → require_pos_till_float (platform). Backoffice create order → require_backoffice_till_float (org admin).
+  const requireTillFloat = isWorkspaceTillFloatRequired(capabilities?.module_settings, { standalone });
   const canManageTillSession = hasPosTill || (standalone && requireTillFloat);
   const salesWorkspace = standalone ? "pos" : "backoffice";
   const enablePosOrderEdit = standalone && posSalesConfig.enablePosOrderEdit;
