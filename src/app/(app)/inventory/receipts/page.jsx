@@ -16,6 +16,8 @@ import {
   receiptDetailHref,
   rowInDateRange,
 } from "@/components/inventory/inventory-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { STOCK_RECEIPT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 const PAGE_SIZE = 15;
 
@@ -70,9 +72,22 @@ export default function StockReceiptsPage() {
       title="Stock receipts"
       subtitle="Goods received from suppliers into your stock"
       action={
-        <PrimaryLink href="/inventory/receipts/receive" permission={P.inventory.receipts.view}>
-          Receive stock
-        </PrimaryLink>
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Stock receipts"
+            apiPath="/stock-receipts"
+            columns={STOCK_RECEIPT_EXPORT_COLUMNS}
+            totalCount={grouped.length}
+            getSearchParams={() => ({
+              per_page: 200,
+              "filter[branch_id]": branchId,
+            })}
+            disabled={loading}
+          />
+          <PrimaryLink href="/inventory/receipts/receive" permission={P.inventory.receipts.view}>
+            Receive stock
+          </PrimaryLink>
+        </div>
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">

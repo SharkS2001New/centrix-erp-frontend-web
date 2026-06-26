@@ -19,6 +19,8 @@ import {
   SearchInput,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { BRANCH_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 
 const EMPTY_FORM = {
@@ -207,9 +209,19 @@ export default function AdminBranchesPage() {
       title="Branches"
       subtitle="Manage branch locations and contacts."
       action={
-        <PrimaryButton type="button" onClick={openCreate}>
-          Add branch
-        </PrimaryButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Branches"
+            apiPath="/branches"
+            columns={BRANCH_EXPORT_COLUMNS}
+            totalCount={branches.length}
+            getSearchParams={() => ({ per_page: 200 })}
+            disabled={loading}
+          />
+          <PrimaryButton type="button" onClick={openCreate}>
+            Add branch
+          </PrimaryButton>
+        </div>
       }
       toolbar={<SearchInput value={search} onChange={setSearch} placeholder="Search branches…" className="max-w-sm" />}
     >

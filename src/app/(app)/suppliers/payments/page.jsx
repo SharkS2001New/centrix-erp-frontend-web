@@ -13,6 +13,8 @@ import {
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { SUPPLIER_PAYMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { defaultDateRange } from "@/components/inventory/inventory-shared";
 import { formatSupplierKes, formatSupplierPaymentReference } from "@/components/suppliers/suppliers-shared";
 
@@ -103,7 +105,21 @@ export default function SupplierPaymentsPage() {
       title="Supplier Payments"
       subtitle="Pay suppliers for purchases (accounts payable)"
       action={
-        <Link
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Supplier payments"
+            filename="supplier-payments"
+            apiPath="/supplier-payments"
+            columns={SUPPLIER_PAYMENT_EXPORT_COLUMNS}
+            totalCount={filtered.length}
+            getSearchParams={() => {
+              const params = { per_page: 200 };
+              if (supplierFilter !== "all") params["filter[supplier_id]"] = supplierFilter;
+              return params;
+            }}
+            disabled={loading}
+          />
+          <Link
           href={
             supplierFilter !== "all"
               ? `/suppliers/payments/new?supplier_id=${supplierFilter}&return=payments`
@@ -113,6 +129,7 @@ export default function SupplierPaymentsPage() {
         >
           Record payment
         </Link>
+        </div>
       }
       toolbar={
         <div className="mb-4 flex flex-wrap items-end gap-3">

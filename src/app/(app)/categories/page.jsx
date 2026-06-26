@@ -22,6 +22,8 @@ import {
   TrashIcon,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { CATEGORY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 const PAGE_SIZE = 15;
 
@@ -272,7 +274,15 @@ export default function CategoriesPage() {
       title="Categories"
       subtitle="Manage product categories and sub-categories in one hierarchy"
       action={
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Categories"
+            apiPath="/categories"
+            columns={CATEGORY_EXPORT_COLUMNS}
+            totalCount={categories.length}
+            getSearchParams={() => ({ per_page: 200 })}
+            disabled={loading}
+          />
           <button
             type="button"
             onClick={() => openCreateSubCategory()}

@@ -15,6 +15,8 @@ import {
   PaginationBar,
   SearchInput,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { CUSTOMER_INVOICE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 const PAGE_SIZE = 20;
 
@@ -78,7 +80,26 @@ export default function CustomerInvoicesPage() {
   }, [debouncedSearch, statusFilter, presetCustomer]);
 
   return (
-    <CatalogPageShell title="Customer invoices" subtitle="Accounts receivable invoices and balances">
+    <CatalogPageShell
+      title="Customer invoices"
+      subtitle="Accounts receivable invoices and balances"
+      action={
+        <CatalogListExport
+          title="Customer invoices"
+          filename="customer-invoices"
+          apiPath="/customer-invoices"
+          columns={CUSTOMER_INVOICE_EXPORT_COLUMNS}
+          totalCount={totalInvoices}
+          getSearchParams={() => {
+            const extra = {};
+            if (presetCustomer) extra.customer_num = presetCustomer;
+            if (statusFilter !== "all") extra.payment_status = statusFilter;
+            return buildPageParams({ page: 1, perPage: 200, q: debouncedSearch, extra });
+          }}
+          disabled={loading || listLoading}
+        />
+      }
+    >
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <SearchInput
           value={search}

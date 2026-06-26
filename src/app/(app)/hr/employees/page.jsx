@@ -17,7 +17,9 @@ import {
   StatCard,
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
-import { composeEmployeeDisplayName,
+import {
+  EmployeeStatusBadge,
+  composeEmployeeDisplayName,
   formatHrKesFull,
   formatShiftExpectedHours,
   formatWorkShiftLabel,
@@ -101,6 +103,21 @@ export default function HrEmployeesPage() {
   async function reloadAll() {
     await Promise.all([loadReferenceData(), loadEmployees()]);
   }
+
+  const buildExportSearchParams = useCallback(() => {
+    const filters = {};
+    if (deptFilter !== "all") filters.department_id = deptFilter;
+    const extra = {};
+    if (statusFilter === "active") extra.is_active = 1;
+    if (statusFilter === "inactive") extra.is_active = 0;
+    return buildPageParams({
+      page: 1,
+      perPage: 200,
+      q: debouncedSearch,
+      filters,
+      extra,
+    });
+  }, [debouncedSearch, deptFilter, statusFilter]);
 
   const deptById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
 

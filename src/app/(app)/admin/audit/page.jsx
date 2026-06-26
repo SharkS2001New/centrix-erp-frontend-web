@@ -22,6 +22,8 @@ import {
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { AUDIT_LOG_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 const PAGE_SIZE = 25;
 
@@ -158,6 +160,29 @@ export default function AdminAuditPage() {
     <CatalogPageShell
       title="Audit trail"
       subtitle="System-generated log of creates, updates, and deletes across modules."
+      action={
+        <CatalogListExport
+          title="Audit trail"
+          filename="audit-logs"
+          apiPath={adminPath("/audit-logs")}
+          columns={AUDIT_LOG_EXPORT_COLUMNS}
+          totalCount={total}
+          getSearchParams={() => {
+            const params = {
+              per_page: 200,
+              from_date: fromDate || undefined,
+              to_date: toDate || undefined,
+            };
+            if (userFilter !== "all") params["filter[user_id]"] = userFilter;
+            if (branchFilter !== "all") params["filter[branch_id]"] = branchFilter;
+            if (actionFilter !== "all") params["filter[action]"] = actionFilter;
+            if (moduleFilter !== "all") params["filter[table_name]"] = moduleFilter;
+            if (search.trim()) params.q = search.trim();
+            return params;
+          }}
+          disabled={loading}
+        />
+      }
     >
       <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Audit trail" }]} />
 

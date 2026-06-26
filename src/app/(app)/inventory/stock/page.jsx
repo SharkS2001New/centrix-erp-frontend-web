@@ -20,6 +20,8 @@ import {
   LOCATION_OPTIONS,
   StockHealthBadge,
 } from "@/components/inventory/inventory-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { STOCK_ON_HAND_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import {
   priceListRowsForProduct,
   priceListToCsv,
@@ -308,6 +310,23 @@ export default function CurrentStockPage() {
     <InventoryPageShell
       title="Current stock"
       subtitle="Quantities in packaging hierarchy — values use retail tier prices when configured"
+      action={
+        <CatalogListExport
+          title="Current stock"
+          filename="stock-on-hand"
+          apiPath="/reports/stock-on-hand"
+          columns={STOCK_ON_HAND_EXPORT_COLUMNS}
+          totalCount={totalStockRows}
+          getSearchParams={() => ({
+            per_page: 200,
+            branch_id: branchId,
+            ...(categoryFilter !== "all" ? { category_id: categoryFilter } : {}),
+            ...(locationFilter !== "all" ? { location: locationFilter } : {}),
+            ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
+          })}
+          disabled={loading || listLoading}
+        />
+      }
     >
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SearchInput

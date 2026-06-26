@@ -23,6 +23,8 @@ import {
   ProductCodeLink,
   rowInDateRange,
 } from "@/components/inventory/inventory-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { DAMAGE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { EditDamageDrawer } from "@/components/inventory/edit-damage-drawer";
 
 const PAGE_SIZE = 15;
@@ -124,9 +126,22 @@ export default function DamagesPage() {
       title="Damages"
       subtitle="Stock written off due to damage, expiry, or loss"
       action={
-        <PrimaryLink href="/inventory/damages/new" permission={P.inventory.damages.view}>
-          Record damage
-        </PrimaryLink>
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Damages"
+            apiPath="/damages"
+            columns={DAMAGE_EXPORT_COLUMNS}
+            totalCount={filtered.length}
+            getSearchParams={() => ({
+              per_page: 200,
+              "filter[branch_id]": branchId,
+            })}
+            disabled={loading}
+          />
+          <PrimaryLink href="/inventory/damages/new" permission={P.inventory.damages.view}>
+            Record damage
+          </PrimaryLink>
+        </div>
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">

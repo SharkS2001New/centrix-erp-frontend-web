@@ -19,6 +19,8 @@ import {
   SearchInput,
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { VOUCHER_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 const EMPTY_FORM = {
   voucher_code: "",
@@ -227,9 +229,22 @@ export default function VouchersPage() {
       title="Vouchers"
       subtitle="Create promotional codes for fixed or percentage discounts at checkout"
       action={
-        canManage ? (
-          <PrimaryButton onClick={openCreateDrawer}>Add voucher</PrimaryButton>
-        ) : null
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Vouchers"
+            apiPath="/vouchers"
+            columns={VOUCHER_EXPORT_COLUMNS}
+            totalCount={rows.length}
+            getSearchParams={() => ({
+              per_page: 200,
+              ...(search.trim() ? { q: search.trim() } : {}),
+            })}
+            disabled={loading}
+          />
+          {canManage ? (
+            <PrimaryButton onClick={openCreateDrawer}>Add voucher</PrimaryButton>
+          ) : null}
+        </div>
       }
     >
       {!vouchersEnabled ? (

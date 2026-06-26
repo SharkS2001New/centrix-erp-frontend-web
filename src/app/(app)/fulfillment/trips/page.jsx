@@ -16,6 +16,8 @@ import {
   StatCard,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { DISPATCH_TRIP_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 
 const STATUS_OPTIONS = [
@@ -123,7 +125,23 @@ export default function TripsPage() {
       title="Dispatch trips"
       subtitle="Plan route runs, build loading lists, and track deliveries"
       action={
-        <PrimaryLink href="/fulfillment/dispatch">Dispatch board</PrimaryLink>
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Dispatch trips"
+            filename="dispatch-trips"
+            apiPath="/dispatch-trips"
+            columns={DISPATCH_TRIP_EXPORT_COLUMNS}
+            totalCount={filtered.length}
+            getSearchParams={() => ({
+              per_page: 200,
+              from_date: dateFilter,
+              to_date: dateFilter,
+              ...(statusFilter !== "all" ? { "filter[status]": statusFilter } : {}),
+            })}
+            disabled={loading}
+          />
+          <PrimaryLink href="/fulfillment/dispatch">Dispatch board</PrimaryLink>
+        </div>
       }
     >
       <DashboardErrorBanner message={error} />

@@ -13,6 +13,8 @@ import {
   StatCard,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { LPO_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { formatLpoKes, formatPoNumber, LpoStatusBadge } from "@/components/lpo/lpo-shared";
 
 const PAGE_SIZE = 15;
@@ -116,13 +118,29 @@ export default function LpoListPage() {
       title="Purchase orders (LPO)"
       subtitle="Procure from suppliers — links to supplier accounts payable and stock receipt"
       action={
-        <Link
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Purchase orders"
+            filename="lpo"
+            apiPath="/lpo-mst"
+            columns={LPO_EXPORT_COLUMNS}
+            totalCount={totalRows}
+            getSearchParams={() => {
+              const extra = {};
+              if (supplierFilter !== "all") extra.supplier_id = supplierFilter;
+              if (statusFilter !== "all") extra.status_code = statusFilter;
+              return buildPageParams({ page: 1, perPage: 200, q: debouncedSearch, extra });
+            }}
+            disabled={loading}
+          />
+          <Link
           href="/lpo/new"
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
         >
           <PlusIcon />
           New purchase order
         </Link>
+        </div>
       }
       toolbar={
         <div className="mb-4 flex flex-wrap items-center gap-2">

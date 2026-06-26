@@ -22,6 +22,8 @@ import {
   ProductCodeLink,
   rowInDateRange,
 } from "@/components/inventory/inventory-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { STOCK_MOVEMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 const PAGE_SIZE = 15;
 
@@ -99,9 +101,25 @@ export default function StockAdjustmentsPage() {
       title="Stock adjustments"
       subtitle="Manual increases and decreases to shop or store stock"
       action={
-        <PrimaryLink href="/inventory/adjustments/new" permission={P.inventory.adjustments.create}>
-          Adjust stock
-        </PrimaryLink>
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Stock adjustments"
+            filename="stock-adjustments"
+            apiPath="/inventory-transactions"
+            columns={STOCK_MOVEMENT_EXPORT_COLUMNS}
+            totalCount={filtered.length}
+            getSearchParams={() => ({
+              per_page: 200,
+              "filter[branch_id]": branchId,
+              "filter[transaction_type]": "ADJUSTMENT",
+              "filter[reference_type]": "adjustment",
+            })}
+            disabled={loading}
+          />
+          <PrimaryLink href="/inventory/adjustments/new" permission={P.inventory.adjustments.create}>
+            Adjust stock
+          </PrimaryLink>
+        </div>
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">

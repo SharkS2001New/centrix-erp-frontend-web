@@ -17,6 +17,8 @@ import {
   TrashIcon,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { VEHICLE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import {
   EMPTY_VEHICLE_FORM,
   VehicleStatusBadge,
@@ -153,7 +155,19 @@ export default function VehiclesPage() {
     <CatalogPageShell
       title="Vehicles"
       subtitle="Fleet registration and vehicle status"
-      action={<PrimaryButton onClick={openCreateDrawer}>Add vehicle</PrimaryButton>}
+      action={
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Vehicles"
+            apiPath="/vehicles"
+            columns={VEHICLE_EXPORT_COLUMNS}
+            totalCount={filtered.length}
+            getSearchParams={() => ({ per_page: 200 })}
+            disabled={loading}
+          />
+          <PrimaryButton onClick={openCreateDrawer}>Add vehicle</PrimaryButton>
+        </div>
+      }
       banner={
         !loading ? (
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

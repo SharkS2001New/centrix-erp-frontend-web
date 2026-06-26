@@ -20,6 +20,8 @@ import {
   InventoryTableShell,
   SESSION_STATUS_LABELS,
 } from "@/components/inventory/inventory-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { STOCK_TAKE_SESSION_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 export default function StockTakeListPage() {
   const router = useRouter();
@@ -145,9 +147,20 @@ export default function StockTakeListPage() {
       title="Stock take"
       subtitle="Count stock in the shop or warehouse and reconcile differences"
       action={
-        <PrimaryButton type="button" onClick={() => setModalOpen(true)}>
-          New session
-        </PrimaryButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Stock take sessions"
+            filename="stock-take-sessions"
+            apiPath="/stock-take-sessions"
+            columns={STOCK_TAKE_SESSION_EXPORT_COLUMNS}
+            totalCount={sessions.length}
+            getSearchParams={() => ({ per_page: 200 })}
+            disabled={loading}
+          />
+          <PrimaryButton type="button" onClick={() => setModalOpen(true)}>
+            New session
+          </PrimaryButton>
+        </div>
       }
     >
       {error ? (

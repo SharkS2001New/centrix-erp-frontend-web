@@ -19,6 +19,8 @@ import {
   TrashIcon,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { EXPENSE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 const PAGE_SIZE = 10;
 
@@ -363,7 +365,23 @@ export default function ExpensesPage() {
       title="Expenses"
       subtitle="Record and track business expenses"
       action={
-        <button
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Expenses"
+            apiPath="/expenses"
+            columns={EXPENSE_EXPORT_COLUMNS}
+            totalCount={totalExpenses}
+            getSearchParams={() =>
+              buildPageParams({
+                page: 1,
+                perPage: 200,
+                q: debouncedSearch,
+                extra: groupFilter !== "all" ? { expense_group_id: groupFilter } : {},
+              })
+            }
+            disabled={loading}
+          />
+          <button
           type="button"
           onClick={openCreateDrawer}
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
@@ -371,6 +389,7 @@ export default function ExpensesPage() {
           <PlusIcon />
           Add Expense
         </button>
+        </div>
       }
     >
       <div className="mb-6 grid gap-4 sm:grid-cols-3">

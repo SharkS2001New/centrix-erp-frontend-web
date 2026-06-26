@@ -9,6 +9,8 @@ import {
   SearchInput,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { STOCK_RESERVATION_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { formatReceiptNumber } from "@/components/sales/sales-shared";
 
 const PAGE_SIZE = 20;
@@ -72,6 +74,17 @@ export default function SalesReservationsPage() {
     <CatalogPageShell
       title="Reserved stock"
       subtitle="Stock held for open carts and pending orders"
+      action={
+        <CatalogListExport
+          title="Stock reservations"
+          filename="stock-reservations"
+          apiPath="/stock-reservations"
+          columns={STOCK_RESERVATION_EXPORT_COLUMNS}
+          totalCount={filtered.length}
+          getSearchParams={() => ({ per_page: 200 })}
+          disabled={loading}
+        />
+      }
       toolbar={
         <div className="mb-4">
           <SearchInput

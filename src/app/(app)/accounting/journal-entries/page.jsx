@@ -12,6 +12,8 @@ import {
   SearchInput,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { JOURNAL_ENTRY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { JournalStatusBadge } from "@/components/accounting/accounting-shared";
 
 const PAGE_SIZE = 10;
@@ -62,7 +64,22 @@ export default function JournalEntriesPage() {
     <CatalogPageShell
       title="Journal Entries"
       subtitle="Accounting > Journal Entries"
-      actions={<PrimaryLink href="/accounting/journal-entries/new">New Entry</PrimaryLink>}
+      action={
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Journal entries"
+            filename="journal-entries"
+            apiPath="/journal-entries"
+            columns={JOURNAL_ENTRY_EXPORT_COLUMNS}
+            totalCount={totalRows}
+            getSearchParams={() =>
+              buildPageParams({ page: 1, perPage: 200, q: debouncedSearch })
+            }
+            disabled={loading || listLoading}
+          />
+          <PrimaryLink href="/accounting/journal-entries/new">New Entry</PrimaryLink>
+        </div>
+      }
     >
       {error ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

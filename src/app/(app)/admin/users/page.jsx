@@ -29,6 +29,8 @@ import {
   inputClassName,
   workspaceCardClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { USER_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import {
   DEFAULT_LOGIN_CHANNELS,
@@ -409,9 +411,19 @@ export default function AdminUsersPage() {
       title="Users"
       subtitle="Manage system users, branches, roles, and per-user permission overrides."
       action={
-        <PrimaryButton type="button" onClick={openCreate}>
-          Create user
-        </PrimaryButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Users"
+            apiPath="/users"
+            columns={USER_EXPORT_COLUMNS}
+            totalCount={totalUsers}
+            getSearchParams={() => buildPageParams({ page: 1, perPage: 200, q: debouncedSearch })}
+            disabled={loading}
+          />
+          <PrimaryButton type="button" onClick={openCreate}>
+            Create user
+          </PrimaryButton>
+        </div>
       }
       toolbar={
         <SearchInput

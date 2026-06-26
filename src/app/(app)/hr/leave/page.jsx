@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { LEAVE_DAY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { LeaveAssignmentSection } from "@/components/hr/leave-assignment-section";
 import { isAdminUser } from "@/components/hr/hr-shared";
 import { useAuth } from "@/contexts/auth-context";
@@ -38,6 +40,15 @@ export default function HrLeavePage() {
         isAdmin
           ? "Assign leave and off days per employee. Organization leave defaults are configured under Administration → Settings → HR."
           : "View remaining balances and assign leave and off days by employee"
+      }
+      action={
+        <CatalogListExport
+          title="Leave days"
+          apiPath="/employee-leave-days"
+          columns={LEAVE_DAY_EXPORT_COLUMNS}
+          totalCount={employees.length}
+          getSearchParams={() => ({ per_page: 200 })}
+        />
       }
     >
       <LeaveAssignmentSection

@@ -11,6 +11,8 @@ import { isKraDeviceConfigured, isKraFiscalizationActive } from "@/lib/finance-s
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { platformOrgSettingsHref } from "@/lib/platform-admin-nav";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { KRA_RESPONSE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 
 export default function KraResponsesPage() {
@@ -76,6 +78,17 @@ export default function KraResponsesPage() {
     <CatalogPageShell
       title="KRA device log"
       subtitle="Fiscal receipt submissions from checkout and credit notes"
+      action={
+        <CatalogListExport
+          title="KRA responses"
+          filename="kra-responses"
+          apiPath={adminPath("/kra-responses")}
+          columns={KRA_RESPONSE_EXPORT_COLUMNS}
+          totalCount={rows.length}
+          getSearchParams={() => ({ per_page: 200 })}
+          disabled={loading}
+        />
+      }
     >
       {!isPlatformManaged ? (
         <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "KRA device log" }]} />

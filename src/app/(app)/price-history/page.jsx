@@ -6,6 +6,8 @@ import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { PRICE_HISTORY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 function formatKes(value) {
   if (value == null || value === "") return "—";
@@ -202,41 +204,6 @@ export default function PriceHistoryPage() {
     });
   }
 
-  function exportCsv() {
-    const headers = [
-      "Product code",
-      "Product name",
-      "Old price",
-      "New price",
-      "Cost price",
-      "Discount",
-      "Changed by",
-      "Changed at",
-    ];
-    const lines = [headers.join(",")];
-    for (const row of enriched) {
-      lines.push(
-        [
-          row.product_code,
-          `"${String(row.product_name).replace(/"/g, '""')}"`,
-          row.old_price ?? "",
-          row.new_price,
-          row.cost_price ?? "",
-          row.discount_pct ?? 0,
-          `"${row.changed_by_name}"`,
-          row.changed_at,
-        ].join(","),
-      );
-    }
-    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `price-history-7d-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
   return (
     <div className="theme-workspace min-h-full">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -246,15 +213,20 @@ export default function PriceHistoryPage() {
             Selling price changes in the last 7 days, grouped by product
           </p>
         </div>
-        <button
-          type="button"
-          onClick={exportCsv}
-          disabled={loading || enriched.length === 0}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
-        >
-          <DownloadIcon />
-          Export
-        </button>
+        <CatalogListExport
+          title="Price history"
+          filename="price-history"
+          apiPath="/price-history"
+          columns={PRICE_HISTORY_EXPORT_COLUMNS}
+          totalCount={totalRecords}
+          getSearchParams={() => {
+            const extra = { days: 7 };
+            if (categoryFilter !== "all") extra.category_id = categoryFilter;
+            if (userFilter !== "all") extra.changed_by = userFilter;
+            return buildPageParams({ page: 1, perPage: 200, q: debouncedSearch, extra });
+          }}
+          disabled={loading || listLoading}
+        />
       </div>
 
       <div className="mb-3.5 flex flex-wrap items-center gap-2">
@@ -463,16 +435,6 @@ function SearchIcon({ className }) {
     <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="11" cy="11" r="8" />
       <path d="m21 21-4.35-4.35" />
-    </svg>
-  );
-}
-
-function DownloadIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
     </svg>
   );
 }

@@ -17,6 +17,8 @@ import {
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { SUPPLIER_RETURN_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { formatPoNumber } from "@/components/lpo/lpo-shared";
 import { formatReturnQty, formatStockLocationLabel, statusBadgeClass } from "@/components/suppliers/supplier-return-shared";
 
@@ -453,7 +455,22 @@ export default function SupplierReturnsPage() {
       title="Supplier returns"
       subtitle="Returns to suppliers — each order is tied to one supplier"
       action={
-        <Link
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Supplier returns"
+            filename="supplier-returns"
+            apiPath="/supplier-return-documents"
+            columns={SUPPLIER_RETURN_EXPORT_COLUMNS}
+            totalCount={filtered.length}
+            getSearchParams={() => {
+              const params = { per_page: 200 };
+              if (supplierFilter !== "all") params["filter[supplier_id]"] = supplierFilter;
+              if (statusFilter !== "all") params["filter[status]"] = statusFilter;
+              return params;
+            }}
+            disabled={loading}
+          />
+          <Link
           href={
             supplierFilter !== "all"
               ? `/suppliers/returns/new?supplier_id=${supplierFilter}&return=returns`
@@ -463,6 +480,7 @@ export default function SupplierReturnsPage() {
         >
           Record return
         </Link>
+        </div>
       }
       toolbar={
         <div className="mb-4 flex flex-wrap items-end gap-2">

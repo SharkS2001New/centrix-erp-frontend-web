@@ -19,6 +19,8 @@ import {
   TrashIcon,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { DRIVER_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import {
   DriverStatusBadge,
   EMPTY_DRIVER_FORM,
@@ -216,7 +218,19 @@ export default function DriversPage() {
     <CatalogPageShell
       title="Drivers"
       subtitle="Manage delivery drivers and assignments"
-      action={<PrimaryButton onClick={openCreateDrawer}>Add driver</PrimaryButton>}
+      action={
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Drivers"
+            apiPath="/drivers"
+            columns={DRIVER_EXPORT_COLUMNS}
+            totalCount={filtered.length}
+            getSearchParams={() => ({ per_page: 200 })}
+            disabled={loading}
+          />
+          <PrimaryButton onClick={openCreateDrawer}>Add driver</PrimaryButton>
+        </div>
+      }
       banner={
         !loading ? (
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

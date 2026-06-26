@@ -5,8 +5,8 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
-import {
-  CatalogPageShell,
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { ATTENDANCE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
   Field,
   FormDrawer,
   PrimaryButton,
@@ -287,9 +287,19 @@ export default function HrAttendancePage() {
           : "Clock device live sessions and manual records"
       }
       action={
-        <PrimaryButton type="button" onClick={openCreateManual}>
-          Add manual record
-        </PrimaryButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Attendance"
+            apiPath="/employee-attendance"
+            columns={ATTENDANCE_EXPORT_COLUMNS}
+            totalCount={records.length}
+            getSearchParams={() => ({ per_page: 200 })}
+            disabled={loading}
+          />
+          <PrimaryButton type="button" onClick={openCreateManual}>
+            Add manual record
+          </PrimaryButton>
+        </div>
       }
     >
       {error ? (

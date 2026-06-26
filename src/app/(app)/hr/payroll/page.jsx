@@ -13,6 +13,8 @@ import {
   StatCard,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { PAYROLL_RUN_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import {
   EMPTY_PAY_PERIOD_FORM,
   EMPTY_PAYROLL_RUN_FORM,
@@ -344,16 +346,42 @@ export default function PayrollPage() {
       title="Payroll"
       subtitle="Runs, pay periods, and employee payroll lines"
       action={
-        tab === "runs" ? (
-          <PrimaryButton
-            onClick={openGenerateDrawer}
-            disabled={runPreparing || runSchedule?.can_run_any_period_today === false}
-          >
-            {runPreparing ? "Preparing…" : "Run payroll"}
-          </PrimaryButton>
-        ) : (
-          <PrimaryButton onClick={openAddPeriodModal}>Add period</PrimaryButton>
-        )
+        <div className="flex flex-wrap items-center gap-2">
+          {tab === "runs" ? (
+            <CatalogListExport
+              title="Payroll runs"
+              apiPath="/payroll-runs"
+              columns={PAYROLL_RUN_EXPORT_COLUMNS}
+              totalCount={runs.length}
+              getSearchParams={() => ({ per_page: 200 })}
+              disabled={loading}
+            />
+          ) : (
+            <CatalogListExport
+              title="Pay periods"
+              apiPath="/pay-periods"
+              columns={[
+                { key: "period_label", label: "Period" },
+                { key: "start_date", label: "Start" },
+                { key: "end_date", label: "End" },
+                { key: "is_closed", label: "Closed" },
+              ]}
+              totalCount={periods.length}
+              getSearchParams={() => ({ per_page: 200 })}
+              disabled={loading}
+            />
+          )}
+          {tab === "runs" ? (
+            <PrimaryButton
+              onClick={openGenerateDrawer}
+              disabled={runPreparing || runSchedule?.can_run_any_period_today === false}
+            >
+              {runPreparing ? "Preparing…" : "Run payroll"}
+            </PrimaryButton>
+          ) : (
+            <PrimaryButton onClick={openAddPeriodModal}>Add period</PrimaryButton>
+          )}
+        </div>
       }
       banner={
         !loading && tab === "runs" ? (

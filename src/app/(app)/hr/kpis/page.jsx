@@ -10,6 +10,8 @@ import {
   PrimaryButton,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { KPI_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { P } from "@/lib/permission-codes";
 
 const EMPTY_ORG_KPI = {
@@ -213,10 +215,31 @@ export default function HrKpisPage() {
           </p>
         </div>
         {canManage ? (
-          <PrimaryButton type="button" onClick={openCreate}>
-            Add organization KPI
-          </PrimaryButton>
-        ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <CatalogListExport
+              title="Organization KPIs"
+              filename="organization-kpis"
+              apiPath="/organization-kpis"
+              columns={KPI_EXPORT_COLUMNS}
+              totalCount={orgKpis.length}
+              getSearchParams={() => ({ per_page: 200 })}
+              disabled={loading}
+            />
+            <PrimaryButton type="button" onClick={openCreate}>
+              Add organization KPI
+            </PrimaryButton>
+          </div>
+        ) : (
+          <CatalogListExport
+            title="Organization KPIs"
+            filename="organization-kpis"
+            apiPath="/organization-kpis"
+            columns={KPI_EXPORT_COLUMNS}
+            totalCount={orgKpis.length}
+            getSearchParams={() => ({ per_page: 200 })}
+            disabled={loading}
+          />
+        )}
       </div>
 
       <div className="flex gap-2 border-b border-slate-200">

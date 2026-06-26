@@ -13,6 +13,8 @@ import {
   PrimaryButton,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { ROUTE_SCHEDULE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 
 const DAY_OPTIONS = [
@@ -142,9 +144,20 @@ export default function RouteSchedulesPage() {
       title="Route schedules"
       subtitle="Assign default drivers and vehicles to routes by day of week"
       action={
-        <PrimaryButton type="button" showIcon={false} onClick={() => setDrawerOpen(true)}>
-          Add schedule
-        </PrimaryButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Route schedules"
+            filename="route-schedules"
+            apiPath="/route-schedules"
+            columns={ROUTE_SCHEDULE_EXPORT_COLUMNS}
+            totalCount={schedules.length}
+            getSearchParams={() => ({ per_page: 200 })}
+            disabled={loading}
+          />
+          <PrimaryButton type="button" showIcon={false} onClick={() => setDrawerOpen(true)}>
+            Add schedule
+          </PrimaryButton>
+        </div>
       }
     >
       <DashboardErrorBanner message={error} />

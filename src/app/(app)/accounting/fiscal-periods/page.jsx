@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { CatalogPageShell, formatShortDate } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { FISCAL_PERIOD_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 export default function FiscalPeriodsPage() {
   const [year, setYear] = useState(new Date().getFullYear());
@@ -89,6 +91,17 @@ export default function FiscalPeriodsPage() {
     <CatalogPageShell
       title="Fiscal Periods"
       subtitle="Accounting > Period close checklist"
+      action={
+        <CatalogListExport
+          title="Fiscal periods"
+          filename="fiscal-periods"
+          apiPath="/accounting/fiscal-periods"
+          columns={FISCAL_PERIOD_EXPORT_COLUMNS}
+          totalCount={periods.length}
+          getSearchParams={() => ({ year, per_page: 200 })}
+          disabled={loading}
+        />
+      }
     >
       {error ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

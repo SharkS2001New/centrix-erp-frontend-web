@@ -30,6 +30,8 @@ import {
   TABLE_SHELL_CLASS,
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { UOM_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 const PACK_FILTER_OPTIONS = [
   { value: "all", label: "All units" },
@@ -288,7 +290,19 @@ export default function UomsPage() {
     <CatalogPageShell
       title="Units of measure"
       subtitle="Define how stock is counted and reported — base unit, optional middle packs, and full packages"
-      action={<PrimaryButton onClick={openCreateDrawer}>Add UOM</PrimaryButton>}
+      action={
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Units of measure"
+            apiPath="/uoms"
+            columns={UOM_EXPORT_COLUMNS}
+            totalCount={uoms.length}
+            getSearchParams={() => ({ per_page: 200 })}
+            disabled={loading}
+          />
+          <PrimaryButton onClick={openCreateDrawer}>Add UOM</PrimaryButton>
+        </div>
+      }
       toolbar={
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <SearchInput

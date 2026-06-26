@@ -15,6 +15,8 @@ import {
   inputClassName,
   workspaceCardClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { ROLE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { normalizeRoleId, permissionIdSet } from "@/lib/permission-ids";
 
 export default function AdminRolesPage() {
@@ -204,9 +206,19 @@ export default function AdminRolesPage() {
       title="Roles & permissions"
       subtitle="Assign feature-level access per link and action."
       action={
-        <PrimaryButton type="button" onClick={() => setDrawerOpen(true)}>
-          Create role
-        </PrimaryButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Roles"
+            apiPath="/roles"
+            columns={ROLE_EXPORT_COLUMNS}
+            totalCount={roles.length}
+            getSearchParams={() => ({ per_page: 200 })}
+            disabled={loading}
+          />
+          <PrimaryButton type="button" onClick={() => setDrawerOpen(true)}>
+            Create role
+          </PrimaryButton>
+        </div>
       }
     >
       <AdminBreadcrumb

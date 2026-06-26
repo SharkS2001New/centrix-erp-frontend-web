@@ -26,6 +26,8 @@ import {
   ProductCodeLink,
   transactionTypeLabel,
 } from "@/components/inventory/inventory-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { STOCK_MOVEMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 const TYPE_OPTIONS = [
   { value: "all", label: "All types" },
@@ -196,9 +198,33 @@ export default function InventoryTransactionsPage() {
       title="Inventory movements"
       subtitle="Stock changes grouped by product — expand to see each movement"
       action={
-        <PrimaryLink href="/inventory/transfers/new" permission={P.inventory.transfers.create}>
-          Transfer stock
-        </PrimaryLink>
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Inventory movements"
+            filename="stock-movements"
+            apiPath="/reports/stock-movement"
+            columns={STOCK_MOVEMENT_EXPORT_COLUMNS}
+            totalCount={totalMovements}
+            getSearchParams={() => {
+              const extra = {
+                branch_id: branchId,
+                from_date: fromDate,
+                to_date: toDate,
+              };
+              if (typeFilter !== "all") extra.transaction_type = typeFilter;
+              if (referenceIdFilter) extra.reference_id = referenceIdFilter;
+              return {
+                per_page: 200,
+                ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
+                ...extra,
+              };
+            }}
+            disabled={loading || listLoading}
+          />
+          <PrimaryLink href="/inventory/transfers/new" permission={P.inventory.transfers.create}>
+            Transfer stock
+          </PrimaryLink>
+        </div>
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">

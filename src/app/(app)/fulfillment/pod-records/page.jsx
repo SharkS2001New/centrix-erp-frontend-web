@@ -13,6 +13,8 @@ import {
   SearchInput,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { POD_RECORD_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 import { saleCustomerLabel } from "@/lib/sales";
 
@@ -95,7 +97,26 @@ export default function PodRecordsPage() {
   }
 
   return (
-    <CatalogPageShell title="Proof of delivery" subtitle="Review delivery confirmations, photos, and signatures">
+    <CatalogPageShell
+      title="Proof of delivery"
+      subtitle="Review delivery confirmations, photos, and signatures"
+      action={
+        <CatalogListExport
+          title="Proof of delivery"
+          filename="pod-records"
+          apiPath="/pod-records"
+          columns={POD_RECORD_EXPORT_COLUMNS}
+          totalCount={filtered.length}
+          getSearchParams={() => ({
+            per_page: 200,
+            from_date: fromDate,
+            to_date: toDate,
+            ...(statusFilter !== "all" ? { "filter[status]": statusFilter } : {}),
+          })}
+          disabled={loading}
+        />
+      }
+    >
       <DashboardErrorBanner message={error} />
 
       <div className="mb-4 flex flex-wrap items-end gap-3">

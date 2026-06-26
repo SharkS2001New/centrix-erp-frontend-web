@@ -12,6 +12,8 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { P } from "@/lib/permission-codes";
 import { defaultDateRange } from "@/components/inventory/inventory-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { STOCK_TRANSFER_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 export default function InventoryTransfersPage() {
   const { date } = useOrgFormat();
@@ -49,20 +51,34 @@ export default function InventoryTransfersPage() {
   });
 
   return (
-    <CatalogPageShell title="Stock transfers" subtitle="History of shop ↔ store transfers">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
-          <Field label="From">
-            <input type="date" className={inputClassName()} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-          </Field>
-          <Field label="To">
-            <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
-          </Field>
-          <SearchInput value={search} onChange={setSearch} placeholder="Product…" />
+    <CatalogPageShell
+      title="Stock transfers"
+      subtitle="History of shop ↔ store transfers"
+      action={
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Stock transfers"
+            filename="stock-transfers"
+            apiPath="/reports/stock-transfers"
+            columns={STOCK_TRANSFER_EXPORT_COLUMNS}
+            totalCount={filtered.length}
+            getSearchParams={() => ({ per_page: 200, from_date: fromDate, to_date: toDate })}
+            disabled={loading}
+          />
+          <PrimaryLink href="/inventory/transfers/new" permission={P.inventory.transfers.create} showIcon={false}>
+            New transfer
+          </PrimaryLink>
         </div>
-        <PrimaryLink href="/inventory/transfers/new" permission={P.inventory.transfers.create} showIcon={false}>
-          New transfer
-        </PrimaryLink>
+      }
+    >
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <Field label="From">
+          <input type="date" className={inputClassName()} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </Field>
+        <Field label="To">
+          <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </Field>
+        <SearchInput value={search} onChange={setSearch} placeholder="Product…" />
       </div>
 
       {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}

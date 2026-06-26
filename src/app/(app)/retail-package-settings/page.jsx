@@ -27,6 +27,8 @@ import {
   pricingTiersToApi,
   uomMeasureLevels,
 } from "@/lib/uom-packaging";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { RETAIL_PACKAGE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 const PAGE_SIZE = 10;
 
@@ -248,7 +250,24 @@ export default function RetailPackageSettingsPage() {
     <CatalogPageShell
       title="Retail package settings"
       subtitle="Tiered retail markups per product — measurements come from the product UOM"
-      action={<PrimaryButton onClick={openCreate}>Add package setting</PrimaryButton>}
+      action={
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Retail package settings"
+            filename="retail-package-settings"
+            apiPath="/retail-package-settings"
+            columns={RETAIL_PACKAGE_EXPORT_COLUMNS}
+            totalCount={filtered.length}
+            getSearchParams={() => ({
+              per_page: 200,
+              ...(categoryFilter !== "all" ? { category_id: categoryFilter } : {}),
+              ...(search.trim() ? { q: search.trim() } : {}),
+            })}
+            disabled={loading}
+          />
+          <PrimaryButton onClick={openCreate}>Add package setting</PrimaryButton>
+        </div>
+      }
       banner={
         <div className="mb-3.5 flex items-start gap-2.5 rounded-lg border border-[#B5D4F4] bg-[#E6F1FB] px-3.5 py-2.5 text-xs leading-relaxed text-[#0C447C]">
           <InfoIcon />

@@ -16,6 +16,8 @@ import {
   TrashIcon,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { PAYMENT_METHOD_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 
 const EMPTY = { method_name: "", method_code: "", requires_reference: false, is_active: true };
@@ -116,7 +118,15 @@ export default function PaymentMethodsPage() {
     <CatalogPageShell title="Payment methods" subtitle="Tender types used at checkout, expenses, and supplier payments">
       <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Payment methods" }]} />
 
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+        <CatalogListExport
+          title="Payment methods"
+          apiPath={adminPath("/payment-methods")}
+          columns={PAYMENT_METHOD_EXPORT_COLUMNS}
+          totalCount={rows.length}
+          getSearchParams={() => ({ per_page: 200 })}
+          disabled={loading}
+        />
         {canCreate ? (
           <PrimaryButton type="button" onClick={openCreate} showIcon={false}>
             Add method

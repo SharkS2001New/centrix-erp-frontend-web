@@ -17,6 +17,8 @@ import {
   TABLE_SHELL_CLASS,
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { VAT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 const EMPTY_FORM = {
   vat_code: "",
@@ -152,12 +154,22 @@ export default function VatsPage() {
       title="VAT rates"
       subtitle="Configure tax codes and percentages for products"
       action={
-        <PrimaryButton
-          onClick={openCreateDrawer}
-          permission={isPlatformManaged ? null : P.catalogue.vat_rates.create}
-        >
-          Add VAT rate
-        </PrimaryButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="VAT rates"
+            apiPath="/vats"
+            columns={VAT_EXPORT_COLUMNS}
+            totalCount={vats.length}
+            getSearchParams={() => ({ per_page: 200 })}
+            disabled={loading}
+          />
+          <PrimaryButton
+            onClick={openCreateDrawer}
+            permission={isPlatformManaged ? null : P.catalogue.vat_rates.create}
+          >
+            Add VAT rate
+          </PrimaryButton>
+        </div>
       }
     >
       {error && (

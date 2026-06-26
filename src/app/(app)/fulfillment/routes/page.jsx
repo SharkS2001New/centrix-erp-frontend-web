@@ -15,6 +15,8 @@ import {
   sumRouteSales,
   updateRouteFormField,
 } from "@/components/routes/route-form";
+import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { ROUTE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import {
   CatalogPageShell,
   FilterSelect,
@@ -220,14 +222,24 @@ export default function RoutesPage() {
       title="Routes"
       subtitle="Manage delivery and sales routes"
       action={
-        <button
-          type="button"
-          onClick={openCreateDrawer}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
-        >
-          <PlusIcon />
-          Add Route
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <CatalogListExport
+            title="Routes"
+            apiPath="/routes"
+            columns={ROUTE_EXPORT_COLUMNS}
+            totalCount={filtered.length}
+            getSearchParams={() => ({ per_page: 200 })}
+            disabled={loading}
+          />
+          <button
+            type="button"
+            onClick={openCreateDrawer}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
+          >
+            <PlusIcon />
+            Add Route
+          </button>
+        </div>
       }
       banner={
         !loading ? (
