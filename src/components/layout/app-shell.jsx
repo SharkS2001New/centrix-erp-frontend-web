@@ -9,6 +9,7 @@ import { BackgroundTaskProvider } from "@/contexts/background-task-context";
 import { SystemIssueProvider } from "@/contexts/system-issue-context";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
+import { OrderPrintTypePickerHost } from "@/components/sales/order-print-type-picker-host";
 import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
 import { AppLoadingOverlay } from "@/components/shared/app-loading-overlay";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
@@ -101,6 +102,7 @@ export function AppShell({ children }) {
               </main>
             </div>
             <AiAssistPanel />
+            <OrderPrintTypePickerHost />
             <AppLoadingOverlay />
           </div>
           </BackgroundTaskProvider>

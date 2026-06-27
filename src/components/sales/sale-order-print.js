@@ -7,7 +7,11 @@ import {
   kraReceiptQrDataUrl,
 } from "@/lib/kra-receipt-qr";
 import { resolveSaleDocumentBranding } from "@/lib/sale-document-print-shared";
-import { getOrderDocumentType, mergeSalesSettings } from "@/lib/sales-settings";
+import { requestOrderPrintType } from "@/lib/order-print-type-picker";
+import {
+  mergeSalesSettings,
+  resolveOrderPrintDocumentType,
+} from "@/lib/sales-settings";
 import { printSaleInvoice } from "@/components/sales/sale-invoice-print";
 import { printSaleReceipt } from "@/components/sales/sale-receipt-print";
 
@@ -57,16 +61,30 @@ async function fetchCustomer(customerNum) {
 }
 
 /**
- * Print an order using the format configured in sales settings (receipt or invoice).
+ * Resolve thermal vs A4 before printing. Prompts when org setting is "both".
+ * @returns {Promise<"receipt"|"invoice"|null>}
+ */
+export async function resolveOrderPrintType(moduleSettings, explicitType) {
+  let documentType = resolveOrderPrintDocumentType(moduleSettings, explicitType);
+  if (!documentType) {
+    documentType = await requestOrderPrintType();
+  }
+  return documentType ?? null;
+}
+
+/**
+ * Print an order using the format configured in sales settings (receipt, invoice, or chosen).
  */
 export async function printSaleOrder(sale, options = {}) {
-  if (!sale) return;
+  if (!sale) return null;
 
   const moduleSettings = options.moduleSettings ?? options.capabilities?.module_settings;
   const sales = mergeSalesSettings(moduleSettings);
   const general = mergeGeneralSettings(moduleSettings);
-  const documentType = options.documentType ?? getOrderDocumentType(moduleSettings);
   const organizationId = options.capabilities?.organization_id;
+
+  const documentType = await resolveOrderPrintType(moduleSettings, options.documentType);
+  if (!documentType) return null;
 
   const [organization, branch, customer] = await Promise.all([
     options.organization
@@ -121,11 +139,13 @@ export async function printSaleOrder(sale, options = {}) {
       invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
       preparedBy: options.preparedBy ?? sale.cashier_name ?? sale.user?.full_name ?? null,
     });
-    return;
+    return documentType;
   }
 
   printSaleReceipt(sale, {
     ...printOptions,
     organizationName: seller.name ?? options.organizationName ?? DEFAULT_PRINT_ORG_NAME,
   });
+
+  return documentType;
 }

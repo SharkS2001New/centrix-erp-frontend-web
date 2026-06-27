@@ -54,7 +54,7 @@ import {
   shouldSubmitKraOnCheckout,
 } from "@/lib/finance-settings";
 import { useBlockingWait } from "@/lib/use-blocking-wait";
-import { printSaleOrder } from "@/components/sales/sale-order-print";
+import { printSaleOrder, resolveOrderPrintType } from "@/components/sales/sale-order-print";
 import {
   canAdjustCartLineQuantity,
   cartLineEntryQtyForBaseQty,
@@ -1982,13 +1982,17 @@ export function PosScreen({ standalone = false }) {
       try {
         if (posSalesConfig.showCheckoutOnCreate) {
           const copies = Number(posSalesConfig.receiptCopies ?? 1) || 1;
-          for (let i = 0; i < copies; i++) {
-            printSaleOrder(sale, {
-              capabilities,
-              moduleSettings: capabilities?.module_settings,
-              organizationName: capabilities?.profile_label,
-              uomById,
-            });
+          const documentType = await resolveOrderPrintType(capabilities?.module_settings);
+          if (documentType) {
+            for (let i = 0; i < copies; i++) {
+              await printSaleOrder(sale, {
+                capabilities,
+                moduleSettings: capabilities?.module_settings,
+                organizationName: capabilities?.profile_label,
+                uomById,
+                documentType,
+              });
+            }
           }
         }
       } catch (printErr) {
@@ -2198,12 +2202,15 @@ export function PosScreen({ standalone = false }) {
     }
     try {
       const copies = Number(posSalesConfig.receiptCopies ?? 1) || 1;
+      const documentType = await resolveOrderPrintType(capabilities?.module_settings);
+      if (!documentType) return;
       for (let i = 0; i < copies; i++) {
-        printSaleOrder(sale, {
+        await printSaleOrder(sale, {
           capabilities,
           moduleSettings: capabilities?.module_settings,
           organizationName: capabilities?.profile_label,
           uomById,
+          documentType,
         });
       }
       setStatusMessage(`Reprinting order #${sale.order_num}.`);

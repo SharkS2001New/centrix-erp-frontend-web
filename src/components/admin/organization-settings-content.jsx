@@ -541,11 +541,13 @@ export function OrganizationSettingsContent({
                       setSalesForm((f) => ({ ...f, order_document_type: e.target.value }))
                     }
                   >
-                    <option value="receipt">Receipt — compact thermal-style layout</option>
-                    <option value="invoice">Invoice — A4 tax invoice (detailed)</option>
+                    <option value="receipt">Thermal receipt only</option>
+                    <option value="invoice">A4 tax invoice only</option>
+                    <option value="both">Both — choose at print time</option>
                   </select>
                   <p className="mt-1 text-xs text-slate-500">
-                    Applies to Print and Download on order summary and the orders list.
+                    Thermal for receipt printers, A4 for detailed tax invoices. When both are enabled,
+                    staff choose the format each time they print.
                   </p>
                 </Field>
                 <Field label="Receipt copies">
@@ -566,7 +568,8 @@ export function OrganizationSettingsContent({
                   onChange={(v) => setSalesForm((f) => ({ ...f, show_branch_on_receipt: v }))}
                 />
                 </div>
-                {salesForm.order_document_type === "invoice" ? (
+                {salesForm.order_document_type === "invoice" ||
+                salesForm.order_document_type === "both" ? (
                   <Field label="Invoice valid for (days)">
                     <input
                       type="number"

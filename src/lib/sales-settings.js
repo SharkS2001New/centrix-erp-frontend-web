@@ -178,7 +178,9 @@ export function salesOrganizationFormFromApi(res) {
     pos_order_type_mode: resolvePosOrderTypeMode(sales),
     blind_till_close: Boolean(sales.blind_till_close),
     require_backoffice_till_float: Boolean(sales.require_backoffice_till_float),
-    order_document_type: sales.order_document_type === "invoice" ? "invoice" : "receipt",
+    order_document_type: ["receipt", "invoice", "both"].includes(sales.order_document_type)
+      ? sales.order_document_type
+      : "receipt",
     invoice_valid_days: String(sales.invoice_valid_days ?? 7),
     show_branch_on_receipt: Boolean(sales.show_branch_on_receipt),
     receipt_copies: String(sales.receipt_copies ?? 1),
@@ -252,20 +254,55 @@ export function areSalesDiscountsEnabled(moduleSettings) {
   return Boolean(sales.allow_discounts || sales.enable_order_discount);
 }
 
-export const ORDER_DOCUMENT_TYPES = ["receipt", "invoice"];
+export const ORDER_DOCUMENT_TYPES = ["receipt", "invoice", "both"];
 
-/** Order print format from sales settings — receipt (compact) or invoice (A4). */
+export const ORDER_DOCUMENT_TYPE_OPTIONS = [
+  { value: "receipt", label: "Thermal receipt only" },
+  { value: "invoice", label: "A4 tax invoice only" },
+  { value: "both", label: "Both — choose at print time" },
+];
+
+/** Configured order print format from sales settings. */
 export function getOrderDocumentType(moduleSettings) {
   const type = mergeSalesSettings(moduleSettings).order_document_type;
   return ORDER_DOCUMENT_TYPES.includes(type) ? type : "receipt";
 }
 
-export function orderDocumentPrintLabel(moduleSettings) {
-  return getOrderDocumentType(moduleSettings) === "invoice" ? "Print invoice" : "Print receipt";
+/** True when staff must pick thermal vs A4 before printing. */
+export function orderDocumentPrintNeedsChoice(moduleSettings) {
+  return getOrderDocumentType(moduleSettings) === "both";
 }
 
-export function orderDocumentTitle(moduleSettings) {
-  return getOrderDocumentType(moduleSettings) === "invoice" ? "TAX INVOICE" : "RECEIPT";
+/** Whether A4 invoice settings (valid days, etc.) apply for this org. */
+export function orderDocumentIncludesInvoice(moduleSettings) {
+  const type = getOrderDocumentType(moduleSettings);
+  return type === "invoice" || type === "both";
+}
+
+/**
+ * Resolve the document type to print. Returns null when user choice is required.
+ * @param {object} moduleSettings
+ * @param {"receipt"|"invoice"|null|undefined} explicitType
+ */
+export function resolveOrderPrintDocumentType(moduleSettings, explicitType) {
+  if (explicitType === "receipt" || explicitType === "invoice") return explicitType;
+  const configured = getOrderDocumentType(moduleSettings);
+  if (configured === "both") return null;
+  return configured;
+}
+
+export function orderDocumentPrintLabel(moduleSettings) {
+  const type = getOrderDocumentType(moduleSettings);
+  if (type === "both") return "Print";
+  if (type === "invoice") return "Print invoice";
+  return "Print receipt";
+}
+
+export function orderDocumentTitle(moduleSettings, documentType = null) {
+  const type = documentType ?? getOrderDocumentType(moduleSettings);
+  if (type === "invoice") return "TAX INVOICE";
+  if (type === "receipt") return "RECEIPT";
+  return "ORDER DOCUMENT";
 }
 
 export const POS_ORDER_TYPE_MODES = ["normal", "route", "toggle"];
