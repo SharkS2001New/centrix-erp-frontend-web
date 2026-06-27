@@ -197,7 +197,7 @@ export default function LoyaltyCardsPage() {
       ) : null}
 
       <div className="mb-4 max-w-md">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search card, phone, customer…" />
+        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search card, phone, customer…" />
       </div>
 
       {error ? (

@@ -120,7 +120,7 @@ export default function PodRecordsPage() {
       <DashboardErrorBanner message={error} />
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search recipient or order…" className="max-w-xs" />
+        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search recipient or order…" className="max-w-xs" />
         <Field label="From">
           <input type="date" className={inputClassName()} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
         </Field>
@@ -128,7 +128,7 @@ export default function PodRecordsPage() {
           <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </Field>
         <Field label="Status">
-          <FilterSelect value={statusFilter} onChange={setStatusFilter} options={STATUS_OPTIONS} />
+          <FilterSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} options={STATUS_OPTIONS} />
         </Field>
         <PrimaryButton type="button" showIcon={false} onClick={() => loadData()}>
           Refresh

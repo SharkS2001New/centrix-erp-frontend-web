@@ -101,7 +101,7 @@ function LegacyOrdersContent() {
       ) : null}
 
       <div className="flex flex-wrap gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Order, customer, legacy ref…" />
+        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Order, customer, legacy ref…" />
         <input
           type="date"
           className="rounded-md border px-3 py-2 text-sm"

@@ -165,7 +165,7 @@ export default function MobileLoadingSheetsScreen() {
           />
         </Field>
         <div className="min-w-[14rem] flex-1">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search route or date…" />
+          <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search route or date…" />
         </div>
       </div>
 

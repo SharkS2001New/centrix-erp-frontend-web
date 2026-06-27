@@ -169,7 +169,7 @@ export function HrCrudPage({
           <span />
         )}
         {searchFilter ? (
-          <SearchInput value={search} onChange={setSearch} placeholder="Search…" className="max-w-xs" />
+          <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className="max-w-xs" />
         ) : embedded ? null : (
           <span />
         )}

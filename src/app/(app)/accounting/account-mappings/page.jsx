@@ -135,7 +135,7 @@ export default function AccountMappingsPage() {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <SearchInput
           value={search}
-          onChange={setSearch}
+          onChange={(e) => setSearch(e.target.value)}
           placeholder="Search local accounts…"
           className="max-w-md"
         />

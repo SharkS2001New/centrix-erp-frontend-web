@@ -223,7 +223,7 @@ export default function AdminBranchesPage() {
           </PrimaryButton>
         </div>
       }
-      toolbar={<SearchInput value={search} onChange={setSearch} placeholder="Search branches…" className="max-w-sm" />}
+      toolbar={<SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search branches…" className="max-w-sm" />}
     >
       <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Branches" }]} />
 

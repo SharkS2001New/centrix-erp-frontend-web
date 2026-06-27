@@ -268,12 +268,12 @@ export function ProductPriceSheetScreen() {
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="Search products">
-          <SearchInput value={search} onChange={setSearch} placeholder="Name or code…" />
+          <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or code…" />
         </Field>
         <Field label="Category">
           <FilterSelect
             value={categoryFilter}
-            onChange={setCategoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
             options={[
               { value: "all", label: "All categories" },
               ...categories.map((c) => ({

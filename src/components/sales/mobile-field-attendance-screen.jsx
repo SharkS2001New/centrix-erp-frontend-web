@@ -249,7 +249,7 @@ export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
           <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </Field>
         <Field label="Search rep">
-          <SearchInput value={search} onChange={setSearch} placeholder="Name or username" />
+          <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or username" />
         </Field>
         <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
           <input type="checkbox" checked={openOnly} onChange={(e) => setOpenOnly(e.target.checked)} />

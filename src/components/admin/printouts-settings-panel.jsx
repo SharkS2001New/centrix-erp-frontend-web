@@ -15,6 +15,7 @@ import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-
 import { MultilinePrintNotesField } from "@/components/admin/multiline-print-notes-field";
 import { PrintoutsLivePreview } from "@/components/admin/printouts-live-preview";
 import { useDocumentPrintPreviewContext } from "@/components/admin/document-print-preview";
+import { useAuth } from "@/contexts/auth-context";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 
@@ -57,8 +58,10 @@ export function PrintoutsSettingsPanel({
   onAfterSave,
   capabilities,
 }) {
+  const { refreshCapabilities } = useAuth();
   const { settingsPath } = useSettingsApi();
   const previewContext = useDocumentPrintPreviewContext();
+  const afterSave = onAfterSave ?? refreshCapabilities;
   const [form, setForm] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -133,7 +136,7 @@ export function PrintoutsSettingsPanel({
       }
       await Promise.all(tasks);
       await load();
-      if (onAfterSave) await onAfterSave();
+      if (afterSave) await afterSave();
       setMessage("Printout settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save printout settings");

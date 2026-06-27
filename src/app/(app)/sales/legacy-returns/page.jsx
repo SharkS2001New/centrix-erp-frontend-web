@@ -132,10 +132,10 @@ function LegacyReturnsContent() {
       ) : null}
 
       <div className="flex flex-wrap gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Return no, invoice, customer…" />
+        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Return no, invoice, customer…" />
         <FilterSelect
           value={statusFilter}
-          onChange={setStatusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
           options={[
             { value: "all", label: "All statuses" },
             { value: "approved", label: "Approved" },

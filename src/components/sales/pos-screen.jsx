@@ -54,7 +54,7 @@ import {
   shouldSubmitKraOnCheckout,
 } from "@/lib/finance-settings";
 import { useBlockingWait } from "@/lib/use-blocking-wait";
-import { printSaleOrder, resolveOrderPrintType } from "@/components/sales/sale-order-print";
+import { printSaleOrder } from "@/components/sales/sale-order-print";
 import {
   canAdjustCartLineQuantity,
   cartLineEntryQtyForBaseQty,
@@ -1982,19 +1982,11 @@ export function PosScreen({ standalone = false }) {
       setSelectedLineId(null);
       try {
         if (posSalesConfig.showCheckoutOnCreate) {
-          const copies = Number(posSalesConfig.receiptCopies ?? 1) || 1;
-          const documentType = await resolveOrderPrintType(capabilities?.module_settings);
-          if (documentType) {
-            for (let i = 0; i < copies; i++) {
-              await printSaleOrder(sale, {
-                capabilities,
-                moduleSettings: capabilities?.module_settings,
-                organizationName: capabilities?.profile_label,
-                uomById,
-                documentType,
-              });
-            }
-          }
+          await printSaleOrder(sale, {
+            capabilities,
+            organizationName: capabilities?.profile_label,
+            uomById,
+          });
         }
       } catch (printErr) {
         // non-fatal; printing failures shouldn't block checkout
@@ -2203,18 +2195,11 @@ export function PosScreen({ standalone = false }) {
       return;
     }
     try {
-      const copies = Number(posSalesConfig.receiptCopies ?? 1) || 1;
-      const documentType = await resolveOrderPrintType(capabilities?.module_settings);
-      if (!documentType) return;
-      for (let i = 0; i < copies; i++) {
-        await printSaleOrder(sale, {
-          capabilities,
-          moduleSettings: capabilities?.module_settings,
-          organizationName: capabilities?.profile_label,
-          uomById,
-          documentType,
-        });
-      }
+      await printSaleOrder(sale, {
+        capabilities,
+        organizationName: capabilities?.profile_label,
+        uomById,
+      });
       setStatusMessage(`Reprinting order #${sale.order_num}.`);
     } catch {
       setStatusMessage("Receipt print failed.");

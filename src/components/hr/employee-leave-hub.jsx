@@ -197,7 +197,7 @@ export function EmployeeLeaveHub({
         <div className="flex flex-wrap items-center gap-2">
           <SearchInput
             value={search}
-            onChange={setSearch}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder="Search employees…"
             className="max-w-xs"
           />

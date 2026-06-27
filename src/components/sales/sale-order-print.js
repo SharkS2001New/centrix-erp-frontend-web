@@ -78,6 +78,24 @@ async function fetchRoute(routeId) {
   }
 }
 
+/** Load printout settings from the API so prints reflect admin changes immediately. */
+async function resolvePrintModuleSettings(fallback = null) {
+  try {
+    const [salesRes, generalRes] = await Promise.all([
+      apiRequest("/erp/settings/sales", { loading: false, reportIssues: false }),
+      apiRequest("/erp/settings/general", { loading: false, reportIssues: false }),
+    ]);
+
+    return {
+      ...(fallback && typeof fallback === "object" ? fallback : {}),
+      sales: salesRes?.sales ?? salesRes,
+      general: generalRes?.general ?? generalRes,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 /**
  * Resolve thermal vs A4 before printing. Prompts when org setting is "both".
  * @returns {Promise<"receipt"|"invoice"|null>}
@@ -96,13 +114,17 @@ export async function resolveOrderPrintType(moduleSettings, explicitType) {
 export async function printSaleOrder(sale, options = {}) {
   if (!sale) return null;
 
-  const moduleSettings = options.moduleSettings ?? options.capabilities?.module_settings;
+  const fallbackModuleSettings =
+    options.moduleSettings ?? options.capabilities?.module_settings ?? null;
+  const moduleSettings = await resolvePrintModuleSettings(fallbackModuleSettings);
   const sales = mergeSalesSettings(moduleSettings);
   const general = mergeGeneralSettings(moduleSettings);
   const organizationId = options.capabilities?.organization_id;
 
   const documentType = await resolveOrderPrintType(moduleSettings, options.documentType);
   if (!documentType) return null;
+
+  const copies = Math.max(1, Number(options.copies ?? sales.receipt_copies ?? 1) || 1);
 
   const [organization, branch, customer, route] = await Promise.all([
     options.organization
@@ -174,20 +196,24 @@ export async function printSaleOrder(sale, options = {}) {
       organizationName: seller.name ?? organization?.org_name ?? "",
       validDays: Number(sales.invoice_valid_days ?? 7),
     });
-    printSaleInvoice(sale, {
-      ...printOptions,
-      invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
-      preparedBy: options.preparedBy ?? sale.cashier_name ?? sale.user?.full_name ?? null,
-      deliveryTerms,
-      footerLines,
-    });
+    for (let copy = 0; copy < copies; copy += 1) {
+      printSaleInvoice(sale, {
+        ...printOptions,
+        invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
+        preparedBy: options.preparedBy ?? sale.cashier_name ?? sale.user?.full_name ?? null,
+        deliveryTerms,
+        footerLines,
+      });
+    }
     return documentType;
   }
 
-  printSaleReceipt(sale, {
-    ...printOptions,
-    organizationName: seller.name ?? options.organizationName ?? DEFAULT_PRINT_ORG_NAME,
-  });
+  for (let copy = 0; copy < copies; copy += 1) {
+    printSaleReceipt(sale, {
+      ...printOptions,
+      organizationName: seller.name ?? options.organizationName ?? DEFAULT_PRINT_ORG_NAME,
+    });
+  }
 
   return documentType;
 }

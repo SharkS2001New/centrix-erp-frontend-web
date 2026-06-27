@@ -100,7 +100,7 @@ export default function InventoryTransfersPage() {
         <Field label="To">
           <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </Field>
-        <SearchInput value={search} onChange={setSearch} placeholder="Product…" />
+        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Product…" />
       </div>
 
       {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}

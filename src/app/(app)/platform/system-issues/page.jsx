@@ -156,7 +156,7 @@ export default function PlatformSystemIssuesPage() {
       <div className="mb-4 flex flex-wrap gap-3">
         <SearchInput
           value={search}
-          onChange={setSearch}
+          onChange={(e) => setSearch(e.target.value)}
           placeholder="Search message, API path, reference…"
         />
         <FilterSelect

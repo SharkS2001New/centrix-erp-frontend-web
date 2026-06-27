@@ -262,7 +262,7 @@ export default function VouchersPage() {
       <div className="mb-4 max-w-md">
         <SearchInput
           value={search}
-          onChange={setSearch}
+          onChange={(e) => setSearch(e.target.value)}
           placeholder="Search code or name…"
         />
       </div>
