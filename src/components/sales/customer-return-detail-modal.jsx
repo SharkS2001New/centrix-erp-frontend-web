@@ -233,7 +233,9 @@ export function CustomerReturnDetailModal({
                         <p className="font-medium text-slate-900">{line.product_name ?? line.product_code}</p>
                       </td>
                       <td className="px-3 py-2 text-right">
-                        {customerReturnLineQtyLabel(line, uomById, "return_qty")}
+                        {customerReturnLineQtyLabel(line, uomById, "return_qty", {
+                          returnKind: row.return_kind,
+                        })}
                       </td>
                       <td className="px-3 py-2 text-right">{formatSaleKes(line.unit_price)}</td>
                       <td className="px-3 py-2 text-right font-medium">{formatSaleKes(line.amount)}</td>

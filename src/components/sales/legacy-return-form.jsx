@@ -11,10 +11,9 @@ import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import {
   REFUND_METHODS,
   RETURN_REASONS,
-  customerReturnLineQtyLabel,
-  recalcReturnLine,
-  recalcLegacyReturnLine,
-  totalReturnAmount,
+  legacyFullReturnLine,
+  legacyReturnLineQtyLabel,
+  totalLegacyReturnCredit,
 } from "@/components/sales/customer-returns-shared";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
 
@@ -43,17 +42,9 @@ export function LegacyReturnForm({
   const [loadingSale, setLoadingSale] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [uoms, setUoms] = useState([]);
 
-  const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
-  const totalRefund = useMemo(() => totalReturnAmount(lines), [lines]);
+  const totalCredit = useMemo(() => totalLegacyReturnCredit(lines), [lines]);
   const needsManualKraInvoice = Boolean(kraHint?.requires_manual_invoice_number);
-
-  useEffect(() => {
-    apiRequest("/uoms", { searchParams: { per_page: 200 } })
-      .then((res) => setUoms(res.data ?? []))
-      .catch(() => setUoms([]));
-  }, []);
 
   const loadSaleContext = useCallback(async (id) => {
     if (!id) {
@@ -74,15 +65,7 @@ export function LegacyReturnForm({
       setKraHint(linesRes.kra_invoice_hint ?? saleRes.kra_invoice_hint ?? null);
       const known = linesRes.kra_invoice_hint?.known_invoice_number ?? "";
       setKraInvoiceNumber(known);
-      setLines(
-        (linesRes.lines ?? []).map((line) =>
-          recalcLegacyReturnLine({
-            ...line,
-            return_qty: line.return_qty ?? line.max_return_qty ?? 0,
-            amount: line.amount ?? line.line_total ?? 0,
-          }),
-        ),
-      );
+      setLines((linesRes.lines ?? []).map((line) => legacyFullReturnLine(line)));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load legacy order");
       setSale(null);
@@ -98,12 +81,6 @@ export function LegacyReturnForm({
       loadSaleContext(String(initialSaleId));
     }
   }, [initialSaleId, loadSaleContext]);
-
-  function updateLine(index, patch) {
-    setLines((prev) =>
-      prev.map((line, i) => (i === index ? recalcLegacyReturnLine({ ...line, ...patch }) : line)),
-    );
-  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -126,11 +103,11 @@ export function LegacyReturnForm({
         sale_item_id: line.sale_item_id,
         product_code: line.product_code,
         product_name: line.product_name,
-        uom: line.uom,
+        uom: line.uom ?? line.sold_uom ?? null,
         quantity_sold: line.quantity_sold,
         return_qty: line.return_qty,
         unit_price: line.unit_price,
-        amount: line.amount,
+        amount: line.amount ?? line.line_total ?? 0,
         line_no: line.line_no,
       }));
 
@@ -197,6 +174,11 @@ export function LegacyReturnForm({
           {legacyLabel ? <div className="text-slate-600">Legacy ref: {legacyLabel}</div> : null}
           <div className="text-slate-600">Customer: {customerName}</div>
           <div className="text-slate-600">Order total: {formatSaleKes(sale.order_total)}</div>
+          {lines.length ? (
+            <div className="mt-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-violet-900">
+              Full legacy return — quantities and credits match the original order.
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -275,31 +257,26 @@ export function LegacyReturnForm({
                 <th className="px-3 py-2">Sold</th>
                 <th className="px-3 py-2">Already returned</th>
                 <th className="px-3 py-2">Return qty</th>
-                <th className="px-3 py-2 text-right">Credit</th>
+                <th className="px-3 py-2 text-right">Original line total</th>
               </tr>
             </thead>
             <tbody>
               {lines.map((line, index) => (
                 <tr key={`${line.product_code}-${index}`} className="border-t">
-                  <td className="px-3 py-2">{line.product_name ?? line.product_code}</td>
                   <td className="px-3 py-2">
-                    {customerReturnLineQtyLabel(line, uomById, "quantity_sold")}
+                    <p className="font-medium">{line.product_name ?? line.product_code}</p>
+                    <p className="text-xs text-slate-500">Full return only</p>
                   </td>
+                  <td className="px-3 py-2">{legacyReturnLineQtyLabel(line, "quantity_sold")}</td>
+                  <td className="px-3 py-2">{legacyReturnLineQtyLabel(line, "already_returned")}</td>
                   <td className="px-3 py-2">
-                    {customerReturnLineQtyLabel(line, uomById, "already_returned")}
+                    <span className="font-medium text-slate-900">
+                      {legacyReturnLineQtyLabel(line, "return_qty")}
+                    </span>
                   </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      min="0"
-                      step="any"
-                      max={line.max_return_qty}
-                      className={`${inputClassName} w-24`}
-                      value={line.return_qty}
-                      onChange={(e) => updateLine(index, { return_qty: e.target.value })}
-                    />
+                  <td className="px-3 py-2 text-right font-medium">
+                    {formatSaleKes(line.line_total ?? line.amount)}
                   </td>
-                  <td className="px-3 py-2 text-right">{formatSaleKes(line.amount)}</td>
                 </tr>
               ))}
             </tbody>
@@ -309,8 +286,17 @@ export function LegacyReturnForm({
         <p className="text-sm text-slate-500">No returnable lines on this order.</p>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm font-semibold">Total credit: {formatSaleKes(totalRefund)}</div>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-violet-50 px-4 py-3">
+        <div>
+          <div className="text-sm font-semibold text-violet-900">
+            Total credit: {formatSaleKes(totalCredit)}
+          </div>
+          {sale?.order_total != null ? (
+            <div className="text-xs text-violet-800">
+              Original order total: {formatSaleKes(sale.order_total)}
+            </div>
+          ) : null}
+        </div>
         <PrimaryButton type="submit" disabled={saving || !kraEnabled || loadingSale}>
           {saving ? "Processing…" : "Issue legacy return & credit note"}
         </PrimaryButton>

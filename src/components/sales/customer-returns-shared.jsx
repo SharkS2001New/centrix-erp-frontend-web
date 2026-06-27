@@ -1,7 +1,13 @@
 "use client";
 
-import { smallPackagingLabel } from "@/lib/uom-packaging";
+import { smallPackagingLabel, uomStockTakeLevels } from "@/lib/uom-packaging";
 import { saleLineQtyLabel } from "@/lib/sale-line-items";
+import { formatDisplayQty, stockTakeCountsToBase } from "@/lib/stock-uom";
+import {
+  countKey,
+  initStockTakeCounts,
+  readStockTakeCounts,
+} from "@/components/inventory/stock-take-count-inputs";
 
 export const RETURN_REASONS = [
   "Damaged Product",
@@ -69,18 +75,70 @@ export function resolveCustomerReturnLineUom(line, uomById) {
   return line?.product?.unit ?? line?.product?.uom ?? null;
 }
 
-/** Display qty with packaging labels — same units as the original sale line. */
-export function customerReturnLineQtyLabel(line, uomById, qtyField = "return_qty") {
+/** Legacy sale lines keep the original LightStores qty + unit — not Centrix UOM conversion. */
+export function legacyReturnLineQtyLabel(line, qtyField = "return_qty") {
   const qty = line?.[qtyField] ?? 0;
-  return saleLineQtyLabel({ ...line, quantity: qty }, uomById);
+  const unit = line?.sold_uom?.trim() || line?.uom?.trim() || "units";
+  return `${formatDisplayQty(qty)} ${unit}`;
+}
+
+/** Display qty with packaging labels — Centrix sales use product UOM; legacy uses sold_uom. */
+export function customerReturnLineQtyLabel(line, uomById, qtyField = "return_qty", options = {}) {
+  const legacy =
+    line?.display_uom_mode === "legacy" ||
+    options.returnKind === "legacy" ||
+    options.legacy === true;
+  if (legacy) {
+    return legacyReturnLineQtyLabel(line, qtyField);
+  }
+  const qty = line?.[qtyField] ?? 0;
+  return saleLineQtyLabel(
+    { ...line, quantity: qty, on_wholesale_retail: line?.on_wholesale_retail },
+    uomById,
+  );
 }
 
 /** Short unit label for qty inputs (e.g. pcs, kg, carton). */
-export function customerReturnLineUnitLabel(line, uomById) {
+export function customerReturnLineUnitLabel(line, uomById, options = {}) {
+  const legacy =
+    line?.display_uom_mode === "legacy" ||
+    options.returnKind === "legacy" ||
+    options.legacy === true;
+  if (legacy) {
+    return line?.sold_uom?.trim() || line?.uom?.trim() || "units";
+  }
   const uom = resolveCustomerReturnLineUom(line, uomById);
   if (uom) return smallPackagingLabel(uom);
   if (line?.uom) return line.uom;
   return "units";
+}
+
+export function returnLineCountId(line) {
+  return String(line.sale_item_id ?? line.product_code ?? "line");
+}
+
+/** Packaging levels shown when entering a Centrix return qty. */
+export function returnQtyInputLevels(line, uom) {
+  const levels = uomStockTakeLevels(uom);
+  if (Number(line?.on_wholesale_retail) === 1) {
+    return levels.filter((level) => level.key === "small");
+  }
+  return levels;
+}
+
+/** Build empty hierarchy count fields for a return line. */
+export function initReturnLineCounts(line, uom, baseQty = 0) {
+  const levels = returnQtyInputLevels(line, uom);
+  return initStockTakeCounts(returnLineCountId(line), baseQty, uom, levels);
+}
+
+/** Apply packaging-level counts to a Centrix return line (return_qty stored in base units). */
+export function recalcReturnLineFromCounts(line, counts, uomById) {
+  const uom = resolveCustomerReturnLineUom(line, uomById);
+  const levels = returnQtyInputLevels(line, uom);
+  const byKey = readStockTakeCounts(returnLineCountId(line), levels, counts);
+  const baseQty = stockTakeCountsToBase(byKey, uom);
+  return recalcReturnLine({ ...line, return_qty: baseQty });
 }
 
 export function emptyReturnLineFromSaleItem(item) {
@@ -97,30 +155,51 @@ export function emptyReturnLineFromSaleItem(item) {
     product_code: item.product_code,
     product_name: item.product_name ?? item.product_code,
     uom: item.uom ?? item.product?.unit?.uom_type ?? null,
+    sold_uom: item.sold_uom ?? item.uom ?? null,
     product: item.product ?? null,
     quantity_sold: qty,
     already_returned: alreadyReturned,
     max_return_qty: maxReturnQty,
     return_qty: 0,
     unit_price: unitPrice,
+    line_total: Number(item.line_total ?? item.amount ?? 0),
     amount: 0,
     line_no: item.line_no ?? null,
+    on_wholesale_retail: Number(item.on_wholesale_retail ?? 0),
+    display_uom_mode: item.display_uom_mode ?? "centrix",
+    full_return: Boolean(item.full_return),
   };
 }
 
 export function recalcReturnLine(line) {
   const returnQty = Math.max(0, Number(line.return_qty) || 0);
-  const unitPrice = Number(line.unit_price) || 0;
   const maxQty =
     line.max_return_qty != null
       ? Number(line.max_return_qty)
       : Number(line.quantity_sold) || 0;
   const clampedQty = maxQty > 0 ? Math.min(returnQty, maxQty) : returnQty;
+  const lineTotal = Number(line.line_total);
+  const remainingQty = maxQty || Number(line.quantity_sold) || 0;
+
+  let amount;
+  if (Number.isFinite(lineTotal) && lineTotal > 0 && remainingQty > 0) {
+    amount =
+      clampedQty + 0.0001 >= remainingQty
+        ? lineTotal
+        : Math.round(lineTotal * (clampedQty / remainingQty) * 100) / 100;
+  } else {
+    const unitPrice = Number(line.unit_price) || 0;
+    amount = Math.round(clampedQty * unitPrice * 100) / 100;
+  }
+
+  const unitPrice =
+    clampedQty > 0 ? Math.round((amount / clampedQty) * 100) / 100 : Number(line.unit_price) || 0;
 
   return {
     ...line,
     return_qty: clampedQty,
-    amount: Math.round(clampedQty * unitPrice * 100) / 100,
+    unit_price: unitPrice,
+    amount,
   };
 }
 
@@ -159,6 +238,72 @@ export function recalcLegacyReturnLine(line) {
 
 export function totalReturnAmount(lines) {
   return (lines ?? []).reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
+}
+
+/** Sum of original sale line totals still being returned (legacy full-order credit). */
+export function totalLegacyReturnCredit(lines) {
+  return (lines ?? []).reduce(
+    (sum, line) => sum + (Number(line.line_total ?? line.amount) || 0),
+    0,
+  );
+}
+
+/** True when every returnable line is set to its max return qty. */
+export function isFullOrderReturn(lines) {
+  const returnable = (lines ?? []).filter((line) => Number(line.max_return_qty) > 0);
+  if (!returnable.length) return false;
+  return returnable.every(
+    (line) => Number(line.return_qty) + 0.0001 >= Number(line.max_return_qty),
+  );
+}
+
+/** Set one Centrix line to return everything still returnable. */
+export function applyFullReturnToLine(line, uomById) {
+  const maxQty = Number(line.max_return_qty) || 0;
+  if (maxQty <= 0) {
+    return recalcReturnLine({ ...line, return_qty: 0 });
+  }
+  return recalcReturnLine({ ...line, return_qty: maxQty });
+}
+
+/** Fill every returnable Centrix line to max qty with matching refund amounts. */
+export function applyReturnAllLines(lines, uomById) {
+  return (lines ?? []).map((line) => applyFullReturnToLine(line, uomById));
+}
+
+/** Build hierarchy count inputs for lines at their max return qty. */
+export function buildReturnCountsForLines(lines, uomById) {
+  const counts = {};
+  for (const line of lines ?? []) {
+    const maxQty = Number(line.max_return_qty) || 0;
+    if (maxQty <= 0) continue;
+    const uom = resolveCustomerReturnLineUom(line, uomById);
+    Object.assign(counts, initReturnLineCounts(line, uom, maxQty));
+  }
+  return counts;
+}
+
+/** Clear return quantities on Centrix lines. */
+export function clearReturnAllLines(lines) {
+  return (lines ?? []).map((line) => recalcReturnLine({ ...line, return_qty: 0 }));
+}
+
+/** Prepare a legacy line for mandatory full return using original order amounts. */
+export function legacyFullReturnLine(line) {
+  const qtySold = Number(line.quantity_sold) || 0;
+  const maxReturn = Number(line.max_return_qty ?? qtySold) || 0;
+  const returnQty = maxReturn > 0 ? maxReturn : qtySold;
+  const lineTotal = Number(line.line_total ?? line.amount ?? 0);
+
+  return recalcLegacyReturnLine({
+    ...line,
+    display_uom_mode: "legacy",
+    full_return: true,
+    quantity_sold: qtySold,
+    return_qty: returnQty,
+    line_total: lineTotal,
+    sold_uom: line.sold_uom ?? line.uom ?? null,
+  });
 }
 
 /** Parse invoice / receipt reference from user input (S0001, INV-1005, or raw number). */

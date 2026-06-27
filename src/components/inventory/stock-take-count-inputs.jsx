@@ -42,8 +42,9 @@ export function StockTakeCountInputs({
   disabled = false,
   showPreview = true,
   maxBase = null,
+  levels: levelsOverride = null,
 }) {
-  const levels = uomStockTakeLevels(uom);
+  const levels = levelsOverride ?? uomStockTakeLevels(uom);
   const byKey = readStockTakeCounts(lineId, levels, counts);
   const baseTotal = stockTakeCountsToBase(byKey, uom);
   const preview = formatMixedStockDisplay(baseTotal, uom);

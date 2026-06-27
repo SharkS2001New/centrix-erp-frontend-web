@@ -13,10 +13,19 @@ import {
   customerReturnLineQtyLabel,
   customerReturnLineUnitLabel,
   emptyReturnLineFromSaleItem,
+  initReturnLineCounts,
   parseInvoiceNumber,
+  applyReturnAllLines,
+  buildReturnCountsForLines,
+  clearReturnAllLines,
+  isFullOrderReturn,
   recalcReturnLine,
+  recalcReturnLineFromCounts,
+  resolveCustomerReturnLineUom,
+  returnLineCountId,
   totalReturnAmount,
 } from "@/components/sales/customer-returns-shared";
+import { CustomerReturnQtyInputs } from "@/components/sales/customer-return-qty-inputs";
 
 export function CustomerReturnForm({
   editing,
@@ -44,6 +53,8 @@ export function CustomerReturnForm({
   const [error, setError] = useState(null);
   const [invoiceHint, setInvoiceHint] = useState(null);
   const [uoms, setUoms] = useState([]);
+  const [returnCounts, setReturnCounts] = useState({});
+  const [returnAll, setReturnAll] = useState(false);
 
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
   const totalRefund = useMemo(() => totalReturnAmount(lines), [lines]);
@@ -64,28 +75,37 @@ export function CustomerReturnForm({
     setReason(editing.reason ?? RETURN_REASONS[0]);
     setNotes(editing.notes ?? "");
     setStockLocation(editing.stock_location ?? "shop");
-    setLines(
-      (editing.lines ?? []).map((line) =>
-        recalcReturnLine({
-          sale_item_id: line.sale_item_id,
-          product_code: line.product_code,
-          product_name: line.product_name,
-          uom: line.uom,
-          product: line.product ?? null,
-          quantity_sold: line.quantity_sold,
-          already_returned: line.already_returned,
-          max_return_qty: line.max_return_qty,
-          return_qty: line.return_qty,
-          unit_price: line.unit_price,
-          amount: line.amount,
-          line_no: line.line_no,
-        }),
-      ),
+    const nextLines = (editing.lines ?? []).map((line) =>
+      recalcReturnLine({
+        sale_item_id: line.sale_item_id,
+        product_code: line.product_code,
+        product_name: line.product_name,
+        uom: line.uom,
+        product: line.product ?? null,
+        quantity_sold: line.quantity_sold,
+        already_returned: line.already_returned,
+        max_return_qty: line.max_return_qty,
+        return_qty: line.return_qty,
+        unit_price: line.unit_price,
+        line_total: line.line_total ?? line.amount,
+        amount: line.amount,
+        line_no: line.line_no,
+        on_wholesale_retail: line.on_wholesale_retail,
+        display_uom_mode: line.display_uom_mode ?? "centrix",
+      }),
     );
+    setLines(nextLines);
+    const nextCounts = {};
+    for (const line of nextLines) {
+      const uom = resolveCustomerReturnLineUom(line, uomById);
+      Object.assign(nextCounts, initReturnLineCounts(line, uom, line.return_qty));
+    }
+    setReturnCounts(nextCounts);
+    setReturnAll(isFullOrderReturn(nextLines));
     if (editing.sale) {
       setInvoiceQuery(formatReceiptNumber(editing.sale));
     }
-  }, [editing]);
+  }, [editing, uomById]);
 
   useEffect(() => {
     const q = invoiceQuery.trim();
@@ -117,15 +137,25 @@ export function CustomerReturnForm({
       setCustomerNum(sale.customer_num ? String(sale.customer_num) : "");
       setCustomerName(sale.customer_name_override ?? res.customer?.customer_name ?? "");
       setInvoiceQuery(displayQuery ?? formatReceiptNumber(sale));
-      setLines((res.lines ?? sale.items ?? []).map((item) => emptyReturnLineFromSaleItem(item)));
-      setInvoiceHint(`Loaded ${(res.lines ?? sale.items ?? []).length} item(s) from invoice.`);
+      const nextLines = (res.lines ?? sale.items ?? []).map((item) =>
+        emptyReturnLineFromSaleItem(item),
+      );
+      setLines(nextLines);
+      const nextCounts = {};
+      for (const line of nextLines) {
+        const uom = resolveCustomerReturnLineUom(line, uomById);
+        Object.assign(nextCounts, initReturnLineCounts(line, uom));
+      }
+      setReturnCounts(nextCounts);
+      setReturnAll(false);
+      setInvoiceHint(`Loaded ${nextLines.length} item(s) from invoice.`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load invoice");
       setLines([]);
     } finally {
       setLoadingSale(false);
     }
-  }, []);
+  }, [uomById]);
 
   useEffect(() => {
     if (editing || !initialSaleId) return;
@@ -187,13 +217,62 @@ export function CustomerReturnForm({
   }, [invoiceQuery, saleOptions, loadSale]);
 
   function updateLine(index, returnQty) {
+    setReturnAll(false);
     setLines((prev) =>
       prev.map((line, i) => (i === index ? recalcReturnLine({ ...line, return_qty: returnQty }) : line)),
     );
   }
 
+  function updateLineFromCounts(index, key, value) {
+    setReturnAll(false);
+    setReturnCounts((prev) => {
+      const nextCounts = { ...prev, [key]: value };
+      setLines((prevLines) =>
+        prevLines.map((line, i) =>
+          i === index ? recalcReturnLineFromCounts(line, nextCounts, uomById) : line,
+        ),
+      );
+      return nextCounts;
+    });
+  }
+
   function removeLine(index) {
-    setLines((prev) => prev.filter((_, i) => i !== index));
+    setReturnAll(false);
+    setLines((prev) => {
+      const line = prev[index];
+      if (line) {
+        const lineId = returnLineCountId(line);
+        setReturnCounts((counts) => {
+          const next = { ...counts };
+          for (const key of Object.keys(next)) {
+            if (key.startsWith(`${lineId}:`)) delete next[key];
+          }
+          return next;
+        });
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  }
+
+  function handleReturnAllToggle(checked) {
+    setReturnAll(checked);
+    if (!lines.length) return;
+
+    if (checked) {
+      const nextLines = applyReturnAllLines(lines, uomById);
+      setLines(nextLines);
+      setReturnCounts(buildReturnCountsForLines(nextLines, uomById));
+      return;
+    }
+
+    const cleared = clearReturnAllLines(lines);
+    setLines(cleared);
+    const nextCounts = {};
+    for (const line of cleared) {
+      const uom = resolveCustomerReturnLineUom(line, uomById);
+      Object.assign(nextCounts, initReturnLineCounts(line, uom, 0));
+    }
+    setReturnCounts(nextCounts);
   }
 
   async function handleSubmit(e) {
@@ -376,7 +455,27 @@ export function CustomerReturnForm({
         </Field>
       </div>
 
-      <div className="mt-5 overflow-hidden rounded-lg border border-slate-200">
+      {lines.length > 0 ? (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-800">
+            <input
+              type="checkbox"
+              checked={returnAll}
+              onChange={(e) => handleReturnAllToggle(e.target.checked)}
+              disabled={loadingSale || !lines.some((line) => Number(line.max_return_qty) > 0)}
+              className="h-4 w-4 rounded border-slate-300 text-[var(--theme-primary)] focus:ring-[var(--theme-primary)]"
+            />
+            Return all
+          </label>
+          <p className="text-xs text-slate-500">
+            {returnAll
+              ? "All returnable quantities are filled. Uncheck to enter partial returns."
+              : "Check to return the full remaining order without entering each quantity."}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
             <tr>
@@ -422,16 +521,13 @@ export function CustomerReturnForm({
                     {customerReturnLineQtyLabel(line, uomById, "already_returned")}
                   </td>
                   <td className="px-3 py-3 text-right">
-                    <input
-                      type="number"
-                      min="0"
-                      max={(line.max_return_qty ?? line.quantity_sold) || undefined}
-                      step="any"
-                      value={line.return_qty}
-                      onChange={(e) => updateLine(index, e.target.value)}
-                      disabled={Number(line.max_return_qty) <= 0}
-                      className="w-20 rounded border border-slate-200 px-2 py-1 text-right text-sm disabled:bg-slate-50"
-                      aria-label={`Return qty in ${customerReturnLineUnitLabel(line, uomById)}`}
+                    <CustomerReturnQtyInputs
+                      line={line}
+                      uomById={uomById}
+                      counts={returnCounts}
+                      onCountsChange={(key, value) => updateLineFromCounts(index, key, value)}
+                      onSimpleQtyChange={(value) => updateLine(index, value)}
+                      disabled={Number(line.max_return_qty) <= 0 || returnAll}
                     />
                     {Number(line.return_qty) > 0 ? (
                       <p className="mt-1 text-xs text-slate-500">
