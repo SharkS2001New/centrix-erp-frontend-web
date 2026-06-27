@@ -28,8 +28,7 @@ const STATUS_LABELS = {
 
 function userLabel(user) {
   if (!user) return "—";
-  const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
-  return name || user.username || "—";
+  return user.full_name?.trim() || user.username || "—";
 }
 
 export default function PlatformSystemIssuesPage() {

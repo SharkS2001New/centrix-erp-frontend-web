@@ -221,7 +221,8 @@ function buildChannelWorkflow(config, channel) {
 
 export function workflowStatusLabel(workflow, status) {
   const key = String(status ?? "").toLowerCase();
-  return workflow?.labels?.[key] ?? DEFAULT_ORDER_WORKFLOW.steps.find((s) => s.status === key)?.label ?? key;
+  const aligned = workflow ? alignStatusToWorkflow(key, workflow) : key;
+  return workflow?.labels?.[aligned] ?? DEFAULT_ORDER_WORKFLOW.steps.find((s) => s.status === aligned)?.label ?? aligned;
 }
 
 export function workflowPipelineSteps(workflow) {
@@ -241,7 +242,16 @@ export function isTerminalStatus(status, workflow) {
   const key = String(status ?? "").toLowerCase();
   if (!key || key === "cancelled" || key === "held" || key === "draft") return false;
   const last = lastPipelineStatus(workflow);
-  return last != null && key === last;
+  return last != null && alignStatusToWorkflow(key, workflow) === last;
+}
+
+/** Map stored statuses (e.g. completed) to the nearest org pipeline step for display. */
+export function alignStatusToWorkflow(status, workflow) {
+  const key = String(status ?? "").toLowerCase();
+  if (!key || key === "cancelled" || key === "held" || key === "draft") return key;
+  const steps = workflowPipelineSteps(workflow);
+  if (steps.some((step) => step.key === key)) return key;
+  return pickEnabledStatus(key, workflow);
 }
 
 export function workflowTransitions(workflow) {
@@ -249,8 +259,9 @@ export function workflowTransitions(workflow) {
 }
 
 export function pipelineStatusIndex(status, workflow) {
+  const aligned = alignStatusToWorkflow(status, workflow);
   const steps = workflowPipelineSteps(workflow);
-  return steps.findIndex((s) => s.key === status);
+  return steps.findIndex((s) => s.key === aligned);
 }
 
 export function pipelineStepIndex(status, workflow) {

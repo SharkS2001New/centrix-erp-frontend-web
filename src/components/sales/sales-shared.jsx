@@ -1,6 +1,6 @@
 "use client";
 
-import { pipelineStatusIndex, workflowPipelineSteps, workflowStatusLabel } from "@/lib/order-workflow";
+import { pipelineStatusIndex, workflowPipelineSteps, workflowStatusLabel, alignStatusToWorkflow } from "@/lib/order-workflow";
 import {
   PAYMENT_STATUS_LABELS,
   SALE_STATUS_LABELS,
@@ -32,12 +32,13 @@ const PAYMENT_STATUS_TONES = {
   paid: "bg-emerald-50 text-emerald-800 ring-emerald-600/20",
 };
 
-export function SaleStatusBadge({ status, workflow }) {
-  const key = String(status ?? "draft").toLowerCase();
+export function SaleStatusBadge({ status, workflow, workflowStatus = null }) {
+  const raw = String(status ?? "draft").toLowerCase();
+  const key = String(workflowStatus ?? alignStatusToWorkflow(raw, workflow)).toLowerCase();
   const label = workflow
-    ? workflowStatusLabel(workflow, key)
+    ? workflowStatusLabel(workflow, raw)
     : (SALE_STATUS_LABELS[key] ?? status ?? "—");
-  const tone = SALE_STATUS_TONES[key] ?? SALE_STATUS_TONES.draft;
+  const tone = SALE_STATUS_TONES[raw] ?? SALE_STATUS_TONES[key] ?? SALE_STATUS_TONES.draft;
   return (
     <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ${tone}`}>
       {label}

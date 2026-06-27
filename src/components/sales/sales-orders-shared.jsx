@@ -168,10 +168,11 @@ export function matchesPaymentFilter(sale, paymentFilter) {
 }
 
 /** Compact pipeline position for list rows. */
-export function OrderMiniPipeline({ status, workflow, showLabel = true }) {
+export function OrderMiniPipeline({ status, workflow, workflowStatus = null, showLabel = true }) {
   const steps = workflowPipelineSteps(workflow);
   if (!steps.length) return null;
-  const idx = pipelineStatusIndex(status, workflow);
+  const displayStatus = workflowStatus ?? alignStatusToWorkflow(status, workflow);
+  const idx = pipelineStatusIndex(displayStatus, workflow);
   const activeIdx = idx >= 0 ? idx : 0;
   const label = workflowStatusLabel(workflow, status);
 
@@ -728,9 +729,9 @@ export function OrderListTableRow({
         </td>
         <td className="px-4 py-3 text-right text-slate-700">{saleVatCell(sale)}</td>
         <td className="px-4 py-3">
-          <SaleStatusBadge status={sale.status} workflow={workflow} />
+          <SaleStatusBadge status={sale.status} workflow={workflow} workflowStatus={sale.workflow_status} />
           <div className="mt-1.5">
-            <OrderMiniPipeline status={sale.status} workflow={workflow} showLabel={false} />
+            <OrderMiniPipeline status={sale.status} workflow={workflow} workflowStatus={sale.workflow_status} showLabel={false} />
           </div>
         </td>
         <td className="px-4 py-3">
