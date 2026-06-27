@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { workspaceLandingPath } from "@/lib/workspace-navigation";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { buildAccessContext, isPlatformShellUser, resolveTillFloatNavFlag } from "@/lib/access-control";
 import {
@@ -48,9 +49,18 @@ export function WorkspaceGuard({ children }) {
     }
 
     if (!pathBelongsToWorkspace(pathname, workspaceId)) {
-      router.replace(workspaceHomePath(workspaceId, capabilities));
+      const landingPath = workspaceLandingPath(
+        user?.id,
+        organization?.id,
+        workspaceId,
+        capabilities,
+        ctx,
+      );
+      if (pathname !== landingPath) {
+        router.replace(landingPath);
+      }
     }
-  }, [capabilities, ctx, loading, pathname, platformUser, router, storedWorkspace]);
+  }, [capabilities, ctx, loading, organization?.id, pathname, platformUser, router, storedWorkspace, user?.id]);
 
   if (loading) {
     return (

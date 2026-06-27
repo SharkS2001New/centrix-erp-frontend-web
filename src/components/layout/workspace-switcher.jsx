@@ -6,7 +6,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
-import { recallWorkspacePath } from "@/lib/workspace-navigation";
+import {
+  persistWorkspaceRouteBeforeSwitch,
+  recallWorkspacePath,
+} from "@/lib/workspace-navigation";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import {
   pathBelongsToWorkspace,
@@ -86,6 +89,15 @@ export function WorkspaceSwitcher() {
     setPendingTarget(target);
     setError(null);
     try {
+      const leavingWorkspaceId = currentWorkspace?.id ?? getStoredWorkspace();
+      if (leavingWorkspaceId) {
+        persistWorkspaceRouteBeforeSwitch(
+          user?.id,
+          organization?.id,
+          leavingWorkspaceId,
+          pathname,
+        );
+      }
       const resumePath = recallWorkspacePath(
         user?.id,
         organization?.id,
@@ -95,7 +107,7 @@ export function WorkspaceSwitcher() {
       );
       await switchWorkspace(id);
       setOpen(false);
-      router.push(resumePath);
+      router.replace(resumePath);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not switch application");

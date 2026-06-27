@@ -7,7 +7,7 @@ import { AuthGuard } from "@/components/auth-guard";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
-import { recallWorkspacePath } from "@/lib/workspace-navigation";
+import { persistWorkspaceRouteBeforeSwitch, recallWorkspacePath } from "@/lib/workspace-navigation";
 import { resolveAvailableWorkspaces } from "@/lib/workspaces";
 import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
 import { SignOutButton } from "@/components/layout/sign-out-button";

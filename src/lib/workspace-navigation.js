@@ -6,7 +6,7 @@ const STORAGE_PREFIX = "pos_erp_workspace_routes";
 const SKIP_PATHS = new Set(["/choose-workspace", "/login", "/change-password"]);
 
 function storageKey(userId, organizationId) {
-  return `${STORAGE_PREFIX}:${organizationId ?? "0"}:${userId ?? "0"}`;
+  return `${STORAGE_PREFIX}:${String(organizationId ?? "0")}:${String(userId ?? "0")}`;
 }
 
 /** @returns {Record<string, string>} */
@@ -50,10 +50,25 @@ export function rememberWorkspacePath(userId, organizationId, workspaceId, pathn
 }
 
 /**
+ * Persist the route the user is leaving before switching applications.
+ */
+export function persistWorkspaceRouteBeforeSwitch(
+  userId,
+  organizationId,
+  workspaceId,
+  pathname,
+) {
+  if (!workspaceId || !pathname) return;
+  rememberWorkspacePath(userId, organizationId, workspaceId, pathname);
+}
+
+/**
  * Resume path when re-opening a workspace — falls back to module home when unknown or inaccessible.
  */
 export function recallWorkspacePath(userId, organizationId, workspaceId, capabilities, ctx = null) {
   const fallback = workspaceHomePath(workspaceId, capabilities);
+  if (!workspaceId) return fallback;
+
   const stored = readRouteMap(userId, organizationId)[workspaceId];
   if (!stored || !pathBelongsToWorkspace(stored, workspaceId)) {
     return fallback;
@@ -62,6 +77,11 @@ export function recallWorkspacePath(userId, organizationId, workspaceId, capabil
     return fallback;
   }
   return stored;
+}
+
+/** Landing route after a workspace switch or when the URL belongs to another module. */
+export function workspaceLandingPath(userId, organizationId, workspaceId, capabilities, ctx = null) {
+  return recallWorkspacePath(userId, organizationId, workspaceId, capabilities, ctx);
 }
 
 export function clearWorkspaceRouteMemory(userId, organizationId) {
