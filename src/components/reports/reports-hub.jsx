@@ -15,10 +15,12 @@ import { CatalogPageShell, inputClassName } from "@/components/catalog/catalog-s
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { ReportsOverviewSummary } from "@/components/reports/reports-overview-summary";
 import { DashboardErrorBanner, DashboardSection } from "@/components/dashboard/dashboard-shared";
+import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import {
   buildReportCategories,
   flattenReports,
   reportHref,
+  reportVisibleForCatalog,
 } from "@/lib/reports/catalog-ui";
 import {
   customReportBelongsToWorkspace,
@@ -104,7 +106,11 @@ export function ReportsHub() {
     const permitted = built
       .map((cat) => ({
         ...cat,
-        reports: cat.reports.filter((r) => canViewReport(r.key, hasPermission)),
+        reports: cat.reports.filter(
+          (r) =>
+            canViewReport(r.key, hasPermission) &&
+            reportVisibleForCatalog(r.key, capabilities),
+        ),
       }))
       .filter((cat) => cat.reports.length > 0)
       .map((cat) => ({ ...cat, count: cat.reports.length }));
@@ -115,7 +121,7 @@ export function ReportsHub() {
     const withCustom = mergeCustomReportsIntoCategories(permitted, workspaceTemplates);
 
     return filterReportCategoriesForWorkspace(withCustom, workspaceId, capabilities?.modules);
-  }, [catalog, customTemplates, hasPermission, workspaceId, capabilities?.modules]);
+  }, [catalog, customTemplates, hasPermission, workspaceId, capabilities?.modules, capabilities]);
   const allReports = useMemo(() => flattenReports(categories), [categories]);
 
   const filteredCategories = useMemo(() => {

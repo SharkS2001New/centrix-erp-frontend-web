@@ -5,7 +5,7 @@ import {
 import { resolveNavHrefIcon } from "@/lib/nav-item-icons";
 import { reportModuleForSlug } from "@/lib/module-registry";
 import { reportPermissionCode } from "@/lib/permission-codes";
-import { REPORT_CATEGORY_DEFS, reportHref } from "@/lib/reports/catalog-ui";
+import { REPORT_CATEGORY_DEFS, reportHref, isMultiBranchReportKey } from "@/lib/reports/catalog-ui";
 import { DISTRIBUTION_REPORT_DEFS } from "@/lib/reports/distribution-reports";
 import { REPORT_DEFINITIONS } from "@/lib/reports/definitions";
 import { HR_REPORT_DEFS } from "@/lib/reports/hr-reports";
@@ -95,6 +95,7 @@ export function buildCatalogReportNavItems() {
         icon: lookupReportIcon(key, href),
         reportKey: key,
         group,
+        requireMultiBranchCatalog: isMultiBranchReportKey(key),
       });
     }
   }

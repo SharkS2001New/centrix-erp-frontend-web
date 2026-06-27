@@ -7,7 +7,10 @@ import {
 } from "@/lib/reports/report-branding";
 import {
   resolveLpoDeliveryNotes,
+  resolveLpoFooterLines,
   resolveLpoKebsWarning,
+  resolveLpoSignatures,
+  resolveLpoValidityDays,
   resolveLpoVatNote,
 } from "@/lib/lpo-print-settings";
 import { computeLpoLineTotals, formatLpoAmount, formatPoNumber } from "./lpo-shared";
@@ -83,6 +86,13 @@ export function LpoPrintDocument({
   const noteLines = instructionLines;
   const kebsWarning = resolveLpoKebsWarning(printSettings ?? {});
   const vatNote = resolveLpoVatNote(printSettings ?? {});
+  const validityDays = resolveLpoValidityDays(lpo, printSettings ?? {});
+  const footerLines = resolveLpoFooterLines(printSettings ?? {}, {
+    organizationName: orgName,
+    validDays: validityDays,
+  });
+  const signatures = resolveLpoSignatures(lpo, printSettings ?? {});
+  if (!signatures.preparedBy && printedBy) signatures.preparedBy = String(printedBy);
   const watermarkHtml = buildReportWatermarkHtml(branding);
 
   const subtotal =
@@ -104,7 +114,7 @@ export function LpoPrintDocument({
   });
 
   const printedAt = new Date().toLocaleString("en-GB");
-  const byName = printedBy ?? lpo?.created_by_name ?? "—";
+  const byName = printedBy ?? signatures.preparedBy ?? lpo?.created_by_name ?? "—";
 
   const orgHeaderHtml = branding.showHeader
     ? buildReportOrgHeaderHtml({
@@ -155,8 +165,12 @@ export function LpoPrintDocument({
         }
         table.lpo-items th { font-weight: 700; text-align: left; }
         table.lpo-items th.num, table.lpo-items td.num { text-align: right; white-space: nowrap; }
-        .lpo-totals { display: flex; justify-content: flex-end; margin: 4px 0 8px; font-size: 10px; }
-        .lpo-totals-box { min-width: 200px; text-align: right; }
+        .lpo-totals-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; margin: 4px 0 8px; align-items: start; }
+        .lpo-totals { text-align: right; font-size: 10px; }
+        .lpo-signatures { font-size: 9px; }
+        .lpo-signatures p { margin: 0 0 10px; }
+        .lpo-signatures .label { font-weight: 700; }
+        .lpo-footer-line { text-align: center; font-size: 8px; font-weight: 700; margin: 2px 0; }
         .lpo-totals-box p { margin: 2px 0; }
         .lpo-notes { margin: 6px 0; padding: 0; list-style: none; font-size: 8px; }
         .lpo-notes li { margin-bottom: 2px; }
@@ -263,13 +277,28 @@ export function LpoPrintDocument({
         </tbody>
       </table>
 
-      <div className="lpo-totals">
-        <div className="lpo-totals-box">
+      <div className="lpo-totals-signatures">
+        <div className="lpo-totals">
           <p>
             <strong>Totals:</strong> {formatLpoAmount(subtotal)}
           </p>
           <p>
             <strong>Total V.A.T:</strong> {formatLpoAmount(totalVat)}
+          </p>
+        </div>
+        <div className="lpo-signatures">
+          <p>
+            <span className="label">Prepared By:</span> {signatures.preparedBy || "_________________________"}
+          </p>
+          <p>
+            <span className="label">Checked By:</span> {signatures.checkedBy || "_________________________"}
+          </p>
+          <p>
+            <span className="label">Authorised By:</span>{" "}
+            {signatures.authorisedBy || "_________________________"}
+          </p>
+          <p>
+            <span className="label">Terms:</span> {signatures.terms || "_________________________"}
           </p>
         </div>
       </div>
@@ -282,6 +311,12 @@ export function LpoPrintDocument({
           </li>
         ))}
       </ol>
+
+      {footerLines.map((line, index) => (
+        <p key={`footer-${index}`} className="lpo-footer-line">
+          {line}
+        </p>
+      ))}
 
       <p className="lpo-warn">{kebsWarning}</p>
       <p className="lpo-note-line">

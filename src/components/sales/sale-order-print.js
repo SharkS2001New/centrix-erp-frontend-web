@@ -2,6 +2,7 @@ import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { apiRequest } from "@/lib/api";
 import { isKraDeviceConfigured } from "@/lib/finance-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
+import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import {
   extractKraReceiptData,
   kraReceiptQrDataUrl,
@@ -153,7 +154,10 @@ export async function printSaleOrder(sale, options = {}) {
     orderDiscountEnabled: Boolean(sales.enable_order_discount),
     customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
     showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
-    documentFooterText: general.document_footer_text?.trim?.() || "",
+    documentFooterText: resolvePrintFooter(
+      general,
+      documentType === "invoice" ? "invoice" : "receipt",
+    ),
     paymentInstructions,
     showPaymentInstructions: shouldShowReceiptPaymentDetails(
       moduleSettings,

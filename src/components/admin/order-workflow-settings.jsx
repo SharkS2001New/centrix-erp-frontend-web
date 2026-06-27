@@ -379,8 +379,10 @@ export function OrderWorkflowSettingsEditor({
             >
               {STOCK_DEDUCT_TIMING_OPTIONS.filter(
                 (opt) =>
+                  opt.value === "order_created" ||
                   opt.value === "order_completed" ||
-                  (distributionOpsEnabled && opt.value !== "order_completed"),
+                  (distributionOpsEnabled &&
+                    (opt.value === "trip_load" || opt.value === "trip_depart")),
               ).map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
@@ -388,7 +390,12 @@ export function OrderWorkflowSettingsEditor({
               ))}
             </select>
           </Field>
-          {stockDeductOn === "order_completed" ? (
+          {stockDeductOn === "order_created" ? (
+            <p className="text-xs text-slate-500">
+              Stock is reduced when the order is placed at checkout (POS, mobile, or backoffice).
+              Customer returns and POS order edits reverse stock when processed.
+            </p>
+          ) : stockDeductOn === "order_completed" ? (
             <Field label="Deduct at order status">
               <select
                 className={inputClassName()}
@@ -402,7 +409,8 @@ export function OrderWorkflowSettingsEditor({
                 ))}
               </select>
               <p className="mt-1 text-xs text-slate-500">
-                POS checkout may deduct immediately unless the order is saved without payment.
+                Inventory is reduced when the order reaches this status (at checkout if already
+                there, otherwise on workflow transition).
               </p>
             </Field>
           ) : (

@@ -83,7 +83,7 @@ export function OrderPrintTypePickerHost() {
             onClick={() => choose("invoice")}
             className="rounded-lg border border-slate-200 px-4 py-4 text-left hover:border-[var(--theme-primary)] hover:bg-slate-50"
           >
-            <span className="block text-sm font-semibold text-slate-900">A4 tax invoice</span>
+            <span className="block text-sm font-semibold text-slate-900">A4 sales invoice</span>
             <span className="mt-1 block text-xs text-slate-500">
               Full-page invoice for filing or delivery
             </span>

@@ -4,6 +4,8 @@ import {
   invoicePrintPayloadFromForm,
 } from "@/lib/invoice-print-settings";
 import { lpoPrintFormFromApi, lpoPrintPayloadFromForm } from "@/lib/lpo-print-settings";
+import { loadingSheetPrintFormFromApi, loadingSheetPrintPayloadFromForm } from "@/lib/loading-sheet-print-settings";
+import { printFooterFormFromGeneral, printFooterPayloadFromForm } from "@/lib/print-footer-settings";
 import {
   receiptPaymentDetailsFromApi,
   receiptPaymentDetailsToPayload,
@@ -15,6 +17,10 @@ export const EMPTY_PRINTOUTS_FORM = {
   document_footer_text: "",
   show_organization_on_documents: true,
   document_header_display: "auto",
+  print_footer_receipt: "",
+  print_footer_a4_invoice: "",
+  print_footer_lpo: "",
+  print_footer_loading_sheet: "",
   order_document_type: "receipt",
   receipt_copies: "1",
   show_branch_on_receipt: true,
@@ -37,6 +43,13 @@ export const EMPTY_PRINTOUTS_FORM = {
   lpo_print_delivery_notes: "",
   lpo_print_kebs_warning: "",
   lpo_print_vat_note: "",
+  lpo_print_footer_lines: "",
+  lpo_print_validity_days: "7",
+  lpo_print_checked_by: "",
+  lpo_print_authorised_by: "",
+  loading_sheet_footer_lines: "",
+  loading_sheet_show_signatures: true,
+  loading_sheet_default_checked_by: "",
 };
 
 export function printoutsGeneralFormFromApi(res) {
@@ -45,6 +58,7 @@ export function printoutsGeneralFormFromApi(res) {
     document_footer_text: general.document_footer_text,
     show_organization_on_documents: general.show_organization_on_documents,
     document_header_display: general.document_header_display,
+    ...printFooterFormFromGeneral(general),
   };
 }
 
@@ -68,20 +82,26 @@ export function printoutsProcurementFormFromApi(res) {
   return lpoPrintFormFromApi(res);
 }
 
-export function printoutsFormFromApis({ generalRes, salesRes, procurementRes } = {}) {
+export function printoutsDistributionFormFromApi(res) {
+  return loadingSheetPrintFormFromApi(res);
+}
+
+export function printoutsFormFromApis({ generalRes, salesRes, procurementRes, distributionRes } = {}) {
   return {
     ...EMPTY_PRINTOUTS_FORM,
     ...(generalRes ? printoutsGeneralFormFromApi(generalRes) : {}),
     ...(salesRes ? printoutsSalesFormFromApi(salesRes) : {}),
     ...(procurementRes ? printoutsProcurementFormFromApi(procurementRes) : {}),
+    ...(distributionRes ? printoutsDistributionFormFromApi(distributionRes) : {}),
   };
 }
 
 export function printoutsGeneralPayloadFromForm(form) {
   return {
-    document_footer_text: form.document_footer_text?.trim() || "",
     show_organization_on_documents: Boolean(form.show_organization_on_documents),
     document_header_display: form.document_header_display || "auto",
+    document_footer_text: String(form.document_footer_text ?? "").trim(),
+    ...printFooterPayloadFromForm(form),
   };
 }
 
@@ -116,4 +136,8 @@ export function printoutsSalesPayloadFromForm(form) {
 
 export function printoutsProcurementPayloadFromForm(form) {
   return lpoPrintPayloadFromForm(form);
+}
+
+export function printoutsDistributionPayloadFromForm(form) {
+  return loadingSheetPrintPayloadFromForm(form);
 }

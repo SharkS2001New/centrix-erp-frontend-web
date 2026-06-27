@@ -13,9 +13,9 @@ import {
 import {
   buildReceiptPaymentDetailsHtml,
 } from "@/lib/receipt-payment-details";
-import { formatReceiptNumber, saleCustomerLabel } from "@/lib/sales";
+import { formatReceiptNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 
-export function printSaleReceipt(
+export function buildSaleReceiptHtml(
   sale,
   {
     organizationName = DEFAULT_PRINT_ORG_NAME,
@@ -36,7 +36,7 @@ export function printSaleReceipt(
     showPaymentInstructions = true,
   } = {},
 ) {
-  if (!sale) return;
+  if (!sale) return "";
 
   const items = sale.items ?? [];
   const receipt = formatReceiptNumber(sale);
@@ -225,5 +225,11 @@ export function printSaleReceipt(
 </body>
 </html>`;
 
+  return html;
+}
+
+export function printSaleReceipt(sale, options = {}) {
+  const html = buildSaleReceiptHtml(sale, options);
+  if (!html) return;
   openPrintWindow(html, "width=420,height=720");
 }

@@ -8,6 +8,7 @@ import {
   sampleLoadingListPreviewData,
 } from "@/components/fulfillment/loading-list-print";
 import { lpoPrintPayloadFromForm } from "@/lib/lpo-print-settings";
+import { loadingSheetPrintPayloadFromForm } from "@/lib/loading-sheet-print-settings";
 import { resolveSaleDocumentBranding } from "@/lib/sale-document-print-shared";
 import { printSaleInvoice } from "@/components/sales/sale-invoice-print";
 import {
@@ -24,6 +25,7 @@ import {
   SAMPLE_PREVIEW_SELLER,
 } from "@/lib/print-preview-samples";
 import { mergeSalesSettings } from "@/lib/sales-settings";
+import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { useAuth } from "@/contexts/auth-context";
 import { printSaleReceipt } from "@/components/sales/sale-receipt-print";
 
@@ -113,12 +115,20 @@ export function previewLpoPrint({
   procurementForm = null,
 }) {
   const sample = sampleLpoPreviewData();
+  const printSettings = procurementForm
+    ? {
+        ...lpoPrintPayloadFromForm(procurementForm),
+        lpo_print_checked_by: procurementForm.lpo_print_checked_by || "Rutto",
+        lpo_print_authorised_by: procurementForm.lpo_print_authorised_by || "Steve Omega",
+      }
+    : null;
   printLpoDocument({
     ...sample,
     organization,
     generalSettings,
     printedBy: "Preview",
-    printSettings: procurementForm ? lpoPrintPayloadFromForm(procurementForm) : null,
+    printSettings,
+    documentFooterText: resolvePrintFooter(generalSettings ?? {}, "lpo"),
   });
 }
 
@@ -129,12 +139,7 @@ export function previewLoadingListPrint({
   printoutsForm = null,
 }) {
   const general = printoutsForm
-    ? {
-        ...mergeGeneralSettings(moduleSettings),
-        document_footer_text: printoutsForm.document_footer_text,
-        show_organization_on_documents: printoutsForm.show_organization_on_documents,
-        document_header_display: printoutsForm.document_header_display,
-      }
+    ? buildPreviewGeneralFromForm(printoutsForm, moduleSettings)
     : generalSettings ?? mergeGeneralSettings(moduleSettings);
 
   const sample = sampleLoadingListPreviewData();
@@ -142,7 +147,21 @@ export function previewLoadingListPrint({
     organization,
     generalSettings: general,
     loadingList: sample.loadingList,
+    printSettings: printoutsForm ? loadingSheetPrintPayloadFromForm(printoutsForm) : null,
+    documentFooterText: resolvePrintFooter(general, "loading_sheet"),
   });
+}
+
+function buildPreviewGeneralFromForm(form, moduleSettings) {
+  return {
+    ...mergeGeneralSettings(moduleSettings),
+    show_organization_on_documents: form.show_organization_on_documents,
+    document_header_display: form.document_header_display,
+    print_footer_receipt: form.print_footer_receipt,
+    print_footer_a4_invoice: form.print_footer_a4_invoice,
+    print_footer_lpo: form.print_footer_lpo,
+    print_footer_loading_sheet: form.print_footer_loading_sheet,
+  };
 }
 
 export function previewSaleInvoicePrint({
@@ -167,7 +186,7 @@ export function previewSaleInvoicePrint({
     productDiscountsEnabled: Boolean(sales.allow_discounts),
     orderDiscountEnabled: Boolean(sales.enable_order_discount),
     invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
-    documentFooterText: general.document_footer_text?.trim?.() || "",
+    documentFooterText: resolvePrintFooter(general, "invoice"),
     paymentInstructions,
     showPaymentInstructions: shouldShowReceiptPaymentDetails({ sales }, "invoice"),
     deliveryTerms: resolveInvoiceDeliveryTerms(sales),
@@ -241,7 +260,7 @@ export function previewReceiptPaymentDetails({
     orderDiscountEnabled: Boolean(sales.enable_order_discount),
     customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
     showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
-    documentFooterText: general.document_footer_text?.trim?.() || "",
+    documentFooterText: resolvePrintFooter(general, "receipt"),
     paymentInstructions: payload,
     kraEnabled: false,
   });

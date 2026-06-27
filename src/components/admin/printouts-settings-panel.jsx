@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { DOCUMENT_HEADER_DISPLAY_OPTIONS } from "@/lib/general-settings";
+import { PRINT_FOOTER_FORM_KEYS, PRINT_FOOTER_LABELS } from "@/lib/print-footer-settings";
 import {
+  printoutsDistributionPayloadFromForm,
   printoutsFormFromApis,
   printoutsGeneralPayloadFromForm,
   printoutsProcurementPayloadFromForm,
@@ -11,14 +13,8 @@ import {
 } from "@/lib/printouts-settings";
 import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
 import { MultilinePrintNotesField } from "@/components/admin/multiline-print-notes-field";
-import {
-  DocumentPrintPreviewButton,
-  previewLpoPrint,
-  previewLoadingListPrint,
-  previewReceiptPaymentDetails,
-  previewSaleInvoicePrint,
-  useDocumentPrintPreviewContext,
-} from "@/components/admin/document-print-preview";
+import { PrintoutsLivePreview } from "@/components/admin/printouts-live-preview";
+import { useDocumentPrintPreviewContext } from "@/components/admin/document-print-preview";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 
@@ -76,18 +72,21 @@ export function PrintoutsSettingsPanel({
     setLoading(true);
     setError(null);
     try {
-      const [generalRes, salesRes, procurementRes] = await Promise.all([
+      const [generalRes, salesRes, procurementRes, distributionRes] = await Promise.all([
         hasGeneral ? apiRequest(settingsPath("general")) : Promise.resolve(null),
         hasSales ? apiRequest(settingsPath("sales")) : Promise.resolve(null),
         hasProcurement ? apiRequest(settingsPath("procurement")) : Promise.resolve(null),
+        hasLoadingSheets ? apiRequest(settingsPath("distribution")) : Promise.resolve(null),
       ]);
-      setForm(printoutsFormFromApis({ generalRes, salesRes, procurementRes }));
+      setForm(
+        printoutsFormFromApis({ generalRes, salesRes, procurementRes, distributionRes }),
+      );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load printout settings");
     } finally {
       setLoading(false);
     }
-  }, [hasGeneral, hasProcurement, hasSales, setError, settingsPath]);
+  }, [hasGeneral, hasLoadingSheets, hasProcurement, hasSales, setError, settingsPath]);
 
   useEffect(() => {
     load();
@@ -124,6 +123,14 @@ export function PrintoutsSettingsPanel({
           }),
         );
       }
+      if (hasLoadingSheets) {
+        tasks.push(
+          apiRequest(settingsPath("distribution"), {
+            method: "PATCH",
+            body: printoutsDistributionPayloadFromForm(form),
+          }),
+        );
+      }
       await Promise.all(tasks);
       await load();
       if (onAfterSave) await onAfterSave();
@@ -135,278 +142,306 @@ export function PrintoutsSettingsPanel({
     }
   }
 
-  const salesPreviewForm = form
-    ? {
-        order_document_type: form.order_document_type,
-        invoice_valid_days: form.invoice_valid_days,
-        show_receipt_payment_details: form.show_receipt_payment_details,
-        show_invoice_payment_details: form.show_invoice_payment_details,
-        use_same_payment_details_for_routes: form.use_same_payment_details_for_routes,
-        pos_receipt_payment_details: form.pos_receipt_payment_details,
-        route_receipt_payment_details: form.route_receipt_payment_details,
-        invoice_print_delivery_terms: form.invoice_print_delivery_terms,
-        invoice_print_footer_lines: form.invoice_print_footer_lines,
-      }
-    : null;
-
   return (
     <form onSubmit={handleSave}>
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Printouts</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Customize branding, receipts, tax invoices, and LPO documents. Use preview to check layout
-          before saving.
+          Customize each document type separately. The live preview on the right updates as you
+          edit.
         </p>
 
         {loading || !form ? (
           <p className="mt-4 text-sm text-slate-500">Loading…</p>
         ) : (
-          <div className="mt-5 space-y-6">
-            {hasGeneral ? (
-              <div>
-                <SectionHeading
-                  title="Document branding"
-                  description="Organization header, footer, and logo display on all printed documents."
-                />
-                <div className="mt-4 space-y-3">
-                  <Field label="Document footer text">
-                    <textarea
-                      className={inputClassName()}
-                      rows={3}
-                      value={form.document_footer_text}
-                      onChange={(e) => setForm((f) => ({ ...f, document_footer_text: e.target.value }))}
-                      placeholder="Shown on printed receipts, invoices, and LPO documents."
+          <div className="mt-5 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
+            <div className="space-y-6">
+              {hasGeneral ? (
+                <div>
+                  <SectionHeading
+                    title="Document branding"
+                    description="Logo and organization header shown on all printouts."
+                  />
+                  <div className="mt-4 space-y-3">
+                    <Toggle
+                      label="Show organization name on documents"
+                      description="Include your company name and address on printed documents."
+                      checked={form.show_organization_on_documents}
+                      onChange={(v) => setForm((f) => ({ ...f, show_organization_on_documents: v }))}
                     />
-                  </Field>
-                  <Toggle
-                    label="Show organization name on documents"
-                    description="Include your company name and address on printed sales and procurement documents."
-                    checked={form.show_organization_on_documents}
-                    onChange={(v) => setForm((f) => ({ ...f, show_organization_on_documents: v }))}
-                  />
-                  <Field label="Report and document header">
-                    <select
-                      className={inputClassName()}
-                      value={form.document_header_display}
-                      onChange={(e) => setForm((f) => ({ ...f, document_header_display: e.target.value }))}
-                    >
-                      {DOCUMENT_HEADER_DISPLAY_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
+                    <Field label="Report and document header">
+                      <select
+                        className={inputClassName()}
+                        value={form.document_header_display}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, document_header_display: e.target.value }))
+                        }
+                      >
+                        {DOCUMENT_HEADER_DISPLAY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            {hasSales ? (
-              <div>
-                <SectionHeading
-                  title="Sales receipts"
-                  description="Thermal receipt format, copies, and payment instructions."
-                />
-                <div className="mt-4 space-y-3">
-                  <Field label="Order print format">
-                    <select
-                      className={inputClassName()}
-                      value={form.order_document_type}
-                      onChange={(e) => setForm((f) => ({ ...f, order_document_type: e.target.value }))}
-                    >
-                      <option value="receipt">Thermal receipt only</option>
-                      <option value="invoice">A4 tax invoice only</option>
-                      <option value="both">Both — choose at print time</option>
-                    </select>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Thermal for receipt printers, A4 for detailed tax invoices.
-                    </p>
-                  </Field>
-                  <Field label="Receipt copies">
-                    <select
-                      className={inputClassName()}
-                      value={form.receipt_copies}
-                      onChange={(e) => setForm((f) => ({ ...f, receipt_copies: e.target.value }))}
-                    >
-                      <option value="1">Single receipt</option>
-                      <option value="2">Double receipt (customer + merchant)</option>
-                    </select>
-                  </Field>
-                  <Toggle
-                    label="Show branch details on receipt"
-                    description="When enabled and a branch is selected, receipt will show branch name, address and phone."
-                    checked={form.show_branch_on_receipt}
-                    onChange={(v) => setForm((f) => ({ ...f, show_branch_on_receipt: v }))}
+              {hasGeneral ? (
+                <div>
+                  <SectionHeading
+                    title="Document footers"
+                    description="Each printout type has its own footer line. Leave blank to hide on that document."
                   />
-                  <Toggle
-                    label="Show payment instructions on thermal receipts"
-                    checked={form.show_receipt_payment_details}
-                    onChange={(v) => setForm((f) => ({ ...f, show_receipt_payment_details: v }))}
+                  <div className="mt-4 space-y-3">
+                    {Object.entries(PRINT_FOOTER_LABELS).map(([key, label]) => (
+                      <Field key={key} label={label}>
+                        <textarea
+                          className={inputClassName()}
+                          rows={2}
+                          value={form[PRINT_FOOTER_FORM_KEYS[key]] ?? ""}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              [PRINT_FOOTER_FORM_KEYS[key]]: e.target.value,
+                            }))
+                          }
+                          placeholder="Optional footer text for this document only"
+                        />
+                      </Field>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {hasSales ? (
+                <div>
+                  <SectionHeading
+                    title="Thermal receipts"
+                    description="POS and backoffice narrow receipt printers."
                   />
-                  <Toggle
-                    label="Show payment instructions on A4 invoices"
-                    checked={form.show_invoice_payment_details}
-                    onChange={(v) => setForm((f) => ({ ...f, show_invoice_payment_details: v }))}
-                  />
-                  <Toggle
-                    label="Use same payment instructions for mobile / route orders"
-                    description="When off, configure separate instructions for mobile field sales and POS route orders. Individual routes can still override for mobile orders."
-                    checked={form.use_same_payment_details_for_routes}
-                    onChange={(v) => setForm((f) => ({ ...f, use_same_payment_details_for_routes: v }))}
-                  />
-                  <p className="text-sm font-medium text-slate-900">POS & backoffice receipts</p>
-                  <ReceiptPaymentDetailsEditor
-                    value={form.pos_receipt_payment_details}
-                    onChange={(value) => setForm((f) => ({ ...f, pos_receipt_payment_details: value }))}
-                    idPrefix="printouts-pos-pay"
-                  />
-                  {!form.use_same_payment_details_for_routes ? (
-                    <>
-                      <p className="text-sm font-medium text-slate-900">Mobile & route order receipts</p>
+                  <div className="mt-4 space-y-3">
+                    <Field label="Order print format">
+                      <select
+                        className={inputClassName()}
+                        value={form.order_document_type}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, order_document_type: e.target.value }))
+                        }
+                      >
+                        <option value="receipt">Thermal receipt only</option>
+                        <option value="invoice">A4 sales invoice only</option>
+                        <option value="both">Both — choose at print time</option>
+                      </select>
+                    </Field>
+                    <Field label="Receipt copies">
+                      <select
+                        className={inputClassName()}
+                        value={form.receipt_copies}
+                        onChange={(e) => setForm((f) => ({ ...f, receipt_copies: e.target.value }))}
+                      >
+                        <option value="1">Single receipt</option>
+                        <option value="2">Double receipt (customer + merchant)</option>
+                      </select>
+                    </Field>
+                    <Toggle
+                      label="Show branch details on receipt"
+                      checked={form.show_branch_on_receipt}
+                      onChange={(v) => setForm((f) => ({ ...f, show_branch_on_receipt: v }))}
+                    />
+                    <Toggle
+                      label="Show payment instructions on thermal receipts"
+                      checked={form.show_receipt_payment_details}
+                      onChange={(v) =>
+                        setForm((f) => ({ ...f, show_receipt_payment_details: v }))
+                      }
+                    />
+                    <Toggle
+                      label="Show payment instructions on A4 sales invoices"
+                      checked={form.show_invoice_payment_details}
+                      onChange={(v) =>
+                        setForm((f) => ({ ...f, show_invoice_payment_details: v }))
+                      }
+                    />
+                    <Toggle
+                      label="Use same payment instructions for mobile / route orders"
+                      checked={form.use_same_payment_details_for_routes}
+                      onChange={(v) =>
+                        setForm((f) => ({ ...f, use_same_payment_details_for_routes: v }))
+                      }
+                    />
+                    <ReceiptPaymentDetailsEditor
+                      value={form.pos_receipt_payment_details}
+                      onChange={(value) =>
+                        setForm((f) => ({ ...f, pos_receipt_payment_details: value }))
+                      }
+                      idPrefix="printouts-pos-pay"
+                    />
+                    {!form.use_same_payment_details_for_routes ? (
                       <ReceiptPaymentDetailsEditor
                         value={form.route_receipt_payment_details}
                         onChange={(value) =>
                           setForm((f) => ({ ...f, route_receipt_payment_details: value }))
                         }
                         idPrefix="printouts-route-pay"
-                        description="Used for mobile orders and POS route-mode orders unless a route defines its own paybill details."
-                      />
-                    </>
-                  ) : null}
-                  <div className="flex flex-wrap gap-2">
-                    <DocumentPrintPreviewButton
-                      label="Preview POS receipt"
-                      onPreview={() =>
-                        previewReceiptPaymentDetails({
-                          ...previewContext,
-                          salesForm: salesPreviewForm,
-                          channel: "pos",
-                        })
-                      }
-                    />
-                    {!form.use_same_payment_details_for_routes ? (
-                      <DocumentPrintPreviewButton
-                        label="Preview route receipt"
-                        onPreview={() =>
-                          previewReceiptPaymentDetails({
-                            ...previewContext,
-                            salesForm: salesPreviewForm,
-                            channel: "mobile",
-                          })
-                        }
                       />
                     ) : null}
                   </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            {hasSales ? (
-              <div>
-                <SectionHeading
-                  title="Tax invoices"
-                  description="A4 invoice delivery instructions and footer lines. Use {organization} and {days} placeholders in footer lines."
-                />
-                <div className="mt-4 space-y-3">
-                  <Field label="Invoice valid for (days)">
-                    <input
-                      type="number"
-                      min={0}
-                      max={365}
-                      className={`${inputClassName()} w-32`}
-                      value={form.invoice_valid_days}
-                      onChange={(e) => setForm((f) => ({ ...f, invoice_valid_days: e.target.value }))}
+              {hasSales ? (
+                <div>
+                  <SectionHeading
+                    title="A4 sales invoices"
+                    description="Full-page invoices for credit sales and detailed orders. Use {organization} and {days} in footer lines."
+                  />
+                  <div className="mt-4 space-y-3">
+                    <Field label="Invoice valid for (days)">
+                      <input
+                        type="number"
+                        min={0}
+                        max={365}
+                        className={`${inputClassName()} w-32`}
+                        value={form.invoice_valid_days}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, invoice_valid_days: e.target.value }))
+                        }
+                      />
+                    </Field>
+                    <MultilinePrintNotesField
+                      label="Delivery instructions"
+                      value={form.invoice_print_delivery_terms}
+                      onChange={(value) =>
+                        setForm((f) => ({ ...f, invoice_print_delivery_terms: value }))
+                      }
+                      rows={8}
                     />
-                  </Field>
-                  <MultilinePrintNotesField
-                    label="Delivery instructions"
-                    hint="One instruction per line. Shown in the numbered list on the invoice."
-                    value={form.invoice_print_delivery_terms}
-                    onChange={(value) => setForm((f) => ({ ...f, invoice_print_delivery_terms: value }))}
-                    rows={8}
-                  />
-                  <MultilinePrintNotesField
-                    label="Invoice footer lines"
-                    hint="One line per row in the footer block below signatures."
-                    value={form.invoice_print_footer_lines}
-                    onChange={(value) => setForm((f) => ({ ...f, invoice_print_footer_lines: value }))}
-                    rows={6}
-                  />
-                  <DocumentPrintPreviewButton
-                    label="Preview tax invoice"
-                    onPreview={() =>
-                      previewSaleInvoicePrint({
-                        ...previewContext,
-                        salesForm: salesPreviewForm,
-                      })
-                    }
-                  />
+                    <MultilinePrintNotesField
+                      label="Invoice footer lines"
+                      value={form.invoice_print_footer_lines}
+                      onChange={(value) =>
+                        setForm((f) => ({ ...f, invoice_print_footer_lines: value }))
+                      }
+                      rows={6}
+                    />
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            {hasProcurement ? (
-              <div>
-                <SectionHeading
-                  title="Local purchase orders (LPO)"
-                  description="Default notes and warnings on printed LPOs. Per-LPO instructions in the LPO form still override the delivery notes list when set."
-                />
-                <div className="mt-4 space-y-3">
-                  <MultilinePrintNotesField
-                    label="Default delivery notes"
-                    hint="One numbered note per line."
-                    value={form.lpo_print_delivery_notes}
-                    onChange={(value) => setForm((f) => ({ ...f, lpo_print_delivery_notes: value }))}
-                    rows={8}
-                  />
-                  <Field label="KEBS warning line">
-                    <input
-                      type="text"
-                      className={inputClassName()}
-                      value={form.lpo_print_kebs_warning}
-                      onChange={(e) => setForm((f) => ({ ...f, lpo_print_kebs_warning: e.target.value }))}
+              {hasProcurement ? (
+                <div>
+                  <SectionHeading title="Local purchase orders (LPO)" />
+                  <div className="mt-4 space-y-3">
+                    <MultilinePrintNotesField
+                      label="Default delivery notes"
+                      value={form.lpo_print_delivery_notes}
+                      onChange={(value) =>
+                        setForm((f) => ({ ...f, lpo_print_delivery_notes: value }))
+                      }
+                      rows={8}
                     />
-                  </Field>
-                  <Field label="VAT / ETR note">
-                    <input
-                      type="text"
-                      className={inputClassName()}
-                      value={form.lpo_print_vat_note}
-                      onChange={(e) => setForm((f) => ({ ...f, lpo_print_vat_note: e.target.value }))}
+                    <Field label="KEBS warning line">
+                      <input
+                        type="text"
+                        className={inputClassName()}
+                        value={form.lpo_print_kebs_warning}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, lpo_print_kebs_warning: e.target.value }))
+                        }
+                      />
+                    </Field>
+                    <Field label="VAT / ETR note">
+                      <input
+                        type="text"
+                        className={inputClassName()}
+                        value={form.lpo_print_vat_note}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, lpo_print_vat_note: e.target.value }))
+                        }
+                      />
+                    </Field>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Default checked by">
+                        <input
+                          type="text"
+                          className={inputClassName()}
+                          value={form.lpo_print_checked_by}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, lpo_print_checked_by: e.target.value }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Default authorised by">
+                        <input
+                          type="text"
+                          className={inputClassName()}
+                          value={form.lpo_print_authorised_by}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, lpo_print_authorised_by: e.target.value }))
+                          }
+                        />
+                      </Field>
+                    </div>
+                    <MultilinePrintNotesField
+                      label="LPO footer lines"
+                      value={form.lpo_print_footer_lines}
+                      onChange={(value) =>
+                        setForm((f) => ({ ...f, lpo_print_footer_lines: value }))
+                      }
+                      rows={5}
                     />
-                  </Field>
-                  <DocumentPrintPreviewButton
-                    label="Preview LPO"
-                    onPreview={() =>
-                      previewLpoPrint({
-                        ...previewContext,
-                        procurementForm: form,
-                      })
-                    }
-                  />
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
 
-            {hasLoadingSheets ? (
-              <div>
-                <SectionHeading
-                  title="Loading sheets"
-                  description="Route pick lists for mobile orders and distribution trips. Uses document branding above — company name, logo, watermark, and footer."
-                />
-                <div className="mt-4">
-                  <DocumentPrintPreviewButton
-                    label="Preview loading sheet"
-                    onPreview={() =>
-                      previewLoadingListPrint({
-                        ...previewContext,
-                        printoutsForm: form,
-                      })
-                    }
+              {hasLoadingSheets ? (
+                <div>
+                  <SectionHeading
+                    title="Loading sheets"
+                    description="Route pick lists. Price (R/W) shows wholesale (W) and retail (R) prices on separate rows when both are sold."
                   />
+                  <div className="mt-4 space-y-3">
+                    <Toggle
+                      label="Show prepared / checked signature blocks"
+                      checked={form.loading_sheet_show_signatures}
+                      onChange={(v) =>
+                        setForm((f) => ({ ...f, loading_sheet_show_signatures: v }))
+                      }
+                    />
+                    <Field label="Default checked by">
+                      <input
+                        type="text"
+                        className={inputClassName()}
+                        value={form.loading_sheet_default_checked_by}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            loading_sheet_default_checked_by: e.target.value,
+                          }))
+                        }
+                      />
+                    </Field>
+                    <MultilinePrintNotesField
+                      label="Loading sheet footer lines"
+                      hint="One line per row below the table."
+                      value={form.loading_sheet_footer_lines}
+                      onChange={(value) =>
+                        setForm((f) => ({ ...f, loading_sheet_footer_lines: value }))
+                      }
+                      rows={4}
+                    />
+                  </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
+
+            <PrintoutsLivePreview
+              form={form}
+              organization={previewContext.organization}
+              moduleSettings={previewContext.moduleSettings}
+            />
           </div>
         )}
 

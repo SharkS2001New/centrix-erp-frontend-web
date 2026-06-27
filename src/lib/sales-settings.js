@@ -68,10 +68,11 @@ const SALES_DEFAULTS = {
   },
   invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
   invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
-  stock_deduct_on: "order_completed",
+  stock_deduct_on: "order_created",
 };
 
 export const STOCK_DEDUCT_TIMING_OPTIONS = [
+  { value: "order_created", label: "When order is placed (checkout)" },
   { value: "order_completed", label: "When order reaches workflow status" },
   { value: "trip_load", label: "When loading list is locked (distribution)" },
   { value: "trip_depart", label: "When trip departs (distribution)" },
@@ -184,7 +185,7 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   },
   invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
   invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
-  stock_deduct_on: "order_completed",
+  stock_deduct_on: "order_created",
 };
 
 export function salesOrganizationFormFromApi(res) {
@@ -242,7 +243,7 @@ export function salesOrganizationFormFromApi(res) {
       },
     ),
     ...invoicePrintFormFromApi(sales),
-    stock_deduct_on: sales.stock_deduct_on || "order_completed",
+    stock_deduct_on: sales.stock_deduct_on || "order_created",
   };
 }
 
@@ -329,7 +330,7 @@ export const ORDER_DOCUMENT_TYPES = ["receipt", "invoice", "both"];
 
 export const ORDER_DOCUMENT_TYPE_OPTIONS = [
   { value: "receipt", label: "Thermal receipt only" },
-  { value: "invoice", label: "A4 tax invoice only" },
+  { value: "invoice", label: "A4 sales invoice only" },
   { value: "both", label: "Both — choose at print time" },
 ];
 
@@ -432,7 +433,7 @@ export function resolveStockDeductTiming(moduleSettings) {
     return sales.stock_deduct_on;
   }
   const legacy = moduleSettings?.distribution?.deduct_stock_on;
-  return legacy || "order_completed";
+  return legacy || "order_created";
 }
 
 export function getPosSalesConfig(moduleSettings, options = {}) {

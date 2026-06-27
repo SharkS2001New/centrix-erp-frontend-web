@@ -19,6 +19,8 @@ import {
   FilterSelect,
   PrimaryButton,
   SearchInput,
+  TABLE_BODY_ROW_CLASS,
+  TABLE_SECTION_ROW_CLASS,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 
@@ -47,10 +49,10 @@ function buildPriceSheetPrintHtml({
   const headCells = [
     "<th>Product Name</th>",
     "<th>Packaging</th>",
-    columns.retail ? '<th class="num retail">Price (Retail)</th>' : "",
-    columns.dozens ? '<th class="num dozens">Price (Dozens)</th>' : "",
-    columns.aboveDozens ? '<th class="num above">Price (Above Dozens)</th>' : "",
-    columns.wholesale ? '<th class="num wholesale">Price (Wholesale)</th>' : "",
+    columns.retail ? '<th class="num">Price (Retail)</th>' : "",
+    columns.dozens ? '<th class="num">Price (Dozens)</th>' : "",
+    columns.aboveDozens ? '<th class="num">Price (Above Dozens)</th>' : "",
+    columns.wholesale ? '<th class="num">Price (Wholesale)</th>' : "",
   ].join("");
 
   const body = groups
@@ -62,10 +64,10 @@ function buildPriceSheetPrintHtml({
             `<td>${escapeHtml(row.product_name)}</td>`,
             `<td>${escapeHtml(row.packaging)}</td>`,
             columns.retail
-              ? `<td class="num retail">${escapeHtml(priceSheetCellValue(row.retail_price, row.sell_on_retail))}</td>`
+              ? `<td class="num">${escapeHtml(priceSheetCellValue(row.retail_price, row.sell_on_retail))}</td>`
               : "",
             columns.dozens
-              ? `<td class="num dozens">${escapeHtml(
+              ? `<td class="num">${escapeHtml(
                   priceSheetCellValue(
                     row.dozens_price,
                     row.sell_on_retail && row.has_middle_pack,
@@ -73,12 +75,12 @@ function buildPriceSheetPrintHtml({
                 )}</td>`
               : "",
             columns.aboveDozens
-              ? `<td class="num above">${escapeHtml(
+              ? `<td class="num">${escapeHtml(
                   priceSheetCellValue(row.above_dozens_price, row.sell_on_retail),
                 )}</td>`
               : "",
             columns.wholesale
-              ? `<td class="num wholesale">${escapeHtml(priceSheetCellValue(row.wholesale_price))}</td>`
+              ? `<td class="num">${escapeHtml(priceSheetCellValue(row.wholesale_price))}</td>`
               : "",
           ].join("");
           return `<tr>${cells}</tr>`;
@@ -94,22 +96,18 @@ function buildPriceSheetPrintHtml({
   <title>Product Price Sheet</title>
   <style>
     @page { size: A4 landscape; margin: 10mm; }
-    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 16px; color: #0f172a; font-size: 10px; }
-    .title { text-align: center; font-size: 22px; font-weight: 800; color: #15803d; letter-spacing: 0.04em; margin: 0; }
-    .subtitle { text-align: center; font-size: 11px; font-style: italic; margin: 4px 0 2px; }
-    .effective { text-align: center; font-size: 10px; margin-bottom: 12px; }
-    .org { text-align: center; font-size: 10px; color: #475569; margin-bottom: 8px; }
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 16px; color: #212529; font-size: 10px; }
+    .title { text-align: center; font-size: 22px; font-weight: 800; color: #4c5ba4; letter-spacing: 0.04em; margin: 0; }
+    .subtitle { text-align: center; font-size: 11px; font-style: italic; margin: 4px 0 2px; color: #495057; }
+    .effective { text-align: center; font-size: 10px; margin-bottom: 12px; color: #6c757d; }
+    .org { text-align: center; font-size: 10px; color: #6c757d; margin-bottom: 8px; }
     table { width: 100%; border-collapse: collapse; }
-    thead th { background: #1e3a5f; color: #fff; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; }
+    thead th { background: #4c5ba4; color: #fff; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; }
     thead th.num { text-align: right; }
-    tbody td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    tbody td { padding: 5px 8px; border-bottom: 1px solid #dee2e6; vertical-align: top; color: #212529; }
     tbody td.num { text-align: right; white-space: nowrap; font-weight: 600; }
-    tr.category td { background: #dbeafe; color: #1e40af; font-weight: 700; text-transform: uppercase; font-size: 9px; padding: 6px 8px; }
-    td.retail, th.retail { color: #185FA5; }
-    td.dozens, th.dozens { color: #15803d; }
-    td.above, th.above { color: #c2410c; }
-    td.wholesale, th.wholesale { color: #991b1b; }
-    .footer { margin-top: 10px; display: flex; justify-content: space-between; font-size: 9px; color: #64748b; }
+    tr.category td { background: #eef0f8; color: #4c5ba4; font-weight: 700; text-transform: uppercase; font-size: 9px; padding: 6px 8px; }
+    .footer { margin-top: 10px; display: flex; justify-content: space-between; font-size: 9px; color: #6c757d; }
     @media print { body { padding: 0; } }
   </style>
 </head>
@@ -199,7 +197,7 @@ export function ProductPriceSheetScreen() {
   }, [load]);
 
   const filteredRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = String(search ?? "").trim().toLowerCase();
     return rows.filter((row) => {
       if (categoryFilter !== "all" && row.category_name !== categoryFilter) return false;
       if (!q) return true;
@@ -251,7 +249,7 @@ export function ProductPriceSheetScreen() {
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/reports"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="theme-secondary-btn rounded-lg border px-3 py-2 text-sm font-medium"
           >
             ← Reports
           </Link>
@@ -301,39 +299,39 @@ export function ProductPriceSheetScreen() {
       ) : !groups.length ? (
         <p className="text-sm text-slate-500">No products with a unit price to display.</p>
       ) : (
-        <div className="theme-panel overflow-hidden rounded-xl border shadow-sm">
-          <div className="border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-sky-50 px-5 py-4 text-center">
-            <h2 className="text-xl font-extrabold tracking-wide text-emerald-800">
-              PRODUCT PRICE SHEET
+        <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
+          <div className="border-b border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-5 py-4 text-center">
+            <h2 className="theme-heading text-xl font-extrabold tracking-wide uppercase">
+              Product price sheet
             </h2>
-            <p className="mt-1 text-sm italic text-slate-600">{subtitle}</p>
-            <p className="mt-1 text-xs text-slate-500">Effective date: {effectiveDate}</p>
+            <p className="theme-subtext mt-1 text-sm italic">{subtitle}</p>
+            <p className="theme-subtext mt-1 text-xs">Effective date: {effectiveDate}</p>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
+            <table className="theme-table min-w-full text-sm">
               <thead>
-                <tr className="bg-[#1e3a5f] text-left text-xs font-semibold uppercase tracking-wide text-white">
+                <tr className="theme-table-head-row text-left text-xs font-semibold uppercase tracking-wide">
                   <th className="px-3 py-2.5">Product name</th>
                   <th className="px-3 py-2.5">Packaging</th>
                   {columns.retail ? (
-                    <th className="px-3 py-2.5 text-right text-sky-200">Price (Retail)</th>
+                    <th className="px-3 py-2.5 text-right">Price (Retail)</th>
                   ) : null}
                   {columns.dozens ? (
-                    <th className="px-3 py-2.5 text-right text-emerald-200">Price (Dozens)</th>
+                    <th className="px-3 py-2.5 text-right">Price (Dozens)</th>
                   ) : null}
                   {columns.aboveDozens ? (
-                    <th className="px-3 py-2.5 text-right text-orange-200">Price (Above dozens)</th>
+                    <th className="px-3 py-2.5 text-right">Price (Above dozens)</th>
                   ) : null}
                   {columns.wholesale ? (
-                    <th className="px-3 py-2.5 text-right text-red-200">Price (Wholesale)</th>
+                    <th className="px-3 py-2.5 text-right">Price (Wholesale)</th>
                   ) : null}
                 </tr>
               </thead>
               <tbody>
                 {groups.map((group) => (
                   <Fragment key={group.category}>
-                    <tr className="bg-sky-100/80">
+                    <tr className={TABLE_SECTION_ROW_CLASS}>
                       <td
                         colSpan={
                           2 +
@@ -342,22 +340,22 @@ export function ProductPriceSheetScreen() {
                           (columns.aboveDozens ? 1 : 0) +
                           (columns.wholesale ? 1 : 0)
                         }
-                        className="px-3 py-2 text-xs font-bold uppercase tracking-wide text-[#1e40af]"
+                        className="px-3 py-2 text-xs font-bold uppercase tracking-wide"
                       >
                         Category: {group.category}
                       </td>
                     </tr>
                     {group.items.map((row) => (
-                      <tr key={row.product_code} className="border-t border-slate-100 hover:bg-slate-50/80">
-                        <td className="px-3 py-2 font-medium text-slate-900">{row.product_name}</td>
-                        <td className="px-3 py-2 text-slate-600">{row.packaging}</td>
+                      <tr key={row.product_code} className={TABLE_BODY_ROW_CLASS}>
+                        <td className="px-3 py-2 font-medium">{row.product_name}</td>
+                        <td className="theme-subtext px-3 py-2">{row.packaging}</td>
                         {columns.retail ? (
-                          <td className="px-3 py-2 text-right font-semibold text-[#185FA5]">
+                          <td className="px-3 py-2 text-right font-semibold tabular-nums">
                             {priceSheetCellValue(row.retail_price, row.sell_on_retail)}
                           </td>
                         ) : null}
                         {columns.dozens ? (
-                          <td className="px-3 py-2 text-right font-semibold text-emerald-700">
+                          <td className="px-3 py-2 text-right font-semibold tabular-nums">
                             {priceSheetCellValue(
                               row.dozens_price,
                               row.sell_on_retail && row.has_middle_pack,
@@ -365,12 +363,12 @@ export function ProductPriceSheetScreen() {
                           </td>
                         ) : null}
                         {columns.aboveDozens ? (
-                          <td className="px-3 py-2 text-right font-semibold text-orange-700">
+                          <td className="px-3 py-2 text-right font-semibold tabular-nums">
                             {priceSheetCellValue(row.above_dozens_price, row.sell_on_retail)}
                           </td>
                         ) : null}
                         {columns.wholesale ? (
-                          <td className="px-3 py-2 text-right font-semibold text-red-800">
+                          <td className="px-3 py-2 text-right font-semibold tabular-nums">
                             {priceSheetCellValue(row.wholesale_price)}
                           </td>
                         ) : null}
@@ -382,9 +380,9 @@ export function ProductPriceSheetScreen() {
             </table>
           </div>
 
-          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
-            <span>{filteredRows.length} product(s)</span>
-            <span>Printed: {effectiveDate}</span>
+          <div className="theme-table-footer flex items-center justify-between px-4 py-2 text-xs">
+            <span className="theme-subtext">{filteredRows.length} product(s)</span>
+            <span className="theme-subtext">Printed: {effectiveDate}</span>
           </div>
         </div>
       )}

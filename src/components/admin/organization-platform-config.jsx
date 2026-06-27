@@ -211,7 +211,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mpesa_stk: true,
     enable_kra_integration: true,
     enable_ai: true,
-    stock_deduct_on: "order_completed",
+    stock_deduct_on: "order_created",
     require_pos_till_float: false,
     enable_pos_order_edit: false,
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
@@ -226,7 +226,7 @@ export function salesPlatformFromApi(apiPayload) {
     enable_mpesa_stk: apiPayload.enable_mpesa_stk !== false,
     enable_kra_integration: apiPayload.enable_kra_integration !== false,
     enable_ai: apiPayload.enable_ai !== false,
-    stock_deduct_on: apiPayload.stock_deduct_on ?? "order_completed",
+    stock_deduct_on: apiPayload.stock_deduct_on ?? "order_created",
     require_pos_till_float: Boolean(apiPayload.require_pos_till_float ?? false),
     enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
@@ -334,7 +334,7 @@ export function OrganizationOrderWorkflowSettings({
           workflow={wf}
           onChange={(next) => patch({ order_workflow: next })}
           showCheckoutOnCreate={showCheckout}
-          stockDeductOn={salesPlatform?.stock_deduct_on ?? "order_completed"}
+          stockDeductOn={salesPlatform?.stock_deduct_on ?? "order_created"}
           onStockDeductOnChange={(value) => patch({ stock_deduct_on: value })}
           distributionOpsEnabled={distributionEnabled}
         />

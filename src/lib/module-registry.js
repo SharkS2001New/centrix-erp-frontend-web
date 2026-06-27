@@ -29,6 +29,7 @@ export const REPORT_MODULE_BY_SLUG = {
   "stock-reservations": "inventory.reports",
   "stock-receipts": "inventory.reports",
   "stock-transfers": "inventory.reports",
+  "branch-stock-transfers": "inventory.reports",
   damages: "inventory.reports",
   "price-list": "inventory.reports",
 

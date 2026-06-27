@@ -49,9 +49,9 @@ const DEFAULT_INVOICE_TERMS = [
 ];
 
 /**
- * A4 tax invoice — org branding, standard line columns, optional KRA QR.
+ * A4 sales invoice — org branding, standard line columns, optional KRA QR.
  */
-export function printSaleInvoice(
+export function buildSaleInvoiceHtml(
   sale,
   {
     seller = {},
@@ -74,7 +74,7 @@ export function printSaleInvoice(
     footerLines = null,
   } = {},
 ) {
-  if (!sale) return;
+  if (!sale) return "";
 
   const items = sale.items ?? [];
   const invoiceNo = formatReceiptNumber(sale);
@@ -278,5 +278,11 @@ export function printSaleInvoice(
 </body>
 </html>`;
 
+  return html;
+}
+
+export function printSaleInvoice(sale, options = {}) {
+  const html = buildSaleInvoiceHtml(sale, options);
+  if (!html) return;
   openPrintWindow(html, "width=860,height=960");
 }

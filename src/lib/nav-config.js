@@ -3,6 +3,7 @@ import { canViewReport, P } from "@/lib/permission-codes";
 import { shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
 import { anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-registry";
 import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled } from "@/lib/sales-settings";
+import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { usesExternalAccounting, usesNativeAccounting } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
@@ -338,6 +339,13 @@ const NAV_SECTION_DEFINITIONS = [
         label: "New transfer",
         module: "inventory",
         permission: P.inventory.transfers.create,
+      },
+      {
+        href: "/inventory/branch-transfers/new",
+        label: "Inter-branch transfer",
+        module: "inventory",
+        permission: P.inventory.transfers.create,
+        requireMultiBranchCatalog: true,
       },
       {
         href: "/inventory/receipts",
@@ -874,6 +882,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   }
   if (item.requireTillFloat && !requireTillFloat) return false;
   if (item.requireMobileLoadingSheets && !shouldShowMobileLoadingSheets(capabilities)) return false;
+  if (item.requireMultiBranchCatalog && !isMultiBranchCatalog(capabilities)) return false;
   if (item.requireMobileFieldAttendance && !shouldShowMobileFieldAttendance(capabilities)) return false;
   if (item.requireUserMobileChannel && !userHasMobileChannel(user?.login_channels)) return false;
   if (item.requireOrgMobileSales && !isOrgMobileSalesEnabled(capabilities)) return false;

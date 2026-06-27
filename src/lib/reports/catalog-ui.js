@@ -1,4 +1,16 @@
-/** Route overrides for reports that live outside /reports/{key}. */
+/** Reports only listed when the organization has more than one branch. */
+export const MULTI_BRANCH_REPORT_KEYS = new Set(["branch-stock-transfers"]);
+
+export function isMultiBranchReportKey(key) {
+  return MULTI_BRANCH_REPORT_KEYS.has(key);
+}
+
+/** @param {import("@/lib/catalog-scope").catalogMetaFromCapabilities} catalogMeta */
+export function reportVisibleForCatalog(key, capabilities) {
+  if (!isMultiBranchReportKey(key)) return true;
+  return Boolean(capabilities?.catalog?.multi_branch);
+}
+
 export const REPORT_UI_ROUTES = {
   "eod-report": "/sales/end-of-day",
   "eod-cashier": "/sales/end-of-day",
@@ -69,6 +81,7 @@ export const REPORT_CATEGORY_DEFS = [
       "stock-valuation",
       "stock-reservations",
       "stock-transfers",
+      "branch-stock-transfers",
       "returns",
       "price-list",
     ],

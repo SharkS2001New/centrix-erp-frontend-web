@@ -163,7 +163,7 @@ export function SearchInput({ value, onChange, placeholder, className = "" }) {
       <input
         type="search"
         value={value}
-        onChange={onChange}
+        onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className="theme-input theme-input-focus w-full rounded-lg border py-2 pl-9 pr-3 text-sm outline-none"
       />
@@ -175,7 +175,7 @@ export function FilterSelect({ value, onChange, options }) {
   return (
     <select
       value={value}
-      onChange={onChange}
+      onChange={(e) => onChange(e.target.value)}
       className={SELECT_CLASS}
     >
       {options.map((o) => (

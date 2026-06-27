@@ -128,7 +128,7 @@ export default function PodRecordsPage() {
           <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </Field>
         <Field label="Status">
-          <FilterSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} options={STATUS_OPTIONS} />
+          <FilterSelect value={statusFilter} onChange={setStatusFilter} options={STATUS_OPTIONS} />
         </Field>
         <PrimaryButton type="button" showIcon={false} onClick={() => loadData()}>
           Refresh

@@ -15,6 +15,8 @@ import {
 import { DashboardErrorBanner, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
 import { printLoadingList } from "@/components/fulfillment/loading-list-print";
 import { printDeliveryNote } from "@/components/fulfillment/delivery-note-print";
+import { resolvePrintFooter } from "@/lib/print-footer-settings";
+import { mergeGeneralSettings } from "@/lib/general-settings";
 import { formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 
@@ -24,7 +26,7 @@ function statusLabel(status) {
 
 export default function TripDetailPage() {
   const { id } = useParams();
-  const { organization, generalSettings } = useAuth();
+  const { organization, generalSettings, capabilities } = useAuth();
 
   const [trip, setTrip] = useState(null);
   const [loadingList, setLoadingList] = useState(null);
@@ -227,6 +229,11 @@ export default function TripDetailPage() {
               organizationName: organization?.organization_name ?? organization?.company_name ?? "Loading List",
               loadingList,
               trip,
+              printSettings: capabilities?.module_settings?.distribution ?? {},
+              documentFooterText: resolvePrintFooter(
+                mergeGeneralSettings(capabilities?.module_settings),
+                "loading_sheet",
+              ),
             })
           }
         >

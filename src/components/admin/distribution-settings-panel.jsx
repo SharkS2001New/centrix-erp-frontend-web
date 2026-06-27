@@ -109,6 +109,13 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
               disabled={!form.enable_distribution_ops}
             />
             <Toggle
+              label="Auto-create dispatch trips"
+              description="When an order reaches the assignment status, add it to today's draft trip for its route (creating the trip if needed)."
+              checked={form.auto_create_trips}
+              onChange={(v) => setForm((f) => ({ ...f, auto_create_trips: v }))}
+              disabled={!form.enable_distribution_ops}
+            />
+            <Toggle
               label="Require load weight"
               description="Block assignment until products have weights and total load weight is greater than zero."
               checked={form.require_weight_on_load}
@@ -124,7 +131,7 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
             />
             <Toggle
               label="Enforce vehicle capacity"
-              description="Block locking the loading list or starting a trip when load weight exceeds the assigned vehicle max weight."
+              description="Block locking the loading list or starting a trip when load weight or volume exceeds the assigned vehicle limits."
               checked={form.enforce_vehicle_capacity}
               onChange={(v) => setForm((f) => ({ ...f, enforce_vehicle_capacity: v }))}
               disabled={!form.enable_distribution_ops}

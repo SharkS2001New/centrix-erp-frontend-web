@@ -5,6 +5,8 @@ import {
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
 
+import { resolveLoadingSheetFooterLines } from "@/lib/loading-sheet-print-settings";
+
 function formatKes(amount) {
   const n = Number(amount) || 0;
   return n.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -46,13 +48,19 @@ function quantityGhostText(line) {
   return label || String(line.quantity ?? "");
 }
 
-function priceGhostText(unitPrice) {
-  const n = Number(unitPrice) || 0;
+function priceGhostText(line) {
+  if (Number(line.on_wholesale_retail) === 1 || line.price_tier === "retail") {
+    return "R";
+  }
+  if (line.price_tier === "wholesale" || line.on_wholesale_retail === 0) {
+    return "W";
+  }
+  const n = Number(line.unit_price) || 0;
   if (!n) return "";
   return Number.isInteger(n) ? String(n) : String(n);
 }
 
-/** Sample data matching a typical route loading sheet layout. */
+/** Sample data with separate wholesale and retail price rows. */
 export function sampleLoadingListPreviewData() {
   const lines = [
     {
@@ -62,54 +70,48 @@ export function sampleLoadingListPreviewData() {
       pack_breakdown: "66 bag",
       unit_price: 2250,
       line_total: 148500,
+      on_wholesale_retail: 0,
+      price_tier: "wholesale",
     },
     {
       line_no: 2,
       product_name: "THAI RICE BIRIYANI",
       quantity_label: "18",
-      pack_breakdown: "1820",
-      unit_price: 2250,
-      line_total: 40500,
+      pack_breakdown: "18 pcs",
+      unit_price: 2450,
+      line_total: 44100,
+      on_wholesale_retail: 1,
+      price_tier: "retail",
     },
     {
       line_no: 3,
-      product_name: "THAI RICE BIRIYANI",
-      quantity_label: "18",
-      pack_breakdown: "1820",
-      unit_price: 2250,
-      line_total: 40500,
+      product_name: "SUGAR 50 KG",
+      quantity_label: "16 bag",
+      pack_breakdown: "16 bag",
+      unit_price: 6000,
+      line_total: 96000,
+      on_wholesale_retail: 0,
+      price_tier: "wholesale",
     },
     {
       line_no: 4,
-      product_name: "THAI RICE BIRIYANI",
-      quantity_label: "18",
-      pack_breakdown: "1820",
-      unit_price: 2250,
-      line_total: 40500,
+      product_name: "SUGAR 50 KG",
+      quantity_label: "4 bag",
+      pack_breakdown: "4 bag",
+      unit_price: 6200,
+      line_total: 24800,
+      on_wholesale_retail: 1,
+      price_tier: "retail",
     },
     {
       line_no: 5,
-      product_name: "SUGAR 50 KG",
-      quantity_label: "16 bag",
-      pack_breakdown: "16 bag",
-      unit_price: 6000,
-      line_total: 96000,
-    },
-    {
-      line_no: 6,
-      product_name: "SUGAR 50 KG",
-      quantity_label: "16 bag",
-      pack_breakdown: "16 bag",
-      unit_price: 6000,
-      line_total: 96000,
-    },
-    {
-      line_no: 7,
       product_name: "MT. KENYA ESL 500ML",
       quantity_label: "10",
       pack_breakdown: "",
       unit_price: 580,
       line_total: 5800,
+      on_wholesale_retail: 1,
+      price_tier: "retail",
     },
   ];
 
@@ -131,7 +133,7 @@ function buildLoadingListLineRows(lines) {
       const qtyMain = escapeHtml(line.quantity_label || line.quantity);
       const qtyGhost = escapeHtml(quantityGhostText(line));
       const priceMain = `Ksh ${formatKes(line.unit_price)}`;
-      const priceGhost = escapeHtml(priceGhostText(line.unit_price));
+      const priceGhost = escapeHtml(priceGhostText(line));
 
       return `
       <tr>
@@ -157,18 +159,25 @@ export function buildLoadingListHtml({
   organizationName = "Loading List",
   loadingList,
   trip = null,
-  showSignatures = true,
+  printSettings = null,
+  documentFooterText = null,
+  footerLines = null,
 } = {}) {
   const branding = resolveReportBranding({ organization, generalSettings });
   const orgHeader = buildReportOrgHeaderHtml(branding);
   const watermark = buildReportWatermarkHtml(branding);
   const companyName = resolveOrganizationName({ organization, organizationName, branding });
+  const showSignatures = printSettings?.loading_sheet_show_signatures !== false;
 
   const lines = loadingList?.lines ?? [];
   const routeName = loadingList?.route?.route_name ?? trip?.route?.route_name ?? "—";
   const listDate = loadingList?.list_date ?? trip?.scheduled_date;
   const preparedBy = loadingList?.prepared_by_name ?? trip?.prepared_by_name ?? "";
-  const checkedBy = loadingList?.checked_by_name ?? trip?.checked_by_name ?? "";
+  const checkedBy =
+    loadingList?.checked_by_name ??
+    trip?.checked_by_name ??
+    printSettings?.loading_sheet_default_checked_by ??
+    "";
   const total =
     loadingList?.total_amount ?? lines.reduce((sum, line) => sum + Number(line.line_total || 0), 0);
   const dateLabel = formatDisplayDate(listDate);
@@ -194,8 +203,15 @@ export function buildLoadingListHtml({
   </div>`
     : "";
 
-  const footerHtml = branding.documentFooterText
-    ? `<div class="doc-footer">${escapeHtml(branding.documentFooterText)}</div>`
+  const resolvedFooterLines =
+    footerLines ??
+    resolveLoadingSheetFooterLines(printSettings ?? {});
+  const footerLinesHtml = resolvedFooterLines
+    .map((line) => `<p class="doc-footer-line">${escapeHtml(line)}</p>`)
+    .join("");
+  const footerText = documentFooterText ?? branding.documentFooterText ?? "";
+  const footerHtml = footerText
+    ? `<div class="doc-footer">${escapeHtml(footerText)}</div>`
     : "";
 
   return `<!DOCTYPE html>
@@ -311,10 +327,17 @@ export function buildLoadingListHtml({
       font-size: 11px;
     }
     .doc-footer {
-      margin-top: 24px;
+      margin-top: 12px;
       text-align: center;
       font-size: 10px;
       color: #64748b;
+    }
+    .doc-footer-line {
+      margin-top: 8px;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: #334155;
     }
     @media print {
       body { margin: 12mm; }
@@ -352,6 +375,7 @@ export function buildLoadingListHtml({
       </tfoot>
     </table>
     ${signaturesHtml}
+    ${footerLinesHtml}
     ${footerHtml}
   </div>
 </body>
@@ -365,7 +389,8 @@ export function buildLoadingListHtml({
  *   organizationName?: string,
  *   loadingList: object,
  *   trip?: object,
- *   showSignatures?: boolean,
+ *   printSettings?: object,
+ *   documentFooterText?: string,
  * }} options
  */
 export function printLoadingList({
@@ -374,7 +399,8 @@ export function printLoadingList({
   organizationName = "Loading List",
   loadingList,
   trip = null,
-  showSignatures = true,
+  printSettings = null,
+  documentFooterText = null,
 } = {}) {
   const html = buildLoadingListHtml({
     organization,
@@ -382,7 +408,8 @@ export function printLoadingList({
     organizationName,
     loadingList,
     trip,
-    showSignatures,
+    printSettings,
+    documentFooterText,
   });
   openPrintWindow(html, "width=900,height=800");
 }

@@ -10,13 +10,16 @@ import {
   SearchInput,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
-import { P } from "@/lib/permission-codes";
+import { useAuth } from "@/contexts/auth-context";
+import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { defaultDateRange } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_TRANSFER_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
 export default function InventoryTransfersPage() {
   const { date } = useOrgFormat();
+  const { capabilities } = useAuth();
+  const showInterBranch = isMultiBranchCatalog(capabilities);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -68,6 +71,24 @@ export default function InventoryTransfersPage() {
           <PrimaryLink href="/inventory/transfers/new" permission={P.inventory.transfers.create} showIcon={false}>
             New transfer
           </PrimaryLink>
+          {showInterBranch ? (
+            <>
+              <PrimaryLink
+                href="/inventory/branch-transfers/new"
+                permission={P.inventory.transfers.create}
+                showIcon={false}
+              >
+                Inter-branch
+              </PrimaryLink>
+              <PrimaryLink
+                href="/reports/branch-stock-transfers"
+                permission={P.reports.hub.view}
+                showIcon={false}
+              >
+                Inter-branch report
+              </PrimaryLink>
+            </>
+          ) : null}
         </div>
       }
     >
