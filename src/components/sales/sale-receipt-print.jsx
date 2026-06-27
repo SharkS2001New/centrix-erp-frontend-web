@@ -13,6 +13,7 @@ import {
 import {
   buildReceiptPaymentDetailsHtml,
 } from "@/lib/receipt-payment-details";
+import { formatReceiptNumber, saleCustomerLabel } from "@/lib/sales";
 
 export function printSaleReceipt(
   sale,

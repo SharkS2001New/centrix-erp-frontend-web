@@ -1,7 +1,12 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { printLpoDocument, sampleLpoPreviewData } from "@/components/lpo/lpo-print-html";
+import {
+  printLoadingList,
+  sampleLoadingListPreviewData,
+} from "@/components/fulfillment/loading-list-print";
 import { lpoPrintPayloadFromForm } from "@/lib/lpo-print-settings";
 import { resolveSaleDocumentBranding } from "@/lib/sale-document-print-shared";
 import { printSaleInvoice } from "@/components/sales/sale-invoice-print";
@@ -14,9 +19,29 @@ import {
   resolveInvoiceDeliveryTerms,
   resolveInvoiceFooterLines,
 } from "@/lib/invoice-print-settings";
+import {
+  SAMPLE_PREVIEW_CUSTOMER,
+  SAMPLE_PREVIEW_SELLER,
+} from "@/lib/print-preview-samples";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import { useAuth } from "@/contexts/auth-context";
 import { printSaleReceipt } from "@/components/sales/sale-receipt-print";
+
+const PREVIEW_DEFER_MS = 32;
+const PREVIEW_COOLDOWN_MS = 450;
+
+function deferPrintPreview(run) {
+  return new Promise((resolve, reject) => {
+    window.setTimeout(() => {
+      try {
+        run();
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    }, PREVIEW_DEFER_MS);
+  });
+}
 
 export function DocumentPrintPreviewButton({
   onPreview,
@@ -24,14 +49,39 @@ export function DocumentPrintPreviewButton({
   disabled = false,
   className = "",
 }) {
+  const [previewing, setPreviewing] = useState(false);
+
+  const handleClick = useCallback(async () => {
+    if (previewing || disabled) return;
+    setPreviewing(true);
+    try {
+      await deferPrintPreview(onPreview);
+    } catch (error) {
+      console.error(error);
+      window.alert(error instanceof Error ? error.message : "Failed to open print preview.");
+    } finally {
+      window.setTimeout(() => setPreviewing(false), PREVIEW_COOLDOWN_MS);
+    }
+  }, [disabled, onPreview, previewing]);
+
   return (
     <button
       type="button"
-      disabled={disabled}
-      onClick={onPreview}
-      className={`rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 ${className}`}
+      disabled={disabled || previewing}
+      onClick={() => void handleClick()}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
     >
-      {label}
+      {previewing ? (
+        <>
+          <span
+            className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"
+            aria-hidden
+          />
+          Opening preview…
+        </>
+      ) : (
+        label
+      )}
     </button>
   );
 }
@@ -42,6 +92,18 @@ export function useDocumentPrintPreviewContext() {
     organization,
     generalSettings: generalSettings(),
     moduleSettings: capabilities?.module_settings ?? null,
+  };
+}
+
+function resolvePreviewSeller(organization) {
+  if (!organization) return SAMPLE_PREVIEW_SELLER;
+  return {
+    name: organization.org_name ?? SAMPLE_PREVIEW_SELLER.name,
+    address: organization.org_address ?? SAMPLE_PREVIEW_SELLER.address,
+    email: organization.org_email ?? SAMPLE_PREVIEW_SELLER.email,
+    phone: organization.primary_tel ?? SAMPLE_PREVIEW_SELLER.phone,
+    secondary_phone: organization.secondary_tel ?? "",
+    tax_pin: organization.org_pin ?? SAMPLE_PREVIEW_SELLER.tax_pin,
   };
 }
 
@@ -60,6 +122,29 @@ export function previewLpoPrint({
   });
 }
 
+export function previewLoadingListPrint({
+  organization = null,
+  generalSettings = null,
+  moduleSettings = null,
+  printoutsForm = null,
+}) {
+  const general = printoutsForm
+    ? {
+        ...mergeGeneralSettings(moduleSettings),
+        document_footer_text: printoutsForm.document_footer_text,
+        show_organization_on_documents: printoutsForm.show_organization_on_documents,
+        document_header_display: printoutsForm.document_header_display,
+      }
+    : generalSettings ?? mergeGeneralSettings(moduleSettings);
+
+  const sample = sampleLoadingListPreviewData();
+  printLoadingList({
+    organization,
+    generalSettings: general,
+    loadingList: sample.loadingList,
+  });
+}
+
 export function previewSaleInvoicePrint({
   organization = null,
   generalSettings = null,
@@ -71,30 +156,14 @@ export function previewSaleInvoicePrint({
     : mergeSalesSettings(moduleSettings);
   const general = generalSettings ?? mergeGeneralSettings(moduleSettings);
   const branding = resolveSaleDocumentBranding({ organization, generalSettings: general });
-  const seller = organization
-    ? {
-        name: organization.org_name,
-        address: organization.org_address,
-        email: organization.org_email,
-        phone: organization.primary_tel,
-        secondary_phone: organization.secondary_tel,
-        tax_pin: organization.org_pin,
-      }
-    : { name: "Preview Company" };
-
+  const seller = resolvePreviewSeller(organization);
   const sale = sampleReceiptPreviewSale();
   const paymentInstructions = receiptPaymentDetailsToPayload(sales.pos_receipt_payment_details);
 
   printSaleInvoice(sale, {
     seller,
     branding,
-    customer: {
-      customer_name: "Sample Customer Ltd",
-      phone_number: "0712 000 111",
-      kra_pin: "P051234567X",
-      town: "Nairobi",
-      terms_of_payment: "30 DAYS",
-    },
+    customer: SAMPLE_PREVIEW_CUSTOMER,
     productDiscountsEnabled: Boolean(sales.allow_discounts),
     orderDiscountEnabled: Boolean(sales.enable_order_discount),
     invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
@@ -142,16 +211,7 @@ export function previewReceiptPaymentDetails({
 
   const general = generalSettings ?? mergeGeneralSettings(moduleSettings);
   const branding = resolveSaleDocumentBranding({ organization, generalSettings: general });
-  const seller = organization
-    ? {
-        name: organization.org_name,
-        address: organization.org_address,
-        email: organization.org_email,
-        phone: organization.primary_tel,
-        secondary_phone: organization.secondary_tel,
-        tax_pin: organization.org_pin,
-      }
-    : null;
+  const seller = organization ? resolvePreviewSeller(organization) : null;
 
   const isRoutePreview = channel === "mobile" || channel === "route";
   const details =

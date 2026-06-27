@@ -34,9 +34,10 @@ function formatDisplayDate(dateStr) {
 }
 
 export default function MobileLoadingSheetsScreen() {
-  const { capabilities, organization } = useAuth();
+  const { capabilities, organization, generalSettings } = useAuth();
   const allowed = shouldShowMobileLoadingSheets(capabilities);
   const organizationName = organization?.name ?? capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME;
+  const general = generalSettings();
 
   const [fromDate, setFromDate] = useState(daysAgoIso(7));
   const [toDate, setToDate] = useState(todayIso());
@@ -101,6 +102,8 @@ export default function MobileLoadingSheetsScreen() {
   function handlePrint() {
     if (!detail?.loading_list) return;
     printLoadingList({
+      organization,
+      generalSettings: general,
       organizationName,
       loadingList: detail.loading_list,
     });

@@ -14,6 +14,7 @@ import { MultilinePrintNotesField } from "@/components/admin/multiline-print-not
 import {
   DocumentPrintPreviewButton,
   previewLpoPrint,
+  previewLoadingListPrint,
   previewReceiptPaymentDetails,
   previewSaleInvoicePrint,
   useDocumentPrintPreviewContext,
@@ -69,6 +70,7 @@ export function PrintoutsSettingsPanel({
   const hasSales = Boolean(modules.sales);
   const hasProcurement = Boolean(modules.customers_suppliers);
   const hasGeneral = Boolean(modules.admin);
+  const hasLoadingSheets = Boolean(modules.distribution || modules["sales.mobile"]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -379,6 +381,26 @@ export function PrintoutsSettingsPanel({
                       previewLpoPrint({
                         ...previewContext,
                         procurementForm: form,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {hasLoadingSheets ? (
+              <div>
+                <SectionHeading
+                  title="Loading sheets"
+                  description="Route pick lists for mobile orders and distribution trips. Uses document branding above — company name, logo, watermark, and footer."
+                />
+                <div className="mt-4">
+                  <DocumentPrintPreviewButton
+                    label="Preview loading sheet"
+                    onPreview={() =>
+                      previewLoadingListPrint({
+                        ...previewContext,
+                        printoutsForm: form,
                       })
                     }
                   />

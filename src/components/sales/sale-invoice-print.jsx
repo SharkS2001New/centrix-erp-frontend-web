@@ -14,6 +14,7 @@ import {
   resolveInvoiceFooterLines,
 } from "@/lib/invoice-print-settings";
 import { buildReceiptPaymentDetailsHtml } from "@/lib/receipt-payment-details";
+import { formatReceiptNumber, saleCustomerLabel, salePaymentMethodDisplay } from "@/lib/sales";
 
 function formatInvoiceDate(value) {
   if (!value) return "—";

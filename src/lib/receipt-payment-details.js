@@ -1,5 +1,7 @@
 import { isRouteOrderSale } from "@/lib/sales";
 
+export { sampleReceiptPreviewSale } from "@/lib/print-preview-samples";
+
 export const EMPTY_RECEIPT_PAYMENT_DETAILS = {
   title: "Payment details",
   lines: [{ label: "", value: "" }],
@@ -130,40 +132,4 @@ export function buildReceiptPaymentDetailsHtml(details, { layout = "thermal" } =
     ${lineRows}
     ${note}
   </div>`;
-}
-
-export function sampleReceiptPreviewSale({ channel = "pos", routeId = null } = {}) {
-  const now = new Date().toISOString();
-  return {
-    id: 1001,
-    order_num: 1001,
-    status: "completed",
-    channel,
-    route_id: routeId,
-    order_total: 1250,
-    total_vat: 172.41,
-    cash: 500,
-    mpesa_amount: 750,
-    completed_at: now,
-    created_at: now,
-    cashier_name: "Preview cashier",
-    items: [
-      {
-        product_name: "Sample product A",
-        product_code: "SKU-001",
-        quantity: 2,
-        unit_price: 500,
-        amount: 1000,
-        discount_given: 0,
-      },
-      {
-        product_name: "Sample product B",
-        product_code: "SKU-002",
-        quantity: 1,
-        unit_price: 250,
-        amount: 250,
-        discount_given: 0,
-      },
-    ],
-  };
 }

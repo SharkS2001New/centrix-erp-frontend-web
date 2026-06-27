@@ -24,7 +24,7 @@ function statusLabel(status) {
 
 export default function TripDetailPage() {
   const { id } = useParams();
-  const { organization } = useAuth();
+  const { organization, generalSettings } = useAuth();
 
   const [trip, setTrip] = useState(null);
   const [loadingList, setLoadingList] = useState(null);
@@ -222,6 +222,8 @@ export default function TripDetailPage() {
           disabled={busy}
           onClick={() =>
             printLoadingList({
+              organization,
+              generalSettings: generalSettings(),
               organizationName: organization?.organization_name ?? organization?.company_name ?? "Loading List",
               loadingList,
               trip,

@@ -47,9 +47,6 @@ function lpoDisplayNumber(lpo) {
 }
 
 export function sampleLpoPreviewData() {
-  const orderDate = new Date();
-  const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + 30);
   return {
     lpo: {
       lpo_no: 71,
@@ -58,8 +55,8 @@ export function sampleLpoPreviewData() {
       supplier_email: "orders@supplier.example",
       supplier_phone: "0712 345 678",
       terms: "30 DAYS",
-      order_date: orderDate.toISOString().slice(0, 10),
-      due_date: dueDate.toISOString().slice(0, 10),
+      order_date: "2026-01-30",
+      due_date: "2026-03-01",
       delivery_address: "Main warehouse — Nairobi",
       subtotal: 10000,
       vat_amount: 1600,
