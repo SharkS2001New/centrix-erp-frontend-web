@@ -60,6 +60,7 @@ export function LpoPrintDocument({
   printedBy = null,
   printSettings = null,
   generalSettings = null,
+  documentFooterText = null,
 }) {
   const branding = resolveReportBranding({ organization, generalSettings });
   const orgName = organization?.org_name ?? buyer.name ?? "";
@@ -322,6 +323,10 @@ export function LpoPrintDocument({
       <p className="lpo-note-line">
         <strong>Take note:</strong> {vatNote}
       </p>
+
+      {documentFooterText ? (
+        <p className="lpo-note-line">{documentFooterText}</p>
+      ) : null}
 
       <div className="lpo-footer">
         <span>Printed On: {printedAt}</span>

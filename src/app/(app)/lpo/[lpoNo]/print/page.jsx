@@ -4,18 +4,22 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { mergeGeneralSettings } from "@/lib/general-settings";
 import { mergeProcurementSettings } from "@/lib/procurement-settings";
+import { fetchPrintModuleSettings } from "@/lib/print-module-settings";
+import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { LpoPrintDocument } from "@/components/lpo/lpo-print-document";
 
 export default function LpoPrintPage() {
   const params = useParams();
   const lpoNo = params.lpoNo;
-  const { user, capabilities, generalSettings } = useAuth();
+  const { user, capabilities } = useAuth();
   const [data, setData] = useState(null);
   const [buyer, setBuyer] = useState({});
   const [organization, setOrganization] = useState(null);
   const [supplier, setSupplier] = useState(null);
   const [printSettings, setPrintSettings] = useState(null);
+  const [generalSettings, setGeneralSettings] = useState(null);
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
@@ -27,20 +31,17 @@ export default function LpoPrintPage() {
       const branchId = user?.branch_id;
       const supplierId = res?.lpo?.supplier_id;
 
-      const [org, branch, supplierRes, procurementRes] = await Promise.all([
+      const [org, branch, supplierRes, moduleSettings] = await Promise.all([
         orgId ? apiRequest(`/organizations/${orgId}`).catch(() => null) : Promise.resolve(null),
         branchId ? apiRequest(`/branches/${branchId}`).catch(() => null) : Promise.resolve(null),
         supplierId ? apiRequest(`/suppliers/${supplierId}`).catch(() => null) : Promise.resolve(null),
-        apiRequest("/erp/settings/procurement").catch(() => null),
+        fetchPrintModuleSettings(capabilities?.module_settings ?? null),
       ]);
 
       if (org) setOrganization(org);
       if (supplierRes) setSupplier(supplierRes);
-      if (procurementRes?.procurement) {
-        setPrintSettings(mergeProcurementSettings({ procurement: procurementRes.procurement }));
-      } else {
-        setPrintSettings(mergeProcurementSettings(capabilities?.module_settings));
-      }
+      setPrintSettings(mergeProcurementSettings(moduleSettings));
+      setGeneralSettings(mergeGeneralSettings(moduleSettings));
 
       if (branch) {
         setBuyer({
@@ -63,24 +64,24 @@ export default function LpoPrintPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load LPO");
     }
-  }, [lpoNo, user?.branch_id, capabilities?.organization_id]);
+  }, [lpoNo, user?.branch_id, capabilities?.organization_id, capabilities?.module_settings]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   useEffect(() => {
-    if (data && typeof window !== "undefined") {
+    if (data && printSettings && generalSettings && typeof window !== "undefined") {
       const t = setTimeout(() => window.print(), 500);
       return () => clearTimeout(t);
     }
-  }, [data]);
+  }, [data, printSettings, generalSettings]);
 
   if (error) {
     return <p className="p-8 text-red-600">{error}</p>;
   }
 
-  if (!data?.lpo) {
+  if (!data?.lpo || !printSettings || !generalSettings) {
     return <p className="p-8 text-slate-500">Loading…</p>;
   }
 
@@ -93,7 +94,8 @@ export default function LpoPrintPage() {
       supplier={supplier}
       printedBy={user?.full_name ?? user?.username}
       printSettings={printSettings}
-      generalSettings={generalSettings()}
+      generalSettings={generalSettings}
+      documentFooterText={resolvePrintFooter(generalSettings ?? {}, "lpo")}
     />
   );
 }

@@ -62,7 +62,12 @@ export function formatReceiptNumber(sale) {
 
 export function saleCustomerLabel(sale) {
   if (!sale) return "Walk-in";
-  if (sale.customer_name_override?.trim()) return sale.customer_name_override.trim();
+  const override = sale.customer_name_override?.trim();
+  if (override) return override;
+  const relatedName = sale.customer?.customer_name?.trim();
+  if (relatedName) return relatedName;
+  const flatName = sale.customer_name?.trim();
+  if (flatName) return flatName;
   if (sale.customer_num) return `Customer #${sale.customer_num}`;
   return "Walk-in";
 }

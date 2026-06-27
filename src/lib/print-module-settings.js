@@ -1,0 +1,61 @@
+import { apiRequest } from "@/lib/api";
+import { mergeGeneralSettings } from "@/lib/general-settings";
+import { mergeProcurementSettings } from "@/lib/procurement-settings";
+import { mergeSalesSettings } from "@/lib/sales-settings";
+
+function sectionFromResponse(res, key) {
+  if (!res || typeof res !== "object") return null;
+  return res[key] ?? res;
+}
+
+/**
+ * Load print-related module settings from the API so live prints match Admin → Printouts.
+ * Falls back to cached capabilities when an individual request fails.
+ */
+export async function fetchPrintModuleSettings(fallback = null) {
+  const merged =
+    fallback && typeof fallback === "object" ? { ...fallback } : {};
+
+  const [salesResult, generalResult, procurementResult] = await Promise.allSettled([
+    apiRequest("/erp/settings/sales", { loading: false, reportIssues: false }),
+    apiRequest("/erp/settings/general", { loading: false, reportIssues: false }),
+    apiRequest("/erp/settings/procurement", { loading: false, reportIssues: false }),
+  ]);
+
+  if (salesResult.status === "fulfilled") {
+    merged.sales = sectionFromResponse(salesResult.value, "sales");
+  }
+  if (generalResult.status === "fulfilled") {
+    merged.general = sectionFromResponse(generalResult.value, "general");
+  }
+  if (procurementResult.status === "fulfilled") {
+    merged.procurement = sectionFromResponse(procurementResult.value, "procurement");
+  }
+
+  return merged;
+}
+
+export function resolvePrintGeneralSettings(moduleSettings) {
+  return mergeGeneralSettings(moduleSettings);
+}
+
+export function resolvePrintSalesSettings(moduleSettings) {
+  return mergeSalesSettings(moduleSettings);
+}
+
+export function resolvePrintProcurementSettings(moduleSettings) {
+  return mergeProcurementSettings(moduleSettings);
+}
+
+/** Ensure sale line items are present before building receipt/invoice HTML. */
+export async function ensureSaleForPrint(sale) {
+  if (!sale?.id) return sale;
+  if (Array.isArray(sale.items) && sale.items.length > 0) return sale;
+
+  try {
+    const loaded = await apiRequest(`/sales/${sale.id}`, { loading: false, reportIssues: false });
+    return loaded ?? sale;
+  } catch {
+    return sale;
+  }
+}

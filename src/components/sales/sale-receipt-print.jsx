@@ -15,6 +15,17 @@ import {
 } from "@/lib/receipt-payment-details";
 import { formatReceiptNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 
+function formatDocumentFooterHtml(text) {
+  const lines = String(text ?? "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return "";
+  return lines
+    .map((line) => `<div class="footer-text">${escapeHtml(line)}</div>`)
+    .join("");
+}
+
 export function buildSaleReceiptHtml(
   sale,
   {
@@ -218,9 +229,7 @@ export function buildSaleReceiptHtml(
     <div class="change">Change: ${escapeHtml(formatSaleKes(changeAmount))}</div>
     ${paymentInstructionsHtml}
     ${kraBlock}
-    <div class="thanks">Thank you for shopping with us!</div>
-    <div class="thanks">Goods once sold are not refundable</div>
-    ${documentFooterText ? `<div class="footer-text">${escapeHtml(documentFooterText)}</div>` : ""}
+    ${formatDocumentFooterHtml(documentFooterText)}
     <div class="receipt-code">${escapeHtml(receipt)}</div>
   </div>
 </body>

@@ -2,6 +2,10 @@ import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { apiRequest } from "@/lib/api";
 import { isKraDeviceConfigured } from "@/lib/finance-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
+import {
+  ensureSaleForPrint,
+  fetchPrintModuleSettings,
+} from "@/lib/print-module-settings";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import {
   extractKraReceiptData,
@@ -78,24 +82,6 @@ async function fetchRoute(routeId) {
   }
 }
 
-/** Load printout settings from the API so prints reflect admin changes immediately. */
-async function resolvePrintModuleSettings(fallback = null) {
-  try {
-    const [salesRes, generalRes] = await Promise.all([
-      apiRequest("/erp/settings/sales", { loading: false, reportIssues: false }),
-      apiRequest("/erp/settings/general", { loading: false, reportIssues: false }),
-    ]);
-
-    return {
-      ...(fallback && typeof fallback === "object" ? fallback : {}),
-      sales: salesRes?.sales ?? salesRes,
-      general: generalRes?.general ?? generalRes,
-    };
-  } catch {
-    return fallback;
-  }
-}
-
 /**
  * Resolve thermal vs A4 before printing. Prompts when org setting is "both".
  * @returns {Promise<"receipt"|"invoice"|null>}
@@ -114,9 +100,11 @@ export async function resolveOrderPrintType(moduleSettings, explicitType) {
 export async function printSaleOrder(sale, options = {}) {
   if (!sale) return null;
 
+  const saleForPrint = await ensureSaleForPrint(sale);
+
   const fallbackModuleSettings =
     options.moduleSettings ?? options.capabilities?.module_settings ?? null;
-  const moduleSettings = await resolvePrintModuleSettings(fallbackModuleSettings);
+  const moduleSettings = await fetchPrintModuleSettings(fallbackModuleSettings);
   const sales = mergeSalesSettings(moduleSettings);
   const general = mergeGeneralSettings(moduleSettings);
   const organizationId = options.capabilities?.organization_id;
@@ -132,9 +120,9 @@ export async function printSaleOrder(sale, options = {}) {
       : organizationId
         ? fetchOrganization(organizationId)
         : Promise.resolve(null),
-    options.branch ? Promise.resolve(options.branch) : fetchBranch(sale.branch_id),
-    options.customer ? Promise.resolve(options.customer) : fetchCustomer(sale.customer_num),
-    options.route ? Promise.resolve(options.route) : fetchRoute(sale.route_id),
+    options.branch ? Promise.resolve(options.branch) : fetchBranch(saleForPrint.branch_id),
+    options.customer ? Promise.resolve(options.customer) : fetchCustomer(saleForPrint.customer_num),
+    options.route ? Promise.resolve(options.route) : fetchRoute(saleForPrint.route_id),
   ]);
 
   const seller =
@@ -149,7 +137,7 @@ export async function printSaleOrder(sale, options = {}) {
   });
 
   const kraEnabled = isKraDeviceConfigured(moduleSettings, options.capabilities);
-  const kraData = kraEnabled ? extractKraReceiptData(sale, options.kraReceipt) : null;
+  const kraData = kraEnabled ? extractKraReceiptData(saleForPrint, options.kraReceipt) : null;
   const kraQrDataUrl =
     kraData?.signatureLink != null
       ? await kraReceiptQrDataUrl(kraData.signatureLink, {
@@ -160,7 +148,7 @@ export async function printSaleOrder(sale, options = {}) {
   const paymentInstructions = resolveReceiptPaymentDetails({
     moduleSettings,
     route,
-    sale,
+    sale: saleForPrint,
     overrideDetails: options.paymentInstructions ?? null,
   });
 
@@ -197,10 +185,11 @@ export async function printSaleOrder(sale, options = {}) {
       validDays: Number(sales.invoice_valid_days ?? 7),
     });
     for (let copy = 0; copy < copies; copy += 1) {
-      printSaleInvoice(sale, {
+      printSaleInvoice(saleForPrint, {
         ...printOptions,
         invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
-        preparedBy: options.preparedBy ?? sale.cashier_name ?? sale.user?.full_name ?? null,
+        preparedBy:
+          options.preparedBy ?? saleForPrint.cashier_name ?? saleForPrint.user?.full_name ?? null,
         deliveryTerms,
         footerLines,
       });
@@ -209,9 +198,10 @@ export async function printSaleOrder(sale, options = {}) {
   }
 
   for (let copy = 0; copy < copies; copy += 1) {
-    printSaleReceipt(sale, {
+    printSaleReceipt(saleForPrint, {
       ...printOptions,
       organizationName: seller.name ?? options.organizationName ?? DEFAULT_PRINT_ORG_NAME,
+      uomById: options.uomById ?? null,
     });
   }
 
