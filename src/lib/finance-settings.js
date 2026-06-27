@@ -1,10 +1,11 @@
 const FINANCE_DEFAULTS = {
   enable_kra_device: false,
   kra_device_ip: "",
+  kra_device_hardware_ip: "",
   kra_serial_number: "",
   kra_pin_number: "",
   kra_device_test_mode: false,
-  kra_plu_register_path: "/api/register-plu",
+  kra_plu_register_path: "/api/upload-plu-data",
   default_submit_kra: true,
   kra_bypass_above_amount: null,
   accounting_mode: "native",
@@ -176,10 +177,11 @@ export function financeFormFromApi(res) {
   return {
     enable_kra_device: Boolean(finance.enable_kra_device),
     kra_device_ip: String(finance.kra_device_ip ?? ""),
+    kra_device_hardware_ip: String(finance.kra_device_hardware_ip ?? ""),
     kra_serial_number: String(finance.kra_serial_number ?? ""),
     kra_pin_number: String(finance.kra_pin_number ?? ""),
     kra_device_test_mode: Boolean(finance.kra_device_test_mode),
-    kra_plu_register_path: String(finance.kra_plu_register_path ?? "/api/register-plu"),
+    kra_plu_register_path: String(finance.kra_plu_register_path ?? "/api/upload-plu-data"),
     default_submit_kra: finance.default_submit_kra !== false,
     kra_bypass_above_amount:
       finance.kra_bypass_above_amount == null || finance.kra_bypass_above_amount === ""
@@ -212,18 +214,19 @@ export function financeFormFromApi(res) {
   };
 }
 
-/** Draft KRA device fields for POST /kra/device-health (uses saved PIN when masked). */
-export function kraDeviceHealthPayloadFromForm(form) {
-  const payload = {
+/** Draft KRA device fields for POST /kra/device-* (health, init, restart). */
+export function kraDeviceOpsPayloadFromForm(form) {
+  return {
     kra_device_ip: String(form.kra_device_ip ?? "").trim(),
+    kra_device_hardware_ip: String(form.kra_device_hardware_ip ?? "").trim(),
     kra_serial_number: String(form.kra_serial_number ?? "").trim(),
     kra_device_test_mode: Boolean(form.kra_device_test_mode),
   };
-  const pin = String(form.kra_pin_number ?? "").trim();
-  if (pin && pin !== "********") {
-    payload.kra_pin_number = pin;
-  }
-  return payload;
+}
+
+/** @deprecated Use kraDeviceOpsPayloadFromForm */
+export function kraDeviceHealthPayloadFromForm(form) {
+  return kraDeviceOpsPayloadFromForm(form);
 }
 
 export function financePayloadFromForm(form) {
@@ -237,10 +240,11 @@ export function financePayloadFromForm(form) {
   return {
     enable_kra_device: Boolean(form.enable_kra_device),
     kra_device_ip: form.kra_device_ip.trim(),
+    kra_device_hardware_ip: form.kra_device_hardware_ip.trim(),
     kra_serial_number: form.kra_serial_number.trim(),
     kra_pin_number: form.kra_pin_number.trim(),
     kra_device_test_mode: Boolean(form.kra_device_test_mode),
-    kra_plu_register_path: form.kra_plu_register_path.trim() || "/api/register-plu",
+    kra_plu_register_path: form.kra_plu_register_path.trim() || "/api/upload-plu-data",
     default_submit_kra: Boolean(form.default_submit_kra),
     kra_bypass_above_amount: (() => {
       const raw = String(form.kra_bypass_above_amount ?? "").trim();

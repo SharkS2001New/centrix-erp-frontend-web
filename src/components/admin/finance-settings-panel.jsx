@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { financeFormFromApi, financePayloadFromForm, isPlatformKraIntegrationEnabled, isPlatformMpesaStkEnabled, kraDeviceHealthPayloadFromForm } from "@/lib/finance-settings";
+import { financeFormFromApi, financePayloadFromForm, isPlatformKraIntegrationEnabled, isPlatformMpesaStkEnabled, kraDeviceOpsPayloadFromForm } from "@/lib/finance-settings";
 import { accountingSettingsFromApi, accountingSettingsPayload } from "@/lib/accounting-settings";
 import { Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
 import { ExternalAccountingIntegrationPanel } from "@/components/admin/external-accounting-integration-panel";
@@ -44,6 +44,8 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
   const [autoPostForm, setAutoPostForm] = useState(null);
   const [loading, setLoading] = useState(true);
   const [kraHealthTesting, setKraHealthTesting] = useState(false);
+  const [kraInitTesting, setKraInitTesting] = useState(false);
+  const [kraRestartTesting, setKraRestartTesting] = useState(false);
   const [kraHealthResult, setKraHealthResult] = useState(null);
 
   useEffect(() => {
@@ -63,27 +65,44 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
   const mpesaAllowed = isPlatformMpesaStkEnabled({ finance: form }, capabilities);
   const hasFinanceContent = hasAccounting || kraAllowed || mpesaAllowed;
 
-  async function testKraDeviceHealth() {
-    setKraHealthTesting(true);
+  async function runKraDeviceAction(path, setLoading) {
+    setLoading(true);
     setKraHealthResult(null);
     setError(null);
     try {
-      const res = await apiRequest("/kra/device-health", {
+      const res = await apiRequest(path, {
         method: "POST",
-        body: kraDeviceHealthPayloadFromForm(form),
+        body: kraDeviceOpsPayloadFromForm(form),
       });
       setKraHealthResult({
-        ok: true,
-        message: res.message ?? "KRA device is reachable.",
+        ok: Boolean(res.success),
+        message: res.message ?? (res.success ? "Request completed." : "KRA device request failed."),
         httpStatus: res.http_status,
         url: res.url,
+        deviceConnection: res.device_connection,
+        apiService: res.api_service,
       });
     } catch (e) {
-      const message = e instanceof ApiError ? e.message : "KRA device health check failed.";
+      const message = e instanceof ApiError ? e.message : "KRA device request failed.";
       setKraHealthResult({ ok: false, message });
     } finally {
-      setKraHealthTesting(false);
+      setLoading(false);
     }
+  }
+
+  async function testKraDeviceHealth() {
+    await runKraDeviceAction("/kra/device-health", setKraHealthTesting);
+  }
+
+  async function initializeKraDevice() {
+    await runKraDeviceAction("/kra/device-init", setKraInitTesting);
+  }
+
+  async function restartKraDevice() {
+    if (!window.confirm("Restart the on-prem fiscal device? Sales will be interrupted briefly.")) {
+      return;
+    }
+    await runKraDeviceAction("/kra/device-restart", setKraRestartTesting);
   }
 
   async function saveFinanceSettings() {
@@ -149,8 +168,20 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
                       className={inputClassName()}
                       value={form.kra_device_ip}
                       onChange={(e) => setForm((f) => ({ ...f, kra_device_ip: e.target.value }))}
-                      placeholder="192.168.1.50:8010"
+                      placeholder="192.168.1.50:8010 or https://kramoonstores.example.com"
                     />
+                  </Field>
+                  <Field label="Fiscal hardware IP (Smart VSCU)">
+                    <input
+                      className={inputClassName()}
+                      value={form.kra_device_hardware_ip}
+                      onChange={(e) => setForm((f) => ({ ...f, kra_device_hardware_ip: e.target.value }))}
+                      placeholder="192.168.1.39"
+                    />
+                    <p className="theme-subtext mt-1 text-xs">
+                      LAN address of the fiscal device. Required for Initialize / Restart when the API URL above is a
+                      hostname, not an IP.
+                    </p>
                   </Field>
                   <Field label="Device serial number (SN)">
                     <input
@@ -171,7 +202,7 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
                       className={inputClassName()}
                       value={form.kra_plu_register_path}
                       onChange={(e) => setForm((f) => ({ ...f, kra_plu_register_path: e.target.value }))}
-                      placeholder="/api/register-plu"
+                      placeholder="/api/upload-plu-data"
                     />
                   </Field>
                   <div className="flex flex-col gap-2 sm:col-span-2">
@@ -191,18 +222,46 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
                       >
                         {kraHealthTesting ? "Testing…" : "Test connection"}
                       </button>
+                      <button
+                        type="button"
+                        disabled={kraInitTesting || !form.kra_device_ip.trim() || !form.kra_serial_number.trim()}
+                        onClick={() => void initializeKraDevice()}
+                        className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
+                      >
+                        {kraInitTesting ? "Initializing…" : "Initialize device"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={kraRestartTesting || !form.kra_device_ip.trim()}
+                        onClick={() => void restartKraDevice()}
+                        className={`${SECONDARY_BTN_CLASS} px-3.5 py-2 disabled:opacity-50`}
+                      >
+                        {kraRestartTesting ? "Restarting…" : "Restart device"}
+                      </button>
                     </div>
                     {kraHealthResult ? (
-                      <p
+                      <div
                         className={`text-sm ${kraHealthResult.ok ? "text-emerald-700" : "text-red-700"}`}
                       >
-                        {kraHealthResult.message}
-                        {kraHealthResult.httpStatus ? ` (HTTP ${kraHealthResult.httpStatus})` : ""}
-                      </p>
+                        <p>
+                          {kraHealthResult.message}
+                          {kraHealthResult.httpStatus ? ` (HTTP ${kraHealthResult.httpStatus})` : ""}
+                        </p>
+                        {kraHealthResult.deviceConnection ? (
+                          <p className="theme-subtext mt-1 text-xs">
+                            Device connection: {kraHealthResult.deviceConnection}
+                            {kraHealthResult.apiService ? ` · API: ${kraHealthResult.apiService}` : ""}
+                          </p>
+                        ) : null}
+                      </div>
                     ) : (
                       <p className="theme-subtext text-xs">
-                        Calls <code className="rounded bg-slate-100 px-1 py-0.5">/api/health</code> on the
-                        device URL to verify this server can reach your KRA fiscal device.
+                        <strong>Test connection</strong> calls{" "}
+                        <code className="rounded bg-slate-100 px-1 py-0.5">GET /api/health</code>.{" "}
+                        <strong>Initialize</strong> calls{" "}
+                        <code className="rounded bg-slate-100 px-1 py-0.5">POST /api/init</code> (serial + hardware IP).{" "}
+                        <strong>Restart</strong> calls{" "}
+                        <code className="rounded bg-slate-100 px-1 py-0.5">POST /api/restart-device</code>.
                       </p>
                     )}
                   </div>
