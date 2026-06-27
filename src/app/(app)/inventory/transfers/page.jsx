@@ -15,6 +15,7 @@ import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { defaultDateRange } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_TRANSFER_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { P } from "@/lib/permission-codes";
 
 export default function InventoryTransfersPage() {
   const { date } = useOrgFormat();
