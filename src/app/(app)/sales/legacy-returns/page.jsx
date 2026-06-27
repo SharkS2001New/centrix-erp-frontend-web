@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
-import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
+import { useAuth } from "@/contexts/auth-context";
 import {
   FilterSelect,
   PaginationBar,
@@ -20,6 +20,7 @@ const PAGE_SIZE = 10;
 
 function LegacyReturnsContent() {
   const searchParams = useSearchParams();
+  const { organization, generalSettings } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -96,7 +97,10 @@ function LegacyReturnsContent() {
       setActionError("Credit note is not available for printing yet.");
       return;
     }
-    printCreditNote(payload, { organizationName: DEFAULT_PRINT_ORG_NAME });
+    printCreditNote(payload, {
+      organization,
+      generalSettings: generalSettings(),
+    });
   }
 
   return (

@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
 import { useQueuedTask } from "@/lib/use-queued-task";
-import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import {
   FilterSelect,
   PaginationBar,
@@ -15,7 +14,7 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { CustomerReturnDetailModal } from "@/components/sales/customer-return-detail-modal";
-import { printCreditNote } from "@/components/sales/credit-note-print";
+import { printCustomerReturn } from "@/components/sales/credit-note-print";
 import { ReturnStatusBadge, isReturnPending } from "@/components/sales/customer-returns-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import { useAuth } from "@/contexts/auth-context";
@@ -25,7 +24,7 @@ const PAGE_SIZE = 10;
 export default function SalesReturnsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { capabilities } = useAuth();
+  const { capabilities, organization, generalSettings } = useAuth();
   const { runQueuedTask } = useQueuedTask(
     "Please wait while the credit note is submitted to the KRA device…",
   );
@@ -353,8 +352,10 @@ export default function SalesReturnsPage() {
         }}
         onDelete={handleDelete}
         onPrint={(row) => {
-          printCreditNote(row, {
-            organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
+          void printCustomerReturn(row, {
+            organization,
+            generalSettings: generalSettings(),
+            kraEnabled: kraDeviceEnabled,
           });
         }}
         error={actionError}

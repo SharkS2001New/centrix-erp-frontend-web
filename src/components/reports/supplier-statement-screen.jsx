@@ -4,7 +4,15 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 import { formatReportKes } from "@/lib/reports/format";
+import {
+  buildReportMeta,
+  normalizeExportColumns,
+  printReportTable,
+  reportPrintedAt,
+} from "@/lib/reports/export";
+import { resolveReportBranding } from "@/lib/reports/report-branding";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   ReportKpiGrid,
@@ -15,6 +23,7 @@ import { formatShortDate } from "@/components/catalog/catalog-shared";
 
 export function SupplierStatementScreen() {
   const searchParams = useSearchParams();
+  const { organization, generalSettings } = useAuth();
   const initialSupplier = searchParams.get("supplier_id") ?? searchParams.get("supplier") ?? "";
 
   const [suppliers, setSuppliers] = useState([]);
@@ -96,34 +105,70 @@ export function SupplierStatementScreen() {
     { key: "balance", label: "Balance", accessor: (r) => r.balance, align: "right" },
   ];
 
+  const exportRows = useMemo(
+    () => [
+      ...purchases.map((row) => ({
+        section: "Purchase",
+        date: formatShortDate(row.order_date),
+        reference: row.lpo_no,
+        detail: row.status_name ?? "—",
+        amount: formatReportKes(row.total_amount),
+        balance: formatReportKes(row.balance_due),
+      })),
+      ...payments.map((row) => ({
+        section: "Payment",
+        date: formatShortDate(row.date_paid),
+        reference: row.reference_number ?? "—",
+        detail: row.payment_method ?? "—",
+        amount: formatReportKes(row.amount_paid),
+        balance: "—",
+      })),
+    ],
+    [payments, purchases],
+  );
+
+  const branding = useMemo(
+    () => resolveReportBranding({ organization, generalSettings: generalSettings() }),
+    [organization, generalSettings],
+  );
+
+  const handlePrint = useCallback(() => {
+    if (!supplier || exportRows.length === 0) return;
+    printReportTable({
+      meta: buildReportMeta({
+        organizationName: branding.organizationName,
+        title: "Supplier Statement",
+        subtitle: supplier.supplier_name,
+        printedAt: reportPrintedAt(),
+        extraLines: [
+          `Supplier: ${supplier.supplier_name}`,
+          `Balance due: ${formatReportKes(supplier.current_balance ?? 0)}`,
+          `Total purchases: ${formatReportKes(stats?.total_purchases ?? 0)}`,
+          `Total paid: ${formatReportKes(stats?.total_paid ?? 0)}`,
+        ],
+      }),
+      columns: normalizeExportColumns(exportColumns),
+      rows: exportRows,
+      branding,
+    });
+  }, [branding, exportColumns, exportRows, stats, supplier]);
+
   return (
     <ReportPageShell
       section="Purchasing"
       title="Supplier Statement"
       subtitle="Purchases, payments, and balance for a supplier"
+      printAction={{
+        label: "Print",
+        onClick: handlePrint,
+        disabled: loading || !supplier || exportRows.length === 0,
+      }}
       exportConfig={
         appliedSupplierId
           ? {
               filename: `supplier-statement-${appliedSupplierId}`,
               columns: exportColumns,
-              getRows: async () => [
-                ...purchases.map((row) => ({
-                  section: "Purchase",
-                  date: formatShortDate(row.order_date),
-                  reference: row.lpo_no,
-                  detail: row.status_name ?? "—",
-                  amount: formatReportKes(row.total_amount),
-                  balance: formatReportKes(row.balance_due),
-                })),
-                ...payments.map((row) => ({
-                  section: "Payment",
-                  date: formatShortDate(row.date_paid),
-                  reference: row.reference_number ?? "—",
-                  detail: row.payment_method ?? "—",
-                  amount: formatReportKes(row.amount_paid),
-                  balance: "—",
-                })),
-              ],
+              getRows: async () => exportRows,
               meta: {
                 extraLines: supplier
                   ? [

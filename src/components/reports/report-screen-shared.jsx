@@ -192,7 +192,15 @@ export function ReportTable({ columns, rows, footerTotals = {}, emptyLabel = "No
   );
 }
 
-export function ReportPageShell({ section, title, subtitle, exportConfig, onExport, children }) {
+export function ReportPageShell({
+  section,
+  title,
+  subtitle,
+  exportConfig,
+  printAction = null,
+  onExport,
+  children,
+}) {
   return (
     <div>
       <AdminBreadcrumb
@@ -207,7 +215,19 @@ export function ReportPageShell({ section, title, subtitle, exportConfig, onExpo
           <h1 className="text-2xl font-semibold theme-heading">{title}</h1>
           {subtitle ? <p className="mt-1 text-sm theme-subtext">{subtitle}</p> : null}
         </div>
-        {exportConfig ? (
+        {exportConfig || printAction ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {printAction ? (
+              <button
+                type="button"
+                disabled={printAction.disabled}
+                onClick={printAction.onClick}
+                className={`${FILTER_RESET_BTN_CLASS} shadow-sm disabled:opacity-50`}
+              >
+                {printAction.label ?? "Print"}
+              </button>
+            ) : null}
+            {exportConfig ? (
           <ReportExportToolbar
             filename={exportConfig.filename}
             title={title}
@@ -220,6 +240,8 @@ export function ReportPageShell({ section, title, subtitle, exportConfig, onExpo
             estimatedRowCount={exportConfig.estimatedRowCount}
             disabled={exportConfig.disabled}
           />
+            ) : null}
+          </div>
         ) : onExport ? (
           <button type="button" onClick={onExport} className={`${FILTER_RESET_BTN_CLASS} shadow-sm`}>
             Export CSV

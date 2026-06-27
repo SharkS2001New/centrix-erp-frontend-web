@@ -4,7 +4,15 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 import { formatReportKes, formatReportCell } from "@/lib/reports/format";
+import {
+  buildReportMeta,
+  normalizeExportColumns,
+  printReportTable,
+  reportPrintedAt,
+} from "@/lib/reports/export";
+import { resolveReportBranding } from "@/lib/reports/report-branding";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   ReportKpiGrid,
@@ -14,6 +22,7 @@ import {
 
 export function CustomerStatementScreen() {
   const searchParams = useSearchParams();
+  const { organization, generalSettings } = useAuth();
   const initialCustomer = searchParams.get("customer") ?? "";
 
   const [customers, setCustomers] = useState([]);
@@ -102,11 +111,41 @@ export function CustomerStatementScreen() {
     { key: "balance", label: "Balance", accessor: (r) => formatReportKes(r.balance), align: "right" },
   ];
 
+  const branding = useMemo(
+    () => resolveReportBranding({ organization, generalSettings: generalSettings() }),
+    [organization, generalSettings],
+  );
+
+  const handlePrint = useCallback(() => {
+    if (!customer || !lines.length) return;
+    printReportTable({
+      meta: buildReportMeta({
+        organizationName: branding.organizationName,
+        title: "Customer Statement",
+        subtitle: customer.customer_name,
+        printedAt: reportPrintedAt(),
+        extraLines: [
+          `Customer: ${customer.customer_name} (#${customer.customer_num})`,
+          `Outstanding balance: ${formatReportKes(outstanding)}`,
+          `Credit limit: ${formatReportKes(creditLimit)}`,
+        ],
+      }),
+      columns: normalizeExportColumns(columns),
+      rows: lines,
+      branding,
+    });
+  }, [branding, columns, creditLimit, customer, lines, outstanding]);
+
   return (
     <ReportPageShell
       section="Finance"
       title="Customer Statement"
       subtitle="Running balance from invoices and payments"
+      printAction={{
+        label: "Print",
+        onClick: handlePrint,
+        disabled: loading || !customer || lines.length === 0,
+      }}
       exportConfig={
         appliedCustomer
           ? {

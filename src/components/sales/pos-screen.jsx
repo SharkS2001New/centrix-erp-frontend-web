@@ -1962,6 +1962,7 @@ export function PosScreen({ standalone = false }) {
         ...body,
         sales_workspace: salesWorkspace,
         submit_kra: submitKra,
+        ...(cart?.held_order_num ? { order_num: cart.held_order_num } : {}),
         ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
       };
       const checkoutRequest = () =>
@@ -2115,6 +2116,7 @@ export function PosScreen({ standalone = false }) {
         body: {
           ...body,
           sales_workspace: salesWorkspace,
+          ...(cart?.held_order_num ? { order_num: cart.held_order_num } : {}),
           ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
         },
       });

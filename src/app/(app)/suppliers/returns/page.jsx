@@ -20,6 +20,7 @@ import {
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { SUPPLIER_RETURN_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { formatPoNumber } from "@/components/lpo/lpo-shared";
+import { printSupplierReturn } from "@/components/suppliers/supplier-return-print";
 import { formatReturnQty, formatStockLocationLabel, statusBadgeClass } from "@/components/suppliers/supplier-return-shared";
 
 const PAGE_SIZE = 15;
@@ -62,6 +63,16 @@ function XCircleIcon() {
       <circle cx="12" cy="12" r="10" />
       <line x1="15" y1="9" x2="9" y2="15" />
       <line x1="9" y1="9" x2="15" y2="15" />
+    </svg>
+  );
+}
+
+function PrintIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="6 9 6 2 18 2 18 9" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="8" />
     </svg>
   );
 }
@@ -204,10 +215,10 @@ function ReturnActionDialog({
   );
 }
 
-function ReturnOrderActions({ row, busyId, onRequestAction }) {
+function ReturnOrderActions({ row, busyId, onRequestAction, onPrint }) {
   const disabled = busyId === row.id;
   const hasActions =
-    row.can_approve || row.can_reject || row.can_delete || row.can_edit;
+    row.can_approve || row.can_reject || row.can_delete || row.can_edit || onPrint;
 
   if (!hasActions) {
     return <span className="text-xs text-slate-400">—</span>;
@@ -215,6 +226,16 @@ function ReturnOrderActions({ row, busyId, onRequestAction }) {
 
   return (
     <div className="flex items-center justify-end gap-0.5">
+      {onPrint ? (
+        <IconActionButton
+          label="Print return"
+          disabled={disabled}
+          onClick={() => onPrint(row)}
+          className="text-slate-700 hover:bg-slate-100"
+        >
+          <PrintIcon />
+        </IconActionButton>
+      ) : null}
       {row.can_approve ? (
         <IconActionButton
           label="Approve return"
@@ -305,7 +326,7 @@ function LineItemsTable({ row }) {
 }
 
 export default function SupplierReturnsPage() {
-  const { user } = useAuth();
+  const { user, organization, generalSettings } = useAuth();
   const searchParams = useSearchParams();
   const presetSupplier = searchParams.get("supplier_id") ?? searchParams.get("supplier");
 
@@ -446,6 +467,21 @@ export default function SupplierReturnsPage() {
       setBusyId(null);
     }
   }
+
+  const handlePrint = useCallback(
+    async (row) => {
+      try {
+        await printSupplierReturn(row, {
+          organization,
+          generalSettings: generalSettings(),
+          printedBy: user?.full_name ?? user?.username ?? null,
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to print return");
+      }
+    },
+    [generalSettings, organization, user],
+  );
 
   const pendingCount = filtered.filter((r) => r.status === "pending_approval").length;
   const adminHint = isAdminUser(user) ? null : " Approve/reject requires a senior (admin) user.";
@@ -694,6 +730,7 @@ export default function SupplierReturnsPage() {
                               row={row}
                               busyId={busyId}
                               onRequestAction={openActionDialog}
+                              onPrint={handlePrint}
                             />
                           </td>
                         </tr>

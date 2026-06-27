@@ -5,6 +5,7 @@ export const REPORT_UI_ROUTES = {
   "customer-statement": "/reports/customer-statement",
   "subledger-reconciliation": "/reports/subledger-reconciliation",
   "legacy-archive": "/reports/legacy-archive",
+  "price-list": "/reports/price-list",
 };
 
 export function reportHref(key, path) {
