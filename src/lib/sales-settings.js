@@ -1,3 +1,13 @@
+import {
+  DEFAULT_INVOICE_DELIVERY_TERMS,
+  DEFAULT_INVOICE_FOOTER_LINES,
+  invoicePrintFormFromApi,
+} from "@/lib/invoice-print-settings";
+import {
+  DEFAULT_POS_RECEIPT_PAYMENT_LINES,
+  receiptPaymentDetailsFromApi,
+} from "@/lib/receipt-payment-details";
+
 const SALES_DEFAULTS = {
   allow_sell_from_shop: true,
   allow_sell_from_store: false,
@@ -43,6 +53,21 @@ const SALES_DEFAULTS = {
   invoice_valid_days: 7,
   receipt_copies: 1,
   show_branch_on_receipt: true,
+  show_receipt_payment_details: true,
+  show_invoice_payment_details: true,
+  use_same_payment_details_for_routes: true,
+  pos_receipt_payment_details: {
+    title: "Payment details",
+    lines: [],
+    note: "",
+  },
+  route_receipt_payment_details: {
+    title: "Payment details",
+    lines: [],
+    note: "",
+  },
+  invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
+  invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
   stock_deduct_on: "order_completed",
 };
 
@@ -144,6 +169,21 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   invoice_valid_days: "7",
   show_branch_on_receipt: true,
   receipt_copies: "1",
+  show_receipt_payment_details: true,
+  show_invoice_payment_details: true,
+  use_same_payment_details_for_routes: true,
+  pos_receipt_payment_details: {
+    title: "Payment details",
+    lines: [{ label: "M-Pesa Paybill", value: "" }, { label: "Account no.", value: "" }],
+    note: "",
+  },
+  route_receipt_payment_details: {
+    title: "Payment details",
+    lines: [{ label: "M-Pesa Paybill", value: "" }, { label: "Account no.", value: "" }],
+    note: "",
+  },
+  invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
+  invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
   stock_deduct_on: "order_completed",
 };
 
@@ -184,18 +224,49 @@ export function salesOrganizationFormFromApi(res) {
     invoice_valid_days: String(sales.invoice_valid_days ?? 7),
     show_branch_on_receipt: Boolean(sales.show_branch_on_receipt),
     receipt_copies: String(sales.receipt_copies ?? 1),
+    show_receipt_payment_details: sales.show_receipt_payment_details !== false,
+    show_invoice_payment_details: sales.show_invoice_payment_details !== false,
+    use_same_payment_details_for_routes: sales.use_same_payment_details_for_routes !== false,
+    pos_receipt_payment_details: receiptPaymentDetailsFromApi(
+      sales.pos_receipt_payment_details ?? {
+        title: "Payment details",
+        lines: DEFAULT_POS_RECEIPT_PAYMENT_LINES,
+        note: "",
+      },
+    ),
+    route_receipt_payment_details: receiptPaymentDetailsFromApi(
+      sales.route_receipt_payment_details ?? {
+        title: "Payment details",
+        lines: DEFAULT_POS_RECEIPT_PAYMENT_LINES.map((line) => ({ ...line })),
+        note: "",
+      },
+    ),
+    ...invoicePrintFormFromApi(sales),
     stock_deduct_on: sales.stock_deduct_on || "order_completed",
   };
 }
 
 export function salesOrganizationPayloadFromForm(form) {
+  const {
+    order_document_type: _orderDocumentType,
+    receipt_copies: _receiptCopies,
+    show_branch_on_receipt: _showBranchOnReceipt,
+    show_receipt_payment_details: _showReceiptPaymentDetails,
+    show_invoice_payment_details: _showInvoicePaymentDetails,
+    use_same_payment_details_for_routes: _useSamePaymentDetailsForRoutes,
+    pos_receipt_payment_details: _posReceiptPaymentDetails,
+    route_receipt_payment_details: _routeReceiptPaymentDetails,
+    invoice_valid_days: _invoiceValidDays,
+    invoice_print_delivery_terms: _invoicePrintDeliveryTerms,
+    invoice_print_footer_lines: _invoicePrintFooterLines,
+    ...checkoutForm
+  } = form;
+
   return {
-    ...form,
+    ...checkoutForm,
     default_tax_rate: Number(form.default_tax_rate) || 0,
     point_cash_value: Number(form.point_cash_value) || 0,
     points_earn_per_kes: Number(form.points_earn_per_kes) || 0,
-    invoice_valid_days: Number(form.invoice_valid_days) || 0,
-    receipt_copies: Number(form.receipt_copies) || 1,
   };
 }
 

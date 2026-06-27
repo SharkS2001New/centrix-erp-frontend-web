@@ -91,8 +91,5 @@ export function generalPayloadFromForm(form) {
     week_starts_on: form.week_starts_on || "monday",
     phone_country_code: form.phone_country_code || "+254",
     default_country_code: form.default_country_code || "KE",
-    document_footer_text: form.document_footer_text?.trim() || "",
-    show_organization_on_documents: Boolean(form.show_organization_on_documents),
-    document_header_display: form.document_header_display || "auto",
   };
 }

@@ -12,6 +12,14 @@ import {
   mergeSalesSettings,
   resolveOrderPrintDocumentType,
 } from "@/lib/sales-settings";
+import {
+  resolveReceiptPaymentDetails,
+  shouldShowReceiptPaymentDetails,
+} from "@/lib/receipt-payment-details";
+import {
+  resolveInvoiceDeliveryTerms,
+  resolveInvoiceFooterLines,
+} from "@/lib/invoice-print-settings";
 import { printSaleInvoice } from "@/components/sales/sale-invoice-print";
 import { printSaleReceipt } from "@/components/sales/sale-receipt-print";
 
@@ -60,6 +68,15 @@ async function fetchCustomer(customerNum) {
   }
 }
 
+async function fetchRoute(routeId) {
+  if (routeId == null) return null;
+  try {
+    return await apiRequest(`/routes/${routeId}`);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Resolve thermal vs A4 before printing. Prompts when org setting is "both".
  * @returns {Promise<"receipt"|"invoice"|null>}
@@ -86,7 +103,7 @@ export async function printSaleOrder(sale, options = {}) {
   const documentType = await resolveOrderPrintType(moduleSettings, options.documentType);
   if (!documentType) return null;
 
-  const [organization, branch, customer] = await Promise.all([
+  const [organization, branch, customer, route] = await Promise.all([
     options.organization
       ? Promise.resolve(options.organization)
       : organizationId
@@ -94,6 +111,7 @@ export async function printSaleOrder(sale, options = {}) {
         : Promise.resolve(null),
     options.branch ? Promise.resolve(options.branch) : fetchBranch(sale.branch_id),
     options.customer ? Promise.resolve(options.customer) : fetchCustomer(sale.customer_num),
+    options.route ? Promise.resolve(options.route) : fetchRoute(sale.route_id),
   ]);
 
   const seller =
@@ -116,11 +134,19 @@ export async function printSaleOrder(sale, options = {}) {
         })
       : null;
 
+  const paymentInstructions = resolveReceiptPaymentDetails({
+    moduleSettings,
+    route,
+    sale,
+    overrideDetails: options.paymentInstructions ?? null,
+  });
+
   const printOptions = {
     ...options,
     seller,
     branch,
     customer,
+    route,
     branding,
     organization,
     productDiscountsEnabled: Boolean(sales.allow_discounts),
@@ -128,16 +154,28 @@ export async function printSaleOrder(sale, options = {}) {
     customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
     showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
     documentFooterText: general.document_footer_text?.trim?.() || "",
+    paymentInstructions,
+    showPaymentInstructions: shouldShowReceiptPaymentDetails(
+      moduleSettings,
+      documentType === "invoice" ? "invoice" : "receipt",
+    ),
     kraEnabled,
     kraData,
     kraQrDataUrl,
   };
 
   if (documentType === "invoice") {
+    const deliveryTerms = resolveInvoiceDeliveryTerms(sales);
+    const footerLines = resolveInvoiceFooterLines(sales, {
+      organizationName: seller.name ?? organization?.org_name ?? "",
+      validDays: Number(sales.invoice_valid_days ?? 7),
+    });
     printSaleInvoice(sale, {
       ...printOptions,
       invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
       preparedBy: options.preparedBy ?? sale.cashier_name ?? sale.user?.full_name ?? null,
+      deliveryTerms,
+      footerLines,
     });
     return documentType;
   }

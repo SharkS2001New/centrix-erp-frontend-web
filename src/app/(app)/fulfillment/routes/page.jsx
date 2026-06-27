@@ -155,6 +155,10 @@ export default function RoutesPage() {
     setForm((prev) => updateRouteFormField(prev, key, value));
   }
 
+  function patchForm(updates) {
+    setForm((prev) => ({ ...prev, ...updates }));
+  }
+
   async function saveRoute(e) {
     e.preventDefault();
     setSaving(true);
@@ -399,7 +403,7 @@ export default function RoutesPage() {
 
             <form onSubmit={saveRoute} className="flex flex-1 flex-col overflow-hidden">
               <div className="flex-1 overflow-y-auto px-5 py-4">
-                <RouteFormFields form={form} onChange={updateField} />
+                <RouteFormFields form={form} onChange={updateField} onPatch={patchForm} />
               </div>
 
               {formError && (

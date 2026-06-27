@@ -11,10 +11,8 @@ import {
   shouldShowPrintDiscountColumn,
 } from "@/lib/sale-document-print-shared";
 import {
-  formatReceiptNumber,
-  formatSaleKes,
-  saleCustomerLabel,
-} from "@/lib/sales";
+  buildReceiptPaymentDetailsHtml,
+} from "@/lib/receipt-payment-details";
 
 export function printSaleReceipt(
   sale,
@@ -33,6 +31,8 @@ export function printSaleReceipt(
     kraData = null,
     kraQrDataUrl = null,
     documentFooterText = "",
+    paymentInstructions = null,
+    showPaymentInstructions = true,
   } = {},
 ) {
   if (!sale) return;
@@ -127,6 +127,11 @@ export function printSaleReceipt(
       ? buildKraFiscalBlockHtml(kraData, { layout: "thermal", qrDataUrl: kraQrDataUrl })
       : "";
 
+  const paymentInstructionsHtml =
+    showPaymentInstructions && paymentInstructions
+      ? buildReceiptPaymentDetailsHtml(paymentInstructions, { layout: "thermal" })
+      : "";
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -159,6 +164,12 @@ export function printSaleReceipt(
     .totals-row.grand { font-size: 11px; font-weight: 700; margin-top: 6px; padding-top: 4px; border-top: 1px solid #111827; }
     .payment-title { text-align: center; font-weight: 700; letter-spacing: .08em; margin: 8px 0 4px; font-size: 9px; }
     .payment-row { display: flex; justify-content: space-between; margin: 2px 0; font-size: 9px; }
+    .pay-instructions { margin: 8px 0; padding-top: 6px; border-top: 1px dashed #cbd5e1; font-size: 9px; }
+    .pay-instructions .payment-title { margin-top: 0; }
+    .pay-line { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; }
+    .pay-label { font-weight: 700; }
+    .pay-value { text-align: right; }
+    .pay-note { margin-top: 4px; text-align: center; color: #475569; font-size: 8px; line-height: 1.35; }
     .change { text-align: center; font-weight: 700; margin-top: 6px; font-size: 10px; }
     .thanks { text-align: center; margin: 10px 0 2px; font-size: 9px; color: #334155; text-transform: uppercase; letter-spacing: .04em; }
     .footer-text { text-align: center; font-size: 8px; color: #64748b; margin-top: 4px; }
@@ -200,9 +211,10 @@ export function printSaleReceipt(
       <div class="totals-row"><span>VAT</span><span>${escapeHtml(formatPrintAmount(vatAmount))}</span></div>
       <div class="totals-row grand"><span>Total amount</span><span>${escapeHtml(formatSaleKes(orderTotal))}</span></div>
     </div>
-    <div class="payment-title">Payment details</div>
+    <div class="payment-title">Amount paid</div>
     ${paymentRows}
     <div class="change">Change: ${escapeHtml(formatSaleKes(changeAmount))}</div>
+    ${paymentInstructionsHtml}
     ${kraBlock}
     <div class="thanks">Thank you for shopping with us!</div>
     <div class="thanks">Goods once sold are not refundable</div>

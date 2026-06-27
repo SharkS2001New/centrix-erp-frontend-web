@@ -8,6 +8,7 @@ import {
 /** Map organization settings tabs to ERP module keys (platform super-admin controlled). */
 export const ORG_SETTINGS_TAB_MODULES = {
   general: ["admin"],
+  printouts: ["admin", "sales", "customers_suppliers"],
   sales: ["sales"],
   mobile: ["sales.mobile"],
   distribution: ["distribution"],
@@ -41,6 +42,13 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
         return true;
       }
       return moduleEnabled(capabilities, "admin");
+
+    case "printouts":
+      return (
+        moduleEnabled(capabilities, "admin") ||
+        moduleEnabled(capabilities, "sales") ||
+        moduleEnabled(capabilities, "customers_suppliers")
+      );
 
     case "sales":
       return moduleEnabled(capabilities, "sales");

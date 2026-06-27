@@ -8,38 +8,75 @@ import {
   isSameCalendarDay,
   isSameCalendarMonth,
 } from "@/components/catalog/catalog-shared";
+import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
+import { receiptPaymentDetailsFromApi } from "@/lib/receipt-payment-details";
 
 export const EMPTY_ROUTE_FORM = {
   route_name: "",
   direction: "",
   route_markup_price: "0",
   is_active: true,
+  receipt_payment_details: null,
+  use_route_payment_details: false,
 };
 
 export function routeToForm(route) {
+  const details = route.receipt_payment_details
+    ? receiptPaymentDetailsFromApi(route.receipt_payment_details)
+    : null;
   return {
     route_name: route.route_name ?? "",
     direction: route.direction ?? "",
     route_markup_price:
       route.route_markup_price != null ? String(route.route_markup_price) : "0",
     is_active: route.is_active !== false,
+    receipt_payment_details: details,
+    use_route_payment_details: Boolean(details),
   };
 }
 
 export function buildRouteBody(form) {
-  return {
+  const body = {
     route_name: form.route_name.trim(),
     direction: form.direction.trim() || null,
     route_markup_price: parseInt(form.route_markup_price, 10) || 0,
     is_active: form.is_active,
   };
+
+  if (form.use_route_payment_details && form.receipt_payment_details) {
+    const lines = (form.receipt_payment_details.lines ?? []).filter(
+      (line) => line.label?.trim() || line.value?.trim(),
+    );
+    const note = String(form.receipt_payment_details.note ?? "").trim();
+    if (lines.length || note) {
+      body.receipt_payment_details = {
+        title: form.receipt_payment_details.title?.trim() || "Payment details",
+        lines,
+        note,
+      };
+    } else {
+      body.receipt_payment_details = null;
+    }
+  } else {
+    body.receipt_payment_details = null;
+  }
+
+  return body;
 }
 
 export function updateRouteFormField(form, key, value) {
   return { ...form, [key]: value };
 }
 
-export function RouteFormFields({ form, onChange }) {
+export function RouteFormFields({ form, onChange, onPatch }) {
+  function applyPatch(updates) {
+    if (onPatch) {
+      onPatch(updates);
+      return;
+    }
+    Object.entries(updates).forEach(([key, value]) => onChange(key, value));
+  }
+
   return (
     <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-2">
       <div className="md:col-span-2">
@@ -99,6 +136,49 @@ export function RouteFormFields({ form, onChange }) {
             Inactive
           </label>
         </div>
+      </div>
+
+      <div className="md:col-span-2">
+        <label className="mb-2 flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={Boolean(form.use_route_payment_details)}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              const updates = { use_route_payment_details: checked };
+              if (checked && !form.receipt_payment_details) {
+                updates.receipt_payment_details = {
+                  title: "Payment details",
+                  lines: [
+                    { label: "M-Pesa Paybill", value: "" },
+                    { label: "Account no.", value: "" },
+                  ],
+                  note: "",
+                };
+              }
+              applyPatch(updates);
+            }}
+          />
+          <span>
+            <span className="block text-sm font-medium text-slate-900">
+              Custom payment instructions for this route
+            </span>
+            <span className="mt-0.5 block text-xs text-slate-500">
+              Overrides organization mobile/route receipt paybill details for orders on this route
+              (mobile field sales and POS route orders).
+            </span>
+          </span>
+        </label>
+        {form.use_route_payment_details ? (
+          <div className="mt-3">
+            <ReceiptPaymentDetailsEditor
+              value={form.receipt_payment_details}
+              onChange={(value) => onChange("receipt_payment_details", value)}
+              idPrefix={`route-${form.route_name || "new"}`}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

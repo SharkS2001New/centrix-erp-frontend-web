@@ -4,16 +4,18 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { mergeProcurementSettings } from "@/lib/procurement-settings";
 import { LpoPrintDocument } from "@/components/lpo/lpo-print-document";
 
 export default function LpoPrintPage() {
   const params = useParams();
   const lpoNo = params.lpoNo;
-  const { user, capabilities } = useAuth();
+  const { user, capabilities, generalSettings } = useAuth();
   const [data, setData] = useState(null);
   const [buyer, setBuyer] = useState({});
   const [organization, setOrganization] = useState(null);
   const [supplier, setSupplier] = useState(null);
+  const [printSettings, setPrintSettings] = useState(null);
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
@@ -25,14 +27,20 @@ export default function LpoPrintPage() {
       const branchId = user?.branch_id;
       const supplierId = res?.lpo?.supplier_id;
 
-      const [org, branch, supplierRes] = await Promise.all([
+      const [org, branch, supplierRes, procurementRes] = await Promise.all([
         orgId ? apiRequest(`/organizations/${orgId}`).catch(() => null) : Promise.resolve(null),
         branchId ? apiRequest(`/branches/${branchId}`).catch(() => null) : Promise.resolve(null),
         supplierId ? apiRequest(`/suppliers/${supplierId}`).catch(() => null) : Promise.resolve(null),
+        apiRequest("/erp/settings/procurement").catch(() => null),
       ]);
 
       if (org) setOrganization(org);
       if (supplierRes) setSupplier(supplierRes);
+      if (procurementRes?.procurement) {
+        setPrintSettings(mergeProcurementSettings({ procurement: procurementRes.procurement }));
+      } else {
+        setPrintSettings(mergeProcurementSettings(capabilities?.module_settings));
+      }
 
       if (branch) {
         setBuyer({
@@ -84,6 +92,8 @@ export default function LpoPrintPage() {
       organization={organization}
       supplier={supplier}
       printedBy={user?.full_name ?? user?.username}
+      printSettings={printSettings}
+      generalSettings={generalSettings()}
     />
   );
 }

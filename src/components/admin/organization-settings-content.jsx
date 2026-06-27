@@ -16,6 +16,7 @@ import { MobileApplicationSettingsPanel } from "@/components/admin/mobile-applic
 import { GeneralSettingsPanel } from "@/components/admin/general-settings-panel";
 import { NotificationsSettingsPanel } from "@/components/admin/notifications-settings-panel";
 import { ProcurementSettingsPanel } from "@/components/admin/procurement-settings-panel";
+import { PrintoutsSettingsPanel } from "@/components/admin/printouts-settings-panel";
 import { HrSettingsPanel } from "@/components/admin/hr-settings-panel";
 import { SecuritySettingsPanel } from "@/components/admin/security-settings-panel";
 import { LegacyArchiveSettingsPanel } from "@/components/admin/legacy-archive-settings-panel";
@@ -33,6 +34,7 @@ import {
 
 const TABS = [
   { id: "general", label: "General" },
+  { id: "printouts", label: "Printouts" },
   { id: "sales", label: "Sales" },
   { id: "mobile", label: "Mobile application" },
   { id: "distribution", label: "Distribution" },
@@ -212,6 +214,8 @@ export function OrganizationSettingsContent({
 
         <div>
           {tab === "general" ? <GeneralSettingsPanel {...panelProps} /> : null}
+
+          {tab === "printouts" ? <PrintoutsSettingsPanel {...panelProps} /> : null}
 
           {tab === "sales" ? (
             <form onSubmit={handleSaveSales}>
@@ -529,60 +533,6 @@ export function OrganizationSettingsContent({
                     ) : null}
                   </div>
                 )}
-                <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Receipt Type Printer Selection
-                </p>
-                <div className="mt-3 space-y-3">
-                  <Field label="Order print format">
-                  <select
-                    className={inputClassName()}
-                    value={salesForm.order_document_type}
-                    onChange={(e) =>
-                      setSalesForm((f) => ({ ...f, order_document_type: e.target.value }))
-                    }
-                  >
-                    <option value="receipt">Thermal receipt only</option>
-                    <option value="invoice">A4 tax invoice only</option>
-                    <option value="both">Both — choose at print time</option>
-                  </select>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Thermal for receipt printers, A4 for detailed tax invoices. When both are enabled,
-                    staff choose the format each time they print.
-                  </p>
-                </Field>
-                <Field label="Receipt copies">
-                  <select
-                    className={inputClassName()}
-                    value={salesForm.receipt_copies}
-                    onChange={(e) => setSalesForm((f) => ({ ...f, receipt_copies: e.target.value }))}
-                  >
-                    <option value="1">Single receipt</option>
-                    <option value="2">Double receipt (customer + merchant)</option>
-                  </select>
-                  <p className="mt-1 text-xs text-slate-500">Controls how many copies are printed on checkout.</p>
-                </Field>
-                <Toggle
-                  label="Show branch details on receipt"
-                  description="When enabled and a branch is selected, receipt will show branch name, address and phone."
-                  checked={salesForm.show_branch_on_receipt}
-                  onChange={(v) => setSalesForm((f) => ({ ...f, show_branch_on_receipt: v }))}
-                />
-                </div>
-                {salesForm.order_document_type === "invoice" ||
-                salesForm.order_document_type === "both" ? (
-                  <Field label="Invoice valid for (days)">
-                    <input
-                      type="number"
-                      min={0}
-                      max={365}
-                      className={inputClassName()}
-                      value={salesForm.invoice_valid_days}
-                      onChange={(e) =>
-                        setSalesForm((f) => ({ ...f, invoice_valid_days: e.target.value }))
-                      }
-                    />
-                  </Field>
-                ) : null}
                 {hasPosSales ? (
                 <div className="mt-4 space-y-3">
                   <Toggle

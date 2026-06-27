@@ -10,10 +10,10 @@ import {
   shouldShowPrintDiscountColumn,
 } from "@/lib/sale-document-print-shared";
 import {
-  formatReceiptNumber,
-  saleCustomerLabel,
-  salePaymentMethodDisplay,
-} from "@/lib/sales";
+  resolveInvoiceDeliveryTerms,
+  resolveInvoiceFooterLines,
+} from "@/lib/invoice-print-settings";
+import { buildReceiptPaymentDetailsHtml } from "@/lib/receipt-payment-details";
 
 function formatInvoiceDate(value) {
   if (!value) return "—";
@@ -67,6 +67,10 @@ export function printSaleInvoice(
     kraData = null,
     kraQrDataUrl = null,
     documentFooterText = "",
+    paymentInstructions = null,
+    showPaymentInstructions = true,
+    deliveryTerms = null,
+    footerLines = null,
   } = {},
 ) {
   if (!sale) return;
@@ -107,7 +111,7 @@ export function printSaleInvoice(
     layout: "a4",
   });
 
-  const termLines = (terms ?? DEFAULT_INVOICE_TERMS)
+  const termLines = (deliveryTerms ?? terms ?? DEFAULT_INVOICE_TERMS)
     .flatMap((entry) => String(entry).split(/\n+/))
     .map((t) => t.trim())
     .filter(Boolean);
@@ -127,6 +131,21 @@ export function printSaleInvoice(
     kraEnabled && kraData
       ? `<div style="margin:12px 0;">${buildKraFiscalBlockHtml(kraData, { layout: "a4", qrDataUrl: kraQrDataUrl })}</div>`
       : "";
+
+  const paymentInstructionsHtml =
+    showPaymentInstructions && paymentInstructions
+      ? buildReceiptPaymentDetailsHtml(paymentInstructions, { layout: "a4" })
+      : "";
+
+  const resolvedFooterLines =
+    footerLines ??
+    resolveInvoiceFooterLines(null, {
+      organizationName: sellerName,
+      validDays: invoiceValidDays,
+    });
+  const footerNotesHtml = resolvedFooterLines
+    .map((line) => `<p>${escapeHtml(line)}</p>`)
+    .join("");
 
   const html = `<!DOCTYPE html>
 <html>
@@ -164,6 +183,12 @@ export function printSaleInvoice(
     .footer-notes p { margin: 4px 0; }
     .footer-notes .warn { font-weight: 700; text-decoration: underline; text-transform: uppercase; }
     .print-footer { margin-top: 14px; display: flex; justify-content: space-between; font-size: 9px; color: #333; border-top: 1px dotted #999; padding-top: 6px; }
+    .pay-instructions { margin: 10px 0 12px; padding: 8px 10px; border: 1px dotted #000; font-size: 10px; }
+    .pay-instructions .pay-title { font-weight: 700; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .pay-instructions .pay-line { display: flex; justify-content: space-between; gap: 12px; margin: 2px 0; }
+    .pay-instructions .pay-label { font-weight: 700; }
+    .pay-instructions .pay-value { text-align: right; }
+    .pay-instructions .pay-note { margin-top: 6px; font-size: 9px; color: #333; }
     .center { text-align: center; }
     .muted { color: #666; }
     @media print { body { padding: 0; } }
@@ -221,6 +246,8 @@ export function printSaleInvoice(
       </div>
     </div>
 
+    ${paymentInstructionsHtml}
+
     ${kraBlock}
 
     <div class="bottom-grid">
@@ -237,11 +264,7 @@ export function printSaleInvoice(
     </div>
 
     <div class="footer-notes">
-      <p class="warn">No Oversupply will be accepted.</p>
-      <p>This invoice is not valid unless sent directly or signed by an authorised signatory of ${escapeHtml(sellerName)}.</p>
-      <p class="warn">Order only valid for ${escapeHtml(String(invoiceValidDays))} days from above date.</p>
-      <p class="warn">We will only receive products with K.E.B.S mark / certificate</p>
-      <p><strong>Take note:</strong> VAT amount will not be paid on invoices without ETR receipt</p>
+      ${footerNotesHtml}
       ${documentFooterText ? `<p>${escapeHtml(documentFooterText)}</p>` : ""}
     </div>
 

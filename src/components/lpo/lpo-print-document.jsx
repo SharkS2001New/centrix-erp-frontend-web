@@ -1,9 +1,15 @@
 import { organizationLogoFileUrl } from "@/lib/api";
 import {
   buildReportOrgHeaderHtml,
+  buildReportWatermarkHtml,
   organizationHasLogo,
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
+import {
+  resolveLpoDeliveryNotes,
+  resolveLpoKebsWarning,
+  resolveLpoVatNote,
+} from "@/lib/lpo-print-settings";
 import { computeLpoLineTotals, formatLpoAmount, formatPoNumber } from "./lpo-shared";
 
 function formatPrintDate(value) {
@@ -33,16 +39,6 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-const DEFAULT_DELIVERY_NOTES = [
-  "Order valid until the date shown above.",
-  "No goods shall be received without an invoice or delivery note.",
-  "Please quote LPO number on all delivery notes and invoices.",
-  "Kindly attach a copy of this LPO to invoices and delivery notes.",
-  "No oversupply will be accepted.",
-  "Ensure KRA PIN is captured on all supplier invoices.",
-  "Goods must comply with applicable KEBS standards.",
-];
-
 function lpoDisplayNumber(lpo) {
   const ref = String(lpo?.reference_number ?? "").trim();
   if (ref) return ref;
@@ -59,8 +55,10 @@ export function LpoPrintDocument({
   organization = null,
   supplier = null,
   printedBy = null,
+  printSettings = null,
+  generalSettings = null,
 }) {
-  const branding = resolveReportBranding({ organization });
+  const branding = resolveReportBranding({ organization, generalSettings });
   const orgName = organization?.org_name ?? buyer.name ?? "";
   const orgPhones = [organization?.primary_tel, organization?.secondary_tel]
     .filter(Boolean)
@@ -81,11 +79,11 @@ export function LpoPrintDocument({
   const supplierTown = supplier?.town ?? "—";
   const paymentTerms = lpo?.terms?.trim() || "—";
 
-  const instructionLines = (lpo?.instructions || "")
-    .split(/\n+/)
-    .map((t) => t.trim())
-    .filter(Boolean);
-  const noteLines = instructionLines.length ? instructionLines : DEFAULT_DELIVERY_NOTES;
+  const instructionLines = resolveLpoDeliveryNotes(lpo, printSettings ?? {});
+  const noteLines = instructionLines;
+  const kebsWarning = resolveLpoKebsWarning(printSettings ?? {});
+  const vatNote = resolveLpoVatNote(printSettings ?? {});
+  const watermarkHtml = buildReportWatermarkHtml(branding);
 
   const subtotal =
     Number(lpo?.subtotal) ||
@@ -166,9 +164,14 @@ export function LpoPrintDocument({
         .lpo-warn { text-align: center; font-size: 8px; font-weight: 700; text-decoration: underline; text-transform: uppercase; margin: 4px 0 2px; }
         .lpo-note-line { text-align: center; font-size: 8px; margin: 2px 0; }
         .lpo-footer { margin-top: 6px; padding-top: 4px; border-top: 1px dotted #999; display: flex; justify-content: space-between; font-size: 8px; color: #333; }
+        .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+        .watermark-text { position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%) rotate(-32deg); font-size: 64px; font-weight: 700; color: rgba(15, 23, 42, 0.06); white-space: nowrap; }
+        .watermark-logo { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 70%; max-height: 70%; opacity: 0.05; object-fit: contain; }
       `}</style>
 
-      <div className="lpo-brand">
+      {watermarkHtml ? <div dangerouslySetInnerHTML={{ __html: watermarkHtml }} /> : null}
+
+      <div className="lpo-brand" style={{ position: "relative", zIndex: 1 }}>
         {orgHeaderHtml ? (
           <div dangerouslySetInnerHTML={{ __html: orgHeaderHtml }} />
         ) : null}
@@ -280,9 +283,9 @@ export function LpoPrintDocument({
         ))}
       </ol>
 
-      <p className="lpo-warn">We will only receive products with K.E.B.S mark / certificate</p>
+      <p className="lpo-warn">{kebsWarning}</p>
       <p className="lpo-note-line">
-        <strong>Take note:</strong> VAT amount will not be paid on invoices without ETR receipt
+        <strong>Take note:</strong> {vatNote}
       </p>
 
       <div className="lpo-footer">
