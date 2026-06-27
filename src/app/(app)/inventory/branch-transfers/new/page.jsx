@@ -64,14 +64,6 @@ export default function BranchStockTransferPage() {
       });
   }, [defaultBranchId, multiBranch, toBranchId]);
 
-  if (!multiBranch) {
-    return (
-      <InventoryPageShell title="Inter-branch transfer" subtitle="Redirecting…">
-        <p className="text-sm text-slate-500">Inter-branch transfers require more than one branch.</p>
-      </InventoryPageShell>
-    );
-  }
-
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
   const toBranchOptions = useMemo(
     () => branches.filter((b) => String(b.id) !== fromBranchId),
@@ -84,6 +76,14 @@ export default function BranchStockTransferPage() {
     setQty("1");
     setError(null);
   }, []);
+
+  if (!multiBranch) {
+    return (
+      <InventoryPageShell title="Inter-branch transfer" subtitle="Redirecting…">
+        <p className="text-sm text-slate-500">Inter-branch transfers require more than one branch.</p>
+      </InventoryPageShell>
+    );
+  }
 
   async function submit(e) {
     e.preventDefault();

@@ -45,6 +45,8 @@ export function RetailPricingTiersEditor({
     ? wholesalePriceAtMeasureLevel(Number(unitPrice) || 0, productUom, "small")
     : null;
 
+  const productUomId = productUom?.id ?? null;
+
   useEffect(() => {
     if (!productUom || !tiers.length) return;
     const valid = new Set(uomMeasureLevels(productUom).map((l) => l.level));
@@ -57,7 +59,9 @@ export function RetailPricingTiersEditor({
           : { ...row, measure_level: "small" },
       ),
     );
-  }, [productUom?.id]);
+    // Reconcile invalid measure levels when the product UOM changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid loops from onChange/tiers
+  }, [productUomId]);
 
   function updateTier(index, patch) {
     onChange(tiers.map((row, i) => (i === index ? { ...row, ...patch } : row)));

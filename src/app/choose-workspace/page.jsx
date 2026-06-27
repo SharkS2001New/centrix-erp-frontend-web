@@ -7,6 +7,7 @@ import { AuthGuard } from "@/components/auth-guard";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
+import { recallWorkspacePath } from "@/lib/workspace-navigation";
 import { resolveAvailableWorkspaces } from "@/lib/workspaces";
 import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
 import { SignOutButton } from "@/components/layout/sign-out-button";
@@ -34,8 +35,15 @@ function ChooseWorkspaceContent() {
       setSwitching(true);
       setSwitchError(null);
       try {
+        const resumePath = recallWorkspacePath(
+          user?.id,
+          organization?.id,
+          workspaces[0].id,
+          capabilities,
+          ctx,
+        );
         await switchWorkspace(workspaces[0].id);
-        if (!cancelled) router.replace(workspaces[0].home_path);
+        if (!cancelled) router.replace(resumePath);
       } catch (err) {
         if (!cancelled) {
           setSwitchError(err instanceof Error ? err.message : "Could not open application");
@@ -54,8 +62,9 @@ function ChooseWorkspaceContent() {
     setSwitching(true);
     setSwitchError(null);
     try {
+      const resumePath = recallWorkspacePath(user?.id, organization?.id, id, capabilities, ctx);
       await switchWorkspace(id);
-      router.replace(target.home_path);
+      router.replace(resumePath);
     } catch (err) {
       setSwitchError(err instanceof Error ? err.message : "Could not open application");
       setSwitching(false);

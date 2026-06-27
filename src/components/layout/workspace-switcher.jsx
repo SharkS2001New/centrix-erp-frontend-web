@@ -6,8 +6,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
+import { recallWorkspacePath } from "@/lib/workspace-navigation";
 import { getStoredWorkspace } from "@/lib/auth-storage";
-import { resolveActiveWorkspace, resolveAvailableWorkspaces, workspaceIcon } from "@/lib/workspaces";
+import {
+  pathBelongsToWorkspace,
+  resolveActiveWorkspace,
+  resolveAvailableWorkspaces,
+  workspaceIcon,
+} from "@/lib/workspaces";
 import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
 
 function ChevronDownIcon({ className }) {
@@ -16,12 +22,6 @@ function ChevronDownIcon({ className }) {
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
     </svg>
   );
-}
-
-function workspacePathMatches(pathname, homePath) {
-  if (!homePath) return false;
-  if (pathname === homePath) return true;
-  return homePath !== "/" && pathname.startsWith(`${homePath}/`);
 }
 
 export function WorkspaceSwitcher() {
@@ -57,7 +57,7 @@ export function WorkspaceSwitcher() {
 
   useEffect(() => {
     if (!pendingTarget) return;
-    if (workspacePathMatches(pathname, pendingTarget.home_path)) {
+    if (pathBelongsToWorkspace(pathname, pendingTarget.id)) {
       setSwitching(false);
       setPendingTarget(null);
     }
@@ -86,9 +86,16 @@ export function WorkspaceSwitcher() {
     setPendingTarget(target);
     setError(null);
     try {
+      const resumePath = recallWorkspacePath(
+        user?.id,
+        organization?.id,
+        id,
+        capabilities,
+        ctx,
+      );
       await switchWorkspace(id);
       setOpen(false);
-      router.push(target.home_path);
+      router.push(resumePath);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not switch application");

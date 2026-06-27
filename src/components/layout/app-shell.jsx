@@ -7,6 +7,7 @@ import { WorkspaceGuard } from "@/components/auth/workspace-guard";
 import { RoutePermissionGuard } from "@/components/route-permission-guard";
 import { BackgroundTaskProvider } from "@/contexts/background-task-context";
 import { SystemIssueProvider } from "@/contexts/system-issue-context";
+import { WorkspaceNavigationTracker } from "@/components/layout/workspace-navigation-tracker";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { OrderPrintTypePickerHost } from "@/components/sales/order-print-type-picker-host";
@@ -66,6 +67,7 @@ export function AppShell({ children }) {
 
   return (
     <AuthGuard>
+      <WorkspaceNavigationTracker />
       <WorkspaceGuard>
         <RoutePermissionGuard>
           <SystemIssueProvider>

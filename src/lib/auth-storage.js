@@ -1,6 +1,21 @@
 import { useCookieAuth } from "./auth-config";
 
 const TOKEN_KEY = "pos_erp_token";
+const WORKSPACE_ROUTE_MEMORY_PREFIX = "pos_erp_workspace_routes";
+
+function clearWorkspaceRouteMemoryOnLogout() {
+  if (typeof window === "undefined") return;
+  try {
+    const keys = [];
+    for (let i = 0; i < sessionStorage.length; i += 1) {
+      const key = sessionStorage.key(i);
+      if (key?.startsWith(WORKSPACE_ROUTE_MEMORY_PREFIX)) keys.push(key);
+    }
+    keys.forEach((key) => sessionStorage.removeItem(key));
+  } catch {
+    /* ignore */
+  }
+}
 const USER_KEY = "pos_erp_user";
 const ORG_KEY = "pos_erp_organization";
 const MEMBERSHIPS_KEY = "pos_erp_memberships";
@@ -115,6 +130,7 @@ export function clearSession() {
   localStorage.removeItem(MEMBERSHIPS_KEY);
   localStorage.removeItem(LOGIN_CHANNEL_KEY);
   localStorage.removeItem(WORKSPACE_KEY);
+  clearWorkspaceRouteMemoryOnLogout();
   clearScreenLocked();
 }
 
