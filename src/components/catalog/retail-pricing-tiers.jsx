@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   linePriceForTier,
+  smallUnitsPerLevel,
   tierPriceAtMeasureLevel,
   wholesalePriceAtMeasureLevel,
 } from "@/lib/retail-pricing";
@@ -11,7 +12,6 @@ import {
   EMPTY_PRICING_TIER,
   measureLevelLabel,
   normalizeTierPriceMode,
-  smallUnitsPerLevel,
   tierPriceModeLabel,
   uomMeasureLevels,
 } from "@/lib/uom-packaging";
