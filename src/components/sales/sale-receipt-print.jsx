@@ -150,13 +150,14 @@ export function buildSaleReceiptHtml(
     .meta-full { grid-column: 1 / -1; }
     .table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 9px; }
     .table thead th { padding: 4px 0; border-bottom: 1px solid #111827; font-weight: 700; text-align: left; }
+    .table thead th.qty { text-align: center; }
     .table thead th.price,
     .table thead th.disc,
     .table thead th.amount { text-align: right; }
     .table tbody tr { border-top: 1px dashed #cbd5e1; }
     .table td { padding: 4px 0; vertical-align: top; }
-    .table td.qty { width: 2.2rem; white-space: nowrap; }
-    .table td.desc { padding-right: 4px; }
+    .table td.desc { padding-right: 6px; }
+    .table td.qty { width: 2.4rem; text-align: center; white-space: nowrap; }
     .table td.price,
     .table td.disc,
     .table td.amount { text-align: right; white-space: nowrap; }

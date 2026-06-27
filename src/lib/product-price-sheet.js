@@ -11,9 +11,11 @@ import {
 } from "./uom-packaging";
 import {
   priceForMeasureLevel,
-  retailPriceAtMeasureLevel,
+  tierForMeasureLevel,
   tiersForRetailPackage,
+  tiersWithPriceMode,
   wholesalePriceAtMeasureLevel,
+  wholesaleTierPriceAtMeasureLevel,
 } from "./retail-pricing";
 import { uomConversionFactor } from "./stock-uom";
 
@@ -34,14 +36,27 @@ export function priceSheetPackagingLabel(uom) {
   return `1 x ${factor}${small}`;
 }
 
-function aboveDozensTierPrice(unitPrice, tiers, uom, sellOnRetail) {
-  if (!sellOnRetail || tiers.length < 2) return null;
-  const tier = tiers[1];
+function aboveDozensTierPrice(unitPrice, tiers, uom) {
+  const wholesaleTiers = tiersWithPriceMode(tiers, "wholesale");
+  const tier =
+    wholesaleTiers.find((t) => (t.measure_level || "small") === "middle") ??
+    wholesaleTiers[0] ??
+    tiers[1];
   if (!tier) return null;
-  if (!sellOnRetail) {
-    return wholesalePriceAtMeasureLevel(unitPrice, uom, tier.measure_level ?? "middle");
+  return wholesaleTierPriceAtMeasureLevel(unitPrice, tier, uom);
+}
+
+function wholesaleColumnPrice(unitPrice, tiers, uom) {
+  const tier =
+    tierForMeasureLevel(tiers, "full", "wholesale") ??
+    tiersWithPriceMode(tiers, "wholesale").find((t) => (t.measure_level || "small") === "full") ??
+    tiersWithPriceMode(tiers, "wholesale")[0];
+  if (tier) {
+    return wholesaleTierPriceAtMeasureLevel(unitPrice, tier, uom);
   }
-  return retailPriceAtMeasureLevel(unitPrice, tier, uom);
+  return uomHasFullPack(uom)
+    ? wholesalePriceAtMeasureLevel(unitPrice, uom, "full")
+    : wholesalePriceAtMeasureLevel(unitPrice, uom, "small");
 }
 
 /**
@@ -66,23 +81,20 @@ export function buildPriceSheetRow({
   const hasTiers = tiers.length > 0;
 
   const retailPrice = hasUnitPrice
-    ? priceForMeasureLevel(unitPrice, tiers, uom, "small", sellOnRetail && hasTiers)
+    ? priceForMeasureLevel(unitPrice, tiers, uom, "small", sellOnRetail && hasTiers, "retail")
     : null;
 
   const dozensPrice =
     hasUnitPrice && uomHasMiddlePack(uom)
-      ? priceForMeasureLevel(unitPrice, tiers, uom, "middle", sellOnRetail && hasTiers)
+      ? priceForMeasureLevel(unitPrice, tiers, uom, "middle", sellOnRetail && hasTiers, "retail")
       : null;
 
-  const aboveDozensPrice = hasUnitPrice
-    ? aboveDozensTierPrice(unitPrice, tiers, uom, sellOnRetail && hasTiers)
-    : null;
+  const aboveDozensPrice =
+    hasUnitPrice && sellOnRetail && tiersWithPriceMode(tiers, "wholesale").length > 0
+      ? aboveDozensTierPrice(unitPrice, tiers, uom)
+      : null;
 
-  const wholesalePrice = hasUnitPrice
-    ? uomHasFullPack(uom)
-      ? priceForMeasureLevel(unitPrice, tiers, uom, "full", false)
-      : wholesalePriceAtMeasureLevel(unitPrice, uom, "small")
-    : null;
+  const wholesalePrice = hasUnitPrice ? wholesaleColumnPrice(unitPrice, tiers, uom) : null;
 
   return {
     product_code: product?.product_code,

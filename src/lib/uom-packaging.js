@@ -163,8 +163,20 @@ export const EMPTY_PRICING_TIER = {
   min_qty: "",
   max_qty: "",
   measure_level: "small",
+  price_mode: "retail",
   markup_price: "",
 };
+
+/** @typedef {'retail' | 'wholesale'} TierPriceMode */
+
+export function normalizeTierPriceMode(tier) {
+  const raw = String(tier?.price_mode ?? tier?.pricing_mode ?? "retail").toLowerCase();
+  return raw === "wholesale" ? "wholesale" : "retail";
+}
+
+export function tierPriceModeLabel(mode) {
+  return normalizeTierPriceMode({ price_mode: mode }) === "wholesale" ? "Wholesale" : "Retail";
+}
 
 /** API / DB may return tiers as an array, JSON string, or keyed object. */
 export function coercePricingTiersInput(tiers) {
@@ -193,6 +205,7 @@ export function normalizePricingTiers(tiers) {
     min_qty: t.min_qty ?? "",
     max_qty: t.max_qty ?? "",
     measure_level: t.measure_level ?? "small",
+    price_mode: normalizeTierPriceMode(t),
     markup_price: t.markup_price ?? "",
   }));
 }
@@ -204,6 +217,7 @@ export function pricingTiersToApi(tiers) {
       min_qty: Number(t.min_qty),
       max_qty: t.max_qty === "" || t.max_qty == null ? null : Number(t.max_qty),
       measure_level: t.measure_level || "small",
+      price_mode: normalizeTierPriceMode(t),
       markup_price: Number(t.markup_price ?? 0),
     }));
 }

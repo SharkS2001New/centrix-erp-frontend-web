@@ -25,6 +25,7 @@ import {
   measureLevelLabel,
   normalizePricingTiers,
   pricingTiersToApi,
+  tierPriceModeLabel,
   uomMeasureLevels,
 } from "@/lib/uom-packaging";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
@@ -44,7 +45,8 @@ function formatTiersSummary(tiers, uom) {
     .map((t) => {
       const to = t.max_qty === "" || t.max_qty == null ? "∞" : t.max_qty;
       const label = measureLevelLabel(uom, t.measure_level);
-      return `${t.min_qty}–${to} ${label} +${t.markup_price ?? 0}`;
+      const mode = tierPriceModeLabel(t.price_mode);
+      return `${mode} ${t.min_qty}–${to} ${label} +${t.markup_price ?? 0}${t.price_mode === "wholesale" ? " line" : ""}`;
     })
     .join(" · ");
 }
@@ -272,8 +274,10 @@ export default function RetailPackageSettingsPage() {
         <div className="mb-3.5 flex items-start gap-2.5 rounded-lg border border-[#B5D4F4] bg-[#E6F1FB] px-3.5 py-2.5 text-xs leading-relaxed text-[#0C447C]">
           <InfoIcon />
           <span>
-            Retail price = <strong>(unit price + tier markup) × quantity</strong> when quantity falls
-            in a tier.             Outside all tiers = <strong>wholesale</strong> (base unit price, no markup).
+            <strong>Retail</strong> tiers: (wholesale base + per-unit markup) × quantity.
+            <strong> Wholesale</strong> tiers: (catalog wholesale × qty) + <strong>line markup</strong>.
+            Package-level wholesale markup is also applied on the line total. Unit prices on POS and
+            receipts are reverse-computed from the final line amount ÷ quantity.
             Configure full / middle / small packaging under <strong>UOM</strong>. This page lists
             products that already have a setting — use <strong>Add package setting</strong> to
             configure a new product (search by name or code).

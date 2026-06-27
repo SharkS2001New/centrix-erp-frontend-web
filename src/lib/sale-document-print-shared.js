@@ -1,7 +1,8 @@
 import {
-  saleLineDisplayUnitPrice,
+  resolveSaleLinePrintColumns,
   saleLineProductLabel,
   saleLineQtyLabel,
+  saleLineUom,
 } from "@/lib/sale-line-items";
 import { buildReportOrgHeaderHtml, resolveReportBranding } from "@/lib/reports/report-branding";
 
@@ -48,10 +49,10 @@ export function buildSaleDocumentOrgHeaderHtml(branding, { layout = "thermal" } 
 export function buildSaleDocumentTableHead({ showDiscountColumn = false, layout = "thermal" } = {}) {
   if (layout === "thermal") {
     return `<tr>
-      <th class="qty">QTY</th>
       <th class="desc">Description</th>
+      <th class="qty">Qty</th>
       <th class="price">Unit price</th>
-      ${showDiscountColumn ? '<th class="disc">Disc</th>' : ""}
+      <th class="disc">Disc</th>
       <th class="amount">Amount</th>
     </tr>`;
   }
@@ -70,7 +71,7 @@ export function buildSaleDocumentLineRows(
   { uomById = null, showDiscountColumn = false, layout = "thermal" } = {},
 ) {
   const rows = items ?? [];
-  const colspan = showDiscountColumn ? 5 : 4;
+  const colspan = layout === "thermal" ? 5 : showDiscountColumn ? 5 : 4;
 
   if (!rows.length) {
     return `<tr><td colspan="${colspan}" class="muted center">No line items</td></tr>`;
@@ -79,36 +80,33 @@ export function buildSaleDocumentLineRows(
   return rows
     .map((line) => {
       const description = escapeHtml(saleLineProductLabel(line));
+      const uom = saleLineUom(line, uomById);
+
+      if (layout === "thermal") {
+        const { unitPrice, discount, amount } = resolveSaleLinePrintColumns(line, { uom });
+        const qty = escapeHtml(uomById ? saleLineQtyLabel(line, uomById) : formatPrintAmount(line.quantity));
+
+        return `<tr>
+          <td class="desc">${description}</td>
+          <td class="qty">${qty}</td>
+          <td class="price">${escapeHtml(formatPrintAmount(unitPrice))}</td>
+          <td class="disc">${escapeHtml(formatPrintAmount(discount))}</td>
+          <td class="amount">${escapeHtml(formatPrintAmount(amount))}</td>
+        </tr>`;
+      }
+
       const qty = escapeHtml(
         uomById ? saleLineQtyLabel(line, uomById) : formatPrintAmount(line.quantity),
       );
       const unitPrice = escapeHtml(
         formatPrintAmount(
-          uomById
-            ? saleLineDisplayUnitPrice(line, uomById)
+          uom
+            ? resolveSaleLinePrintColumns(line, { uom }).unitPrice
             : (line.selling_price ?? line.unit_price ?? line.price ?? 0),
         ),
       );
       const discount = escapeHtml(formatPrintAmount(line.discount_given ?? 0));
       const amount = escapeHtml(formatPrintAmount(line.amount ?? 0));
-
-      if (layout === "thermal") {
-        if (showDiscountColumn) {
-          return `<tr>
-            <td class="qty">${qty}</td>
-            <td class="desc">${description}</td>
-            <td class="price">${unitPrice}</td>
-            <td class="disc">${discount}</td>
-            <td class="amount">${amount}</td>
-          </tr>`;
-        }
-        return `<tr>
-          <td class="qty">${qty}</td>
-          <td class="desc">${description}</td>
-          <td class="price">${unitPrice}</td>
-          <td class="amount">${amount}</td>
-        </tr>`;
-      }
 
       if (showDiscountColumn) {
         return `<tr>

@@ -309,7 +309,7 @@ export const RETAIL_PACKAGE_EXPORT_COLUMNS = [
   { key: "product_code", label: "Product code" },
   { key: "max_qty_measure", label: "Max measure", align: "right" },
   { key: "markup_price", label: "Retail markup", align: "right" },
-  { key: "wholesale_markup_price", label: "Wholesale markup", align: "right" },
+  { key: "wholesale_markup_price", label: "Wholesale line markup", align: "right" },
 ];
 
 export const VOUCHER_EXPORT_COLUMNS = [

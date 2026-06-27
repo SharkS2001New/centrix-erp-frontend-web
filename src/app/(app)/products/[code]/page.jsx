@@ -158,6 +158,7 @@ function formatRetailTiersSummary(retailPackage, uom) {
             min_qty: 1,
             max_qty: retailPackage.max_qty_measure,
             measure_level: "small",
+            price_mode: "retail",
             markup_price: retailPackage.markup_price ?? 0,
           },
         ]
@@ -165,7 +166,8 @@ function formatRetailTiersSummary(retailPackage, uom) {
   return normalizePricingTiers(raw).map((tier) => {
     const to = tier.max_qty === "" || tier.max_qty == null ? "∞" : tier.max_qty;
     const level = measureLevelLabel(uom, tier.measure_level);
-    return `${tier.min_qty}–${to} ${level} · markup ${formatKes(tier.markup_price)}/unit`;
+    const mode = tier.price_mode === "wholesale" ? "Wholesale" : "Retail";
+    return `${mode} ${tier.min_qty}–${to} ${level} · markup ${formatKes(tier.markup_price)}/unit`;
   });
 }
 

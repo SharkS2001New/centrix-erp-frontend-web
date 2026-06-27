@@ -5,6 +5,7 @@ import {
   fullPackageLabel,
   middlePackagingLabel,
   normalizePricingTiers,
+  normalizeTierPriceMode,
   smallPackagingLabel,
   uomHasMiddlePack,
 } from "./uom-packaging";
@@ -26,6 +27,7 @@ function pricingTiersToNormalized(tiers) {
       min_qty: Number(t.min_qty),
       max_qty: t.max_qty === "" || t.max_qty == null ? null : Number(t.max_qty),
       measure_level: t.measure_level || "small",
+      price_mode: normalizeTierPriceMode(t),
       markup_price: Number(t.markup_price ?? 0),
     }))
     .sort((a, b) => a.min_qty - b.min_qty);
@@ -38,6 +40,7 @@ function legacyTiersFromPackage(rps) {
       min_qty: 1,
       max_qty: Number(rps.max_qty_measure),
       measure_level: "small",
+      price_mode: "retail",
       markup_price: Number(rps.markup_price ?? 0),
     });
   }
@@ -46,10 +49,27 @@ function legacyTiersFromPackage(rps) {
       min_qty: Number(rps.max_qty_measure ?? 0) + 0.001,
       max_qty: Number(rps.wholesale_qty_measure),
       measure_level: "middle",
+      price_mode: "wholesale",
       markup_price: Number(rps.wholesale_markup_price ?? 0),
     });
   }
   return tiers;
+}
+
+export { normalizeTierPriceMode };
+
+export function tiersWithPriceMode(tiers, priceMode) {
+  const mode = normalizeTierPriceMode({ price_mode: priceMode });
+  return (tiers ?? []).filter((tier) => normalizeTierPriceMode(tier) === mode);
+}
+
+export function tierForMeasureLevel(tiers, level, priceMode = null) {
+  const matches = (tiers ?? []).filter((tier) => (tier.measure_level || "small") === level);
+  if (priceMode) {
+    const mode = normalizeTierPriceMode({ price_mode: priceMode });
+    return matches.find((tier) => normalizeTierPriceMode(tier) === mode) ?? null;
+  }
+  return matches[0] ?? null;
 }
 
 export function tierForQuantity(tiers, quantity) {
@@ -83,32 +103,87 @@ export function wholesalePriceAtMeasureLevel(baseUnitPrice, uom, level) {
   return base / factor;
 }
 
-/** Retail price for one unit at the tier's measure level: wholesale ÷ factor + markup. */
-export function retailPriceAtMeasureLevel(baseUnitPrice, tier, uom) {
-  const level = tier?.measure_level ?? "small";
-  const markup = Number(tier?.markup_price ?? 0);
-  return wholesalePriceAtMeasureLevel(baseUnitPrice, uom, level) + markup;
+/** Catalog wholesale price at the tier's measure level (no markup). */
+export function wholesaleTierBaseAtMeasureLevel(baseUnitPrice, tier, uom) {
+  return wholesalePriceAtMeasureLevel(baseUnitPrice, uom, tier?.measure_level ?? "small");
 }
 
-/** Per-small-unit retail price for a quantity that falls in a tier range. */
+/** Selling price for one unit at the tier's measure level (retail tiers include per-unit markup). */
+export function tierPriceAtMeasureLevel(baseUnitPrice, tier, uom) {
+  const wholesaleBase = wholesaleTierBaseAtMeasureLevel(baseUnitPrice, tier, uom);
+  const markup = Number(tier?.markup_price ?? 0);
+  if (normalizeTierPriceMode(tier) === "wholesale") {
+    return wholesaleBase;
+  }
+  return wholesaleBase + markup;
+}
+
+/** Retail price for one unit at the tier's measure level: wholesale ÷ factor + markup. */
+export function retailPriceAtMeasureLevel(baseUnitPrice, tier, uom) {
+  return tierPriceAtMeasureLevel(baseUnitPrice, tier, uom);
+}
+
+/**
+ * Wholesale tier list/display price for exactly one measured unit (e.g. one carton).
+ * When markup is configured on the line total, this is base + markup for qty = 1 unit.
+ */
+export function wholesaleTierPriceAtMeasureLevel(baseUnitPrice, tier, uom) {
+  const wholesaleBase = wholesaleTierBaseAtMeasureLevel(baseUnitPrice, tier, uom);
+  const markup = Number(tier?.markup_price ?? 0);
+  if (normalizeTierPriceMode(tier) === "wholesale") {
+    return wholesaleBase + markup;
+  }
+  return wholesaleBase + markup;
+}
+
+/** Per-small-unit price for a quantity that falls in a tier range. */
 export function retailUnitPrice(baseUnitPrice, tiers, quantityInSmall, uom = null) {
   const tier = tierForQuantity(tiers, quantityInSmall);
   if (!tier) {
     return wholesalePricePerSmallUnit(baseUnitPrice, uom);
   }
-  const priceAtLevel = retailPriceAtMeasureLevel(baseUnitPrice, tier, uom);
+  return unitPricePerSmallForTier(baseUnitPrice, tier, uom);
+}
+
+export function unitPricePerSmallForTier(baseUnitPrice, tier, uom) {
+  const priceAtLevel = tierPriceAtMeasureLevel(baseUnitPrice, tier, uom);
   const smallPerLevel = smallUnitsPerLevel(uom, tier.measure_level ?? "small");
   return priceAtLevel / smallPerLevel;
 }
 
+export function linePriceForTier(baseUnitPrice, tier, quantityInSmall, uom) {
+  const qty = Number(quantityInSmall ?? 0);
+  const wholesaleBase = wholesaleTierBaseAtMeasureLevel(baseUnitPrice, tier, uom);
+  const markup = Number(tier?.markup_price ?? 0);
+  const smallPerLevel = smallUnitsPerLevel(uom, tier.measure_level ?? "small");
+  const mode = normalizeTierPriceMode(tier);
+
+  if (mode === "wholesale") {
+    const measureUnits = smallPerLevel > 0 ? qty / smallPerLevel : qty;
+    const baseTotal = wholesaleBase * measureUnits;
+    return Math.round((baseTotal + markup) * 100) / 100;
+  }
+
+  const priceAtLevel = wholesaleBase + markup;
+  const perSmall = priceAtLevel / smallPerLevel;
+  return Math.round(perSmall * qty * 100) / 100;
+}
+
 export function linePrice(baseUnitPrice, tiers, quantityInSmall, isRetail = true, uom = null) {
   const qty = Number(quantityInSmall ?? 0);
-  if (!isRetail || !tiers.length) {
+  if (!tiers?.length) {
     const perSmall = wholesalePricePerSmallUnit(baseUnitPrice, uom);
     return Math.round(perSmall * qty * 100) / 100;
   }
-  const perUnit = retailUnitPrice(baseUnitPrice, tiers, qty, uom);
-  return Math.round(perUnit * qty * 100) / 100;
+
+  const applicableTiers = isRetail ? tiers : tiersWithPriceMode(tiers, "wholesale");
+  const tier = tierForQuantity(applicableTiers, qty);
+  if (!tier) {
+    const perSmall = wholesalePricePerSmallUnit(baseUnitPrice, uom);
+    return Math.round(perSmall * qty * 100) / 100;
+  }
+
+  return linePriceForTier(baseUnitPrice, tier, qty, uom);
 }
 
 /** Small units represented by one count at a packaging level. */
@@ -122,19 +197,36 @@ export function smallUnitsPerLevel(uom, level) {
 }
 
 /** Selling price for exactly one unit at full / middle / small level. */
-export function priceForMeasureLevel(baseUnitPrice, tiers, uom, level, sellOnRetail) {
+export function priceForMeasureLevel(
+  baseUnitPrice,
+  tiers,
+  uom,
+  level,
+  sellOnRetail,
+  priceMode = null,
+) {
   const wholesaleAtLevel = wholesalePriceAtMeasureLevel(baseUnitPrice, uom, level);
   if (!sellOnRetail || !tiers.length) {
+    const wholesaleTier = tierForMeasureLevel(tiers, level, "wholesale");
+    if (wholesaleTier) {
+      return wholesaleTierPriceAtMeasureLevel(baseUnitPrice, wholesaleTier, uom);
+    }
     return wholesaleAtLevel;
+  }
+
+  const retailTier = tierForMeasureLevel(tiers, level, priceMode ?? "retail");
+  if (retailTier) {
+    return tierPriceAtMeasureLevel(baseUnitPrice, retailTier, uom);
   }
 
   const qtyAtLevel = smallUnitsPerLevel(uom, level);
   const tier =
+    tierForQuantity(tiersWithPriceMode(tiers, "retail"), qtyAtLevel) ??
     tierForQuantity(tiers, qtyAtLevel) ??
     tiers.find((t) => (t.measure_level || "small") === level);
 
   if (!tier) return wholesaleAtLevel;
-  return retailPriceAtMeasureLevel(baseUnitPrice, tier, uom);
+  return tierPriceAtMeasureLevel(baseUnitPrice, tier, uom);
 }
 
 /** Value stock by pricing each hierarchy part at its own tier quantity. */
