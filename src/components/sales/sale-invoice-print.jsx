@@ -1,26 +1,19 @@
-import { saleLineProductLabel, saleLineQtyLabel } from "@/lib/sale-line-items";
+import { buildKraFiscalBlockHtml } from "@/lib/kra-receipt-qr";
 import { openPrintWindow } from "@/lib/open-print-window";
+import {
+  buildSaleDocumentLineRows,
+  buildSaleDocumentOrgHeaderHtml,
+  buildSaleDocumentTableHead,
+  escapeHtml,
+  formatPrintAmount,
+  saleDocumentDiscountTotals,
+  shouldShowPrintDiscountColumn,
+} from "@/lib/sale-document-print-shared";
 import {
   formatReceiptNumber,
   saleCustomerLabel,
   salePaymentMethodDisplay,
 } from "@/lib/sales";
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function formatInvoiceAmount(value) {
-  if (value == null || value === "") return "—";
-  return Number(value).toLocaleString("en-KE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
 
 function formatInvoiceDate(value) {
   if (!value) return "—";
@@ -42,19 +35,6 @@ function addDays(value, days) {
   return d.toISOString();
 }
 
-function linePackageLabel(line, uomById) {
-  const uom = line?.product?.unit ?? line?.product?.uom ?? line?.uom;
-  if (uom?.uom_name) return uom.uom_name;
-  if (uom?.packaging_label) return uom.packaging_label;
-  if (typeof uom === "string" && uom.trim()) return uom.trim();
-  if (uomById && line?.product?.unit_id != null) {
-    const fromMap = uomById.get(line.product.unit_id);
-    if (fromMap?.uom_name) return fromMap.uom_name;
-    if (fromMap?.packaging_label) return fromMap.packaging_label;
-  }
-  return "—";
-}
-
 const DEFAULT_INVOICE_TERMS = [
   "Order valid for the period shown above.",
   "No goods shall be received without an invoice or delivery note.",
@@ -68,7 +48,7 @@ const DEFAULT_INVOICE_TERMS = [
 ];
 
 /**
- * A4-style tax invoice layout (aligned with legacy LPO print structure).
+ * A4 tax invoice — org branding, standard line columns, optional KRA QR.
  */
 export function printSaleInvoice(
   sale,
@@ -80,7 +60,15 @@ export function printSaleInvoice(
     invoiceValidDays = 7,
     uomById = null,
     terms = null,
-  } = {}) {
+    branding = null,
+    productDiscountsEnabled = false,
+    orderDiscountEnabled = false,
+    kraEnabled = false,
+    kraData = null,
+    kraQrDataUrl = null,
+    documentFooterText = "",
+  } = {},
+) {
   if (!sale) return;
 
   const items = sale.items ?? [];
@@ -93,8 +81,15 @@ export function printSaleInvoice(
     ? `${payment.label} (${payment.methods.join(", ")})`
     : payment.label;
 
-  const subtotal = items.reduce((sum, line) => sum + Number(line.amount ?? 0), 0);
-  const orderDiscount = Number(sale.order_discount ?? 0);
+  const showDiscountColumn = shouldShowPrintDiscountColumn({
+    allowDiscounts: productDiscountsEnabled,
+  });
+  const discountTotals = saleDocumentDiscountTotals({
+    items,
+    sale,
+    orderDiscountEnabled,
+  });
+
   const totalVat = Number(sale.total_vat ?? 0);
   const orderTotal = Number(sale.order_total ?? 0);
 
@@ -102,24 +97,15 @@ export function printSaleInvoice(
   const sellerPhones = [seller.phone, seller.secondary_phone].filter(Boolean).join(" / ");
   const deliverAt = [branch?.name, branch?.address].filter(Boolean).join(" · ") || seller.address || "—";
 
-  const itemRows = items.length
-    ? items
-        .map((line) => {
-          const qty = uomById ? saleLineQtyLabel(line, uomById) : Number(line.quantity ?? 0).toFixed(2);
-          const unitPrice = formatInvoiceAmount(line.selling_price);
-          const vat = formatInvoiceAmount(line.product_vat ?? 0);
-          const amount = formatInvoiceAmount(line.amount);
-          return `<tr>
-            <td>${escapeHtml(saleLineProductLabel(line))}</td>
-            <td class="num">${escapeHtml(String(qty))}</td>
-            <td>${escapeHtml(linePackageLabel(line, uomById))}</td>
-            <td class="num">${escapeHtml(unitPrice)}</td>
-            <td class="num">${escapeHtml(vat)}</td>
-            <td class="num">${escapeHtml(amount)}</td>
-          </tr>`;
-        })
-        .join("")
-    : `<tr><td colspan="6" class="muted center">No line items</td></tr>`;
+  const itemRows = buildSaleDocumentLineRows(items, {
+    uomById,
+    showDiscountColumn,
+    layout: "a4",
+  });
+  const tableHead = buildSaleDocumentTableHead({
+    showDiscountColumn,
+    layout: "a4",
+  });
 
   const termLines = (terms ?? DEFAULT_INVOICE_TERMS)
     .flatMap((entry) => String(entry).split(/\n+/))
@@ -131,7 +117,16 @@ export function printSaleInvoice(
     .join("");
 
   const printedAt = new Date().toLocaleString("en-GB");
-  const preparedByName = preparedBy ?? "—";
+  const preparedByName = preparedBy ?? sale.cashier_name ?? sale.user?.full_name ?? "—";
+
+  const orgHeader = branding
+    ? buildSaleDocumentOrgHeaderHtml(branding, { layout: "a4" })
+    : `<div class="brand-name">${escapeHtml(sellerName)}</div>`;
+
+  const kraBlock =
+    kraEnabled && kraData
+      ? `<div style="margin:12px 0;">${buildKraFiscalBlockHtml(kraData, { layout: "a4", qrDataUrl: kraQrDataUrl })}</div>`
+      : "";
 
   const html = `<!DOCTYPE html>
 <html>
@@ -141,10 +136,10 @@ export function printSaleInvoice(
     @page { size: A4; margin: 12mm; }
     body { font-family: "Times New Roman", Times, serif; margin: 0; padding: 16px; color: #000; font-size: 11px; line-height: 1.35; }
     .page { max-width: 820px; margin: 0 auto; }
-    .brand { text-align: center; margin-bottom: 8px; }
-    .brand-name { font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-    .brand-sub { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px; }
-    .brand-meta { margin-top: 6px; font-size: 10px; }
+    .org-brand .org-logo { display: block; margin: 0 auto 8px; max-height: 72px; max-width: 280px; object-fit: contain; }
+    .org-brand .org-name { font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+    .brand-name { text-align: center; font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+    .brand-meta { margin-top: 6px; font-size: 10px; text-align: center; }
     .doc-title { text-align: center; font-size: 14px; font-weight: 700; margin: 10px 0 12px; letter-spacing: 0.06em; }
     .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px; }
     .meta-grid p { margin: 2px 0; }
@@ -156,7 +151,7 @@ export function printSaleInvoice(
     table.items th { font-weight: 700; text-align: left; }
     table.items td.num, table.items th.num { text-align: right; white-space: nowrap; }
     .totals { display: flex; justify-content: flex-end; margin: 6px 0 14px; }
-    .totals-box { min-width: 220px; text-align: right; font-size: 11px; }
+    .totals-box { min-width: 240px; text-align: right; font-size: 11px; }
     .totals-box p { margin: 3px 0; }
     .totals-box .grand { font-weight: 700; font-size: 12px; margin-top: 6px; padding-top: 4px; border-top: 1px solid #000; }
     .bottom-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; margin-top: 8px; }
@@ -177,9 +172,9 @@ export function printSaleInvoice(
 <body>
   <div class="page">
     <div class="brand">
-      <div class="brand-name">${escapeHtml(sellerName)}</div>
-      ${seller.tagline ? `<div class="brand-sub">${escapeHtml(seller.tagline)}</div>` : ""}
+      ${orgHeader}
       <div class="brand-meta">
+        ${!branding ? "" : ""}
         ${seller.address ? `<div>${escapeHtml(seller.address)}</div>` : ""}
         ${seller.email ? `<div>Email: ${escapeHtml(seller.email)}</div>` : ""}
         ${sellerPhones ? `<div>Tel: ${escapeHtml(sellerPhones)}</div>` : ""}
@@ -211,28 +206,22 @@ export function printSaleInvoice(
     </div>
 
     <table class="items">
-      <thead>
-        <tr>
-          <th>Product Name</th>
-          <th class="num">Quantity</th>
-          <th>Package</th>
-          <th class="num">Unit Price</th>
-          <th class="num">V.A.T</th>
-          <th class="num">Amount</th>
-        </tr>
-      </thead>
+      <thead>${tableHead}</thead>
       <tbody>${itemRows}</tbody>
     </table>
 
     <div class="totals">
       <div class="totals-box">
-        <p><strong>Totals:</strong> ${escapeHtml(formatInvoiceAmount(subtotal - orderDiscount))}</p>
-        <p><strong>Total V.A.T:</strong> ${escapeHtml(formatInvoiceAmount(totalVat))}</p>
-        ${orderDiscount > 0 ? `<p><strong>Discount:</strong> − ${escapeHtml(formatInvoiceAmount(orderDiscount))}</p>` : ""}
-        <p class="grand"><strong>Grand Total:</strong> ${escapeHtml(formatInvoiceAmount(orderTotal))}</p>
+        <p><strong>Subtotal:</strong> ${escapeHtml(formatPrintAmount(discountTotals.subtotalBeforeDiscount))}</p>
+        ${discountTotals.showDiscountSection ? `<p><strong>Discount:</strong> − ${escapeHtml(formatPrintAmount(discountTotals.lineDiscountTotal + discountTotals.orderDiscount))}</p>` : ""}
+        ${discountTotals.showOrderDiscountRow ? `<p><strong>Subtotal after discount:</strong> ${escapeHtml(formatPrintAmount(discountTotals.subtotalAfterAllDiscounts))}</p>` : ""}
+        <p><strong>Total V.A.T:</strong> ${escapeHtml(formatPrintAmount(totalVat))}</p>
+        <p class="grand"><strong>Grand Total:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
         <p><strong>Payment:</strong> ${escapeHtml(paymentLine)}</p>
       </div>
     </div>
+
+    ${kraBlock}
 
     <div class="bottom-grid">
       <div>
@@ -253,6 +242,7 @@ export function printSaleInvoice(
       <p class="warn">Order only valid for ${escapeHtml(String(invoiceValidDays))} days from above date.</p>
       <p class="warn">We will only receive products with K.E.B.S mark / certificate</p>
       <p><strong>Take note:</strong> VAT amount will not be paid on invoices without ETR receipt</p>
+      ${documentFooterText ? `<p>${escapeHtml(documentFooterText)}</p>` : ""}
     </div>
 
     <div class="print-footer">

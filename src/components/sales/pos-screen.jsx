@@ -1984,6 +1984,7 @@ export function PosScreen({ standalone = false }) {
           const copies = Number(posSalesConfig.receiptCopies ?? 1) || 1;
           for (let i = 0; i < copies; i++) {
             printSaleOrder(sale, {
+              capabilities,
               moduleSettings: capabilities?.module_settings,
               organizationName: capabilities?.profile_label,
               uomById,
@@ -2199,6 +2200,7 @@ export function PosScreen({ standalone = false }) {
       const copies = Number(posSalesConfig.receiptCopies ?? 1) || 1;
       for (let i = 0; i < copies; i++) {
         printSaleOrder(sale, {
+          capabilities,
           moduleSettings: capabilities?.module_settings,
           organizationName: capabilities?.profile_label,
           uomById,

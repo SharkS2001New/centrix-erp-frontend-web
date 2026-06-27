@@ -1,5 +1,10 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { customerReturnLineQtyLabel } from "@/components/sales/customer-returns-shared";
+import {
+  buildKraFiscalBlockHtml,
+  extractKraReceiptData,
+  kraReceiptQrDataUrl,
+} from "@/lib/kra-receipt-qr";
 import { openPrintWindow } from "@/lib/open-print-window";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 
@@ -20,12 +25,13 @@ const KRA_REFUND_REASONS = {
   "06": "Refund",
 };
 
-export function printCreditNote(
+export async function printCreditNote(
   customerReturn,
   {
     organizationName = DEFAULT_PRINT_ORG_NAME,
     branch = null,
     uomById = null,
+    kraEnabled = true,
   } = {},
 ) {
   if (!customerReturn) return;
@@ -70,7 +76,7 @@ export function printCreditNote(
         .join("")
     : `<tr><td colspan="4" class="muted center">No returned items</td></tr>`;
 
-  const kra =
+  const kraSource =
     creditNote?.kra_status === "success"
       ? {
           invoice_number: creditNote.kra_cu_inv_no ?? creditNote.kra_invoice_number,
@@ -80,18 +86,23 @@ export function printCreditNote(
           kra_timestamp: creditNote.kra_timestamp,
         }
       : null;
+  const kraData = kraEnabled ? extractKraReceiptData(null, kraSource) : null;
+  const kraQrDataUrl =
+    kraData?.signatureLink != null
+      ? await kraReceiptQrDataUrl(kraData.signatureLink, { size: 100 })
+      : null;
 
   const kraBlock =
-    kra?.receipt_signature || kra?.invoice_number
-      ? `<div class="divider"></div>
-    <div class="kra-block" style="font-size:9px;text-align:center;line-height:1.4;">
-      <div style="font-weight:700;margin-bottom:4px;">KRA FISCAL CREDIT NOTE</div>
-      ${kra.invoice_number ? `<div>CU Credit Note: ${escapeHtml(String(kra.invoice_number))}</div>` : ""}
-      ${creditNote?.kra_relevant_invoice_number ? `<div>Original CU Invoice: ${escapeHtml(String(creditNote.kra_relevant_invoice_number))}</div>` : ""}
-      ${kra.serial_number ? `<div>SCU: ${escapeHtml(String(kra.serial_number))}</div>` : ""}
-      ${kra.receipt_signature ? `<div style="margin-top:4px;word-break:break-all;">${escapeHtml(String(kra.receipt_signature))}</div>` : ""}
-      ${kra.kra_timestamp ? `<div>${escapeHtml(String(kra.kra_timestamp))}</div>` : ""}
-    </div>`
+    kraData != null
+      ? `<div class="divider"></div>${buildKraFiscalBlockHtml(kraData, {
+          layout: "thermal",
+          qrDataUrl: kraQrDataUrl,
+          title: "KRA FISCAL CREDIT NOTE",
+        })}${
+          creditNote?.kra_relevant_invoice_number
+            ? `<div style="font-size:9px;text-align:center;margin-top:4px;">Original CU Invoice: ${escapeHtml(String(creditNote.kra_relevant_invoice_number))}</div>`
+            : ""
+        }`
       : "";
 
   const refundReasonCode = creditNote?.kra_refund_reason_code ?? "";

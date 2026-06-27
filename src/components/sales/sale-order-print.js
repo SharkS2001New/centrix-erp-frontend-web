@@ -1,24 +1,35 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { apiRequest } from "@/lib/api";
+import { isKraDeviceConfigured } from "@/lib/finance-settings";
+import { mergeGeneralSettings } from "@/lib/general-settings";
+import {
+  extractKraReceiptData,
+  kraReceiptQrDataUrl,
+} from "@/lib/kra-receipt-qr";
+import { resolveSaleDocumentBranding } from "@/lib/sale-document-print-shared";
 import { getOrderDocumentType, mergeSalesSettings } from "@/lib/sales-settings";
 import { printSaleInvoice } from "@/components/sales/sale-invoice-print";
 import { printSaleReceipt } from "@/components/sales/sale-receipt-print";
 
-async function fetchSeller(organizationId) {
+async function fetchOrganization(organizationId) {
   try {
-    const org = await apiRequest(`/organizations/${organizationId}`);
-    return {
-      name: org.org_name,
-      address: org.org_address,
-      email: org.org_email,
-      phone: org.primary_tel,
-      secondary_phone: org.secondary_tel,
-      tax_pin: org.org_pin,
-      vat_regno: org.vat_regno,
-    };
+    return await apiRequest(`/organizations/${organizationId}`);
   } catch {
     return null;
   }
+}
+
+function sellerFromOrganization(org) {
+  if (!org) return null;
+  return {
+    name: org.org_name,
+    address: org.org_address,
+    email: org.org_email,
+    phone: org.primary_tel,
+    secondary_phone: org.secondary_tel,
+    tax_pin: org.org_pin,
+    vat_regno: org.vat_regno,
+  };
 }
 
 async function fetchBranch(branchId) {
@@ -53,37 +64,68 @@ export async function printSaleOrder(sale, options = {}) {
 
   const moduleSettings = options.moduleSettings ?? options.capabilities?.module_settings;
   const sales = mergeSalesSettings(moduleSettings);
+  const general = mergeGeneralSettings(moduleSettings);
   const documentType = options.documentType ?? getOrderDocumentType(moduleSettings);
+  const organizationId = options.capabilities?.organization_id;
 
-  const [seller, branch, customer] = await Promise.all([
-    options.seller
-      ? Promise.resolve(options.seller)
-      : options.capabilities?.organization_id
-        ? fetchSeller(options.capabilities.organization_id)
+  const [organization, branch, customer] = await Promise.all([
+    options.organization
+      ? Promise.resolve(options.organization)
+      : organizationId
+        ? fetchOrganization(organizationId)
         : Promise.resolve(null),
     options.branch ? Promise.resolve(options.branch) : fetchBranch(sale.branch_id),
     options.customer ? Promise.resolve(options.customer) : fetchCustomer(sale.customer_num),
   ]);
 
+  const seller =
+    options.seller ??
+    sellerFromOrganization(organization) ??
+    (options.organizationName ? { name: options.organizationName } : null) ??
+    { name: DEFAULT_PRINT_ORG_NAME };
+
+  const branding = resolveSaleDocumentBranding({
+    organization,
+    generalSettings: general,
+  });
+
+  const kraEnabled = isKraDeviceConfigured(moduleSettings, options.capabilities);
+  const kraData = kraEnabled ? extractKraReceiptData(sale, options.kraReceipt) : null;
+  const kraQrDataUrl =
+    kraData?.signatureLink != null
+      ? await kraReceiptQrDataUrl(kraData.signatureLink, {
+          size: documentType === "invoice" ? 140 : 110,
+        })
+      : null;
+
+  const printOptions = {
+    ...options,
+    seller,
+    branch,
+    customer,
+    branding,
+    organization,
+    productDiscountsEnabled: Boolean(sales.allow_discounts),
+    orderDiscountEnabled: Boolean(sales.enable_order_discount),
+    customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
+    showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
+    documentFooterText: general.document_footer_text?.trim?.() || "",
+    kraEnabled,
+    kraData,
+    kraQrDataUrl,
+  };
+
   if (documentType === "invoice") {
     printSaleInvoice(sale, {
-      ...options,
-      seller: seller ?? { name: options.organizationName ?? DEFAULT_PRINT_ORG_NAME },
-      branch,
-      customer,
+      ...printOptions,
       invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
+      preparedBy: options.preparedBy ?? sale.cashier_name ?? sale.user?.full_name ?? null,
     });
     return;
   }
 
   printSaleReceipt(sale, {
-    ...options,
-    seller: seller ?? { name: options.organizationName ?? DEFAULT_PRINT_ORG_NAME },
-    branch,
-    customer,
-    productDiscountsEnabled: Boolean(sales.allow_discounts),
-    orderDiscountEnabled: Boolean(sales.enable_order_discount),
-    customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
-    showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
+    ...printOptions,
+    organizationName: seller.name ?? options.organizationName ?? DEFAULT_PRINT_ORG_NAME,
   });
 }
