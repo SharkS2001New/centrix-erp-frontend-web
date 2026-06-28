@@ -118,23 +118,20 @@ export function formatApiErrorMessage(data, fallback = "Request failed") {
   return fallback || "Request failed";
 }
 
-function shouldUseGlobalLoading(options, method) {
-  if (options.loading === true) return true;
+function shouldTrackNavigationFetch(options, method) {
   if (options.loading === false) return false;
-  // In-page actions (POST/PATCH/DELETE, POS cart updates, etc.) use local busy states.
   if (method !== "GET") return false;
-  // GET requests only show the full-page preloader during initial page navigation.
   return isPageNavigationLoading();
 }
 
 export async function apiRequest(path, options = {}) {
   const method = options.method ?? "GET";
-  const useLoading = shouldUseGlobalLoading(options, method);
+  const trackNavigation = shouldTrackNavigationFetch(options, method);
   const trackIssues = options.reportIssues !== false;
   const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
   const apiPath = path.startsWith("http") ? new URL(path).pathname : path;
 
-  if (useLoading) beginAppLoading(options.loadingLabel ?? "Loading…");
+  if (trackNavigation) beginAppLoading(options.loadingLabel ?? "Loading…");
 
   try {
     const url = new URL(path.startsWith("http") ? path : `${baseUrl()}${path}`);
@@ -268,7 +265,7 @@ export async function apiRequest(path, options = {}) {
     }
     throw error;
   } finally {
-    if (useLoading) endAppLoading();
+    if (trackNavigation) endAppLoading();
   }
 }
 

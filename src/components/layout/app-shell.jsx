@@ -12,12 +12,13 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
 import { OrderPrintTypePickerHost } from "@/components/sales/order-print-type-picker-host";
 import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
-import { AppLoadingOverlay } from "@/components/shared/app-loading-overlay";
+import { AppRouteLoading } from "@/components/shared/app-route-loading";
+import { NavigationProgressBar, useNavigationBusy, usePendingNavigationHref } from "@/components/shared/navigation-progress-bar";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
 import {
+  beginNavigationIntent,
   beginPageNavigation,
   finishNavigation,
-  getAppLoadingState,
 } from "@/lib/app-loading";
 import { handleNavigationIntentClick } from "@/lib/navigation-intent";
 
@@ -34,6 +35,8 @@ function readSidebarCollapsed() {
 
 export function AppShell({ children }) {
   const pathname = usePathname();
+  const navigationBusy = useNavigationBusy();
+  const pendingHref = usePendingNavigationHref();
   const isPos = pathname === "/sales/pos";
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -56,18 +59,17 @@ export function AppShell({ children }) {
   }, []);
 
   useEffect(() => {
+    function onPopState() {
+      beginNavigationIntent("Opening page…", window.location.pathname);
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
     beginPageNavigation();
-
-    const settleTimer = window.setTimeout(() => {
-      if (getAppLoadingState().pending === 0) finishNavigation();
-    }, 500);
-
     const safetyTimer = window.setTimeout(() => finishNavigation(), 30000);
-
-    return () => {
-      window.clearTimeout(settleTimer);
-      window.clearTimeout(safetyTimer);
-    };
+    return () => window.clearTimeout(safetyTimer);
   }, [pathname]);
 
   function toggleSidebar() {
@@ -109,16 +111,39 @@ export function AppShell({ children }) {
               <main
                 className={
                   isPos
-                    ? "app-main-bg flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0"
-                    : "app-main-bg min-h-0 flex-1 overflow-y-auto p-4 md:p-6 lg:p-8"
+                    ? "app-main-bg relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0"
+                    : "app-main-bg relative min-h-0 flex-1 overflow-y-auto p-4 md:p-6 lg:p-8"
                 }
+                aria-busy={navigationBusy || undefined}
               >
-                {children}
+                <div
+                  className={
+                    isPos
+                      ? `flex min-h-0 min-w-0 flex-1 flex-col${navigationBusy ? " invisible" : ""}`
+                      : navigationBusy
+                        ? "invisible"
+                        : undefined
+                  }
+                  aria-hidden={navigationBusy || undefined}
+                >
+                  {children}
+                </div>
+                {navigationBusy ? (
+                  <div
+                    className={
+                      isPos
+                        ? "absolute inset-0 z-10 overflow-hidden bg-[var(--theme-page-bg)]"
+                        : "absolute inset-0 z-10 overflow-y-auto bg-[var(--theme-page-bg)] p-4 md:p-6 lg:p-8"
+                    }
+                  >
+                    <AppRouteLoading pathname={pendingHref ?? pathname} />
+                  </div>
+                ) : null}
               </main>
             </div>
             <AiAssistPanel />
             <OrderPrintTypePickerHost />
-            <AppLoadingOverlay />
+            <NavigationProgressBar />
           </div>
           </BackgroundTaskProvider>
           </SystemIssueProvider>

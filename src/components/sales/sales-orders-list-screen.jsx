@@ -7,6 +7,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -113,6 +114,8 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   const [routeById, setRouteById] = useState(() => new Map());
   const [paymentRefsBySaleId, setPaymentRefsBySaleId] = useState(() => new Map());
   const [contextMenu, setContextMenu] = useState(null);
+
+  usePageNavigationReady(!loading);
 
   const effectiveStatusFilter = queueConfig?.lockStatusFilter
     ? queueConfig.fixedStatusFilter
@@ -633,7 +636,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
 
         <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
           {loading ? (
-            <p className="px-5 py-8 text-center text-sm text-slate-500">Loading orders…</p>
+            <div className="min-h-[280px]" aria-hidden />
           ) : pageSlice.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-slate-500">No orders match your filters.</p>
           ) : (

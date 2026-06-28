@@ -160,7 +160,7 @@ export function LegacyArchiveSettingsPanel({ saving, setSaving, setError, setMes
                 disabled={!form.enabled}
               />
               <p className="mt-1 text-xs text-slate-500">
-                Sales on or before this date can be merged into dashboard reports when legacy archive is included.
+                Sales on or before this date are shown as pre-cutover history in Reports → Legacy archive.
               </p>
             </Field>
 

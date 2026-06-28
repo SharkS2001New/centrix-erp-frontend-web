@@ -228,12 +228,14 @@ export function RecordSupplierReturnForm({
   }, []);
 
   useEffect(() => {
-    if (mode !== RETURN_MODES.LPO) return;
     loadLpoOptions(supplierId);
-  }, [mode, supplierId, loadLpoOptions]);
+  }, [supplierId, loadLpoOptions]);
 
   useEffect(() => {
-    if (mode !== RETURN_MODES.LPO || !lpoNo) return;
+    if (!lpoNo) {
+      setLpoSummary(null);
+      return;
+    }
     let cancelled = false;
     setLoadingLpoSummary(true);
     apiRequest(`/lpo-mst/${lpoNo}/summary`)
@@ -255,7 +257,7 @@ export function RecordSupplierReturnForm({
   }, [mode, lpoNo]);
 
   useEffect(() => {
-    if (mode !== RETURN_MODES.LPO || !lpoNo || loadingLpoSummary) return;
+    if (!lpoNo || loadingLpoSummary) return;
 
     if (!lpoHasReceivedStock) {
       setSupplierInvoiceNo("");
@@ -277,7 +279,6 @@ export function RecordSupplierReturnForm({
     const headerInv = lpoSummary?.lpo?.supplier_invoice_no;
     setSupplierInvoiceNo(headerInv ? String(headerInv) : "");
   }, [
-    mode,
     lpoNo,
     loadingLpoSummary,
     lpoHasReceivedStock,
@@ -333,6 +334,7 @@ export function RecordSupplierReturnForm({
   }, [pendingManual, pendingLpoLine, branchId]);
 
   function switchMode(next) {
+    if (initialLpoNo && next === RETURN_MODES.MANUAL) return;
     setMode(next);
     setFormError(null);
     setAddError(null);
@@ -346,8 +348,8 @@ export function RecordSupplierReturnForm({
     setPendingLpoLine(null);
     setAddDraft({ ...DEFAULT_RETURN_DRAFT });
     setLpoSummary(null);
-    if (next === RETURN_MODES.MANUAL) {
-      setLpoNo(initialLpoNo ? String(initialLpoNo) : "");
+    if (next === RETURN_MODES.MANUAL && !initialLpoNo) {
+      setLpoNo("");
     }
   }
 
@@ -651,11 +653,12 @@ export function RecordSupplierReturnForm({
     setAddError(null);
     setReturnReasonError(null);
     try {
+      const linkedLpoNo = lpoNo && Number(lpoNo) > 0 ? Number(lpoNo) : null;
       const payload = {
         supplier_id: Number(supplierId),
         branch_id: Number(branchId),
-        source_type: mode,
-        lpo_no: mode === RETURN_MODES.LPO ? Number(lpoNo) : null,
+        source_type: linkedLpoNo ? RETURN_MODES.LPO : RETURN_MODES.MANUAL,
+        lpo_no: linkedLpoNo,
         supplier_invoice_no: supplierInvoiceNo.trim() || null,
         reason_scope: reasonScope,
         return_reason: docNotes,
@@ -707,11 +710,11 @@ export function RecordSupplierReturnForm({
     });
 
     return (
-      <div className="relative z-20 rounded-lg border border-[#185FA5]/30 bg-[#E6F1FB]/40 p-4 shadow-sm">
-        <p className="text-sm font-medium text-slate-900">{title}</p>
-        {subtitle ? <p className="mt-0.5 text-xs text-slate-600">{subtitle}</p> : null}
-        <p className="mt-1 text-[11px] text-slate-500">
-          Stock unit: <span className="font-medium text-slate-700">{pendingPackagingLabel}</span>
+      <div className="relative z-20 rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-subtle)] p-4 shadow-sm">
+        <p className="theme-heading text-sm font-medium">{title}</p>
+        {subtitle ? <p className="theme-subtext mt-0.5 text-xs">{subtitle}</p> : null}
+        <p className="theme-subtext mt-1 text-[11px]">
+          Stock unit: <span className="font-medium text-[var(--theme-text)]">{pendingPackagingLabel}</span>
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <Field label="Qty to return">
@@ -726,9 +729,9 @@ export function RecordSupplierReturnForm({
           </Field>
           <Field label="Return from">
             {lpoLocMeta?.locked ? (
-              <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+              <p className="theme-input-readonly rounded-lg border px-3 py-2 text-sm">
                 {formatStockLocationLabel(addDraft.stock_location)}
-                <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                <span className="theme-subtext mt-0.5 block text-xs font-normal">
                   LPO stock was received into this location
                 </span>
               </p>
@@ -772,10 +775,10 @@ export function RecordSupplierReturnForm({
           ) : null}
         </div>
         {loadingStock ? (
-          <p className="mt-2 text-xs text-slate-500">Loading branch stock…</p>
+          <p className="theme-subtext mt-2 text-xs">Loading branch stock…</p>
         ) : null}
         {stockHint ? (
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="theme-subtext mt-2 text-xs">
             Branch stock — shop: {stockHint.shop}, store: {stockHint.store}
             {mode === RETURN_MODES.MANUAL && addDraft.stock_location === STOCK_LOCATION.SHOP ? (
               <> · returning from shop</>
@@ -785,12 +788,12 @@ export function RecordSupplierReturnForm({
           </p>
         ) : null}
         {mode === RETURN_MODES.LPO && pendingLpoLine && lpoLocMeta && (lpoLocMeta.shop > 0 || lpoLocMeta.store > 0) ? (
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="theme-subtext mt-2 text-xs">
             Received on this LPO — shop: {lpoLocMeta.shop}, store: {lpoLocMeta.store} (base units)
           </p>
         ) : null}
         {mode === RETURN_MODES.LPO && pendingLpoStockPreview != null ? (
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="theme-subtext mt-2 text-xs">
             {pendingLpoStockPreview.total > 0 ? (
               <>
                 {pendingLpoStockPreview.total} pack(s) from{" "}
@@ -808,7 +811,7 @@ export function RecordSupplierReturnForm({
           <button
             type="button"
             onClick={addPendingToLines}
-            className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
+            className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium shadow-sm"
           >
             Add to return
           </button>
@@ -822,7 +825,7 @@ export function RecordSupplierReturnForm({
                 reason: reasonScope === REASON_SCOPE.ORDER ? returnReason : "",
               });
             }}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            className="theme-secondary-btn rounded-lg px-4 py-2 text-sm shadow-sm"
           >
             Cancel
           </button>
@@ -832,21 +835,21 @@ export function RecordSupplierReturnForm({
   }
 
   return (
-    <div className="-m-6 flex min-h-[calc(100%+3rem)] w-full flex-col bg-slate-50 p-6 text-slate-900 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
+    <div className="theme-workspace -m-6 flex min-h-[calc(100%+3rem)] w-full flex-col p-6 md:-m-8 md:min-h-[calc(100%+4rem)] md:p-8">
       <div className="mb-4 shrink-0">
-        <Link href={backHref} className="text-sm text-[#185FA5] hover:text-[#144f8a]">
+        <Link href={backHref} className="theme-link text-sm hover:underline">
           {backLabel}
         </Link>
-        <h1 className="mt-2 text-xl font-medium text-slate-900">{pageTitle}</h1>
-        <p className="mt-1 max-w-3xl text-sm text-slate-500">{pageSubtitle}</p>
+        <h1 className="theme-heading mt-2 text-xl font-medium">{pageTitle}</h1>
+        <p className="theme-subtext mt-1 max-w-3xl text-sm">{pageSubtitle}</p>
       </div>
 
       {loadingMeta || loadingDocument ? (
-        <p className="text-sm text-slate-500">Loading…</p>
+        <p className="theme-subtext text-sm">Loading…</p>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col theme-panel rounded-xl border shadow-sm">
-          {!editDocumentId ? (
-          <div className="flex shrink-0 flex-wrap gap-1 border-b border-slate-200 px-4 pt-3">
+          {!editDocumentId && !initialLpoNo ? (
+          <div className="flex shrink-0 flex-wrap gap-1 border-b border-[var(--theme-border)] px-4 pt-3">
             {RETURN_TABS.map((t) => (
               <button
                 key={t.id}
@@ -854,8 +857,8 @@ export function RecordSupplierReturnForm({
                 onClick={() => switchMode(t.id)}
                 className={`rounded-t-lg px-4 py-2 text-sm font-medium ${
                   mode === t.id
-                    ? "border border-b-white border-slate-200 bg-white text-[#185FA5]"
-                    : "text-slate-600 hover:bg-slate-50"
+                    ? "theme-tab-active border border-b-[var(--theme-page-bg)] border-[var(--theme-border)] shadow-sm"
+                    : "theme-tab-inactive"
                 }`}
               >
                 {t.label}
@@ -880,7 +883,7 @@ export function RecordSupplierReturnForm({
                 deduction and apply the updated quantities.
               </p>
             ) : null}
-            <p className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <p className="shrink-0 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-3 py-2 text-xs text-[var(--theme-text-muted)]">
               Every return is tied to one supplier. Choose Shop or Store — stock is deducted from
               that location only. LPO returns use the location where stock was received on the PO.
             </p>
@@ -934,6 +937,32 @@ export function RecordSupplierReturnForm({
                 </Field>
               ) : null}
 
+              {mode === RETURN_MODES.MANUAL && supplierId ? (
+                <Field label="Purchase order (optional)">
+                  <select
+                    className={inputClassName()}
+                    value={lpoNo}
+                    onChange={(e) => {
+                      setLpoNo(e.target.value);
+                      if (!e.target.value) {
+                        setLpoSummary(null);
+                        setSupplierInvoiceNo("");
+                      }
+                    }}
+                    disabled={loadingLpos}
+                  >
+                    <option value="">
+                      {loadingLpos ? "Loading LPOs…" : "None — manual / legacy stock"}
+                    </option>
+                    {lpoOptions.map((l) => (
+                      <option key={l.lpo_no} value={String(l.lpo_no)}>
+                        {formatPoNumber(l.lpo_no)} — {l.status_name ?? `Status ${l.lpo_status_code}`}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              ) : null}
+
               <Field label="Branch">
                 <select
                   className={inputClassName()}
@@ -967,7 +996,7 @@ export function RecordSupplierReturnForm({
                           </option>
                         ))}
                       </select>
-                      <p className="mt-1 text-[11px] text-slate-500">
+                      <p className="theme-subtext mt-1 text-[11px]">
                         Invoices recorded when stock was received on this LPO. Pick the one this
                         return relates to.
                       </p>
@@ -978,10 +1007,10 @@ export function RecordSupplierReturnForm({
                         type="text"
                         readOnly
                         disabled
-                        className={`${inputClassName()} cursor-not-allowed bg-slate-100 text-slate-700`}
+                        className={`${inputClassName()} theme-input-readonly cursor-not-allowed`}
                         value={supplierInvoiceNo}
                       />
-                      <p className="mt-1 text-[11px] text-slate-500">
+                      <p className="theme-subtext mt-1 text-[11px]">
                         From receipt on this LPO — {formatLpoInvoiceLabel(lpoInvoiceChoices[0])}
                       </p>
                     </Field>
@@ -995,7 +1024,7 @@ export function RecordSupplierReturnForm({
                         maxLength={120}
                         placeholder="No invoice on receipt — enter if known"
                       />
-                      <p className="mt-1 text-[11px] text-slate-500">
+                      <p className="theme-subtext mt-1 text-[11px]">
                         No supplier invoice was saved when this LPO was received. Enter one if you
                         have it.
                       </p>
@@ -1017,7 +1046,7 @@ export function RecordSupplierReturnForm({
                       disabled={mode === RETURN_MODES.LPO && Boolean(lpoNo) && !lpoHasReceivedStock}
                     />
                     {mode === RETURN_MODES.LPO && lpoNo && !lpoHasReceivedStock ? (
-                      <p className="mt-1 text-[11px] text-slate-500">
+                      <p className="theme-subtext mt-1 text-[11px]">
                         Receive stock on this LPO first — saved supplier invoices will appear here.
                       </p>
                     ) : null}
@@ -1027,7 +1056,7 @@ export function RecordSupplierReturnForm({
             </div>
 
             {mode === RETURN_MODES.LPO && lpoNo && loadingLpoSummary ? (
-              <p className="mt-4 text-sm text-slate-500">Loading LPO lines…</p>
+              <p className="theme-subtext mt-4 text-sm">Loading LPO lines…</p>
             ) : null}
 
             {mode === RETURN_MODES.LPO && lpoNo && !loadingLpoSummary && Number(lpoStatusCode) < LPO_STATUS.AWAITING_RECEIVE ? (
@@ -1042,10 +1071,10 @@ export function RecordSupplierReturnForm({
               </p>
             ) : null}
 
-            <div className="mt-4 grid min-h-0 flex-1 gap-6 border-t border-slate-100 pt-4 lg:grid-cols-12">
-              <div className="relative flex min-h-0 flex-col gap-4 overflow-visible lg:col-span-5 lg:border-r lg:border-slate-100 lg:pr-6">
+            <div className="mt-4 grid min-h-0 flex-1 gap-6 border-t border-[var(--theme-border)] pt-4 lg:grid-cols-12">
+              <div className="relative flex min-h-0 flex-col gap-4 overflow-visible lg:col-span-5 lg:border-r lg:border-[var(--theme-border)] lg:pr-6">
                 <div className="relative z-0">
-                  <p className="mb-2 text-sm font-semibold text-slate-800">
+                  <p className="theme-heading mb-2 text-sm font-semibold">
                     {mode === RETURN_MODES.LPO ? "Add products from LPO" : "Find product"}
                   </p>
                   {mode === RETURN_MODES.MANUAL && !branchId ? (
@@ -1065,11 +1094,11 @@ export function RecordSupplierReturnForm({
                       clearOnSelect={false}
                     />
                   ) : showLpoProductPicker ? (
-                    <div className="overflow-hidden rounded-lg border border-slate-300 bg-white">
+                    <div className="theme-table-shell overflow-hidden rounded-lg border">
                       <div className="max-h-[min(50vh,440px)] overflow-auto">
-                        <table className="w-full border-collapse text-xs">
-                          <thead className="sticky top-0 z-10 bg-slate-100">
-                            <tr className="text-left font-semibold text-slate-600">
+                        <table className="theme-table w-full border-collapse text-xs">
+                          <thead className="sticky top-0 z-10 bg-[var(--theme-surface-muted)]">
+                            <tr className="theme-table-head-row text-left font-semibold">
                               <th className="px-2 py-2">Product</th>
                               <th className="px-2 py-2 text-right">Ord</th>
                               <th className="px-2 py-2 text-right">Rcvd</th>
@@ -1083,13 +1112,13 @@ export function RecordSupplierReturnForm({
                               return (
                               <tr
                                 key={line.id ?? line.product_code}
-                                className={`border-b border-slate-100 ${alreadyAdded ? "bg-slate-50/80" : "hover:bg-slate-50"}`}
+                                className={`theme-table-body-row border-b border-[var(--theme-border)] ${alreadyAdded ? "bg-[var(--theme-surface-muted)]/80" : "hover:bg-[var(--theme-hover)]"}`}
                               >
                                 <td className="px-2 py-2">
-                                  <span className="font-medium text-slate-900">
+                                  <span className="theme-heading font-medium">
                                     {line.product_name}
                                   </span>
-                                  <span className="block font-mono text-[10px] text-slate-500">
+                                  <span className="theme-subtext block font-mono text-[10px]">
                                     {line.product_code}
                                   </span>
                                 </td>
@@ -1100,12 +1129,12 @@ export function RecordSupplierReturnForm({
                                 </td>
                                 <td className="px-2 py-2 text-right">
                                   {alreadyAdded ? (
-                                    <span className="text-[11px] font-medium text-slate-400">Added</span>
+                                    <span className="text-[11px] font-medium text-[var(--theme-text-subtle)]">Added</span>
                                   ) : (
                                   <button
                                     type="button"
                                     onClick={() => selectLpoLine(line)}
-                                    className="text-[#185FA5] hover:underline"
+                                    className="theme-link hover:underline"
                                   >
                                     Choose
                                   </button>
@@ -1119,7 +1148,7 @@ export function RecordSupplierReturnForm({
                       </div>
                     </div>
                   ) : mode === RETURN_MODES.LPO ? (
-                    <p className="text-sm text-slate-500">
+                    <p className="theme-subtext text-sm">
                       Select a supplier and LPO to add return lines.
                     </p>
                   ) : null}
@@ -1143,10 +1172,10 @@ export function RecordSupplierReturnForm({
                   <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{addError}</p>
                 ) : null}
 
-                <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
-                  <p className="text-sm font-semibold text-slate-800">Return reason (required)</p>
+                <div className="space-y-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3">
+                  <p className="theme-heading text-sm font-semibold">Return reason (required)</p>
                   {reasonScopeLocked ? (
-                    <p className="text-xs text-slate-500">
+                    <p className="theme-subtext text-xs">
                       {reasonScope === REASON_SCOPE.ORDER
                         ? "Same reason for whole order — locked after adding the first product. Remove all items to change."
                         : "Per product — locked after adding the first product. Remove all items to change."}
@@ -1154,7 +1183,7 @@ export function RecordSupplierReturnForm({
                   ) : null}
                   <div className="flex flex-col gap-2 text-sm sm:flex-row sm:flex-wrap sm:gap-4">
                     <label
-                      className={`flex items-center gap-2 ${reasonScopeLocked ? "cursor-not-allowed text-slate-500" : "cursor-pointer"}`}
+                      className={`flex items-center gap-2 ${reasonScopeLocked ? "cursor-not-allowed text-[var(--theme-text-subtle)]" : "cursor-pointer"}`}
                     >
                       <input
                         type="radio"
@@ -1171,7 +1200,7 @@ export function RecordSupplierReturnForm({
                       Same reason for whole order
                     </label>
                     <label
-                      className={`flex items-center gap-2 ${reasonScopeLocked ? "cursor-not-allowed text-slate-500" : "cursor-pointer"}`}
+                      className={`flex items-center gap-2 ${reasonScopeLocked ? "cursor-not-allowed text-[var(--theme-text-subtle)]" : "cursor-pointer"}`}
                     >
                       <input
                         type="radio"
@@ -1196,7 +1225,7 @@ export function RecordSupplierReturnForm({
                         required
                         minLength={3}
                         disabled={reasonScopeLocked}
-                        className={`${inputClassName()} ${returnReasonError ? "border-red-300 focus:border-red-400 focus:ring-red-200" : ""} ${reasonScopeLocked ? "cursor-not-allowed bg-slate-100 text-slate-700" : ""}`}
+                        className={`${inputClassName()} ${returnReasonError ? "border-red-300 focus:border-red-400 focus:ring-red-200" : ""} ${reasonScopeLocked ? "theme-input-readonly cursor-not-allowed" : ""}`}
                         value={returnReason}
                         onChange={(e) => {
                           if (reasonScopeLocked) return;
@@ -1210,7 +1239,7 @@ export function RecordSupplierReturnForm({
                       ) : null}
                     </Field>
                   ) : (
-                    <p className="text-xs text-slate-500">
+                    <p className="theme-subtext text-xs">
                       A reason is required for each product when adding lines and in the list on the
                       right.
                     </p>
@@ -1228,8 +1257,8 @@ export function RecordSupplierReturnForm({
                   ) : null}
                 </div>
 
-                <div className="mt-auto space-y-3 border-t border-slate-100 pt-4">
-                  <p className="text-xs text-slate-500">
+                <div className="mt-auto space-y-3 border-t border-[var(--theme-border)] pt-4">
+                  <p className="theme-subtext text-xs">
                     Submitted returns stay pending until a senior user approves them. Stock is only
                     adjusted after approval.
                   </p>
@@ -1241,7 +1270,7 @@ export function RecordSupplierReturnForm({
                   <div className="flex flex-wrap gap-2">
                     <Link
                       href={backHref}
-                      className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                      className="theme-secondary-btn rounded-lg px-4 py-2 text-sm shadow-sm"
                     >
                       Cancel
                     </Link>
@@ -1268,12 +1297,12 @@ export function RecordSupplierReturnForm({
               </div>
 
               <div className="flex min-h-0 flex-col lg:col-span-7">
-                <p className="mb-2 text-sm font-semibold text-slate-800">
+                <p className="theme-heading mb-2 text-sm font-semibold">
                   Items on this return ({lines.length})
                 </p>
 
                 {lines.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  <p className="rounded-lg border border-dashed border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-8 text-center text-sm text-[var(--theme-text-muted)]">
                     No items yet. Choose a product on the left, set qty to return and location,
                     then click &quot;Add to return&quot;.
                     {reasonScope === REASON_SCOPE.PER_PRODUCT
@@ -1281,9 +1310,9 @@ export function RecordSupplierReturnForm({
                       : null}
                   </p>
                 ) : (
-                  <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-slate-200">
+                  <div className="theme-table-shell min-h-0 flex-1 overflow-hidden rounded-lg border">
                     <div className="max-h-[min(58vh,520px)] overflow-auto">
-                      <ul className="divide-y divide-slate-100">
+                      <ul className="divide-y divide-[var(--theme-border)]">
                         {lines.map((line) => {
                           const stockPreview =
                             mode === RETURN_MODES.LPO && line.received_qty != null
@@ -1293,17 +1322,17 @@ export function RecordSupplierReturnForm({
                             <li key={line.key} className="p-4">
                               <div className="flex flex-wrap items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
-                                  <p className="font-medium text-slate-900">{line.product_name}</p>
-                                  <p className="font-mono text-xs text-slate-500">{line.product_code}</p>
+                                  <p className="theme-heading font-medium">{line.product_name}</p>
+                                  <p className="theme-subtext font-mono text-xs">{line.product_code}</p>
                                   {stockPreview != null ? (
-                                    <p className="mt-0.5 text-[11px] text-slate-500">
+                                    <p className="theme-subtext mt-0.5 text-[11px]">
                                       {stockPreview > 0
                                         ? `${stockPreview} pack(s) from stock when approved`
                                         : "No stock deduction when approved"}
                                     </p>
                                   ) : null}
                                   {line.max_return_qty != null ? (
-                                    <p className="text-[11px] text-slate-500">
+                                    <p className="theme-subtext text-[11px]">
                                       Max {line.max_return_qty} on LPO
                                     </p>
                                   ) : null}
@@ -1342,7 +1371,7 @@ export function RecordSupplierReturnForm({
                                     });
                                     if (lineLocMeta?.locked) {
                                       return (
-                                        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                                        <p className="theme-input-readonly rounded-lg border px-3 py-2 text-sm">
                                           {formatStockLocationLabel(line.stock_location)}
                                         </p>
                                       );
@@ -1376,18 +1405,18 @@ export function RecordSupplierReturnForm({
                                 </div>
                               </div>
                               {mode === RETURN_MODES.LPO && line.stock_location ? (
-                                <p className="mt-2 text-[11px] text-slate-500">
+                                <p className="theme-subtext mt-2 text-[11px]">
                                   Deduct from {formatStockLocationLabel(line.stock_location)} when
                                   approved
                                 </p>
                               ) : null}
                               {reasonScope === REASON_SCOPE.PER_PRODUCT ? (
-                                <p className="mt-3 text-[11px] text-slate-600">
-                                  <span className="font-medium text-slate-500">Reason: </span>
+                                <p className="theme-text-muted mt-3 text-[11px]">
+                                  <span className="theme-subtext font-medium">Reason: </span>
                                   {(line.reason ?? "").trim() || "—"}
                                 </p>
                               ) : returnReason.trim().length >= 3 ? (
-                                <p className="mt-2 text-[11px] text-slate-500">
+                                <p className="theme-subtext mt-2 text-[11px]">
                                   Reason: {returnReason.trim()}
                                 </p>
                               ) : (

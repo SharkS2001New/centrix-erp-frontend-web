@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
@@ -34,8 +33,6 @@ import {
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
 import {
-  buildOrderDetailActionItems,
-  OrderContextMenu,
   OrderLineItemsTable,
   OrderPaymentsSection,
   saleBranchLabel,
@@ -464,24 +461,7 @@ function PrintIcon() {
   );
 }
 
-function DownloadIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-}
-
 export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
-  const router = useRouter();
   const { capabilities, refreshCapabilities, organization } = useAuth();
   const { floatSessionId } = usePosSession();
 
@@ -497,8 +477,6 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState("summary");
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [actionsOpen, setActionsOpen] = useState(false);
-  const [actionsAnchor, setActionsAnchor] = useState({ x: 0, y: 0 });
   const [transitionBusy, setTransitionBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState(null);
   const [orderReturns, setOrderReturns] = useState([]);
@@ -667,14 +645,6 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     }
   }, [sale, capabilities, organization, customer, branchName, cashierName, uomById]);
 
-  function openActionsMenu(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
-    setActionsAnchor({ x: Math.max(8, rect.right - 220), y: rect.bottom + 4 });
-    setActionsOpen(true);
-  }
-
   async function transitionOrder(targetStatus, fulfillmentMeta) {
     if (!sale?.id) return;
     if (targetStatus === "cancelled" && !window.confirm("Cancel this order?")) return;
@@ -689,7 +659,6 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       });
       setSale((prev) => ({ ...prev, ...updated }));
       setActionMessage("Order updated.");
-      setActionsOpen(false);
       await loadSale();
     } catch (e) {
       setActionMessage(e instanceof ApiError ? e.message : "Could not update order.");
@@ -703,7 +672,6 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     onSuccess: async (updated) => {
       setSale((prev) => ({ ...prev, ...updated }));
       setActionMessage("Order updated.");
-      setActionsOpen(false);
       await loadSale();
     },
     onError: (message) => setActionMessage(message),
@@ -742,39 +710,6 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       vehicleLabel: vehicle?.plate_number ?? vehicle?.vehicle_name ?? null,
     };
   }, [sale, routes, drivers, vehicles]);
-
-  const actionMenuItems = useMemo(() => {
-    if (!sale) return [];
-    return buildOrderDetailActionItems({
-      sale,
-      workflow: saleWorkflow,
-      busy: transitionBusy,
-      onPrint: handlePrint,
-      onAdvance: handleAdvance,
-      onCancel: () => handleAdvance("cancelled"),
-      canRecordPayment,
-      printLabel,
-      onRecordPayment: () => {
-        setActionsOpen(false);
-        setPaymentModalOpen(true);
-      },
-      onCreateReturn: createReturnHref
-        ? () => {
-            setActionsOpen(false);
-            router.push(createReturnHref);
-          }
-        : null,
-    });
-  }, [
-    sale,
-    saleWorkflow,
-    transitionBusy,
-    canRecordPayment,
-    handlePrint,
-    printLabel,
-    createReturnHref,
-    router,
-  ]);
 
   const customerProfileHref = sale?.customer_num ? `/customers/${sale.customer_num}` : null;
   const customerCardName = customer?.customer_name ?? saleCustomerLabel(sale);
@@ -855,22 +790,6 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               >
                 <PrintIcon />
                 {printLabel}
-              </button>
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="theme-secondary-btn inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
-              >
-                <DownloadIcon />
-                Download
-              </button>
-              <button
-                type="button"
-                onClick={openActionsMenu}
-                className="inline-flex items-center gap-2 rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
-              >
-                Actions
-                <ChevronDownIcon />
               </button>
             </div>
           </div>
@@ -1008,14 +927,6 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
           ) : null}
         </>
       ) : null}
-
-      <OrderContextMenu
-        open={actionsOpen}
-        x={actionsAnchor.x}
-        y={actionsAnchor.y}
-        items={actionMenuItems}
-        onClose={() => setActionsOpen(false)}
-      />
 
       <RecordSalePaymentModal
         open={paymentModalOpen}

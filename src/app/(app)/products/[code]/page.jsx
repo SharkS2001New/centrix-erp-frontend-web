@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import {
   formatShortDate,
   PencilIcon,
@@ -696,6 +697,8 @@ export default function ProductDetailPage() {
     syncUrl("activity", id);
   }
 
+  usePageNavigationReady(!loading);
+
   async function confirmDelete() {
     setDeleteSaving(true);
     setDeleteError(null);
@@ -710,20 +713,7 @@ export default function ProductDetailPage() {
   }
 
   if (loading) {
-    return (
-      <div className="theme-workspace min-h-full">
-        <div className="animate-pulse space-y-4">
-          <div className="h-4 w-32 rounded bg-[var(--theme-surface-muted)]" />
-          <div className="h-28 rounded-xl bg-[var(--theme-surface)] shadow-sm" />
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-24 rounded-xl bg-[var(--theme-surface)] shadow-sm" />
-            ))}
-          </div>
-          <div className="h-64 rounded-xl bg-[var(--theme-surface)] shadow-sm" />
-        </div>
-      </div>
-    );
+    return null;
   }
 
   if (error || !enriched) {

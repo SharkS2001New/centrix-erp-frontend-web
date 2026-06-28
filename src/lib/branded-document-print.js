@@ -56,6 +56,7 @@ export function buildOrgContactLines(organization) {
 export function brandedDocumentStyles() {
   return `
   @page { size: A4; margin: 8mm 10mm; }
+  html { height: 100%; }
   body {
     font-family: "Times New Roman", Times, serif;
     margin: 0;
@@ -64,8 +65,19 @@ export function brandedDocumentStyles() {
     font-size: 10px;
     line-height: 1.3;
     position: relative;
+    min-height: 100%;
+    box-sizing: border-box;
   }
-  .page { max-width: 820px; margin: 0 auto; position: relative; z-index: 1; }
+  .page {
+    max-width: 820px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+    min-height: calc(100vh - 24px);
+    display: flex;
+    flex-direction: column;
+  }
+  .page-body { flex: 1 0 auto; }
   .org-header { text-align: center; margin-bottom: 6px; padding-bottom: 0; border-bottom: none; }
   .org-logo { display: block; margin: 0 auto 4px; max-height: 56px; max-width: 220px; object-fit: contain; }
   .org-name { font-size: 18px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -95,13 +107,15 @@ export function brandedDocumentStyles() {
   .sig-line { display: inline-block; min-width: 180px; border-bottom: 1px dotted #000; }
   .doc-footer-text { margin-top: 8px; text-align: center; font-size: 8px; color: #64748b; }
   .print-footer {
-    margin-top: 6px;
-    padding-top: 4px;
+    margin-top: auto;
+    padding-top: 10px;
     border-top: 1px dotted #999;
     display: flex;
     justify-content: space-between;
+    gap: 12px;
     font-size: 8px;
     color: #333;
+    flex-shrink: 0;
   }
   .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
   .watermark-text {
@@ -129,6 +143,7 @@ export function brandedDocumentStyles() {
   @media print {
     body { padding: 0; }
     .watermark-text { color: rgba(15, 23, 42, 0.08); }
+    .page { min-height: calc(297mm - 16mm); }
   }
 `;
 }
@@ -166,6 +181,7 @@ export function buildBrandedA4DocumentHtml({
 <body>
   ${watermarkHtml}
   <div class="page">
+    <div class="page-body">
     <div class="org-brand">
       ${orgHeaderHtml}
       <div class="org-meta">
@@ -178,6 +194,7 @@ export function buildBrandedA4DocumentHtml({
     <div class="doc-title">${escapeHtml(title)}</div>
     ${bodyHtml}
     ${footerText ? `<div class="doc-footer-text">${escapeHtml(footerText)}</div>` : ""}
+    </div>
     <div class="print-footer">
       <span>Printed On: ${escapeHtml(printedAt)}</span>
       <span>By: ${escapeHtml(printedBy ?? "—")}</span>

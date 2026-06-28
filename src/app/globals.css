@@ -1404,7 +1404,28 @@ html[data-theme="dark"] .pos-workspace-standalone .pos-header-order-badge {
 }
 
 .pos-workspace-backoffice .pos-line-entry {
-  border-bottom: 1px solid var(--theme-border);
+  border-bottom: none;
+}
+
+.pos-left-body {
+  min-height: 0;
+  flex: 1 1 0%;
+}
+
+.pos-left-footer {
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
+.pos-cart-footer {
+  margin-top: auto;
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.pos-workspace-backoffice .pos-left-footer,
+.pos-workspace-standalone .pos-left-footer {
+  border-top: 1px solid var(--theme-border-strong, var(--theme-border));
 }
 
 .pos-workspace-backoffice .pos-cart-panel {
@@ -1444,7 +1465,7 @@ html[data-theme="dark"] .pos-workspace-standalone .pos-header-order-badge {
 }
 
 .pos-workspace-standalone .pos-line-entry {
-  border-bottom: 1px solid var(--theme-border-strong, var(--theme-border));
+  border-bottom: none;
 }
 
 .pos-workspace-standalone .pos-left-panel {
@@ -2045,4 +2066,52 @@ textarea {
 .workspace-opening-text {
   animation: workspace-opening-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.32s both;
   opacity: 0;
+}
+
+@keyframes navigation-progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+.navigation-progress-indeterminate {
+  width: 35%;
+  animation: navigation-progress-slide 1.1s ease-in-out infinite;
+}
+
+.route-loading-shimmer {
+  background-color: color-mix(in srgb, var(--theme-border) 72%, var(--theme-page-bg));
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--theme-primary) 14%, var(--theme-page-bg)) 48%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  animation: route-loading-shimmer 1.35s ease-in-out infinite;
+}
+
+.route-loading-skeleton {
+  animation: route-loading-fade-in 0.18s ease-out;
+}
+
+@keyframes route-loading-fade-in {
+  from {
+    opacity: 0.6;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes route-loading-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
 }

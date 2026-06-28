@@ -54,6 +54,7 @@ import {
   shouldSubmitKraOnCheckout,
 } from "@/lib/finance-settings";
 import { useBlockingWait } from "@/lib/use-blocking-wait";
+import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import {
   canAdjustCartLineQuantity,
@@ -130,6 +131,15 @@ function sameLineId(a, b) {
   if (a == null || b == null) return false;
   return String(a) === String(b);
 }
+
+/** Cart line mutations usually return the full cart — avoid a follow-up GET when they do. */
+function normalizeCartResponse(res) {
+  if (res?.id && Array.isArray(res.lines)) return res;
+  if (res?.cart?.id && Array.isArray(res.cart?.lines)) return res.cart;
+  return null;
+}
+
+const POS_CART_REQUEST = { loading: false, reportIssues: false };
 
 export function PosScreen({ standalone = false }) {
   const router = useRouter();
@@ -665,6 +675,9 @@ export function PosScreen({ standalone = false }) {
     return () => window.cancelAnimationFrame(frame);
   }, [cartActionPending]);
 
+  const posShellReady = !sessionLoading && uomById.size > 0;
+  usePageNavigationReady(posShellReady);
+
   const loadPosReferenceData = useCallback(async () => {
     const [uomRes, vatRes, retailRes] = await Promise.all([
       apiRequest("/uoms", { searchParams: { per_page: 200 } }),
@@ -756,12 +769,21 @@ export function PosScreen({ standalone = false }) {
     routes,
   ]);
 
+  const refreshCart = useCallback(async (cartId) => {
+    const updated = await apiRequest(`/sales/carts/${cartId}`, POS_CART_REQUEST);
+    setCart(updated);
+    return updated;
+  }, []);
+
   const ensureCart = useCallback(async () => {
     if (cart?.id && cart.channel === channel && Array.isArray(cart.lines)) {
       return cart;
     }
+    if (cart?.id && cart.channel === channel) {
+      return refreshCart(cart.id);
+    }
     return loadCashierCart();
-  }, [cart, channel, loadCashierCart]);
+  }, [cart, channel, loadCashierCart, refreshCart]);
 
   useEffect(() => {
     if (!user?.branch_id) return;
@@ -782,12 +804,6 @@ export function PosScreen({ standalone = false }) {
     const route = routes.find((r) => r.id === cart.route_id);
     appliedRouteMarkupRef.current = Number(route?.route_markup_price ?? 0);
   }, [cart?.id, cart?.route_id, showRouteOrderUi, routes]);
-
-  const refreshCart = useCallback(async (cartId) => {
-    const updated = await apiRequest(`/sales/carts/${cartId}`);
-    setCart(updated);
-    return updated;
-  }, []);
 
   const searchProducts = useCallback(
     async (q, maps = null) => {
@@ -1004,21 +1020,33 @@ export function PosScreen({ standalone = false }) {
     };
 
     if (targetLineRef) {
-      await apiRequest(`/sales/carts/${activeCart.id}/lines/${targetLineRef}`, {
+      const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines/${targetLineRef}`, {
         method: "PATCH",
         body: {
           ...lineBody,
           update_no: activeCart.update_no,
         },
+        ...POS_CART_REQUEST,
       });
+      const normalized = normalizeCartResponse(updated);
+      if (normalized) {
+        setCart(normalized);
+      } else {
+        await refreshCart(activeCart.id);
+      }
     } else {
-      await apiRequest(`/sales/carts/${activeCart.id}/lines`, {
+      const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines`, {
         method: "POST",
         body: lineBody,
+        ...POS_CART_REQUEST,
       });
+      const normalized = normalizeCartResponse(updated);
+      if (normalized) {
+        setCart(normalized);
+      } else {
+        await refreshCart(activeCart.id);
+      }
     }
-
-    await refreshCart(activeCart.id);
 
     if (successMessage) setStatusMessage(successMessage);
 
@@ -2430,8 +2458,8 @@ export function PosScreen({ standalone = false }) {
 
   return (
     <div
-      className={`pos-workspace relative flex h-full min-h-0 flex-col${
-        standalone ? " pos-workspace-standalone" : " pos-workspace-backoffice"
+      className={`pos-workspace relative flex min-h-0 flex-1 flex-col${
+        standalone ? " h-full pos-workspace-standalone" : " h-full pos-workspace-backoffice p-4 md:p-6 lg:p-8"
       }`}
     >
       {standalone ? (
@@ -2704,7 +2732,7 @@ export function PosScreen({ standalone = false }) {
         }`}
       >
         {/* Left — line entry + payment options */}
-        <div className="pos-left-panel flex min-h-0 w-full flex-col border-b border-[var(--theme-border)] bg-[var(--theme-page-bg)] lg:w-[min(100%,28rem)] lg:shrink-0 lg:border-b-0 lg:border-r xl:w-[32rem]">
+        <div className="pos-left-panel flex min-h-0 w-full flex-col self-stretch border-b border-[var(--theme-border)] bg-[var(--theme-page-bg)] lg:w-[min(100%,28rem)] lg:shrink-0 lg:border-b-0 lg:border-r xl:w-[32rem]">
           <div className="pos-search-panel shrink-0 border-b border-[var(--theme-border)] px-4 py-2.5">
             <div className="flex items-center justify-between gap-3">
               <p className="text-left text-sm font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
@@ -2820,9 +2848,9 @@ export function PosScreen({ standalone = false }) {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="pos-left-body min-h-0 flex-1 overflow-y-auto">
           {/* Line entry form */}
-          <div className="pos-line-entry grid shrink-0 grid-cols-2 gap-x-4 gap-y-4 border-b border-[var(--theme-border)] p-4 text-sm">
+          <div className="pos-line-entry grid shrink-0 grid-cols-2 gap-x-4 gap-y-4 p-4 text-sm">
             {enablePosOrderEdit ? (
               <div className="col-span-2">
                 <PosOrderEditBar
@@ -2961,7 +2989,11 @@ export function PosScreen({ standalone = false }) {
                 onKeyDown={allowEditUnitPrice ? handleUnitPriceEnter : undefined}
               />
             </div>
-            <div className="col-span-2 mt-2 flex flex-wrap gap-3">
+          </div>
+          </div>
+
+          <div className="pos-left-footer shrink-0 border-t border-[var(--theme-border)] bg-[var(--theme-page-bg)]">
+            <div className="flex flex-wrap gap-3 p-4">
               <button
                 type="button"
                 disabled={busy || lineBusy || addLineBlocked}
@@ -2969,7 +3001,7 @@ export function PosScreen({ standalone = false }) {
                 className="theme-primary-btn pos-add-line-btn flex min-w-[8rem] flex-1 items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-bold uppercase shadow-sm disabled:opacity-50"
               >
                 <span className="text-base">{editingLineId ? "✓" : "+"}</span>
-                {editingLineId ? "Update" : "Add"}
+                {lineBusy ? (editingLineId ? "Updating…" : "Adding…") : editingLineId ? "Update" : "Add"}
               </button>
               {editingLineId ? (
                 <button
@@ -2996,7 +3028,6 @@ export function PosScreen({ standalone = false }) {
                 Refresh
               </button>
             </div>
-          </div>
 
           {showCartPaymentPrompts ? (
           <div className="pos-payment-panel shrink-0 px-4 pb-4">
@@ -3020,7 +3051,7 @@ export function PosScreen({ standalone = false }) {
         </div>
 
         {/* Right — cart grid */}
-        <div className="pos-cart-panel flex min-h-0 flex-1 flex-col bg-[var(--theme-page-bg)]">
+        <div className="pos-cart-panel flex min-h-0 flex-1 flex-col self-stretch bg-[var(--theme-page-bg)]">
           {showCartToolbar ? (
           <div className="pos-cart-toolbar flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--theme-border)] px-4 py-2.5">
             {!standalone ? (
@@ -3236,6 +3267,7 @@ export function PosScreen({ standalone = false }) {
             </table>
           </div>
 
+          <div className="pos-cart-footer mt-auto shrink-0">
           <div className="pos-cart-summary shrink-0 border-t border-[var(--theme-border)] px-4 py-4">
             <div className="mb-3 border-b border-[var(--theme-border)] pb-3 text-sm">
               {enableOrderDiscount ? (
@@ -3410,6 +3442,7 @@ export function PosScreen({ standalone = false }) {
                 Cart exceeds available stock — reduce quantities or enable negative stock in admin.
               </p>
             ) : null}
+          </div>
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { formatPackagingLabel, packageNameFromUom } from "@/components/lpo/lpo-product-utils";
+import { inputClassName } from "@/components/catalog/catalog-shared";
 
 export const REASON_SCOPE = {
   ORDER: "order",
@@ -50,10 +51,12 @@ export function PackageTypeField({ value, onChange, packagingLabel, idPrefix = "
 
   return (
     <div>
-      <span className="mb-1 block text-xs font-medium text-slate-500">How are you returning?</span>
+      <span className="theme-accent-label mb-1 block text-xs font-bold uppercase tracking-wide">
+        How are you returning?
+      </span>
       <select
         id={`${idPrefix}-type`}
-        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-black outline-none focus:border-[#185FA5] focus:ring-2 focus:ring-[#185FA5]/20"
+        className={inputClassName()}
         value={normalized}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -63,7 +66,7 @@ export function PackageTypeField({ value, onChange, packagingLabel, idPrefix = "
           </option>
         ))}
       </select>
-      <p className="mt-1 text-[11px] leading-snug text-slate-500">
+      <p className="theme-subtext mt-1 text-[11px] leading-snug">
         {options.find((o) => o.value === normalized)?.hint ??
           "Full package = whole UOM unit. Pieces / loose = individual units."}
       </p>

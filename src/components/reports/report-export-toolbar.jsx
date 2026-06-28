@@ -12,6 +12,7 @@ import {
 } from "@/lib/reports/export";
 import { resolveReportBranding } from "@/lib/reports/report-branding";
 import { buildReportExportRequest, queueReportExport } from "@/lib/report-export-api";
+import { EXPORT_EMPTY_ROWS_MESSAGE } from "@/lib/background-task-errors";
 import { canExportPdf, PDF_EXPORT_MAX_ROWS } from "@/lib/report-export-limits";
 
 /**
@@ -79,6 +80,14 @@ export function ReportExportToolbar({
         printedAt: reportPrintedAt(),
         ...meta,
       });
+
+      if (!exportSource && getRows) {
+        const previewRows = await getRows();
+        if (!Array.isArray(previewRows) || previewRows.length === 0) {
+          setExportError(EXPORT_EMPTY_ROWS_MESSAGE);
+          return;
+        }
+      }
 
       const body = buildReportExportRequest({
         format: exportFormat,

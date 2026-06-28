@@ -130,22 +130,22 @@ export function LpoProductSearchPanel({
           type="button"
           onClick={() => searchProducts(query)}
           disabled={disabled}
-          className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-[#185FA5] hover:bg-slate-50 disabled:opacity-40"
+          className="theme-secondary-btn shrink-0 rounded-lg px-3 text-sm font-medium shadow-sm disabled:opacity-40"
         >
           Find
         </button>
       </div>
       {searchError ? <p className="mb-2 text-xs text-red-600">{searchError}</p> : null}
-      <div className="relative overflow-hidden rounded-lg border border-slate-300 bg-white">
+      <div className="theme-table-shell relative overflow-hidden rounded-lg border">
         {searching ? (
-          <div className="pointer-events-none absolute right-2 top-2 z-20 rounded bg-white/90 px-1.5 py-0.5 text-[10px] text-slate-500">
+          <div className="theme-subtext pointer-events-none absolute right-2 top-2 z-20 rounded bg-[var(--theme-page-bg)]/90 px-1.5 py-0.5 text-[10px]">
             Searching…
           </div>
         ) : null}
         <div className={`${scrollClass} min-h-[220px]`}>
-          <table className="w-full border-collapse text-xs">
-            <thead className="sticky top-0 z-10 bg-slate-100">
-              <tr className="text-left font-semibold text-slate-600">
+          <table className="theme-table w-full border-collapse text-xs">
+            <thead className="sticky top-0 z-10 bg-[var(--theme-surface-muted)]">
+              <tr className="theme-table-head-row text-left font-semibold">
                 <th className="px-2 py-2">Product Name</th>
                 <th className="px-2 py-2 text-right">Current Stock in Shop</th>
                 <th className="px-2 py-2 text-right">Current Stock in Store</th>
@@ -154,7 +154,7 @@ export function LpoProductSearchPanel({
             <tbody>
               {showEmpty ? (
                 <tr>
-                  <td colSpan={3} className="px-2 py-6 text-center text-slate-500">
+                  <td colSpan={3} className="theme-subtext px-2 py-6 text-center">
                     {searching && query.trim() ? "Searching…" : emptyMessage}
                   </td>
                 </tr>
@@ -166,20 +166,20 @@ export function LpoProductSearchPanel({
                       key={product.product_code}
                       onClick={() => setSelectedCode(product.product_code)}
                       onDoubleClick={() => confirmSelect(product)}
-                      className={`cursor-pointer border-b border-slate-100 ${
-                        selected ? "bg-red-50" : "hover:bg-slate-50"
+                      className={`theme-table-body-row cursor-pointer border-b border-[var(--theme-border)] ${
+                        selected ? "bg-[var(--theme-primary-subtle)]" : "hover:bg-[var(--theme-hover)]"
                       }`}
                     >
-                      <td className="px-2 py-2 font-medium text-slate-900">
+                      <td className="px-2 py-2 font-medium">
                         {product.product_name}
-                        <span className="mt-0.5 block font-mono text-[10px] font-normal text-slate-500">
+                        <span className="theme-subtext mt-0.5 block font-mono text-[10px] font-normal">
                           {product.product_code}
                         </span>
                       </td>
-                      <td className="px-2 py-2 text-right text-slate-600">
+                      <td className="theme-text-muted px-2 py-2 text-right">
                         {formatStock(product.stock_in_shop, product)}
                       </td>
-                      <td className="px-2 py-2 text-right text-slate-600">
+                      <td className="theme-text-muted px-2 py-2 text-right">
                         {formatStock(product.stock_in_store, product)}
                       </td>
                     </tr>
@@ -194,11 +194,11 @@ export function LpoProductSearchPanel({
         type="button"
         onClick={confirmSelected}
         disabled={!selectedCode || disabled}
-        className="mt-2 w-full shrink-0 rounded-lg bg-[#185FA5] py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-40"
+        className="theme-primary-btn mt-2 w-full shrink-0 rounded-lg py-2 text-sm font-medium shadow-sm disabled:opacity-40"
       >
         {actionLabel}
       </button>
-      <p className="mt-1 shrink-0 text-[11px] text-slate-500">{hint}</p>
+      <p className="theme-subtext mt-1 shrink-0 text-[11px]">{hint}</p>
     </div>
   );
 }

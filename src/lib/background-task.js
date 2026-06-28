@@ -1,4 +1,5 @@
 import { apiRequest, ApiError, apiFetchBlob } from "@/lib/api";
+import { humanizeBackgroundTaskError } from "@/lib/background-task-errors";
 
 /** @param {string} taskId */
 export function fetchBackgroundTask(taskId) {
@@ -84,7 +85,7 @@ export function isQueuedTaskResponse(res) {
 
 /** @param {Record<string, unknown>} task */
 export function backgroundTaskErrorMessage(task) {
-  return String(task?.error_message ?? "Background task failed.");
+  return humanizeBackgroundTaskError(task?.error_message);
 }
 
 /**

@@ -44,6 +44,7 @@ function isOrderLevelReason(row) {
 }
 
 function returnReferenceLabel(row) {
+  if (row.lpo_no) return "LPO";
   if (row.source_type === "lpo") return "LPO";
   return "Manual";
 }
@@ -289,8 +290,8 @@ function LineItemsTable({ row }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-      <table className="w-full min-w-[560px] border-collapse text-xs">
+    <div className="theme-table-shell overflow-x-auto rounded-lg border border-[var(--theme-border)]">
+      <table className="theme-table w-full min-w-[560px] border-collapse text-xs">
         <thead>
           <tr className="theme-table-head-row text-left font-medium">
             <th className="px-3 py-2">Product</th>
@@ -302,20 +303,20 @@ function LineItemsTable({ row }) {
         </thead>
         <tbody>
           {lines.map((line) => (
-            <tr key={line.id ?? `${line.product_code}-${line.stock_location}`} className="border-b border-slate-100">
+            <tr key={line.id ?? `${line.product_code}-${line.stock_location}`} className="theme-table-body-row border-b border-[var(--theme-border)]">
               <td className="px-3 py-2">
-                <span className="font-medium text-slate-900">{line.product_name}</span>
-                <span className="block font-mono text-[10px] text-slate-500">{line.product_code}</span>
+                <span className="font-medium theme-heading">{line.product_name}</span>
+                <span className="theme-subtext block font-mono text-[10px]">{line.product_code}</span>
               </td>
               <td className="px-3 py-2 text-right font-medium">{formatReturnQty(line.quantity)}</td>
-              <td className="px-3 py-2 capitalize">
+              <td className="px-3 py-2 capitalize theme-text">
                 {formatStockLocationLabel(line.stock_location, line)}
               </td>
-              <td className="px-3 py-2 text-slate-700">
+              <td className="px-3 py-2 theme-text">
                 {line.package_type_label ?? line.package_type}
               </td>
               {perProductReason ? (
-                <td className="max-w-[260px] px-3 py-2 text-slate-600">{line.reason ?? "—"}</td>
+                <td className="max-w-[260px] px-3 py-2 theme-subtext">{line.reason ?? "—"}</td>
               ) : null}
             </tr>
           ))}
@@ -652,7 +653,7 @@ export default function SupplierReturnsPage() {
 
                     return (
                       <Fragment key={row.id}>
-                        <tr className="border-b border-slate-100 bg-white theme-table-body-row">
+                        <tr className="border-b border-[var(--theme-border)] theme-table-body-row">
                           <td className={`${COL.toggle.className} py-3 align-top`}>
                             <button
                               type="button"
@@ -674,7 +675,7 @@ export default function SupplierReturnsPage() {
                           <td className={`${COL.supplier.className} py-3 align-top`}>
                             <Link
                               href={`/suppliers/${row.supplier_id}`}
-                              className="font-medium text-[#185FA5] hover:underline"
+                              className="theme-link font-medium hover:underline"
                             >
                               {row.supplier_name ?? "—"}
                             </Link>
@@ -683,9 +684,9 @@ export default function SupplierReturnsPage() {
                             {row.lpo_no ? (
                               <Link
                                 href={`/lpo/${row.lpo_no}`}
-                                className="font-mono text-[#185FA5] hover:underline"
+                                className="theme-link font-mono hover:underline"
                               >
-                                {formatPoNumber(row.lpo_no)}
+                                {formatPoNumber(row.lpo_no, row.lpo_order_date)}
                               </Link>
                             ) : (
                               "—"
@@ -735,9 +736,9 @@ export default function SupplierReturnsPage() {
                           </td>
                         </tr>
                         {!collapsed ? (
-                          <tr className="border-b border-slate-100 bg-slate-50/60">
+                          <tr className="border-b border-[var(--theme-border)] bg-[var(--theme-primary-muted)]">
                             <td colSpan={COLS.length} className="px-4 py-3">
-                              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--theme-primary)]">
                                 Items / products returned ({(row.lines ?? []).length})
                               </p>
                               <LineItemsTable row={row} />

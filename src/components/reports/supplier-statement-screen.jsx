@@ -177,7 +177,7 @@ export function SupplierStatementScreen() {
                     ]
                   : [],
               },
-              disabled: loading || !supplier,
+              disabled: loading || !supplier || exportRows.length === 0,
             }
           : undefined
       }

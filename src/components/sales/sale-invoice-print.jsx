@@ -196,8 +196,10 @@ export function buildSaleInvoiceHtml(
   <title>Invoice Receipt ${escapeHtml(invoiceNo)}</title>
   <style>
     @page { size: A4; margin: 12mm; }
-    body { font-family: "Times New Roman", Times, serif; margin: 0; padding: 16px; color: #000; font-size: 11px; line-height: 1.35; }
-    .page { max-width: 820px; margin: 0 auto; }
+    html { height: 100%; }
+    body { font-family: "Times New Roman", Times, serif; margin: 0; padding: 16px; color: #000; font-size: 11px; line-height: 1.35; min-height: 100%; box-sizing: border-box; }
+    .page { max-width: 820px; margin: 0 auto; min-height: calc(100vh - 32px); display: flex; flex-direction: column; }
+    .page-body { flex: 1 0 auto; }
     .org-brand .org-logo { display: block; margin: 0 auto 8px; max-height: 72px; max-width: 280px; object-fit: contain; }
     .org-brand .org-name { font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
     .brand-name { text-align: center; font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -228,7 +230,17 @@ export function buildSaleInvoiceHtml(
     .sig-line { display: inline-block; min-width: 160px; border-bottom: 1px dotted #000; padding-bottom: 2px; }
     .footer-notes { margin-top: 12px; text-align: center; font-size: 9px; }
     .footer-notes p { margin: 4px 0; }
-    .print-footer { margin-top: 14px; display: flex; justify-content: space-between; font-size: 9px; color: #333; border-top: 1px dotted #999; padding-top: 6px; }
+    .print-footer {
+      margin-top: auto;
+      padding-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 9px;
+      color: #333;
+      border-top: 1px dotted #999;
+      flex-shrink: 0;
+    }
     .pay-instructions { margin: 10px 0 12px; padding: 8px 10px; border: 1px dotted #000; font-size: 10px; }
     .pay-instructions .pay-title { font-weight: 700; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
     .pay-instructions .pay-line { display: flex; justify-content: space-between; gap: 12px; margin: 2px 0; }
@@ -236,11 +248,15 @@ export function buildSaleInvoiceHtml(
     .pay-instructions .pay-value { text-align: right; }
     .pay-instructions .pay-note { margin-top: 6px; font-size: 9px; color: #333; }
     .center { text-align: center; }
-    @media print { body { padding: 0; } }
+    @media print {
+      body { padding: 0; }
+      .page { min-height: calc(297mm - 24mm); }
+    }
   </style>
 </head>
 <body>
   <div class="page">
+    <div class="page-body">
     <div class="brand">
       ${orgHeader}
       <div class="brand-meta">
@@ -299,6 +315,7 @@ export function buildSaleInvoiceHtml(
       ${kraQrHtml}
       ${footerNotesHtml}
       ${documentFooterText ? `<p>${escapeHtml(documentFooterText)}</p>` : ""}
+    </div>
     </div>
 
     <div class="print-footer">

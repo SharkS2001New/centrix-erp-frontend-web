@@ -222,20 +222,31 @@ export default function TripDetailPage() {
           type="button"
           showIcon={false}
           disabled={busy}
-          onClick={() =>
-            printLoadingList({
-              organization,
-              generalSettings: generalSettings(),
-              organizationName: organization?.organization_name ?? organization?.company_name ?? "Loading List",
-              loadingList,
-              trip,
-              printSettings: capabilities?.module_settings?.distribution ?? {},
-              documentFooterText: resolvePrintFooter(
-                mergeGeneralSettings(capabilities?.module_settings),
-                "loading_sheet",
-              ),
-            })
-          }
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              const listRes = await apiRequest(`/dispatch-trips/${id}/loading-list`);
+              const freshList = listRes.loading_list ?? listRes;
+              setLoadingList(freshList);
+              printLoadingList({
+                organization,
+                generalSettings: generalSettings(),
+                organizationName: organization?.organization_name ?? organization?.company_name ?? "Loading List",
+                loadingList: freshList,
+                trip,
+                printSettings: capabilities?.module_settings?.distribution ?? {},
+                documentFooterText: resolvePrintFooter(
+                  mergeGeneralSettings(capabilities?.module_settings),
+                  "loading_sheet",
+                ),
+              });
+            } catch (e) {
+              setError(e instanceof ApiError ? e.message : "Could not refresh loading list for print");
+            } finally {
+              setBusy(false);
+            }
+          }}
         >
           Print loading list
         </PrimaryButton>

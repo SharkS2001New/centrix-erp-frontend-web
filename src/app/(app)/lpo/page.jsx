@@ -25,6 +25,7 @@ import {
 } from "@/components/lpo/lpo-list-actions";
 import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
 import { formatLpoKes, formatPoNumber, lpoOrderDate, LpoStatusBadge } from "@/components/lpo/lpo-shared";
+import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 
 const PAGE_SIZE = 15;
 
@@ -61,6 +62,8 @@ export default function LpoListPage() {
   const [supplierFilter, setSupplierFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
+
+  usePageNavigationReady(!loading);
 
   const loadReferenceData = useCallback(async () => {
     try {
@@ -303,11 +306,10 @@ export default function LpoListPage() {
         </div>
       )}
 
-      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        {loading ? (
-          <p className="p-8 text-sm text-slate-500">Loading purchase orders…</p>
-        ) : (
-          <>
+      {loading ? (
+        <div className="theme-panel theme-table-shell min-h-[280px] rounded-xl shadow-sm" aria-hidden />
+      ) : (
+        <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[800px] border-collapse text-sm">
                 <thead>
@@ -415,9 +417,8 @@ export default function LpoListPage() {
               items={contextMenuItems}
               onClose={() => setContextMenu(null)}
             />
-          </>
-        )}
-      </div>
+        </div>
+      )}
     </CatalogPageShell>
   );
 }

@@ -55,5 +55,5 @@ export function handleNavigationIntentClick(event) {
     return;
   }
 
-  beginNavigationIntent("Opening page…");
+  beginNavigationIntent("Opening page…", href);
 }

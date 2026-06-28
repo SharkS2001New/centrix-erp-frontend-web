@@ -102,14 +102,17 @@ export function CustomerStatementScreen() {
   const outstanding = summary?.outstanding_balance ?? customer?.current_balance ?? 0;
   const creditLimit = summary?.credit_limit ?? customer?.credit_limit ?? 0;
 
-  const columns = [
-    { key: "date", label: "Date", accessor: (r) => formatReportCell("date", r.date) },
-    { key: "document", label: "Document No", accessor: (r) => r.document },
-    { key: "description", label: "Description", accessor: (r) => r.description },
-    { key: "debit", label: "Debit", accessor: (r) => formatReportKes(r.debit), align: "right" },
-    { key: "credit", label: "Credit", accessor: (r) => formatReportKes(r.credit), align: "right" },
-    { key: "balance", label: "Balance", accessor: (r) => formatReportKes(r.balance), align: "right" },
-  ];
+  const columns = useMemo(
+    () => [
+      { key: "date", label: "Date", accessor: (r) => formatReportCell("date", r.date) },
+      { key: "document", label: "Document No", accessor: (r) => r.document },
+      { key: "description", label: "Description", accessor: (r) => r.description },
+      { key: "debit", label: "Debit", accessor: (r) => formatReportKes(r.debit), align: "right" },
+      { key: "credit", label: "Credit", accessor: (r) => formatReportKes(r.credit), align: "right" },
+      { key: "balance", label: "Balance", accessor: (r) => formatReportKes(r.balance), align: "right" },
+    ],
+    [],
+  );
 
   const branding = useMemo(
     () => resolveReportBranding({ organization, generalSettings: generalSettings() }),
@@ -117,23 +120,27 @@ export function CustomerStatementScreen() {
   );
 
   const handlePrint = useCallback(() => {
-    if (!customer || !lines.length) return;
-    printReportTable({
-      meta: buildReportMeta({
-        organizationName: branding.organizationName,
-        title: "Customer Statement",
-        subtitle: customer.customer_name,
-        printedAt: reportPrintedAt(),
-        extraLines: [
-          `Customer: ${customer.customer_name} (#${customer.customer_num})`,
-          `Outstanding balance: ${formatReportKes(outstanding)}`,
-          `Credit limit: ${formatReportKes(creditLimit)}`,
-        ],
-      }),
-      columns: normalizeExportColumns(columns),
-      rows: lines,
-      branding,
-    });
+    if (!customer) return;
+    try {
+      printReportTable({
+        meta: buildReportMeta({
+          organizationName: branding.organizationName,
+          title: "Customer Statement",
+          subtitle: customer.customer_name,
+          printedAt: reportPrintedAt(),
+          extraLines: [
+            `Customer: ${customer.customer_name} (#${customer.customer_num})`,
+            `Outstanding balance: ${formatReportKes(outstanding)}`,
+            `Credit limit: ${formatReportKes(creditLimit)}`,
+          ],
+        }),
+        columns: normalizeExportColumns(columns),
+        rows: lines,
+        branding,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Print failed");
+    }
   }, [branding, columns, creditLimit, customer, lines, outstanding]);
 
   return (
@@ -157,7 +164,7 @@ export function CustomerStatementScreen() {
                   ? [`Customer: ${customer.customer_name} (#${customer.customer_num})`]
                   : [],
               },
-              disabled: loading || !customer,
+              disabled: loading || !customer || lines.length === 0,
             }
           : undefined
       }

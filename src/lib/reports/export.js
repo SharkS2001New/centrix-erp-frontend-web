@@ -1,7 +1,7 @@
 import { formatShortDate } from "@/components/catalog/catalog-shared";
 import { formatAppDateTime } from "@/lib/datetime";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
-import { openPrintWindow } from "@/lib/open-print-window";
+import { openPrintWindow, PRINT_BLOCKED_MESSAGE } from "@/lib/open-print-window";
 import {
   buildReportOrgHeaderHtml,
   buildReportWatermarkHtml,
@@ -120,7 +120,10 @@ ${footerText ? `<div class="doc-footer">${escapeHtml(footerText)}</div>` : ""}
 }
 
 export function printReportTable(options) {
-  openPrintWindow(buildReportPrintHtml(options), "width=900,height=720");
+  const win = openPrintWindow(buildReportPrintHtml(options), "width=900,height=720");
+  if (!win) {
+    throw new Error(PRINT_BLOCKED_MESSAGE);
+  }
 }
 
 export function downloadReportCsv(filename, meta, columns, rows) {

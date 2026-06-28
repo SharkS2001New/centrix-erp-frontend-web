@@ -1,4 +1,5 @@
-import { apiRequest } from "@/lib/api";
+import { apiRequest, ApiError } from "@/lib/api";
+import { EXPORT_EMPTY_ROWS_MESSAGE } from "@/lib/background-task-errors";
 import { reportPrintedAt, slugifyReportFilename } from "@/lib/reports/export";
 import { sanitizeExportSearchParams } from "@/lib/report-export-limits";
 
@@ -83,6 +84,9 @@ export async function queueReportExport(body, getRows = null) {
   const payload = { ...body };
   if (payload.source === "inline_rows") {
     const rows = getRows ? await getRows() : payload.rows ?? [];
+    if (!Array.isArray(rows) || rows.length === 0) {
+      throw new ApiError(EXPORT_EMPTY_ROWS_MESSAGE, 422);
+    }
     payload.rows = rows;
     delete payload._getRows;
   }

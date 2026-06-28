@@ -1,6 +1,5 @@
 import { openPrintWindow } from "@/lib/open-print-window";
 import {
-  buildReportOrgHeaderHtml,
   buildReportWatermarkHtml,
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
@@ -49,15 +48,9 @@ function quantityGhostText(line) {
 }
 
 function priceGhostText(line) {
-  if (Number(line.on_wholesale_retail) === 1 || line.price_tier === "retail") {
-    return "R";
-  }
-  if (line.price_tier === "wholesale" || line.on_wholesale_retail === 0) {
-    return "W";
-  }
   const n = Number(line.unit_price) || 0;
   if (!n) return "";
-  return Number.isInteger(n) ? String(n) : String(n);
+  return Number.isInteger(n) ? String(Math.trunc(n)) : String(n);
 }
 
 /** Sample data with separate wholesale and retail price rows. */
@@ -75,13 +68,13 @@ export function sampleLoadingListPreviewData() {
     },
     {
       line_no: 2,
-      product_name: "THAI RICE BIRIYANI",
-      quantity_label: "18",
-      pack_breakdown: "18 pcs",
-      unit_price: 2450,
-      line_total: 44100,
-      on_wholesale_retail: 1,
-      price_tier: "retail",
+      product_name: "BANJAB RICE 25KG",
+      quantity_label: "25 bag",
+      pack_breakdown: "25 bag",
+      unit_price: 2250,
+      line_total: 56250,
+      on_wholesale_retail: 0,
+      price_tier: "wholesale",
     },
     {
       line_no: 3,
@@ -127,8 +120,41 @@ export function sampleLoadingListPreviewData() {
   };
 }
 
+function buildLoadingListHeaderHtml({ branding, companyName }) {
+  if (branding?.showHeader === false) return "";
+
+  const parts = [];
+  if ((branding?.display === "logo" || branding?.display === "logo_and_name") && branding?.logoUrl) {
+    parts.push(
+      `<img class="org-logo" src="${escapeHtml(branding.logoUrl)}" alt="${escapeHtml(companyName)}">`,
+    );
+  }
+  if (companyName) {
+    parts.push(`<div class="org-name">${escapeHtml(String(companyName).toUpperCase())}</div>`);
+  }
+
+  return parts.length ? `<div class="org-header">${parts.join("")}</div>` : "";
+}
+
+function normalizeLoadingListLines(lines) {
+  return (lines ?? []).map((line, index) => {
+    const productCode = String(line.product_code ?? "").trim();
+    const productName = String(line.product_name ?? "").trim();
+    const resolvedName =
+      productName && productName !== productCode ? productName : productName || productCode;
+
+    return {
+      ...line,
+      line_no: line.line_no ?? index + 1,
+      product_name: resolvedName,
+      quantity_label: line.quantity_label ?? String(line.quantity ?? ""),
+      pack_breakdown: line.pack_breakdown ?? "",
+    };
+  });
+}
+
 function buildLoadingListLineRows(lines) {
-  return (lines ?? [])
+  return normalizeLoadingListLines(lines)
     .map((line) => {
       const qtyMain = escapeHtml(line.quantity_label || line.quantity);
       const qtyGhost = escapeHtml(quantityGhostText(line));
@@ -164,12 +190,15 @@ export function buildLoadingListHtml({
   footerLines = null,
 } = {}) {
   const branding = resolveReportBranding({ organization, generalSettings });
-  const orgHeader = buildReportOrgHeaderHtml(branding);
+  const orgHeader = buildLoadingListHeaderHtml({
+    branding,
+    companyName: resolveOrganizationName({ organization, organizationName, branding }),
+  });
   const watermark = buildReportWatermarkHtml(branding);
   const companyName = resolveOrganizationName({ organization, organizationName, branding });
   const showSignatures = printSettings?.loading_sheet_show_signatures !== false;
 
-  const lines = loadingList?.lines ?? [];
+  const lines = normalizeLoadingListLines(loadingList?.lines ?? []);
   const routeName = loadingList?.route?.route_name ?? trip?.route?.route_name ?? "—";
   const listDate = loadingList?.list_date ?? trip?.scheduled_date;
   const preparedBy = loadingList?.prepared_by_name ?? trip?.prepared_by_name ?? "";
@@ -226,6 +255,7 @@ export function buildLoadingListHtml({
       color: #111;
       margin: 20px 28px;
       font-size: 12px;
+      line-height: 1.35;
       position: relative;
     }
     .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
@@ -251,55 +281,65 @@ export function buildLoadingListHtml({
       object-fit: contain;
     }
     .sheet { position: relative; z-index: 1; }
-    .org-header { text-align: center; margin-bottom: 14px; }
-    .org-logo { display: block; margin: 0 auto 8px; max-height: 56px; max-width: 220px; object-fit: contain; }
+    .org-header { text-align: center; margin-bottom: 16px; }
+    .org-logo { display: block; margin: 0 auto 10px; max-height: 56px; max-width: 220px; object-fit: contain; }
     .org-name {
       margin: 0;
       font-size: 22px;
       font-weight: 700;
-      letter-spacing: 0.03em;
+      letter-spacing: 0.02em;
       text-transform: uppercase;
       line-height: 1.2;
     }
-    .title-block { text-align: center; margin-bottom: 18px; }
+    .title-block { text-align: center; margin-bottom: 20px; }
     .title-block .doc-title {
       margin: 0;
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 700;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
+      line-height: 1.35;
     }
     .title-block .route-name {
-      margin: 8px 0 0;
+      margin: 10px 0 0;
       font-size: 13px;
       font-weight: 700;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
+      line-height: 1.35;
     }
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     thead th {
       background: #ececec;
       font-size: 11px;
       font-weight: 700;
       text-transform: none;
       padding: 10px 8px;
-      border: none;
+      border-top: 1px solid #c9c9c9;
+      border-bottom: 1px solid #c9c9c9;
       vertical-align: bottom;
       line-height: 1.25;
     }
     tbody td {
-      padding: 10px 8px;
+      padding: 12px 8px 0;
       border: none;
       vertical-align: top;
       line-height: 1.3;
     }
-    tbody tr + tr td { padding-top: 12px; }
-    .col-no { width: 36px; text-align: left; }
-    .col-product { width: 34%; font-weight: 700; text-transform: uppercase; }
+    tbody tr:first-child td { padding-top: 14px; }
+    tbody tr + tr td { padding-top: 16px; }
+    .col-no { width: 40px; text-align: left; }
+    .col-product {
+      width: 34%;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding-right: 12px;
+      word-break: break-word;
+    }
     .col-qty, .col-price { text-align: left; white-space: nowrap; }
-    .col-total { text-align: right; white-space: nowrap; font-weight: 600; }
+    .col-total { text-align: right; white-space: nowrap; font-weight: 400; }
     .main { font-weight: 700; }
-    .ghost { color: #8a8a8a; font-size: 10px; font-weight: 400; margin-top: 2px; }
+    .ghost { color: #8a8a8a; font-size: 10px; font-weight: 400; margin-top: 3px; line-height: 1.2; }
     .empty { text-align: center; padding: 24px; color: #666; }
     tfoot td {
       padding: 14px 8px 0;

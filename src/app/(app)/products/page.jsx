@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useAppRouter } from "@/lib/use-app-router";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -223,7 +223,7 @@ function groupProducts(products) {
 }
 
 export default function ProductsPage() {
-  const router = useRouter();
+  const router = useAppRouter();
   const { capabilities, user } = useAuth();
   const multiBranch = isMultiBranchCatalog(capabilities);
   const [kraSelectMode, setKraSelectMode] = useState(false);

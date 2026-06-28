@@ -6,18 +6,32 @@ let activeLabel = "Loading…";
 let pageNavigationActive = false;
 /** True from link click until the new page has settled (blocks duplicate navigations). */
 let navigating = false;
-/** @type {Set<(state: { pending: number, label: string, navigating: boolean }) => void>} */
+/** Destination path for page-driven skeletons (set on click, cleared when navigation finishes). */
+let pendingHref = null;
+/** @type {Set<(state: { pending: number, label: string, navigating: boolean, pendingHref: string | null }) => void>} */
 const listeners = new Set();
 
 function emit() {
-  const state = { pending: pendingCount, label: activeLabel, navigating };
+  const state = {
+    pending: pendingCount,
+    label: activeLabel,
+    navigating,
+    pendingHref,
+    pageNavigationActive,
+  };
   listeners.forEach((listener) => listener(state));
 }
 
-/** @param {(state: { pending: number, label: string, navigating: boolean }) => void} listener */
+/** @param {(state: { pending: number, label: string, navigating: boolean, pendingHref: string | null, pageNavigationActive: boolean }) => void} listener */
 export function subscribeAppLoading(listener) {
   listeners.add(listener);
-  listener({ pending: pendingCount, label: activeLabel, navigating });
+  listener({
+    pending: pendingCount,
+    label: activeLabel,
+    navigating,
+    pendingHref,
+    pageNavigationActive,
+  });
   return () => listeners.delete(listener);
 }
 
@@ -39,15 +53,20 @@ export function isNavigationPending() {
   return navigating;
 }
 
+export function getPendingHref() {
+  return pendingHref;
+}
+
 /**
  * Call as soon as the user clicks an internal link (before the route changes).
  * Returns false when navigation is already in progress — caller should block the click.
  */
-export function beginNavigationIntent(label = "Opening page…") {
+export function beginNavigationIntent(label = "Opening page…", href = null) {
   if (navigating) return false;
   navigating = true;
   pageNavigationActive = true;
   activeLabel = label;
+  pendingHref = href;
   emit();
   return true;
 }
@@ -58,6 +77,7 @@ export function finishNavigation() {
     return;
   }
   navigating = false;
+  pendingHref = null;
   if (pendingCount === 0) {
     activeLabel = "Loading…";
     endPageNavigation();
@@ -85,5 +105,11 @@ export function endAppLoading() {
 }
 
 export function getAppLoadingState() {
-  return { pending: pendingCount, label: activeLabel, navigating };
+  return {
+    pending: pendingCount,
+    label: activeLabel,
+    navigating,
+    pendingHref,
+    pageNavigationActive,
+  };
 }

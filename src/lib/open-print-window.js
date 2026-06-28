@@ -11,12 +11,19 @@ export function printWindowFeatures(documentType = "receipt") {
   return documentType === "invoice" ? "width=860,height=960" : "width=420,height=720";
 }
 
-function createHiddenPrintFrame() {
+function parseWindowFeatures(features) {
+  const str = String(features ?? "");
+  const width = Number(str.match(/width=(\d+)/)?.[1] ?? 420);
+  const height = Number(str.match(/height=(\d+)/)?.[1] ?? 720);
+  return { width, height, features: str };
+}
+
+function createHiddenPrintFrame(width = 420, height = 1200) {
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
   frame.title = "Print";
-  frame.style.cssText =
-    "position:fixed;width:0;height:0;border:0;clip:rect(0,0,0,0);overflow:hidden;visibility:hidden;";
+  // Off-screen but sized — zero-size iframes print blank tables/reports.
+  frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${width}px;min-height:${height}px;border:0;visibility:hidden;overflow:hidden;`;
   document.body.appendChild(frame);
   return frame;
 }
@@ -29,11 +36,13 @@ function isIframePrintWindow(win) {
  * Prepare a print target on user click. Uses a hidden iframe (no new tab).
  * Returns the iframe's contentWindow for fillPrintWindow().
  */
-export function openBlankPrintWindow(_windowFeatures = printWindowFeatures("receipt")) {
+export function openBlankPrintWindow(windowFeatures = printWindowFeatures("receipt")) {
   if (typeof document === "undefined") return null;
 
+  const { width, height } = parseWindowFeatures(windowFeatures);
+
   try {
-    const frame = createHiddenPrintFrame();
+    const frame = createHiddenPrintFrame(width, height);
     const win = frame.contentWindow;
     if (!win) {
       frame.remove();
@@ -138,8 +147,18 @@ export function showPrintPreparing(win, message = "Preparing document…") {
   );
 }
 
-/** Print HTML: hidden iframe + system print dialog (no visible new page). */
+/** Print HTML: hidden iframe (receipts) or popup (reports/invoices). */
 export function openPrintWindow(htmlContent, windowFeatures = printWindowFeatures("receipt")) {
+  const parsed = parseWindowFeatures(windowFeatures);
+
+  // Wide documents need a real window — hidden zero-width iframes print blank.
+  if (parsed.width >= 600) {
+    const win = window.open("", "_blank", parsed.features || undefined);
+    if (!win) return null;
+    fillPrintWindow(win, htmlContent);
+    return win;
+  }
+
   const win = openBlankPrintWindow(windowFeatures);
   if (!win) return null;
   fillPrintWindow(win, htmlContent);

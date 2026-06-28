@@ -13,6 +13,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 import { printLoadingList } from "@/components/fulfillment/loading-list-print";
+import { LoadingListDocumentPreview } from "@/components/fulfillment/loading-list-document-preview";
 import { formatSaleKes } from "@/lib/sales";
 import { shouldShowMobileLoadingSheets } from "@/lib/sales-settings";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
@@ -102,16 +103,32 @@ export default function MobileLoadingSheetsScreen() {
     }
   }
 
-  function handlePrint() {
+  async function handlePrint() {
     if (!detail?.loading_list) return;
-    printLoadingList({
-      organization,
-      generalSettings: general,
-      organizationName,
-      loadingList: detail.loading_list,
-      printSettings: distributionSettings,
-      documentFooterText: resolvePrintFooter(mergeGeneralSettings(capabilities?.module_settings), "loading_sheet"),
-    });
+    const routeId = detail.loading_list.route_id ?? detail.loading_list.route?.id;
+    const listDate = detail.loading_list.list_date;
+    if (!routeId || !listDate) return;
+
+    setDetailError(null);
+    setDetailLoading(true);
+    try {
+      const res = await apiRequest("/sales/mobile-loading-sheets/detail", {
+        searchParams: { route_id: routeId, list_date: listDate },
+      });
+      setDetail(res);
+      printLoadingList({
+        organization,
+        generalSettings: general,
+        organizationName,
+        loadingList: res.loading_list,
+        printSettings: distributionSettings,
+        documentFooterText: resolvePrintFooter(mergeGeneralSettings(capabilities?.module_settings), "loading_sheet"),
+      });
+    } catch (e) {
+      setDetailError(e instanceof ApiError ? e.message : "Could not refresh loading list for print");
+    } finally {
+      setDetailLoading(false);
+    }
   }
 
   if (!allowed) {
@@ -138,7 +155,10 @@ export default function MobileLoadingSheetsScreen() {
   }
 
   const loadingList = detail?.loading_list;
-  const lines = loadingList?.lines ?? [];
+  const documentFooterText = resolvePrintFooter(
+    mergeGeneralSettings(capabilities?.module_settings),
+    "loading_sheet",
+  );
 
   return (
     <CatalogPageShell
@@ -224,53 +244,24 @@ export default function MobileLoadingSheetsScreen() {
             <p className="text-sm text-red-600">{detailError}</p>
           ) : loadingList ? (
             <>
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-semibold">{loadingList.route?.route_name ?? "Route"}</h2>
-                  <p className="theme-subtext text-sm">{formatDisplayDate(loadingList.list_date)}</p>
-                  <p className="theme-text-muted mt-1 text-xs">
-                    {loadingList.order_count} order{loadingList.order_count === 1 ? "" : "s"} ·{" "}
-                    {formatSaleKes(loadingList.total_amount)}
-                  </p>
-                </div>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <p className="theme-text-muted text-xs">
+                  {loadingList.order_count} order{loadingList.order_count === 1 ? "" : "s"} ·{" "}
+                  {formatSaleKes(loadingList.total_amount)}
+                </p>
                 <PrimaryButton type="button" showIcon={false} onClick={handlePrint}>
                   Print loading sheet
                 </PrimaryButton>
               </div>
 
-              <div className="theme-table-shell max-h-[24rem] overflow-auto">
-                <table className="theme-table w-full text-xs">
-                  <thead>
-                    <tr className="theme-table-head-row">
-                      <th className="px-3 py-2 text-left">Product</th>
-                      <th className="px-3 py-2 text-right">Qty</th>
-                      <th className="px-3 py-2 text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lines.length === 0 ? (
-                      <tr>
-                        <td colSpan={3} className="theme-subtext px-3 py-6 text-center">
-                          No line items
-                        </td>
-                      </tr>
-                    ) : (
-                      lines.map((line) => (
-                        <tr key={`${line.line_no}-${line.product_code}`} className="theme-table-body-row">
-                          <td className="px-3 py-2">
-                            <div className="font-medium">{line.product_name}</div>
-                            {line.pack_breakdown ? (
-                              <div className="theme-subtext text-[10px]">{line.pack_breakdown}</div>
-                            ) : null}
-                          </td>
-                          <td className="px-3 py-2 text-right whitespace-nowrap">{line.quantity_label}</td>
-                          <td className="px-3 py-2 text-right tabular-nums">{formatSaleKes(line.line_total)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <LoadingListDocumentPreview
+                loadingList={loadingList}
+                organization={organization}
+                generalSettings={general}
+                organizationName={organizationName}
+                printSettings={distributionSettings}
+                documentFooterText={documentFooterText}
+              />
 
               {detail?.orders?.length ? (
                 <div className="mt-4 border-t border-[var(--theme-border)] pt-3">
