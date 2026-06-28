@@ -111,7 +111,7 @@ export function buildReceiptPaymentDetailsHtml(details, { layout = "thermal" } =
   const lineRows = (payload.lines ?? [])
     .map(
       (line) =>
-        `<div class="amount-line"><span class="amount-label">${escapeHtml(line.label)}</span><span class="amount-value">${escapeHtml(line.value || "—")}</span></div>`,
+        `<div class="pay-line"><span class="pay-label">${escapeHtml(line.label)}${line.label ? ":" : ""}</span> <span class="pay-value">${escapeHtml(line.value || "—")}</span></div>`,
     )
     .join("");
 
@@ -129,6 +129,7 @@ export function buildReceiptPaymentDetailsHtml(details, { layout = "thermal" } =
 
   return `<div class="pay-instructions">
     <div class="payment-title">${escapeHtml(payload.title || "Payment details")}</div>
+    <div class="divider"></div>
     ${lineRows}
     ${note}
   </div>`;

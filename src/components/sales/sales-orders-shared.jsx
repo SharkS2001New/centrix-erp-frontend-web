@@ -19,6 +19,7 @@ import {
 import {
   PAYMENT_STATUS_LABELS,
   formatReceiptNumber,
+  formatOrderNumber,
   formatSaleKes,
   nextTransitionOptions,
   orderSourceLabel,
@@ -580,7 +581,7 @@ export function OrderListTableHead({
   return (
     <tr className={TABLE_HEAD_ROW_CLASS}>
       <th className="w-12 px-4 py-2.5" aria-label="Expand" />
-      <th className="px-4 py-2.5">Receipt</th>
+      <th className="px-4 py-2.5">Order</th>
       <th className="px-4 py-2.5">Customer</th>
       {showBranchColumn ? <th className="px-4 py-2.5">Branch</th> : null}
       {showRouteColumn ? <th className="px-4 py-2.5">Route</th> : null}
@@ -640,9 +641,8 @@ export function OrderListTableRow({
         </td>
         <td className="px-4 py-3">
           <Link href={href} className="font-medium text-[var(--theme-primary)] hover:underline">
-            {formatReceiptNumber(sale)}
+            {formatOrderNumber(sale)}
           </Link>
-          <p className="mt-0.5 text-xs text-slate-500">#{sale.order_num}</p>
         </td>
         <td className="px-4 py-3 text-slate-700">{saleCustomerLabel(sale)}</td>
         {showBranchColumn ? (
@@ -714,11 +714,10 @@ export function OrderDetailHeader({ sale, workflow }) {
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Sales order</p>
           <h1 className="mt-1 text-xl font-semibold text-slate-900">
-            {formatReceiptNumber(sale)}
+            {formatOrderNumber(sale)}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Order #{sale.order_num}
-            {sale.channel ? ` · ${String(sale.channel).toUpperCase()} channel` : ""}
+            {sale.channel ? `${String(sale.channel).toUpperCase()} channel` : "—"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

@@ -16,7 +16,7 @@ import {
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { POD_RECORD_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
-import { saleCustomerLabel } from "@/lib/sales";
+import { formatOrderNumber, saleCustomerLabel } from "@/lib/sales";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
@@ -72,6 +72,7 @@ export default function PodRecordsPage() {
     return records.filter((r) => {
       return (
         String(r.recipient_name ?? "").toLowerCase().includes(q) ||
+        formatOrderNumber(r.sale).toLowerCase().includes(q) ||
         String(r.sale?.order_num ?? r.sale_id).toLowerCase().includes(q)
       );
     });
@@ -158,7 +159,7 @@ export default function PodRecordsPage() {
                   <td className="px-4 py-3">{new Date(record.captured_at).toLocaleString()}</td>
                   <td className="px-4 py-3">
                     <Link href={`/sales/orders/${record.sale_id}`} className="font-mono text-[#185FA5] hover:underline">
-                      {record.sale?.order_num ?? record.sale_id}
+                      {formatOrderNumber(record.sale ?? record.sale_id)}
                     </Link>
                   </td>
                   <td className="px-4 py-3">{record.sale ? saleCustomerLabel(record.sale) : "—"}</td>

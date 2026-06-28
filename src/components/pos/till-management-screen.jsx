@@ -44,10 +44,12 @@ import {
 } from "@/lib/pos-till";
 import { isPosTillFloatRequired } from "@/lib/sales-settings";
 import { useConfirm } from "@/lib/use-confirm";
+import { PrintAgentSettingsPanel } from "@/components/pos/print-agent-settings-panel";
 
 const TABS = [
   { id: "tills", label: "Tills" },
   { id: "history", label: "Session history" },
+  { id: "printing", label: "Printing" },
 ];
 
 const HISTORY_PAGE_SIZE = 15;
@@ -781,6 +783,8 @@ export function TillManagementScreen() {
             </div>
           </>
         ) : null}
+
+        {tab === "printing" ? <PrintAgentSettingsPanel /> : null}
       </CatalogPageShell>
 
       <FloatBreakdownModal

@@ -226,13 +226,12 @@ export async function printSaleOrder(sale, options = {}) {
       return documentType;
     }
 
-    for (let copy = 0; copy < copies; copy += 1) {
-      printSaleReceipt(saleForPrint, {
-        ...printOptions,
-        organizationName: seller.name ?? options.organizationName ?? DEFAULT_PRINT_ORG_NAME,
-        uomById: options.uomById ?? null,
-      });
-    }
+    await printSaleReceipt(saleForPrint, {
+      ...printOptions,
+      copies,
+      organizationName: seller.name ?? options.organizationName ?? DEFAULT_PRINT_ORG_NAME,
+      uomById: options.uomById ?? null,
+    });
 
     return documentType;
   } catch (error) {

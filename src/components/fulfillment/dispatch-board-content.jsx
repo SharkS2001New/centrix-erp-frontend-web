@@ -17,7 +17,7 @@ import {
 import { getSaleDriverId, getSaleVehicleId } from "@/components/fulfillment/fulfillment-shared";
 import { DISPATCH_READY_STATUSES, isDistributionOpsEnabled, mergeDistributionSettings, shouldShowOrderAssignAction, assignActionLabel } from "@/lib/distribution-settings";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
-import { formatSaleKes, saleCustomerLabel } from "@/lib/sales";
+import { formatOrderNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 
 function isoDate(d = new Date()) {
@@ -271,7 +271,7 @@ export function DispatchBoardContent() {
                       label: "Order #",
                       render: (row) => (
                         <Link href={`/sales/orders/${row.id}`} className="font-mono text-[#185FA5] hover:underline">
-                          {row.order_num ?? row.id}
+                          {formatOrderNumber(row)}
                         </Link>
                       ),
                     },

@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# print agent local runtime (portable Node downloaded on till PCs)
+/print-agent/node_modules
+/print-agent/runtime

@@ -32,7 +32,11 @@ export function modulesForProfile(profiles, profileKey, moduleOptions = [], mobi
   if (map.size === 0) {
     return raw;
   }
-  return normalizeDomainModules(raw, map);
+  const normalized = normalizeDomainModules(raw, map);
+  if (profileKey === "custom") {
+    return Object.fromEntries(Object.keys(normalized).map((key) => [key, false]));
+  }
+  return normalized;
 }
 
 export {

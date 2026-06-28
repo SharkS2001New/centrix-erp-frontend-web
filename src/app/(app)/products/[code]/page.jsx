@@ -24,6 +24,7 @@ import {
 } from "@/lib/uom-packaging";
 import { stockSellingValue } from "@/lib/retail-pricing";
 import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
+import { formatOrderNumber } from "@/lib/sales";
 import { resolveProductAudit } from "@/lib/product-audit";
 
 const MAIN_TABS = [
@@ -266,7 +267,7 @@ function buildSaleRows(items, productCode) {
 
     return {
       id: row.id,
-      label: `Order #${orderNum}`,
+      label: `Order #${formatOrderNumber(orderNum)}`,
       subtitle: `Sold by ${seller}`,
       href: `/sales/orders/${row.sale_id}?from=${from}`,
       date: dateLabel,

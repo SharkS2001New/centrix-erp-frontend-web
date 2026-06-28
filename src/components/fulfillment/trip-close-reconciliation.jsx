@@ -12,7 +12,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { DashboardKpiGrid, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { formatSaleKes } from "@/lib/sales";
+import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 
 function varianceTone(variance) {
@@ -325,7 +325,7 @@ export function TripCloseReconciliation({ tripId }) {
                 label: "Order",
                 render: (row) => (
                   <Link href={`/sales/orders/${row.id}`} className="font-mono text-[#185FA5] hover:underline">
-                    {row.order_num}
+                    {formatOrderNumber(row)}
                   </Link>
                 ),
               },

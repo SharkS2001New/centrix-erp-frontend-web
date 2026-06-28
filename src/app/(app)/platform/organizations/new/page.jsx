@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -14,6 +14,10 @@ import {
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { buildDomainChildrenMap, patchEnabledModules } from "@/lib/module-registry";
 import { applicationsFromEnabledModules } from "@/lib/workspace-modules";
+import {
+  ProvisionSetupPreview,
+  ProvisionTemplateControls,
+} from "@/components/platform/provision-setup-preview";
 
 export default function RegisterOrganizationPage() {
   const { capabilities } = useAuth();
@@ -38,6 +42,13 @@ export default function RegisterOrganizationPage() {
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [organizations, setOrganizations] = useState([]);
+  const [templateName, setTemplateName] = useState("");
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [cloneOrgId, setCloneOrgId] = useState("");
 
   const domainChildrenMap = useMemo(() => buildDomainChildrenMap(moduleOptions), [moduleOptions]);
 
@@ -51,6 +62,25 @@ export default function RegisterOrganizationPage() {
     vat_regno: vatRegno,
   };
 
+  const refreshPreview = useCallback(async () => {
+    setPreviewLoading(true);
+    try {
+      const payload = await apiRequest("/admin/organizations/provision-preview", {
+        method: "POST",
+        body: {
+          deployment_profile: deploymentProfile,
+          applications: applicationsFromEnabledModules(enabledModules),
+          sales_platform: salesPlatform,
+        },
+      });
+      setPreview(payload);
+    } catch {
+      setPreview(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [deploymentProfile, enabledModules, salesPlatform]);
+
   useEffect(() => {
     apiRequest("/admin/organizations/provision-options")
       .then((res) => {
@@ -58,12 +88,20 @@ export default function RegisterOrganizationPage() {
         const modules = res.modules ?? [];
         setProfilePresets(profiles);
         setModuleOptions(modules);
+        setTemplates(res.provisioning_templates ?? []);
         const initialProfile = profiles.find((p) => p.key === "wholesale_retail")
           ? "wholesale_retail"
           : profiles[0]?.key;
         if (initialProfile) {
           setDeploymentProfile(initialProfile);
-          setEnabledModules(modulesForProfile(profiles, initialProfile, modules, defaultSalesPlatformState(initialProfile).enable_mobile_orders !== false));
+          setEnabledModules(
+            modulesForProfile(
+              profiles,
+              initialProfile,
+              modules,
+              defaultSalesPlatformState(initialProfile).enable_mobile_orders !== false,
+            ),
+          );
           setSalesPlatform(defaultSalesPlatformState(initialProfile));
         }
       })
@@ -72,7 +110,16 @@ export default function RegisterOrganizationPage() {
           err instanceof ApiError ? err.message : "Could not load module options.",
         );
       });
+
+    apiRequest("/admin/organizations")
+      .then((res) => setOrganizations(res.data ?? []))
+      .catch(() => setOrganizations([]));
   }, []);
+
+  useEffect(() => {
+    if (!profilePresets.length) return;
+    void refreshPreview();
+  }, [profilePresets.length, refreshPreview]);
 
   function onTenantChange(field, value) {
     const map = {
@@ -89,7 +136,14 @@ export default function RegisterOrganizationPage() {
 
   function onProfileChange(nextProfile) {
     setDeploymentProfile(nextProfile);
-    setEnabledModules(modulesForProfile(profilePresets, nextProfile, moduleOptions, salesPlatform?.enable_mobile_orders !== false));
+    setEnabledModules(
+      modulesForProfile(
+        profilePresets,
+        nextProfile,
+        moduleOptions,
+        defaultSalesPlatformState(nextProfile).enable_mobile_orders !== false,
+      ),
+    );
     setSalesPlatform(defaultSalesPlatformState(nextProfile));
   }
 
@@ -109,6 +163,78 @@ export default function RegisterOrganizationPage() {
       managerPassword: setManagerPassword,
     };
     map[field]?.(value);
+  }
+
+  function applyTemplate(template) {
+    if (!template) return;
+    setDeploymentProfile(template.deployment_profile ?? "custom");
+    if (template.sales_platform) {
+      setSalesPlatform({ ...defaultSalesPlatformState(template.deployment_profile), ...template.sales_platform });
+    } else {
+      setSalesPlatform(defaultSalesPlatformState(template.deployment_profile));
+    }
+    if (template.enabled_modules && Object.keys(template.enabled_modules).length > 0) {
+      setEnabledModules(template.enabled_modules);
+    } else {
+      setEnabledModules(
+        modulesForProfile(profilePresets, template.deployment_profile ?? "custom", moduleOptions),
+      );
+    }
+  }
+
+  async function cloneOrganization(orgId) {
+    if (!orgId) return;
+    try {
+      const snapshot = await apiRequest(`/admin/organizations/${orgId}/provision-snapshot`);
+      setDeploymentProfile(snapshot.deployment_profile ?? "custom");
+      if (snapshot.sales_platform) {
+        setSalesPlatform({ ...defaultSalesPlatformState(snapshot.deployment_profile), ...snapshot.sales_platform });
+      }
+      if (snapshot.enabled_modules && Object.keys(snapshot.enabled_modules).length > 0) {
+        setEnabledModules(snapshot.enabled_modules);
+      } else if (snapshot.applications) {
+        const partial = {};
+        for (const [key, value] of Object.entries(snapshot.applications)) {
+          if (key === "pos" && value) partial["sales.pos"] = true;
+          if (key === "backoffice" && value) {
+            partial["sales.backend"] = true;
+            partial.inventory = true;
+            partial.customers_suppliers = true;
+          }
+          if (key === "distribution" && value) partial.distribution = true;
+          if (key === "accounting" && value) partial.accounting = true;
+          if (key === "hr" && value) partial.hr_payroll = true;
+          if (key === "admin" && value) partial.admin = true;
+        }
+        setEnabledModules((prev) => patchEnabledModules(prev, partial, domainChildrenMap));
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load organization setup.");
+    }
+  }
+
+  async function saveTemplate() {
+    const name = templateName.trim();
+    if (!name) return;
+    setTemplateSaving(true);
+    setError(null);
+    try {
+      const created = await apiRequest("/admin/organizations/provisioning-templates", {
+        method: "POST",
+        body: {
+          name,
+          deployment_profile: deploymentProfile,
+          enabled_modules: enabledModules,
+          sales_platform: salesPlatform,
+        },
+      });
+      setTemplates((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setTemplateName("");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save template.");
+    } finally {
+      setTemplateSaving(false);
+    }
   }
 
   async function onSubmit(e) {
@@ -158,7 +284,7 @@ export default function RegisterOrganizationPage() {
       />
 
       {result ? (
-        <div className="mt-6 max-w-2xl rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-sm text-emerald-900">
+        <div className="mt-6 max-w-3xl rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-sm text-emerald-900">
           <h2 className="text-base font-semibold text-emerald-950">Organization registered</h2>
           <p className="mt-2">{result.message}</p>
           <dl className="mt-4 space-y-2">
@@ -175,6 +301,32 @@ export default function RegisterOrganizationPage() {
               <dd className="font-mono">{result.manager?.username}</dd>
             </div>
           </dl>
+
+          {result.recommended_roles?.length ? (
+            <div className="mt-4">
+              <h3 className="font-medium text-emerald-950">Recommended staff roles</h3>
+              <ul className="mt-2 space-y-1">
+                {result.recommended_roles.map((role) => (
+                  <li key={role.role_name}>
+                    <strong>{role.role_name}</strong>
+                    {role.description ? ` — ${role.description}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {result.onboarding_steps?.length ? (
+            <div className="mt-4">
+              <h3 className="font-medium text-emerald-950">Next steps</h3>
+              <ol className="mt-2 list-decimal space-y-1 pl-5">
+                {result.onboarding_steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            </div>
+          ) : null}
+
           <p className="mt-4 text-emerald-800">
             Share the administrator username and password securely. They sign in with organization code{" "}
             <strong>{result.organization?.company_code}</strong> on the same application URL.
@@ -212,26 +364,43 @@ export default function RegisterOrganizationPage() {
             </p>
           ) : null}
 
-          <OrganizationConfigTabs
-            mode="register"
-            tenantValues={tenantValues}
-            onTenantChange={onTenantChange}
-            profilePresets={profilePresets}
-            deploymentProfile={deploymentProfile}
-            onProfileChange={onProfileChange}
-            salesPlatform={salesPlatform}
-            onSalesChange={setSalesPlatform}
-            enabledModules={enabledModules}
-            moduleOptions={moduleOptions}
-            onToggleModule={toggleModule}
-            onSetModules={setModules}
-            adminPanel={
-              <InitialAdministratorFields
-                values={{ managerFullName, managerUsername, managerEmail, managerPassword }}
-                onChange={updateManager}
-              />
-            }
+          <ProvisionTemplateControls
+            templates={templates}
+            organizations={organizations}
+            templateName={templateName}
+            onTemplateNameChange={setTemplateName}
+            onLoadTemplate={applyTemplate}
+            onSaveTemplate={saveTemplate}
+            onCloneOrganization={cloneOrganization}
+            selectedCloneOrgId={cloneOrgId}
+            onSelectedCloneOrgIdChange={setCloneOrgId}
+            saving={templateSaving}
           />
+
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+            <OrganizationConfigTabs
+              mode="register"
+              tenantValues={tenantValues}
+              onTenantChange={onTenantChange}
+              profilePresets={profilePresets}
+              deploymentProfile={deploymentProfile}
+              onProfileChange={onProfileChange}
+              salesPlatform={salesPlatform}
+              onSalesChange={setSalesPlatform}
+              enabledModules={enabledModules}
+              moduleOptions={moduleOptions}
+              onToggleModule={toggleModule}
+              onSetModules={setModules}
+              adminPanel={
+                <InitialAdministratorFields
+                  values={{ managerFullName, managerUsername, managerEmail, managerPassword }}
+                  onChange={updateManager}
+                />
+              }
+            />
+
+            <ProvisionSetupPreview preview={preview} loading={previewLoading} className="xl:sticky xl:top-6 xl:self-start" />
+          </div>
 
           {error ? (
             <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>

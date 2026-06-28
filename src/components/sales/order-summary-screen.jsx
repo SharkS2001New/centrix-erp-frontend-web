@@ -16,6 +16,7 @@ import {
 } from "@/lib/order-workflow";
 import {
   PAYMENT_STATUS_LABELS,
+  formatOrderNumber,
   formatReceiptNumber,
   formatSaleKes,
   orderSourceLabel,
@@ -427,7 +428,7 @@ function CustomerOrderDetailsPanel({
             <DetailRow label="Order type" value={orderTypeLabel(sale)} />
             <DetailRow label="Branch" value={branchName ?? "—"} />
             <DetailRow label="Cashier" value={cashierName ?? "—"} />
-            <DetailRow label="Receipt no." value={formatReceiptNumber(sale)} />
+            <DetailRow label="Order no." value={formatOrderNumber(sale)} />
             <DetailRow label="Status" value={saleStatusLabel(sale?.status, workflow)} />
             {routeName ? <DetailRow label="Route" value={routeName} /> : null}
             {driverName ? <DetailRow label="Driver" value={driverName} /> : null}
@@ -730,7 +731,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         </Link>
         <span className="mx-2 opacity-40">›</span>
         <span className="theme-heading font-medium">
-          Order #{sale ? formatReceiptNumber(sale) : "…"}
+          Order #{sale ? formatOrderNumber(sale) : "…"}
         </span>
       </nav>
 
@@ -742,7 +743,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
             <div>
               <div className="flex flex-wrap items-center gap-3">
                 <h1 className="theme-heading text-2xl font-semibold">
-                  Order #{formatReceiptNumber(sale)}
+                  Order #{formatOrderNumber(sale)}
                 </h1>
                 <SaleStatusBadge status={sale.status} workflow={saleWorkflow} />
                 {sale.payment_status && sale.payment_status !== sale.status ? (

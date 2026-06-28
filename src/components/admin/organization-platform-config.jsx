@@ -182,7 +182,9 @@ export function OrganizationTenantProfile({
               ))}
             </select>
             <p className="mt-1 text-xs text-slate-500">
-              Business type preset. Changing this updates the default application toggles on the Applications tab.
+              {deploymentProfile === "custom"
+                ? "Start from a blank setup and enable only the applications you need on the Applications tab."
+                : "Business type preset. Changing this updates the default application toggles on the Applications tab."}
             </p>
           </OrgRegisterField>
         ) : null}

@@ -1,6 +1,6 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { buildKraThermalQrHtml } from "@/lib/kra-receipt-qr";
-import { openPrintWindow, fillPrintWindow } from "@/lib/open-print-window";
+import { dispatchPrintJob } from "@/lib/print-dispatch";
 import { isPoweredByFooterLine, resolveReceiptFooterLines } from "@/lib/print-footer-settings";
 import {
   buildSaleDocumentLineRows,
@@ -12,7 +12,7 @@ import {
   shouldShowPrintDiscountColumn,
 } from "@/lib/sale-document-print-shared";
 import { buildReceiptPaymentDetailsHtml } from "@/lib/receipt-payment-details";
-import { formatReceiptNumber, saleCustomerLabel } from "@/lib/sales";
+import { formatOrderNumber, saleCustomerLabel } from "@/lib/sales";
 
 function buildUsedPaymentRows(sale, orderTotal) {
   const rows = [];
@@ -111,7 +111,7 @@ export function buildSaleReceiptHtml(
   if (!sale) return "";
 
   const items = sale.items ?? [];
-  const receipt = formatReceiptNumber(sale);
+  const orderNo = formatOrderNumber(sale);
   const customerName = customer?.customer_name ?? saleCustomerLabel(sale);
   const customerPhone =
     sale.customer_phone ?? sale.customer_mobile ?? customer?.phone_number ?? customer?.additional_phone ?? "";
@@ -127,7 +127,6 @@ export function buildSaleReceiptHtml(
       ? String(branch.phone)
       : [seller?.phone, seller?.secondary_phone].filter(Boolean).join(" / ");
   const tillNo = sale.pos_terminal_id ?? sale.branch_id ?? branch?.id ?? "1";
-  const orderNo = sale.order_num ?? sale.id ?? "—";
   const cashierName = sale.cashier_name ?? sale.user?.full_name ?? "—";
 
   const showDiscountColumn = shouldShowPrintDiscountColumn({
@@ -198,7 +197,7 @@ export function buildSaleReceiptHtml(
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>Receipt ${escapeHtml(receipt)}</title>
+  <title>Receipt ${escapeHtml(orderNo)}</title>
   <style>
     body { font-family: ui-monospace, "Courier New", monospace; margin: 0; padding: 12px; color: #111827; background: #fff; font-size: 10px; }
     .receipt { width: 320px; margin: 0 auto; }
@@ -239,12 +238,13 @@ export function buildSaleReceiptHtml(
     .amount-value { font-weight: 400; text-align: right; white-space: nowrap; }
     .amount-line-grand { font-size: 11px; font-weight: 700; margin-top: 6px; padding-top: 4px; border-top: 1px solid #111827; }
     .amount-line-grand .amount-value { font-weight: 700; }
-    .payment-title { text-align: center; font-weight: 700; letter-spacing: .08em; margin: 8px 0 4px; font-size: 9px; text-transform: uppercase; }
-    .pay-instructions { margin: 8px 0; padding-top: 6px; border-top: 1px dashed #cbd5e1; font-size: 9px; }
-    .pay-instructions .payment-title { margin-top: 0; }
-    .pay-instructions .amount-line { text-transform: none; }
-    .pay-instructions .amount-label { font-weight: 700; }
-    .pay-note { margin-top: 4px; text-align: center; color: #475569; font-size: 8px; line-height: 1.35; }
+    .payment-title { text-align: left; font-weight: 700; letter-spacing: .08em; margin: 0 0 0; font-size: 9px; text-transform: uppercase; }
+    .pay-instructions { margin: 0; font-size: 9px; text-align: left; }
+    .pay-instructions .divider { margin: 6px 0; }
+    .pay-instructions .pay-line { margin: 3px 0; line-height: 1.45; text-align: left; }
+    .pay-instructions .pay-label { font-weight: 700; }
+    .pay-instructions .pay-value { font-weight: 400; }
+    .pay-instructions .pay-note { margin-top: 6px; text-align: left; color: #475569; font-size: 8px; line-height: 1.35; }
     .footer-text { text-align: center; font-size: 8px; color: #334155; margin-top: 6px; text-transform: uppercase; letter-spacing: .04em; line-height: 1.45; }
     .footer-powered-by { text-align: center; font-size: 7px; font-weight: 400; color: #64748b; margin-top: 4px; letter-spacing: normal; line-height: 1.35; }
     .center { text-align: center; }
@@ -262,8 +262,7 @@ export function buildSaleReceiptHtml(
     <div class="doc-title">Sales Receipt</div>
     <div class="divider"></div>
     <div class="meta-grid">
-      <div><span class="meta-label">Receipt No:</span> ${escapeHtml(receipt)}</div>
-      <div class="meta-value"><span class="meta-label">Order No:</span> ${escapeHtml(String(orderNo))}</div>
+      <div class="meta-full"><span class="meta-label">Order No:</span> ${escapeHtml(orderNo)}</div>
       <div class="meta-full"><span class="meta-label">Date:</span> ${escapeHtml(dateTime)}</div>
       <div><span class="meta-label">Cashier:</span> ${escapeHtml(cashierName)}</div>
       <div class="meta-value"><span class="meta-label">Till No:</span> ${escapeHtml(String(tillNo))}</div>
@@ -278,7 +277,7 @@ export function buildSaleReceiptHtml(
     <div class="divider"></div>
     <div class="amount-lines totals">${totalsHtml}</div>
     ${paymentDetailsHtml ? `<div class="divider"></div><div class="amount-lines payments">${paymentDetailsHtml}</div>` : ""}
-    ${paymentInstructionsHtml ? `<div class="divider"></div>${paymentInstructionsHtml}` : ""}
+    ${paymentInstructionsHtml ? `<div class="divider"></div>${paymentInstructionsHtml}<div class="divider"></div>` : ""}
     ${kraQrHtml}
     ${footerHtml}
   </div>
@@ -288,12 +287,18 @@ export function buildSaleReceiptHtml(
   return html;
 }
 
-export function printSaleReceipt(sale, options = {}) {
+export async function printSaleReceipt(sale, options = {}) {
   const html = buildSaleReceiptHtml(sale, options);
-  if (!html) return;
-  if (options.printWindow) {
-    fillPrintWindow(options.printWindow, html);
-    return;
-  }
-  openPrintWindow(html, "width=420,height=720");
+  if (!html) return { mode: "browser", ok: false };
+
+  const copies = Math.max(1, Number(options.copies ?? 1) || 1);
+
+  return dispatchPrintJob({
+    html,
+    copies,
+    jobType: "receipt",
+    documentId: sale?.id ?? sale?.sale_id ?? null,
+    printWindow: options.printWindow ?? null,
+    windowFeatures: "width=420,height=720",
+  });
 }

@@ -39,7 +39,7 @@ import {
   productHasConfiguredDiscount,
 } from "@/lib/product-discount";
 import { lineProductVat } from "@/lib/sales-vat";
-import { formatSaleKes } from "@/lib/sales";
+import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
 import { getChannelWorkflow, workflowPipelineSteps } from "@/lib/order-workflow";
 import {
   getPosSalesConfig,
@@ -2778,7 +2778,7 @@ export function PosScreen({ standalone = false }) {
               </p>
               {activeOrderNum ? (
                 <span className="shrink-0 rounded-md border border-[var(--theme-border)] bg-[var(--theme-page-bg)] px-2.5 py-0.5 font-mono text-xs font-semibold text-[var(--theme-text)]">
-                  Order #{activeOrderNum}
+                  Order #{formatOrderNumber(activeOrderNum)}
                 </span>
               ) : null}
             </div>

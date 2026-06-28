@@ -54,10 +54,19 @@ export function formatSaleKes(value, settings = GENERAL_DEFAULTS) {
   return formatOrgCurrency(value, settings);
 }
 
-export function formatReceiptNumber(sale) {
-  if (!sale) return "—";
-  const num = sale.order_num ?? sale.id;
+export function formatOrderNumber(saleOrNum) {
+  if (saleOrNum == null || saleOrNum === "") return "—";
+  const num =
+    typeof saleOrNum === "object"
+      ? (saleOrNum.order_num ?? saleOrNum.id)
+      : saleOrNum;
+  if (num == null || num === "") return "—";
   return `S${String(num).padStart(4, "0")}`;
+}
+
+/** Order number and receipt number are the same formatted value (S + padded order_num). */
+export function formatReceiptNumber(sale) {
+  return formatOrderNumber(sale);
 }
 
 export function saleCustomerLabel(sale) {

@@ -18,7 +18,7 @@ import { printLoadingList } from "@/components/fulfillment/loading-list-print";
 import { printDeliveryNote } from "@/components/fulfillment/delivery-note-print";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
-import { formatSaleKes, saleCustomerLabel } from "@/lib/sales";
+import { formatOrderNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 
 function statusLabel(status) {
@@ -389,7 +389,7 @@ export default function TripDetailPage() {
                 label: "Order #",
                 render: (row) => (
                   <Link href={`/sales/orders/${row.id}`} className="font-mono text-[#185FA5] hover:underline">
-                    {row.order_num}
+                    {formatOrderNumber(row)}
                   </Link>
                 ),
               },

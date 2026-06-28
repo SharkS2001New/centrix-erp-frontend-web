@@ -49,6 +49,7 @@ import {
 } from "@/lib/open-print-window";
 import { useConfirm } from "@/lib/use-confirm";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
+import { formatOrderNumber } from "@/lib/sales";
 import {
   FulfillmentAssignmentDialog,
   PodCaptureDialog,
@@ -415,7 +416,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
         body,
       });
       patchSaleInState(updated);
-      setActionMessage(`Order ${sale.order_num ?? sale.id} updated.`);
+      setActionMessage(`Order ${formatOrderNumber(sale)} updated.`);
       if (queueConfig?.lockStatusFilter && updated.status !== queueConfig.fixedStatusFilter) {
         setRows((prev) => prev.filter((s) => s.id !== updated.id));
       }
@@ -430,7 +431,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
     capabilities,
     onSuccess: (updated) => {
       patchSaleInState(updated);
-      setActionMessage(`Order ${updated.order_num ?? updated.id} updated.`);
+      setActionMessage(`Order ${formatOrderNumber(updated)} updated.`);
       if (queueConfig?.lockStatusFilter && updated.status !== queueConfig.fixedStatusFilter) {
         setRows((prev) => prev.filter((s) => s.id !== updated.id));
       }

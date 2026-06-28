@@ -14,7 +14,7 @@ import {
   resolveInvoiceFooterLines,
 } from "@/lib/invoice-print-settings";
 import { buildReceiptPaymentDetailsHtml } from "@/lib/receipt-payment-details";
-import { formatReceiptNumber, saleCustomerLabel, salePaymentMethodDisplay } from "@/lib/sales";
+import { formatOrderNumber, saleCustomerLabel, salePaymentMethodDisplay } from "@/lib/sales";
 
 function formatInvoiceDate(value) {
   if (!value) return "—";
@@ -98,7 +98,7 @@ export function buildSaleInvoiceHtml(
   if (!sale) return "";
 
   const items = sale.items ?? [];
-  const invoiceNo = formatReceiptNumber(sale);
+  const invoiceNo = formatOrderNumber(sale);
   const createdOn = sale.completed_at ?? sale.created_at;
   const validUntil = addDays(createdOn, invoiceValidDays);
   const customerName = customer?.customer_name ?? saleCustomerLabel(sale);
@@ -183,7 +183,6 @@ export function buildSaleInvoiceHtml(
     metaRow("Terms of Payment", paymentTerms),
     metaRow("Location", customerTown !== "—" ? customerTown : deliverAt),
     metaRow("Valid Until", formatInvoiceDate(validUntil)),
-    metaRow("Order #", sale.order_num ?? sale.id),
     metaRow("Deliver At", deliverAt),
   ].join("");
 

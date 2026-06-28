@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
+import { formatOrderNumber } from "@/lib/sales";
 import { formatShortDate, getSaleTimestamp } from "@/components/catalog/catalog-shared";
 import {
   VehicleStatusBadge,
@@ -111,7 +112,7 @@ export default function VehicleProfilePage() {
                       <div>
                         <p className="font-medium text-slate-800">{routeName}</p>
                         <p className="text-xs text-slate-500">
-                          Order #{sale.order_num} · {formatShortDate(date)}
+                          Order #{formatOrderNumber(sale)} · {formatShortDate(date)}
                         </p>
                       </div>
                     </li>

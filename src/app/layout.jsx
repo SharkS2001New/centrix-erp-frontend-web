@@ -12,6 +12,10 @@ import { APP_DESCRIPTION, APP_TITLE } from "@/lib/branding";
 export const metadata = {
   title: APP_TITLE,
   description: APP_DESCRIPTION,
+  appleWebApp: {
+    capable: true,
+    title: APP_TITLE,
+  },
 };
 
 export default function RootLayout({ children }) {

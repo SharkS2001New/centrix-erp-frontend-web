@@ -1,0 +1,26 @@
+{
+  "name": "Centrix POS",
+  "short_name": "Centrix POS",
+  "description": "Centrix ERP point of sale — install on till computers for fullscreen checkout and silent receipt printing.",
+  "start_url": "/pos",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0f172a",
+  "theme_color": "#185FA5",
+  "categories": ["business", "finance"],
+  "icons": [
+    {
+      "src": "/branding/centrix-logo-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/branding/centrix-mark.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

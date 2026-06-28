@@ -17,7 +17,7 @@ import {
   indexProductsByCode,
   saleLineProductLabel,
 } from "@/lib/sale-line-items";
-import { orderSourceLabel } from "@/lib/sales";
+import { formatOrderNumber, orderSourceLabel } from "@/lib/sales";
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -240,7 +240,7 @@ export default function CustomerDetailPage() {
                           <ChevronIcon expanded={isExpanded} />
                           <div className="min-w-0">
                             <p className="font-medium text-slate-900">
-                              Order #{order.order_num}
+                              Order #{formatOrderNumber(order)}
                             </p>
                             <p className="text-xs text-slate-500">
                               <span className="capitalize">

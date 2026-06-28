@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
+import { formatOrderNumber } from "@/lib/sales";
 import {
   aggregateSalesByRoute,
   formatRouteKes,
@@ -147,7 +148,7 @@ export default function RouteDetailPage() {
                       className="flex items-center justify-between gap-4 px-5 py-3.5"
                     >
                       <div>
-                        <p className="font-medium text-slate-900">Order #{sale.order_num}</p>
+                        <p className="font-medium text-slate-900">Order #{formatOrderNumber(sale)}</p>
                         <p className="text-xs text-slate-500">
                           {formatShortDate(getSaleTimestamp(sale))}
                         </p>
