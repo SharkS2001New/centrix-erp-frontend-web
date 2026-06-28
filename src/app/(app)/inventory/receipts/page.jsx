@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
@@ -28,13 +29,11 @@ export default function StockReceiptsPage() {
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
   const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const all = await fetchAllPaginatedRowsSmart("/stock-receipts", {
@@ -42,7 +41,7 @@ export default function StockReceiptsPage() {
       });
       setRows(all);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load stock receipts");
+      notifyError(e instanceof Error ? e.message : "Failed to load stock receipts");
     } finally {
       setLoading(false);
     }
@@ -111,12 +110,6 @@ export default function StockReceiptsPage() {
           {grouped.length} receipt{grouped.length === 1 ? "" : "s"} in range
         </p>
       </div>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       <InventoryTableShell>
         {loading ? (

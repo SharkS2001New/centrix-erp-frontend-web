@@ -17,6 +17,7 @@ import {
   ActiveBadge,
   CatalogPageShell,
   Field,
+  FilterToolbar,
   FormDrawer,
   IconButton,
   PaginationBar,
@@ -40,6 +41,8 @@ import {
 } from "@/lib/login-channels";
 import { isOrgMobileSalesEnabled } from "@/lib/sales-settings";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const EMPTY_FORM = {
   full_name: "",
@@ -62,6 +65,7 @@ function isProtectedUserAccount(row, currentUserId) {
 }
 
 export default function AdminUsersPage() {
+  const confirm = useConfirm();
   const { user, capabilities } = useAuth();
   const { adminPath, organizationId: platformOrgId, isPlatformManaged, tenantCapabilities } = useAdminApi();
   const organizationId = platformOrgId ?? user?.organization_id ?? capabilities?.organization_id;
@@ -79,7 +83,6 @@ export default function AdminUsersPage() {
   const [permissionApplications, setPermissionApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -109,7 +112,6 @@ export default function AdminUsersPage() {
 
   const loadReferenceData = useCallback(async () => {
     if (!organizationId) return;
-    setError(null);
     try {
       const requests = [
         apiRequest(adminPath("/branches"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
@@ -154,7 +156,7 @@ export default function AdminUsersPage() {
         setRoutes([]);
       }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load users");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load users");
     } finally {
       setLoading(false);
     }
@@ -163,7 +165,6 @@ export default function AdminUsersPage() {
   const loadUsers = useCallback(async () => {
     if (!organizationId) return;
     setListLoading(true);
-    setError(null);
     try {
       const searchParams = buildPageParams({
         page,
@@ -177,7 +178,7 @@ export default function AdminUsersPage() {
       setTotalUsers(parsed.total);
       setTotalPages(parsed.totalPages);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load users");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load users");
     } finally {
       setListLoading(false);
     }
@@ -256,7 +257,7 @@ export default function AdminUsersPage() {
 
   async function deactivateUser(row) {
     if (isProtectedUserAccount(row, user?.id)) {
-      setError(
+      notifyError(
         row.id === user?.id
           ? "You cannot disable your own login."
           : "Organization administrator accounts cannot have login disabled.",
@@ -264,47 +265,46 @@ export default function AdminUsersPage() {
       return;
     }
     if (row.is_active === false) return;
-    if (
-      !window.confirm(
-        `Disable login for "${row.full_name}"? They will not be able to sign in, but their history is kept.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Disable login",
+      message: `Disable login for "${row.full_name}"? They will not be able to sign in, but their history is kept.`,
+      confirmLabel: "Disable",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(adminPath(`/users/${row.id}`), { method: "PUT", body: { is_active: false } });
       await reloadAll();
       if (viewUser?.id === row.id) setViewUser((u) => ({ ...u, is_active: false }));
+      notifySuccess(`Login disabled for "${row.full_name}"`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to disable user login");
+      notifyError(e instanceof ApiError ? e.message : "Failed to disable user login");
     }
   }
 
   async function softDeleteUser(row) {
     if (isProtectedUserAccount(row, user?.id)) {
-      setError(
+      notifyError(
         row.id === user?.id
           ? "You cannot delete your own account."
           : "Organization administrator accounts cannot be deleted.",
       );
       return;
     }
-    if (
-      !window.confirm(
-        `Delete "${row.full_name}"? Users with sales or activity history are archived; users without records are removed permanently.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete user",
+      message: `Delete "${row.full_name}"? Users with sales or activity history are archived; users without records are removed permanently.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       const res = await apiRequest(adminPath(`/users/${row.id}`), { method: "DELETE" });
       setViewUser(null);
       await reloadAll();
-      if (res?.message) {
-        setError(null);
-      }
+      notifySuccess(res?.message ?? `"${row.full_name}" deleted`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to delete user");
+      notifyError(e instanceof ApiError ? e.message : "Failed to delete user");
     }
   }
 
@@ -426,21 +426,18 @@ export default function AdminUsersPage() {
         </div>
       }
       toolbar={
-        <SearchInput
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search user…"
-          className="max-w-sm"
-        />
+        <FilterToolbar className="mb-0">
+          <SearchInput
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search user…"
+          />
+        </FilterToolbar>
       }
     >
       {!isPlatformManaged ? (
         <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Users" }]} />
       ) : null}
-
-        {error ? (
-          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-        ) : null}
 
         <div className={`${workspaceCardClassName} overflow-x-auto ${listLoading ? "opacity-60" : ""}`}>
           <table className="min-w-full text-sm">

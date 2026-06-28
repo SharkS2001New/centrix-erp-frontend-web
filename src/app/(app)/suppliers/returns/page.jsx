@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -350,7 +351,6 @@ export default function SupplierReturnsPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const listParams = { per_page: 200 };
       if (supplierFilter !== "all") listParams.supplier_id = supplierFilter;
@@ -366,7 +366,7 @@ export default function SupplierReturnsPage() {
       setSuppliers(supRes.data ?? []);
       setCollapsedIds(new Set());
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load returns");
+      notifyError(e instanceof Error ? e.message : "Failed to load returns");
     } finally {
       setLoading(false);
     }
@@ -478,7 +478,7 @@ export default function SupplierReturnsPage() {
           printedBy: user?.full_name ?? user?.username ?? null,
         });
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to print return");
+        notifyError(e instanceof Error ? e.message : "Failed to print return");
       }
     },
     [generalSettings, organization, user],
@@ -520,12 +520,11 @@ export default function SupplierReturnsPage() {
         </div>
       }
       toolbar={
-        <div className="mb-4 flex flex-wrap items-end gap-2">
+        <div className="mb-4 flex flex-wrap items-end gap-3">
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search return, supplier, invoice, product…"
-            className="max-w-md"
           />
           <FilterSelect
             value={supplierFilter}
@@ -590,12 +589,6 @@ export default function SupplierReturnsPage() {
         </div>
       }
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       {!loading && (
         <p className="mb-4 text-sm text-slate-600">
           Showing {filtered.length} return{filtered.length === 1 ? "" : "s"}

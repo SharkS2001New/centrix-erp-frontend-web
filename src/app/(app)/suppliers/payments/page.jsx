@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -27,8 +28,6 @@ export default function SupplierPaymentsPage() {
   const [payments, setPayments] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const [supplierFilter, setSupplierFilter] = useState(presetSupplier ?? "all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -37,7 +36,6 @@ export default function SupplierPaymentsPage() {
   const [toDate, setToDate] = useState(initialRange.to);
 
   const loadData = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const params = {
@@ -55,7 +53,7 @@ export default function SupplierPaymentsPage() {
       setPayments(payRes.data ?? []);
       setSuppliers(supRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load payments");
+      notifyError(e instanceof Error ? e.message : "Failed to load payments");
     } finally {
       setLoading(false);
     }
@@ -153,7 +151,6 @@ export default function SupplierPaymentsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search reference, supplier…"
-            className="max-w-md"
           />
           <FilterSelect
             value={supplierFilter}
@@ -169,12 +166,6 @@ export default function SupplierPaymentsPage() {
         </div>
       }
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       {!loading && (
         <p className="mb-4 text-sm text-slate-600">
           Showing {filtered.length} payment{filtered.length === 1 ? "" : "s"} totalling{" "}

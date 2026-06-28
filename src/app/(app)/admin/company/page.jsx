@@ -12,6 +12,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { EntityPhotoDisplay, organizationLogoFileUrl } from "@/components/media/entity-photo-display";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 const EMPTY_FORM = {
   org_name: "",
@@ -66,13 +67,9 @@ export default function AdminCompanyPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
-
   const load = useCallback(async () => {
     if (authLoading) return;
 
-    setError(null);
     setLoading(true);
     try {
       const res = platformOrgId
@@ -92,7 +89,7 @@ export default function AdminCompanyPage() {
         setHasLogo(Boolean(seed.has_logo));
         setForm(mapOrganizationToForm(seed));
       }
-      setError(e instanceof ApiError ? e.message : "Failed to load company profile");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load company profile");
     } finally {
       setLoading(false);
     }
@@ -106,8 +103,6 @@ export default function AdminCompanyPage() {
     e.preventDefault();
     if (!orgId) return;
     setSaving(true);
-    setError(null);
-    setMessage(null);
     try {
       const path = platformOrgId ? organizationPath("") : "/erp/organization/profile";
       await apiRequest(path, {
@@ -123,10 +118,10 @@ export default function AdminCompanyPage() {
           vat_regno: form.vat_regno.trim() || null,
         },
       });
-      setMessage("Company profile saved.");
+      notifySuccess("Company profile saved.");
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to save");
+      notifyError(e instanceof ApiError ? e.message : "Failed to save");
     } finally {
       setSaving(false);
     }
@@ -136,15 +131,13 @@ export default function AdminCompanyPage() {
     const file = e.target.files?.[0];
     if (!file || !orgId) return;
     setUploadingLogo(true);
-    setError(null);
-    setMessage(null);
     try {
       await uploadOrganizationLogo(orgId, file, { uploadPath: logoUploadPath(orgId) });
       setHasLogo(true);
-      setMessage("Logo uploaded.");
+      notifySuccess("Logo uploaded.");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Logo upload failed");
+      notifyError(err instanceof ApiError ? err.message : "Logo upload failed");
     } finally {
       setUploadingLogo(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -154,13 +147,12 @@ export default function AdminCompanyPage() {
   async function handleRemoveLogo() {
     if (!orgId || !hasLogo) return;
     setUploadingLogo(true);
-    setError(null);
     try {
       await apiRequest(logoUploadPath(orgId), { method: "DELETE" });
       setHasLogo(false);
-      setMessage("Logo removed.");
+      notifySuccess("Logo removed.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not remove logo");
+      notifyError(err instanceof ApiError ? err.message : "Could not remove logo");
     } finally {
       setUploadingLogo(false);
     }
@@ -174,17 +166,6 @@ export default function AdminCompanyPage() {
       <AdminBreadcrumb
         items={[{ label: "Administration", href: "/admin" }, { label: "Company profile" }]}
       />
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-      {message ? (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {message}
-        </p>
-      ) : null}
 
       {loading || authLoading ? (
         <p className="text-sm text-slate-500">Loading…</p>

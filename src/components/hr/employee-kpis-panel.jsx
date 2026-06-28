@@ -11,6 +11,8 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { formatHrKesFull } from "@/components/hr/hr-shared";
 import { P } from "@/lib/permission-codes";
+import { notifyError } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const EMPTY_KPI_FORM = {
   label: "",
@@ -39,6 +41,7 @@ function progressTone(pct) {
 }
 
 export function EmployeeKpisPanel({ employeeId }) {
+  const confirm = useConfirm();
   const { hasPermission } = useAuth();
   const canManage = hasPermission(P.hr.kpis.create) || hasPermission(P.hr.employees.edit);
 
@@ -133,12 +136,18 @@ export function EmployeeKpisPanel({ employeeId }) {
   }
 
   async function handleDelete(row) {
-    if (!window.confirm(`Delete KPI "${row.label}"?`)) return;
+    const ok = await confirm({
+      title: "Delete KPI",
+      message: `Delete KPI "${row.label}"?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/employees/${employeeId}/kpis/${row.id}`, { method: "DELETE" });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      notifyError(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 

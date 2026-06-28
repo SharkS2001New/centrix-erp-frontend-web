@@ -70,7 +70,7 @@ export function ReportFilterBar({
 }) {
   return (
     <div className={`mb-6 ${FILTER_BAR_CLASS}`}>
-      <div className="flex flex-wrap items-end gap-4">
+      <div className="flex flex-wrap items-end gap-3">
         {showDateRange ? (
           <>
             <Field label="From date">

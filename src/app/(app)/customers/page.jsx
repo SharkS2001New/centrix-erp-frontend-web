@@ -11,6 +11,7 @@ import { CustomerImportExport } from "@/components/customers/customer-import-exp
 import {
   CatalogPageShell,
   FilterSelect,
+  FilterToolbar,
   IconButton,
   PaginationBar,
   PencilIcon,
@@ -20,6 +21,8 @@ import {
   formatKesCompact,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const PAGE_SIZE = 10;
 const COLUMN_STORAGE_KEY = "centrix-erp-customers-visible-columns";
@@ -271,6 +274,7 @@ function renderCell(colId, customer, handlers) {
 
 export default function CustomersPage() {
   const router = useRouter();
+  const confirm = useConfirm();
 
   const [customers, setCustomers] = useState([]);
   const [totalCustomers, setTotalCustomers] = useState(0);
@@ -280,8 +284,6 @@ export default function CustomersPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [error, setError] = useState(null);
-
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const [deletedFilter, setDeletedFilter] = useState("active");
@@ -306,7 +308,6 @@ export default function CustomersPage() {
   );
 
   const loadReferenceData = useCallback(async () => {
-    setError(null);
     try {
       const [routeRes, userRes, statsRes] = await Promise.all([
         apiRequest("/routes", { searchParams: { per_page: 200 } }),
@@ -317,7 +318,7 @@ export default function CustomersPage() {
       setUsers(userRes.data ?? []);
       if (statsRes) setCustomerStats(statsRes);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load customers");
+      notifyError(e instanceof Error ? e.message : "Failed to load customers");
     } finally {
       setLoading(false);
     }
@@ -325,7 +326,6 @@ export default function CustomersPage() {
 
   const loadCustomers = useCallback(async () => {
     setListLoading(true);
-    setError(null);
     try {
       const status =
         deletedFilter === "deleted"
@@ -345,7 +345,7 @@ export default function CustomersPage() {
       setTotalCustomers(parsed.total);
       setTotalPages(parsed.totalPages);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load customers");
+      notifyError(e instanceof Error ? e.message : "Failed to load customers");
     } finally {
       setListLoading(false);
     }
@@ -418,12 +418,19 @@ export default function CustomersPage() {
   }
 
   async function deleteCustomer(customer) {
-    if (!window.confirm(`Delete customer "${customer.customer_name}"?`)) return;
+    const ok = await confirm({
+      title: "Delete customer",
+      message: `Delete customer "${customer.customer_name}"?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/customers/${customer.customer_num}`, { method: "DELETE" });
       await reloadAll();
+      notifySuccess(`"${customer.customer_name}" deleted`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      notifyError(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -476,12 +483,11 @@ export default function CustomersPage() {
         ) : null
       }
       toolbar={
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <FilterToolbar>
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search customer…"
-            className="max-w-md"
           />
           <FilterSelect
             value={deletedFilter}
@@ -500,15 +506,9 @@ export default function CustomersPage() {
             onToggleColumn={toggleColumn}
             onReset={resetColumns}
           />
-        </div>
+        </FilterToolbar>
       }
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading customers…</p>

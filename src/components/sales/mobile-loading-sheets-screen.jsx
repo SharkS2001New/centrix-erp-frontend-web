@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
   Field,
+  FilterToolbar,
   PrimaryButton,
   SearchInput,
   inputClassName,
@@ -37,7 +38,7 @@ function formatDisplayDate(dateStr) {
 }
 
 export default function MobileLoadingSheetsScreen() {
-  const { capabilities, organization, generalSettings } = useAuth();
+  const { capabilities, organization, generalSettings, user } = useAuth();
   const allowed = shouldShowMobileLoadingSheets(capabilities);
   const organizationName = organization?.name ?? capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME;
   const general = generalSettings();
@@ -123,6 +124,7 @@ export default function MobileLoadingSheetsScreen() {
         loadingList: res.loading_list,
         printSettings: distributionSettings,
         documentFooterText: resolvePrintFooter(mergeGeneralSettings(capabilities?.module_settings), "loading_sheet"),
+        printedBy: user?.full_name ?? user?.username ?? null,
       });
     } catch (e) {
       setDetailError(e instanceof ApiError ? e.message : "Could not refresh loading list for print");
@@ -167,7 +169,7 @@ export default function MobileLoadingSheetsScreen() {
     >
       {error ? <DashboardErrorBanner message={error} className="mb-4" /> : null}
 
-      <div className="mb-4 flex flex-wrap items-end gap-3">
+      <FilterToolbar>
         <Field label="From">
           <input
             type="date"
@@ -184,10 +186,8 @@ export default function MobileLoadingSheetsScreen() {
             onChange={(e) => setToDate(e.target.value)}
           />
         </Field>
-        <div className="min-w-[14rem] flex-1">
-          <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search route or date…" />
-        </div>
-      </div>
+        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search route or date…" />
+      </FilterToolbar>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
         <div className="theme-table-shell overflow-x-auto">

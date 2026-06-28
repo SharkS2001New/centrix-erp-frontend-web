@@ -43,6 +43,7 @@ import {
   tillStatusTone,
 } from "@/lib/pos-till";
 import { isPosTillFloatRequired } from "@/lib/sales-settings";
+import { useConfirm } from "@/lib/use-confirm";
 
 const TABS = [
   { id: "tills", label: "Tills" },
@@ -225,6 +226,7 @@ function TillActionsMenu({ onEditTill, onCorrectFloat, onDelete, deleting }) {
 
 export function TillManagementScreen() {
   const router = useRouter();
+  const confirm = useConfirm();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") === "history" ? "history" : "tills";
 
@@ -443,7 +445,13 @@ export function TillManagementScreen() {
   }
 
   async function deleteHistorySession(row) {
-    if (!window.confirm(`Delete session #${row.id}? Only allowed when the session has no linked sales.`)) return;
+    const ok = await confirm({
+      title: "Delete session",
+      message: `Delete session #${row.id}? Only allowed when the session has no linked sales.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     setDeletingSessionId(row.id);
     setPageError(null);
     try {

@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
@@ -76,7 +77,6 @@ export default function CurrentStockPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsOpen, setColumnsOpen] = useState(false);
 
@@ -99,7 +99,7 @@ export default function CurrentStockPage() {
       setCategories(catRes.data ?? []);
       setRetailPackages(retailRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load stock filters");
+      notifyError(e instanceof Error ? e.message : "Failed to load stock filters");
     } finally {
       setLoading(false);
     }
@@ -107,7 +107,6 @@ export default function CurrentStockPage() {
 
   const loadStock = useCallback(async () => {
     setListLoading(true);
-    setError(null);
     try {
       const searchParams = buildPageParams({
         page,
@@ -129,7 +128,7 @@ export default function CurrentStockPage() {
       setTotalPages(parsed.totalPages);
       setValuationRows(valRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load current stock");
+      notifyError(e instanceof Error ? e.message : "Failed to load current stock");
     } finally {
       setListLoading(false);
     }
@@ -328,12 +327,11 @@ export default function CurrentStockPage() {
         />
       }
     >
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-end gap-3">
         <SearchInput
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search product…"
-          className="max-w-md"
         />
         <FilterSelect
           value={categoryFilter}
@@ -385,12 +383,6 @@ export default function CurrentStockPage() {
           ) : null}
         </div>
       </div>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       {!loading && pageSlice.length > 0 ? (
         <p className="mb-3 text-xs text-slate-500">

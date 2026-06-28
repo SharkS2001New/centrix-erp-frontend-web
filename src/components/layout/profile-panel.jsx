@@ -9,6 +9,7 @@ import {
   PrimaryButton,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 function accessLabel(user, capabilities) {
   if (user?.is_super_admin || capabilities?.is_super_admin) {
@@ -28,14 +29,10 @@ export function ProfilePanel({ compact = false }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
   const [saving, setSaving] = useState(false);
 
   async function onSubmit(e) {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
     setSaving(true);
     try {
       const res = await apiRequest("/auth/change-password", {
@@ -48,12 +45,12 @@ export function ProfilePanel({ compact = false }) {
       });
       applyPasswordExpiry(res.password_expiry ?? null);
       await refreshCapabilities().catch(() => {});
-      setSuccess(res.message);
+      notifySuccess(res.message);
       setCurrentPassword("");
       setPassword("");
       setPasswordConfirmation("");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update password.");
+      notifyError(err instanceof ApiError ? err.message : "Could not update password.");
     } finally {
       setSaving(false);
     }
@@ -129,16 +126,6 @@ export function ProfilePanel({ compact = false }) {
               required
             />
           </Field>
-          {error ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error}
-            </p>
-          ) : null}
-          {success ? (
-            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-              {success}
-            </p>
-          ) : null}
           <PrimaryButton type="submit" disabled={saving}>
             {saving ? "Saving…" : "Update password"}
           </PrimaryButton>

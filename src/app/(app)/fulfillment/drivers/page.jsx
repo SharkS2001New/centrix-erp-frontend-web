@@ -30,10 +30,13 @@ import {
   suggestDriverCode,
   todayDeliveryStats,
 } from "@/components/fulfillment/fulfillment-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const PAGE_SIZE = 10;
 
 export default function DriversPage() {
+  const confirm = useConfirm();
   const router = useRouter();
   const searchParams = useSearchParams();
   const handledParams = useRef("");
@@ -45,8 +48,6 @@ export default function DriversPage() {
   const [users, setUsers] = useState([]);
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [routeFilter, setRouteFilter] = useState("all");
@@ -60,7 +61,6 @@ export default function DriversPage() {
   const [formError, setFormError] = useState(null);
 
   const loadData = useCallback(async () => {
-    setError(null);
     try {
       const [driverRes, routeRes, vehicleRes, userRes, salesRes] = await Promise.all([
         apiRequest("/drivers", { searchParams: { per_page: 200 } }),
@@ -75,7 +75,7 @@ export default function DriversPage() {
       setUsers(userRes.data ?? []);
       setSales(salesRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load drivers");
+      notifyError(e instanceof Error ? e.message : "Failed to load drivers");
     } finally {
       setLoading(false);
     }
@@ -198,19 +198,26 @@ export default function DriversPage() {
     } else {
       apiRequest(`/drivers/${editId}`)
         .then(openEditDrawer)
-        .catch(() => setError("Driver not found"));
+        .catch(() => notifyError("Driver not found"));
     }
     router.replace("/fulfillment/drivers", { scroll: false });
   }, [loading, searchParams, drivers, router]);
 
   async function deleteDriver(driver) {
-    if (!window.confirm(`Delete driver "${driver.full_name}"?`)) return;
+    const ok = await confirm({
+      title: "Delete driver",
+      message: `Delete driver "${driver.full_name}"?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/drivers/${driver.id}`, { method: "DELETE" });
       if (editingId === driver.id) closeDrawer();
       await loadData();
+      notifySuccess(`"${driver.full_name}" deleted`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      notifyError(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -245,12 +252,11 @@ export default function DriversPage() {
         ) : null
       }
       toolbar={
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-end gap-3">
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search driver…"
-            className="max-w-sm"
           />
           <FilterSelect
             value={statusFilter}
@@ -272,12 +278,6 @@ export default function DriversPage() {
         </div>
       }
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading drivers…</p>

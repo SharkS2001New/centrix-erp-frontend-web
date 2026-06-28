@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -37,16 +38,13 @@ export default function SupplierProfilePage() {
   const [selectedLpo, setSelectedLpo] = useState(null);
   const [lpoDrawerOpen, setLpoDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const loadData = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const data = await apiRequest(`/suppliers/${supplierId}/summary`);
       setSummary(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load supplier");
+      notifyError(e instanceof Error ? e.message : "Failed to load supplier");
     } finally {
       setLoading(false);
     }
@@ -119,12 +117,6 @@ export default function SupplierProfilePage() {
           </div>
         )}
       </div>
-
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading supplier…</p>

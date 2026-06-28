@@ -5,25 +5,23 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { CatalogPageShell, formatShortDate } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { FISCAL_PERIOD_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 export default function FiscalPeriodsPage() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [periods, setPeriods] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [closeYear, setCloseYear] = useState(new Date().getFullYear() - 1);
   const [closingYear, setClosingYear] = useState(false);
 
   const load = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const res = await apiRequest("/accounting/fiscal-periods", { searchParams: { year } });
       setPeriods(res.data ?? []);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load fiscal periods");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load fiscal periods");
     } finally {
       setLoading(false);
     }
@@ -34,32 +32,28 @@ export default function FiscalPeriodsPage() {
   }, [load]);
 
   async function seedYear() {
-    setMessage(null);
-    setError(null);
     try {
       const res = await apiRequest("/accounting/fiscal-periods", {
         method: "POST",
         body: { year },
       });
       setPeriods(res.data ?? []);
-      setMessage(`Created monthly periods for ${year}.`);
+      notifySuccess(`Created monthly periods for ${year}.`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to seed fiscal periods");
+      notifyError(e instanceof ApiError ? e.message : "Failed to seed fiscal periods");
     }
   }
 
   async function togglePeriod(period, action) {
     setBusyId(period.id);
-    setMessage(null);
-    setError(null);
     try {
       const updated = await apiRequest(`/accounting/fiscal-periods/${period.id}/${action}`, {
         method: "POST",
       });
       setPeriods((rows) => rows.map((row) => (row.id === period.id ? updated : row)));
-      setMessage(`Period "${period.period_name}" ${action === "close" ? "closed" : "reopened"}.`);
+      notifySuccess(`Period "${period.period_name}" ${action === "close" ? "closed" : "reopened"}.`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : `Failed to ${action} period`);
+      notifyError(e instanceof ApiError ? e.message : `Failed to ${action} period`);
     } finally {
       setBusyId(null);
     }
@@ -67,18 +61,16 @@ export default function FiscalPeriodsPage() {
 
   async function runYearEndClose() {
     setClosingYear(true);
-    setMessage(null);
-    setError(null);
     try {
       const res = await apiRequest("/accounting/year-end-close", {
         method: "POST",
         body: { year: closeYear },
       });
-      setMessage(
+      notifySuccess(
         `Year ${closeYear} closed. Net income: ${Number(res.net_income ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
       );
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Year-end close failed");
+      notifyError(e instanceof ApiError ? e.message : "Year-end close failed");
     } finally {
       setClosingYear(false);
     }
@@ -103,17 +95,6 @@ export default function FiscalPeriodsPage() {
         />
       }
     >
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-      {message ? (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {message}
-        </p>
-      ) : null}
-
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
         <div className="theme-panel rounded-xl border p-4 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Open periods</p>

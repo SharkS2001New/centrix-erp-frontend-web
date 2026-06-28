@@ -19,10 +19,13 @@ import {
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { PAYMENT_METHOD_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const EMPTY = { method_name: "", method_code: "", requires_reference: false, is_active: true };
 
 export default function PaymentMethodsPage() {
+  const confirm = useConfirm();
   const { hasPermission } = useAuth();
   const { adminPath } = useAdminApi();
   const canCreate = hasPermission(P.admin.payment_methods.create);
@@ -31,7 +34,6 @@ export default function PaymentMethodsPage() {
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
@@ -40,12 +42,11 @@ export default function PaymentMethodsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await apiRequest(adminPath("/payment-methods"), { searchParams: { per_page: 100 } });
       setRows(res.data ?? []);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load payment methods");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load payment methods");
     } finally {
       setLoading(false);
     }
@@ -100,12 +101,19 @@ export default function PaymentMethodsPage() {
   }
 
   async function remove(row) {
-    if (!window.confirm(`Delete payment method "${row.method_name}"?`)) return;
+    const ok = await confirm({
+      title: "Delete payment method",
+      message: `Delete payment method "${row.method_name}"?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(adminPath(`/payment-methods/${row.id}`), { method: "DELETE" });
       await load();
+      notifySuccess(`"${row.method_name}" deleted`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Delete failed");
+      notifyError(e instanceof ApiError ? e.message : "Delete failed");
     }
   }
 
@@ -133,8 +141,6 @@ export default function PaymentMethodsPage() {
           </PrimaryButton>
         ) : null}
       </div>
-
-      {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
 
       <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
         <table className="min-w-full text-sm">

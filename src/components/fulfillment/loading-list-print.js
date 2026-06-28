@@ -188,6 +188,7 @@ export function buildLoadingListHtml({
   printSettings = null,
   documentFooterText = null,
   footerLines = null,
+  printedBy = null,
 } = {}) {
   const branding = resolveReportBranding({ organization, generalSettings });
   const orgHeader = buildLoadingListHeaderHtml({
@@ -242,6 +243,8 @@ export function buildLoadingListHtml({
   const footerHtml = footerText
     ? `<div class="doc-footer">${escapeHtml(footerText)}</div>`
     : "";
+  const printedAt = new Date().toLocaleString("en-GB");
+  const printedByName = printedBy ?? "—";
 
   return `<!DOCTYPE html>
 <html>
@@ -250,6 +253,7 @@ export function buildLoadingListHtml({
   <title>Loading List — ${escapeHtml(routeName)}</title>
   <style>
     * { box-sizing: border-box; }
+    html { height: 100%; }
     body {
       font-family: Arial, Helvetica, sans-serif;
       color: #111;
@@ -257,7 +261,18 @@ export function buildLoadingListHtml({
       font-size: 12px;
       line-height: 1.35;
       position: relative;
+      min-height: 100%;
     }
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      min-height: calc(100vh - 40px);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      z-index: 1;
+    }
+    .page-body { flex: 1 0 auto; }
     .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
     .watermark-text {
       position: absolute;
@@ -314,12 +329,14 @@ export function buildLoadingListHtml({
       font-size: 11px;
       font-weight: 700;
       text-transform: none;
+      text-align: left;
       padding: 10px 8px;
       border-top: 1px solid #c9c9c9;
       border-bottom: 1px solid #c9c9c9;
       vertical-align: bottom;
       line-height: 1.25;
     }
+    thead th.col-total { text-align: right; }
     tbody td {
       padding: 12px 8px 0;
       border: none;
@@ -331,6 +348,7 @@ export function buildLoadingListHtml({
     .col-no { width: 40px; text-align: left; }
     .col-product {
       width: 34%;
+      text-align: left;
       font-weight: 700;
       text-transform: uppercase;
       padding-right: 12px;
@@ -379,14 +397,28 @@ export function buildLoadingListHtml({
       font-weight: 700;
       color: #334155;
     }
+    .print-footer {
+      margin-top: auto;
+      padding-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 9px;
+      color: #333;
+      border-top: 1px dotted #999;
+      flex-shrink: 0;
+    }
     @media print {
       body { margin: 12mm; }
+      .page { min-height: calc(297mm - 24mm); }
       .watermark-text { color: rgba(15, 23, 42, 0.08); }
     }
   </style>
 </head>
 <body>
   ${watermark}
+  <div class="page">
+    <div class="page-body">
   <div class="sheet">
     ${
       orgHeader ||
@@ -418,6 +450,13 @@ export function buildLoadingListHtml({
     ${footerLinesHtml}
     ${footerHtml}
   </div>
+    </div>
+    <div class="print-footer">
+      <span>Printed On: ${escapeHtml(printedAt)}</span>
+      <span>By: ${escapeHtml(printedByName)}</span>
+      <span>Page 1 of 1</span>
+    </div>
+  </div>
 </body>
 </html>`;
 }
@@ -431,6 +470,7 @@ export function buildLoadingListHtml({
  *   trip?: object,
  *   printSettings?: object,
  *   documentFooterText?: string,
+ *   printedBy?: string | null,
  * }} options
  */
 export function printLoadingList({
@@ -441,6 +481,7 @@ export function printLoadingList({
   trip = null,
   printSettings = null,
   documentFooterText = null,
+  printedBy = null,
 } = {}) {
   const html = buildLoadingListHtml({
     organization,
@@ -450,6 +491,7 @@ export function printLoadingList({
     trip,
     printSettings,
     documentFooterText,
+    printedBy,
   });
   openPrintWindow(html, "width=900,height=800");
 }

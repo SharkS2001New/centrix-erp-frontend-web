@@ -14,6 +14,7 @@ import {
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { buildDomainChildrenMap, normalizeDomainModules, patchEnabledModules } from "@/lib/module-registry";
 import { applicationsFromEnabledModules } from "@/lib/workspace-modules";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 export default function ManageOrganizationPage() {
   const params = useParams();
@@ -21,8 +22,6 @@ export default function ManageOrganizationPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
   const [organization, setOrganization] = useState(null);
   const [moduleOptions, setModuleOptions] = useState([]);
   const [profilePresets, setProfilePresets] = useState([]);
@@ -60,7 +59,6 @@ export default function ManageOrganizationPage() {
   const load = useCallback(async () => {
     if (!orgId) return;
     setLoading(true);
-    setError(null);
     try {
       const [optionsRes, orgRes] = await Promise.all([
         apiRequest("/admin/organizations/provision-options"),
@@ -86,7 +84,7 @@ export default function ManageOrganizationPage() {
       setOrgPin(org.org_pin ?? "");
       setVatRegno(org.vat_regno ?? "");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load organization.");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load organization.");
     } finally {
       setLoading(false);
     }
@@ -127,8 +125,6 @@ export default function ManageOrganizationPage() {
   async function onSave(e) {
     e.preventDefault();
     setSaving(true);
-    setError(null);
-    setMessage(null);
     try {
       const res = await apiRequest(`/admin/organizations/${orgId}`, {
         method: "PATCH",
@@ -164,9 +160,9 @@ export default function ManageOrganizationPage() {
       setOrgAddress(org?.org_address ?? orgAddress);
       setOrgPin(org?.org_pin ?? "");
       setVatRegno(org?.vat_regno ?? "");
-      setMessage("Organization configuration saved. Users may need to refresh or sign in again.");
+      notifySuccess("Organization configuration saved. Users may need to refresh or sign in again.");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not save organization.");
+      notifyError(e instanceof ApiError ? e.message : "Could not save organization.");
     } finally {
       setSaving(false);
     }
@@ -246,15 +242,6 @@ export default function ManageOrganizationPage() {
               isActive={orgActive}
               onStatusChange={({ is_active }) => setOrgActive(is_active)}
             />
-
-            {error ? (
-              <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-            ) : null}
-            {message ? (
-              <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                {message}
-              </p>
-            ) : null}
 
             <div className="flex gap-3">
               <PrimaryButton type="submit" disabled={saving}>

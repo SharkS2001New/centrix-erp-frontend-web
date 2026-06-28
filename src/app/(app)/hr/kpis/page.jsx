@@ -12,7 +12,9 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { KPI_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { P } from "@/lib/permission-codes";
+import { useConfirm } from "@/lib/use-confirm";
 
 const EMPTY_ORG_KPI = {
   label: "",
@@ -41,6 +43,7 @@ function statusLabel(status) {
 }
 
 export default function HrKpisPage() {
+  const confirm = useConfirm();
   const { hasPermission } = useAuth();
   const canView = hasPermission(P.hr.kpis.view);
   const canManage = hasPermission(P.hr.kpis.create) || hasPermission(P.hr.kpis.edit);
@@ -171,9 +174,13 @@ export default function HrKpisPage() {
   }
 
   async function handleDelete(row) {
-    if (!window.confirm(`Delete organization KPI "${row.label}"? Assigned employee KPI rows will remain but lose the link.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete organization KPI",
+      message: `Delete organization KPI "${row.label}"? Assigned employee KPI rows will remain but lose the link.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/organization-kpis/${row.id}`, { method: "DELETE" });
       if (selectedKpiId === row.id) {
@@ -181,8 +188,9 @@ export default function HrKpisPage() {
         setAchievement(null);
       }
       await loadOrgKpis();
+      notifySuccess(`"${row.label}" deleted`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      notifyError(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -194,8 +202,9 @@ export default function HrKpisPage() {
       if (tab === "achievement" && selectedKpiId === row.id) {
         await loadAchievement(row.id);
       }
+      notifySuccess(`"${row.label}" assigned to active employees`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Assign failed");
+      notifyError(err instanceof ApiError ? err.message : "Assign failed");
     } finally {
       setAssigningId(null);
     }

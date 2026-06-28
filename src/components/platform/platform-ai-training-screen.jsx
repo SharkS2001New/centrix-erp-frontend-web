@@ -15,9 +15,10 @@ import {
 } from "@/lib/platform-ai-training";
 import { PLATFORM_COMPANY_CODE } from "@/lib/admin-scope";
 import {
-  PlatformAiTrainingAlerts,
   PlatformAiTrainingNav,
 } from "@/components/platform/platform-ai-training-nav";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const PREVIEW_ORG_STORAGE_KEY = "platform-ai-training-preview-org-id";
 
@@ -50,6 +51,7 @@ function PlatformAiTrainingTabs({ activeTab, onChange }) {
 }
 
 export function PlatformAiTrainingScreen() {
+  const confirm = useConfirm();
   const apiBase = aiTrainingApiBase();
   const [activeTab, setActiveTab] = useState("knowledge");
 
@@ -58,8 +60,6 @@ export function PlatformAiTrainingScreen() {
   const [status, setStatus] = useState(null);
   const [loadingKnowledge, setLoadingKnowledge] = useState(false);
   const [savingKnowledge, setSavingKnowledge] = useState(false);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
   const [form, setForm] = useState({
     id: null,
     topic: "",
@@ -112,14 +112,13 @@ export function PlatformAiTrainingScreen() {
 
   const loadKnowledge = useCallback(async () => {
     setLoadingKnowledge(true);
-    setError(null);
     try {
       const query = filterWorkspace ? `?workspace_id=${encodeURIComponent(filterWorkspace)}` : "";
       const res = await apiRequest(`${apiBase}/knowledge${query}`);
       setKnowledge(res.data ?? []);
     } catch (e) {
       setKnowledge([]);
-      setError(e instanceof ApiError ? e.message : "Failed to load training notes.");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load training notes.");
     } finally {
       setLoadingKnowledge(false);
     }
@@ -138,7 +137,7 @@ export function PlatformAiTrainingScreen() {
           : String(rows.find((org) => String(org.company_code ?? "").toUpperCase() !== PLATFORM_COMPANY_CODE)?.id ?? "");
       setPreviewOrgId(initial);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load organizations.");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load organizations.");
     } finally {
       setLoadingOrgs(false);
     }
@@ -186,16 +185,12 @@ export function PlatformAiTrainingScreen() {
       path: entry.path ?? "",
       workspace_id: entry.workspace_id ?? "",
     });
-    setMessage(null);
-    setError(null);
   }
 
   async function saveKnowledge(e) {
     e.preventDefault();
     if (!form.topic.trim() || !form.content.trim()) return;
     setSavingKnowledge(true);
-    setError(null);
-    setMessage(null);
     try {
       const payload = {
         topic: form.topic.trim(),
@@ -205,32 +200,37 @@ export function PlatformAiTrainingScreen() {
       };
       if (form.id) {
         await apiRequest(`${apiBase}/knowledge/${form.id}`, { method: "PATCH", body: payload });
-        setMessage("Platform training note updated — applies to all tenants.");
+        notifySuccess("Platform training note updated — applies to all tenants.");
       } else {
         await apiRequest(`${apiBase}/knowledge`, { method: "POST", body: payload });
-        setMessage("Platform training note saved — applies to all tenants.");
+        notifySuccess("Platform training note saved — applies to all tenants.");
       }
       resetKnowledgeForm();
       await loadKnowledge();
       await loadStatus();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to save training note.");
+      notifyError(err instanceof ApiError ? err.message : "Failed to save training note.");
     } finally {
       setSavingKnowledge(false);
     }
   }
 
   async function deleteEntry(id) {
-    if (!window.confirm("Delete this platform training note? It will stop applying to all tenants.")) return;
-    setError(null);
+    const ok = await confirm({
+      title: "Delete training note",
+      message: "Delete this platform training note? It will stop applying to all tenants.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`${apiBase}/knowledge/${id}`, { method: "DELETE" });
       if (form.id === id) resetKnowledgeForm();
       await loadKnowledge();
       await loadStatus();
-      setMessage("Training note deleted.");
+      notifySuccess("Training note deleted.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to delete training note.");
+      notifyError(err instanceof ApiError ? err.message : "Failed to delete training note.");
     }
   }
 
@@ -312,7 +312,6 @@ export function PlatformAiTrainingScreen() {
 
       <PlatformAiTrainingNav />
       <PlatformAiTrainingTabs activeTab={activeTab} onChange={setActiveTab} />
-      <PlatformAiTrainingAlerts error={error} message={message} />
 
       {activeTab === "knowledge" ? (
         <section className="theme-panel rounded-xl border p-6 shadow-sm">

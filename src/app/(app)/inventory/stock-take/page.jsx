@@ -22,15 +22,17 @@ import {
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_TAKE_SESSION_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 export default function StockTakeListPage() {
+  const confirm = useConfirm();
   const router = useRouter();
   const { user } = useAuth();
   const branchId = user?.branch_id ?? 1;
 
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingSession, setEditingSession] = useState(null);
@@ -46,7 +48,6 @@ export default function StockTakeListPage() {
   );
 
   const load = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const res = await apiRequest("/stock-take-sessions", {
@@ -54,7 +55,7 @@ export default function StockTakeListPage() {
       });
       setSessions(res.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load stock take sessions");
+      notifyError(e instanceof Error ? e.message : "Failed to load stock take sessions");
     } finally {
       setLoading(false);
     }
@@ -68,7 +69,6 @@ export default function StockTakeListPage() {
     if (!form.session_code.trim()) return;
 
     setCreating(true);
-    setError(null);
     try {
       const session = await apiRequest("/stock-take-sessions", {
         method: "POST",
@@ -93,7 +93,7 @@ export default function StockTakeListPage() {
       setForm({ session_code: "", stock_location: "both" });
       router.push(`/inventory/stock-take/${session.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to start session");
+      notifyError(err instanceof ApiError ? err.message : "Failed to start session");
     } finally {
       setCreating(false);
     }
@@ -111,7 +111,6 @@ export default function StockTakeListPage() {
   async function saveEdit() {
     if (!editingSession) return;
     setSavingEdit(true);
-    setError(null);
     try {
       await apiRequest(`/stock-take-sessions/${editingSession.id}`, {
         method: "PUT",
@@ -121,7 +120,7 @@ export default function StockTakeListPage() {
       setEditingSession(null);
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to update session");
+      notifyError(err instanceof ApiError ? err.message : "Failed to update session");
     } finally {
       setSavingEdit(false);
     }
@@ -129,16 +128,22 @@ export default function StockTakeListPage() {
 
   async function deleteSession(session) {
     if (session.status === "completed") {
-      setError("Completed stock takes cannot be deleted.");
+      notifyError("Completed stock takes cannot be deleted.");
       return;
     }
-    if (!window.confirm(`Delete stock take "${session.session_code}"?`)) return;
-    setError(null);
+    const ok = await confirm({
+      title: "Delete stock take",
+      message: `Delete stock take "${session.session_code}"?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/stock-take-sessions/${session.id}`, { method: "DELETE" });
       await load();
+      notifySuccess(`"${session.session_code}" deleted`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to delete session");
+      notifyError(err instanceof ApiError ? err.message : "Failed to delete session");
     }
   }
 
@@ -163,12 +168,6 @@ export default function StockTakeListPage() {
         </div>
       }
     >
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <InventoryTableShell>
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading sessions…</p>

@@ -28,10 +28,13 @@ import {
   StatCard,
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const PAGE_SIZE = 10;
 
 export default function RoutesPage() {
+  const confirm = useConfirm();
   const router = useRouter();
   const searchParams = useSearchParams();
   const handledParams = useRef("");
@@ -40,8 +43,6 @@ export default function RoutesPage() {
   const [customers, setCustomers] = useState([]);
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const [search, setSearch] = useState("");
   const [salesPeriod, setSalesPeriod] = useState("day");
   const [page, setPage] = useState(1);
@@ -54,7 +55,6 @@ export default function RoutesPage() {
   const [formError, setFormError] = useState(null);
 
   const loadData = useCallback(async () => {
-    setError(null);
     try {
       const [routeRes, custRes, salesRes] = await Promise.all([
         apiRequest("/routes", { searchParams: { per_page: 200 } }),
@@ -65,7 +65,7 @@ export default function RoutesPage() {
       setCustomers(custRes.data ?? []);
       setSales(salesRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load routes");
+      notifyError(e instanceof Error ? e.message : "Failed to load routes");
     } finally {
       setLoading(false);
     }
@@ -199,7 +199,7 @@ export default function RoutesPage() {
       } else {
         apiRequest(`/routes/${editId}`)
           .then(openEditDrawer)
-          .catch(() => setError("Route not found"));
+          .catch(() => notifyError("Route not found"));
       }
     }
 
@@ -212,12 +212,19 @@ export default function RoutesPage() {
       count > 0
         ? `"${route.route_name}" has ${count} customer(s). Delete anyway?`
         : `Delete route "${route.route_name}"?`;
-    if (!window.confirm(msg)) return;
+    const ok = await confirm({
+      title: "Delete route",
+      message: msg,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/routes/${route.id}`, { method: "DELETE" });
       await loadData();
+      notifySuccess(`"${route.route_name}" deleted`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      notifyError(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -262,12 +269,11 @@ export default function RoutesPage() {
         ) : null
       }
       toolbar={
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-end gap-3">
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search route…"
-            className="max-w-md"
           />
           <FilterSelect
             value={salesPeriod}
@@ -277,12 +283,6 @@ export default function RoutesPage() {
         </div>
       }
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading routes…</p>

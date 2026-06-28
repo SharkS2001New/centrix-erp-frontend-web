@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
   FilterSelect,
+  FilterToolbar,
   PaginationBar,
   SearchInput,
   StatCard,
@@ -26,6 +27,8 @@ import {
 import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
 import { formatLpoKes, formatPoNumber, lpoOrderDate, LpoStatusBadge } from "@/components/lpo/lpo-shared";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const PAGE_SIZE = 15;
 
@@ -40,6 +43,7 @@ function PlusIcon() {
 
 export default function LpoListPage() {
   const router = useAppRouter();
+  const confirm = useConfirm();
   const { user, capabilities, organization } = useAuth();
   const { canView, canCreate, canEdit, canDelete } = useLpoListPermissions();
 
@@ -51,8 +55,6 @@ export default function LpoListPage() {
   const [statuses, setStatuses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [actionMessage, setActionMessage] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [printingLpoNo, setPrintingLpoNo] = useState(null);
   const [deletingLpoNo, setDeletingLpoNo] = useState(null);
@@ -78,7 +80,7 @@ export default function LpoListPage() {
       setSuppliers(supRes.data ?? []);
       setStatuses(statusRes.data ?? statusRes ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load purchase orders");
+      notifyError(e instanceof Error ? e.message : "Failed to load purchase orders");
     } finally {
       setLoading(false);
     }
@@ -86,7 +88,6 @@ export default function LpoListPage() {
 
   const loadRows = useCallback(async () => {
     setListLoading(true);
-    setError(null);
     try {
       const extra = {};
       if (supplierFilter !== "all") extra.supplier_id = supplierFilter;
@@ -104,7 +105,7 @@ export default function LpoListPage() {
       setTotalRows(parsed.total);
       setTotalPages(parsed.totalPages);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load purchase orders");
+      notifyError(e instanceof Error ? e.message : "Failed to load purchase orders");
     } finally {
       setListLoading(false);
     }
@@ -161,7 +162,6 @@ export default function LpoListPage() {
   async function printLpo(row, variant = "lpo") {
     if (!row?.lpo_no || !canView) return;
     setPrintingLpoNo(row.lpo_no);
-    setActionMessage(null);
     try {
       await runLpoPrintClick(row.lpo_no, {
         variant,
@@ -170,7 +170,7 @@ export default function LpoListPage() {
         organization,
       });
     } catch (e) {
-      setActionMessage(e instanceof Error ? e.message : "Print failed");
+      notifyError(e instanceof Error ? e.message : "Print failed");
     } finally {
       setPrintingLpoNo(null);
     }
@@ -178,15 +178,21 @@ export default function LpoListPage() {
 
   async function deleteLpo(row) {
     if (!row?.lpo_no || !canDelete || !row.can_delete) return;
-    if (!window.confirm("Delete this purchase order? This cannot be undone.")) return;
+    const ok = await confirm({
+      title: "Delete purchase order",
+      message: "Delete this purchase order? This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     setDeletingLpoNo(row.lpo_no);
-    setActionMessage(null);
     try {
       await apiRequest(`/lpo-mst/${row.lpo_no}`, { method: "DELETE" });
       setContextMenu(null);
       await loadRows();
+      notifySuccess("Purchase order deleted");
     } catch (e) {
-      setActionMessage(e instanceof ApiError ? e.message : "Delete failed");
+      notifyError(e instanceof ApiError ? e.message : "Delete failed");
     } finally {
       setDeletingLpoNo(null);
     }
@@ -256,12 +262,11 @@ export default function LpoListPage() {
         </div>
       }
       toolbar={
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <FilterToolbar>
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search PO #, supplier, reference…"
-            className="max-w-md"
           />
           <FilterSelect
             value={supplierFilter}
@@ -279,21 +284,9 @@ export default function LpoListPage() {
             onChange={(e) => setStatusFilter(e.target.value)}
             options={statusOptions}
           />
-        </div>
+        </FilterToolbar>
       }
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
-      {actionMessage ? (
-        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {actionMessage}
-        </p>
-      ) : null}
-
       {dashboard && !loading && (
         <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="POs this month" value={String(dashboard.total_pos ?? 0)} />

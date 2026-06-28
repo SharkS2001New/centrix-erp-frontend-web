@@ -13,6 +13,7 @@ import {
 import { formatReceiptNumber, formatSaleKes } from "@/components/sales/sales-shared";
 import { OrderExpandIcon } from "@/components/sales/sales-orders-shared";
 import { saleCustomerLabel } from "@/lib/sales";
+import { useConfirm } from "@/lib/use-confirm";
 
 function orderKey(order) {
   return String(order?.id ?? "");
@@ -33,6 +34,7 @@ function indexSalesWithItems(list) {
 }
 
 export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange, embedded = false }) {
+  const confirm = useConfirm();
   const [mounted, setMounted] = useState(false);
   const [rows, setRows] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -164,9 +166,11 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to restore order";
       if (!replace && message.toLowerCase().includes("already has items")) {
-        const ok = window.confirm(
-          "Your cart already has items. Replace them with this held order?",
-        );
+        const ok = await confirm({
+          title: "Replace cart",
+          message: "Your cart already has items. Replace them with this held order?",
+          confirmLabel: "Replace",
+        });
         if (ok) {
           setBusyOrderId(null);
           return handleRestore(order, true);
@@ -182,7 +186,12 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
   async function handleDelete(order) {
     if (!order?.id) return;
     const label = heldOrderTitle(order);
-    const ok = window.confirm(`Delete held order ${label}? This cannot be undone.`);
+    const ok = await confirm({
+      title: "Delete held order",
+      message: `Delete held order ${label}? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
     if (!ok) return;
 
     setBusyOrderId(order.id);

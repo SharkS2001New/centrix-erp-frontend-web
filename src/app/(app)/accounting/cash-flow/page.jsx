@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -30,7 +31,6 @@ export default function CashFlowPage() {
   const [sections, setSections] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [branchId, setBranchId] = useState("");
@@ -48,7 +48,6 @@ export default function CashFlowPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const searchParams = { per_page: 100 };
       if (fromDate) searchParams.from_date = fromDate;
@@ -61,7 +60,7 @@ export default function CashFlowPage() {
       setSections(res.sections ?? []);
       setSummary(res.summary ?? null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load cash flow report");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load cash flow report");
       setRows([]);
       setSections([]);
       setSummary(null);
@@ -179,11 +178,6 @@ export default function CashFlowPage() {
             </PrimaryButton>
           </div>
         </div>
-      }
-      banner={
-        error ? (
-          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-        ) : null
       }
     >
       {summary ? (

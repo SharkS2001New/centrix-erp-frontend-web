@@ -4,28 +4,26 @@ import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, FormModal, inputClassName } from "@/components/catalog/catalog-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 export function AttendanceClockDevicesSettings() {
   const { organizationApiPath } = useSettingsApi();
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [deviceNo, setDeviceNo] = useState("");
   const [location, setLocation] = useState("");
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await apiRequest(organizationApiPath("/attendance-clock-devices"), {
         searchParams: { per_page: 100 },
       });
       setDevices(res.data ?? []);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load clock devices");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load clock devices");
       setDevices([]);
     } finally {
       setLoading(false);
@@ -38,12 +36,10 @@ export function AttendanceClockDevicesSettings() {
 
   async function register() {
     if (!deviceNo.trim()) {
-      setError("Device number is required.");
+      notifyError("Device number is required.");
       return;
     }
     setSaving(true);
-    setError(null);
-    setMessage(null);
     try {
       await apiRequest(organizationApiPath("/attendance-clock-devices"), {
         method: "POST",
@@ -55,10 +51,10 @@ export function AttendanceClockDevicesSettings() {
       });
       setDeviceNo("");
       setLocation("");
-      setMessage("Clock device registered.");
+      notifySuccess("Clock device registered.");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not register device");
+      notifyError(err instanceof ApiError ? err.message : "Could not register device");
     } finally {
       setSaving(false);
     }
@@ -84,17 +80,6 @@ export function AttendanceClockDevicesSettings() {
           Terminal setup guide
         </button>
       </div>
-
-      {error ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-      {message ? (
-        <p className="rounded-lg border border-[#27500A]/20 bg-[#EAF3DE] px-3 py-2 text-sm text-[#27500A]">
-          {message}
-        </p>
-      ) : null}
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading devices…</p>

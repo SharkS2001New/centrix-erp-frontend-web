@@ -6,6 +6,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
 import { PRODUCT_NAME } from "@/lib/branding";
+import { useConfirm } from "@/lib/use-confirm";
 import { useAuth } from "@/contexts/auth-context";
 import { usePosSession } from "@/contexts/pos-session-context";
 import {
@@ -143,6 +144,7 @@ const POS_CART_REQUEST = { loading: false, reportIssues: false };
 
 export function PosScreen({ standalone = false }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const { user, capabilities, refreshCapabilities, organization } = useAuth();
   const {
     activeSession,
@@ -422,7 +424,15 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function handleSuspendSession() {
-    if (!window.confirm("Suspend this session? You can resume the same shift later — no new float is needed.")) return;
+    if (
+      !(await confirm({
+        title: "Suspend session",
+        message: "Suspend this session? You can resume the same shift later — no new float is needed.",
+        confirmLabel: "Suspend",
+      }))
+    ) {
+      return;
+    }
     setSessionError(null);
     try {
       await suspendSession();
@@ -1408,9 +1418,11 @@ export function PosScreen({ standalone = false }) {
   async function handleOrderTypeChange(routeOrder) {
     if (routeOrder === isRouteOrder) return;
     if (cart?.lines?.length) {
-      const ok = window.confirm(
-        "Changing order type will reprice cart lines. Continue?",
-      );
+      const ok = await confirm({
+        title: "Change order type",
+        message: "Changing order type will reprice cart lines. Continue?",
+        confirmLabel: "Continue",
+      });
       if (!ok) return;
     }
     setIsRouteOrder(routeOrder);
@@ -1444,7 +1456,11 @@ export function PosScreen({ standalone = false }) {
   async function handleRouteChange(routeId) {
     if (String(selectedRouteId) === String(routeId)) return;
     if (cart?.lines?.length) {
-      const ok = window.confirm("Changing route will reprice cart lines. Continue?");
+      const ok = await confirm({
+        title: "Change route",
+        message: "Changing route will reprice cart lines. Continue?",
+        confirmLabel: "Continue",
+      });
       if (!ok) return;
     }
     setSelectedRouteId(routeId);
@@ -1733,7 +1749,16 @@ export function PosScreen({ standalone = false }) {
 
   async function clearAllLines() {
     if (!cart?.id || !cart?.lines?.length) return;
-    if (!window.confirm("Clear all items from the cart?")) return;
+    if (
+      !(await confirm({
+        title: "Clear cart",
+        message: "Clear all items from the cart?",
+        confirmLabel: "Clear",
+        destructive: true,
+      }))
+    ) {
+      return;
+    }
     setBusy(true);
     setStatusMessage(null);
     try {
@@ -1953,7 +1978,12 @@ export function PosScreen({ standalone = false }) {
   async function handleStockSourceChange(fromShop) {
     if (sellFromShop === fromShop) return;
     if (cart?.lines?.length) {
-      const ok = window.confirm("Changing stock source will clear the current cart. Continue?");
+      const ok = await confirm({
+        title: "Change stock source",
+        message: "Changing stock source will clear the current cart. Continue?",
+        confirmLabel: "Continue",
+        destructive: true,
+      });
       if (!ok) return;
       await clearAllLines();
       setCart(null);
@@ -2188,7 +2218,12 @@ export function PosScreen({ standalone = false }) {
   async function handleNewOrder() {
     if (busy) return;
     if (cart?.lines?.length) {
-      const ok = window.confirm("Start a new order? The current cart will be cleared.");
+      const ok = await confirm({
+        title: "New order",
+        message: "Start a new order? The current cart will be cleared.",
+        confirmLabel: "Start new order",
+        destructive: true,
+      });
       if (!ok) return;
       setBusy(true);
       try {
@@ -2266,9 +2301,12 @@ export function PosScreen({ standalone = false }) {
     } catch (e) {
       const message = dedupeErrorMessage(e instanceof ApiError ? e.message : "Could not load order for editing");
       if (!replace && message.toLowerCase().includes("already has items")) {
-        const ok = window.confirm(
-          "Your cart already has items. Replace them with this order?",
-        );
+        const ok = await confirm({
+          title: "Replace cart",
+          message: "Your cart already has items. Replace them with this order?",
+          confirmLabel: "Replace",
+          destructive: true,
+        });
         if (ok) {
           setBusy(false);
           return restoreOrderForEdit(saleId, { replace: true });
@@ -2989,11 +3027,7 @@ export function PosScreen({ standalone = false }) {
                 onKeyDown={allowEditUnitPrice ? handleUnitPriceEnter : undefined}
               />
             </div>
-          </div>
-          </div>
-
-          <div className="pos-left-footer shrink-0 border-t border-[var(--theme-border)] bg-[var(--theme-page-bg)]">
-            <div className="flex flex-wrap gap-3 p-4">
+            <div className="col-span-2 flex flex-wrap gap-3 pt-1">
               <button
                 type="button"
                 disabled={busy || lineBusy || addLineBlocked}
@@ -3028,25 +3062,25 @@ export function PosScreen({ standalone = false }) {
                 Refresh
               </button>
             </div>
-
-          {showCartPaymentPrompts ? (
-          <div className="pos-payment-panel shrink-0 px-4 pb-4">
-          <PosCartPaymentOptions
-            cart={cart}
-            busy={busy}
-            amountDue={cartSummary.amountDue}
-            enableVouchers={enableVouchers}
-            enablePoints={enableRedeemablePoints}
-            enableMpesa={enableMpesaOnPos}
-            enableStkPush={enableStkPushOnPos}
-            embedded={!standalone}
-            onCartUpdated={setCart}
-            onMessage={setStatusMessage}
-            onPaymentApplied={() => setPaymentOpen(true)}
-            onCompleteOrder={(updatedCart) => void handleMpesaOrderComplete(updatedCart)}
-          />
+            {showCartPaymentPrompts ? (
+              <div className="col-span-2 -mx-4">
+                <PosCartPaymentOptions
+                  cart={cart}
+                  busy={busy}
+                  amountDue={cartSummary.amountDue}
+                  enableVouchers={enableVouchers}
+                  enablePoints={enableRedeemablePoints}
+                  enableMpesa={enableMpesaOnPos}
+                  enableStkPush={enableStkPushOnPos}
+                  embedded={!standalone}
+                  onCartUpdated={setCart}
+                  onMessage={setStatusMessage}
+                  onPaymentApplied={() => setPaymentOpen(true)}
+                  onCompleteOrder={(updatedCart) => void handleMpesaOrderComplete(updatedCart)}
+                />
+              </div>
+            ) : null}
           </div>
-          ) : null}
           </div>
         </div>
 

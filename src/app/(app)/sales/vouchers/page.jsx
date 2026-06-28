@@ -21,6 +21,8 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { VOUCHER_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const EMPTY_FORM = {
   voucher_code: "",
@@ -79,6 +81,7 @@ function StatusBadge({ active }) {
 }
 
 export default function VouchersPage() {
+  const confirm = useConfirm();
   const { capabilities } = useAuth();
   const vouchersEnabled = Boolean(
     mergeSalesSettings(capabilities?.module_settings).enable_vouchers,
@@ -86,7 +89,6 @@ export default function VouchersPage() {
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -96,14 +98,13 @@ export default function VouchersPage() {
   const [form, setForm] = useState(EMPTY_FORM);
 
   const loadData = useCallback(async () => {
-    setError(null);
     try {
       const res = await apiRequest("/vouchers", {
         searchParams: { per_page: 200, ...(search.trim() ? { q: search.trim() } : {}) },
       });
       setRows(res.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load vouchers");
+      notifyError(e instanceof Error ? e.message : "Failed to load vouchers");
     } finally {
       setLoading(false);
     }
@@ -209,13 +210,20 @@ export default function VouchersPage() {
   async function deleteVoucher(voucher) {
     if (!canManage) return;
     const label = voucher.voucher_code ?? voucher.name ?? "this voucher";
-    if (!window.confirm(`Delete voucher ${label}?`)) return;
+    const ok = await confirm({
+      title: "Delete voucher",
+      message: `Delete voucher ${label}?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/vouchers/${voucher.id}`, { method: "DELETE" });
       if (editingId === voucher.id) closeDrawer();
       await loadData();
+      notifySuccess(`Voucher ${label} deleted`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      notifyError(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -266,12 +274,6 @@ export default function VouchersPage() {
           placeholder="Search code or name…"
         />
       </div>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (

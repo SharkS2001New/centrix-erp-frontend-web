@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { PlatformFormSection } from "@/components/admin/organization-platform-config";
+import { notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 export function OrganizationCachePanel({ organizationId }) {
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
   const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
   const [status, setStatus] = useState(null);
 
   const load = useCallback(async () => {
@@ -30,22 +32,22 @@ export function OrganizationCachePanel({ organizationId }) {
   }, [load]);
 
   async function handleClear() {
-    if (
-      !window.confirm(
+    const ok = await confirm({
+      title: "Clear organization cache",
+      message:
         "Clear cached data for this organization? Users may need to refresh their browser to pick up module or permission changes.",
-      )
-    ) {
-      return;
-    }
+      confirmLabel: "Clear cache",
+      destructive: true,
+    });
+    if (!ok) return;
 
     setClearing(true);
     setError(null);
-    setMessage(null);
     try {
       const res = await apiRequest(`/admin/organizations/${organizationId}/cache/clear`, {
         method: "POST",
       });
-      setMessage(res.message ?? "Organization cache cleared.");
+      notifySuccess(res.message ?? "Organization cache cleared.");
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not clear organization cache.");
@@ -96,11 +98,6 @@ export function OrganizationCachePanel({ organizationId }) {
 
           {error ? (
             <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-          ) : null}
-          {message ? (
-            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-              {message}
-            </p>
           ) : null}
 
           <button

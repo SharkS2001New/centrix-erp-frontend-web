@@ -153,7 +153,7 @@ export default function TripsPage() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search trip, route, driver…" className="max-w-xs" />
+        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search trip, route, driver…" />
         <Field label="Date">
           <input type="date" className={inputClassName()} value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
         </Field>

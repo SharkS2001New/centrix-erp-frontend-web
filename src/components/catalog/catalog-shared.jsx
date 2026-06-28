@@ -158,25 +158,39 @@ export function PrimaryLink({ href, children, showIcon = true, permission, modul
 
 export function SearchInput({ value, onChange, placeholder, className = "" }) {
   return (
-    <div className={`relative min-w-[200px] flex-1 max-w-xs ${className}`}>
+    <div className={`relative min-w-[12rem] shrink-0 ${className}`}>
       <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 theme-subtext" />
       <input
         type="search"
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        className="theme-input theme-input-focus w-full rounded-lg border py-2 pl-9 pr-3 text-sm outline-none"
+        className="theme-input theme-input-focus h-[38px] w-full min-w-[12rem] rounded-lg border py-2 pl-9 pr-3 text-sm outline-none"
       />
     </div>
   );
 }
 
-export function FilterSelect({ value, onChange, options }) {
+export const FILTER_CONTROL_CLASS =
+  "theme-input theme-input-focus h-[38px] w-auto min-w-[10.5rem] shrink-0 rounded-lg border px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60";
+
+export const FILTER_TOOLBAR_CLASS =
+  "mb-4 flex flex-nowrap items-end gap-3 overflow-x-auto pb-1";
+
+export function FilterToolbar({ children, className = "" }) {
+  return (
+    <div className={[FILTER_TOOLBAR_CLASS, className].filter(Boolean).join(" ")}>
+      {children}
+    </div>
+  );
+}
+
+export function FilterSelect({ value, onChange, options, className = "" }) {
   return (
     <select
       value={value}
       onChange={onChange}
-      className={SELECT_CLASS}
+      className={`${FILTER_CONTROL_CLASS} ${className}`.trim()}
     >
       {options.map((o) => (
         <option key={o.value} value={o.value}>

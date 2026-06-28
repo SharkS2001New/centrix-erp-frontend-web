@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
@@ -35,17 +36,14 @@ const SALES_LINKS = [
 export default function SalesDashboardPage() {
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const loadData = useCallback(async () => {
-    setError(null);
     try {
       const res = await apiRequest("/sales", {
         searchParams: { per_page: 200, with_items: 0, exclude_status: "held" },
       });
       setSales(res.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load sales");
+      notifyError(e instanceof Error ? e.message : "Failed to load sales");
     } finally {
       setLoading(false);
     }
@@ -91,13 +89,6 @@ export default function SalesDashboardPage() {
             View all orders
           </Link>
         </div>
-      }
-      banner={
-        error ? (
-          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </p>
-        ) : null
       }
     >
       {loading ? (

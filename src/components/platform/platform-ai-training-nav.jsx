@@ -29,30 +29,3 @@ export function PlatformAiTrainingNav() {
     </nav>
   );
 }
-
-export function PlatformAiTrainingAlerts({ error, message, onDismissError, onDismissMessage }) {
-  return (
-    <>
-      {error ? (
-        <p className="theme-alert-error mb-4 rounded-lg px-4 py-3 text-sm">
-          {error}
-          {onDismissError ? (
-            <button type="button" onClick={onDismissError} className="ml-2 underline">
-              Dismiss
-            </button>
-          ) : null}
-        </p>
-      ) : null}
-      {message ? (
-        <p className="theme-alert-success mb-4 rounded-lg px-4 py-3 text-sm">
-          {message}
-          {onDismissMessage ? (
-            <button type="button" onClick={onDismissMessage} className="ml-2 underline">
-              Dismiss
-            </button>
-          ) : null}
-        </p>
-      ) : null}
-    </>
-  );
-}

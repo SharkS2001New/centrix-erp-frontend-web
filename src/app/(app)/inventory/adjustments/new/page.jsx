@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -40,7 +41,6 @@ export default function RecordStockAdjustmentPage() {
   const [lines, setLines] = useState([]);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
   const [presetLoaded, setPresetLoaded] = useState(false);
 
   useEffect(() => {
@@ -85,12 +85,11 @@ export default function RecordStockAdjustmentPage() {
     e.preventDefault();
     const toPost = lines.filter((line) => line.product_code && Number(line.quantity) > 0);
     if (toPost.length === 0) {
-      setError("Add at least one product with a quantity.");
+      notifyError("Add at least one product with a quantity.");
       return;
     }
 
     setSaving(true);
-    setError(null);
     const noteText = notes.trim();
     try {
       for (const line of toPost) {
@@ -110,7 +109,7 @@ export default function RecordStockAdjustmentPage() {
       }
       router.push("/inventory/adjustments");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to save adjustment");
+      notifyError(err instanceof ApiError ? err.message : "Failed to save adjustment");
     } finally {
       setSaving(false);
     }
@@ -126,12 +125,6 @@ export default function RecordStockAdjustmentPage() {
           ← Back to adjustments
         </Link>
       </div>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       <form
         onSubmit={submit}

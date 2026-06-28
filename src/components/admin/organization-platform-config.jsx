@@ -21,6 +21,7 @@ import {
   workspaceToggleIcon,
 } from "@/lib/workspace-modules";
 import { OrganizationCachePanel } from "@/components/admin/organization-cache-panel";
+import { useConfirm } from "@/lib/use-confirm";
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]";
@@ -807,6 +808,7 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
 }
 
 function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false }) {
+  const confirm = useConfirm();
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [fullName, setFullName] = useState(user.full_name ?? "");
@@ -856,13 +858,13 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
   }
 
   async function deleteUser() {
-    if (
-      !window.confirm(
-        `Delete "${user.full_name}"? Users with sales or activity history are archived; users without records are removed permanently.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete user",
+      message: `Delete "${user.full_name}"? Users with sales or activity history are archived; users without records are removed permanently.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
 
     setBusy(true);
     setError(null);
@@ -1098,6 +1100,7 @@ export function OrganizationStatusPanel({ organization, isActive: isActiveProp, 
 
 export function OrganizationDeletePanel({ organizationId, organizationName }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [confirmation, setConfirmation] = useState("");
   const [password, setPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -1108,13 +1111,14 @@ export function OrganizationDeletePanel({ organizationId, organizationName }) {
 
   async function handleDelete() {
     if (!canDelete) return;
-    if (
-      !window.confirm(
+    const ok = await confirm({
+      title: "Delete organization",
+      message:
         "Permanently remove this organization from the platform? All users will be signed out and cannot sign in again.",
-      )
-    ) {
-      return;
-    }
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
 
     setDeleting(true);
     setError(null);

@@ -11,6 +11,7 @@ import {
   PrimaryButton,
   SearchInput,
 } from "@/components/catalog/catalog-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 const PAGE_SIZE = 25;
 
@@ -41,15 +42,12 @@ export default function PlatformSystemIssuesPage() {
   const [statusFilter, setStatusFilter] = useState("open");
   const [kindFilter, setKindFilter] = useState("all");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
   const [resolutionNotes, setResolutionNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const [listRes, summaryRes] = await Promise.all([
         apiRequest("/admin/system-issue-reports", {
@@ -71,7 +69,7 @@ export default function PlatformSystemIssuesPage() {
       setTotalPages(parsed.totalPages);
       setSummary(summaryRes);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load system issues");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load system issues");
     } finally {
       setLoading(false);
     }
@@ -90,16 +88,14 @@ export default function PlatformSystemIssuesPage() {
       const detail = await apiRequest(`/admin/system-issue-reports/${row.id}`);
       setSelected(detail);
       setResolutionNotes(detail.resolution_notes ?? "");
-      setMessage(null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load issue details");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load issue details");
     }
   }
 
   async function updateStatus(status) {
     if (!selected) return;
     setSaving(true);
-    setError(null);
     try {
       const updated = await apiRequest(`/admin/system-issue-reports/${selected.id}`, {
         method: "PATCH",
@@ -109,10 +105,10 @@ export default function PlatformSystemIssuesPage() {
         },
       });
       setSelected(updated);
-      setMessage("Issue updated.");
+      notifySuccess("Issue updated.");
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to update issue");
+      notifyError(e instanceof ApiError ? e.message : "Failed to update issue");
     } finally {
       setSaving(false);
     }
@@ -142,15 +138,6 @@ export default function PlatformSystemIssuesPage() {
             <p className="mt-1 text-2xl font-semibold text-slate-900">{summary.today ?? 0}</p>
           </div>
         </div>
-      ) : null}
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      ) : null}
-      {message ? (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {message}
-        </p>
       ) : null}
 
       <div className="mb-4 flex flex-wrap gap-3">

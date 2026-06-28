@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError, notifySuccess } from "@/lib/notify";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -43,6 +44,7 @@ import {
   SaleStatusBadge,
 } from "@/components/sales/sales-shared";
 import { ReturnStatusBadge } from "@/components/sales/customer-returns-shared";
+import { useConfirm } from "@/lib/use-confirm";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
 import {
   FulfillmentAssignmentDialog,
@@ -462,6 +464,7 @@ function PrintIcon() {
 }
 
 export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
+  const confirm = useConfirm();
   const { capabilities, refreshCapabilities, organization } = useAuth();
   const { floatSessionId } = usePosSession();
 
@@ -474,11 +477,9 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const [subCategories, setSubCategories] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState("summary");
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [transitionBusy, setTransitionBusy] = useState(false);
-  const [actionMessage, setActionMessage] = useState(null);
   const [orderReturns, setOrderReturns] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [routes, setRoutes] = useState([]);
@@ -490,7 +491,6 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   }, [refreshCapabilities]);
 
   const loadSale = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const [saleData, payRes, methodsRes, subRes, catRes, returnsRes, uomRes, routeRes, driverRes, vehicleRes] = await Promise.all([
@@ -555,7 +555,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         setCustomer(null);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load order");
+      notifyError(e instanceof Error ? e.message : "Failed to load order");
     } finally {
       setLoading(false);
     }
@@ -620,7 +620,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         ? openBlankPrintWindow(printWindowFeatures(cachedType))
         : null;
     if (cachedType !== "both" && !printWindow) {
-      setActionMessage(PRINT_BLOCKED_MESSAGE);
+      notifyError(PRINT_BLOCKED_MESSAGE);
       return;
     }
 
@@ -641,15 +641,22 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       }
     } catch (e) {
       disposePrintWindow(printWindow);
-      setActionMessage(e instanceof Error ? e.message : "Print failed");
+      notifyError(e instanceof Error ? e.message : "Print failed");
     }
   }, [sale, capabilities, organization, customer, branchName, cashierName, uomById]);
 
   async function transitionOrder(targetStatus, fulfillmentMeta) {
     if (!sale?.id) return;
-    if (targetStatus === "cancelled" && !window.confirm("Cancel this order?")) return;
+    if (targetStatus === "cancelled") {
+      const ok = await confirm({
+        title: "Cancel order",
+        message: "Cancel this order?",
+        confirmLabel: "Cancel order",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
     setTransitionBusy(true);
-    setActionMessage(null);
     try {
       const body = { status: targetStatus };
       if (fulfillmentMeta) body.fulfillment_meta = fulfillmentMeta;
@@ -658,10 +665,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         body,
       });
       setSale((prev) => ({ ...prev, ...updated }));
-      setActionMessage("Order updated.");
+      notifySuccess("Order updated.");
       await loadSale();
     } catch (e) {
-      setActionMessage(e instanceof ApiError ? e.message : "Could not update order.");
+      notifyError(e instanceof ApiError ? e.message : "Could not update order.");
     } finally {
       setTransitionBusy(false);
     }
@@ -671,10 +678,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     capabilities,
     onSuccess: async (updated) => {
       setSale((prev) => ({ ...prev, ...updated }));
-      setActionMessage("Order updated.");
+      notifySuccess("Order updated.");
       await loadSale();
     },
-    onError: (message) => setActionMessage(message),
+    onError: (message) => notifyError(message),
   });
 
   function handleAdvance(targetStatus) {
@@ -726,18 +733,6 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
           Order #{sale ? formatReceiptNumber(sale) : "…"}
         </span>
       </nav>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
-      {actionMessage ? (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {actionMessage}
-        </p>
-      ) : null}
 
       {loading ? (
         <p className="theme-subtext text-sm">Loading order…</p>

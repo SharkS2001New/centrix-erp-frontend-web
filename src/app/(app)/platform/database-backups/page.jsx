@@ -5,6 +5,8 @@ import { apiFetchBlob, apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { useConfirm } from "@/lib/use-confirm";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 function formatBytes(bytes) {
   if (!bytes || bytes <= 0) return "0 B";
@@ -31,25 +33,23 @@ function downloadBlob(blob, filename) {
 }
 
 export default function PlatformDatabaseBackupsPage() {
+  const confirm = useConfirm();
   const [backups, setBackups] = useState([]);
   const [driveStatus, setDriveStatus] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [warning, setWarning] = useState(null);
   const [busyFilename, setBusyFilename] = useState(null);
   const [creating, setCreating] = useState(false);
-  const [success, setSuccess] = useState(null);
   const { runQueuedTask, overlayNode } = useQueuedTask("Please wait while the database backup runs…");
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await apiRequest("/admin/database-backups");
       setBackups(res.data ?? []);
       setDriveStatus(res.google_drive ?? null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load database backups.");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load database backups.");
     } finally {
       setLoading(false);
     }
@@ -61,28 +61,28 @@ export default function PlatformDatabaseBackupsPage() {
 
   async function handleDownload(filename) {
     setBusyFilename(filename);
-    setError(null);
     try {
       const blob = await apiFetchBlob(
         `/admin/database-backups/${encodeURIComponent(filename)}/download`,
       );
       downloadBlob(blob, filename);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not download backup.");
+      notifyError(e instanceof ApiError ? e.message : "Could not download backup.");
     } finally {
       setBusyFilename(null);
     }
   }
 
   async function handleCreateBackup() {
-    if (!window.confirm("Run a manual database backup now? This may take a minute on large databases.")) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Run manual backup",
+      message: "Run a manual database backup now? This may take a minute on large databases.",
+      confirmLabel: "Run backup",
+    });
+    if (!ok) return;
 
     setCreating(true);
-    setError(null);
     setWarning(null);
-    setSuccess(null);
     try {
       const res = await runQueuedTask(
         () =>
@@ -103,13 +103,13 @@ export default function PlatformDatabaseBackupsPage() {
       } else if (res.google_drive_skipped_reason) {
         setWarning(`Backup saved on server. Google Drive upload was skipped: ${res.google_drive_skipped_reason}`);
       } else if (res.google_drive?.web_view_link) {
-        setSuccess(`${res.message ?? "Database backup completed."} Open in Drive: ${res.google_drive.web_view_link}`);
+        notifySuccess(`${res.message ?? "Database backup completed."} Open in Drive: ${res.google_drive.web_view_link}`);
       } else {
-        setSuccess(res.message ?? "Database backup completed.");
+        notifySuccess(res.message ?? "Database backup completed.");
       }
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Database backup failed.");
+      notifyError(e instanceof ApiError ? e.message : "Database backup failed.");
     } finally {
       setCreating(false);
     }
@@ -179,18 +179,6 @@ export default function PlatformDatabaseBackupsPage() {
       {warning ? (
         <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           {warning}
-        </p>
-      ) : null}
-
-      {error ? (
-        <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
-      {success ? (
-        <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {success}
         </p>
       ) : null}
 

@@ -1,10 +1,12 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import {
   CatalogPageShell,
+  FilterToolbar,
   PaginationBar,
   SearchInput,
   formatShortDate,
@@ -19,12 +21,10 @@ export default function SalesReservationsPage() {
   const [rows, setRows] = useState([]);
   const [salesById, setSalesById] = useState({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
   const loadData = useCallback(async () => {
-    setError(null);
     try {
       const res = await apiRequest("/stock-reservations", {
         searchParams: { per_page: 200 },
@@ -42,7 +42,7 @@ export default function SalesReservationsPage() {
         setSalesById(map);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load reservations");
+      notifyError(e instanceof Error ? e.message : "Failed to load reservations");
     } finally {
       setLoading(false);
     }
@@ -86,21 +86,13 @@ export default function SalesReservationsPage() {
         />
       }
       toolbar={
-        <div className="mb-4">
+        <FilterToolbar>
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search order, product…"
-            className="max-w-md"
           />
-        </div>
-      }
-      banner={
-        error ? (
-          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </p>
-        ) : null
+        </FilterToolbar>
       }
     >
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">

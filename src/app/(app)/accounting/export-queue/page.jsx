@@ -7,6 +7,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useOrgFormat } from "@/lib/org-format";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 export default function ExportQueuePage() {
   const { shortDate } = useOrgFormat();
@@ -15,13 +16,10 @@ export default function ExportQueuePage() {
   const [integration, setIntegration] = useState(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
   const { runQueuedTask, overlayNode } = useQueuedTask("Please wait while export queue items are processed…");
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const searchParams = statusFilter ? { status: statusFilter } : undefined;
       const [res, statusRes] = await Promise.all([
@@ -31,7 +29,7 @@ export default function ExportQueuePage() {
       setRows(res.data ?? []);
       setIntegration(statusRes);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load export queue");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load export queue");
     } finally {
       setLoading(false);
     }
@@ -43,8 +41,6 @@ export default function ExportQueuePage() {
 
   async function processQueue(retryFailed = false) {
     setWorking(true);
-    setMessage(null);
-    setError(null);
     try {
       const path = retryFailed ? "/accounting/export-queue/retry-failed" : "/accounting/export-queue/process";
       const res = await runQueuedTask(() => apiRequest(path, { method: "POST" }), {
@@ -53,15 +49,15 @@ export default function ExportQueuePage() {
           : "Please wait while pending exports are processed…",
       });
       if (retryFailed) {
-        setMessage(
+        notifySuccess(
           `Retried ${res.reset ?? 0} failed item(s): ${res.exported ?? 0} exported, ${res.failed ?? 0} failed.`,
         );
       } else {
-        setMessage(`Processed ${res.processed ?? 0}: ${res.exported ?? 0} exported, ${res.failed ?? 0} failed.`);
+        notifySuccess(`Processed ${res.processed ?? 0}: ${res.exported ?? 0} exported, ${res.failed ?? 0} failed.`);
       }
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to process export queue");
+      notifyError(e instanceof ApiError ? e.message : "Failed to process export queue");
     } finally {
       setWorking(false);
     }
@@ -145,16 +141,7 @@ export default function ExportQueuePage() {
         </div>
       ) : null}
 
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      ) : null}
-      {message ? (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {message}
-        </p>
-      ) : null}
-
-      <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
+      <div className="mb-4 flex flex-wrap items-end gap-3 text-sm">
         <select
           className="rounded-lg border border-slate-300 px-3 py-2"
           value={statusFilter}

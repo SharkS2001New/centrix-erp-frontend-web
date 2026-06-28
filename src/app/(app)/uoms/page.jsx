@@ -32,6 +32,8 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { UOM_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const PACK_FILTER_OPTIONS = [
   { value: "all", label: "All units" },
@@ -124,10 +126,10 @@ function StockReportPreview({ form }) {
 }
 
 export default function UomsPage() {
+  const confirm = useConfirm();
   const [uoms, setUoms] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
@@ -141,7 +143,6 @@ export default function UomsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
 
   const loadData = useCallback(async () => {
-    setError(null);
     try {
       const [uomRes, prodRes] = await Promise.all([
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
@@ -150,7 +151,7 @@ export default function UomsPage() {
       setUoms(uomRes.data ?? []);
       setProducts(prodRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load units of measure");
+      notifyError(e instanceof Error ? e.message : "Failed to load units of measure");
     } finally {
       setLoading(false);
     }
@@ -276,13 +277,20 @@ export default function UomsPage() {
       count > 0
         ? `"${uom.full_name}" is used by ${count} product(s). Delete anyway?`
         : `Delete unit "${uom.full_name}"?`;
-    if (!window.confirm(msg)) return;
+    const ok = await confirm({
+      title: "Delete unit of measure",
+      message: msg,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/uoms/${uom.id}`, { method: "DELETE" });
       if (editingId === uom.id) closeDrawer();
       await loadData();
+      notifySuccess(`"${uom.full_name}" deleted`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      notifyError(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -304,12 +312,11 @@ export default function UomsPage() {
         </div>
       }
       toolbar={
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-end gap-3">
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search units…"
-            className="max-w-sm"
           />
           <FilterSelect
             value={typeFilter}
@@ -324,12 +331,6 @@ export default function UomsPage() {
         </div>
       }
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       <div className={TABLE_SHELL_CLASS}>
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading units…</p>

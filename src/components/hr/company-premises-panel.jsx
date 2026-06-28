@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 function geolocationErrorMessage(error) {
   if (!error) {
@@ -42,8 +43,6 @@ export function CompanyPremisesPanel({ embedded = false }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [locating, setLocating] = useState(false);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
   const [draftLat, setDraftLat] = useState("");
   const [draftLng, setDraftLng] = useState("");
 
@@ -57,7 +56,6 @@ export function CompanyPremisesPanel({ embedded = false }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const data = await apiRequest(organizationApiPath("/attendance/company-premises"));
       setPremises(data);
@@ -67,7 +65,7 @@ export function CompanyPremisesPanel({ embedded = false }) {
         return list[0]?.branch_id != null ? String(list[0].branch_id) : "";
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load premises location");
+      notifyError(e instanceof Error ? e.message : "Failed to load premises location");
     } finally {
       setLoading(false);
     }
@@ -88,11 +86,8 @@ export function CompanyPremisesPanel({ embedded = false }) {
   }, [selectedBranch]);
 
   async function captureCurrentLocation() {
-    setMessage(null);
-    setError(null);
-
     if (typeof window !== "undefined" && !window.isSecureContext) {
-      setError("Location capture requires HTTPS. Open Centrix over a secure (https://) connection.");
+      notifyError("Location capture requires HTTPS. Open Centrix over a secure (https://) connection.");
       return;
     }
 
@@ -101,9 +96,9 @@ export function CompanyPremisesPanel({ embedded = false }) {
       const pos = await requestCurrentPosition();
       setDraftLat(String(pos.coords.latitude));
       setDraftLng(String(pos.coords.longitude));
-      setMessage("Current location captured. Enter your password and save.");
+      notifySuccess("Current location captured. Enter your password and save.");
     } catch (err) {
-      setError(geolocationErrorMessage(err));
+      notifyError(geolocationErrorMessage(err));
     } finally {
       setLocating(false);
     }
@@ -111,20 +106,18 @@ export function CompanyPremisesPanel({ embedded = false }) {
 
   async function saveLocation() {
     if (!selectedBranchId) {
-      setError("Select a branch first.");
+      notifyError("Select a branch first.");
       return;
     }
     if (!draftLat || !draftLng) {
-      setError("Capture or enter latitude and longitude first.");
+      notifyError("Capture or enter latitude and longitude first.");
       return;
     }
     if (!password.trim()) {
-      setError("Your password is required to save the branch premises location.");
+      notifyError("Your password is required to save the branch premises location.");
       return;
     }
     setSaving(true);
-    setError(null);
-    setMessage(null);
     try {
       const res = await apiRequest(organizationApiPath("/attendance/company-premises"), {
         method: "POST",
@@ -137,10 +130,10 @@ export function CompanyPremisesPanel({ embedded = false }) {
         },
       });
       setPassword("");
-      setMessage(res.message ?? "Branch premises location saved.");
+      notifySuccess(res.message ?? "Branch premises location saved.");
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to save location");
+      notifyError(e instanceof ApiError ? e.message : "Failed to save location");
     } finally {
       setSaving(false);
     }
@@ -162,17 +155,6 @@ export function CompanyPremisesPanel({ embedded = false }) {
           : " Save the premises coordinates here (password required)."}
         {" "}First scan enrolls each employee&apos;s face.
       </p>
-
-      {error ? (
-        <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-      {message ? (
-        <p className="mt-4 rounded-lg border border-[#27500A]/20 bg-[#EAF3DE] px-3 py-2 text-sm text-[#27500A]">
-          {message}
-        </p>
-      ) : null}
 
       {loading ? (
         <p className="mt-4 text-sm text-slate-500">Loading premises…</p>

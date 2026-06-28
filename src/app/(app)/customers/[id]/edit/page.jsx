@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -33,11 +34,9 @@ export default function EditCustomerPage() {
   const [saving, setSaving] = useState(false);
   const [savingLocation, setSavingLocation] = useState(false);
   const [removingShopImage, setRemovingShopImage] = useState(false);
-  const [error, setError] = useState(null);
   const [formError, setFormError] = useState(null);
 
   const loadCustomer = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const customer = await apiRequest(`/customers/${customerNum}`);
@@ -45,7 +44,7 @@ export default function EditCustomerPage() {
       setShopImagePreview(null);
       setShopImageFile(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load customer");
+      notifyError(e instanceof Error ? e.message : "Failed to load customer");
     } finally {
       setLoading(false);
     }
@@ -178,12 +177,6 @@ export default function EditCustomerPage() {
       title="Edit customer"
       subtitle="Update customer details, shop photo, and GPS location"
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       {pageLoading ? (
         <p className="text-sm text-slate-500">Loading…</p>
       ) : form ? (

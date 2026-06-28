@@ -26,10 +26,13 @@ import {
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { DAMAGE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { EditDamageDrawer } from "@/components/inventory/edit-damage-drawer";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const PAGE_SIZE = 15;
 
 export default function DamagesPage() {
+  const confirm = useConfirm();
   const { user } = useAuth();
   const branchId = user?.branch_id ?? 1;
   const initialRange = defaultDateRange(7);
@@ -38,7 +41,6 @@ export default function DamagesPage() {
   const [products, setProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
   const [page, setPage] = useState(1);
@@ -46,7 +48,6 @@ export default function DamagesPage() {
   const [editingDamage, setEditingDamage] = useState(null);
 
   const load = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const all = await fetchAllPaginatedRowsSmart("/damages", {
@@ -60,7 +61,7 @@ export default function DamagesPage() {
       setProducts(prodRes.data ?? []);
       setUoms(uomRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load damages");
+      notifyError(e instanceof Error ? e.message : "Failed to load damages");
     } finally {
       setLoading(false);
     }
@@ -101,21 +102,21 @@ export default function DamagesPage() {
     const product = productByCode.get(row.product_code);
     const label = product?.product_name ?? row.product_code;
     const qtyLabel = formatStockQty(row.quantity, uomByProduct.get(row.product_code));
-    if (
-      !window.confirm(
-        `Delete this damage record for ${label} and restore ${qtyLabel} to ${row.stock_location ?? "shop"} stock?`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete damage record",
+      message: `Delete this damage record for ${label} and restore ${qtyLabel} to ${row.stock_location ?? "shop"} stock?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
 
     setDeletingId(row.id);
-    setError(null);
     try {
       await apiRequest(`/damages/${row.id}`, { method: "DELETE" });
       await load();
+      notifySuccess("Damage record deleted and stock restored");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to delete damage");
+      notifyError(e instanceof ApiError ? e.message : "Failed to delete damage");
     } finally {
       setDeletingId(null);
     }
@@ -165,12 +166,6 @@ export default function DamagesPage() {
           {filtered.length} record{filtered.length === 1 ? "" : "s"} in range
         </p>
       </div>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       <InventoryTableShell>
         {loading ? (

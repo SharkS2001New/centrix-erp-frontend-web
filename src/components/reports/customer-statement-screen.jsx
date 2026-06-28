@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -30,8 +31,6 @@ export function CustomerStatementScreen() {
   const [appliedCustomer, setAppliedCustomer] = useState(initialCustomer);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
   useEffect(() => {
     apiRequest("/customers", { searchParams: { per_page: 200 } })
       .then((res) => setCustomers(res.data ?? []))
@@ -49,12 +48,11 @@ export function CustomerStatementScreen() {
   const loadStatement = useCallback(async () => {
     if (!appliedCustomer) return;
     setLoading(true);
-    setError(null);
     try {
       const res = await apiRequest(`/reports/customers/${appliedCustomer}/statement`);
       setData(res);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load statement");
+      notifyError(e instanceof Error ? e.message : "Failed to load statement");
       setData(null);
     } finally {
       setLoading(false);
@@ -139,7 +137,7 @@ export function CustomerStatementScreen() {
         branding,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Print failed");
+      notifyError(e instanceof Error ? e.message : "Print failed");
     }
   }, [branding, columns, creditLimit, customer, lines, outstanding]);
 
@@ -195,10 +193,6 @@ export function CustomerStatementScreen() {
           </button>
         </div>
       </div>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      ) : null}
 
       {customer ? (
         <>

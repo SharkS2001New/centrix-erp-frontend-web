@@ -17,9 +17,12 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { ROLE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { normalizeRoleId, permissionIdSet } from "@/lib/permission-ids";
+import { useConfirm } from "@/lib/use-confirm";
 
 export default function AdminRolesPage() {
+  const confirm = useConfirm();
   const { adminPath } = useAdminApi();
   const [roles, setRoles] = useState([]);
   const [permissionGroups, setPermissionGroups] = useState([]);
@@ -28,8 +31,6 @@ export default function AdminRolesPage() {
   const [assignedIds, setAssignedIds] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [roleName, setRoleName] = useState("");
   const [formError, setFormError] = useState(null);
@@ -66,7 +67,6 @@ export default function AdminRolesPage() {
 
     async function bootstrap() {
       setLoading(true);
-      setError(null);
       try {
         const list = await loadRoles();
         if (cancelled) return;
@@ -79,7 +79,7 @@ export default function AdminRolesPage() {
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof ApiError ? e.message : "Failed to load roles");
+          notifyError(e instanceof ApiError ? e.message : "Failed to load roles");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -95,7 +95,7 @@ export default function AdminRolesPage() {
   useEffect(() => {
     if (selectedRoleId == null) return;
     loadRolePermissions(selectedRoleId).catch((e) => {
-      setError(e instanceof ApiError ? e.message : "Failed to load role permissions");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load role permissions");
     });
   }, [selectedRoleId, loadRolePermissions]);
 
@@ -127,17 +127,15 @@ export default function AdminRolesPage() {
     const roleId = normalizeRoleId(selectedRoleId);
     if (roleId == null) return;
     setSaving(true);
-    setError(null);
-    setMessage(null);
     try {
       const res = await apiRequest(adminPath(`/roles/${roleId}/permissions`), {
         method: "PUT",
         body: { permission_ids: [...assignedIds] },
       });
       setAssignedIds(permissionIdSet(res.permission_ids));
-      setMessage("Permissions saved.");
+      notifySuccess("Permissions saved.");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to save permissions");
+      notifyError(e instanceof ApiError ? e.message : "Failed to save permissions");
     } finally {
       setSaving(false);
     }
@@ -151,15 +149,18 @@ export default function AdminRolesPage() {
 
     const count = target.users_count ?? 0;
     if (count > 0) {
-      setError(`Cannot delete "${target.role_name}" — ${count} user(s) are still assigned. Reassign them first.`);
+      notifyError(`Cannot delete "${target.role_name}" — ${count} user(s) are still assigned. Reassign them first.`);
       return;
     }
-    const ok = window.confirm(`Delete role "${target.role_name}"? This cannot be undone.`);
+    const ok = await confirm({
+      title: "Delete role",
+      message: `Delete role "${target.role_name}"? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
     if (!ok) return;
 
     setSaving(true);
-    setError(null);
-    setMessage(null);
     try {
       await apiRequest(adminPath(`/roles/${roleId}`), { method: "DELETE" });
       const list = await loadRoles();
@@ -167,9 +168,9 @@ export default function AdminRolesPage() {
       const nextId = list[0] ? normalizeRoleId(list[0].id) : null;
       setSelectedRoleId(nextId);
       if (nextId == null) setAssignedIds(new Set());
-      setMessage(`Role "${target.role_name}" deleted.`);
+      notifySuccess(`Role "${target.role_name}" deleted.`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to delete role");
+      notifyError(e instanceof ApiError ? e.message : "Failed to delete role");
     } finally {
       setSaving(false);
     }
@@ -224,15 +225,6 @@ export default function AdminRolesPage() {
       <AdminBreadcrumb
         items={[{ label: "Administration", href: "/admin" }, { label: "Roles & permissions" }]}
       />
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      ) : null}
-      {message ? (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {message}
-        </p>
-      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
         <div className={workspaceCardClassName}>

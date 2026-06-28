@@ -11,8 +11,8 @@ export default function EditCustomerReturnPage() {
   const params = useParams();
   const id = params.id;
   const [row, setRow] = useState(null);
-  const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!id) return;

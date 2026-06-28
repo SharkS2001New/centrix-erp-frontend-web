@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
@@ -7,6 +8,7 @@ import {
   CatalogPageShell,
   Field,
   FilterSelect,
+  FilterToolbar,
   FormDrawer,
   IconButton,
   inputClassName,
@@ -24,6 +26,8 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { CATEGORY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { toast } from "@/lib/toast";
+import { useConfirm } from "@/lib/use-confirm";
 
 const PAGE_SIZE = 15;
 
@@ -69,13 +73,12 @@ function buildTreeRows(categories, subCategories, collapsed, search, typeFilter)
 }
 
 export default function CategoriesPage() {
+  const confirm = useConfirm();
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [collapsed, setCollapsed] = useState(new Set());
@@ -91,7 +94,6 @@ export default function CategoriesPage() {
   const [formError, setFormError] = useState(null);
 
   const loadData = useCallback(async () => {
-    setError(null);
     try {
       const [catRes, subRes, prodRes, userRes] = await Promise.all([
         apiRequest("/categories", { searchParams: { per_page: 200 } }),
@@ -104,7 +106,7 @@ export default function CategoriesPage() {
       setProducts(prodRes.data ?? []);
       setUsers(userRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load categories");
+      notifyError(e instanceof Error ? e.message : "Failed to load categories");
     } finally {
       setLoading(false);
     }
@@ -238,31 +240,37 @@ export default function CategoriesPage() {
   async function deleteCategory(cat) {
     const subs = subCategories.filter((s) => s.category_id === cat.id);
     const prodCount = productCountByCategory.get(cat.id) ?? 0;
-    if (
-      !window.confirm(
-        `Delete "${cat.category_name}" and ${subs.length} sub-categor${subs.length === 1 ? "y" : "ies"}? ${prodCount} product(s) linked.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete category",
+      message: `Delete "${cat.category_name}" and ${subs.length} sub-categor${subs.length === 1 ? "y" : "ies"}? ${prodCount} product(s) linked.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/categories/${cat.id}`, { method: "DELETE" });
       await loadData();
+      toast.success(`"${cat.category_name}" deleted`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      toast.error(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
   async function deleteSubCategory(sub) {
     const count = productCountBySub.get(sub.id) ?? 0;
-    if (!window.confirm(`Delete "${sub.subcategory_name}"? ${count} product(s) linked.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete sub-category",
+      message: `Delete "${sub.subcategory_name}"? ${count} product(s) linked.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/sub-categories/${sub.id}`, { method: "DELETE" });
       await loadData();
+      toast.success(`"${sub.subcategory_name}" deleted`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      toast.error(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -294,12 +302,11 @@ export default function CategoriesPage() {
         </div>
       }
       toolbar={
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <FilterToolbar>
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search categories or sub-categories…"
-            className="max-w-sm"
           />
           <FilterSelect
             value={typeFilter}
@@ -310,15 +317,9 @@ export default function CategoriesPage() {
               { value: "sub", label: "Sub-categories only" },
             ]}
           />
-        </div>
+        </FilterToolbar>
       }
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       <div className={TABLE_SHELL_CLASS}>
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading…</p>

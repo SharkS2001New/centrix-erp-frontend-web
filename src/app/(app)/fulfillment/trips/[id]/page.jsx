@@ -12,7 +12,8 @@ import {
   PrimaryButton,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
-import { DashboardErrorBanner, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
+import { DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { printLoadingList } from "@/components/fulfillment/loading-list-print";
 import { printDeliveryNote } from "@/components/fulfillment/delivery-note-print";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
@@ -26,20 +27,17 @@ function statusLabel(status) {
 
 export default function TripDetailPage() {
   const { id } = useParams();
-  const { organization, generalSettings, capabilities } = useAuth();
+  const { organization, generalSettings, capabilities, user } = useAuth();
 
   const [trip, setTrip] = useState(null);
   const [loadingList, setLoadingList] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
   const [preparedBy, setPreparedBy] = useState("");
   const [checkedBy, setCheckedBy] = useState("");
   const [collectedCash, setCollectedCash] = useState("");
 
   const loadTrip = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const [tripRes, listRes] = await Promise.all([
@@ -54,7 +52,7 @@ export default function TripDetailPage() {
         tripRes.collected_cash != null ? String(tripRes.collected_cash) : "",
       );
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load trip");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load trip");
     } finally {
       setLoading(false);
     }
@@ -66,14 +64,12 @@ export default function TripDetailPage() {
 
   async function runAction(path, body) {
     setBusy(true);
-    setError(null);
-    setMessage(null);
     try {
       await apiRequest(path, { method: "POST", body });
-      setMessage("Trip updated.");
+      notifySuccess("Trip updated.");
       await loadTrip();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Action failed");
+      notifyError(e instanceof ApiError ? e.message : "Action failed");
     } finally {
       setBusy(false);
     }
@@ -115,7 +111,6 @@ export default function TripDetailPage() {
 
   async function printStopDeliveryNote(sale, stopNumber) {
     setBusy(true);
-    setError(null);
     try {
       const fullSale = await apiRequest(`/sales/${sale.id}`);
       printDeliveryNote({
@@ -125,7 +120,7 @@ export default function TripDetailPage() {
         stopNumber,
       });
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not load order for delivery note");
+      notifyError(e instanceof ApiError ? e.message : "Could not load order for delivery note");
     } finally {
       setBusy(false);
     }
@@ -143,7 +138,6 @@ export default function TripDetailPage() {
 
     [list[index], list[target]] = [list[target], list[index]];
     setBusy(true);
-    setError(null);
     try {
       await apiRequest(`/dispatch-trips/${id}/reorder-stops`, {
         method: "POST",
@@ -154,10 +148,10 @@ export default function TripDetailPage() {
           })),
         },
       });
-      setMessage("Stop order updated.");
+      notifySuccess("Stop order updated.");
       await loadTrip();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not reorder stops");
+      notifyError(e instanceof ApiError ? e.message : "Could not reorder stops");
     } finally {
       setBusy(false);
     }
@@ -185,13 +179,6 @@ export default function TripDetailPage() {
           { label: trip.trip_code },
         ]}
       />
-
-      <DashboardErrorBanner message={error} />
-      {message ? (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {message}
-        </p>
-      ) : null}
 
       <div className="mb-6 grid gap-4 theme-panel rounded-xl border p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
         <div>
@@ -224,7 +211,6 @@ export default function TripDetailPage() {
           disabled={busy}
           onClick={async () => {
             setBusy(true);
-            setError(null);
             try {
               const listRes = await apiRequest(`/dispatch-trips/${id}/loading-list`);
               const freshList = listRes.loading_list ?? listRes;
@@ -240,9 +226,10 @@ export default function TripDetailPage() {
                   mergeGeneralSettings(capabilities?.module_settings),
                   "loading_sheet",
                 ),
+                printedBy: user?.full_name ?? user?.username ?? null,
               });
             } catch (e) {
-              setError(e instanceof ApiError ? e.message : "Could not refresh loading list for print");
+              notifyError(e instanceof ApiError ? e.message : "Could not refresh loading list for print");
             } finally {
               setBusy(false);
             }

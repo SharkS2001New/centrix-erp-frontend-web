@@ -30,6 +30,8 @@ import {
 } from "@/lib/uom-packaging";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { RETAIL_PACKAGE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const PAGE_SIZE = 10;
 
@@ -52,14 +54,13 @@ function formatTiersSummary(tiers, uom) {
 }
 
 export default function RetailPackageSettingsPage() {
+  const confirm = useConfirm();
   const [settings, setSettings] = useState([]);
   const [products, setProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subCategoryFilter, setSubCategoryFilter] = useState("all");
@@ -73,7 +74,6 @@ export default function RetailPackageSettingsPage() {
   const [formError, setFormError] = useState(null);
 
   const loadData = useCallback(async () => {
-    setError(null);
     try {
       const [setRes, prodRes, uomRes, catRes, subRes] = await Promise.all([
         apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }),
@@ -88,7 +88,7 @@ export default function RetailPackageSettingsPage() {
       setCategories(catRes.data ?? []);
       setSubCategories(subRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load package settings");
+      notifyError(e instanceof Error ? e.message : "Failed to load package settings");
     } finally {
       setLoading(false);
     }
@@ -239,12 +239,19 @@ export default function RetailPackageSettingsPage() {
   }
 
   async function deleteSetting(row) {
-    if (!window.confirm(`Delete package setting for ${row.product_code}?`)) return;
+    const ok = await confirm({
+      title: "Delete package setting",
+      message: `Delete package setting for ${row.product_code}?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/retail-package-settings/${row.id}`, { method: "DELETE" });
       await loadData();
+      notifySuccess(`Setting for ${row.product_code} deleted`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      notifyError(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -317,12 +324,6 @@ export default function RetailPackageSettingsPage() {
         </div>
       }
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       <div className={TABLE_SHELL_CLASS}>
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading package settings…</p>

@@ -17,23 +17,22 @@ import {
   formatAccountingAmount,
   splitJournalDescription,
 } from "@/lib/accounting-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 export default function JournalEntryDetailPage() {
   const params = useParams();
+  const confirm = useConfirm();
   const { capabilities } = useAuth();
   const [entry, setEntry] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
-
   const load = useCallback(async () => {
-    setError(null);
     try {
       const res = await apiRequest(`/journal-entries/${params.id}`);
       setEntry(res);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load journal entry");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load journal entry");
     } finally {
       setLoading(false);
     }
@@ -44,36 +43,43 @@ export default function JournalEntryDetailPage() {
   }, [load]);
 
   async function handlePost() {
-    if (!window.confirm("Post Journal Entry?\n\nThis action cannot be edited once posted.")) return;
+    const ok = await confirm({
+      title: "Post journal entry",
+      message: "Post Journal Entry?\n\nThis action cannot be edited once posted.",
+      confirmLabel: "Post",
+    });
+    if (!ok) return;
     setBusy(true);
-    setError(null);
-    setSuccess(null);
     try {
       const updated = await apiRequest(`/accounting/journal-entries/${entry.id}/post`, {
         method: "POST",
       });
       setEntry(updated);
-      setSuccess("Journal entry posted.");
+      notifySuccess("Journal entry posted.");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Post failed");
+      notifyError(e instanceof ApiError ? e.message : "Post failed");
     } finally {
       setBusy(false);
     }
   }
 
   async function handleReverse() {
-    if (!window.confirm(`Reverse journal entry ${entry.entry_number}?`)) return;
+    const ok = await confirm({
+      title: "Reverse journal entry",
+      message: `Reverse journal entry ${entry.entry_number}?`,
+      confirmLabel: "Reverse",
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(true);
-    setError(null);
-    setSuccess(null);
     try {
       const res = await apiRequest(`/accounting/journal-entries/${entry.id}/reverse`, {
         method: "POST",
       });
       setEntry(res.original ?? entry);
-      setSuccess(`Reversal created: ${res.reversal?.entry_number ?? "done"}`);
+      notifySuccess(`Reversal created: ${res.reversal?.entry_number ?? "done"}`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Reverse failed");
+      notifyError(e instanceof ApiError ? e.message : "Reverse failed");
     } finally {
       setBusy(false);
     }
@@ -90,7 +96,7 @@ export default function JournalEntryDetailPage() {
   if (!entry) {
     return (
       <CatalogPageShell title="Journal Entry" subtitle="Not found">
-        <p className="text-sm text-red-600">{error ?? "Journal entry not found."}</p>
+        <p className="text-sm text-red-600">Journal entry not found.</p>
       </CatalogPageShell>
     );
   }
@@ -112,17 +118,6 @@ export default function JournalEntryDetailPage() {
         </Link>
       }
     >
-      {success ? (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {success}
-        </p>
-      ) : null}
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       <div className="theme-panel rounded-xl border p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

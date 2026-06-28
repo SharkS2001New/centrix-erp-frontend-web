@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -53,7 +54,6 @@ export default function HrAttendancePage() {
   const [records, setRecords] = useState([]);
   const [fieldRepLinkage, setFieldRepLinkage] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualForm, setManualForm] = useState(EMPTY_MANUAL);
   const [manualSaving, setManualSaving] = useState(false);
@@ -62,7 +62,6 @@ export default function HrAttendancePage() {
   const [dayHint, setDayHint] = useState(null);
 
   const load = useCallback(async () => {
-    setError(null);
     try {
       const requestDefs = [
         { key: "employees", promise: apiRequest("/employees", { searchParams: { per_page: 200 } }) },
@@ -119,12 +118,12 @@ export default function HrAttendancePage() {
       });
 
       if (failures.length === requestDefs.length) {
-        setError(failures[0] ?? "Failed to load attendance");
+        notifyError(failures[0] ?? "Failed to load attendance");
       } else if (failures.length) {
-        setError(`Some attendance data could not be loaded (${failures.join("; ")}).`);
+        notifyError(`Some attendance data could not be loaded (${failures.join("; ")}).`);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load attendance");
+      notifyError(e instanceof Error ? e.message : "Failed to load attendance");
     } finally {
       setLoading(false);
     }
@@ -210,12 +209,11 @@ export default function HrAttendancePage() {
 
   async function deleteRecord(record) {
     if (!confirm("Delete this attendance record?")) return;
-    setError(null);
     try {
       await apiRequest(`/employee-attendance/${record.id}`, { method: "DELETE" });
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Delete failed");
+      notifyError(e instanceof ApiError ? e.message : "Delete failed");
     }
   }
 
@@ -304,12 +302,6 @@ export default function HrAttendancePage() {
         </div>
       }
     >
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
       {fieldAttendanceEnabled ? (
         <FieldRepHrLinkageBanner linkage={fieldRepLinkage} canManage={canManageSettings} />
       ) : null}

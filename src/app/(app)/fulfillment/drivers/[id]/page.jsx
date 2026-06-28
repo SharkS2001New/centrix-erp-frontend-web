@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -19,10 +20,7 @@ export default function DriverProfilePage() {
   const [deliveries, setDeliveries] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const loadData = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const [driverData, deliveriesRes, userRes] = await Promise.all([
@@ -34,7 +32,7 @@ export default function DriverProfilePage() {
       setDeliveries(deliveriesRes.data ?? []);
       setUsers(userRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load driver");
+      notifyError(e instanceof Error ? e.message : "Failed to load driver");
     } finally {
       setLoading(false);
     }
@@ -58,12 +56,6 @@ export default function DriverProfilePage() {
           ← Back to drivers
         </Link>
       </div>
-
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading driver…</p>

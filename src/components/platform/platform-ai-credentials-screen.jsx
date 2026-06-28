@@ -7,17 +7,15 @@ import { CatalogPageShell, Field, PrimaryButton, inputClassName } from "@/compon
 import { aiFormFromApi, aiPayloadFromForm } from "@/lib/ai-settings";
 import { aiTrainingApiBase } from "@/lib/platform-ai-training";
 import {
-  PlatformAiTrainingAlerts,
   PlatformAiTrainingNav,
 } from "@/components/platform/platform-ai-training-nav";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 export function PlatformAiCredentialsScreen() {
   const apiBase = aiTrainingApiBase();
   const [aiForm, setAiForm] = useState(aiFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
 
   const loadAiSettings = useCallback(async () => {
     setLoading(true);
@@ -37,17 +35,15 @@ export function PlatformAiCredentialsScreen() {
 
   async function saveAiSettings() {
     setSaving(true);
-    setError(null);
-    setMessage(null);
     try {
       const res = await apiRequest(`${apiBase}/settings`, {
         method: "PATCH",
         body: aiPayloadFromForm(aiForm),
       });
       setAiForm(aiFormFromApi(res));
-      setMessage("Platform AI credentials saved.");
+      notifySuccess("Platform AI credentials saved.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to save platform AI settings.");
+      notifyError(err instanceof ApiError ? err.message : "Failed to save platform AI settings.");
     } finally {
       setSaving(false);
     }
@@ -67,7 +63,6 @@ export function PlatformAiCredentialsScreen() {
       />
 
       <PlatformAiTrainingNav />
-      <PlatformAiTrainingAlerts error={error} message={message} />
 
       <section className="max-w-2xl theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-sm font-semibold theme-heading">Platform AI credentials</h2>

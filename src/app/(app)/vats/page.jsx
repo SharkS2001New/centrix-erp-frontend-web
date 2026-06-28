@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAdminApi } from "@/contexts/admin-api-context";
@@ -19,6 +20,8 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { VAT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { toast } from "@/lib/toast";
+import { useConfirm } from "@/lib/use-confirm";
 
 const EMPTY_FORM = {
   vat_code: "",
@@ -29,11 +32,11 @@ const EMPTY_FORM = {
 
 export default function VatsPage() {
   const { adminPath, isPlatformManaged } = useAdminApi();
+  const confirm = useConfirm();
   const [vats, setVats] = useState([]);
   const [products, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
@@ -43,7 +46,6 @@ export default function VatsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
 
   const loadData = useCallback(async () => {
-    setError(null);
     try {
       const [vatRes, prodRes, userRes] = await Promise.all([
         apiRequest(adminPath("/vats"), { searchParams: { per_page: 100 } }),
@@ -54,7 +56,7 @@ export default function VatsPage() {
       setProducts(prodRes.data ?? []);
       setUsers(userRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load VAT rates");
+      notifyError(e instanceof Error ? e.message : "Failed to load VAT rates");
     } finally {
       setLoading(false);
     }
@@ -139,13 +141,20 @@ export default function VatsPage() {
       count > 0
         ? `"${vat.vat_name}" is used by ${count} product(s). Delete anyway?`
         : `Delete VAT rate "${vat.vat_name}"?`;
-    if (!window.confirm(msg)) return;
+    const ok = await confirm({
+      title: "Delete VAT rate",
+      message: msg,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(adminPath(`/vats/${vat.id}`), { method: "DELETE" });
       if (editingId === vat.id) closeDrawer();
       await loadData();
+      toast.success(`"${vat.vat_name}" deleted`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      toast.error(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -172,12 +181,6 @@ export default function VatsPage() {
         </div>
       }
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       <div className={TABLE_SHELL_CLASS}>
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading VAT rates…</p>

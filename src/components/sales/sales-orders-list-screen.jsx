@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,9 +20,10 @@ import {
 import {
   CatalogPageShell,
   Field,
+  FilterToolbar,
+  FILTER_CONTROL_CLASS,
   PaginationBar,
   SearchInput,
-  inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { isoDate } from "@/components/inventory/inventory-shared";
 import { orderTableColumnCount } from "@/components/sales/sales-orders-columns";
@@ -45,6 +47,7 @@ import {
   printWindowFeatures,
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
+import { useConfirm } from "@/lib/use-confirm";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
 import {
   FulfillmentAssignmentDialog,
@@ -52,7 +55,6 @@ import {
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
 
 const PAGE_SIZE = 15;
-const FILTER_CONTROL_CLASS = "theme-input theme-input-focus h-[38px] w-full min-w-[10.5rem] rounded-lg border px-3 py-2 text-sm outline-none";
 
 function indexPaymentRefs(payments) {
   const map = new Map();
@@ -69,6 +71,7 @@ function indexPaymentRefs(payments) {
 
 export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnly = false }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const { user, capabilities, refreshCapabilities, organization } = useAuth();
   const orgWorkflow = useMemo(
     () => getSalesOrderQueueWorkflow(capabilities, "backend"),
@@ -93,7 +96,6 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -200,7 +202,6 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
 
   const loadOrders = useCallback(async () => {
     setListLoading(true);
-    setError(null);
     try {
       const filters = {};
       const statusParam = queueConfig?.lockStatusFilter
@@ -254,7 +255,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
         });
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load orders");
+      notifyError(e instanceof Error ? e.message : "Failed to load orders");
     } finally {
       setLoading(false);
       setListLoading(false);
@@ -396,7 +397,13 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   async function transitionOrder(sale, targetStatus, fulfillmentMeta) {
     if (!sale?.id) return;
     if (targetStatus === "cancelled") {
-      if (!window.confirm("Cancel this order?")) return;
+      const ok = await confirm({
+        title: "Cancel order",
+        message: "Cancel this order?",
+        confirmLabel: "Cancel order",
+        destructive: true,
+      });
+      if (!ok) return;
     }
     setTransitionBusyId(sale.id);
     setActionMessage(null);
@@ -540,89 +547,81 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
         )
       }
       toolbar={
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:gap-4">
+        <FilterToolbar>
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search receipt, customer, order #…"
-            className="w-full xl:min-w-0 xl:flex-[2]"
           />
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(2,minmax(10.5rem,1fr))_auto] sm:items-end xl:grid-cols-[repeat(2,minmax(10.5rem,1fr))_auto_minmax(10.5rem,1fr)_minmax(10.5rem,1fr)]">
-            <Field label="From">
-              <input
-                type="date"
-                className={inputClassName()}
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value || isoDate())}
-              />
-            </Field>
-            <Field label="To">
-              <input
-                type="date"
-                className={inputClassName()}
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value || isoDate())}
-              />
-            </Field>
-            <button
-              type="button"
-              onClick={applyDateFilter}
-              className="inline-flex h-[38px] shrink-0 items-center justify-center self-end rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
+          <Field label="From">
+            <input
+              type="date"
+              className={FILTER_CONTROL_CLASS}
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value || isoDate())}
+            />
+          </Field>
+          <Field label="To">
+            <input
+              type="date"
+              className={FILTER_CONTROL_CLASS}
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value || isoDate())}
+            />
+          </Field>
+          <button
+            type="button"
+            onClick={applyDateFilter}
+            className="inline-flex h-[38px] shrink-0 items-center justify-center rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-3 text-sm font-medium text-[var(--theme-primary)] hover:bg-[#d4e8f9]"
+          >
+            Filter
+          </button>
+          <Field label="Status">
+            <select
+              value={effectiveStatusFilter ?? "all"}
+              disabled={queueConfig?.lockStatusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className={`${FILTER_CONTROL_CLASS} disabled:cursor-not-allowed disabled:bg-slate-50`}
             >
-              Filter
-            </button>
-            <Field label="Status">
+              {statusOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {showSourceFilter ? (
+            <Field label="Source">
               <select
-                value={effectiveStatusFilter ?? "all"}
-                disabled={queueConfig?.lockStatusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                value={effectiveSourceFilter ?? "all"}
+                disabled={queueConfig?.lockSourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
                 className={`${FILTER_CONTROL_CLASS} disabled:cursor-not-allowed disabled:bg-slate-50`}
               >
-                {statusOptions.map((o) => (
+                {sourceOptions.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
                 ))}
               </select>
             </Field>
-            {showSourceFilter ? (
-              <Field label="Source">
-                <select
-                  value={effectiveSourceFilter ?? "all"}
-                  disabled={queueConfig?.lockSourceFilter}
-                  onChange={(e) => setSourceFilter(e.target.value)}
-                  className={`${FILTER_CONTROL_CLASS} disabled:cursor-not-allowed disabled:bg-slate-50`}
-                >
-                  {sourceOptions.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            ) : null}
-            <Field label="Order total">
-              <select
-                value={minTotalFilter}
-                onChange={(e) => setMinTotalFilter(e.target.value)}
-                className={FILTER_CONTROL_CLASS}
-              >
-                {ORDER_MIN_TOTAL_OPTIONS.map((o) => (
-                  <option key={o.value || "all"} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-        </div>
+          ) : null}
+          <Field label="Order total">
+            <select
+              value={minTotalFilter}
+              onChange={(e) => setMinTotalFilter(e.target.value)}
+              className={FILTER_CONTROL_CLASS}
+            >
+              {ORDER_MIN_TOTAL_OPTIONS.map((o) => (
+                <option key={o.value || "all"} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </FilterToolbar>
       }
-      banner={
-        error ? (
-          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </p>
-        ) : actionMessage ? (
+      banner={actionMessage ? (
           <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
             {actionMessage}
           </p>

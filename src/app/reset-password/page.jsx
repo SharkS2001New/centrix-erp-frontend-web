@@ -6,14 +6,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { getDefaultCompanyCode, getStoredCompanyCode } from "@/lib/tenant-config";
 import {
-  AuthError,
   AuthField,
   AuthShell,
   AuthSubmitButton,
-  AuthSuccess,
   authInputClass,
 } from "@/components/auth/auth-shell";
 import { PasswordInput } from "@/components/auth/password-input";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -26,16 +25,12 @@ function ResetPasswordForm() {
   const [token, setToken] = useState(tokenFromUrl);
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit(e) {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
     if (password !== passwordConfirmation) {
-      setError("Passwords do not match.");
+      notifyError("Passwords do not match.");
       return;
     }
     setSubmitting(true);
@@ -50,10 +45,10 @@ function ResetPasswordForm() {
         },
         token: null,
       });
-      setSuccess(res.message ?? "Password updated. You can sign in now.");
+      notifySuccess(res.message ?? "Password updated. You can sign in now.");
       setTimeout(() => router.replace("/login"), 2000);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not reset password.");
+      notifyError(err instanceof ApiError ? err.message : "Could not reset password.");
     } finally {
       setSubmitting(false);
     }
@@ -98,8 +93,6 @@ function ResetPasswordForm() {
             required
           />
         </AuthField>
-        <AuthError>{error}</AuthError>
-        <AuthSuccess>{success}</AuthSuccess>
         <AuthSubmitButton disabled={submitting}>
           {submitting ? "Updating…" : "Update password"}
         </AuthSubmitButton>

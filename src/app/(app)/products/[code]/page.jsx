@@ -484,9 +484,8 @@ export default function ProductDetailPage() {
   const [purchaseRows, setPurchaseRows] = useState([]);
   const [saleRows, setSaleRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tabLoading, setTabLoading] = useState(false);
   const [error, setError] = useState(null);
-
+  const [tabLoading, setTabLoading] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [deleteError, setDeleteError] = useState(null);

@@ -9,6 +9,7 @@ import {
   workflowPipelineSteps,
 } from "@/lib/order-workflow";
 import { STOCK_DEDUCT_TIMING_OPTIONS } from "@/lib/sales-settings";
+import { useConfirm } from "@/lib/use-confirm";
 
 const CHANNELS = [
   { id: "pos", label: "POS" },
@@ -92,6 +93,7 @@ export function OrderWorkflowSettingsEditor({
   distributionOpsEnabled = false,
   embedded = false,
 }) {
+  const confirm = useConfirm();
   const wf = workflow ?? DEFAULT_ORDER_WORKFLOW;
   const saveOrderMode = !showCheckoutOnCreate;
   const [stepToAdd, setStepToAdd] = useState("");
@@ -108,14 +110,18 @@ export function OrderWorkflowSettingsEditor({
     patch({ steps });
   }
 
-  function removeStep(index) {
+  async function removeStep(index) {
     const step = wf.steps[index];
     if (!step) return;
     if (wf.steps.length <= 1) return;
     const label = step.label || statusLabel(step.status);
-    if (!window.confirm(`Delete stage "${label}" from this client's workflow? POS will no longer use it.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete workflow stage",
+      message: `Delete stage "${label}" from this client's workflow? POS will no longer use it.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     patch({ steps: wf.steps.filter((_, i) => i !== index) });
   }
 
@@ -201,7 +207,7 @@ export function OrderWorkflowSettingsEditor({
               <button
                 type="button"
                 disabled={wf.steps.length <= 1}
-                onClick={() => removeStep(index)}
+                onClick={() => void removeStep(index)}
                 className="rounded border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
                 title="Delete stage from pipeline"
               >

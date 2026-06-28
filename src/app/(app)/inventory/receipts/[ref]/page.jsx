@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -23,11 +24,8 @@ export default function StockReceiptDetailPage() {
   const [products, setProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const isSingleId = ref.startsWith("RCPT-");
       const [receiptRes, prodRes, uomRes] = await Promise.all([
@@ -52,7 +50,7 @@ export default function StockReceiptDetailPage() {
       setProducts(prodRes.data ?? []);
       setUoms(uomRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load receipt");
+      notifyError(e instanceof Error ? e.message : "Failed to load receipt");
     } finally {
       setLoading(false);
     }
@@ -86,12 +84,6 @@ export default function StockReceiptDetailPage() {
           ← Back to stock receipts
         </Link>
       </div>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading receipt…</p>

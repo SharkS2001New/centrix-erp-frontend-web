@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -53,8 +54,6 @@ export default function PayrollPage() {
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
   const [runForm, setRunForm] = useState(EMPTY_PAYROLL_RUN_FORM);
   const [runSaving, setRunSaving] = useState(false);
@@ -78,7 +77,6 @@ export default function PayrollPage() {
   );
 
   const loadData = useCallback(async () => {
-    setError(null);
     try {
       const [runsRes, periodsRes, empRes, deptRes, scheduleRes] = await Promise.all([
         apiRequest("/payroll-runs", { searchParams: { per_page: 200 } }),
@@ -93,7 +91,7 @@ export default function PayrollPage() {
       setEmployees(empRes.data ?? []);
       setDepartments(deptRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load payroll");
+      notifyError(e instanceof Error ? e.message : "Failed to load payroll");
     } finally {
       setLoading(false);
     }
@@ -223,7 +221,7 @@ export default function PayrollPage() {
   async function deletePeriod(period) {
     const runsCount = period.payroll_runs_count ?? 0;
     if (runsCount > 0) {
-      setError(
+      notifyError(
         `Cannot delete ${periodLabel(period)}: ${runsCount} payroll run(s) are linked. Delete those runs first.`,
       );
       return;
@@ -235,18 +233,17 @@ export default function PayrollPage() {
     ) {
       return;
     }
-    setError(null);
     try {
       await apiRequest(`/pay-periods/${period.id}`, { method: "DELETE" });
       await loadData();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to delete pay period");
+      notifyError(e instanceof ApiError ? e.message : "Failed to delete pay period");
     }
   }
 
   async function deleteRun(run) {
     if (!payrollRunCanDelete(run)) {
-      setError(payrollRunDeleteLockHint(run) ?? "This payroll run can no longer be deleted.");
+      notifyError(payrollRunDeleteLockHint(run) ?? "This payroll run can no longer be deleted.");
       return;
     }
     const period = periodById.get(run.pay_period_id) ?? run.pay_period;
@@ -258,12 +255,11 @@ export default function PayrollPage() {
     ) {
       return;
     }
-    setError(null);
     try {
       await apiRequest(`/payroll-runs/${run.id}`, { method: "DELETE" });
       await loadData();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Delete failed");
+      notifyError(e instanceof ApiError ? e.message : "Delete failed");
     }
   }
 
@@ -457,12 +453,6 @@ export default function PayrollPage() {
           Pay periods
         </button>
       </div>
-
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading payroll…</p>

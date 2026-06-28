@@ -120,7 +120,7 @@ export default function PodRecordsPage() {
       <DashboardErrorBanner message={error} />
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search recipient or order…" className="max-w-xs" />
+        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search recipient or order…" />
         <Field label="From">
           <input type="date" className={inputClassName()} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
         </Field>

@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -25,14 +26,12 @@ export default function JournalEntriesPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
     setListLoading(true);
-    setError(null);
     try {
       const searchParams = buildPageParams({
         page,
@@ -45,7 +44,7 @@ export default function JournalEntriesPage() {
       setTotalRows(parsed.total);
       setTotalPages(parsed.totalPages);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load journal entries");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load journal entries");
     } finally {
       setLoading(false);
       setListLoading(false);
@@ -81,18 +80,11 @@ export default function JournalEntriesPage() {
         </div>
       }
     >
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-end gap-3">
         <SearchInput
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search reference or description…"
-          className="max-w-md"
         />
       </div>
 

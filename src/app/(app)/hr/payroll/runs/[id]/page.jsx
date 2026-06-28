@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -38,7 +39,6 @@ export default function PayrollRunDetailPage() {
   const [run, setRun] = useState(null);
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [selectedLine, setSelectedLine] = useState(null);
   const [lineDetail, setLineDetail] = useState(null);
   const [lineLoading, setLineLoading] = useState(false);
@@ -47,7 +47,6 @@ export default function PayrollRunDetailPage() {
   const [markPaidSaving, setMarkPaidSaving] = useState(false);
 
   const loadData = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const [runData, linesRes] = await Promise.all([
@@ -59,7 +58,7 @@ export default function PayrollRunDetailPage() {
       setRun(runData);
       setLines(linesRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load payroll run");
+      notifyError(e instanceof Error ? e.message : "Failed to load payroll run");
     } finally {
       setLoading(false);
     }
@@ -100,39 +99,35 @@ export default function PayrollRunDetailPage() {
   }
 
   async function approveRun() {
-    setError(null);
     try {
       await apiRequest(`/payroll/runs/${runId}/approve`, { method: "POST" });
       await loadData();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Approve failed");
+      notifyError(e instanceof ApiError ? e.message : "Approve failed");
     }
   }
 
   async function rejectRun() {
     if (!confirm("Reject this payroll run?")) return;
-    setError(null);
     try {
       await apiRequest(`/payroll/runs/${runId}/reject`, { method: "POST" });
       await loadData();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Reject failed");
+      notifyError(e instanceof ApiError ? e.message : "Reject failed");
     }
   }
 
   async function processRun() {
-    setError(null);
     try {
       await apiRequest(`/payroll/runs/${runId}/process-auto`, { method: "POST", body: {} });
       await loadData();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Process failed");
+      notifyError(e instanceof ApiError ? e.message : "Process failed");
     }
   }
 
   async function markPaid() {
     setMarkPaidSaving(true);
-    setError(null);
     try {
       await apiRequest(`/payroll/runs/${runId}/mark-paid`, {
         method: "POST",
@@ -142,7 +137,7 @@ export default function PayrollRunDetailPage() {
       setPaymentReference("");
       await loadData();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Mark paid failed");
+      notifyError(e instanceof ApiError ? e.message : "Mark paid failed");
     } finally {
       setMarkPaidSaving(false);
     }
@@ -164,7 +159,7 @@ export default function PayrollRunDetailPage() {
 
   async function deleteRun() {
     if (!payrollRunCanDelete(run)) {
-      setError(payrollRunDeleteLockHint(run) ?? "This payroll run can no longer be deleted.");
+      notifyError(payrollRunDeleteLockHint(run) ?? "This payroll run can no longer be deleted.");
       return;
     }
     if (
@@ -174,12 +169,11 @@ export default function PayrollRunDetailPage() {
     ) {
       return;
     }
-    setError(null);
     try {
       await apiRequest(`/payroll-runs/${runId}`, { method: "DELETE" });
       router.push("/hr/payroll");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Delete failed");
+      notifyError(e instanceof ApiError ? e.message : "Delete failed");
     }
   }
 
@@ -198,12 +192,6 @@ export default function PayrollRunDetailPage() {
           ← Back to payroll
         </Link>
       </div>
-
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading payroll run…</p>

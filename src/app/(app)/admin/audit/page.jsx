@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -50,7 +51,6 @@ export default function AdminAuditPage() {
   const [users, setUsers] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [userFilter, setUserFilter] = useState("all");
@@ -87,7 +87,6 @@ export default function AdminAuditPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const searchParams = {
         per_page: PAGE_SIZE,
@@ -110,7 +109,7 @@ export default function AdminAuditPage() {
         per_page: res.per_page ?? PAGE_SIZE,
       });
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load audit trail");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load audit trail");
       setLogs([]);
       setMeta(null);
     } finally {
@@ -185,10 +184,6 @@ export default function AdminAuditPage() {
       }
     >
       <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Audit trail" }]} />
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      ) : null}
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="min-w-[200px] flex-1">

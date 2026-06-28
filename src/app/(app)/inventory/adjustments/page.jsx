@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
@@ -36,13 +37,11 @@ export default function StockAdjustmentsPage() {
   const [products, setProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
   const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const all = await fetchAllPaginatedRowsSmart("/inventory-transactions", {
@@ -59,7 +58,7 @@ export default function StockAdjustmentsPage() {
       setProducts(prodRes.data ?? []);
       setUoms(uomRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load adjustments");
+      notifyError(e instanceof Error ? e.message : "Failed to load adjustments");
     } finally {
       setLoading(false);
     }
@@ -143,12 +142,6 @@ export default function StockAdjustmentsPage() {
           {filtered.length} adjustment{filtered.length === 1 ? "" : "s"} in range
         </p>
       </div>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       <InventoryTableShell>
         {loading ? (

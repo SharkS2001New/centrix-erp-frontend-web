@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -38,8 +39,6 @@ export default function RecordDamagePage() {
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-
   useEffect(() => {
     apiRequest("/uoms", { searchParams: { per_page: 200 } })
       .then((res) => setUoms(res.data ?? []))
@@ -62,12 +61,11 @@ export default function RecordDamagePage() {
     e.preventDefault();
     const toPost = lines.filter((line) => line.product_code && Number(line.quantity) > 0);
     if (toPost.length === 0) {
-      setError("Add at least one product with a quantity.");
+      notifyError("Add at least one product with a quantity.");
       return;
     }
 
     setSaving(true);
-    setError(null);
     const reasonText = [reason.trim(), notes.trim()].filter(Boolean).join(" — ");
     try {
       for (const line of toPost) {
@@ -87,7 +85,7 @@ export default function RecordDamagePage() {
       }
       router.push("/inventory/damages");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to record damage");
+      notifyError(err instanceof ApiError ? err.message : "Failed to record damage");
     } finally {
       setSaving(false);
     }
@@ -100,12 +98,6 @@ export default function RecordDamagePage() {
           ← Back to damages
         </Link>
       </div>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       <form
         onSubmit={submit}

@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -9,16 +10,13 @@ import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-sh
 export default function PlatformOverviewPage() {
   const [organizations, setOrganizations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await apiRequest("/admin/organizations");
       setOrganizations(res.data ?? []);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load organizations");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load organizations");
     } finally {
       setLoading(false);
     }
@@ -61,10 +59,6 @@ export default function PlatformOverviewPage() {
       }
     >
       <AdminBreadcrumb items={[{ label: "Platform" }]} />
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      ) : null}
 
       <div className="theme-panel rounded-xl border shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">

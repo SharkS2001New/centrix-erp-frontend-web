@@ -14,6 +14,7 @@ export function LoadingListDocumentPreview({
   organizationName,
   printSettings = null,
   documentFooterText = null,
+  printedBy = "Preview",
   className = "h-[34rem] w-full rounded-lg border border-[var(--theme-border)] bg-white shadow-inner",
 }) {
   const html = useMemo(
@@ -26,6 +27,7 @@ export function LoadingListDocumentPreview({
         printSettings,
         documentFooterText,
         footerLines: resolveLoadingSheetFooterLines(printSettings ?? {}),
+        printedBy,
       }),
     [
       documentFooterText,
@@ -34,6 +36,7 @@ export function LoadingListDocumentPreview({
       organization,
       organizationName,
       printSettings,
+      printedBy,
     ],
   );
 

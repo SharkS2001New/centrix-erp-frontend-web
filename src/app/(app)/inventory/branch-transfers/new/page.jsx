@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -35,8 +36,6 @@ export default function BranchStockTransferPage() {
   const [notes, setNotes] = useState("");
   const [qty, setQty] = useState("1");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-
   useEffect(() => {
     if (!multiBranch) {
       router.replace("/inventory/transfers");
@@ -74,7 +73,6 @@ export default function BranchStockTransferPage() {
     setSelected(product);
     setPackageType(defaultUomMeasureLevel(product.uom));
     setQty("1");
-    setError(null);
   }, []);
 
   if (!multiBranch) {
@@ -88,16 +86,15 @@ export default function BranchStockTransferPage() {
   async function submit(e) {
     e.preventDefault();
     if (!selected) {
-      setError("Select a product to transfer.");
+      notifyError("Select a product to transfer.");
       return;
     }
     if (!toBranchId) {
-      setError("Select a destination branch.");
+      notifyError("Select a destination branch.");
       return;
     }
 
     setSaving(true);
-    setError(null);
     try {
       const uom = selected.uom ?? uomById.get(selected.unit_id);
       await apiRequest("/inventory/branch-transfer", {
@@ -114,7 +111,7 @@ export default function BranchStockTransferPage() {
       });
       router.push("/inventory/transactions?type=TRANSFER");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Branch transfer failed");
+      notifyError(err instanceof ApiError ? err.message : "Branch transfer failed");
     } finally {
       setSaving(false);
     }
@@ -132,12 +129,6 @@ export default function BranchStockTransferPage() {
           ← Back to transfers
         </Link>
       </div>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       <form onSubmit={submit} className="space-y-5 theme-panel rounded-xl border p-6 shadow-sm">
         <div className="grid gap-6 lg:grid-cols-2 lg:items-start">

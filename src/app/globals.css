@@ -2115,3 +2115,45 @@ textarea {
     background-position: -100% 0;
   }
 }
+
+/* Sonner toasts — align with workspace theme tokens */
+[data-sonner-toaster] {
+  --width: 22rem;
+  font-family: inherit;
+}
+
+html[data-theme="light"] [data-sonner-toaster],
+html[data-theme="dark"] [data-sonner-toaster] {
+  --normal-bg: var(--theme-page-bg);
+  --normal-border: var(--theme-border);
+  --normal-text: var(--theme-text);
+  --success-bg: color-mix(in srgb, #10b981 12%, var(--theme-page-bg));
+  --success-border: color-mix(in srgb, #10b981 35%, var(--theme-border));
+  --success-text: var(--theme-text);
+  --error-bg: color-mix(in srgb, #ef4444 12%, var(--theme-page-bg));
+  --error-border: color-mix(in srgb, #ef4444 35%, var(--theme-border));
+  --error-text: var(--theme-text);
+  --warning-bg: color-mix(in srgb, #f59e0b 12%, var(--theme-page-bg));
+  --warning-border: color-mix(in srgb, #f59e0b 35%, var(--theme-border));
+  --warning-text: var(--theme-text);
+  --info-bg: color-mix(in srgb, var(--theme-primary) 12%, var(--theme-page-bg));
+  --info-border: color-mix(in srgb, var(--theme-primary) 35%, var(--theme-border));
+  --info-text: var(--theme-text);
+}
+
+.app-toast {
+  border-radius: 0.75rem !important;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12) !important;
+}
+
+html[data-theme="dark"] .app-toast {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45) !important;
+}
+
+.app-toast-title {
+  font-weight: 600 !important;
+}
+
+.app-toast-description {
+  color: var(--theme-text-muted) !important;
+}

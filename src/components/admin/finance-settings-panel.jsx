@@ -9,6 +9,8 @@ import { Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName } from "@/com
 import { ExternalAccountingIntegrationPanel } from "@/components/admin/external-accounting-integration-panel";
 import { AccountingAutoPostPanel } from "@/components/admin/accounting-auto-post-panel";
 import { useSettingsApi } from "@/contexts/settings-api-context";
+import { notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 function Toggle({ checked, onChange, label, description }) {
   return (
@@ -36,6 +38,7 @@ function UrlField({ label, value, onChange, placeholder }) {
 }
 
 export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, capabilities: capabilitiesProp, onAfterSave }) {
+  const confirm = useConfirm();
   const { refreshCapabilities, capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
   const { settingsPath } = useSettingsApi();
@@ -99,16 +102,19 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
   }
 
   async function restartKraDevice() {
-    if (!window.confirm("Restart the on-prem fiscal device? Sales will be interrupted briefly.")) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Restart fiscal device",
+      message: "Restart the on-prem fiscal device? Sales will be interrupted briefly.",
+      confirmLabel: "Restart",
+      destructive: true,
+    });
+    if (!ok) return;
     await runKraDeviceAction("/kra/device-restart", setKraRestartTesting);
   }
 
   async function saveFinanceSettings() {
     setSaving(true);
     setError(null);
-    setMessage(null);
     try {
       const res = await apiRequest(settingsPath("finance"), {
         method: "PATCH",
@@ -125,7 +131,7 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
       }
 
       if (afterSave) await afterSave();
-      setMessage("Finance settings saved.");
+      notifySuccess("Finance settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save finance settings");
     } finally {

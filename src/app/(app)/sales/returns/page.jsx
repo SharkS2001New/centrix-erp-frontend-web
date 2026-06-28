@@ -7,7 +7,9 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import {
+  FILTER_CONTROL_CLASS,
   FilterSelect,
+  FilterToolbar,
   PaginationBar,
   PrimaryLink,
   SearchInput,
@@ -18,11 +20,14 @@ import { printCustomerReturn } from "@/components/sales/credit-note-print";
 import { ReturnStatusBadge, isReturnPending } from "@/components/sales/customer-returns-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import { useAuth } from "@/contexts/auth-context";
+import { notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const PAGE_SIZE = 10;
 
 export default function SalesReturnsPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const searchParams = useSearchParams();
   const { capabilities, organization, generalSettings } = useAuth();
   const { runQueuedTask } = useQueuedTask(
@@ -41,7 +46,6 @@ export default function SalesReturnsPage() {
   const [detailRow, setDetailRow] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState(null);
-  const [successMessage, setSuccessMessage] = useState(null);
 
   const loadData = useCallback(async () => {
     setError(null);
@@ -111,10 +115,14 @@ export default function SalesReturnsPage() {
   }
 
   async function handleApprove(row) {
-    if (!window.confirm(`Approve ${row.return_no}? Stock will be restocked.`)) return;
+    const ok = await confirm({
+      title: "Approve return",
+      message: `Approve ${row.return_no}? Stock will be restocked.`,
+      confirmLabel: "Approve",
+    });
+    if (!ok) return;
     setActionBusy(true);
     setActionError(null);
-    setSuccessMessage(null);
     try {
       const approveRequest = () =>
         apiRequest(`/customer-returns/${row.id}/approve`, { method: "POST" });
@@ -125,7 +133,7 @@ export default function SalesReturnsPage() {
       } else {
         await approveRequest();
       }
-      setSuccessMessage(
+      notifySuccess(
         `${row.return_no} approved. Stock restored, order adjusted, and credit note issued.`,
       );
       await refreshDetail(row.id);
@@ -141,13 +149,12 @@ export default function SalesReturnsPage() {
     if (reason === null) return;
     setActionBusy(true);
     setActionError(null);
-    setSuccessMessage(null);
     try {
       await apiRequest(`/customer-returns/${row.id}/reject`, {
         method: "POST",
         body: { reason: reason.trim() || null },
       });
-      setSuccessMessage(`${row.return_no} rejected.`);
+      notifySuccess(`${row.return_no} rejected.`);
       await refreshDetail(row.id);
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : "Reject failed");
@@ -161,7 +168,13 @@ export default function SalesReturnsPage() {
       row.status === "approved"
         ? `Delete ${row.return_no}? Restocked quantities will be reversed.`
         : `Delete ${row.return_no}?`;
-    if (!window.confirm(msg)) return;
+    const ok = await confirm({
+      title: "Delete return",
+      message: msg,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     setActionBusy(true);
     setActionError(null);
     try {
@@ -187,12 +200,11 @@ export default function SalesReturnsPage() {
       </div>
 
       <section className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center">
+        <FilterToolbar className="mb-0 border-b border-slate-100 p-4">
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search return no. or invoice…"
-            className="flex-1"
           />
           <FilterSelect
             value={statusFilter}
@@ -208,17 +220,17 @@ export default function SalesReturnsPage() {
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
-            className="rounded-lg border border-slate-200 px-3 py-2.5 text-sm"
+            className={FILTER_CONTROL_CLASS}
             aria-label="From date"
           />
           <input
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
-            className="rounded-lg border border-slate-200 px-3 py-2.5 text-sm"
+            className={FILTER_CONTROL_CLASS}
             aria-label="To date"
           />
-        </div>
+        </FilterToolbar>
 
         {error ? <p className="px-4 py-3 text-sm text-red-600">{error}</p> : null}
         {actionError ? <p className="px-4 py-3 text-sm text-red-600">{actionError}</p> : null}
@@ -359,7 +371,6 @@ export default function SalesReturnsPage() {
           });
         }}
         error={actionError}
-        successMessage={successMessage}
       />
     </div>
   );

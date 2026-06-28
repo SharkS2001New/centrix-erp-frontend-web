@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError, uploadEmployeePhoto } from "@/lib/api";
@@ -42,11 +43,9 @@ export default function EditEmployeePage() {
   const [removingPhoto, setRemovingPhoto] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
   const [formError, setFormError] = useState(null);
 
   const loadEmployee = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const employee = await apiRequest(`/employees/${employeeId}`);
@@ -56,7 +55,7 @@ export default function EditEmployeePage() {
       setPhotoPreview(null);
       setPhotoFile(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load employee");
+      notifyError(e instanceof Error ? e.message : "Failed to load employee");
     } finally {
       setLoading(false);
     }
@@ -134,12 +133,6 @@ export default function EditEmployeePage() {
       title="Edit employee"
       subtitle="Update details tab by tab"
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       {pageLoading ? (
         <p className="text-sm text-slate-500">Loading…</p>
       ) : form ? (

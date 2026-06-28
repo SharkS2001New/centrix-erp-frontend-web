@@ -25,10 +25,13 @@ import {
   formatWorkShiftLabel,
 } from "@/components/hr/hr-shared";
 import { EmployeeImportExport } from "@/components/hr/employee-import-export";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const PAGE_SIZE = 10;
 
 export default function HrEmployeesPage() {
+  const confirm = useConfirm();
   const router = useRouter();
 
   const [employees, setEmployees] = useState([]);
@@ -38,8 +41,6 @@ export default function HrEmployeesPage() {
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [error, setError] = useState(null);
-
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const [deptFilter, setDeptFilter] = useState("all");
@@ -47,7 +48,6 @@ export default function HrEmployeesPage() {
   const [page, setPage] = useState(1);
 
   const loadReferenceData = useCallback(async () => {
-    setError(null);
     try {
       const [deptRes, statsRes] = await Promise.all([
         apiRequest("/departments", { searchParams: { per_page: 200 } }),
@@ -56,7 +56,7 @@ export default function HrEmployeesPage() {
       setDepartments(deptRes.data ?? []);
       if (statsRes) setEmployeeStats(statsRes);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load employees");
+      notifyError(e instanceof Error ? e.message : "Failed to load employees");
     } finally {
       setLoading(false);
     }
@@ -64,7 +64,6 @@ export default function HrEmployeesPage() {
 
   const loadEmployees = useCallback(async () => {
     setListLoading(true);
-    setError(null);
     try {
       const filters = {};
       if (deptFilter !== "all") filters.department_id = deptFilter;
@@ -86,7 +85,7 @@ export default function HrEmployeesPage() {
       setTotalEmployees(parsed.total);
       setTotalPages(parsed.totalPages);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load employees");
+      notifyError(e instanceof Error ? e.message : "Failed to load employees");
     } finally {
       setListLoading(false);
     }
@@ -145,12 +144,20 @@ export default function HrEmployeesPage() {
   }, [debouncedSearch, deptFilter, statusFilter]);
 
   async function deleteEmployee(employee) {
-    if (!window.confirm(`Delete employee "${composeEmployeeDisplayName(employee)}"?`)) return;
+    const name = composeEmployeeDisplayName(employee);
+    const ok = await confirm({
+      title: "Delete employee",
+      message: `Delete employee "${name}"?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/employees/${employee.id}`, { method: "DELETE" });
       await reloadAll();
+      notifySuccess(`"${name}" deleted`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      notifyError(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -184,12 +191,11 @@ export default function HrEmployeesPage() {
         ) : null
       }
       toolbar={
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-end gap-3">
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search employee…"
-            className="max-w-sm"
           />
           <FilterSelect
             value={deptFilter}
@@ -211,12 +217,6 @@ export default function HrEmployeesPage() {
         </div>
       }
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading employees…</p>

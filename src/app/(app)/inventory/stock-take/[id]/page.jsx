@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -48,14 +49,12 @@ export default function StockTakeSessionPage() {
   const [uoms, setUoms] = useState([]);
   const [counts, setCounts] = useState({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
   const { runQueuedTask, overlayNode } = useQueuedTask("Saving stock take counts…");
 
   const load = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const [sess, loadedLines, prodRes, uomRes] = await Promise.all([
@@ -94,7 +93,7 @@ export default function StockTakeSessionPage() {
       }
       setCounts(initial);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load stock take session");
+      notifyError(e instanceof Error ? e.message : "Failed to load stock take session");
     } finally {
       setLoading(false);
     }
@@ -186,7 +185,6 @@ export default function StockTakeSessionPage() {
 
   async function saveCounts() {
     setSaving(true);
-    setError(null);
     try {
       const payloadLines = lines
         .map((line) => ({
@@ -221,7 +219,7 @@ export default function StockTakeSessionPage() {
 
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to save counts");
+      notifyError(e instanceof ApiError ? e.message : "Failed to save counts");
     } finally {
       setSaving(false);
     }
@@ -229,18 +227,17 @@ export default function StockTakeSessionPage() {
 
   async function completeSession() {
     if (dirty) {
-      setError("Save your counts before closing the stock take.");
+      notifyError("Save your counts before closing the stock take.");
       setCompleteOpen(false);
       return;
     }
     setCompleting(true);
-    setError(null);
     try {
       await apiRequest(`/inventory/stock-take/${sessionId}/complete`, { method: "POST" });
       setCompleteOpen(false);
       router.push("/inventory/stock-take");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to close stock take");
+      notifyError(err instanceof ApiError ? err.message : "Failed to close stock take");
     } finally {
       setCompleting(false);
     }
@@ -338,12 +335,6 @@ export default function StockTakeSessionPage() {
           </p>
         ) : null}
       </div>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       <InventoryTableShell>
         {loading ? (

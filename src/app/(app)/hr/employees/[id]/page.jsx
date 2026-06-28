@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -36,10 +37,7 @@ export default function EmployeeProfilePage() {
   const [payrollRuns, setPayrollRuns] = useState([]);
   const [salaryPreview, setSalaryPreview] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const loadData = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const [emp, linesRes, runsRes] = await Promise.all([
@@ -79,7 +77,7 @@ export default function EmployeeProfilePage() {
         setSalaryPreview(null);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load employee");
+      notifyError(e instanceof Error ? e.message : "Failed to load employee");
     } finally {
       setLoading(false);
     }
@@ -113,12 +111,6 @@ export default function EmployeeProfilePage() {
           ← Back to employees
         </Link>
       </div>
-
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading employee…</p>

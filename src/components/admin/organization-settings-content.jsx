@@ -25,6 +25,7 @@ import { ORG_SETTINGS_PLATFORM_MESSAGE, TENANT_ORG_SETTINGS_SUBTITLE } from "@/l
 import { PlatformConfiguredSalesSummary } from "@/components/admin/platform-configured-summary";
 import { isPlatformMpesaStkEnabled } from "@/lib/platform-org-features";
 import { useSettingsApi } from "@/contexts/settings-api-context";
+import { notifyError, toastErrorSetter, toastMessageSetter } from "@/lib/notify";
 import {
   CatalogPageShell,
   Field,
@@ -95,8 +96,8 @@ export function OrganizationSettingsContent({
   const [tab, setTab] = useState(tenantSelfService ? "general" : "sales");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
+  const setMessage = toastMessageSetter;
+  const setError = toastErrorSetter;
   const [salesForm, setSalesForm] = useState(EMPTY_SALES_ORGANIZATION_FORM);
 
   const modules = capabilities?.modules ?? {};
@@ -117,13 +118,12 @@ export function OrganizationSettingsContent({
   }, [visibleTabs, tab]);
 
   const loadSalesSettings = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const res = await apiRequest(settingsPath("sales"));
       setSalesForm(salesOrganizationFormFromApi(res));
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load settings");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load settings");
     } finally {
       setLoading(false);
     }
@@ -137,8 +137,6 @@ export function OrganizationSettingsContent({
   async function handleSaveSales(e) {
     e.preventDefault();
     setSaving(true);
-    setError(null);
-    setMessage(null);
     try {
       await apiRequest(settingsPath("sales"), {
         method: "PATCH",
@@ -167,15 +165,6 @@ export function OrganizationSettingsContent({
   const body = (
     <>
       {breadcrumbItems ? <AdminBreadcrumb items={breadcrumbItems} /> : null}
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      ) : null}
-      {message ? (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {message}
-        </p>
-      ) : null}
 
       {tenantSelfService ? (
         <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">

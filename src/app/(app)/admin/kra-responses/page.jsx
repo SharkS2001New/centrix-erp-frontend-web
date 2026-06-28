@@ -14,6 +14,7 @@ import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-sh
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { KRA_RESPONSE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 export default function KraResponsesPage() {
   const { dateTime } = useOrgFormat();
@@ -25,8 +26,6 @@ export default function KraResponsesPage() {
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [retryingId, setRetryingId] = useState(null);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
 
   const effectiveCapabilities = isPlatformManaged ? tenantCapabilities ?? capabilities : capabilities;
 
@@ -39,7 +38,6 @@ export default function KraResponsesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const [res, statusRes] = await Promise.all([
         apiRequest(adminPath("/kra-responses"), { searchParams: { per_page: 100 } }),
@@ -48,7 +46,7 @@ export default function KraResponsesPage() {
       setRows(res.data ?? []);
       setDeviceStatus(statusRes);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load KRA responses");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load KRA responses");
     } finally {
       setLoading(false);
     }
@@ -60,15 +58,13 @@ export default function KraResponsesPage() {
 
   async function retryReceipt(row) {
     setRetryingId(row.id);
-    setMessage(null);
-    setError(null);
     try {
       const res = await apiRequest(adminPath(`/kra-responses/${row.id}/retry`), { method: "POST" });
-      setMessage(res.message ?? "Retry succeeded.");
+      notifySuccess(res.message ?? "Retry succeeded.");
       await load();
       if (res.kra_response) setSelected(res.kra_response);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Retry failed");
+      notifyError(e instanceof ApiError ? e.message : "Retry failed");
     } finally {
       setRetryingId(null);
     }
@@ -141,9 +137,6 @@ export default function KraResponsesPage() {
           </p>
         )}
       </div>
-
-      {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
-      {message ? <p className="mb-4 text-sm text-emerald-700">{message}</p> : null}
 
       <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
         <table className="min-w-full text-sm">

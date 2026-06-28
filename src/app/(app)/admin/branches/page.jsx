@@ -22,6 +22,8 @@ import {
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { BRANCH_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const EMPTY_FORM = {
   branch_name: "",
@@ -37,6 +39,7 @@ const EMPTY_FORM = {
 };
 
 export default function AdminBranchesPage() {
+  const confirm = useConfirm();
   const { user, capabilities } = useAuth();
   const { adminPath, organizationId: platformOrgId } = useAdminApi();
   const organizationId = platformOrgId ?? user?.organization_id ?? capabilities?.organization_id;
@@ -45,7 +48,6 @@ export default function AdminBranchesPage() {
   const [users, setUsers] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewBranch, setViewBranch] = useState(null);
@@ -60,7 +62,6 @@ export default function AdminBranchesPage() {
       return;
     }
     setLoading(true);
-    setError(null);
     try {
       const [branchRes, userRes] = await Promise.all([
         apiRequest(adminPath("/branches"), { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
@@ -78,7 +79,7 @@ export default function AdminBranchesPage() {
         setEmployees([]);
       }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load branches");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load branches");
     } finally {
       setLoading(false);
     }
@@ -148,16 +149,23 @@ export default function AdminBranchesPage() {
   async function removeBranch(branch) {
     const userCount = userCountByBranch.get(branch.id) ?? 0;
     if (userCount > 0) {
-      setError(`Cannot delete "${branch.branch_name}" — ${userCount} user(s) are still assigned.`);
+      notifyError(`Cannot delete "${branch.branch_name}" — ${userCount} user(s) are still assigned.`);
       return;
     }
-    if (!window.confirm(`Delete branch "${branch.branch_name}"? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: "Delete branch",
+      message: `Delete branch "${branch.branch_name}"? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(adminPath(`/branches/${branch.id}`), { method: "DELETE" });
       if (viewBranch?.id === branch.id) setViewBranch(null);
       await load();
+      notifySuccess(`"${branch.branch_name}" deleted`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to delete branch");
+      notifyError(e instanceof ApiError ? e.message : "Failed to delete branch");
     }
   }
 
@@ -223,13 +231,9 @@ export default function AdminBranchesPage() {
           </PrimaryButton>
         </div>
       }
-      toolbar={<SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search branches…" className="max-w-sm" />}
+      toolbar={<SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search branches…" />}
     >
       <AdminBreadcrumb items={[{ label: "Administration", href: "/admin" }, { label: "Branches" }]} />
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      ) : null}
 
       <div className="theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm">
         <table className="min-w-full text-sm">

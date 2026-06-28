@@ -27,14 +27,15 @@ import {
   vehicleEmoji,
   vehicleToForm,
 } from "@/components/fulfillment/fulfillment-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 export default function VehiclesPage() {
+  const confirm = useConfirm();
   const { user } = useAuth();
 
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -46,14 +47,13 @@ export default function VehiclesPage() {
   const [formError, setFormError] = useState(null);
 
   const loadData = useCallback(async () => {
-    setError(null);
     try {
       const [vehicleRes] = await Promise.all([
         apiRequest("/vehicles", { searchParams: { per_page: 200 } }),
       ]);
       setVehicles(vehicleRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load vehicles");
+      notifyError(e instanceof Error ? e.message : "Failed to load vehicles");
     } finally {
       setLoading(false);
     }
@@ -141,13 +141,20 @@ export default function VehiclesPage() {
   }
 
   async function deleteVehicle(vehicle) {
-    if (!window.confirm(`Delete vehicle "${vehicle.vehicle_name}"?`)) return;
+    const ok = await confirm({
+      title: "Delete vehicle",
+      message: `Delete vehicle "${vehicle.vehicle_name}"?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/vehicles/${vehicle.id}`, { method: "DELETE" });
       if (editingId === vehicle.id) closeDrawer();
       await loadData();
+      notifySuccess(`"${vehicle.vehicle_name}" deleted`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      notifyError(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -179,12 +186,11 @@ export default function VehiclesPage() {
         ) : null
       }
       toolbar={
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-end gap-3">
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search vehicle…"
-            className="max-w-sm"
           />
           <FilterSelect
             value={statusFilter}
@@ -198,12 +204,6 @@ export default function VehiclesPage() {
         </div>
       }
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       {loading ? (
         <p className="text-sm text-slate-500">Loading vehicles…</p>
       ) : filtered.length === 0 ? (

@@ -21,6 +21,8 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { LOYALTY_CARD_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const EMPTY_FORM = {
   customer_num: "",
@@ -32,6 +34,7 @@ const EMPTY_FORM = {
 };
 
 export default function LoyaltyCardsPage() {
+  const confirm = useConfirm();
   const { capabilities } = useAuth();
   const pointsEnabled = Boolean(
     mergeSalesSettings(capabilities?.module_settings).enable_redeemable_points,
@@ -40,7 +43,6 @@ export default function LoyaltyCardsPage() {
   const [rows, setRows] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -50,7 +52,6 @@ export default function LoyaltyCardsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
 
   const loadData = useCallback(async () => {
-    setError(null);
     try {
       const [cardRes, custRes] = await Promise.all([
         apiRequest("/loyalty-cards", {
@@ -61,7 +62,7 @@ export default function LoyaltyCardsPage() {
       setRows(cardRes.data ?? []);
       setCustomers(custRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load loyalty cards");
+      notifyError(e instanceof Error ? e.message : "Failed to load loyalty cards");
     } finally {
       setLoading(false);
     }
@@ -150,13 +151,20 @@ export default function LoyaltyCardsPage() {
 
   async function deleteCard(card) {
     if (!canManage) return;
-    if (!window.confirm(`Delete loyalty card ${card.card_number}?`)) return;
+    const ok = await confirm({
+      title: "Delete loyalty card",
+      message: `Delete loyalty card ${card.card_number}?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/loyalty-cards/${card.id}`, { method: "DELETE" });
       if (editingId === card.id) closeDrawer();
       await loadData();
+      notifySuccess(`Card ${card.card_number} deleted`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      notifyError(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -199,12 +207,6 @@ export default function LoyaltyCardsPage() {
       <div className="mb-4 max-w-md">
         <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search card, phone, customer…" />
       </div>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (

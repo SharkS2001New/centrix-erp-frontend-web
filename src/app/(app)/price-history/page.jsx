@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
@@ -126,8 +127,6 @@ export default function PriceHistoryPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [error, setError] = useState(null);
-
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -149,7 +148,6 @@ export default function PriceHistoryPage() {
   }, []);
 
   const loadRecords = useCallback(async () => {
-    setError(null);
     setListLoading(true);
     try {
       const extra = { days: 7 };
@@ -168,7 +166,7 @@ export default function PriceHistoryPage() {
       setTotalRecords(parsed.total);
       setTotalPages(parsed.totalPages);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load price history");
+      notifyError(e instanceof Error ? e.message : "Failed to load price history");
     } finally {
       setLoading(false);
       setListLoading(false);
@@ -268,12 +266,6 @@ export default function PriceHistoryPage() {
           ))}
         </select>
       </div>
-
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (

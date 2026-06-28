@@ -10,10 +10,11 @@ import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-resp
 import {
   CatalogPageShell,
   Field,
+  FILTER_CONTROL_CLASS,
+  FilterToolbar,
   PaginationBar,
   PrimaryButton,
   formatShortDate,
-  inputClassName,
 } from "@/components/catalog/catalog-shared";
 
 const DATE_COLUMNS = {
@@ -221,8 +222,8 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
         ) : null
       }
       toolbar={
-        <div className="mb-4 flex flex-wrap items-end gap-3">
-          <Link href="/reports" className="text-sm text-[#185FA5] hover:underline">
+        <FilterToolbar>
+          <Link href="/reports" className="pb-2 text-sm text-[#185FA5] hover:underline">
             ← All reports
           </Link>
           {showDateFilters ? (
@@ -230,7 +231,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
               <Field label="From">
                 <input
                   type="date"
-                  className={inputClassName()}
+                  className={FILTER_CONTROL_CLASS}
                   value={fromDate}
                   onChange={(e) => {
                     setPage(1);
@@ -241,7 +242,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
               <Field label="To">
                 <input
                   type="date"
-                  className={inputClassName()}
+                  className={FILTER_CONTROL_CLASS}
                   value={toDate}
                   onChange={(e) => {
                     setPage(1);
@@ -253,7 +254,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
           ) : null}
           <Field label="Branch">
             <select
-              className={inputClassName()}
+              className={FILTER_CONTROL_CLASS}
               value={branchId}
               onChange={(e) => {
                 setPage(1);
@@ -284,7 +285,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
           <PrimaryButton type="button" showIcon={false} onClick={() => void loadReport()}>
             Refresh
           </PrimaryButton>
-        </div>
+        </FilterToolbar>
       }
       banner={
         error ? (

@@ -21,6 +21,8 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { EXPENSE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const PAGE_SIZE = 10;
 
@@ -93,6 +95,7 @@ function expenseDateRange(dateFilter) {
 }
 
 export default function ExpensesPage() {
+  const confirm = useConfirm();
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const urlFromDate = searchParams.get("from_date") ?? "";
@@ -108,8 +111,6 @@ export default function ExpensesPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [error, setError] = useState(null);
-
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const [groupFilter, setGroupFilter] = useState("all");
@@ -131,7 +132,6 @@ export default function ExpensesPage() {
   const [groupError, setGroupError] = useState(null);
 
   const loadReferenceData = useCallback(async () => {
-    setError(null);
     try {
       const [groupRes, pmRes, userRes, statsRes] = await Promise.all([
         apiRequest("/expense-groups", { searchParams: { per_page: 200 } }),
@@ -144,7 +144,7 @@ export default function ExpensesPage() {
       setUsers(userRes.data ?? []);
       if (statsRes) setExpenseStats(statsRes);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load expenses");
+      notifyError(e instanceof Error ? e.message : "Failed to load expenses");
     } finally {
       setLoading(false);
     }
@@ -152,7 +152,6 @@ export default function ExpensesPage() {
 
   const loadExpenses = useCallback(async () => {
     setListLoading(true);
-    setError(null);
     try {
       const filters = {};
       if (groupFilter !== "all") filters.expense_group_id = groupFilter;
@@ -177,7 +176,7 @@ export default function ExpensesPage() {
       setTotalExpenses(parsed.total);
       setTotalPages(parsed.totalPages);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load expenses");
+      notifyError(e instanceof Error ? e.message : "Failed to load expenses");
     } finally {
       setListLoading(false);
     }
@@ -330,12 +329,19 @@ export default function ExpensesPage() {
   }
 
   async function deleteExpense(expense) {
-    if (!window.confirm(`Delete expense "${expenseDisplayName(expense)}"?`)) return;
+    const ok = await confirm({
+      title: "Delete expense",
+      message: `Delete expense "${expenseDisplayName(expense)}"?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/expenses/${expense.id}`, { method: "DELETE" });
       await reloadAll();
+      notifySuccess("Expense deleted");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      notifyError(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -398,12 +404,11 @@ export default function ExpensesPage() {
         <StatCard label="This year" value={formatKesCompact(stats.year)} />
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-end gap-3">
         <SearchInput
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search expense…"
-          className="max-w-sm"
         />
         <FilterSelect
           value={groupFilter}
@@ -433,12 +438,6 @@ export default function ExpensesPage() {
           ]}
         />
       </div>
-
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
 
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (

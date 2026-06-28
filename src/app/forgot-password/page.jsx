@@ -6,13 +6,12 @@ import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { getDefaultCompanyCode, getStoredCompanyCode } from "@/lib/tenant-config";
 import {
-  AuthError,
   AuthField,
   AuthShell,
   AuthSubmitButton,
-  AuthSuccess,
   authInputClass,
 } from "@/components/auth/auth-shell";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 function ForgotPasswordForm() {
   const searchParams = useSearchParams();
@@ -21,15 +20,11 @@ function ForgotPasswordForm() {
 
   const [companyCode, setCompanyCode] = useState(initialOrg);
   const [username, setUsername] = useState("");
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
   const [devResetUrl, setDevResetUrl] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit(e) {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
     setDevResetUrl(null);
     setSubmitting(true);
     try {
@@ -41,12 +36,12 @@ function ForgotPasswordForm() {
         },
         token: null,
       });
-      setSuccess(res.message);
+      notifySuccess(res.message);
       if (res.reset_url) {
         setDevResetUrl(res.reset_url);
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not request password reset.");
+      notifyError(err instanceof ApiError ? err.message : "Could not request password reset.");
     } finally {
       setSubmitting(false);
     }
@@ -74,8 +69,6 @@ function ForgotPasswordForm() {
             required
           />
         </AuthField>
-        <AuthError>{error}</AuthError>
-        <AuthSuccess>{success}</AuthSuccess>
         {devResetUrl ? (
           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
             Development reset link:{" "}

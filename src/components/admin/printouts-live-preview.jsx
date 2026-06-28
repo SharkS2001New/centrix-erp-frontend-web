@@ -129,6 +129,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings }) {
     footerLines: loadingSettings.loading_sheet_footer_lines
       ? loadingSettings.loading_sheet_footer_lines.split(/\n+/).filter(Boolean)
       : [],
+    printedBy: "Preview",
   });
 }
 

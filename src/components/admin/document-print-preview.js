@@ -28,6 +28,7 @@ import { mergeSalesSettings } from "@/lib/sales-settings";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { useAuth } from "@/contexts/auth-context";
 import { printSaleReceipt } from "@/components/sales/sale-receipt-print";
+import { toast } from "@/lib/toast";
 
 const PREVIEW_DEFER_MS = 32;
 const PREVIEW_COOLDOWN_MS = 450;
@@ -60,7 +61,7 @@ export function DocumentPrintPreviewButton({
       await deferPrintPreview(onPreview);
     } catch (error) {
       console.error(error);
-      window.alert(error instanceof Error ? error.message : "Failed to open print preview.");
+      toast.error(error instanceof Error ? error.message : "Failed to open print preview.");
     } finally {
       window.setTimeout(() => setPreviewing(false), PREVIEW_COOLDOWN_MS);
     }
@@ -149,6 +150,7 @@ export function previewLoadingListPrint({
     loadingList: sample.loadingList,
     printSettings: printoutsForm ? loadingSheetPrintPayloadFromForm(printoutsForm) : null,
     documentFooterText: resolvePrintFooter(general, "loading_sheet"),
+    printedBy: "Preview",
   });
 }
 
@@ -242,7 +244,7 @@ export function previewReceiptPaymentDetails({
 
   const payload = receiptPaymentDetailsToPayload(details);
   if (!payload || !shouldShowReceiptPaymentDetails({ sales }, "receipt")) {
-    window.alert("Add at least one payment line to preview.");
+    toast.message("Add at least one payment line to preview.");
     return;
   }
 

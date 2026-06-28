@@ -6,6 +6,8 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { formatAppDateTime } from "@/lib/datetime";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 function formatTime(iso) {
   return formatAppDateTime(iso);
@@ -41,33 +43,39 @@ function BlockIcon() {
 }
 
 function OrganizationActiveUsersCard({ group, onRefresh }) {
+  const confirm = useConfirm();
   const [busyId, setBusyId] = useState(null);
-  const [error, setError] = useState(null);
   const org = group.organization;
   const sessions = group.sessions ?? [];
 
   async function endSession(sessionId) {
     setBusyId(sessionId);
-    setError(null);
     try {
       await apiRequest(`/admin/active-sessions/${sessionId}`, { method: "DELETE" });
       await onRefresh?.();
+      notifySuccess("Session ended");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not end session.");
+      notifyError(e instanceof ApiError ? e.message : "Could not end session.");
     } finally {
       setBusyId(null);
     }
   }
 
   async function disableUser(sessionId) {
-    if (!window.confirm("Disable this user's login and end all their sessions?")) return;
+    const ok = await confirm({
+      title: "Disable user login",
+      message: "Disable this user's login and end all their sessions?",
+      confirmLabel: "Disable",
+      destructive: true,
+    });
+    if (!ok) return;
     setBusyId(`disable-${sessionId}`);
-    setError(null);
     try {
       await apiRequest(`/admin/active-sessions/${sessionId}/disable-user`, { method: "POST" });
       await onRefresh?.();
+      notifySuccess("User login disabled");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not disable user.");
+      notifyError(e instanceof ApiError ? e.message : "Could not disable user.");
     } finally {
       setBusyId(null);
     }
@@ -89,10 +97,6 @@ function OrganizationActiveUsersCard({ group, onRefresh }) {
         </h2>
         <span className="ml-auto font-mono text-xs opacity-90">{org.company_code}</span>
       </div>
-
-      {error ? (
-        <p className="border-b border-red-100 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>
-      ) : null}
 
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">

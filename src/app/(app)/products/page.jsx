@@ -16,6 +16,7 @@ import { useQueuedTask } from "@/lib/use-queued-task";
 import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
 import {
   FilterSelect,
+  FilterToolbar,
   formatShortDate,
   PaginationBar,
   PrimaryLink,
@@ -729,14 +730,12 @@ export default function ProductsPage() {
       ) : null}
 
       {/* Filters */}
-      <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center">
+      <FilterToolbar className="mt-6 mb-0">
         <SearchInput
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name or code…"
-          className="max-w-none flex-1"
         />
-        <div className="flex flex-wrap gap-2">
           <FilterSelect
             value={categoryFilter}
             onChange={(e) => {
@@ -805,8 +804,7 @@ export default function ProductsPage() {
             onToggleColumn={toggleColumn}
             onReset={resetColumns}
           />
-        </div>
-      </div>
+      </FilterToolbar>
 
       {referenceWarning ? (
         <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -1195,7 +1193,7 @@ function ColumnPicker({
   onReset,
 }) {
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       <button
         type="button"
         onClick={onToggle}

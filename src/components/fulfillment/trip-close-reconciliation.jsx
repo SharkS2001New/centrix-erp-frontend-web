@@ -10,7 +10,8 @@ import {
   PrimaryButton,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
-import { DashboardErrorBanner, DashboardKpiGrid, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
+import { DashboardKpiGrid, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { formatSaleKes } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 
@@ -61,15 +62,12 @@ function StepChecklist({ steps }) {
 export function TripCloseReconciliation({ tripId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
   const [collectedCash, setCollectedCash] = useState("");
   const [preparedBy, setPreparedBy] = useState("");
   const [checkedBy, setCheckedBy] = useState("");
 
   const loadReconciliation = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const res = await apiRequest(`/dispatch-trips/${tripId}/reconciliation`);
@@ -80,7 +78,7 @@ export function TripCloseReconciliation({ tripId }) {
       setPreparedBy(res.loading_list?.prepared_by_name ?? "");
       setCheckedBy(res.loading_list?.checked_by_name ?? "");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load reconciliation");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load reconciliation");
     } finally {
       setLoading(false);
     }
@@ -92,14 +90,12 @@ export function TripCloseReconciliation({ tripId }) {
 
   async function runAction(path, body) {
     setBusy(true);
-    setError(null);
-    setMessage(null);
     try {
       await apiRequest(path, { method: "POST", body });
-      setMessage("Trip updated.");
+      notifySuccess("Trip updated.");
       await loadReconciliation();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Action failed");
+      notifyError(e instanceof ApiError ? e.message : "Action failed");
     } finally {
       setBusy(false);
     }
@@ -175,13 +171,6 @@ export function TripCloseReconciliation({ tripId }) {
           { label: "Close trip" },
         ]}
       />
-
-      <DashboardErrorBanner message={error} />
-      {message ? (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {message}
-        </p>
-      ) : null}
 
       {isClosed ? (
         <p className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">

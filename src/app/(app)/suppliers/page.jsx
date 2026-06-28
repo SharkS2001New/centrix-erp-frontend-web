@@ -9,6 +9,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   CatalogPageShell,
   FilterSelect,
+  FilterToolbar,
   IconButton,
   PaginationBar,
   PencilIcon,
@@ -31,6 +32,8 @@ import {
 } from "@/components/suppliers/suppliers-columns";
 import { SupplierImportExport } from "@/components/suppliers/supplier-import-export";
 import { OtherContactsModal } from "@/components/suppliers/other-contacts-modal";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 function PlusIcon() {
   return (
@@ -45,6 +48,7 @@ const PAGE_SIZE = 10;
 
 export default function SuppliersPage() {
   const router = useRouter();
+  const confirm = useConfirm();
 
   const [dashboard, setDashboard] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
@@ -54,8 +58,6 @@ export default function SuppliersPage() {
   const [contactsModal, setContactsModal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [error, setError] = useState(null);
-
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -80,7 +82,6 @@ export default function SuppliersPage() {
   );
 
   const loadReferenceData = useCallback(async () => {
-    setError(null);
     try {
       if (typeof window !== "undefined" && !sessionStorage.getItem("suppliers-balances-synced")) {
         try {
@@ -97,7 +98,7 @@ export default function SuppliersPage() {
       setDashboard(dashRes);
       setUsers(userRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load suppliers");
+      notifyError(e instanceof Error ? e.message : "Failed to load suppliers");
     } finally {
       setLoading(false);
     }
@@ -105,7 +106,6 @@ export default function SuppliersPage() {
 
   const loadSuppliers = useCallback(async () => {
     setListLoading(true);
-    setError(null);
     try {
       const extra = {};
       if (statusFilter === "active") extra.is_active = 1;
@@ -123,7 +123,7 @@ export default function SuppliersPage() {
       setTotalSuppliers(parsed.total);
       setTotalPages(parsed.totalPages);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load suppliers");
+      notifyError(e instanceof Error ? e.message : "Failed to load suppliers");
     } finally {
       setListLoading(false);
     }
@@ -178,12 +178,19 @@ export default function SuppliersPage() {
   }
 
   async function deleteSupplier(row) {
-    if (!window.confirm(`Remove supplier "${row.supplier_name}"?`)) return;
+    const ok = await confirm({
+      title: "Remove supplier",
+      message: `Remove supplier "${row.supplier_name}"?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/suppliers/${row.id}`, { method: "DELETE" });
       await reloadAll();
+      notifySuccess(`"${row.supplier_name}" removed`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      notifyError(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -256,12 +263,11 @@ export default function SuppliersPage() {
         ) : null
       }
       toolbar={
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <FilterToolbar>
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search supplier…"
-            className="max-w-md"
           />
           <FilterSelect
             value={statusFilter}
@@ -280,15 +286,9 @@ export default function SuppliersPage() {
             onToggleColumn={toggleColumn}
             onReset={() => setVisibleColumnIds(normalizeColumnIds(defaultVisibleColumnIds()))}
           />
-        </div>
+        </FilterToolbar>
       }
     >
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading suppliers…</p>

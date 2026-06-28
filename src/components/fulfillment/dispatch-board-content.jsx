@@ -8,7 +8,8 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell, Field, PaginationBar, PrimaryLink, inputClassName } from "@/components/catalog/catalog-shared";
-import { DashboardErrorBanner, DashboardSection, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
+import { DashboardSection, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   FulfillmentAssignmentDialog,
   PodCaptureDialog,
@@ -44,13 +45,10 @@ export function DispatchBoardContent() {
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [creatingTrip, setCreatingTrip] = useState(false);
 
   const loadData = useCallback(async () => {
-    setError(null);
     setLoading(true);
     try {
       const extra = {
@@ -78,7 +76,7 @@ export function DispatchBoardContent() {
       setDrivers(driverRes.data ?? []);
       setVehicles(vehicleRes.data ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load dispatch data");
+      notifyError(e instanceof Error ? e.message : "Failed to load dispatch data");
     } finally {
       setLoading(false);
     }
@@ -129,11 +127,11 @@ export function DispatchBoardContent() {
   } = useFulfillmentTransition({
     capabilities,
     onSuccess: () => {
-      setMessage("Order updated.");
+      notifySuccess("Order updated.");
       setSelectedIds(new Set());
       loadData();
     },
-    onError: setError,
+    onError: notifyError,
   });
 
   function toggleSelect(id) {
@@ -152,12 +150,11 @@ export function DispatchBoardContent() {
 
     const routeIds = [...new Set(selectedSales.map((s) => s.route_id).filter(Boolean))];
     if (routeIds.length > 1) {
-      setError("Selected orders must belong to the same route.");
+      notifyError("Selected orders must belong to the same route.");
       return;
     }
 
     setCreatingTrip(true);
-    setError(null);
     try {
       const trip = await apiRequest("/dispatch-trips", {
         method: "POST",
@@ -170,7 +167,7 @@ export function DispatchBoardContent() {
       setSelectedIds(new Set());
       router.push(`/fulfillment/trips/${trip.id}`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to create trip");
+      notifyError(e instanceof ApiError ? e.message : "Failed to create trip");
     } finally {
       setCreatingTrip(false);
     }
@@ -211,13 +208,6 @@ export function DispatchBoardContent() {
         </div>
       }
     >
-      <DashboardErrorBanner message={error} />
-      {message ? (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {message}
-        </p>
-      ) : null}
-
       <div className="mb-6 flex flex-wrap items-end gap-3">
         <Field label="Delivery date">
           <input

@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -59,8 +60,6 @@ export default function ReceiveStockPage() {
   });
   const [loadingLpo, setLoadingLpo] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-
   useEffect(() => {
     Promise.all([
       apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
@@ -132,13 +131,12 @@ export default function ReceiveStockPage() {
         return;
       }
       setLoadingLpo(true);
-      setError(null);
       try {
         const res = await apiRequest(`/lpo-mst/${lpoNo}/summary`);
         setLpoData(res);
         setReceiveCounts(buildInitialReceiveCounts(res.lines, uomById, 0));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load purchase order");
+        notifyError(e instanceof Error ? e.message : "Failed to load purchase order");
         setLpoData(null);
       } finally {
         setLoadingLpo(false);
@@ -163,13 +161,12 @@ export default function ReceiveStockPage() {
       return receiveBaseForLine(String(line.id), uom, receiveCounts) > 0;
     });
     if (toPost.length === 0) {
-      setError("Enter quantity to receive for at least one line.");
+      notifyError("Enter quantity to receive for at least one line.");
       return;
     }
 
     const receiptRef = makeReceiptRef(form.invoice_number);
     setSaving(true);
-    setError(null);
     try {
       for (const line of toPost) {
         const uom = line.unit_id ? uomById.get(line.unit_id) : null;
@@ -195,7 +192,7 @@ export default function ReceiveStockPage() {
       }
       router.push(`/inventory/receipts/${encodeURIComponent(receiptRef)}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : err.message ?? "Receipt failed");
+      notifyError(err instanceof ApiError ? err.message : err.message ?? "Receipt failed");
     } finally {
       setSaving(false);
     }
@@ -209,13 +206,12 @@ export default function ReceiveStockPage() {
       return receiveBaseForLine(line.product_code, uom, receiveCounts) > 0;
     });
     if (toPost.length === 0) {
-      setError("Add at least one product with a quantity.");
+      notifyError("Add at least one product with a quantity.");
       return;
     }
 
     const receiptRef = makeReceiptRef(form.invoice_number);
     setSaving(true);
-    setError(null);
     try {
       for (const line of toPost) {
         const product = productByCode.get(line.product_code);
@@ -237,7 +233,7 @@ export default function ReceiveStockPage() {
       }
       router.push(`/inventory/receipts/${encodeURIComponent(receiptRef)}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Receipt failed");
+      notifyError(err instanceof ApiError ? err.message : "Receipt failed");
     } finally {
       setSaving(false);
     }
@@ -276,12 +272,6 @@ export default function ReceiveStockPage() {
           Manual receipt
         </button>
       </div>
-
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       <div className="theme-panel rounded-xl border p-6 shadow-sm">
         {mode === "lpo" ? (

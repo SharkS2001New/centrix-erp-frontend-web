@@ -1,5 +1,6 @@
 "use client";
 
+import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -50,8 +51,6 @@ export default function LpoReceivePage() {
   const [receiveCounts, setReceiveCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-
   const { uomById } = useInventoryCatalogMaps(uoms);
   const showReturned = useMemo(
     () => lpoHasSupplierReturns(data?.lines ?? [], data?.supplier_returns ?? []),
@@ -77,7 +76,7 @@ export default function LpoReceivePage() {
       const uomMap = new Map(uomList.map((u) => [u.id, u]));
       setReceiveCounts(buildInitialReceiveCounts(res.lines, uomMap, 0));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load LPO");
+      notifyError(e instanceof Error ? e.message : "Failed to load LPO");
     } finally {
       setLoading(false);
     }
@@ -106,12 +105,11 @@ export default function LpoReceivePage() {
     });
 
     if (toPost.length === 0) {
-      setError("Enter quantity to receive for at least one line.");
+      notifyError("Enter quantity to receive for at least one line.");
       return;
     }
 
     setSaving(true);
-    setError(null);
     try {
       for (const line of toPost) {
         const uom = line.unit_id ? uomById.get(line.unit_id) : null;
@@ -141,7 +139,7 @@ export default function LpoReceivePage() {
         router.push(`/lpo/${lpoNo}`);
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : err.message ?? "Receipt failed");
+      notifyError(err instanceof ApiError ? err.message : err.message ?? "Receipt failed");
     } finally {
       setSaving(false);
     }
@@ -162,12 +160,6 @@ export default function LpoReceivePage() {
           Posts inventory and updates received quantities on the purchase order.
         </p>
       </div>
-
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-base text-red-700">
-          {error}
-        </p>
-      )}
 
       {loading ? (
         <p className="text-base text-slate-500">Loading…</p>

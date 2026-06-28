@@ -5,6 +5,7 @@ import Link from "next/link";
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { apiRequest, ApiError } from "@/lib/api";
 import { accountOptionLabel } from "@/lib/accounting-shared";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { CatalogPageShell, PrimaryButton, SearchInput } from "@/components/catalog/catalog-shared";
 
 export default function AccountMappingsPage() {
@@ -13,8 +14,6 @@ export default function AccountMappingsPage() {
   const [mappings, setMappings] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
   const [search, setSearch] = useState("");
   const [qboConnected, setQboConnected] = useState(false);
 
@@ -22,7 +21,6 @@ export default function AccountMappingsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const statusRes = await apiRequest("/accounting/integration/status");
       const activeProvider = statusRes?.accounting_provider || "quickbooks";
@@ -52,7 +50,7 @@ export default function AccountMappingsPage() {
         setExternalAccounts([]);
       }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load account mappings");
+      notifyError(e instanceof ApiError ? e.message : "Failed to load account mappings");
     } finally {
       setLoading(false);
     }
@@ -89,18 +87,16 @@ export default function AccountMappingsPage() {
 
   async function save() {
     setSaving(true);
-    setError(null);
-    setMessage(null);
     try {
       const payload = Object.values(mappings).filter(Boolean);
       await apiRequest("/accounting/account-mappings", {
         method: "PUT",
         body: { provider, mappings: payload },
       });
-      setMessage(`Saved ${payload.length} account mapping(s).`);
+      notifySuccess(`Saved ${payload.length} account mapping(s).`);
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to save mappings");
+      notifyError(e instanceof ApiError ? e.message : "Failed to save mappings");
     } finally {
       setSaving(false);
     }
@@ -116,15 +112,6 @@ export default function AccountMappingsPage() {
         </PrimaryButton>
       }
     >
-      {error ? (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      ) : null}
-      {message ? (
-        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          {message}
-        </p>
-      ) : null}
-
       {!qboConnected ? (
         <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Connect QuickBooks under <OrgSettingsPlatformHint area="Organization settings → Finance" />{" "}
@@ -132,12 +119,11 @@ export default function AccountMappingsPage() {
         </p>
       ) : null}
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-end gap-3">
         <SearchInput
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search local accounts…"
-          className="max-w-md"
         />
         <Link href="/accounting/export-queue" className="text-sm font-medium text-[#185FA5] hover:underline">
           Export queue
