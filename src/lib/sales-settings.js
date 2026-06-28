@@ -372,7 +372,7 @@ export function orderDocumentPrintLabel(moduleSettings) {
 
 export function orderDocumentTitle(moduleSettings, documentType = null) {
   const type = documentType ?? getOrderDocumentType(moduleSettings);
-  if (type === "invoice") return "TAX INVOICE";
+  if (type === "invoice") return "INVOICE RECEIPT";
   if (type === "receipt") return "RECEIPT";
   return "ORDER DOCUMENT";
 }

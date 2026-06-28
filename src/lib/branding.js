@@ -4,6 +4,9 @@ export const PRODUCT_NAME = "Centrix ERP";
 export const PRODUCT_SHORT_NAME = "Centrix";
 export const COMPANY_NAME = "Alpac Software Solutions";
 
+/** Vendor credit on printed documents (receipt footer). */
+export const PRINT_POWERED_BY = COMPANY_NAME;
+
 /** Default name on receipts/prints when tenant org name is unavailable. */
 export const DEFAULT_PRINT_ORG_NAME = PRODUCT_NAME;
 

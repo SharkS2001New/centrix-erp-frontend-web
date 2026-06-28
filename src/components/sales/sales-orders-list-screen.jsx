@@ -37,7 +37,12 @@ import {
   summarizeOrders,
 } from "@/components/sales/sales-orders-shared";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
-import { isOrgMobileSalesEnabled, orderDocumentPrintLabel } from "@/lib/sales-settings";
+import { getOrderDocumentType, isOrgMobileSalesEnabled, orderDocumentPrintLabel } from "@/lib/sales-settings";
+import {
+  openBlankPrintWindow,
+  printWindowFeatures,
+  PRINT_BLOCKED_MESSAGE,
+} from "@/lib/open-print-window";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
 import {
   FulfillmentAssignmentDialog,
@@ -62,7 +67,7 @@ function indexPaymentRefs(payments) {
 
 export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnly = false }) {
   const router = useRouter();
-  const { user, capabilities, refreshCapabilities } = useAuth();
+  const { user, capabilities, refreshCapabilities, organization } = useAuth();
   const orgWorkflow = useMemo(
     () => getSalesOrderQueueWorkflow(capabilities, "backend"),
     [capabilities],
@@ -323,7 +328,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       sale,
       x: Math.max(8, rect.right - 220),
       y: rect.bottom + 4,
-      includePrint: false,
+      includePrint: true,
     });
   }
 
@@ -339,18 +344,39 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
 
   async function printOrder(sale) {
     if (!sale?.id) return;
-    const key = String(sale.id);
-    let detail = detailsById[key] ?? sale;
-    if (!detail?.items?.length) {
-      const loaded = await loadOrderDetail(sale.id);
-      if (loaded) detail = loaded;
+
+    const cachedType = getOrderDocumentType(capabilities?.module_settings);
+    const printWindow =
+      cachedType !== "both"
+        ? openBlankPrintWindow(printWindowFeatures(cachedType))
+        : null;
+    if (cachedType !== "both" && !printWindow) {
+      setActionMessage(PRINT_BLOCKED_MESSAGE);
+      return;
     }
-    await printSaleOrder(detail, {
-      organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
-      moduleSettings: capabilities?.module_settings,
-      capabilities,
-      uomById,
-    });
+
+    try {
+      const key = String(sale.id);
+      let detail = detailsById[key] ?? sale;
+      if (!detail?.items?.length) {
+        const loaded = await loadOrderDetail(sale.id);
+        if (loaded) detail = loaded;
+      }
+      const printed = await printSaleOrder(detail, {
+        organization,
+        organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
+        moduleSettings: capabilities?.module_settings,
+        capabilities,
+        uomById,
+        printWindow,
+      });
+      if (!printed) {
+        printWindow?.close();
+      }
+    } catch (e) {
+      printWindow?.close();
+      setActionMessage(e instanceof Error ? e.message : "Print failed");
+    }
   }
 
   function patchSaleInState(updated) {

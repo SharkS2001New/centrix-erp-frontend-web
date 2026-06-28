@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { DOCUMENT_HEADER_DISPLAY_OPTIONS } from "@/lib/general-settings";
-import { PRINT_FOOTER_FORM_KEYS, PRINT_FOOTER_LABELS } from "@/lib/print-footer-settings";
+import {
+  PRINT_FOOTER_FORM_KEYS,
+  PRINT_FOOTER_LABELS,
+  RECEIPT_POWERED_BY_LINE,
+  receiptFooterForAdmin,
+} from "@/lib/print-footer-settings";
 import {
   printoutsDistributionPayloadFromForm,
   printoutsFormFromApis,
@@ -195,23 +200,38 @@ export function PrintoutsSettingsPanel({
                 <div>
                   <SectionHeading
                     title="Document footers"
-                    description="Each printout type has its own footer line. Leave blank to hide on that document."
+                    description="Each printout type has its own footer. Thermal receipt: one centered line per row (use {organization} for company name). Vendor credit on receipts is fixed and always printed."
                   />
                   <div className="mt-4 space-y-3">
                     {Object.entries(PRINT_FOOTER_LABELS).map(([key, label]) => (
                       <Field key={key} label={label}>
                         <textarea
                           className={inputClassName()}
-                          rows={2}
+                          rows={key === "receipt" ? 4 : 2}
                           value={form[PRINT_FOOTER_FORM_KEYS[key]] ?? ""}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const fieldKey = PRINT_FOOTER_FORM_KEYS[key];
+                            const nextValue =
+                              key === "receipt"
+                                ? receiptFooterForAdmin(e.target.value)
+                                : e.target.value;
                             setForm((f) => ({
                               ...f,
-                              [PRINT_FOOTER_FORM_KEYS[key]]: e.target.value,
-                            }))
+                              [fieldKey]: nextValue,
+                            }));
+                          }}
+                          placeholder={
+                            key === "receipt"
+                              ? "Thank you for your business!\nGoods once sold are not returnable."
+                              : "Optional footer text for this document only"
                           }
-                          placeholder="Optional footer text for this document only"
                         />
+                        {key === "receipt" ? (
+                          <p className="mt-2 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                            Always printed (not editable):{" "}
+                            <span className="font-medium text-slate-800">{RECEIPT_POWERED_BY_LINE}</span>
+                          </p>
+                        ) : null}
                       </Field>
                     ))}
                   </div>

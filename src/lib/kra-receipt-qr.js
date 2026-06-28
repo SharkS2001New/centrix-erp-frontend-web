@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import { apiRequest } from "@/lib/api";
 
 /** Normalize KRA fiscal payload from checkout response, sale relation, or credit note. */
 export function extractKraReceiptData(sale, kraReceipt = null) {
@@ -85,4 +86,56 @@ export function buildKraFiscalBlockHtml(
 
   html += "</div>";
   return html;
+}
+
+/** Centered KRA eTIMS QR for printed sale documents. */
+export function buildKraDocumentQrHtml(
+  kra,
+  qrDataUrl,
+  { size = 100, layout = "thermal" } = {},
+) {
+  if (!kra?.signatureLink || !qrDataUrl) return "";
+
+  const isThermal = layout === "thermal";
+  const fontSize = isThermal ? "9px" : "10px";
+  const padding = isThermal ? "10px 0" : "12px 0";
+  const margin = isThermal ? "10px 0" : "14px 0";
+  const border = isThermal ? "1px dashed #64748b" : "1px dashed #999";
+
+  return `<div class="kra-etims-block" style="margin:${margin};padding:${padding};border-top:${border};border-bottom:${border};text-align:center;">
+      <img src="${qrDataUrl}" alt="KRA eTIMS verification QR code" width="${size}" height="${size}" style="display:block;margin:0 auto;" />
+      <div style="margin-top:8px;font-size:${fontSize};font-family:Arial,Helvetica,sans-serif;color:#334155;line-height:1.45;">
+        Scan to verify this invoice on KRA eTIMS platform
+      </div>
+    </div>`;
+}
+
+/** Centered KRA eTIMS QR for thermal receipts (before the thank-you footer). */
+export function buildKraThermalQrHtml(kra, qrDataUrl) {
+  return buildKraDocumentQrHtml(kra, qrDataUrl, { size: 100, layout: "thermal" });
+}
+
+/** Load KRA fiscal data for a sale (checkout relation, embedded payload, or API lookup). */
+export async function resolveKraReceiptDataForSale(sale, kraReceipt = null) {
+  const inline = extractKraReceiptData(sale, kraReceipt);
+  if (inline?.signatureLink) return inline;
+
+  if (!sale?.id) return inline;
+
+  try {
+    const res = await apiRequest("/kra-responses", {
+      loading: false,
+      reportIssues: false,
+      searchParams: { per_page: 10, "filter[sale_id]": sale.id },
+    });
+    const rows = Array.isArray(res?.data) ? res.data : [];
+    const withLink =
+      rows.find((row) => row.signature_link && String(row.status).toLowerCase() === "success") ??
+      rows.find((row) => row.signature_link) ??
+      rows[0] ??
+      null;
+    return extractKraReceiptData(null, withLink) ?? inline;
+  } catch {
+    return inline;
+  }
 }

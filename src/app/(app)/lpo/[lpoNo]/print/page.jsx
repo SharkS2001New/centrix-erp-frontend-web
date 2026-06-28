@@ -32,7 +32,11 @@ export default function LpoPrintPage() {
       const supplierId = res?.lpo?.supplier_id;
 
       const [org, branch, supplierRes, moduleSettings] = await Promise.all([
-        orgId ? apiRequest(`/organizations/${orgId}`).catch(() => null) : Promise.resolve(null),
+        orgId
+          ? apiRequest(`/organizations/${orgId}`)
+              .then((res) => res?.organization ?? res)
+              .catch(() => null)
+          : Promise.resolve(null),
         branchId ? apiRequest(`/branches/${branchId}`).catch(() => null) : Promise.resolve(null),
         supplierId ? apiRequest(`/suppliers/${supplierId}`).catch(() => null) : Promise.resolve(null),
         fetchPrintModuleSettings(capabilities?.module_settings ?? null),

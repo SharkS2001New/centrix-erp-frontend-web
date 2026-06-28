@@ -195,7 +195,6 @@ export function previewSaleInvoicePrint({
       validDays: Number(sales.invoice_valid_days ?? 7),
     }),
     preparedBy: "Preview cashier",
-    kraEnabled: false,
   });
 }
 
@@ -262,6 +261,5 @@ export function previewReceiptPaymentDetails({
     showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
     documentFooterText: resolvePrintFooter(general, "receipt"),
     paymentInstructions: payload,
-    kraEnabled: false,
   });
 }

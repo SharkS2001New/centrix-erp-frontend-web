@@ -48,12 +48,30 @@ export function buildSaleDocumentOrgHeaderHtml(branding, { layout = "thermal" } 
 
 export function buildSaleDocumentTableHead({ showDiscountColumn = false, layout = "thermal" } = {}) {
   if (layout === "thermal") {
+    if (showDiscountColumn) {
+      return `<tr>
+      <th class="desc">Description</th>
+      <th class="qty">Qty</th>
+      <th class="price">Unit Price</th>
+      <th class="disc">Disc</th>
+      <th class="amount">Amount</th>
+    </tr>`;
+    }
     return `<tr>
       <th class="desc">Description</th>
       <th class="qty">Qty</th>
-      <th class="price">Unit price</th>
-      <th class="disc">Disc</th>
+      <th class="price">Unit Price</th>
       <th class="amount">Amount</th>
+    </tr>`;
+  }
+
+  if (layout === "a4") {
+    return `<tr>
+      <th>Items</th>
+      <th class="num">Quantity</th>
+      <th class="num">Price</th>
+      ${showDiscountColumn ? '<th class="num">Discount</th>' : ""}
+      <th class="num">Amount</th>
     </tr>`;
   }
 
@@ -71,7 +89,8 @@ export function buildSaleDocumentLineRows(
   { uomById = null, showDiscountColumn = false, layout = "thermal" } = {},
 ) {
   const rows = items ?? [];
-  const colspan = layout === "thermal" ? 5 : showDiscountColumn ? 5 : 4;
+  const colspan =
+    layout === "thermal" ? (showDiscountColumn ? 5 : 4) : showDiscountColumn ? 5 : 4;
 
   if (!rows.length) {
     return `<tr><td colspan="${colspan}" class="muted center">No line items</td></tr>`;
@@ -86,11 +105,20 @@ export function buildSaleDocumentLineRows(
         const { unitPrice, discount, amount } = resolveSaleLinePrintColumns(line, { uom });
         const qty = escapeHtml(uomById ? saleLineQtyLabel(line, uomById) : formatPrintAmount(line.quantity));
 
-        return `<tr>
+        if (showDiscountColumn) {
+          return `<tr>
           <td class="desc">${description}</td>
           <td class="qty">${qty}</td>
           <td class="price">${escapeHtml(formatPrintAmount(unitPrice))}</td>
           <td class="disc">${escapeHtml(formatPrintAmount(discount))}</td>
+          <td class="amount">${escapeHtml(formatPrintAmount(amount))}</td>
+        </tr>`;
+        }
+
+        return `<tr>
+          <td class="desc">${description}</td>
+          <td class="qty">${qty}</td>
+          <td class="price">${escapeHtml(formatPrintAmount(unitPrice))}</td>
           <td class="amount">${escapeHtml(formatPrintAmount(amount))}</td>
         </tr>`;
       }

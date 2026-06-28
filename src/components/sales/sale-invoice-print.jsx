@@ -1,5 +1,5 @@
-import { buildKraFiscalBlockHtml } from "@/lib/kra-receipt-qr";
-import { openPrintWindow } from "@/lib/open-print-window";
+import { buildKraDocumentQrHtml } from "@/lib/kra-receipt-qr";
+import { openPrintWindow, fillPrintWindow } from "@/lib/open-print-window";
 import {
   buildSaleDocumentLineRows,
   buildSaleDocumentOrgHeaderHtml,
@@ -48,8 +48,30 @@ const DEFAULT_INVOICE_TERMS = [
   "Payment terms as agreed with the customer.",
 ];
 
+function formatInvoiceDateShort(value) {
+  if (!value) return "—";
+  const d = new Date(value.includes("T") ? value : `${value}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function metaRow(label, value, { emphasize = false } = {}) {
+  const display = value == null || value === "" ? "—" : String(value);
+  return `<div class="meta-row">
+    <span class="meta-label">${escapeHtml(label)}</span>
+    <span class="meta-value${emphasize ? " meta-value-em" : ""}">${escapeHtml(display)}</span>
+  </div>`;
+}
+
 /**
- * A4 sales invoice — org branding, standard line columns, optional KRA QR.
+ * A4 invoice receipt — org branding, standard line columns, optional KRA QR.
  */
 export function buildSaleInvoiceHtml(
   sale,
@@ -64,7 +86,6 @@ export function buildSaleInvoiceHtml(
     branding = null,
     productDiscountsEnabled = false,
     orderDiscountEnabled = false,
-    kraEnabled = false,
     kraData = null,
     kraQrDataUrl = null,
     documentFooterText = "",
@@ -85,6 +106,14 @@ export function buildSaleInvoiceHtml(
   const paymentLine = payment.isMixed
     ? `${payment.label} (${payment.methods.join(", ")})`
     : payment.label;
+  const customerPhone =
+    customer?.phone_number ??
+    sale.customer_phone ??
+    sale.customer_mobile ??
+    customer?.additional_phone ??
+    "";
+  const customerTown = customer?.town ?? branch?.name ?? "—";
+  const paymentTerms = customer?.terms_of_payment ?? paymentLine;
 
   const showDiscountColumn = shouldShowPrintDiscountColumn({
     allowDiscounts: productDiscountsEnabled,
@@ -128,10 +157,7 @@ export function buildSaleInvoiceHtml(
     ? buildSaleDocumentOrgHeaderHtml(branding, { layout: "a4" })
     : `<div class="brand-name">${escapeHtml(sellerName)}</div>`;
 
-  const kraBlock =
-    kraEnabled && kraData
-      ? `<div style="margin:12px 0;">${buildKraFiscalBlockHtml(kraData, { layout: "a4", qrDataUrl: kraQrDataUrl })}</div>`
-      : "";
+  const kraQrHtml = buildKraDocumentQrHtml(kraData, kraQrDataUrl, { size: 130, layout: "a4" });
 
   const paymentInstructionsHtml =
     showPaymentInstructions && paymentInstructions
@@ -148,10 +174,26 @@ export function buildSaleInvoiceHtml(
     .map((line) => `<p>${escapeHtml(line)}</p>`)
     .join("");
 
+  const metaSheetHtml = [
+    metaRow("Invoice No.", invoiceNo, { emphasize: true }),
+    metaRow("Customer Name", customerName),
+    metaRow("Phone Number", customerPhone),
+    metaRow("Date", formatInvoiceDateShort(createdOn)),
+    metaRow("K.R.A Pin", customer?.kra_pin ?? seller.tax_pin),
+    metaRow("Terms of Payment", paymentTerms),
+    metaRow("Location", customerTown !== "—" ? customerTown : deliverAt),
+    metaRow("Valid Until", formatInvoiceDate(validUntil)),
+    metaRow("Order #", sale.order_num ?? sale.id),
+    metaRow("Deliver At", deliverAt),
+  ].join("");
+
+  const totalDiscount =
+    discountTotals.lineDiscountTotal + discountTotals.orderDiscount;
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>Invoice ${escapeHtml(invoiceNo)}</title>
+  <title>Invoice Receipt ${escapeHtml(invoiceNo)}</title>
   <style>
     @page { size: A4; margin: 12mm; }
     body { font-family: "Times New Roman", Times, serif; margin: 0; padding: 16px; color: #000; font-size: 11px; line-height: 1.35; }
@@ -160,29 +202,32 @@ export function buildSaleInvoiceHtml(
     .org-brand .org-name { font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
     .brand-name { text-align: center; font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
     .brand-meta { margin-top: 6px; font-size: 10px; text-align: center; }
-    .doc-title { text-align: center; font-size: 14px; font-weight: 700; margin: 10px 0 12px; letter-spacing: 0.06em; }
-    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px; }
-    .meta-grid p { margin: 2px 0; }
-    .customer-name { font-size: 12px; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }
-    .meta-label { font-weight: 700; }
-    .meta-value em { font-style: italic; }
+    .doc-title { text-align: center; font-size: 14px; font-weight: 700; margin: 10px 0 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .meta-sheet { margin-bottom: 12px; font-size: 10px; }
+    .meta-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin: 3px 0; }
+    .meta-label { font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+    .meta-value { text-align: right; flex: 1; min-width: 0; word-break: break-word; }
+    .meta-value-em { font-style: italic; font-weight: 700; }
     table.items { width: 100%; border-collapse: collapse; margin: 8px 0 10px; font-size: 10px; }
     table.items th, table.items td { border-top: 1px dotted #000; border-bottom: 1px dotted #000; padding: 5px 6px; vertical-align: top; }
-    table.items th { font-weight: 700; text-align: left; }
+    table.items th { font-weight: 700; text-align: left; text-transform: uppercase; font-size: 9px; }
     table.items td.num, table.items th.num { text-align: right; white-space: nowrap; }
     .totals { display: flex; justify-content: flex-end; margin: 6px 0 14px; }
-    .totals-box { min-width: 240px; text-align: right; font-size: 11px; }
+    .totals-box { min-width: 280px; text-align: right; font-size: 11px; }
     .totals-box p { margin: 3px 0; }
     .totals-box .grand { font-weight: 700; font-size: 12px; margin-top: 6px; padding-top: 4px; border-top: 1px solid #000; }
+    .served-by { margin: 10px 0 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+    .receive-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 12px 0 8px; font-size: 10px; }
+    .receive-signatures p { margin: 0; }
+    .goods-note { margin: 8px 0 10px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
     .bottom-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; margin-top: 8px; }
     .terms { margin: 0; padding-left: 0; list-style: none; font-size: 9px; }
     .terms li { margin-bottom: 3px; }
     .term-num { font-weight: 700; margin-right: 4px; }
-    .signatures p { margin: 0 0 18px; font-size: 10px; }
+    .signatures p { margin: 0 0 18px; font-size: 10px; text-align: right; }
     .sig-line { display: inline-block; min-width: 160px; border-bottom: 1px dotted #000; padding-bottom: 2px; }
     .footer-notes { margin-top: 12px; text-align: center; font-size: 9px; }
     .footer-notes p { margin: 4px 0; }
-    .footer-notes .warn { font-weight: 700; text-decoration: underline; text-transform: uppercase; }
     .print-footer { margin-top: 14px; display: flex; justify-content: space-between; font-size: 9px; color: #333; border-top: 1px dotted #999; padding-top: 6px; }
     .pay-instructions { margin: 10px 0 12px; padding: 8px 10px; border: 1px dotted #000; font-size: 10px; }
     .pay-instructions .pay-title { font-weight: 700; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -191,7 +236,6 @@ export function buildSaleInvoiceHtml(
     .pay-instructions .pay-value { text-align: right; }
     .pay-instructions .pay-note { margin-top: 6px; font-size: 9px; color: #333; }
     .center { text-align: center; }
-    .muted { color: #666; }
     @media print { body { padding: 0; } }
   </style>
 </head>
@@ -200,7 +244,6 @@ export function buildSaleInvoiceHtml(
     <div class="brand">
       ${orgHeader}
       <div class="brand-meta">
-        ${!branding ? "" : ""}
         ${seller.address ? `<div>${escapeHtml(seller.address)}</div>` : ""}
         ${seller.email ? `<div>Email: ${escapeHtml(seller.email)}</div>` : ""}
         ${sellerPhones ? `<div>Tel: ${escapeHtml(sellerPhones)}</div>` : ""}
@@ -209,26 +252,10 @@ export function buildSaleInvoiceHtml(
       </div>
     </div>
 
-    <div class="doc-title">TAX INVOICE</div>
+    <div class="doc-title">Invoice Receipt</div>
 
-    <div class="meta-grid">
-      <div>
-        <div class="customer-name">${escapeHtml(customerName)}</div>
-        ${customer?.po_box ? `<p>P.O Box: ${escapeHtml(customer.po_box)}</p>` : ""}
-        ${customer?.email ? `<p>Email Address: ${escapeHtml(customer.email)}</p>` : ""}
-        ${customer?.phone_number ? `<p>Phone: ${escapeHtml(customer.phone_number)}</p>` : ""}
-        ${customer?.additional_phone ? `<p>Alt. phone: ${escapeHtml(customer.additional_phone)}</p>` : ""}
-        <p>K.R.A Pin: ${escapeHtml(customer?.kra_pin ?? "—")}</p>
-        <p>Town: ${escapeHtml(customer?.town ?? "—")}</p>
-        <p>Terms of Payment: ${escapeHtml(customer?.terms_of_payment ?? paymentLine)}</p>
-      </div>
-      <div>
-        <p><span class="meta-label">Invoice No.:</span> <span class="meta-value"><em>${escapeHtml(invoiceNo)}</em></span></p>
-        <p><span class="meta-label">Created On:</span> ${escapeHtml(formatInvoiceDate(createdOn))}</p>
-        <p><span class="meta-label">Valid Until:</span> ${escapeHtml(formatInvoiceDate(validUntil))}</p>
-        <p><span class="meta-label">Deliver At:</span> ${escapeHtml(deliverAt)}</p>
-        <p><span class="meta-label">Order #:</span> ${escapeHtml(String(sale.order_num ?? sale.id))}</p>
-      </div>
+    <div class="meta-sheet">
+      ${metaSheetHtml}
     </div>
 
     <table class="items">
@@ -238,10 +265,9 @@ export function buildSaleInvoiceHtml(
 
     <div class="totals">
       <div class="totals-box">
-        <p><strong>Subtotal:</strong> ${escapeHtml(formatPrintAmount(discountTotals.subtotalBeforeDiscount))}</p>
-        ${discountTotals.showDiscountSection ? `<p><strong>Discount:</strong> − ${escapeHtml(formatPrintAmount(discountTotals.lineDiscountTotal + discountTotals.orderDiscount))}</p>` : ""}
-        ${discountTotals.showOrderDiscountRow ? `<p><strong>Subtotal after discount:</strong> ${escapeHtml(formatPrintAmount(discountTotals.subtotalAfterAllDiscounts))}</p>` : ""}
-        <p><strong>Total V.A.T:</strong> ${escapeHtml(formatPrintAmount(totalVat))}</p>
+        <p><strong>Total Amount:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
+        ${totalDiscount > 0.0001 ? `<p><strong>Total Discount:</strong> ${escapeHtml(formatPrintAmount(totalDiscount))}</p>` : ""}
+        <p><strong>V.A.T Charged:</strong> ${escapeHtml(formatPrintAmount(totalVat))}</p>
         <p class="grand"><strong>Grand Total:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
         <p><strong>Payment:</strong> ${escapeHtml(paymentLine)}</p>
       </div>
@@ -249,7 +275,12 @@ export function buildSaleInvoiceHtml(
 
     ${paymentInstructionsHtml}
 
-    ${kraBlock}
+    <div class="served-by">You were served by: ${escapeHtml(preparedByName)}</div>
+    <div class="receive-signatures">
+      <p>Received By: <span class="sig-line">&nbsp;</span></p>
+      <p>Signature: <span class="sig-line">&nbsp;</span></p>
+    </div>
+    <p class="goods-note center">Please confirm your goods (Goods once sold are not refundable)</p>
 
     <div class="bottom-grid">
       <div>
@@ -260,11 +291,12 @@ export function buildSaleInvoiceHtml(
         <p>Prepared By: <span class="sig-line">${escapeHtml(preparedByName)}</span></p>
         <p>Checked By: <span class="sig-line">&nbsp;</span></p>
         <p>Authorised By: <span class="sig-line">&nbsp;</span></p>
-        <p>Terms: <span class="sig-line">${escapeHtml(customer?.terms_of_payment ?? "—")}</span></p>
+        <p>Terms: <span class="sig-line">${escapeHtml(paymentTerms)}</span></p>
       </div>
     </div>
 
     <div class="footer-notes">
+      ${kraQrHtml}
       ${footerNotesHtml}
       ${documentFooterText ? `<p>${escapeHtml(documentFooterText)}</p>` : ""}
     </div>
@@ -284,5 +316,9 @@ export function buildSaleInvoiceHtml(
 export function printSaleInvoice(sale, options = {}) {
   const html = buildSaleInvoiceHtml(sale, options);
   if (!html) return;
+  if (options.printWindow) {
+    fillPrintWindow(options.printWindow, html);
+    return;
+  }
   openPrintWindow(html, "width=860,height=960");
 }

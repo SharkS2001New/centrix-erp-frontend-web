@@ -1,3 +1,5 @@
+import { PRINT_POWERED_BY } from "@/lib/branding";
+
 export const PRINT_FOOTER_TYPES = {
   receipt: "print_footer_receipt",
   invoice: "print_footer_a4_invoice",
@@ -19,32 +21,96 @@ export const PRINT_FOOTER_LABELS = {
   loading_sheet: "Loading sheet footer",
 };
 
-export function printFooterFormFromGeneral(general = {}) {
-  return {
-    print_footer_receipt: String(general.print_footer_receipt ?? general.document_footer_text ?? ""),
-    print_footer_a4_invoice: String(
-      general.print_footer_a4_invoice ?? general.document_footer_text ?? "",
-    ),
-    print_footer_lpo: String(general.print_footer_lpo ?? general.document_footer_text ?? ""),
-    print_footer_loading_sheet: String(
-      general.print_footer_loading_sheet ?? general.document_footer_text ?? "",
-    ),
-  };
+export const RECEIPT_POWERED_BY_LINE = `Powered By: ${PRINT_POWERED_BY}`;
+
+const DEFAULT_RECEIPT_FOOTER_LINES = [
+  "Thank you for your business!",
+  "Goods once sold are not returnable.",
+  RECEIPT_POWERED_BY_LINE,
+];
+
+/** Editable receipt footer lines shown when nothing is configured (excludes vendor credit). */
+const DEFAULT_RECEIPT_FOOTER_EDITABLE_LINES = DEFAULT_RECEIPT_FOOTER_LINES.filter(
+  (line) => !isPoweredByFooterLine(line),
+);
+
+export function isPoweredByFooterLine(line) {
+  return /^Powered\s+By\s*:/i.test(String(line ?? "").trim());
 }
 
-export function printFooterPayloadFromForm(form) {
-  return {
-    print_footer_receipt: String(form.print_footer_receipt ?? "").trim(),
-    print_footer_a4_invoice: String(form.print_footer_a4_invoice ?? "").trim(),
-    print_footer_lpo: String(form.print_footer_lpo ?? "").trim(),
-    print_footer_loading_sheet: String(form.print_footer_loading_sheet ?? "").trim(),
-  };
+function receiptFooterLinesFromText(text) {
+  return String(text ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
-/** Resolve the footer line for a specific document type. */
+export function stripPoweredByFooterLines(lines) {
+  const normalized = Array.isArray(lines) ? lines : receiptFooterLinesFromText(lines);
+  return normalized.filter((line) => !isPoweredByFooterLine(line));
+}
+
+/** Receipt footer text for admin forms — vendor credit line is never editable. */
+export function receiptFooterForAdmin(text) {
+  return stripPoweredByFooterLines(receiptFooterLinesFromText(text)).join("\n");
+}
+
+export function resolveReceiptFooterLines(settings = {}, organizationName = "") {
+  const configured = receiptFooterLinesFromText(
+    settings?.print_footer_receipt ?? settings?.document_footer_text ?? "",
+  );
+  const editable = configured.length
+    ? stripPoweredByFooterLines(configured)
+    : DEFAULT_RECEIPT_FOOTER_EDITABLE_LINES;
+
+  const org = String(organizationName ?? "").trim();
+  const resolvedEditable = editable.map((line) =>
+    line.replace(/\{\{organization\}\}/gi, org || "{{organization}}"),
+  );
+
+  return [...resolvedEditable, RECEIPT_POWERED_BY_LINE];
+}
+
 export function resolvePrintFooter(settings = {}, documentType = "receipt") {
   const key = PRINT_FOOTER_TYPES[documentType] ?? PRINT_FOOTER_TYPES.receipt;
+
   const specific = String(settings?.[key] ?? "").trim();
-  if (specific) return specific;
-  return String(settings?.document_footer_text ?? "").trim();
+  if (specific) {
+    if (documentType === "receipt") {
+      return receiptFooterForAdmin(specific);
+    }
+    return specific;
+  }
+
+  const legacy = String(settings?.document_footer_text ?? "").trim();
+  if (legacy) {
+    if (documentType === "receipt") {
+      return receiptFooterForAdmin(legacy);
+    }
+    return legacy;
+  }
+
+  if (documentType === "receipt") {
+    return DEFAULT_RECEIPT_FOOTER_EDITABLE_LINES.join("\n");
+  }
+
+  return "";
+}
+
+export function printFooterFormFromGeneral(general = {}) {
+  return {
+    print_footer_receipt: receiptFooterForAdmin(general?.print_footer_receipt ?? ""),
+    print_footer_a4_invoice: String(general?.print_footer_a4_invoice ?? ""),
+    print_footer_lpo: String(general?.print_footer_lpo ?? ""),
+    print_footer_loading_sheet: String(general?.print_footer_loading_sheet ?? ""),
+  };
+}
+
+export function printFooterPayloadFromForm(form = {}) {
+  return {
+    print_footer_receipt: receiptFooterForAdmin(form?.print_footer_receipt ?? ""),
+    print_footer_a4_invoice: String(form?.print_footer_a4_invoice ?? "").trim(),
+    print_footer_lpo: String(form?.print_footer_lpo ?? "").trim(),
+    print_footer_loading_sheet: String(form?.print_footer_loading_sheet ?? "").trim(),
+  };
 }

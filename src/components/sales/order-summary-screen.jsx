@@ -26,7 +26,12 @@ import {
 import { saleLineProductLabel } from "@/lib/sale-line-items";
 import { RecordSalePaymentModal } from "@/components/sales/record-sale-payment-modal";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
-import { orderDocumentPrintLabel } from "@/lib/sales-settings";
+import { getOrderDocumentType, orderDocumentPrintLabel } from "@/lib/sales-settings";
+import {
+  openBlankPrintWindow,
+  printWindowFeatures,
+  PRINT_BLOCKED_MESSAGE,
+} from "@/lib/open-print-window";
 import {
   buildOrderDetailActionItems,
   OrderContextMenu,
@@ -476,7 +481,7 @@ function ChevronDownIcon() {
 
 export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const router = useRouter();
-  const { capabilities, refreshCapabilities } = useAuth();
+  const { capabilities, refreshCapabilities, organization } = useAuth();
   const { floatSessionId } = usePosSession();
 
   const [sale, setSale] = useState(null);
@@ -627,16 +632,39 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     [sale, payments],
   );
 
-  const handlePrint = useCallback(() => {
-    void printSaleOrder(sale, {
-      organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
-      moduleSettings: capabilities?.module_settings,
-      capabilities,
-      customer,
-      branch: branchName ? { name: branchName } : null,
-      preparedBy: cashierName,
-    });
-  }, [sale, capabilities, customer, branchName, cashierName]);
+  const handlePrint = useCallback(async () => {
+    if (!sale) return;
+
+    const cachedType = getOrderDocumentType(capabilities?.module_settings);
+    const printWindow =
+      cachedType !== "both"
+        ? openBlankPrintWindow(printWindowFeatures(cachedType))
+        : null;
+    if (cachedType !== "both" && !printWindow) {
+      setActionMessage(PRINT_BLOCKED_MESSAGE);
+      return;
+    }
+
+    try {
+      const printed = await printSaleOrder(sale, {
+        organization,
+        organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
+        moduleSettings: capabilities?.module_settings,
+        capabilities,
+        customer,
+        branch: branchName ? { name: branchName } : null,
+        preparedBy: cashierName,
+        uomById,
+        printWindow,
+      });
+      if (!printed) {
+        printWindow?.close();
+      }
+    } catch (e) {
+      printWindow?.close();
+      setActionMessage(e instanceof Error ? e.message : "Print failed");
+    }
+  }, [sale, capabilities, organization, customer, branchName, cashierName, uomById]);
 
   function openActionsMenu(event) {
     event.preventDefault();

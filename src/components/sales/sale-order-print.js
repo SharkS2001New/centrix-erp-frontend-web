@@ -1,6 +1,5 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { apiRequest } from "@/lib/api";
-import { isKraDeviceConfigured } from "@/lib/finance-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import {
   ensureSaleForPrint,
@@ -8,8 +7,8 @@ import {
 } from "@/lib/print-module-settings";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import {
-  extractKraReceiptData,
   kraReceiptQrDataUrl,
+  resolveKraReceiptDataForSale,
 } from "@/lib/kra-receipt-qr";
 import { resolveSaleDocumentBranding } from "@/lib/sale-document-print-shared";
 import { requestOrderPrintType } from "@/lib/order-print-type-picker";
@@ -27,10 +26,20 @@ import {
 } from "@/lib/invoice-print-settings";
 import { printSaleInvoice } from "@/components/sales/sale-invoice-print";
 import { printSaleReceipt } from "@/components/sales/sale-receipt-print";
+import {
+  openBlankPrintWindow,
+  printWindowFeatures,
+  showPrintPreparing,
+  PRINT_BLOCKED_MESSAGE,
+} from "@/lib/open-print-window";
 
 async function fetchOrganization(organizationId) {
   try {
-    return await apiRequest(`/organizations/${organizationId}`);
+    const res = await apiRequest(`/organizations/${organizationId}`, {
+      loading: false,
+      reportIssues: false,
+    });
+    return res?.organization ?? res;
   } catch {
     return null;
   }
@@ -100,110 +109,133 @@ export async function resolveOrderPrintType(moduleSettings, explicitType) {
 export async function printSaleOrder(sale, options = {}) {
   if (!sale) return null;
 
-  const saleForPrint = await ensureSaleForPrint(sale);
-
   const fallbackModuleSettings =
     options.moduleSettings ?? options.capabilities?.module_settings ?? null;
-  const moduleSettings = await fetchPrintModuleSettings(fallbackModuleSettings);
-  const sales = mergeSalesSettings(moduleSettings);
-  const general = mergeGeneralSettings(moduleSettings);
-  const organizationId = options.capabilities?.organization_id;
 
-  const documentType = await resolveOrderPrintType(moduleSettings, options.documentType);
-  if (!documentType) return null;
+  const documentType = await resolveOrderPrintType(
+    fallbackModuleSettings,
+    options.documentType,
+  );
+  if (!documentType) {
+    options.printWindow?.close?.();
+    return null;
+  }
 
-  const copies = Math.max(1, Number(options.copies ?? sales.receipt_copies ?? 1) || 1);
+  let printWindow = options.printWindow ?? null;
+  if (!printWindow) {
+    printWindow = openBlankPrintWindow(printWindowFeatures(documentType));
+    if (!printWindow) {
+      throw new Error(PRINT_BLOCKED_MESSAGE);
+    }
+  } else {
+    showPrintPreparing(printWindow);
+  }
 
-  const [organization, branch, customer, route] = await Promise.all([
-    options.organization
-      ? Promise.resolve(options.organization)
-      : organizationId
-        ? fetchOrganization(organizationId)
-        : Promise.resolve(null),
-    options.branch ? Promise.resolve(options.branch) : fetchBranch(saleForPrint.branch_id),
-    options.customer ? Promise.resolve(options.customer) : fetchCustomer(saleForPrint.customer_num),
-    options.route ? Promise.resolve(options.route) : fetchRoute(saleForPrint.route_id),
-  ]);
+  try {
+    const saleForPrint = await ensureSaleForPrint(sale);
+    const moduleSettings = await fetchPrintModuleSettings(fallbackModuleSettings);
+    const sales = mergeSalesSettings(moduleSettings);
+    const general = mergeGeneralSettings(moduleSettings);
+    const organizationId =
+      options.organization?.id ??
+      options.capabilities?.organization_id ??
+      options.capabilities?.organization?.id;
 
-  const seller =
-    options.seller ??
-    sellerFromOrganization(organization) ??
-    (options.organizationName ? { name: options.organizationName } : null) ??
-    { name: DEFAULT_PRINT_ORG_NAME };
+    const copies = Math.max(1, Number(options.copies ?? sales.receipt_copies ?? 1) || 1);
 
-  const branding = resolveSaleDocumentBranding({
-    organization,
-    generalSettings: general,
-  });
+    const [organization, branch, customer, route] = await Promise.all([
+      options.organization?.org_name || options.organization?.name
+        ? Promise.resolve(options.organization)
+        : organizationId
+          ? fetchOrganization(organizationId)
+          : Promise.resolve(null),
+      options.branch ? Promise.resolve(options.branch) : fetchBranch(saleForPrint.branch_id),
+      options.customer ? Promise.resolve(options.customer) : fetchCustomer(saleForPrint.customer_num),
+      options.route ? Promise.resolve(options.route) : fetchRoute(saleForPrint.route_id),
+    ]);
 
-  const kraEnabled = isKraDeviceConfigured(moduleSettings, options.capabilities);
-  const kraData = kraEnabled ? extractKraReceiptData(saleForPrint, options.kraReceipt) : null;
-  const kraQrDataUrl =
-    kraData?.signatureLink != null
-      ? await kraReceiptQrDataUrl(kraData.signatureLink, {
-          size: documentType === "invoice" ? 140 : 110,
-        })
-      : null;
+    const seller =
+      options.seller ??
+      sellerFromOrganization(organization) ??
+      (options.organizationName ? { name: options.organizationName } : null) ??
+      { name: DEFAULT_PRINT_ORG_NAME };
 
-  const paymentInstructions = resolveReceiptPaymentDetails({
-    moduleSettings,
-    route,
-    sale: saleForPrint,
-    overrideDetails: options.paymentInstructions ?? null,
-  });
-
-  const printOptions = {
-    ...options,
-    seller,
-    branch,
-    customer,
-    route,
-    branding,
-    organization,
-    productDiscountsEnabled: Boolean(sales.allow_discounts),
-    orderDiscountEnabled: Boolean(sales.enable_order_discount),
-    customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
-    showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
-    documentFooterText: resolvePrintFooter(
-      general,
-      documentType === "invoice" ? "invoice" : "receipt",
-    ),
-    paymentInstructions,
-    showPaymentInstructions: shouldShowReceiptPaymentDetails(
-      moduleSettings,
-      documentType === "invoice" ? "invoice" : "receipt",
-    ),
-    kraEnabled,
-    kraData,
-    kraQrDataUrl,
-  };
-
-  if (documentType === "invoice") {
-    const deliveryTerms = resolveInvoiceDeliveryTerms(sales);
-    const footerLines = resolveInvoiceFooterLines(sales, {
-      organizationName: seller.name ?? organization?.org_name ?? "",
-      validDays: Number(sales.invoice_valid_days ?? 7),
+    const branding = resolveSaleDocumentBranding({
+      organization,
+      generalSettings: general,
     });
+
+    const kraData = await resolveKraReceiptDataForSale(saleForPrint, options.kraReceipt);
+    const kraQrDataUrl =
+      kraData?.signatureLink != null
+        ? await kraReceiptQrDataUrl(kraData.signatureLink, {
+            size: documentType === "invoice" ? 140 : 100,
+          })
+        : null;
+
+    const paymentInstructions = resolveReceiptPaymentDetails({
+      moduleSettings,
+      route,
+      sale: saleForPrint,
+      overrideDetails: options.paymentInstructions ?? null,
+    });
+
+    const printOptions = {
+      ...options,
+      seller,
+      branch,
+      customer,
+      route,
+      branding,
+      organization,
+      productDiscountsEnabled: Boolean(sales.allow_discounts),
+      orderDiscountEnabled: Boolean(sales.enable_order_discount),
+      customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
+      showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
+      documentFooterText: resolvePrintFooter(
+        general,
+        documentType === "invoice" ? "invoice" : "receipt",
+      ),
+      paymentInstructions,
+      showPaymentInstructions: shouldShowReceiptPaymentDetails(
+        moduleSettings,
+        documentType === "invoice" ? "invoice" : "receipt",
+      ),
+      kraData,
+      kraQrDataUrl,
+      printWindow,
+    };
+
+    if (documentType === "invoice") {
+      const deliveryTerms = resolveInvoiceDeliveryTerms(sales);
+      const footerLines = resolveInvoiceFooterLines(sales, {
+        organizationName: seller.name ?? organization?.org_name ?? "",
+        validDays: Number(sales.invoice_valid_days ?? 7),
+      });
+      for (let copy = 0; copy < copies; copy += 1) {
+        printSaleInvoice(saleForPrint, {
+          ...printOptions,
+          invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
+          preparedBy:
+            options.preparedBy ?? saleForPrint.cashier_name ?? saleForPrint.user?.full_name ?? null,
+          deliveryTerms,
+          footerLines,
+        });
+      }
+      return documentType;
+    }
+
     for (let copy = 0; copy < copies; copy += 1) {
-      printSaleInvoice(saleForPrint, {
+      printSaleReceipt(saleForPrint, {
         ...printOptions,
-        invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
-        preparedBy:
-          options.preparedBy ?? saleForPrint.cashier_name ?? saleForPrint.user?.full_name ?? null,
-        deliveryTerms,
-        footerLines,
+        organizationName: seller.name ?? options.organizationName ?? DEFAULT_PRINT_ORG_NAME,
+        uomById: options.uomById ?? null,
       });
     }
+
     return documentType;
+  } catch (error) {
+    printWindow?.close?.();
+    throw error;
   }
-
-  for (let copy = 0; copy < copies; copy += 1) {
-    printSaleReceipt(saleForPrint, {
-      ...printOptions,
-      organizationName: seller.name ?? options.organizationName ?? DEFAULT_PRINT_ORG_NAME,
-      uomById: options.uomById ?? null,
-    });
-  }
-
-  return documentType;
 }

@@ -26,7 +26,7 @@ import { resolveSaleDocumentBranding } from "@/lib/sale-document-print-shared";
 
 const PREVIEW_OPTIONS = [
   { id: "receipt", label: "Thermal receipt" },
-  { id: "invoice", label: "A4 sales invoice" },
+  { id: "invoice", label: "Invoice receipt (A4)" },
   { id: "lpo", label: "LPO" },
   { id: "loading_sheet", label: "Loading sheet" },
 ];
@@ -77,7 +77,6 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings }) {
       documentFooterText: resolvePrintFooter(general, "receipt"),
       paymentInstructions,
       showPaymentInstructions: shouldShowReceiptPaymentDetails({ sales }, "receipt"),
-      kraEnabled: false,
     });
   }
 
@@ -99,7 +98,6 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings }) {
         validDays: Number(sales.invoice_valid_days ?? 7),
       }),
       preparedBy: "Preview cashier",
-      kraEnabled: false,
     });
   }
 

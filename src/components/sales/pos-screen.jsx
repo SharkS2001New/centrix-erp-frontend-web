@@ -1984,6 +1984,7 @@ export function PosScreen({ standalone = false }) {
         if (posSalesConfig.showCheckoutOnCreate) {
           await printSaleOrder(sale, {
             capabilities,
+            organization,
             organizationName: capabilities?.profile_label,
             uomById,
           });
@@ -2197,6 +2198,7 @@ export function PosScreen({ standalone = false }) {
     try {
       await printSaleOrder(sale, {
         capabilities,
+        organization,
         organizationName: capabilities?.profile_label,
         uomById,
       });

@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import { saleLineProductName } from "@/lib/sale-line-items";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { mergeProcurementSettings } from "@/lib/procurement-settings";
 import { mergeSalesSettings } from "@/lib/sales-settings";
@@ -47,10 +48,16 @@ export function resolvePrintProcurementSettings(moduleSettings) {
   return mergeProcurementSettings(moduleSettings);
 }
 
-/** Ensure sale line items are present before building receipt/invoice HTML. */
+/** Ensure sale line items are present (with product names) before building receipt/invoice HTML. */
 export async function ensureSaleForPrint(sale) {
   if (!sale?.id) return sale;
-  if (Array.isArray(sale.items) && sale.items.length > 0) return sale;
+
+  const items = Array.isArray(sale.items) ? sale.items : [];
+  const missingProductNames =
+    items.length > 0 &&
+    items.some((line) => line?.product_code && !saleLineProductName(line));
+
+  if (items.length > 0 && !missingProductNames) return sale;
 
   try {
     const loaded = await apiRequest(`/sales/${sale.id}`, { loading: false, reportIssues: false });
