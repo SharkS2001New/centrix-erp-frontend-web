@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useAppRouter } from "@/lib/use-app-router";
+import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
   FilterSelect,
@@ -15,7 +17,14 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { LPO_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
-import { formatLpoKes, formatPoNumber, LpoStatusBadge } from "@/components/lpo/lpo-shared";
+import {
+  buildLpoListMenuItems,
+  LpoListContextMenu,
+  LpoListRowActions,
+  useLpoListPermissions,
+} from "@/components/lpo/lpo-list-actions";
+import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
+import { formatLpoKes, formatPoNumber, lpoOrderDate, LpoStatusBadge } from "@/components/lpo/lpo-shared";
 
 const PAGE_SIZE = 15;
 
@@ -29,6 +38,10 @@ function PlusIcon() {
 }
 
 export default function LpoListPage() {
+  const router = useAppRouter();
+  const { user, capabilities, organization } = useAuth();
+  const { canView, canCreate, canEdit, canDelete } = useLpoListPermissions();
+
   const [dashboard, setDashboard] = useState(null);
   const [rows, setRows] = useState([]);
   const [totalRows, setTotalRows] = useState(0);
@@ -38,6 +51,10 @@ export default function LpoListPage() {
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [actionMessage, setActionMessage] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [printingLpoNo, setPrintingLpoNo] = useState(null);
+  const [deletingLpoNo, setDeletingLpoNo] = useState(null);
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
@@ -113,6 +130,97 @@ export default function LpoListPage() {
     [statuses],
   );
 
+  function viewLpo(row) {
+    if (!row?.lpo_no) return;
+    router.push(`/lpo/${row.lpo_no}`);
+  }
+
+  function openLpoContextMenu(event, row) {
+    event.preventDefault();
+    setContextMenu({
+      row,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }
+
+  function openActionsMenuFromButton(event, row) {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    setContextMenu({
+      row,
+      x: Math.max(8, rect.right - 240),
+      y: rect.bottom + 4,
+    });
+  }
+
+  async function printLpo(row, variant = "lpo") {
+    if (!row?.lpo_no || !canView) return;
+    setPrintingLpoNo(row.lpo_no);
+    setActionMessage(null);
+    try {
+      await runLpoPrintClick(row.lpo_no, {
+        variant,
+        user,
+        capabilities,
+        organization,
+      });
+    } catch (e) {
+      setActionMessage(e instanceof Error ? e.message : "Print failed");
+    } finally {
+      setPrintingLpoNo(null);
+    }
+  }
+
+  async function deleteLpo(row) {
+    if (!row?.lpo_no || !canDelete || !row.can_delete) return;
+    if (!window.confirm("Delete this purchase order? This cannot be undone.")) return;
+    setDeletingLpoNo(row.lpo_no);
+    setActionMessage(null);
+    try {
+      await apiRequest(`/lpo-mst/${row.lpo_no}`, { method: "DELETE" });
+      setContextMenu(null);
+      await loadRows();
+    } catch (e) {
+      setActionMessage(e instanceof ApiError ? e.message : "Delete failed");
+    } finally {
+      setDeletingLpoNo(null);
+    }
+  }
+
+  const contextMenuItems = useMemo(() => {
+    if (!contextMenu?.row) return [];
+    const row = contextMenu.row;
+    return buildLpoListMenuItems({
+      row,
+      canView,
+      canEdit,
+      canDelete,
+      busy: deletingLpoNo === row.lpo_no,
+      onView: () => {
+        setContextMenu(null);
+        viewLpo(row);
+      },
+      onPrintLpo: () => {
+        setContextMenu(null);
+        printLpo(row, "lpo");
+      },
+      onPrintDeliveryNote: () => {
+        setContextMenu(null);
+        printLpo(row, "delivery_note");
+      },
+      onEdit: () => {
+        setContextMenu(null);
+        router.push(`/lpo/${row.lpo_no}/edit`);
+      },
+      onDelete: () => {
+        setContextMenu(null);
+        deleteLpo(row);
+      },
+    });
+  }, [contextMenu, canView, canEdit, canDelete, deletingLpoNo, router, user, capabilities, organization]);
+
   return (
     <CatalogPageShell
       title="Purchase orders (LPO)"
@@ -133,13 +241,15 @@ export default function LpoListPage() {
             }}
             disabled={loading}
           />
-          <Link
-          href="/lpo/new"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
-        >
-          <PlusIcon />
-          New purchase order
-        </Link>
+          {canCreate ? (
+            <Link
+              href="/lpo/new"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
+            >
+              <PlusIcon />
+              New purchase order
+            </Link>
+          ) : null}
         </div>
       }
       toolbar={
@@ -174,6 +284,12 @@ export default function LpoListPage() {
           {error}
         </p>
       )}
+
+      {actionMessage ? (
+        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {actionMessage}
+        </p>
+      ) : null}
 
       {dashboard && !loading && (
         <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -217,10 +333,12 @@ export default function LpoListPage() {
                       <tr
                         key={row.lpo_no}
                         className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
+                        onContextMenu={(event) => openLpoContextMenu(event, row)}
+                        title="Right-click for actions"
                       >
                         <td className="px-4 py-3 font-mono font-medium text-[#185FA5]">
                           <Link href={`/lpo/${row.lpo_no}`} className="hover:underline">
-                            {row.po_number ?? formatPoNumber(row.lpo_no)}
+                            {row.po_number ?? formatPoNumber(row.lpo_no, lpoOrderDate(row))}
                           </Link>
                         </td>
                         <td className="px-4 py-3">
@@ -263,13 +381,19 @@ export default function LpoListPage() {
                             paymentStatus={row.payment_status}
                           />
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <Link
-                            href={`/lpo/${row.lpo_no}`}
-                            className="text-xs font-medium text-[#185FA5] hover:underline"
-                          >
-                            View
-                          </Link>
+                        <td className="px-4 py-3">
+                          {canView ? (
+                            <LpoListRowActions
+                              row={row}
+                              busy={deletingLpoNo === row.lpo_no}
+                              printing={printingLpoNo === row.lpo_no}
+                              onView={() => viewLpo(row)}
+                              onPrintLpo={() => printLpo(row, "lpo")}
+                              onOpenMenu={(event) => openActionsMenuFromButton(event, row)}
+                            />
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -283,6 +407,13 @@ export default function LpoListPage() {
               total={totalRows}
               pageSize={PAGE_SIZE}
               onChange={setPage}
+            />
+            <LpoListContextMenu
+              open={Boolean(contextMenu)}
+              x={contextMenu?.x ?? 0}
+              y={contextMenu?.y ?? 0}
+              items={contextMenuItems}
+              onClose={() => setContextMenu(null)}
             />
           </>
         )}

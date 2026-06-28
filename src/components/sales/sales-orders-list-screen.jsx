@@ -39,6 +39,7 @@ import {
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { getOrderDocumentType, isOrgMobileSalesEnabled, orderDocumentPrintLabel } from "@/lib/sales-settings";
 import {
+  disposePrintWindow,
   openBlankPrintWindow,
   printWindowFeatures,
   PRINT_BLOCKED_MESSAGE,
@@ -371,10 +372,10 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
         printWindow,
       });
       if (!printed) {
-        printWindow?.close();
+        disposePrintWindow(printWindow);
       }
     } catch (e) {
-      printWindow?.close();
+      disposePrintWindow(printWindow);
       setActionMessage(e instanceof Error ? e.message : "Print failed");
     }
   }

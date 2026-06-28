@@ -5,29 +5,34 @@ import { createPortal } from "react-dom";
 import { subscribeAppLoading } from "@/lib/app-loading";
 import { useBackgroundTasksOptional } from "@/contexts/background-task-context";
 
-const SHOW_DELAY_MS = 300;
+const SHOW_DELAY_MS = 200;
 
 /**
- * Global centered preloader — shown only during page navigation GET requests (see api.js).
+ * Global navigation + data loading overlay.
+ * Blocks duplicate clicks while a page is opening or fetching.
  */
 export function AppLoadingOverlay() {
   const backgroundTasks = useBackgroundTasksOptional();
   const [pending, setPending] = useState(0);
+  const [navigating, setNavigating] = useState(false);
   const [label, setLabel] = useState("Loading…");
   const [visible, setVisible] = useState(false);
   const showTimerRef = useRef(null);
-  const wasPendingRef = useRef(false);
+  const wasActiveRef = useRef(false);
+
+  const active = pending > 0 || navigating;
 
   useEffect(() => {
-    return subscribeAppLoading(({ pending: nextPending, label: nextLabel }) => {
+    return subscribeAppLoading(({ pending: nextPending, label: nextLabel, navigating: nextNavigating }) => {
       setPending(nextPending);
+      setNavigating(nextNavigating);
       setLabel(nextLabel);
     });
   }, []);
 
   useEffect(() => {
-    if (pending > 0) {
-      wasPendingRef.current = true;
+    if (active) {
+      wasActiveRef.current = true;
       if (showTimerRef.current) clearTimeout(showTimerRef.current);
       showTimerRef.current = setTimeout(() => setVisible(true), SHOW_DELAY_MS);
       return () => {
@@ -35,32 +40,32 @@ export function AppLoadingOverlay() {
       };
     }
 
-    if (!wasPendingRef.current) return undefined;
+    if (!wasActiveRef.current) return undefined;
 
-    wasPendingRef.current = false;
+    wasActiveRef.current = false;
     if (showTimerRef.current) clearTimeout(showTimerRef.current);
-    const doneTimer = setTimeout(() => setVisible(false), 200);
+    const doneTimer = setTimeout(() => setVisible(false), 150);
     return () => clearTimeout(doneTimer);
-  }, [pending]);
+  }, [active]);
 
   if (backgroundTasks?.busy) return null;
   if (!visible || typeof document === "undefined") return null;
 
   return createPortal(
     <div
-      className="pointer-events-none fixed inset-0 z-[170] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[170] flex items-center justify-center p-4"
       aria-live="polite"
-      aria-busy={pending > 0 ? "true" : "false"}
+      aria-busy="true"
+      role="status"
     >
-      <div className="pointer-events-auto w-full max-w-sm theme-panel rounded-xl border px-6 py-7 text-center shadow-2xl ring-1 ring-slate-900/5">
+      <div className="absolute inset-0 bg-slate-900/25 backdrop-blur-[1px]" aria-hidden="true" />
+      <div className="relative w-full max-w-sm theme-panel rounded-xl border px-6 py-7 text-center shadow-2xl ring-1 ring-slate-900/5">
         <div
-          className="mx-auto h-10 w-10 animate-spin rounded-full border-[3px] border-slate-200 border-t-[#185FA5]"
+          className="mx-auto h-10 w-10 animate-spin rounded-full border-[3px] border-[var(--theme-border)] border-t-[var(--theme-primary)]"
           aria-hidden="true"
         />
-        <p className="mt-4 text-sm font-semibold text-slate-900">{label}</p>
-        <p className="mt-1 text-sm text-slate-600">
-          {pending > 0 ? "Please wait…" : "Done"}
-        </p>
+        <p className="theme-heading mt-4 text-sm font-semibold">{label}</p>
+        <p className="theme-subtext mt-1 text-sm">Please wait — opening the page…</p>
       </div>
     </div>,
     document.body,

@@ -27,6 +27,7 @@ import {
 import { printSaleInvoice } from "@/components/sales/sale-invoice-print";
 import { printSaleReceipt } from "@/components/sales/sale-receipt-print";
 import {
+  disposePrintWindow,
   openBlankPrintWindow,
   printWindowFeatures,
   showPrintPreparing,
@@ -61,7 +62,7 @@ function sellerFromOrganization(org) {
 async function fetchBranch(branchId) {
   if (branchId == null) return null;
   try {
-    const branch = await apiRequest(`/branches/${branchId}`);
+    const branch = await apiRequest(`/branches/${branchId}`, { loading: false, reportIssues: false });
     return {
       name: branch.branch_name,
       address: branch.branch_address,
@@ -76,7 +77,7 @@ async function fetchBranch(branchId) {
 async function fetchCustomer(customerNum) {
   if (customerNum == null) return null;
   try {
-    return await apiRequest(`/customers/${customerNum}`);
+    return await apiRequest(`/customers/${customerNum}`, { loading: false, reportIssues: false });
   } catch {
     return null;
   }
@@ -85,7 +86,7 @@ async function fetchCustomer(customerNum) {
 async function fetchRoute(routeId) {
   if (routeId == null) return null;
   try {
-    return await apiRequest(`/routes/${routeId}`);
+    return await apiRequest(`/routes/${routeId}`, { loading: false, reportIssues: false });
   } catch {
     return null;
   }
@@ -117,7 +118,7 @@ export async function printSaleOrder(sale, options = {}) {
     options.documentType,
   );
   if (!documentType) {
-    options.printWindow?.close?.();
+    disposePrintWindow(options.printWindow);
     return null;
   }
 
@@ -235,7 +236,7 @@ export async function printSaleOrder(sale, options = {}) {
 
     return documentType;
   } catch (error) {
-    printWindow?.close?.();
+    disposePrintWindow(printWindow);
     throw error;
   }
 }

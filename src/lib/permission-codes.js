@@ -57,7 +57,13 @@ export const P = {
     stock_take: { view: "inventory.stock_take.view" },
   },
   purchasing: {
-    lpo: { view: "purchasing.lpo.view", approve: "purchasing.lpo.approve" },
+    lpo: {
+      view: "purchasing.lpo.view",
+      create: "purchasing.lpo.create",
+      edit: "purchasing.lpo.edit",
+      delete: "purchasing.lpo.delete",
+      approve: "purchasing.lpo.approve",
+    },
     suppliers: {
       view: "purchasing.suppliers.view",
       create: "purchasing.suppliers.create",

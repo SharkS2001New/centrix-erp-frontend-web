@@ -28,6 +28,7 @@ import { RecordSalePaymentModal } from "@/components/sales/record-sale-payment-m
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { getOrderDocumentType, orderDocumentPrintLabel } from "@/lib/sales-settings";
 import {
+  disposePrintWindow,
   openBlankPrintWindow,
   printWindowFeatures,
   PRINT_BLOCKED_MESSAGE,
@@ -658,10 +659,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         printWindow,
       });
       if (!printed) {
-        printWindow?.close();
+        disposePrintWindow(printWindow);
       }
     } catch (e) {
-      printWindow?.close();
+      disposePrintWindow(printWindow);
       setActionMessage(e instanceof Error ? e.message : "Print failed");
     }
   }, [sale, capabilities, organization, customer, branchName, cashierName, uomById]);

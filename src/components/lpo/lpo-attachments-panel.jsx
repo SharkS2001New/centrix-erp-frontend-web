@@ -81,20 +81,20 @@ export function LpoAttachmentsPanel({ lpoNo }) {
 
   return (
     <section className="theme-panel rounded-xl border p-6 shadow-sm">
-      <h2 className="font-medium text-slate-900">Attachments</h2>
-      <p className="mt-1 text-xs text-slate-500">Upload supplier quotes, invoices, and supporting documents.</p>
-      {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+      <h2 className="theme-heading font-medium">Attachments</h2>
+      <p className="theme-subtext mt-1 text-xs">Upload supplier quotes, invoices, and supporting documents.</p>
+      {error ? <p className="theme-alert-error mt-2 rounded-lg px-3 py-2 text-sm">{error}</p> : null}
       {loading ? (
-        <p className="mt-3 text-sm text-slate-500">Loading…</p>
+        <p className="theme-subtext mt-3 text-sm">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-500">No attachments yet.</p>
+        <p className="theme-subtext mt-3 text-sm">No attachments yet.</p>
       ) : (
-        <ul className="mt-3 divide-y text-sm">
+        <ul className="mt-3 divide-y divide-[var(--theme-border)] text-sm">
           {rows.map((r) => (
             <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
               <div>
-                <p className="font-medium text-slate-900">{r.file_name}</p>
-                <p className="text-xs text-slate-500">
+                <p className="theme-heading font-medium">{r.file_name}</p>
+                <p className="theme-subtext text-xs">
                   {r.file_path ? formatFileSize(r.file_size) : "Reference only"}
                   {r.created_at ? ` · ${new Date(r.created_at).toLocaleString()}` : ""}
                 </p>
@@ -105,7 +105,7 @@ export function LpoAttachmentsPanel({ lpoNo }) {
                     type="button"
                     disabled={viewingId === r.id}
                     onClick={() => void viewAttachment(r)}
-                    className="text-[#185FA5] hover:underline disabled:opacity-50"
+                    className="theme-link hover:underline disabled:opacity-50"
                   >
                     {viewingId === r.id ? "Opening…" : "View"}
                   </button>

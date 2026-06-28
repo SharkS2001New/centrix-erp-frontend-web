@@ -3,7 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
-import { formatLpoKes, formatPoNumber } from "./lpo-shared";
+import { useAuth } from "@/contexts/auth-context";
+import { P } from "@/lib/permission-codes";
+import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
+import { formatLpoKes, formatPoNumber, lpoCanDelete, lpoCanEdit, lpoOrderDate } from "./lpo-shared";
 
 function normalizePhone(phone) {
   const digits = String(phone ?? "").replace(/\D/g, "");
@@ -15,7 +18,7 @@ function normalizePhone(phone) {
 }
 
 function buildWhatsAppText(lpo) {
-  const po = formatPoNumber(lpo.lpo_no);
+  const po = formatPoNumber(lpo.lpo_no, lpoOrderDate(lpo));
   const total = formatLpoKes(lpo.net_amount);
   return [
     `Purchase order ${po}`,
@@ -23,18 +26,55 @@ function buildWhatsAppText(lpo) {
     lpo.due_date ? `Valid until: ${lpo.due_date}` : null,
     `Total: ${total}`,
     "",
-    "Please see the attached LPO PDF. Open the print link on your device to save or share the PDF, then forward it here.",
+    "Please see the attached LPO PDF. Use Print LPO to save a copy for WhatsApp, then forward it here.",
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated }) {
+function useLpoPrintActions(lpoNo, printContext = {}) {
+  const { user, capabilities, organization } = useAuth();
+  const [printing, setPrinting] = useState(null);
+  const [printError, setPrintError] = useState(null);
+
+  async function printDocument(variant = "lpo") {
+    setPrinting(variant);
+    setPrintError(null);
+    try {
+      await runLpoPrintClick(lpoNo, {
+        variant,
+        user,
+        capabilities,
+        organization,
+        lpoSummary: printContext.lpoSummary,
+        supplier: printContext.supplier,
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Could not print document";
+      setPrintError(message);
+    } finally {
+      setPrinting(null);
+    }
+  }
+
+  return { printing, printError, printDocument };
+}
+
+export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [awaitingMarkSent, setAwaitingMarkSent] = useState(false);
+  const { hasPermission } = useAuth();
+  const canApprove = hasPermission(P.purchasing.lpo.approve);
+  const canView = hasPermission(P.purchasing.lpo.view);
+  const { printing, printError, printDocument } = useLpoPrintActions(lpoNo, printContext);
 
-  const actions = lpo.workflow_actions ?? [];
+  const actions = (lpo.workflow_actions ?? []).filter((action) => {
+    if (action === "mark_checked" || action === "approve") {
+      return canApprove;
+    }
+    return canView;
+  });
 
   async function runAction(action) {
     setBusy(action);
@@ -53,26 +93,22 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated }) {
     }
   }
 
-  function openPrintPdf() {
-    window.open(`/lpo/${lpoNo}/print`, "_blank", "noopener,noreferrer");
-  }
-
   function openEmail() {
     const to = lpo.supplier_email?.trim();
-    const subject = encodeURIComponent(`LPO ${formatPoNumber(lpo.lpo_no)}`);
+    const subject = encodeURIComponent(`LPO ${formatPoNumber(lpo.lpo_no, lpoOrderDate(lpo))}`);
     const body = encodeURIComponent(buildWhatsAppText(lpo));
     window.location.href = `mailto:${to || ""}?subject=${subject}&body=${body}`;
     setAwaitingMarkSent(true);
   }
 
-  function openWhatsApp() {
+  async function openWhatsApp() {
     const text = encodeURIComponent(buildWhatsAppText(lpo));
     const phone = normalizePhone(lpo.supplier_phone);
     const url = phone
       ? `https://wa.me/${phone}?text=${text}`
       : `https://wa.me/?text=${text}`;
     window.open(url, "_blank", "noopener,noreferrer");
-    openPrintPdf();
+    await printDocument("lpo");
     setAwaitingMarkSent(true);
   }
 
@@ -81,15 +117,17 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated }) {
   }
 
   return (
-    <section className="rounded-xl border border-[#185FA5]/30 bg-[#E6F1FB]/40 p-6 shadow-sm">
-      <h2 className="mb-1 text-sm font-semibold text-slate-900">LPO workflow</h2>
-      <p className="mb-4 text-xs text-slate-600">
+    <section className="theme-panel rounded-xl border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] p-6 shadow-sm">
+      <h2 className="theme-heading mb-1 text-sm font-semibold">LPO workflow</h2>
+      <p className="theme-subtext mb-4 text-xs">
         Move this order through check → approval → send to supplier → receive stock. Status becomes
         LPO Cleared automatically when a supplier payment is recorded (partial or full).
       </p>
 
-      {error ? (
-        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+      {error || printError ? (
+        <p className="theme-alert-error mb-3 rounded-lg px-3 py-2 text-sm">
+          {error ?? printError}
+        </p>
       ) : null}
 
       <div className="flex flex-wrap gap-2">
@@ -97,32 +135,36 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated }) {
           <ActionButton
             label={busy === "mark_checked" ? "Saving…" : "Mark as checked"}
             onClick={() => runAction("mark_checked")}
-            disabled={Boolean(busy)}
+            disabled={Boolean(busy) || Boolean(printing)}
           />
         ) : null}
         {actions.includes("approve") ? (
           <ActionButton
             label={busy === "approve" ? "Saving…" : "Approve LPO"}
             onClick={() => runAction("approve")}
-            disabled={Boolean(busy)}
+            disabled={Boolean(busy) || Boolean(printing)}
             primary
           />
         ) : null}
         {actions.includes("send_email") || actions.includes("send_whatsapp") ? (
           <>
             <ActionButton
-              label="Print / PDF"
-              onClick={openPrintPdf}
-              disabled={Boolean(busy)}
+              label={printing === "lpo" ? "Printing…" : "Print LPO"}
+              onClick={() => printDocument("lpo")}
+              disabled={Boolean(busy) || Boolean(printing)}
             />
             {actions.includes("send_email") ? (
-              <ActionButton label="Send via Email" onClick={openEmail} disabled={Boolean(busy)} />
+              <ActionButton
+                label="Send via Email"
+                onClick={openEmail}
+                disabled={Boolean(busy) || Boolean(printing)}
+              />
             ) : null}
             {actions.includes("send_whatsapp") ? (
               <ActionButton
                 label="Send via WhatsApp"
                 onClick={openWhatsApp}
-                disabled={Boolean(busy)}
+                disabled={Boolean(busy) || Boolean(printing)}
                 primary
               />
             ) : null}
@@ -130,17 +172,17 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated }) {
         ) : null}
       </div>
 
-      {awaitingMarkSent || actions.includes("mark_sent") ? (
-        <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
-          <p className="text-sm text-amber-950">
+      {awaitingMarkSent || (actions.includes("mark_sent") && canView) ? (
+        <div className="mt-4 rounded-lg border border-[var(--theme-accent-orange)]/35 bg-[color-mix(in_srgb,var(--theme-accent-orange)_10%,var(--theme-page-bg))] px-4 py-3">
+          <p className="text-sm text-[var(--theme-accent-text)]">
             After you send the LPO (email or WhatsApp), you must confirm it was sent to the
-            supplier. Use Print / PDF to save a copy for WhatsApp.
+            supplier. Use Print LPO to save a copy for WhatsApp.
           </p>
           <button
             type="button"
-            disabled={busy === "mark_sent"}
+            disabled={busy === "mark_sent" || Boolean(printing)}
             onClick={() => runAction("mark_sent")}
-            className="animate-lpo-blink mt-3 rounded-lg bg-amber-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-amber-700 disabled:opacity-50"
+            className="theme-accent-btn animate-lpo-blink mt-3 rounded-lg px-5 py-2.5 text-sm font-semibold shadow-md disabled:opacity-50"
           >
             {busy === "mark_sent" ? "Saving…" : "Mark as sent to supplier"}
           </button>
@@ -158,8 +200,8 @@ function ActionButton({ label, onClick, disabled, primary }) {
       disabled={disabled}
       className={
         primary
-          ? "rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a] disabled:opacity-50"
-          : "rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+          ? "theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+          : "theme-secondary-btn rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
       }
     >
       {label}
@@ -167,80 +209,104 @@ function ActionButton({ label, onClick, disabled, primary }) {
   );
 }
 
-export function LpoDetailActions({ lpo, lpoNo, onDelete, deleting }) {
+export function LpoDetailActions({ lpo, lpoNo, onDelete, deleting, printContext = null }) {
+  const { hasPermission } = useAuth();
+  const canView = hasPermission(P.purchasing.lpo.view);
+  const canEdit = hasPermission(P.purchasing.lpo.edit) && lpoCanEdit(lpo);
+  const canDelete = hasPermission(P.purchasing.lpo.delete) && lpoCanDelete(lpo);
+  const { printing, printError, printDocument } = useLpoPrintActions(lpoNo, printContext);
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {lpo.can_edit ? (
-        <Link
-          href={`/lpo/${lpoNo}/edit`}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Edit
-        </Link>
+    <div className="flex flex-col gap-2">
+      {printError ? (
+        <p className="theme-alert-error rounded-lg px-3 py-2 text-sm">{printError}</p>
       ) : null}
-      {lpo.can_delete ? (
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={deleting}
-          className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-        >
-          {deleting ? "Deleting…" : "Delete"}
-        </button>
-      ) : null}
-      {lpo.lpo_status_code >= 3 ? (
-        <>
-          {lpo.can_receive !== false ? (
-            <Link
-              href={`/lpo/${lpoNo}/receive`}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-[#185FA5] hover:bg-slate-50"
+      <div className="flex flex-wrap items-center gap-2">
+        {canEdit ? (
+          <Link
+            href={`/lpo/${lpoNo}/edit`}
+            className="theme-secondary-btn rounded-lg px-3 py-1.5 text-sm font-medium"
+          >
+            Edit
+          </Link>
+        ) : null}
+        {canDelete ? (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleting || Boolean(printing)}
+            className="theme-secondary-btn rounded-lg border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+          >
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        ) : null}
+        {lpo.lpo_status_code >= 3 ? (
+          <>
+            {lpo.can_receive !== false ? (
+              <Link
+                href={`/lpo/${lpoNo}/receive`}
+                className="theme-secondary-btn rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--theme-primary)]"
+              >
+                Receive stock
+              </Link>
+            ) : (
+              <span
+                className="theme-secondary-btn cursor-not-allowed rounded-lg px-3 py-1.5 text-sm font-medium opacity-50"
+                title="All items were returned to the supplier"
+              >
+                Receive stock
+              </span>
+            )}
+            {lpo.can_create_return !== false ? (
+              <Link
+                href={`/lpo/${lpoNo}/supplier-return`}
+                className="theme-accent-btn rounded-lg px-3 py-1.5 text-sm font-medium"
+              >
+                Supplier return
+              </Link>
+            ) : (
+              <span
+                className="theme-secondary-btn cursor-not-allowed rounded-lg px-3 py-1.5 text-sm font-medium opacity-40"
+                title="No items available to return"
+              >
+                Supplier return
+              </span>
+            )}
+          </>
+        ) : null}
+        {lpo.can_pay ? (
+          <Link
+            href={`/suppliers/payments/new?supplier_id=${lpo.supplier_id}&lpo_no=${lpoNo}`}
+            className="theme-primary-btn rounded-lg px-3 py-1.5 text-sm font-medium"
+          >
+            Record payment
+          </Link>
+        ) : (
+          <span className="theme-secondary-btn cursor-not-allowed rounded-lg px-3 py-1.5 text-sm font-medium opacity-50">
+            Record payment
+          </span>
+        )}
+        {canView ? (
+          <>
+            <button
+              type="button"
+              onClick={() => printDocument("lpo")}
+              disabled={Boolean(printing)}
+              className="theme-secondary-btn rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50"
             >
-              Receive stock
-            </Link>
-          ) : (
-            <span
-              className="cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-400"
-              title="All items were returned to the supplier"
+              {printing === "lpo" ? "Printing…" : "Print LPO"}
+            </button>
+            <button
+              type="button"
+              onClick={() => printDocument("delivery_note")}
+              disabled={Boolean(printing)}
+              className="theme-secondary-btn rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50"
             >
-              Receive stock
-            </span>
-          )}
-          {lpo.can_create_return !== false ? (
-            <Link
-              href={`/lpo/${lpoNo}/supplier-return`}
-              className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-1.5 text-sm font-medium text-orange-800 hover:bg-orange-100"
-            >
-              Supplier return
-            </Link>
-          ) : (
-            <span
-              className="cursor-not-allowed rounded-lg border border-orange-100 bg-orange-50/50 px-3 py-1.5 text-sm font-medium text-orange-300"
-              title="No items available to return"
-            >
-              Supplier return
-            </span>
-          )}
-        </>
-      ) : null}
-      {lpo.can_pay ? (
-        <Link
-          href={`/suppliers/payments/new?supplier_id=${lpo.supplier_id}&lpo_no=${lpoNo}`}
-          className="rounded-lg bg-[#185FA5] px-3 py-1.5 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
-        >
-          Record payment
-        </Link>
-      ) : (
-        <span className="cursor-not-allowed rounded-lg bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-500">
-          Record payment
-        </span>
-      )}
-      <Link
-        href={`/lpo/${lpoNo}/print`}
-        target="_blank"
-        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-      >
-        Print / PDF
-      </Link>
+              {printing === "delivery_note" ? "Printing…" : "Delivery note"}
+            </button>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -6,7 +6,14 @@ import {
   wholesalePriceAtMeasureLevel,
   wholesalePricePerSmallUnit,
 } from "@/lib/retail-pricing";
-import { formatMixedStockDisplay, formatPosCartQty, uomConversionFactor } from "@/lib/stock-uom";
+import {
+  formatDisplayQty,
+  formatMixedStockDisplay,
+  formatPosCartQty,
+  splitBaseToHierarchy,
+  uomConversionFactor,
+} from "@/lib/stock-uom";
+import { fullPackageLabel, smallPackagingLabel } from "@/lib/uom-packaging";
 
 export function saleLineUom(line, uomById) {
   if (line?.product?.unit_id != null && uomById?.get) {
@@ -152,6 +159,40 @@ export function saleLineQtyLabel(line, uomById) {
   }
 
   return formatMixedStockDisplay(line?.quantity, 1).text;
+}
+
+/** Thermal receipt — quantity count and packaging label as separate right-aligned columns. */
+export function saleLinePrintQtyPackage(line, uomById) {
+  const uom = saleLineUom(line, uomById);
+  const baseQty = Number(line?.quantity ?? 0);
+
+  if (uom) {
+    const parts = splitBaseToHierarchy(baseQty, uom).filter((p) => p.qty > 0.0001);
+    if (parts.length) {
+      return {
+        quantity: parts.map((p) => formatDisplayQty(p.qty)).join(", "),
+        package: parts.map((p) => p.label).join(", "),
+      };
+    }
+    const factor = uomConversionFactor(uom);
+    return {
+      quantity: formatDisplayQty(0),
+      package: factor > 1 ? fullPackageLabel(uom) : smallPackagingLabel(uom),
+    };
+  }
+
+  if (line?.uom) {
+    return {
+      quantity: formatDisplayQty(baseQty),
+      package: String(line.uom),
+    };
+  }
+
+  const fallback = formatMixedStockDisplay(baseQty, 1);
+  return {
+    quantity: formatDisplayQty(fallback.display),
+    package: fallback.unit,
+  };
 }
 
 /** Build { [product_code]: product } from /products list response. */

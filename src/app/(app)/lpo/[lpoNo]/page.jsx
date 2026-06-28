@@ -9,9 +9,9 @@ import { openLpoSupplierInvoiceDocument } from "@/components/lpo/lpo-supplier-in
 import { SupplierInvoiceModal } from "@/components/lpo/supplier-invoice-modal";
 import {
   formatLpoKes,
-  formatPoNumber,
   lpoCanRecordReturn,
   lpoIsCancelledReturned,
+  lpoDisplayNumber,
   LpoStatusBadge,
   LPO_STATUS,
 } from "@/components/lpo/lpo-shared";
@@ -92,21 +92,30 @@ export default function LpoDetailPage() {
   );
   const supplierReturns = data?.supplier_returns ?? [];
   const canRecordReturn = lpo ? lpoCanRecordReturn(lpo, lines) : false;
+  const printContext = useMemo(
+    () =>
+      lpo
+        ? {
+            lpoSummary: { lpo, lines },
+          }
+        : null,
+    [lpo, lines],
+  );
 
   return (
     <div className="theme-workspace min-h-full">
       <div className="mb-6">
-        <Link href="/lpo" className="text-sm text-[#185FA5] hover:text-[#144f8a]">
+        <Link href="/lpo" className="theme-link text-sm hover:underline">
           ← Back to purchase orders
         </Link>
         <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-medium text-slate-900">
-              {lpo ? formatPoNumber(lpo.lpo_no) : "Purchase order"}
+            <h1 className="theme-heading text-xl font-medium">
+              {lpo ? lpoDisplayNumber(lpo) : "Purchase order"}
             </h1>
             {lpo?.supplier_name ? (
-              <p className="mt-0.5 text-sm text-slate-500">
-                <Link href={`/suppliers/${lpo.supplier_id}`} className="text-[#185FA5] hover:underline">
+              <p className="theme-subtext mt-0.5 text-sm">
+                <Link href={`/suppliers/${lpo.supplier_id}`} className="theme-link hover:underline">
                   {lpo.supplier_name}
                 </Link>
               </p>
@@ -125,6 +134,7 @@ export default function LpoDetailPage() {
                 lpoNo={lpoNo}
                 onDelete={deleteLpo}
                 deleting={deletingLpo}
+                printContext={printContext}
               />
             </div>
           ) : null}
@@ -132,48 +142,53 @@ export default function LpoDetailPage() {
       </div>
 
       {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p className="theme-alert-error mb-4 rounded-lg px-4 py-3 text-sm">
           {error}
         </p>
       )}
 
       {loading ? (
-        <p className="text-sm text-slate-500">Loading…</p>
+        <p className="theme-subtext text-sm">Loading…</p>
       ) : lpo ? (
         <div className="space-y-6">
-          <LpoWorkflowPanel lpo={lpo} lpoNo={lpoNo} onUpdated={load} />
+          <LpoWorkflowPanel
+            lpo={lpo}
+            lpoNo={lpoNo}
+            onUpdated={load}
+            printContext={printContext}
+          />
           <LpoAttachmentsPanel lpoNo={lpoNo} />
 
           {!lpo.can_edit ? (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            <p className="theme-inset-panel rounded-lg border px-4 py-3 text-sm theme-subtext">
               This LPO was sent to the supplier and can no longer be edited or deleted. Use workflow
               actions above or receive stock. Payments are allowed only after all items are received.
             </p>
           ) : null}
           {lpo.lpo_status_code >= 3 && Number(lpo.received_payable_total) > 0 ? (
-            <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <p className="rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-4 py-3 text-sm text-[var(--theme-accent-text)]">
               Payable for received stock: {formatLpoKes(lpo.received_payable_total)} (LPO total{" "}
               {formatLpoKes(lpo.net_amount)}). You may pay partially as items are received.
             </p>
           ) : null}
           {lpoIsCancelledReturned(lpo) ? (
-            <p className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+            <p className="rounded-lg border border-[var(--theme-accent-orange)]/35 bg-[color-mix(in_srgb,var(--theme-accent-orange)_10%,var(--theme-page-bg))] px-4 py-3 text-sm text-[var(--theme-accent-text)]">
               This LPO was cancelled because all order items were returned to the supplier. Receive
               stock and new returns are no longer available.
             </p>
           ) : null}
 
           <section className="theme-panel rounded-xl border p-6 shadow-sm">
-            <h2 className="mb-4 text-sm font-semibold text-slate-900">LPO details</h2>
+            <h2 className="theme-heading mb-4 text-sm font-semibold">LPO details</h2>
             <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
               <Detail
                 label="Date created"
                 value={
                   <span>
                     {lpo.created_by_name ? (
-                      <span className="block font-medium text-slate-900">{lpo.created_by_name}</span>
+                      <span className="theme-heading block font-medium">{lpo.created_by_name}</span>
                     ) : null}
-                    <span className={lpo.created_by_name ? "text-slate-600" : ""}>
+                    <span className={lpo.created_by_name ? "theme-subtext" : ""}>
                       {lpo.order_date ? formatShortDate(lpo.order_date) : "—"}
                     </span>
                   </span>
@@ -191,7 +206,7 @@ export default function LpoDetailPage() {
                   Number(lpo.return_credit_total) > 0 ? (
                     <span>
                       {formatLpoKes(lpo.adjusted_net_amount ?? lpo.net_amount)}
-                      <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                      <span className="mt-0.5 block text-xs font-normal theme-subtext">
                         Was {formatLpoKes(lpo.net_amount)} · returns −{formatLpoKes(lpo.return_credit_total)}
                       </span>
                     </span>
@@ -224,15 +239,15 @@ export default function LpoDetailPage() {
               <Detail label="Payment terms" value={lpo.terms} />
             </dl>
             {lpo.instructions ? (
-              <p className="mt-4 text-sm text-slate-600">
-                <span className="font-medium text-slate-700">Notes for supplier: </span>
+              <p className="theme-subtext mt-4 text-sm">
+                <span className="theme-heading font-medium">Notes for supplier: </span>
                 {lpo.instructions}
               </p>
             ) : null}
           </section>
 
           <section className="theme-panel rounded-xl border p-6 shadow-sm">
-            <h2 className="mb-4 text-sm font-semibold text-slate-900">Order items</h2>
+            <h2 className="theme-heading mb-4 text-sm font-semibold">Order items</h2>
             <LpoDetailOrderItemsTable
               lines={lines}
               uomById={uomById}
@@ -242,30 +257,30 @@ export default function LpoDetailPage() {
             />
           </section>
 
-          <section className="rounded-xl border border-orange-200 bg-orange-50/30 p-6 shadow-sm">
+          <section className="theme-panel rounded-xl border p-6 shadow-sm">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h2 className="text-sm font-semibold text-slate-900">Supplier returns</h2>
-                <p className="text-xs text-slate-500">
+                <h2 className="theme-heading text-sm font-semibold">Supplier returns</h2>
+                <p className="theme-subtext text-xs">
                   Damaged or rejected goods returned to supplier — reduces stock and payable amount.
                 </p>
               </div>
               {Number(lpo.lpo_status_code) >= LPO_STATUS.AWAITING_RECEIVE && canRecordReturn ? (
                 <Link
                   href={`/lpo/${lpoNo}/supplier-return`}
-                  className="rounded-lg bg-orange-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-700"
+                  className="theme-accent-btn rounded-lg px-3 py-1.5 text-sm font-medium"
                 >
                   + Record supplier return
                 </Link>
               ) : null}
             </div>
             {supplierReturns.length === 0 ? (
-              <p className="text-sm text-slate-500">
+              <p className="theme-subtext text-sm">
                 No supplier returns recorded yet.
                 {canRecordReturn ? (
                   <>
                     {" "}
-                    <Link href={`/lpo/${lpoNo}/supplier-return`} className="text-[#185FA5] hover:underline">
+                    <Link href={`/lpo/${lpoNo}/supplier-return`} className="theme-link hover:underline">
                       Record a return
                     </Link>{" "}
                     for damaged or rejected goods.
@@ -273,7 +288,7 @@ export default function LpoDetailPage() {
                 ) : null}
               </p>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+              <div className="theme-table-shell overflow-x-auto">
                 <table className="w-full border-collapse text-sm">
                   <thead>
                     <tr className="theme-table-head-row text-left text-xs font-medium">
@@ -297,9 +312,12 @@ export default function LpoDetailPage() {
                             ? "bg-red-50 text-red-800"
                             : "bg-amber-50 text-amber-900";
                       return (
-                        <tr key={doc.id} className="border-b border-slate-100 last:border-b-0">
+                        <tr key={doc.id} className="theme-table-body-row">
                           <td className="px-3 py-2.5 font-mono text-xs">#{doc.id}</td>
-                          <td className="max-w-[280px] truncate px-3 py-2.5 text-slate-700" title={lineSummary}>
+                          <td
+                            className="max-w-[280px] truncate px-3 py-2.5"
+                            title={lineSummary}
+                          >
                             {lineSummary}
                           </td>
                           <td className="px-3 py-2.5">
@@ -310,12 +328,12 @@ export default function LpoDetailPage() {
                             </span>
                           </td>
                           <td
-                            className="max-w-[200px] truncate px-3 py-2.5 text-slate-700"
+                            className="max-w-[200px] truncate px-3 py-2.5"
                             title={doc.return_reason ?? doc.notes}
                           >
                             {doc.return_reason ?? doc.notes ?? "—"}
                           </td>
-                          <td className="px-3 py-2.5 text-slate-500">{doc.created_at ?? "—"}</td>
+                          <td className="px-3 py-2.5 theme-subtext">{doc.created_at ?? "—"}</td>
                         </tr>
                       );
                     })}
@@ -325,26 +343,26 @@ export default function LpoDetailPage() {
             )}
           </section>
 
-          <section className="rounded-xl border border-violet-200 bg-violet-50/30 p-6 shadow-sm">
+          <section className="theme-panel rounded-xl border p-6 shadow-sm">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h2 className="text-sm font-semibold text-slate-900">Supplier invoices</h2>
-                <p className="text-xs text-slate-500">
+                <h2 className="theme-heading text-sm font-semibold">Supplier invoices</h2>
+                <p className="theme-subtext text-xs">
                   Attach supplier invoice documents for audit — does not change the LPO total.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setInvoiceModal({ mode: "new" })}
-                className="text-sm font-medium text-[#185FA5] hover:underline"
+                className="theme-link text-sm font-medium hover:underline"
               >
                 + Add invoice
               </button>
             </div>
             {invoices.length === 0 ? (
-              <p className="text-sm text-slate-500">No supplier invoices on this LPO yet.</p>
+              <p className="theme-subtext text-sm">No supplier invoices on this LPO yet.</p>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+              <div className="theme-table-shell overflow-x-auto">
                 <table className="w-full border-collapse text-sm">
                   <thead>
                     <tr className="theme-table-head-row text-left text-xs font-medium">
@@ -357,7 +375,7 @@ export default function LpoDetailPage() {
                   </thead>
                   <tbody>
                     {invoices.map((inv) => (
-                      <tr key={inv.id} className="border-b border-slate-100 last:border-b-0">
+                      <tr key={inv.id} className="theme-table-body-row">
                         <td className="px-3 py-2.5 font-medium">{inv.supplier_invoice_number}</td>
                         <td className="px-3 py-2.5">
                           {inv.invoice_date ? formatShortDate(inv.invoice_date) : "—"}
@@ -367,21 +385,21 @@ export default function LpoDetailPage() {
                             <button
                               type="button"
                               onClick={() => openLpoSupplierInvoiceDocument(inv.id)}
-                              className="text-xs font-medium text-[#185FA5] hover:underline"
+                              className="theme-link text-xs font-medium hover:underline"
                             >
                               View PDF
                             </button>
                           ) : (
-                            <span className="text-xs text-slate-400">No file</span>
+                            <span className="theme-subtext text-xs">No file</span>
                           )}
                         </td>
-                        <td className="px-3 py-2.5 text-slate-500">{inv.received_at ?? "—"}</td>
+                        <td className="px-3 py-2.5 theme-subtext">{inv.received_at ?? "—"}</td>
                         <td className="px-3 py-2.5 text-right">
                           <div className="inline-flex gap-1">
                             <button
                               type="button"
                               onClick={() => setInvoiceModal({ mode: "edit", invoice: inv })}
-                              className="text-xs font-medium text-[#185FA5] hover:underline"
+                              className="theme-link text-xs font-medium hover:underline"
                             >
                               Edit
                             </button>
@@ -402,9 +420,12 @@ export default function LpoDetailPage() {
             )}
           </section>
 
-          <p className="text-xs text-slate-500">
+          <p className="theme-subtext text-xs">
             Supplier payments for this LPO appear under{" "}
-            <Link href={`/suppliers/${lpo.supplier_id}?tab=payments`} className="text-[#185FA5] hover:underline">
+            <Link
+              href={`/suppliers/${lpo.supplier_id}?tab=payments`}
+              className="theme-link hover:underline"
+            >
               Supplier profile → Payments
             </Link>
             . Stock receipt posts inventory via Receive stock.
@@ -427,8 +448,8 @@ export default function LpoDetailPage() {
 function Detail({ label, value, highlight }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className={`mt-0.5 ${highlight ? "font-semibold text-slate-900" : "text-slate-800"}`}>
+      <dt className="text-xs font-medium uppercase tracking-wide theme-subtext">{label}</dt>
+      <dd className={`mt-0.5 ${highlight ? "theme-heading font-semibold" : ""}`}>
         {value ?? "—"}
       </dd>
     </div>

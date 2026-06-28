@@ -1,5 +1,6 @@
 import {
   resolveSaleLinePrintColumns,
+  saleLinePrintQtyPackage,
   saleLineProductLabel,
   saleLineQtyLabel,
   saleLineUom,
@@ -51,7 +52,8 @@ export function buildSaleDocumentTableHead({ showDiscountColumn = false, layout 
     if (showDiscountColumn) {
       return `<tr>
       <th class="desc">Description</th>
-      <th class="qty">Qty</th>
+      <th class="qty">Quantity</th>
+      <th class="pkg">Package</th>
       <th class="price">Unit Price</th>
       <th class="disc">Disc</th>
       <th class="amount">Amount</th>
@@ -59,7 +61,8 @@ export function buildSaleDocumentTableHead({ showDiscountColumn = false, layout 
     }
     return `<tr>
       <th class="desc">Description</th>
-      <th class="qty">Qty</th>
+      <th class="qty">Quantity</th>
+      <th class="pkg">Package</th>
       <th class="price">Unit Price</th>
       <th class="amount">Amount</th>
     </tr>`;
@@ -90,7 +93,7 @@ export function buildSaleDocumentLineRows(
 ) {
   const rows = items ?? [];
   const colspan =
-    layout === "thermal" ? (showDiscountColumn ? 5 : 4) : showDiscountColumn ? 5 : 4;
+    layout === "thermal" ? (showDiscountColumn ? 6 : 5) : showDiscountColumn ? 5 : 4;
 
   if (!rows.length) {
     return `<tr><td colspan="${colspan}" class="muted center">No line items</td></tr>`;
@@ -103,12 +106,13 @@ export function buildSaleDocumentLineRows(
 
       if (layout === "thermal") {
         const { unitPrice, discount, amount } = resolveSaleLinePrintColumns(line, { uom });
-        const qty = escapeHtml(uomById ? saleLineQtyLabel(line, uomById) : formatPrintAmount(line.quantity));
+        const { quantity, package: packageLabel } = saleLinePrintQtyPackage(line, uomById);
 
         if (showDiscountColumn) {
           return `<tr>
           <td class="desc">${description}</td>
-          <td class="qty">${qty}</td>
+          <td class="qty">${escapeHtml(quantity)}</td>
+          <td class="pkg">${escapeHtml(packageLabel)}</td>
           <td class="price">${escapeHtml(formatPrintAmount(unitPrice))}</td>
           <td class="disc">${escapeHtml(formatPrintAmount(discount))}</td>
           <td class="amount">${escapeHtml(formatPrintAmount(amount))}</td>
@@ -117,7 +121,8 @@ export function buildSaleDocumentLineRows(
 
         return `<tr>
           <td class="desc">${description}</td>
-          <td class="qty">${qty}</td>
+          <td class="qty">${escapeHtml(quantity)}</td>
+          <td class="pkg">${escapeHtml(packageLabel)}</td>
           <td class="price">${escapeHtml(formatPrintAmount(unitPrice))}</td>
           <td class="amount">${escapeHtml(formatPrintAmount(amount))}</td>
         </tr>`;

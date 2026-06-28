@@ -14,7 +14,12 @@ import { OrderPrintTypePickerHost } from "@/components/sales/order-print-type-pi
 import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
 import { AppLoadingOverlay } from "@/components/shared/app-loading-overlay";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
-import { beginPageNavigation, endPageNavigation, getAppLoadingState } from "@/lib/app-loading";
+import {
+  beginPageNavigation,
+  finishNavigation,
+  getAppLoadingState,
+} from "@/lib/app-loading";
+import { handleNavigationIntentClick } from "@/lib/navigation-intent";
 
 const SIDEBAR_COLLAPSED_KEY = "velzon-sidebar-collapsed";
 
@@ -46,14 +51,22 @@ export function AppShell({ children }) {
   }, [pathname]);
 
   useEffect(() => {
+    document.addEventListener("click", handleNavigationIntentClick, true);
+    return () => document.removeEventListener("click", handleNavigationIntentClick, true);
+  }, []);
+
+  useEffect(() => {
     beginPageNavigation();
-    const idle = window.setTimeout(() => {
-      if (getAppLoadingState().pending === 0) endPageNavigation();
-    }, 400);
-    const safety = window.setTimeout(() => endPageNavigation(), 3000);
+
+    const settleTimer = window.setTimeout(() => {
+      if (getAppLoadingState().pending === 0) finishNavigation();
+    }, 500);
+
+    const safetyTimer = window.setTimeout(() => finishNavigation(), 30000);
+
     return () => {
-      window.clearTimeout(idle);
-      window.clearTimeout(safety);
+      window.clearTimeout(settleTimer);
+      window.clearTimeout(safetyTimer);
     };
   }, [pathname]);
 

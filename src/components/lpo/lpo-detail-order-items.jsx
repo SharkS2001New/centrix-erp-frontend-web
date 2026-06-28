@@ -43,7 +43,7 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
           <col className="w-[4%]" />
         </colgroup>
         <thead>
-          <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
+          <tr className="theme-table-head-row text-left text-xs font-medium">
             <th className="px-2 py-2">#</th>
             <th className="px-2 py-2">Product</th>
             <th className="px-2 py-2 text-right">Ordered</th>
@@ -53,11 +53,11 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
             ) : null}
             <th className="whitespace-nowrap px-2 py-2 text-right align-top">
               <span className="block">Cost Price</span>
-              <span className="block font-normal text-slate-400">(Supplier selling price)</span>
+              <span className="theme-subtext block font-normal">(Supplier selling price)</span>
             </th>
             <th className="whitespace-nowrap px-2 py-2 text-right align-top">
               <span className="block">Total</span>
-              <span className="block font-normal text-slate-400">(Before VAT)</span>
+              <span className="theme-subtext block font-normal">(Before VAT)</span>
             </th>
             <th className="px-2 py-2 text-right align-top">VAT</th>
             <th className="px-2 py-2 align-top">Status</th>
@@ -71,20 +71,20 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
             const lineReturned = lpoLineReturnedQty(line);
 
             return (
-              <tr key={line.id} className="border-b border-slate-100">
-                <td className="px-2 py-2.5 align-middle text-slate-500">{i + 1}</td>
+              <tr key={line.id} className="theme-table-body-row">
+                <td className="px-2 py-2.5 align-middle theme-subtext">{i + 1}</td>
                 <td className="px-2 py-2.5 align-middle">
-                  <span className="font-medium text-slate-900">{line.product_name}</span>
-                  <span className="block font-mono text-[10px] text-slate-500">{line.product_code}</span>
+                  <span className="theme-heading font-medium">{line.product_name}</span>
+                  <span className="theme-subtext block font-mono text-[10px]">{line.product_code}</span>
                 </td>
-                <td className="px-2 py-2.5 text-right align-middle tabular-nums text-slate-800">
+                <td className="px-2 py-2.5 text-right align-middle tabular-nums">
                   {formatLpoPackQtyDisplay(line.ordered_qty, uom)}
                 </td>
-                <td className="px-1 py-2.5 text-right align-middle tabular-nums text-slate-800">
+                <td className="px-1 py-2.5 text-right align-middle tabular-nums">
                   {formatLpoPackQtyDisplay(line.received_qty ?? 0, uom)}
                 </td>
                 {showReturned ? (
-                  <td className="px-1 py-2.5 text-right align-middle tabular-nums text-amber-800">
+                  <td className="px-1 py-2.5 text-right align-middle tabular-nums text-[var(--theme-accent-orange)]">
                     {lineReturned > 0 ? formatReturnedCell(line, uom) : "—"}
                   </td>
                 ) : null}
@@ -94,7 +94,7 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
                 <td className="px-2 py-2.5 text-right align-middle font-medium tabular-nums">
                   {formatLpoKes(line.line_total)}
                 </td>
-                <td className="px-2 py-2.5 text-right align-middle tabular-nums text-slate-700">
+                <td className="px-2 py-2.5 text-right align-middle tabular-nums theme-subtext">
                   {lineVat > 0 ? formatLpoAmount(lineVat) : "—"}
                 </td>
                 <td className="px-2 py-2.5 align-middle">
@@ -119,12 +119,12 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
                   !lpoIsCancelledReturned(lpo) ? (
                     <Link
                       href={`/lpo/${lpoNo}/supplier-return?product=${encodeURIComponent(line.product_code)}`}
-                      className="text-xs font-medium text-orange-700 hover:underline"
+                      className="theme-link text-xs font-medium hover:underline"
                     >
                       Return
                     </Link>
                   ) : (
-                    <span className="text-slate-300">—</span>
+                    <span className="theme-subtext opacity-50">—</span>
                   )}
                 </td>
               </tr>
@@ -133,8 +133,8 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
         </tbody>
         {lines.length > 0 ? (
           <tfoot>
-            <tr className="border-t border-slate-200 bg-slate-50 text-xs text-slate-600">
-              <td colSpan={footerLabelColSpan} className="px-2 py-2.5 text-right font-medium">
+            <tr className="theme-table-footer text-xs">
+              <td colSpan={footerLabelColSpan} className="px-2 py-2.5 text-right font-medium theme-subtext">
                 Subtotal (Before VAT)
               </td>
               <td className="px-2 py-2.5 text-right font-medium tabular-nums">
@@ -143,7 +143,7 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
               <td className="px-2 py-2.5 text-right font-medium tabular-nums">
                 {formatLpoKes(totals.vat)}
               </td>
-              <td colSpan={2} className="px-2 py-2.5 text-right font-semibold text-slate-900">
+              <td colSpan={2} className="theme-heading px-2 py-2.5 text-right font-semibold">
                 Total {formatLpoKes(totals.total)}
               </td>
             </tr>

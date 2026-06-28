@@ -1,7 +1,7 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { buildKraThermalQrHtml } from "@/lib/kra-receipt-qr";
 import { openPrintWindow, fillPrintWindow } from "@/lib/open-print-window";
-import { resolveReceiptFooterLines } from "@/lib/print-footer-settings";
+import { isPoweredByFooterLine, resolveReceiptFooterLines } from "@/lib/print-footer-settings";
 import {
   buildSaleDocumentLineRows,
   buildSaleDocumentOrgHeaderHtml,
@@ -80,7 +80,11 @@ function buildReceiptFooterHtml(documentFooterText, organizationName) {
     organizationName,
   );
   return lines
-    .map((line) => `<div class="footer-text">${escapeHtml(line)}</div>`)
+    .map((line) => {
+      const poweredBy = isPoweredByFooterLine(line);
+      const className = poweredBy ? "footer-powered-by" : "footer-text";
+      return `<div class="${className}">${escapeHtml(line)}</div>`;
+    })
     .join("");
 }
 
@@ -208,14 +212,16 @@ export function buildSaleReceiptHtml(
     .meta-full { grid-column: 1 / -1; }
     .table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 9px; }
     .table thead th { padding: 4px 0; border-bottom: 1px solid #111827; font-weight: 700; text-align: left; text-transform: uppercase; font-size: 8px; }
-    .table thead th.qty { text-align: center; }
+    .table thead th.qty,
+    .table thead th.pkg,
     .table thead th.price,
     .table thead th.disc,
     .table thead th.amount { text-align: right; }
     .table tbody tr { border-top: 1px dashed #cbd5e1; }
     .table td { padding: 4px 0; vertical-align: top; }
     .table td.desc { padding-right: 6px; }
-    .table td.qty { width: 2.4rem; text-align: center; white-space: nowrap; }
+    .table td.qty,
+    .table td.pkg { text-align: right; white-space: nowrap; }
     .table td.price,
     .table td.disc,
     .table td.amount { text-align: right; white-space: nowrap; }
@@ -240,6 +246,7 @@ export function buildSaleReceiptHtml(
     .pay-instructions .amount-label { font-weight: 700; }
     .pay-note { margin-top: 4px; text-align: center; color: #475569; font-size: 8px; line-height: 1.35; }
     .footer-text { text-align: center; font-size: 8px; color: #334155; margin-top: 6px; text-transform: uppercase; letter-spacing: .04em; line-height: 1.45; }
+    .footer-powered-by { text-align: center; font-size: 7px; font-weight: 400; color: #64748b; margin-top: 4px; letter-spacing: normal; line-height: 1.35; }
     .center { text-align: center; }
     @media print { body { padding: 0; } .receipt { margin: 0 auto; } }
   </style>

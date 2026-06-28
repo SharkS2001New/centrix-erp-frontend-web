@@ -40,14 +40,30 @@ export function formatLpoAmount(value) {
   return n.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-export function formatPoNumber(lpoNo) {
-  return lpoNo != null ? `PO-${lpoNo}` : "—";
+export function formatPoNumber(lpoNo, orderDate = null) {
+  const n = Number(lpoNo);
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  const raw = orderDate ?? new Date();
+  const d = new Date(String(raw).includes("T") ? raw : `${raw}T12:00:00`);
+  const year = Number.isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear();
+  return `LPO-${year}-${String(n).padStart(4, "0")}`;
+}
+
+export function lpoCanDelete(lpo) {
+  return Boolean(lpo?.can_delete ?? lpoCanEdit(lpo));
 }
 
 /** Best available LPO creation/sent date from API row. */
 export function lpoOrderDate(lpo) {
   if (!lpo) return null;
   return lpo.order_date ?? lpo.created_at ?? lpo.sent_at ?? null;
+}
+
+/** Printed / linked PO number — custom reference overrides generated LPO-YYYY-####. */
+export function lpoDisplayNumber(lpo) {
+  const ref = String(lpo?.reference_number ?? "").trim();
+  if (ref) return ref;
+  return lpo?.po_number ?? formatPoNumber(lpo?.lpo_no, lpoOrderDate(lpo));
 }
 
 export function isLpoHeaderComplete(form) {

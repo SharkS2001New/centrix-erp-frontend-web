@@ -2,20 +2,22 @@
 
 let pendingCount = 0;
 let activeLabel = "Loading…";
-/** True briefly after route changes — only GETs during this window show the global overlay. */
+/** True while a destination page may still be fetching data. */
 let pageNavigationActive = false;
-/** @type {Set<(state: { pending: number, label: string }) => void>} */
+/** True from link click until the new page has settled (blocks duplicate navigations). */
+let navigating = false;
+/** @type {Set<(state: { pending: number, label: string, navigating: boolean }) => void>} */
 const listeners = new Set();
 
 function emit() {
-  const state = { pending: pendingCount, label: activeLabel };
+  const state = { pending: pendingCount, label: activeLabel, navigating };
   listeners.forEach((listener) => listener(state));
 }
 
-/** @param {(state: { pending: number, label: string }) => void} listener */
+/** @param {(state: { pending: number, label: string, navigating: boolean }) => void} listener */
 export function subscribeAppLoading(listener) {
   listeners.add(listener);
-  listener({ pending: pendingCount, label: activeLabel });
+  listener({ pending: pendingCount, label: activeLabel, navigating });
   return () => listeners.delete(listener);
 }
 
@@ -33,6 +35,36 @@ export function isPageNavigationLoading() {
   return pageNavigationActive;
 }
 
+export function isNavigationPending() {
+  return navigating;
+}
+
+/**
+ * Call as soon as the user clicks an internal link (before the route changes).
+ * Returns false when navigation is already in progress — caller should block the click.
+ */
+export function beginNavigationIntent(label = "Opening page…") {
+  if (navigating) return false;
+  navigating = true;
+  pageNavigationActive = true;
+  activeLabel = label;
+  emit();
+  return true;
+}
+
+export function finishNavigation() {
+  if (!navigating && pendingCount === 0) {
+    endPageNavigation();
+    return;
+  }
+  navigating = false;
+  if (pendingCount === 0) {
+    activeLabel = "Loading…";
+    endPageNavigation();
+  }
+  emit();
+}
+
 export function beginAppLoading(label) {
   pendingCount += 1;
   if (label) activeLabel = label;
@@ -42,12 +74,16 @@ export function beginAppLoading(label) {
 export function endAppLoading() {
   pendingCount = Math.max(0, pendingCount - 1);
   if (pendingCount === 0) {
-    activeLabel = "Loading…";
-    endPageNavigation();
+    if (navigating) {
+      finishNavigation();
+    } else {
+      activeLabel = "Loading…";
+      endPageNavigation();
+    }
   }
   emit();
 }
 
 export function getAppLoadingState() {
-  return { pending: pendingCount, label: activeLabel };
+  return { pending: pendingCount, label: activeLabel, navigating };
 }
