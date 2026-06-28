@@ -7,7 +7,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "build:msi": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-msi.ps1"
   },
   "engines": {
     "node": ">=20"

@@ -19,6 +19,34 @@ function installerFilename(platform) {
 }
 
 /**
+ * Download the Windows MSI installer when deployed on the server.
+ */
+export async function downloadPrintAgentMsi() {
+  const res = await fetch("/api/print-agent/msi", { cache: "no-store" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message ?? "MSI installer is not available on this server.");
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/i);
+  const filename = match?.[1] ?? "CentrixPrintAgent.msi";
+
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+
+  return { filename };
+}
+
+/**
  * @param {{ platform?: "windows" | "mac" | "linux" }} [opts]
  */
 export async function downloadPrintAgentInstaller(opts = {}) {

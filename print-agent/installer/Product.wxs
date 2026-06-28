@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+  <Product
+    Id="*"
+    Name="Centrix Print Agent"
+    Language="1033"
+    Version="$(var.ProductVersion)"
+    Manufacturer="Alpac Software Solutions"
+    UpgradeCode="8C4E2F1A-9B3D-4E56-A1C2-7D8F9E0B4A6C">
+
+    <Package
+      InstallerVersion="500"
+      Compressed="yes"
+      InstallScope="perMachine"
+      Description="Silent receipt printing service for Centrix ERP POS tills"
+      Comments="Includes Node.js runtime and print dependencies" />
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of Centrix Print Agent is already installed."
+      AllowSameVersionUpgrades="yes" />
+
+    <Media Id="1" Cabinet="CentrixPrintAgent.cab" EmbedCab="yes" />
+
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <UIRef Id="WixUI_InstallDir" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles6432Folder">
+        <Directory Id="CentrixDir" Name="Centrix">
+          <Directory Id="INSTALLFOLDER" Name="PrintAgent" />
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <Feature Id="ProductFeature" Title="Centrix Print Agent" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+
+    <CustomAction
+      Id="RegisterPrintAgentTask"
+      Directory="INSTALLFOLDER"
+      ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]scripts\register-scheduled-task.ps1&quot; &quot;[INSTALLFOLDER]&quot;"
+      Execute="deferred"
+      Impersonate="no"
+      Return="check" />
+
+    <CustomAction
+      Id="UnregisterPrintAgentTask"
+      Directory="INSTALLFOLDER"
+      ExeCommand="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]scripts\unregister-scheduled-task.ps1&quot;"
+      Execute="deferred"
+      Impersonate="no"
+      Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="RegisterPrintAgentTask" After="InstallFiles">NOT Installed</Custom>
+      <Custom Action="UnregisterPrintAgentTask" Before="RemoveFiles">REMOVE="ALL"</Custom>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>

@@ -1,0 +1,28 @@
+name: Build Print Agent MSI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "print-agent/**"
+
+jobs:
+  build-msi:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install WiX Toolset
+        run: choco install wixtoolset -y
+
+      - name: Build MSI
+        shell: pwsh
+        working-directory: print-agent
+        run: ./scripts/build-msi.ps1 -Version "0.1.0.0"
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CentrixPrintAgent-msi
+          path: print-agent/dist/*.msi
+          if-no-files-found: error

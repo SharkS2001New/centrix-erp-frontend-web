@@ -19,6 +19,7 @@ import {
 import { sampleReceiptPreviewSale } from "@/lib/print-preview-samples";
 import {
   downloadPrintAgentInstaller,
+  downloadPrintAgentMsi,
   printAgentInstallerHelp,
 } from "@/lib/print-agent-installer-download";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -42,6 +43,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   const [checking, setChecking] = useState(false);
   const [testPrinting, setTestPrinting] = useState(false);
   const [downloadingInstaller, setDownloadingInstaller] = useState(false);
+  const [downloadingMsi, setDownloadingMsi] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const refreshHealth = useCallback(async (config = form) => {
@@ -85,6 +87,20 @@ export function PrintAgentSettingsPanel({ compact = false }) {
       notifyError(
         "Print agent is not reachable. Install and start Centrix Print Agent on this till PC, then try again.",
       );
+    }
+  }
+
+  async function handleDownloadMsi() {
+    setDownloadingMsi(true);
+    try {
+      const { filename } = await downloadPrintAgentMsi();
+      notifySuccess(`Downloaded ${filename}. Run it on each till PC (admin). Includes Node.js — no extra setup.`, {
+        duration: 9000,
+      });
+    } catch (error) {
+      notifyError(error instanceof Error ? error.message : "MSI download failed.");
+    } finally {
+      setDownloadingMsi(false);
     }
   }
 
@@ -223,24 +239,35 @@ export function PrintAgentSettingsPanel({ compact = false }) {
       </div>
 
       <div className="mt-5 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-sm">
-        <p className="theme-heading font-medium">Install on this till PC (admin / IT)</p>
+        <p className="theme-heading font-medium">Install on till PCs (admin / IT)</p>
         <p className="theme-subtext mt-1 text-xs">
-          Browsers cannot run installers automatically for security. Click below on each till computer, then open the
-          downloaded file once. Only till PCs need this — not every user laptop.
+          Only physical tills need the print agent — not every user laptop. Windows tills: use the MSI (recommended).
         </p>
-        <button
-          type="button"
-          onClick={() => void handleDownloadInstaller()}
-          disabled={downloadingInstaller}
-          className="theme-primary-btn mt-3 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
-        >
-          {downloadingInstaller ? "Preparing installer…" : "Download & install print agent on this PC"}
-        </button>
-        <p className="theme-subtext mt-2 text-xs">{printAgentInstallerHelp()}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void handleDownloadMsi()}
+            disabled={downloadingMsi || downloadingInstaller}
+            className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            {downloadingMsi ? "Downloading MSI…" : "Download Windows MSI installer"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleDownloadInstaller()}
+            disabled={downloadingInstaller || downloadingMsi}
+            className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            {downloadingInstaller ? "Preparing…" : "Download script installer (fallback)"}
+          </button>
+        </div>
+        <p className="theme-subtext mt-2 text-xs">
+          <strong>MSI:</strong> copy to till PC (or USB), double-click, Next → Install. Includes Node.js, Chromium,
+          and auto-start. <strong>Script:</strong> {printAgentInstallerHelp()}
+        </p>
         <ol className="theme-subtext mt-3 list-decimal space-y-1 pl-4 text-xs">
-          <li>Installer includes Node.js 20+ automatically if this PC does not have it.</li>
-          <li>Windows tills: SumatraPDF recommended for reliable silent printing.</li>
-          <li>Enable the agent below, click <strong>Test print receipt</strong>, then save.</li>
+          <li>Install SumatraPDF on Windows tills for reliable silent printing (recommended).</li>
+          <li>On each till: enable agent below → <strong>Test print receipt</strong> → Save.</li>
         </ol>
       </div>
 
