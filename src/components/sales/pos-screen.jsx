@@ -7,6 +7,7 @@ import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { CentrixLogoHeader } from "@/components/branding/centrix-logo";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { useConfirm } from "@/lib/use-confirm";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { useAuth } from "@/contexts/auth-context";
 import { usePosSession } from "@/contexts/pos-session-context";
 import {
@@ -2180,18 +2181,30 @@ export function PosScreen({ standalone = false }) {
         ? walkInName?.trim() || "Walk-in"
         : customer?.customer_name;
       const whoSuffix = who ? ` for ${who}` : "";
-      setStatusMessage(
-        hold
-          ? `Order held${whoSuffix} — #${sale.order_num}. Ready for next sale.`
-          : `Order saved${whoSuffix} — #${sale.order_num} (${sale.status}). Ready for next sale.`,
-      );
+      const successText = hold
+        ? `Order held${whoSuffix} — #${sale.order_num}. Ready for next sale.`
+        : `Order saved${whoSuffix} — #${sale.order_num} (${sale.status}). Ready for next sale.`;
+      if (standalone) {
+        notifySuccess(successText);
+      } else {
+        setStatusMessage(successText);
+      }
       if (hold) {
         await loadHeldOrdersCount();
       }
     } catch (e) {
-      setSaveOrderError(
-        e instanceof ApiError ? e.message : hold ? "Failed to hold order" : "Failed to save order",
-      );
+      const message =
+        e instanceof ApiError
+          ? e.message
+          : e instanceof TypeError && /fetch/i.test(e.message)
+            ? "Cannot reach the server. Check your connection and that the API is running."
+            : hold
+              ? "Failed to hold order"
+              : "Failed to save order";
+      setSaveOrderError(message);
+      if (standalone || !saveOrderOpen) {
+        notifyError(message);
+      }
     } finally {
       setBusy(false);
     }

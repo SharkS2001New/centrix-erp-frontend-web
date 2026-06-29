@@ -353,7 +353,6 @@ export default function SalesReturnsPage() {
         onClose={() => {
           setDetailOpen(false);
           setDetailRow(null);
-          setSuccessMessage(null);
           setActionError(null);
         }}
         onApprove={handleApprove}
