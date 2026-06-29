@@ -24,7 +24,7 @@ import {
   salePaymentMethodDisplay,
   saleStatusLabel,
 } from "@/lib/sales";
-import { saleLineProductLabel } from "@/lib/sale-line-items";
+import { isLegacySale, saleLineProductLabel } from "@/lib/sale-line-items";
 import { RecordSalePaymentModal } from "@/components/sales/record-sale-payment-modal";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { getOrderDocumentType, orderDocumentPrintLabel } from "@/lib/sales-settings";
@@ -876,7 +876,11 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
           ) : null}
 
           {activeTab === "items" ? (
-            <OrderLineItemsTable items={sale.items} uomById={uomById} />
+            <OrderLineItemsTable
+              items={sale.items}
+              uomById={uomById}
+              legacyPrint={isLegacySale(sale)}
+            />
           ) : null}
 
           {activeTab === "payments" ? (

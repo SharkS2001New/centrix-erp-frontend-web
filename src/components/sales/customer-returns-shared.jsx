@@ -1,7 +1,7 @@
 "use client";
 
 import { smallPackagingLabel, uomStockTakeLevels } from "@/lib/uom-packaging";
-import { saleLineQtyLabel } from "@/lib/sale-line-items";
+import { legacySaleLineQtyLabel, legacySaleLineUom, saleLineQtyLabel } from "@/lib/sale-line-items";
 import { formatDisplayQty, stockTakeCountsToBase } from "@/lib/stock-uom";
 import {
   countKey,
@@ -77,9 +77,7 @@ export function resolveCustomerReturnLineUom(line, uomById) {
 
 /** Legacy sale lines keep the original LightStores qty + unit — not Centrix UOM conversion. */
 export function legacyReturnLineQtyLabel(line, qtyField = "return_qty") {
-  const qty = line?.[qtyField] ?? 0;
-  const unit = line?.sold_uom?.trim() || line?.uom?.trim() || "units";
-  return `${formatDisplayQty(qty)} ${unit}`;
+  return legacySaleLineQtyLabel(line, qtyField);
 }
 
 /** Display qty with packaging labels — Centrix sales use product UOM; legacy uses sold_uom. */
@@ -105,7 +103,7 @@ export function customerReturnLineUnitLabel(line, uomById, options = {}) {
     options.returnKind === "legacy" ||
     options.legacy === true;
   if (legacy) {
-    return line?.sold_uom?.trim() || line?.uom?.trim() || "units";
+    return legacySaleLineUom(line) ?? "";
   }
   const uom = resolveCustomerReturnLineUom(line, uomById);
   if (uom) return smallPackagingLabel(uom);

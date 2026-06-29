@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { formatShortDate, formatKesCompact, getSaleTimestamp, StatCard, TABLE_HEAD_ROW_CLASS } from "@/components/catalog/catalog-shared";
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import {
+  isLegacySale,
   saleLineDisplayUnitPrice,
   saleLineProductLabel,
   saleLineQtyLabel,
@@ -265,7 +266,7 @@ export function OrderExpandIcon() {
   );
 }
 
-export function OrderInlineItems({ items, loading, uomById }) {
+export function OrderInlineItems({ items, loading, uomById, legacyPrint = false }) {
   if (loading) {
     return <p className="px-4 py-3 text-xs text-slate-500">Loading items…</p>;
   }
@@ -298,10 +299,10 @@ export function OrderInlineItems({ items, loading, uomById }) {
               ) : null}
             </td>
             <td className="px-4 py-2.5 text-center text-slate-700">
-              {saleLineQtyLabel(line, uomById)}
+              {saleLineQtyLabel(line, uomById, { legacyPrint })}
             </td>
             <td className="px-4 py-2.5 text-right text-slate-700">
-              {formatSaleKes(saleLineDisplayUnitPrice(line, uomById))}
+              {formatSaleKes(saleLineDisplayUnitPrice(line, uomById, { legacyPrint }))}
             </td>
             <td className="px-4 py-2.5 text-right font-medium text-slate-900">
               {formatSaleKes(line.amount)}
@@ -696,7 +697,12 @@ export function OrderListTableRow({
       {expanded ? (
         <tr className="border-b border-slate-100 bg-slate-50/50">
           <td colSpan={columnCount} className="p-0">
-            <OrderInlineItems items={items} loading={itemsLoading} uomById={uomById} />
+            <OrderInlineItems
+              items={items}
+              loading={itemsLoading}
+              uomById={uomById}
+              legacyPrint={isLegacySale(sale)}
+            />
           </td>
         </tr>
       ) : null}
@@ -816,7 +822,7 @@ export function OrderFinancialSummary({ sale, payments, totalPaid, balanceDue })
   );
 }
 
-export function OrderLineItemsTable({ items, uomById }) {
+export function OrderLineItemsTable({ items, uomById, legacyPrint = false }) {
   const rows = items ?? [];
 
   return (
@@ -849,7 +855,7 @@ export function OrderLineItemsTable({ items, uomById }) {
                     ) : null}
                   </td>
                   <td className="px-4 py-3 text-right text-slate-700">
-                    {uomById ? saleLineQtyLabel(line, uomById) : line.quantity}
+                    {saleLineQtyLabel(line, uomById, { legacyPrint })}
                   </td>
                   <td className="px-4 py-3 text-right text-slate-700">
                     {formatCustomerKes(line.selling_price)}
