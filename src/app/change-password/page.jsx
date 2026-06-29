@@ -19,7 +19,7 @@ function ChangePasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const reason = searchParams.get("reason");
-  const isExpired = reason === "expired";
+  const isExpired = reason === "expired" && !user?.must_change_password;
   const {
     user,
     organization,

@@ -20,10 +20,6 @@ import {
   resolveReceiptPaymentDetails,
   shouldShowReceiptPaymentDetails,
 } from "@/lib/receipt-payment-details";
-import {
-  resolveInvoiceDeliveryTerms,
-  resolveInvoiceFooterLines,
-} from "@/lib/invoice-print-settings";
 import { printSaleInvoice } from "@/components/sales/sale-invoice-print";
 import { printSaleReceipt } from "@/components/sales/sale-receipt-print";
 import {
@@ -208,19 +204,13 @@ export async function printSaleOrder(sale, options = {}) {
     };
 
     if (documentType === "invoice") {
-      const deliveryTerms = resolveInvoiceDeliveryTerms(sales);
-      const footerLines = resolveInvoiceFooterLines(sales, {
-        organizationName: seller.name ?? organization?.org_name ?? "",
-        validDays: Number(sales.invoice_valid_days ?? 7),
-      });
       for (let copy = 0; copy < copies; copy += 1) {
         printSaleInvoice(saleForPrint, {
           ...printOptions,
           invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
           preparedBy:
             options.preparedBy ?? saleForPrint.cashier_name ?? saleForPrint.user?.full_name ?? null,
-          deliveryTerms,
-          footerLines,
+          uomById: options.uomById ?? null,
         });
       }
       return documentType;

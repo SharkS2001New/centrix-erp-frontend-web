@@ -68,7 +68,7 @@ export function validateSecurityForm(form) {
 /** @typedef {{ enabled?: boolean, expired?: boolean, forced?: boolean, skips_remaining?: number, skip_count?: number, max_skips?: number, expiry_days?: number, expires_at?: string|null, days_until_expiry?: number|null }} PasswordExpiryStatus */
 
 export function isPasswordExpiryForced(user, passwordExpiry) {
-  if (user?.must_change_password) return true;
+  if (user?.must_change_password) return false;
   return Boolean(passwordExpiry?.forced);
 }
 

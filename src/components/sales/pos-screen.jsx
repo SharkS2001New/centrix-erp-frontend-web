@@ -78,6 +78,7 @@ import {
   cartHasOptimisticLines,
   findMergeableCartLine,
   looksLikeProductCodeQuery,
+  revertOptimisticCartMutation,
 } from "@/lib/pos-cart-merge";
 import { PosPaymentPanel } from "./pos-payment-panel";
 import { PosProductSearch } from "./pos-product-search";
@@ -1043,7 +1044,17 @@ export function PosScreen({ standalone = false }) {
       product_vat: lineProductVat(product, finalComputed.lineAmount),
     };
 
-    const rollbackCart = cart ?? activeCart;
+    const previousLineSnapshot =
+      targetLineRef != null
+        ? {
+            ...(mergeTarget ??
+              activeCart.lines?.find(
+                (line) => String(cartLineRef(line)) === String(targetLineRef),
+              ) ??
+              {}),
+          }
+        : null;
+
     const optimisticLine = buildOptimisticCartLine(product, lineBody, finalComputed);
     setCart(
       applyOptimisticCartMutation(activeCart, optimisticLine, {
@@ -1073,7 +1084,13 @@ export function PosScreen({ standalone = false }) {
       }
       setCartLineSaveFailed(false);
     } catch (error) {
-      setCart(rollbackCart);
+      setCart((current) =>
+        revertOptimisticCartMutation(current, {
+          previousLineSnapshot:
+            previousLineSnapshot?.product_code != null ? previousLineSnapshot : null,
+          optimisticLine,
+        }),
+      );
       setCartLineSaveFailed(true);
       throw error;
     }
@@ -1352,8 +1369,7 @@ export function PosScreen({ standalone = false }) {
     [cart?.lines, productByCode, sellFromShop, posSalesConfig, allowNegativeStock],
   );
 
-  const checkoutBlocked =
-    lineBusy || cartLineSaveFailed || cartHasOptimisticLines(cart);
+  const checkoutBlocked = lineBusy || cartHasOptimisticLines(cart);
 
   const addLineBlocked =
     !selectedProduct ||
@@ -3541,9 +3557,7 @@ export function PosScreen({ standalone = false }) {
                   label="Complete"
                   title={
                     checkoutBlocked
-                      ? lineBusy
-                        ? "Wait for the line to finish saving"
-                        : "Fix the cart line error before completing payment"
+                      ? "Wait for the line to finish saving"
                       : "Complete payment (F10)"
                   }
                   icon="🛒"
@@ -3562,8 +3576,9 @@ export function PosScreen({ standalone = false }) {
               )}
             </div>
             {cartLineSaveFailed ? (
-              <p className="mt-2 text-right text-xs font-medium text-red-700">
-                Last line did not save — cart was rolled back. Retry Add before completing payment (F10).
+              <p className="mt-2 text-right text-xs font-medium text-amber-800">
+                That line did not save and was removed. Other lines are unchanged — you can retry
+                Add or complete payment (F10) with the rest of the cart.
               </p>
             ) : null}
             {cartStockBlocked ? (

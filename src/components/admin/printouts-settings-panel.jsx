@@ -317,8 +317,8 @@ export function PrintoutsSettingsPanel({
               {hasSales ? (
                 <div>
                   <SectionHeading
-                    title="A4 sales invoices"
-                    description="Full-page invoices for credit sales and detailed orders. Use {organization} and {days} in footer lines."
+                    title="A4 invoice receipts"
+                    description="Valid-until date on the invoice header. Delivery instructions and the old footer block are no longer printed."
                   />
                   <div className="mt-4 space-y-3">
                     <Field label="Invoice valid for (days)">
@@ -333,22 +333,6 @@ export function PrintoutsSettingsPanel({
                         }
                       />
                     </Field>
-                    <MultilinePrintNotesField
-                      label="Delivery instructions"
-                      value={form.invoice_print_delivery_terms}
-                      onChange={(value) =>
-                        setForm((f) => ({ ...f, invoice_print_delivery_terms: value }))
-                      }
-                      rows={8}
-                    />
-                    <MultilinePrintNotesField
-                      label="Invoice footer lines"
-                      value={form.invoice_print_footer_lines}
-                      onChange={(value) =>
-                        setForm((f) => ({ ...f, invoice_print_footer_lines: value }))
-                      }
-                      rows={6}
-                    />
                   </div>
                 </div>
               ) : null}

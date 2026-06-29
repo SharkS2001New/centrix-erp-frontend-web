@@ -430,6 +430,151 @@ export function PosPaymentPanel({
     setStep("confirm");
   }
 
+  function formatPaymentFillAmount(amount, { ceil = false } = {}) {
+    if (amount <= 0) return "0";
+    if (ceil) return String(Math.ceil(amount));
+    const rounded = Math.round(amount * 100) / 100;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+  }
+
+  function remainingForPaymentField(currentAmount) {
+    const current = parseDecimalInput(currentAmount);
+    return Math.max(0, checkoutTotal - (amountPaid - current));
+  }
+
+  function activateInvoiceMode() {
+    setCashAmount("0");
+    setMpesaAmount("0");
+    setEquityAmount("0");
+    setKcbAmount("0");
+    setOtherBankAmount("0");
+    setBankAmount("0");
+    setChequeAmount("0");
+    setLocalError(null);
+    window.requestAnimationFrame(() => {
+      creditTriggerRef.current?.focus();
+      creditTriggerRef.current?.click();
+    });
+  }
+
+  function focusPaymentField(ref) {
+    if (!ref?.current) return;
+    ref.current.focus();
+    ref.current.select?.();
+  }
+
+  function shouldAllowPaymentLetterShortcut() {
+    const el = document.activeElement;
+    if (!el) return true;
+    if (el.getAttribute("role") === "combobox" && el.getAttribute("aria-expanded") === "true") {
+      return false;
+    }
+    if (el.tagName === "INPUT") {
+      const type = el.type?.toLowerCase() ?? "text";
+      if (type === "number") return true;
+      return false;
+    }
+    if (el.tagName === "TEXTAREA" || el.tagName === "SELECT") return false;
+    return true;
+  }
+
+  function handlePaymentNavigationKey(e) {
+    if (step !== "payment" || saving) return false;
+
+    if (e.altKey || e.ctrlKey || e.metaKey) return false;
+
+    const key = e.key.length === 1 ? e.key.toLowerCase() : "";
+    if (!key || !shouldAllowPaymentLetterShortcut()) return false;
+
+    if (key === "c") {
+      e.preventDefault();
+      focusPaymentField(cashAmountRef);
+      return true;
+    }
+    if (key === "m" && cfg.enableMpesaAmount) {
+      e.preventDefault();
+      focusPaymentField(mpesaAmountRef);
+      return true;
+    }
+    if (key === "e" && !cfg.useBankSelect && cfg.showEquityBank) {
+      e.preventDefault();
+      focusPaymentField(equityAmountRef);
+      return true;
+    }
+    if (key === "k" && !cfg.useBankSelect && cfg.showKcbBank) {
+      e.preventDefault();
+      focusPaymentField(kcbAmountRef);
+      return true;
+    }
+    if (key === "b" && cfg.useBankSelect && cfg.showBankAmount) {
+      e.preventDefault();
+      focusPaymentField(bankAmountRef);
+      return true;
+    }
+    if (key === "i" && showCreditPaymentField) {
+      e.preventDefault();
+      activateInvoiceMode();
+      return true;
+    }
+
+    return false;
+  }
+
+  function requestCompleteFromKeyboard() {
+    if (!canComplete) {
+      setLocalError(
+        validatePayment() || "Please check the amount — payment is less than the bill total.",
+      );
+      return;
+    }
+    handleRequestComplete();
+  }
+
+  function handlePaymentAmountKeyDown(e, currentAmount, setAmount, { ceil = false } = {}) {
+    if (step !== "payment" || saving) return;
+
+    if (e.key === "PageDown") {
+      e.preventDefault();
+      requestCompleteFromKeyboard();
+      return;
+    }
+
+    if (handlePaymentNavigationKey(e)) return;
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+
+      const current = parseDecimalInput(currentAmount);
+      const remaining = remainingForPaymentField(currentAmount);
+
+      if (current <= 0 && remaining > 0.009) {
+        setAmount(formatPaymentFillAmount(remaining, { ceil }));
+        setLocalError(null);
+        return;
+      }
+
+      if (current > 0 && canComplete) {
+        requestCompleteFromKeyboard();
+      } else if (current > 0) {
+        setLocalError(
+          validatePayment() || "Please check the amount — payment is less than the bill total.",
+        );
+      }
+    }
+  }
+
+  function handleAuxiliaryPaymentKeyDown(e) {
+    if (step !== "payment" || saving) return;
+
+    if (e.key === "PageDown") {
+      e.preventDefault();
+      requestCompleteFromKeyboard();
+      return;
+    }
+
+    handlePaymentNavigationKey(e);
+  }
+
   function checkoutStatusLabel(sale) {
     if (sale.status === "completed") return "Sale completed";
     if (sale.status === "paid") return "Order paid";
@@ -553,126 +698,19 @@ export function PosPaymentPanel({
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e) {
-      if (step === "payment" && handlePaymentNavigationKey(e)) return;
+      if (step === "payment" && !saving) {
+        if (e.key === "PageDown") {
+          e.preventDefault();
+          requestCompleteFromKeyboard();
+          return;
+        }
+        if (handlePaymentNavigationKey(e)) return;
+      }
       enterActionRef.current(e);
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, step, saving, cfg, showCreditPaymentField, canComplete, checkoutTotal, amountPaid]);
-
-  function formatPaymentFillAmount(amount, { ceil = false } = {}) {
-    if (amount <= 0) return "0";
-    if (ceil) return String(Math.ceil(amount));
-    const rounded = Math.round(amount * 100) / 100;
-    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
-  }
-
-  function remainingForPaymentField(currentAmount) {
-    const current = parseDecimalInput(currentAmount);
-    return Math.max(0, checkoutTotal - (amountPaid - current));
-  }
-
-  function activateInvoiceMode() {
-    setCashAmount("0");
-    setMpesaAmount("0");
-    setEquityAmount("0");
-    setKcbAmount("0");
-    setOtherBankAmount("0");
-    setBankAmount("0");
-    setChequeAmount("0");
-    setLocalError(null);
-    window.requestAnimationFrame(() => {
-      creditTriggerRef.current?.focus();
-      creditTriggerRef.current?.click();
-    });
-  }
-
-  function focusPaymentField(ref) {
-    if (!ref?.current) return;
-    ref.current.focus();
-    ref.current.select?.();
-  }
-
-  function shouldAllowPaymentLetterShortcut() {
-    const el = document.activeElement;
-    if (!el) return true;
-    if (el.getAttribute("role") === "combobox" && el.getAttribute("aria-expanded") === "true") {
-      return false;
-    }
-    if (el.tagName === "INPUT") {
-      const type = el.type?.toLowerCase() ?? "text";
-      if (type === "number") return true;
-      return false;
-    }
-    if (el.tagName === "TEXTAREA" || el.tagName === "SELECT") return false;
-    return true;
-  }
-
-  function handlePaymentNavigationKey(e) {
-    if (step !== "payment" || saving) return false;
-
-    if (e.altKey || e.ctrlKey || e.metaKey) return false;
-
-    const key = e.key.length === 1 ? e.key.toLowerCase() : "";
-    if (!key || !shouldAllowPaymentLetterShortcut()) return false;
-
-    if (key === "c") {
-      e.preventDefault();
-      focusPaymentField(cashAmountRef);
-      return true;
-    }
-    if (key === "m" && cfg.enableMpesaAmount) {
-      e.preventDefault();
-      focusPaymentField(mpesaAmountRef);
-      return true;
-    }
-    if (key === "e" && !cfg.useBankSelect && cfg.showEquityBank) {
-      e.preventDefault();
-      focusPaymentField(equityAmountRef);
-      return true;
-    }
-    if (key === "k" && !cfg.useBankSelect && cfg.showKcbBank) {
-      e.preventDefault();
-      focusPaymentField(kcbAmountRef);
-      return true;
-    }
-    if (key === "i" && showCreditPaymentField) {
-      e.preventDefault();
-      activateInvoiceMode();
-      return true;
-    }
-
-    return false;
-  }
-
-  function handlePaymentAmountKeyDown(e, currentAmount, setAmount, { ceil = false } = {}) {
-    if (step !== "payment" || saving) return;
-
-    if (e.key === "PageDown") {
-      e.preventDefault();
-      handleRequestComplete();
-      return;
-    }
-
-    if (handlePaymentNavigationKey(e)) return;
-
-    if (e.key === "Enter") {
-      e.preventDefault();
-
-      const current = parseDecimalInput(currentAmount);
-      const remaining = remainingForPaymentField(currentAmount);
-
-      if (current <= 0 && remaining > 0.009) {
-        setAmount(formatPaymentFillAmount(remaining, { ceil }));
-        setLocalError(null);
-        return;
-      }
-
-      if (current > 0 && canComplete) {
-        handleRequestComplete();
-      }
-    }
-  }
+  }, [open, step, saving, canComplete, checkoutTotal, amountPaid]);
 
   function handleCreditCustomerChange(value, option) {
     setCustomerNum(value);
@@ -991,6 +1029,7 @@ export function PosPaymentPanel({
                 readOnly={lockMpesaFields}
                 disabled={lockMpesaFields}
                 onChange={(e) => setMpesaCode(e.target.value)}
+                onKeyDown={handleAuxiliaryPaymentKeyDown}
                 placeholder="Transaction code"
               />
             </PosField>
@@ -1013,7 +1052,7 @@ export function PosPaymentPanel({
               </PosField>
               {cfg.showBankAmount ? (
                 <>
-                  <PosField label="Bank amount">
+                  <PosField label="Bank amount (B)">
                     <input
                       ref={bankAmountRef}
                       type="number"
@@ -1030,6 +1069,7 @@ export function PosPaymentPanel({
                       className={inputCls}
                       value={bankRef}
                       onChange={(e) => setBankRef(e.target.value)}
+                      onKeyDown={handleAuxiliaryPaymentKeyDown}
                       placeholder="Bank reference / transaction no."
                     />
                   </PosField>
@@ -1099,6 +1139,7 @@ export function PosPaymentPanel({
                     className={inputCls}
                     value={chequeNo}
                     onChange={(e) => setChequeNo(e.target.value)}
+                    onKeyDown={handleAuxiliaryPaymentKeyDown}
                     placeholder="Required when cheque amount is entered"
                   />
                 </PosField>
@@ -1126,7 +1167,7 @@ export function PosPaymentPanel({
               onTriggerKeyDown={(e) => {
                 if (e.key === "PageDown") {
                   e.preventDefault();
-                  handleRequestComplete();
+                  requestCompleteFromKeyboard();
                   return;
                 }
                 if (handlePaymentNavigationKey(e)) return;
@@ -1158,6 +1199,21 @@ export function PosPaymentPanel({
           </PosField>
         </div>
       ) : null}
+
+      <p className="theme-text-muted mt-3 text-[11px] leading-relaxed">
+        {[
+          "Page Down — complete payment",
+          "Enter — fill balance or complete",
+          "C — cash",
+          cfg.enableMpesaAmount ? "M — M-Pesa" : null,
+          cfg.useBankSelect && cfg.showBankAmount ? "B — bank" : null,
+          !cfg.useBankSelect && cfg.showEquityBank ? "E — Equity" : null,
+          !cfg.useBankSelect && cfg.showKcbBank ? "K — KCB" : null,
+          showCreditPaymentField ? "I — credit / invoice" : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </p>
 
       {(error || localError) ? (
         <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">

@@ -25,7 +25,14 @@ function accessLabel(user, capabilities) {
 }
 
 export function ProfilePanel({ compact = false }) {
-  const { user, organization, capabilities, applyPasswordExpiry, refreshCapabilities } = useAuth();
+  const {
+    user,
+    organization,
+    capabilities,
+    applyPasswordExpiry,
+    clearMustChangePassword,
+    refreshCapabilities,
+  } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
@@ -44,6 +51,9 @@ export function ProfilePanel({ compact = false }) {
         },
       });
       applyPasswordExpiry(res.password_expiry ?? null);
+      if (res.must_change_password === false) {
+        clearMustChangePassword();
+      }
       await refreshCapabilities().catch(() => {});
       notifySuccess(res.message);
       setCurrentPassword("");

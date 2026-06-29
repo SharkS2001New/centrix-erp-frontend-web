@@ -122,3 +122,34 @@ export function applyOptimisticCartMutation(prevCart, optimisticLine, { mergeTar
     lines,
   };
 }
+
+/** Undo one optimistic line mutation — other cart lines are left unchanged. */
+export function revertOptimisticCartMutation(
+  cartAfterOptimistic,
+  { previousLineSnapshot = null, optimisticLine = null } = {},
+) {
+  if (!cartAfterOptimistic?.id) return cartAfterOptimistic;
+
+  let lines = [...(cartAfterOptimistic.lines ?? [])];
+
+  if (previousLineSnapshot) {
+    const ref = cartLineRef(previousLineSnapshot);
+    const idx = lines.findIndex((line) => String(cartLineRef(line)) === String(ref));
+    if (idx >= 0) {
+      lines[idx] = { ...previousLineSnapshot };
+    }
+  } else {
+    const pendingRef = optimisticLine ? cartLineRef(optimisticLine) : null;
+    lines = lines.filter((line) => {
+      if (line?._optimistic) return false;
+      if (pendingRef != null && String(cartLineRef(line)) === String(pendingRef)) return false;
+      return true;
+    });
+  }
+
+  return {
+    ...cartAfterOptimistic,
+    update_no: Math.max(0, Number(cartAfterOptimistic.update_no ?? 1) - 1),
+    lines,
+  };
+}

@@ -17,10 +17,6 @@ import {
   shouldShowReceiptPaymentDetails,
 } from "@/lib/receipt-payment-details";
 import {
-  resolveInvoiceDeliveryTerms,
-  resolveInvoiceFooterLines,
-} from "@/lib/invoice-print-settings";
-import {
   SAMPLE_PREVIEW_CUSTOMER,
   SAMPLE_PREVIEW_SELLER,
 } from "@/lib/print-preview-samples";
@@ -191,11 +187,6 @@ export function previewSaleInvoicePrint({
     documentFooterText: resolvePrintFooter(general, "invoice"),
     paymentInstructions,
     showPaymentInstructions: shouldShowReceiptPaymentDetails({ sales }, "invoice"),
-    deliveryTerms: resolveInvoiceDeliveryTerms(sales),
-    footerLines: resolveInvoiceFooterLines(sales, {
-      organizationName: seller.name,
-      validDays: Number(sales.invoice_valid_days ?? 7),
-    }),
     preparedBy: "Preview cashier",
   });
 }
