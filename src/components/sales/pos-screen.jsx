@@ -71,7 +71,14 @@ import {
   posStockInsufficientMessage,
   posStockLocationLabel,
 } from "@/lib/pos-stock";
-import { findMergeableCartLine } from "@/lib/pos-cart-merge";
+import {
+  applyCartMutationResponse,
+  applyOptimisticCartMutation,
+  buildOptimisticCartLine,
+  cartHasOptimisticLines,
+  findMergeableCartLine,
+  looksLikeProductCodeQuery,
+} from "@/lib/pos-cart-merge";
 import { PosPaymentPanel } from "./pos-payment-panel";
 import { PosProductSearch } from "./pos-product-search";
 import { PosCartPaymentOptions, posCartPaymentPromptsEnabled } from "./pos-cart-payment-options";
@@ -132,13 +139,6 @@ function cartLineRef(line) {
 function sameLineId(a, b) {
   if (a == null || b == null) return false;
   return String(a) === String(b);
-}
-
-/** Cart line mutations usually return the full cart — avoid a follow-up GET when they do. */
-function normalizeCartResponse(res) {
-  if (res?.id && Array.isArray(res.lines)) return res;
-  if (res?.cart?.id && Array.isArray(res.cart?.lines)) return res.cart;
-  return null;
 }
 
 const POS_CART_REQUEST = { loading: false, reportIssues: false };
@@ -549,6 +549,7 @@ export function PosScreen({ standalone = false }) {
   const [editingLineRef, setEditingLineRef] = useState(null);
   const [busy, setBusy] = useState(false);
   const [lineBusy, setLineBusy] = useState(false);
+  const [cartLineSaveFailed, setCartLineSaveFailed] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [saveOrderOpen, setSaveOrderOpen] = useState(false);
@@ -865,7 +866,8 @@ export function PosScreen({ standalone = false }) {
   );
 
   useEffect(() => {
-    const t = setTimeout(() => searchProducts(searchQuery), 280);
+    const delay = looksLikeProductCodeQuery(searchQuery) ? 0 : 280;
+    const t = setTimeout(() => searchProducts(searchQuery), delay);
     return () => clearTimeout(t);
   }, [searchQuery, searchProducts]);
 
@@ -1041,33 +1043,39 @@ export function PosScreen({ standalone = false }) {
       product_vat: lineProductVat(product, finalComputed.lineAmount),
     };
 
-    if (targetLineRef) {
-      const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines/${targetLineRef}`, {
-        method: "PATCH",
-        body: {
-          ...lineBody,
-          update_no: activeCart.update_no,
-        },
-        ...POS_CART_REQUEST,
-      });
-      const normalized = normalizeCartResponse(updated);
-      if (normalized) {
-        setCart(normalized);
+    const rollbackCart = cart ?? activeCart;
+    const optimisticLine = buildOptimisticCartLine(product, lineBody, finalComputed);
+    setCart(
+      applyOptimisticCartMutation(activeCart, optimisticLine, {
+        mergeTarget,
+        editingRef: targetLineRef,
+      }),
+    );
+
+    try {
+      if (targetLineRef) {
+        const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines/${targetLineRef}`, {
+          method: "PATCH",
+          body: {
+            ...lineBody,
+            update_no: activeCart.update_no,
+          },
+          ...POS_CART_REQUEST,
+        });
+        setCart(applyCartMutationResponse(activeCart, updated, { targetLineRef }));
       } else {
-        await refreshCart(activeCart.id);
+        const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines`, {
+          method: "POST",
+          body: lineBody,
+          ...POS_CART_REQUEST,
+        });
+        setCart(applyCartMutationResponse(activeCart, updated));
       }
-    } else {
-      const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines`, {
-        method: "POST",
-        body: lineBody,
-        ...POS_CART_REQUEST,
-      });
-      const normalized = normalizeCartResponse(updated);
-      if (normalized) {
-        setCart(normalized);
-      } else {
-        await refreshCart(activeCart.id);
-      }
+      setCartLineSaveFailed(false);
+    } catch (error) {
+      setCart(rollbackCart);
+      setCartLineSaveFailed(true);
+      throw error;
     }
 
     if (successMessage) setStatusMessage(successMessage);
@@ -1343,6 +1351,9 @@ export function PosScreen({ standalone = false }) {
       ),
     [cart?.lines, productByCode, sellFromShop, posSalesConfig, allowNegativeStock],
   );
+
+  const checkoutBlocked =
+    lineBusy || cartLineSaveFailed || cartHasOptimisticLines(cart);
 
   const addLineBlocked =
     !selectedProduct ||
@@ -2297,6 +2308,7 @@ export function PosScreen({ standalone = false }) {
     setPaymentOpen(false);
     setPaymentError(null);
     setCompletedSale(null);
+    setCartLineSaveFailed(false);
     clearLineEntry();
     setSelectedLineId(null);
     setBusy(true);
@@ -2454,7 +2466,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   function openCompletePayment() {
-    if (!cart?.lines?.length || cartStockBlocked) return;
+    if (!cart?.lines?.length || cartStockBlocked || checkoutBlocked) return;
     setPaymentError(null);
     setPaymentOpen(true);
   }
@@ -2510,7 +2522,7 @@ export function PosScreen({ standalone = false }) {
       }
       if (e.key === "F10") {
         e.preventDefault();
-        if (posSalesConfig.showCheckoutOnCreate) openCompletePayment();
+        if (posSalesConfig.showCheckoutOnCreate && !checkoutBlocked) openCompletePayment();
         return;
       }
       if (e.key === "F12" && posSalesConfig.enableRetailPricing) {
@@ -2557,6 +2569,7 @@ export function PosScreen({ standalone = false }) {
     focusProductSearch,
     cart?.lines?.length,
     cartStockBlocked,
+    checkoutBlocked,
     activeSession,
     selectedLineId,
     cart?.id,
@@ -3526,14 +3539,17 @@ export function PosScreen({ standalone = false }) {
               {posSalesConfig.showCheckoutOnCreate ? (
                 <PosActionButton
                   label="Complete"
-                  title="Complete payment (F10)"
+                  title={
+                    checkoutBlocked
+                      ? lineBusy
+                        ? "Wait for the line to finish saving"
+                        : "Fix the cart line error before completing payment"
+                      : "Complete payment (F10)"
+                  }
                   icon="🛒"
                   iconClass="pos-cart-action-icon--complete"
-                  disabled={busy || !cart?.lines?.length || cartStockBlocked}
-                  onClick={() => {
-                    setPaymentError(null);
-                    setPaymentOpen(true);
-                  }}
+                  disabled={busy || lineBusy || !cart?.lines?.length || cartStockBlocked || checkoutBlocked}
+                  onClick={() => openCompletePayment()}
                 />
               ) : (
                 <PosActionButton
@@ -3545,6 +3561,11 @@ export function PosScreen({ standalone = false }) {
                 />
               )}
             </div>
+            {cartLineSaveFailed ? (
+              <p className="mt-2 text-right text-xs font-medium text-red-700">
+                Last line did not save — cart was rolled back. Retry Add before completing payment (F10).
+              </p>
+            ) : null}
             {cartStockBlocked ? (
               <p className="mt-2 text-right text-xs font-medium text-red-700">
                 Cart exceeds available stock — reduce quantities or enable negative stock in admin.
