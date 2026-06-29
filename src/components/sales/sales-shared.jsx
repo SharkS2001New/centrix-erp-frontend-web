@@ -4,6 +4,7 @@ import { pipelineStatusIndex, workflowPipelineSteps, workflowStatusLabel, alignS
 import {
   PAYMENT_STATUS_LABELS,
   SALE_STATUS_LABELS,
+  formatOrderNumber,
   formatReceiptNumber,
   formatSaleKes,
   orderSourceLabel,

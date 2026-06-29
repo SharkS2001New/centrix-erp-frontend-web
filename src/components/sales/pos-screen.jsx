@@ -142,6 +142,16 @@ function normalizeCartResponse(res) {
 }
 
 const POS_CART_REQUEST = { loading: false, reportIssues: false };
+const POS_CHECKOUT_TIMEOUT_MS = 90_000;
+
+function withPosCheckoutTimeout(promise, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      window.setTimeout(() => reject(new Error(message)), POS_CHECKOUT_TIMEOUT_MS);
+    }),
+  ]);
+}
 
 export function PosScreen({ standalone = false }) {
   const router = useRouter();
@@ -548,6 +558,7 @@ export function PosScreen({ standalone = false }) {
   const [saveOrderError, setSaveOrderError] = useState(null);
   const [paymentError, setPaymentError] = useState(null);
   const [completedSale, setCompletedSale] = useState(null);
+  const [receiptPrintStatus, setReceiptPrintStatus] = useState(null);
   const [orderEditError, setOrderEditError] = useState(null);
   const [sessionPosOrders, setSessionPosOrders] = useState([]);
   const [editOrderNo, setEditOrderNo] = useState("");
@@ -1999,6 +2010,34 @@ export function PosScreen({ standalone = false }) {
     loadPosTillMeta();
   }
 
+  const schedulePosReceiptPrint = useCallback(
+    (sale) => {
+      if (!sale?.id || !posSalesConfig.showCheckoutOnCreate) {
+        setReceiptPrintStatus(null);
+        return;
+      }
+      setReceiptPrintStatus("pending");
+      void printSaleOrder(sale, {
+        capabilities,
+        organization,
+        organizationName: capabilities?.profile_label,
+        uomById,
+      })
+        .then(() => {
+          setReceiptPrintStatus("printed");
+        })
+        .catch((printErr) => {
+          console.error("Receipt print failed", printErr);
+          setReceiptPrintStatus("failed");
+          const label = sale.order_num ? `#${sale.order_num}` : "";
+          notifyError(
+            `Order ${label} saved. Receipt did not print — use Reprint on the confirmation screen or Administration → Till printing.`,
+          );
+        });
+    },
+    [posSalesConfig.showCheckoutOnCreate, capabilities, organization, uomById],
+  );
+
   async function handleCheckout(body) {
     if (!cart?.id) return null;
     if (requireTillFloat && !activeSession) {
@@ -2011,6 +2050,7 @@ export function PosScreen({ standalone = false }) {
     }
     setBusy(true);
     setPaymentError(null);
+    setReceiptPrintStatus(null);
     try {
       const submitKra = shouldSubmitKraOnCheckout(
         capabilities?.module_settings,
@@ -2034,29 +2074,27 @@ export function PosScreen({ standalone = false }) {
             message: "Completing sale…",
             detail: "Submitting receipt to the KRA device. Please wait.",
           })
-        : await checkoutRequest();
+        : await withPosCheckoutTimeout(
+            checkoutRequest(),
+            "Checkout timed out. Check that the API is running and try again.",
+          );
       setCompletedSale(sale);
       rememberCompletedPosOrder(sale);
       setCart(null);
       setSelectedLineId(null);
-      try {
-        if (posSalesConfig.showCheckoutOnCreate) {
-          await printSaleOrder(sale, {
-            capabilities,
-            organization,
-            organizationName: capabilities?.profile_label,
-            uomById,
-          });
-        }
-      } catch (printErr) {
-        // non-fatal; printing failures shouldn't block checkout
-        // eslint-disable-next-line no-console
-        console.error("Receipt print failed", printErr);
-      }
+      schedulePosReceiptPrint(sale);
       return sale;
     } catch (e) {
-      const message = e instanceof ApiError ? e.message : "Checkout failed";
+      const message =
+        e instanceof ApiError
+          ? e.message
+          : e instanceof TypeError && /fetch/i.test(e.message)
+            ? "Cannot reach the server. Check your connection and that the API is running."
+            : "Checkout failed";
       setPaymentError(message);
+      if (standalone) {
+        notifyError(message);
+      }
       if (
         requireTillFloat &&
         /operating float|till session/i.test(message)
@@ -2117,6 +2155,7 @@ export function PosScreen({ standalone = false }) {
   async function handleContinueNextOrder() {
     setPaymentOpen(false);
     setPaymentError(null);
+    setReceiptPrintStatus(null);
     clearLineEntry();
     setBusy(true);
     try {
@@ -2268,9 +2307,12 @@ export function PosScreen({ standalone = false }) {
   async function handlePrintReceipt() {
     const sale = completedSale;
     if (!sale?.id) {
-      setStatusMessage("No completed order to print. Complete payment first (F10).");
+      const message = "No completed order to print. Complete payment first (F10).";
+      if (standalone) notifyError(message);
+      else setStatusMessage(message);
       return;
     }
+    setReceiptPrintStatus("pending");
     try {
       await printSaleOrder(sale, {
         capabilities,
@@ -2278,9 +2320,15 @@ export function PosScreen({ standalone = false }) {
         organizationName: capabilities?.profile_label,
         uomById,
       });
-      setStatusMessage(`Reprinting order #${sale.order_num}.`);
-    } catch {
-      setStatusMessage("Receipt print failed.");
+      setReceiptPrintStatus("printed");
+      const message = `Reprinting order #${sale.order_num}.`;
+      if (standalone) notifySuccess(message);
+      else setStatusMessage(message);
+    } catch (e) {
+      setReceiptPrintStatus("failed");
+      const message = e instanceof Error ? e.message : "Receipt print failed";
+      notifyError(message);
+      if (!standalone) setStatusMessage("Receipt print failed.");
     }
   }
 
@@ -3496,7 +3544,10 @@ export function PosScreen({ standalone = false }) {
 
       <PosPaymentPanel
         open={paymentOpen}
-        onClose={() => setPaymentOpen(false)}
+        onClose={() => {
+          setPaymentOpen(false);
+          setReceiptPrintStatus(null);
+        }}
         billTotal={cartSummary.amountDue}
         channel={channel}
         workflow={channelWorkflow}
@@ -3508,6 +3559,8 @@ export function PosScreen({ standalone = false }) {
         error={paymentError}
         onComplete={handleCheckout}
         onContinueNextOrder={handleContinueNextOrder}
+        receiptPrintStatus={receiptPrintStatus}
+        onReprintReceipt={() => void handlePrintReceipt()}
         embedded={!standalone}
       />
 

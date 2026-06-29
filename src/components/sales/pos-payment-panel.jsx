@@ -144,6 +144,8 @@ export function PosPaymentPanel({
   error,
   onComplete,
   onContinueNextOrder,
+  receiptPrintStatus = null,
+  onReprintReceipt,
   embedded = false,
 }) {
   const [mounted, setMounted] = useState(false);
@@ -214,6 +216,12 @@ export function PosPaymentPanel({
     setChequeNo("");
     setWalkInCustomerName("");
   }, [open, billTotal, prefillMpesaAmount, prefillMpesaCode]);
+
+  useEffect(() => {
+    if (!open || step !== "saving" || !error) return;
+    setLocalError(error);
+    setStep("payment");
+  }, [error, open, step]);
 
   const searchCreditCustomersForSelect = useCallback(async (query) => {
     const rows = await searchCreditCustomers(query);
@@ -431,16 +439,22 @@ export function PosPaymentPanel({
 
   async function submitCheckout() {
     setStep("saving");
-    const sale = await onComplete?.(buildCheckoutBody());
-    if (!sale) {
-      setStep(needsWalkInCustomerName() ? "customerName" : "confirm");
-      return;
+    setLocalError(null);
+    try {
+      const sale = await onComplete?.(buildCheckoutBody());
+      if (!sale) {
+        setStep("payment");
+        return;
+      }
+      setCompletedOrder({
+        orderNum: sale.order_num,
+        statusLabel: checkoutStatusLabel(sale),
+      });
+      setStep("complete");
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "Checkout failed");
+      setStep("payment");
     }
-    setCompletedOrder({
-      orderNum: sale.order_num,
-      statusLabel: checkoutStatusLabel(sale),
-    });
-    setStep("complete");
   }
 
   function handleConfirmYes() {
@@ -798,15 +812,32 @@ export function PosPaymentPanel({
         titleId="saving-order-title"
         role="status"
         ariaLive="polite"
+        footer={
+          error || localError ? (
+            <div className={POS_DIALOG_FOOTER_SINGLE}>
+              <button
+                type="button"
+                onClick={() => setStep("payment")}
+                className={`${POS_DIALOG_SECONDARY_BTN} w-full`}
+              >
+                Go back
+              </button>
+            </div>
+          ) : null
+        }
       >
-        <div className="flex flex-col items-center px-2 py-4 text-center">
-          <div
-            className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[var(--theme-border)] border-t-[var(--theme-primary)]"
-            aria-hidden
-          />
-          <p className="text-sm font-semibold">Saving…</p>
-          <p className="theme-text-muted mt-2 text-sm">Please wait.</p>
-        </div>
+        {error || localError ? (
+          <p className="theme-alert-error rounded px-3 py-2 text-sm">{error || localError}</p>
+        ) : (
+          <div className="flex flex-col items-center px-2 py-4 text-center">
+            <div
+              className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[var(--theme-border)] border-t-[var(--theme-primary)]"
+              aria-hidden
+            />
+            <p className="text-sm font-semibold">Saving…</p>
+            <p className="theme-text-muted mt-2 text-sm">Please wait.</p>
+          </div>
+        )}
       </PosNestedDialog>
     ) : null;
 
@@ -816,12 +847,21 @@ export function PosPaymentPanel({
         title="ORDER COMPLETE"
         titleId="order-complete-title"
         footer={
-          <div className={POS_DIALOG_FOOTER_SINGLE}>
+          <div className={`${receiptPrintStatus === "failed" ? POS_DIALOG_FOOTER : POS_DIALOG_FOOTER_SINGLE} gap-2`}>
+            {receiptPrintStatus === "failed" && onReprintReceipt ? (
+              <button
+                type="button"
+                onClick={() => onReprintReceipt()}
+                className={POS_DIALOG_SECONDARY_BTN}
+              >
+                Reprint receipt
+              </button>
+            ) : null}
             <button
               ref={completeOkRef}
               type="button"
               onClick={handleOrderCompleteOk}
-              className={`${POS_DIALOG_PRIMARY_BTN} w-full`}
+              className={`${POS_DIALOG_PRIMARY_BTN}${receiptPrintStatus === "failed" ? "" : " w-full"}`}
             >
               OK
             </button>
@@ -832,6 +872,18 @@ export function PosPaymentPanel({
           <p>
             Order <strong>#{completedOrder.orderNum}</strong>
             {completedOrder.statusLabel ? ` — ${completedOrder.statusLabel}` : ""}.
+          </p>
+        ) : null}
+        {receiptPrintStatus === "pending" ? (
+          <p className="theme-text-muted mt-2 text-sm">Printing receipt…</p>
+        ) : null}
+        {receiptPrintStatus === "printed" ? (
+          <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">Receipt sent to printer.</p>
+        ) : null}
+        {receiptPrintStatus === "failed" ? (
+          <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+            Receipt did not print. The sale is saved — use <strong>Reprint receipt</strong> or check{" "}
+            <strong>Administration → Till printing</strong>.
           </p>
         ) : null}
         <p className="mt-2 text-sm">Press Enter or OK to continue to the next order.</p>
