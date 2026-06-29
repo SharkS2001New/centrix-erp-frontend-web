@@ -1,18 +1,50 @@
-import { setStoredWorkspace } from "@/lib/auth-storage";
+import { getStoredWorkspace, setStoredWorkspace } from "@/lib/auth-storage";
+import { resolveHomePath } from "@/lib/access-control";
 import { POS_LOGIN_CHANNEL } from "@/lib/login-channels";
 import {
+  needsWorkspaceSelection,
+  resolveActiveWorkspace,
   resolveAvailableWorkspaces,
   resolvePostLoginPath,
   workspaceLoginChannel,
 } from "@/lib/workspaces";
 
+/**
+ * Best route off the profile screen when the user is not password-locked.
+ */
+export function resolveProfileExitPath(ctx, capabilities) {
+  if (ctx?.platformShell) {
+    return "/platform";
+  }
+
+  const workspaces = resolveAvailableWorkspaces(ctx, capabilities);
+  const stored = getStoredWorkspace();
+
+  if (workspaces.length > 1) {
+    if (needsWorkspaceSelection(capabilities, stored, ctx)) {
+      return "/choose-workspace";
+    }
+    const active = resolveActiveWorkspace(workspaces, stored, null);
+    return active?.home_path ?? "/choose-workspace";
+  }
+
+  if (workspaces.length === 1) {
+    return workspaces[0].home_path;
+  }
+
+  const home = resolveHomePath({ ...ctx, capabilities });
+  if (home && home !== "/profile") {
+    return home;
+  }
+
+  return "/choose-workspace";
+}
+
 function resolveDestinationPath(ctx, capabilities, { afterPasswordLock = false } = {}) {
   const workspaces = resolveAvailableWorkspaces(ctx, capabilities);
-  let path = resolvePostLoginPath(ctx, capabilities);
-
-  if (afterPasswordLock && path === "/profile" && workspaces.length > 0) {
-    path = workspaces.length > 1 ? "/choose-workspace" : workspaces[0].home_path;
-  }
+  const path = afterPasswordLock
+    ? resolveProfileExitPath(ctx, capabilities)
+    : resolvePostLoginPath(ctx, capabilities);
 
   return { path, workspaces };
 }

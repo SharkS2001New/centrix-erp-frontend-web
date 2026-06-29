@@ -15,25 +15,29 @@ import {
   SearchInput,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { isAdminUser } from "@/components/hr/hr-shared";
+import {
+  CustomerReturnActionDialog,
+  CustomerReturnRowActions,
+} from "@/components/sales/customer-return-actions";
 import { CustomerReturnDetailModal } from "@/components/sales/customer-return-detail-modal";
 import { printCustomerReturn } from "@/components/sales/credit-note-print";
-import { ReturnStatusBadge, isReturnPending } from "@/components/sales/customer-returns-shared";
+import { ReturnStatusBadge } from "@/components/sales/customer-returns-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import { useAuth } from "@/contexts/auth-context";
-import { notifySuccess } from "@/lib/notify";
-import { useConfirm } from "@/lib/use-confirm";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 const PAGE_SIZE = 10;
 
 export default function SalesReturnsPage() {
   const router = useRouter();
-  const confirm = useConfirm();
   const searchParams = useSearchParams();
-  const { capabilities, organization, generalSettings, user } = useAuth();
+  const { capabilities, hasPermission, organization, generalSettings, user } = useAuth();
   const { runQueuedTask } = useQueuedTask(
     "Please wait while the credit note is submitted to the KRA device…",
   );
   const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
+  const canManageReturns = Boolean(user?.is_admin || hasPermission?.("sales.manage"));
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -44,7 +48,10 @@ export default function SalesReturnsPage() {
   const [page, setPage] = useState(1);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
-  const [actionBusy, setActionBusy] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+  const [dialog, setDialog] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [dialogError, setDialogError] = useState(null);
   const [actionError, setActionError] = useState(null);
 
   const loadData = useCallback(async () => {
@@ -114,87 +121,112 @@ export default function SalesReturnsPage() {
     setDetailRow(full);
   }
 
-  async function handleApprove(row) {
-    const ok = await confirm({
-      title: "Approve return",
-      message: `Approve ${row.return_no}? Stock will be restocked.`,
-      confirmLabel: "Approve",
-    });
-    if (!ok) return;
-    setActionBusy(true);
+  function openActionDialog(type, row) {
+    setDialogError(null);
     setActionError(null);
+    setRejectReason("");
+    setDialog({ type, row });
+  }
+
+  function closeActionDialog() {
+    if (busyId) return;
+    setDialog(null);
+    setDialogError(null);
+    setRejectReason("");
+  }
+
+  async function confirmDialogAction() {
+    if (!dialog?.row) return;
+    const { type, row } = dialog;
+    setDialogError(null);
+    setActionError(null);
+
+    if (type === "reject" && rejectReason.trim().length < 3) {
+      setDialogError("Enter a rejection reason (at least 3 characters).");
+      return;
+    }
+
+    setBusyId(row.id);
     try {
-      const approveRequest = () =>
-        apiRequest(`/customer-returns/${row.id}/approve`, { method: "POST" });
-      if (kraDeviceEnabled) {
-        await runQueuedTask(approveRequest, {
-          message: "Please wait while the credit note is submitted to the KRA device…",
+      if (type === "approve") {
+        const approveRequest = () =>
+          apiRequest(`/customer-returns/${row.id}/approve`, { method: "POST" });
+        if (kraDeviceEnabled) {
+          await runQueuedTask(approveRequest, {
+            message: "Please wait while the credit note is submitted to the KRA device…",
+          });
+        } else {
+          await approveRequest();
+        }
+        notifySuccess(
+          `${row.return_no} approved. Stock restored, order adjusted, and credit note issued.`,
+        );
+      } else if (type === "reject") {
+        await apiRequest(`/customer-returns/${row.id}/reject`, {
+          method: "POST",
+          body: { reason: rejectReason.trim() },
         });
-      } else {
-        await approveRequest();
+        notifySuccess(`${row.return_no} rejected.`);
+      } else if (type === "delete") {
+        await apiRequest(`/customer-returns/${row.id}`, { method: "DELETE" });
+        if (detailOpen && detailRow?.id === row.id) {
+          setDetailOpen(false);
+          setDetailRow(null);
+        }
+        notifySuccess(`${row.return_no} deleted.`);
       }
-      notifySuccess(
-        `${row.return_no} approved. Stock restored, order adjusted, and credit note issued.`,
-      );
-      await refreshDetail(row.id);
+
+      setDialog(null);
+      setRejectReason("");
+      if (detailOpen && detailRow?.id === row.id && type !== "delete") {
+        await refreshDetail(row.id);
+      } else {
+        await loadData();
+      }
     } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : "Approve failed");
+      const message = e instanceof ApiError ? e.message : "Action failed";
+      if (dialog) {
+        setDialogError(message);
+      } else {
+        setActionError(message);
+      }
     } finally {
-      setActionBusy(false);
+      setBusyId(null);
     }
   }
 
-  async function handleReject(row) {
-    const reason = window.prompt("Reject reason (optional):");
-    if (reason === null) return;
-    setActionBusy(true);
-    setActionError(null);
-    try {
-      await apiRequest(`/customer-returns/${row.id}/reject`, {
-        method: "POST",
-        body: { reason: reason.trim() || null },
-      });
-      notifySuccess(`${row.return_no} rejected.`);
-      await refreshDetail(row.id);
-    } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : "Reject failed");
-    } finally {
-      setActionBusy(false);
-    }
-  }
+  const handlePrint = useCallback(
+    async (row) => {
+      try {
+        let printable = row;
+        if (!printable.lines?.length || (printable.status === "approved" && !printable.creditNote && !printable.credit_note)) {
+          printable = await apiRequest(`/customer-returns/${row.id}`);
+        }
+        await printCustomerReturn(printable, {
+          organization,
+          generalSettings: generalSettings(),
+          kraEnabled: kraDeviceEnabled,
+          user,
+        });
+      } catch (e) {
+        notifyError(e instanceof Error ? e.message : "Failed to print credit note");
+      }
+    },
+    [generalSettings, kraDeviceEnabled, organization, user],
+  );
 
-  async function handleDelete(row) {
-    const msg =
-      row.status === "approved"
-        ? `Delete ${row.return_no}? Restocked quantities will be reversed.`
-        : `Delete ${row.return_no}?`;
-    const ok = await confirm({
-      title: "Delete return",
-      message: msg,
-      confirmLabel: "Delete",
-      destructive: true,
-    });
-    if (!ok) return;
-    setActionBusy(true);
-    setActionError(null);
-    try {
-      await apiRequest(`/customer-returns/${row.id}`, { method: "DELETE" });
-      setDetailOpen(false);
-      setDetailRow(null);
-      await loadData();
-    } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : "Delete failed");
-    } finally {
-      setActionBusy(false);
-    }
-  }
+  const adminHint = isAdminUser(user) || canManageReturns
+    ? null
+    : " Approve, reject, edit, and delete require sales management permission.";
 
   return (
     <div className="theme-workspace min-h-full">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Returns</h1>
-          <p className="mt-1 text-sm text-slate-500">Manage product returns and refunds</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Manage product returns and refunds.{adminHint}
+          </p>
         </div>
         <PrimaryLink href="/sales/returns/new">Create return</PrimaryLink>
       </div>
@@ -245,7 +277,7 @@ export default function SalesReturnsPage() {
                 <th className="px-4 py-3">Date</th>
                 <th className="px-4 py-3 text-right">Amount</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="w-36 px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -299,35 +331,13 @@ export default function SalesReturnsPage() {
                         <ReturnStatusBadge status={row.status} />
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {isReturnPending(row.status) ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleApprove(row)}
-                                disabled={actionBusy}
-                                className="text-sm font-medium text-emerald-700 hover:underline disabled:opacity-50"
-                              >
-                                Approve
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleReject(row)}
-                                disabled={actionBusy}
-                                className="text-sm font-medium text-red-700 hover:underline disabled:opacity-50"
-                              >
-                                Reject
-                              </button>
-                            </>
-                          ) : null}
-                          <button
-                            type="button"
-                            onClick={() => openDetail(row)}
-                            className="text-sm font-medium text-[#185FA5] hover:underline"
-                          >
-                            View
-                          </button>
-                        </div>
+                        <CustomerReturnRowActions
+                          row={row}
+                          busyId={busyId}
+                          canManage={canManageReturns}
+                          onRequestAction={openActionDialog}
+                          onPrint={handlePrint}
+                        />
                       </td>
                     </tr>
                   );
@@ -346,30 +356,34 @@ export default function SalesReturnsPage() {
         />
       </section>
 
+      <CustomerReturnActionDialog
+        open={Boolean(dialog)}
+        type={dialog?.type}
+        row={dialog?.row}
+        rejectReason={rejectReason}
+        onRejectReasonChange={setRejectReason}
+        saving={Boolean(busyId)}
+        error={dialogError}
+        onClose={closeActionDialog}
+        onConfirm={confirmDialogAction}
+      />
+
       <CustomerReturnDetailModal
         open={detailOpen}
         row={detailRow}
-        busy={actionBusy}
+        busy={Boolean(busyId)}
+        canManage={canManageReturns}
         onClose={() => {
           setDetailOpen(false);
           setDetailRow(null);
           setActionError(null);
         }}
-        onApprove={handleApprove}
-        onReject={handleReject}
+        onRequestAction={openActionDialog}
         onEdit={(row) => {
           setDetailOpen(false);
           router.push(`/sales/returns/${row.id}/edit`);
         }}
-        onDelete={handleDelete}
-        onPrint={(row) => {
-          void printCustomerReturn(row, {
-            organization,
-            generalSettings: generalSettings(),
-            kraEnabled: kraDeviceEnabled,
-            user,
-          });
-        }}
+        onPrint={handlePrint}
         error={actionError}
       />
     </div>

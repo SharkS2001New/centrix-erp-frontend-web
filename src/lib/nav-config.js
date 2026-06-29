@@ -7,6 +7,7 @@ import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { usesExternalAccounting, usesNativeAccounting } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
+import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
 import { withNavItemIcons } from "@/lib/nav-item-icons";
 
 function buildReportNavItems() {
@@ -220,6 +221,7 @@ const NAV_SECTION_DEFINITIONS = [
     label: "Legacy orders (Old system)",
     icon: "🗃️",
     collapsible: true,
+    requireLegacyArchive: true,
     items: [
       {
         href: "/reports/legacy-archive",
@@ -227,18 +229,21 @@ const NAV_SECTION_DEFINITIONS = [
         module: "sales.reports",
         permission: P.reports.hub.view,
         reportKey: "legacy-archive",
+        requireLegacyArchive: true,
       },
       {
         href: "/sales/legacy-orders",
         label: "Legacy orders",
         module: "sales.backend",
         permission: P.sales.returns.view,
+        requireLegacyArchive: true,
       },
       {
         href: "/sales/legacy-returns",
         label: "Legacy returns",
         module: "sales.backend",
         permission: P.sales.returns.view,
+        requireLegacyArchive: true,
       },
     ],
   },
@@ -871,6 +876,9 @@ export function isNavSectionVisible(section, navContext) {
   if (section.requireOrgMobileSales && !isOrgMobileSalesEnabled(navContext.capabilities)) {
     return false;
   }
+  if (section.requireLegacyArchive && !isLegacyArchiveEnabled(navContext.capabilities)) {
+    return false;
+  }
   return true;
 }
 
@@ -894,6 +902,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   if (item.requireMobileFieldAttendance && !shouldShowMobileFieldAttendance(capabilities)) return false;
   if (item.requireUserMobileChannel && !userHasMobileChannel(user?.login_channels)) return false;
   if (item.requireOrgMobileSales && !isOrgMobileSalesEnabled(capabilities)) return false;
+  if (item.requireLegacyArchive && !isLegacyArchiveEnabled(capabilities)) return false;
   if (item.requireAdmin && !user?.is_admin && !capabilities?.is_admin) return false;
   if (item.requireNativeAccounting && !usesNativeAccounting(capabilities?.module_settings)) return false;
   if (item.requireExternalAccounting && !usesExternalAccounting(capabilities?.module_settings)) return false;

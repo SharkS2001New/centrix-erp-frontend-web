@@ -64,6 +64,10 @@ function isProtectedUserAccount(row, currentUserId) {
   return row.id === currentUserId || Boolean(row.is_admin);
 }
 
+function userIsPasswordLocked(row) {
+  return Boolean(row?.password_locked ?? row?.must_change_password);
+}
+
 export default function AdminUsersPage() {
   const confirm = useConfirm();
   const { user, capabilities } = useAuth();
@@ -287,6 +291,27 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function clearPasswordLock(row) {
+    const ok = await confirm({
+      title: "Clear password lock?",
+      message: `Clear the password lock for "${row.full_name}"? They can sign in and use the application without changing their password.`,
+      confirmLabel: "Clear lock",
+    });
+    if (!ok) return;
+    try {
+      await apiRequest(adminPath(`/users/${row.id}/clear-password-lock`), { method: "POST" });
+      await reloadAll();
+      if (viewUser?.id === row.id) {
+        setViewUser((current) =>
+          current ? { ...current, must_change_password: false, password_locked: false } : current,
+        );
+      }
+      notifySuccess(`Password lock cleared for "${row.full_name}"`);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to clear password lock");
+    }
+  }
+
   async function softDeleteUser(row) {
     if (isProtectedUserAccount(row, user?.id)) {
       notifyError(
@@ -485,10 +510,24 @@ export default function AdminUsersPage() {
                       {formatLoginChannels(row.login_channels)}
                     </td>
                     <td className="px-4 py-3">
-                      <ActiveBadge active={row.is_active !== false} />
+                      <div className="flex flex-col gap-1">
+                        <ActiveBadge active={row.is_active !== false} />
+                        {userIsPasswordLocked(row) ? (
+                          <span className="text-[11px] font-medium text-amber-700">Password locked</span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-1">
+                        {userIsPasswordLocked(row) ? (
+                          <button
+                            type="button"
+                            onClick={() => clearPasswordLock(row)}
+                            className="rounded-md px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50"
+                          >
+                            Clear lock
+                          </button>
+                        ) : null}
                         <IconButton label="Permissions" onClick={() => openView(row)}>
                           <ShieldIcon />
                         </IconButton>

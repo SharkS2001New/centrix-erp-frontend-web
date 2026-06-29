@@ -870,6 +870,10 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
   );
 }
 
+function userIsPasswordLocked(user) {
+  return Boolean(user?.password_locked ?? user?.must_change_password);
+}
+
 function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false }) {
   const confirm = useConfirm();
   const [expanded, setExpanded] = useState(false);
@@ -918,6 +922,32 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
       username: username.trim(),
       email: email.trim(),
     });
+  }
+
+  async function clearPasswordLock() {
+    const ok = await confirm({
+      title: "Clear password lock?",
+      message: `Clear the password lock for "${user.full_name}"? They can sign in and use the application without changing their password.`,
+      confirmLabel: "Clear lock",
+    });
+    if (!ok) return;
+
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const { apiRequest } = await import("@/lib/api");
+      await apiRequest(`/admin/organizations/${organizationId}/users/${user.id}/clear-password-lock`, {
+        method: "POST",
+      });
+      setSaved(true);
+      await onUpdated?.();
+    } catch (err) {
+      const { ApiError } = await import("@/lib/api");
+      setError(err instanceof ApiError ? err.message : "Could not clear password lock.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function deleteUser() {
@@ -988,10 +1018,23 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
         ) : (
           <span className="text-slate-400">Inactive</span>
         )}
+        {userIsPasswordLocked(user) ? (
+          <span className="mt-1 block text-[11px] font-medium text-amber-700">Password locked</span>
+        ) : null}
       </td>
       <td className="px-4 py-2">
         <div className="flex flex-col items-end gap-2">
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {userIsPasswordLocked(user) ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void clearPasswordLock()}
+                className="rounded border border-amber-300 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-50 disabled:opacity-50"
+              >
+                Clear password lock
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={busy}

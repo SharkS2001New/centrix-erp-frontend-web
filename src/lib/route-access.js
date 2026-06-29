@@ -13,6 +13,13 @@ import { getStoredWorkspace } from "@/lib/auth-storage";
 import { defaultWorkspaceId, pathBelongsToWorkspace } from "@/lib/workspaces";
 import { canAccessAccountingRoute } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
+import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
+
+const LEGACY_ARCHIVE_ROUTE_PREFIXES = [
+  "/sales/legacy-orders",
+  "/sales/legacy-returns",
+  "/reports/legacy-archive",
+];
 
 function flattenNavItems() {
   const items = [];
@@ -100,6 +107,15 @@ export function canAccessRoute(pathname, ctx) {
   }
 
   if (
+    LEGACY_ARCHIVE_ROUTE_PREFIXES.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    ) &&
+    !isLegacyArchiveEnabled(ctx.capabilities)
+  ) {
+    return false;
+  }
+
+  if (
     isOrgAdminSettingsPath(pathname) &&
     shouldHideOrgAdminFromPlatformSuperAdmin({
       organization: ctx.organization,
@@ -150,6 +166,9 @@ export function canAccessRoute(pathname, ctx) {
   const reportMatch = pathname.match(/^\/reports\/([^/]+)$/);
   if (reportMatch) {
     const slug = reportMatch[1];
+    if (slug === "legacy-archive" && !isLegacyArchiveEnabled(ctx.capabilities)) {
+      return false;
+    }
     if (!isReportModuleEnabled(slug, ctx.isModuleEnabled)) {
       return false;
     }

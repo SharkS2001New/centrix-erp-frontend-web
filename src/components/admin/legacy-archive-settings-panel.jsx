@@ -122,7 +122,7 @@ export function LegacyArchiveSettingsPanel({ saving, setSaving, setError, setMes
               checked={form.enabled}
               onChange={(enabled) => setForm((f) => ({ ...f, enabled }))}
               label="Enable legacy archive"
-              description="When on, this tenant can browse pre-cutover sales from the legacy database and materialize individual sales for returns."
+              description="When on, this tenant sees Legacy orders, Legacy returns, and the legacy sales archive in the sidebar and reports hub. Users can browse pre-cutover sales and materialize orders for KRA credit notes."
             />
 
             <Field label="Legacy MySQL database name">

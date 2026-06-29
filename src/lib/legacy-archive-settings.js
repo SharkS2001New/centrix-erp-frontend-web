@@ -47,3 +47,8 @@ export function legacyArchivePayloadFromForm(form) {
 
   return body;
 }
+
+/** Whether platform super admin enabled legacy archive for this tenant. */
+export function isLegacyArchiveEnabled(capabilities) {
+  return Boolean(capabilities?.legacy_archive_enabled);
+}

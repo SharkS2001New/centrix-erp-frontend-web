@@ -9,21 +9,20 @@ import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import {
   ReturnStatusBadge,
   customerReturnLineQtyLabel,
-  isReturnPending,
   normalizeReturnStatus,
   refundMethodLabel,
   stockLocationLabel,
 } from "@/components/sales/customer-returns-shared";
+import { resolveCustomerReturnActionFlags } from "@/components/sales/customer-return-actions";
 
 export function CustomerReturnDetailModal({
   open,
   row,
   busy,
+  canManage = false,
   onClose,
-  onApprove,
-  onReject,
+  onRequestAction,
   onEdit,
-  onDelete,
   onPrint,
   error,
   successMessage,
@@ -57,8 +56,8 @@ export function CustomerReturnDetailModal({
 
   const customerName =
     row.customer?.customer_name ?? row.sale?.customer_name_override ?? "Walk-in customer";
-  const pending = isReturnPending(row.status);
   const approved = normalizeReturnStatus(row.status) === "approved";
+  const flags = resolveCustomerReturnActionFlags(row, canManage);
   const approverName =
     row.approved_by_user?.full_name ??
     row.approvedByUser?.full_name ??
@@ -259,37 +258,43 @@ export function CustomerReturnDetailModal({
         ) : null}
 
         <div className="shrink-0 border-t border-slate-100 bg-white px-5 py-4">
-          {pending ? (
+          {flags.can_approve || flags.can_reject ? (
             <div className="mb-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => onApprove?.(row)}
-                disabled={busy}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-              >
-                Approve return
-              </button>
-              <button
-                type="button"
-                onClick={() => onReject?.(row)}
-                disabled={busy}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
-              >
-                Reject return
-              </button>
+              {flags.can_approve ? (
+                <button
+                  type="button"
+                  onClick={() => onRequestAction?.("approve", row)}
+                  disabled={busy}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                >
+                  Approve return
+                </button>
+              ) : null}
+              {flags.can_reject ? (
+                <button
+                  type="button"
+                  onClick={() => onRequestAction?.("reject", row)}
+                  disabled={busy}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+                >
+                  {approved ? "Reject (undo approval)" : "Reject return"}
+                </button>
+              ) : null}
             </div>
           ) : null}
 
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => onPrint?.(row)}
-              disabled={busy}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              {approved ? "Print credit note" : "Print"}
-            </button>
-            {pending ? (
+            {flags.can_print ? (
+              <button
+                type="button"
+                onClick={() => onPrint?.(row)}
+                disabled={busy}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {approved ? "Print credit note" : "Print return"}
+              </button>
+            ) : null}
+            {flags.can_edit ? (
               <button
                 type="button"
                 onClick={() => onEdit?.(row)}
@@ -299,14 +304,16 @@ export function CustomerReturnDetailModal({
                 Edit
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={() => onDelete?.(row)}
-              disabled={busy}
-              className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-            >
-              Delete
-            </button>
+            {flags.can_delete ? (
+              <button
+                type="button"
+                onClick={() => onRequestAction?.("delete", row)}
+                disabled={busy}
+                className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                Delete
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
