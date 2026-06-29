@@ -22,6 +22,9 @@ export const ORG_SETTINGS_TAB_MODULES = {
   "legacy-archive": ["admin"],
 };
 
+/** Tabs always available on tenant Administration → Organization settings. */
+export const TENANT_CORE_SETTINGS_TABS = new Set(["general", "printouts", "notifications", "security"]);
+
 /** Tabs only shown when platform manages settings on behalf of a tenant without Administration. */
 export const PLATFORM_MANAGED_ADMIN_TABS = new Set(["general", "printouts", "notifications", "security"]);
 
@@ -33,12 +36,15 @@ function moduleEnabled(capabilities, moduleKey) {
 }
 
 /** @param {object} capabilities erp/capabilities payload */
-export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged = false } = {}) {
+export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged = false, tenantSelfService = false } = {}) {
   switch (tabId) {
     case "general":
     case "printouts":
     case "notifications":
     case "security":
+      if (tenantSelfService && TENANT_CORE_SETTINGS_TABS.has(tabId)) {
+        return true;
+      }
       if (platformManaged && PLATFORM_MANAGED_ADMIN_TABS.has(tabId)) {
         return true;
       }
@@ -93,7 +99,9 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
 /** @param {object} capabilities */
 export function visibleOrgSettingsTabs(allTabs, capabilities, options = {}) {
   const { platformManaged = false, tenantSelfService = false } = options;
-  let tabs = allTabs.filter((tab) => isOrgSettingsTabVisible(tab.id, capabilities, { platformManaged }));
+  let tabs = allTabs.filter((tab) =>
+    isOrgSettingsTabVisible(tab.id, capabilities, { platformManaged, tenantSelfService }),
+  );
   if (tenantSelfService) {
     tabs = tabs.filter((tab) => !PLATFORM_ONLY_ORG_SETTINGS_TABS.has(tab.id));
   }

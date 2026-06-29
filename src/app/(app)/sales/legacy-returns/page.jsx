@@ -13,6 +13,7 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { printCreditNote } from "@/components/sales/credit-note-print";
+import { LegacyReturnDetailModal } from "@/components/sales/legacy-return-detail-modal";
 import { ReturnStatusBadge } from "@/components/sales/customer-returns-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 
@@ -30,7 +31,9 @@ function LegacyReturnsContent() {
   const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState([]);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const loadData = useCallback(async () => {
     setError(null);
@@ -77,13 +80,26 @@ function LegacyReturnsContent() {
 
   const openDetail = useCallback(async (row) => {
     setActionError(null);
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailRow({ id: row.id, return_no: row.return_no, status: row.status });
     try {
       const full = await apiRequest(`/legacy-returns/${row.id}`);
       setDetailRow(full);
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : "Could not load return");
+      setDetailOpen(false);
+      setDetailRow(null);
+    } finally {
+      setDetailLoading(false);
     }
   }, []);
+
+  function closeDetail() {
+    setDetailOpen(false);
+    setDetailRow(null);
+    setDetailLoading(false);
+  }
 
   useEffect(() => {
     const returnId = searchParams.get("return_id");
@@ -126,7 +142,7 @@ function LegacyReturnsContent() {
           {error}
         </p>
       ) : null}
-      {actionError ? (
+      {actionError && !detailOpen ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           {actionError}
         </p>
@@ -243,52 +259,14 @@ function LegacyReturnsContent() {
         onChange={setPage}
       />
 
-      {detailRow ? (
-        <div className="theme-panel rounded-lg border p-4 text-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">{detailRow.return_no}</h2>
-              <p className="text-slate-600">
-                {detailRow.sale ? formatReceiptNumber(detailRow.sale) : "—"} ·{" "}
-                {formatSaleKes(detailRow.total_amount)}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              {detailRow.status === "approved" && (detailRow.credit_note ?? detailRow.creditNote) ? (
-                <button
-                  type="button"
-                  className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
-                  onClick={() => handlePrint(detailRow)}
-                >
-                  Print credit note
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-50"
-                onClick={() => setDetailRow(null)}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-          <ul className="mt-4 space-y-1">
-            {(detailRow.lines ?? []).map((line) => (
-              <li key={line.id ?? line.product_code}>
-                {line.product_name ?? line.product_code} — qty {line.return_qty} —{" "}
-                {formatSaleKes(line.amount)}
-              </li>
-            ))}
-          </ul>
-          {(detailRow.credit_note ?? detailRow.creditNote)?.kra_status === "failed" &&
-          (detailRow.credit_note ?? detailRow.creditNote)?.kra_error_message ? (
-            <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-              KRA device error:{" "}
-              {(detailRow.credit_note ?? detailRow.creditNote).kra_error_message}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
+      <LegacyReturnDetailModal
+        open={detailOpen}
+        row={detailRow}
+        loading={detailLoading}
+        error={actionError}
+        onClose={closeDetail}
+        onPrint={handlePrint}
+      />
     </div>
   );
 }

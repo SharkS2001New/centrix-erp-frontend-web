@@ -15,6 +15,7 @@ import {
   printoutsGeneralPayloadFromForm,
   printoutsProcurementPayloadFromForm,
   printoutsSalesPayloadFromForm,
+  resolvePrintoutSections,
 } from "@/lib/printouts-settings";
 import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
 import { MultilinePrintNotesField } from "@/components/admin/multiline-print-notes-field";
@@ -70,31 +71,42 @@ export function PrintoutsSettingsPanel({
   const [form, setForm] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const modules = capabilities?.modules ?? {};
-  const hasSales = Boolean(modules.sales);
-  const hasProcurement = Boolean(modules.customers_suppliers);
-  const hasLoadingSheets = Boolean(modules.distribution || modules["sales.mobile"]);
-  const hasGeneral = Boolean(modules.admin);
+  const sections = resolvePrintoutSections(capabilities);
+  const { hasSales, hasProcurement, hasDistribution, hasMobileSales, footerKeys } = sections;
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [generalRes, salesRes, procurementRes, distributionRes] = await Promise.all([
-        hasGeneral ? apiRequest(settingsPath("general")) : Promise.resolve(null),
-        hasSales ? apiRequest(settingsPath("sales")) : Promise.resolve(null),
-        hasProcurement ? apiRequest(settingsPath("procurement")) : Promise.resolve(null),
-        hasLoadingSheets ? apiRequest(settingsPath("distribution")) : Promise.resolve(null),
-      ]);
+      const [generalResult, salesResult, procurementResult, distributionResult] =
+        await Promise.allSettled([
+          apiRequest(settingsPath("general")),
+          hasSales ? apiRequest(settingsPath("sales")) : Promise.resolve(null),
+          hasProcurement ? apiRequest(settingsPath("procurement")) : Promise.resolve(null),
+          hasDistribution ? apiRequest(settingsPath("distribution")) : Promise.resolve(null),
+        ]);
+
+      const valueFrom = (result) => (result.status === "fulfilled" ? result.value : null);
+
       setForm(
-        printoutsFormFromApis({ generalRes, salesRes, procurementRes, distributionRes }),
+        printoutsFormFromApis({
+          generalRes: valueFrom(generalResult),
+          salesRes: valueFrom(salesResult),
+          procurementRes: valueFrom(procurementResult),
+          distributionRes: valueFrom(distributionResult),
+        }),
       );
+
+      if (generalResult.status === "rejected") {
+        const e = generalResult.reason;
+        setError(e instanceof ApiError ? e.message : "Failed to load printout settings");
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load printout settings");
     } finally {
       setLoading(false);
     }
-  }, [hasGeneral, hasLoadingSheets, hasProcurement, hasSales, setError, settingsPath]);
+  }, [hasDistribution, hasProcurement, hasSales, setError, settingsPath]);
 
   useEffect(() => {
     load();
@@ -106,15 +118,12 @@ export function PrintoutsSettingsPanel({
     setError(null);
     setMessage(null);
     try {
-      const tasks = [];
-      if (hasGeneral) {
-        tasks.push(
-          apiRequest(settingsPath("general"), {
-            method: "PATCH",
-            body: printoutsGeneralPayloadFromForm(form),
-          }),
-        );
-      }
+      const tasks = [
+        apiRequest(settingsPath("general"), {
+          method: "PATCH",
+          body: printoutsGeneralPayloadFromForm(form),
+        }),
+      ];
       if (hasSales) {
         tasks.push(
           apiRequest(settingsPath("sales"), {
@@ -131,7 +140,7 @@ export function PrintoutsSettingsPanel({
           }),
         );
       }
-      if (hasLoadingSheets) {
+      if (hasDistribution) {
         tasks.push(
           apiRequest(settingsPath("distribution"), {
             method: "PATCH",
@@ -139,7 +148,12 @@ export function PrintoutsSettingsPanel({
           }),
         );
       }
-      await Promise.all(tasks);
+      const results = await Promise.allSettled(tasks);
+      const failed = results.find((result) => result.status === "rejected");
+      if (failed) {
+        const e = failed.reason;
+        throw e instanceof ApiError ? e : new Error("Failed to save printout settings");
+      }
       await load();
       if (afterSave) await afterSave();
       setMessage("Printout settings saved.");
@@ -155,8 +169,8 @@ export function PrintoutsSettingsPanel({
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Printouts</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Customize each document type separately. The live preview on the right updates as you
-          edit.
+          Customize each document type separately. Sections below match your organization&apos;s enabled
+          modules. The live preview on the right updates as you edit.
         </p>
 
         {loading || !form ? (
@@ -164,12 +178,11 @@ export function PrintoutsSettingsPanel({
         ) : (
           <div className="mt-5 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)]">
             <div className="space-y-6">
-              {hasGeneral ? (
-                <div>
-                  <SectionHeading
-                    title="Document branding"
-                    description="Logo and organization header shown on all printouts."
-                  />
+              <div>
+                <SectionHeading
+                  title="Document branding"
+                  description="Logo and organization header shown on all printouts."
+                />
                   <div className="mt-4 space-y-3">
                     <Toggle
                       label="Show organization name on documents"
@@ -194,16 +207,22 @@ export function PrintoutsSettingsPanel({
                     </Field>
                   </div>
                 </div>
-              ) : null}
 
-              {hasGeneral ? (
-                <div>
-                  <SectionHeading
-                    title="Document footers"
-                    description="Each printout type has its own footer. Thermal receipt: one centered line per row (use {organization} for company name). Vendor credit on receipts is fixed and always printed."
-                  />
+              <div>
+                <SectionHeading
+                  title="Document footers"
+                  description="Each enabled printout type has its own footer. Thermal receipt: one centered line per row (use {organization} for company name). Vendor credit on receipts is fixed and always printed."
+                />
                   <div className="mt-4 space-y-3">
-                    {Object.entries(PRINT_FOOTER_LABELS).map(([key, label]) => (
+                    {footerKeys.length === 0 ? (
+                      <p className="text-sm text-slate-500">
+                        Enable Sales, Procurement, or Distribution to configure document footers for those
+                        printouts.
+                      </p>
+                    ) : null}
+                    {footerKeys.map((key) => {
+                      const label = PRINT_FOOTER_LABELS[key];
+                      return (
                       <Field key={key} label={label}>
                         <textarea
                           className={inputClassName()}
@@ -233,10 +252,10 @@ export function PrintoutsSettingsPanel({
                           </p>
                         ) : null}
                       </Field>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
-              ) : null}
 
               {hasSales ? (
                 <div>
@@ -293,6 +312,12 @@ export function PrintoutsSettingsPanel({
                       onChange={(v) =>
                         setForm((f) => ({ ...f, use_same_payment_details_for_routes: v }))
                       }
+                      disabled={!hasMobileSales}
+                      description={
+                        hasMobileSales
+                          ? undefined
+                          : "Enable the mobile sales module to configure separate route payment instructions."
+                      }
                     />
                     <ReceiptPaymentDetailsEditor
                       value={form.pos_receipt_payment_details}
@@ -301,7 +326,7 @@ export function PrintoutsSettingsPanel({
                       }
                       idPrefix="printouts-pos-pay"
                     />
-                    {!form.use_same_payment_details_for_routes ? (
+                    {!form.use_same_payment_details_for_routes && hasMobileSales ? (
                       <ReceiptPaymentDetailsEditor
                         value={form.route_receipt_payment_details}
                         onChange={(value) =>
@@ -403,7 +428,7 @@ export function PrintoutsSettingsPanel({
                 </div>
               ) : null}
 
-              {hasLoadingSheets ? (
+              {hasDistribution ? (
                 <div>
                   <SectionHeading
                     title="Loading sheets"
@@ -442,12 +467,20 @@ export function PrintoutsSettingsPanel({
                   </div>
                 </div>
               ) : null}
+
+              {!sections.hasModuleSections ? (
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  Sales, procurement, and distribution printout options appear here when those modules are
+                  enabled for your organization.
+                </p>
+              ) : null}
             </div>
 
             <PrintoutsLivePreview
               form={form}
               organization={previewContext.organization}
               moduleSettings={previewContext.moduleSettings}
+              capabilities={capabilities}
             />
           </div>
         )}

@@ -16,16 +16,17 @@ import {
   shouldShowReceiptPaymentDetails,
 } from "@/lib/receipt-payment-details";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
+import { resolvePrintoutSections } from "@/lib/printouts-settings";
 import { SAMPLE_PREVIEW_CUSTOMER, SAMPLE_PREVIEW_SELLER } from "@/lib/print-preview-samples";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import { resolveSaleDocumentBranding } from "@/lib/sale-document-print-shared";
 
-const PREVIEW_OPTIONS = [
-  { id: "receipt", label: "Thermal receipt" },
-  { id: "invoice", label: "Invoice receipt (A4)" },
-  { id: "lpo", label: "LPO" },
-  { id: "loading_sheet", label: "Loading sheet" },
-];
+const PREVIEW_OPTION_LABELS = {
+  receipt: "Thermal receipt",
+  invoice: "Invoice receipt (A4)",
+  lpo: "LPO",
+  loading_sheet: "Loading sheet",
+};
 
 function resolvePreviewSeller(organization) {
   if (!organization) return SAMPLE_PREVIEW_SELLER;
@@ -124,9 +125,27 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings }) {
   });
 }
 
-export function PrintoutsLivePreview({ form, organization, moduleSettings, defaultType = "receipt" }) {
-  const [previewType, setPreviewType] = useState(defaultType);
+export function PrintoutsLivePreview({
+  form,
+  organization,
+  moduleSettings,
+  capabilities,
+  defaultType = "receipt",
+}) {
+  const previewTypes = resolvePrintoutSections(capabilities).previewTypes;
+  const previewOptions = previewTypes.map((id) => ({
+    id,
+    label: PREVIEW_OPTION_LABELS[id] ?? id,
+  }));
+  const initialType = previewTypes.includes(defaultType) ? defaultType : previewTypes[0] ?? "receipt";
+  const [previewType, setPreviewType] = useState(initialType);
   const [debouncedForm, setDebouncedForm] = useState(form);
+
+  useEffect(() => {
+    if (!previewTypes.includes(previewType) && previewTypes.length > 0) {
+      setPreviewType(previewTypes[0]);
+    }
+  }, [previewType, previewTypes]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedForm(form), 280);
@@ -148,19 +167,23 @@ export function PrintoutsLivePreview({ form, organization, moduleSettings, defau
       <div className="border-b border-slate-200 bg-white px-4 py-3">
         <p className="text-sm font-medium text-slate-900">Live preview</p>
         <p className="mt-0.5 text-xs text-slate-500">Updates as you edit. Sample data is used for speed.</p>
+        {previewOptions.length > 0 ? (
         <div className="mt-3">
           <select
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
             value={previewType}
             onChange={(e) => setPreviewType(e.target.value)}
           >
-            {PREVIEW_OPTIONS.map((option) => (
+            {previewOptions.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.label}
               </option>
             ))}
           </select>
         </div>
+        ) : (
+          <p className="mt-2 text-xs text-slate-500">Enable Sales, Procurement, or Distribution for live previews.</p>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden bg-slate-100 p-3">
         {html ? (

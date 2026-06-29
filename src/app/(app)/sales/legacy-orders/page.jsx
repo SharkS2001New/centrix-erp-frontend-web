@@ -14,7 +14,16 @@ import {
   SearchInput,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
+import { getOrderDocumentType } from "@/lib/sales-settings";
+import {
+  disposePrintWindow,
+  openBlankPrintWindow,
+  printWindowFeatures,
+  PRINT_BLOCKED_MESSAGE,
+} from "@/lib/open-print-window";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
@@ -28,7 +37,7 @@ function legacyReturnStatusLabel(summary) {
 
 function LegacyOrdersContent() {
   const confirm = useConfirm();
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, organization, capabilities } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
   const canManageSales = Boolean(hasPermission?.("sales.manage"));
   const canDeleteLegacyOrder = useCallback(
@@ -59,6 +68,7 @@ function LegacyOrdersContent() {
   const debouncedMaxTotal = useDebouncedValue(maxTotalFilter);
   const [page, setPage] = useState(1);
   const [deletingId, setDeletingId] = useState(null);
+  const [printingId, setPrintingId] = useState(null);
 
   const loadData = useCallback(async () => {
     setListLoading(true);
@@ -99,6 +109,45 @@ function LegacyOrdersContent() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, fromDate, toDate, returnsFilter, debouncedMinTotal, debouncedMaxTotal]);
+
+  async function printLegacyOrder(row, documentType) {
+    if (!row?.id || printingId) return;
+
+    const cachedType = documentType ?? getOrderDocumentType(capabilities?.module_settings);
+    const printWindow =
+      cachedType !== "both"
+        ? openBlankPrintWindow(printWindowFeatures(cachedType))
+        : null;
+    if (cachedType !== "both" && !printWindow) {
+      notifyError(PRINT_BLOCKED_MESSAGE);
+      return;
+    }
+
+    setPrintingId(row.id);
+    try {
+      const detail = await apiRequest(`/legacy-orders/${row.id}`, {
+        loading: false,
+        searchParams: { for_print: "1" },
+      });
+      const printed = await printSaleOrder(detail, {
+        organization,
+        organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
+        moduleSettings: capabilities?.module_settings,
+        capabilities,
+        user,
+        printWindow,
+        ...(documentType ? { documentType } : {}),
+      });
+      if (!printed) {
+        disposePrintWindow(printWindow);
+      }
+    } catch (e) {
+      disposePrintWindow(printWindow);
+      notifyError(e instanceof Error ? e.message : "Print failed");
+    } finally {
+      setPrintingId(null);
+    }
+  }
 
   async function deleteLegacyOrder(row) {
     if (!canDeleteLegacyOrder(row) || !row?.id) return;
@@ -254,9 +303,11 @@ function LegacyOrdersContent() {
                     <td className="px-3 py-2">
                       <span
                         className={
-                          summary.has_returns
-                            ? "text-amber-800"
-                            : "text-slate-500"
+                          summary.fully_returned
+                            ? "text-emerald-700"
+                            : summary.has_returns
+                              ? "text-amber-800"
+                              : "text-slate-500"
                         }
                       >
                         {legacyReturnStatusLabel(summary)}
@@ -268,7 +319,23 @@ function LegacyOrdersContent() {
                       ) : null}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <div className="flex items-center justify-end gap-3">
+                      <div className="flex flex-wrap items-center justify-end gap-3">
+                        <button
+                          type="button"
+                          className="text-slate-700 hover:text-slate-900 disabled:opacity-50"
+                          disabled={printingId === row.id || listLoading}
+                          onClick={() => printLegacyOrder(row, "receipt")}
+                        >
+                          {printingId === row.id ? "Printing…" : "Print thermal"}
+                        </button>
+                        <button
+                          type="button"
+                          className="text-slate-700 hover:text-slate-900 disabled:opacity-50"
+                          disabled={printingId === row.id || listLoading}
+                          onClick={() => printLegacyOrder(row, "invoice")}
+                        >
+                          Print A4
+                        </button>
                         <Link
                           href={`/sales/legacy-returns/new?sale_id=${row.id}`}
                           className="text-indigo-600 hover:text-indigo-800"

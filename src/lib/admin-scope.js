@@ -24,9 +24,26 @@ export function isPlatformOrganization(organization) {
   return Boolean(organization?.module_settings?.platform);
 }
 
+const TRADING_MODULE_KEYS = [
+  "sales",
+  "sales.pos",
+  "sales.backend",
+  "sales.mobile",
+  "inventory",
+  "customers_suppliers",
+  "accounting",
+  "payments",
+  "hr_payroll",
+  "distribution",
+];
+
 /** Whether the tenant Administration workspace/module is enabled for this organization. */
 export function isAdministrationModuleEnabled(capabilities) {
-  return Boolean(capabilities?.modules?.admin);
+  if (Boolean(capabilities?.modules?.admin)) {
+    return true;
+  }
+  const modules = capabilities?.modules ?? {};
+  return TRADING_MODULE_KEYS.some((key) => Boolean(modules[key]));
 }
 
 export function isOrgAdministrator(user, capabilities) {

@@ -59,10 +59,19 @@ export async function ensureSaleForPrint(sale) {
 
   if (items.length > 0 && !missingProductNames) return sale;
 
-  try {
-    const loaded = await apiRequest(`/sales/${sale.id}`, { loading: false, reportIssues: false });
-    return loaded ?? sale;
-  } catch {
-    return sale;
+  const isLegacy = Boolean(sale?.fulfillment_meta?.legacy_import);
+  const endpoints = isLegacy
+    ? [`/legacy-orders/${sale.id}?for_print=1`, `/legacy-orders/${sale.id}`, `/sales/${sale.id}`]
+    : [`/sales/${sale.id}`, `/legacy-orders/${sale.id}?for_print=1`];
+
+  for (const endpoint of endpoints) {
+    try {
+      const loaded = await apiRequest(endpoint, { loading: false, reportIssues: false });
+      if (loaded) return loaded;
+    } catch {
+      // try next endpoint
+    }
   }
+
+  return sale;
 }

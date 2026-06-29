@@ -1,3 +1,4 @@
+import { PRINT_FOOTER_LABELS } from "@/lib/print-footer-settings";
 import { generalFormFromApi } from "@/lib/general-settings";
 import {
   invoicePrintFormFromApi,
@@ -51,6 +52,39 @@ export const EMPTY_PRINTOUTS_FORM = {
   loading_sheet_show_signatures: true,
   loading_sheet_default_checked_by: "",
 };
+
+/** Which printout sections apply for this organization's enabled modules. */
+export function resolvePrintoutSections(capabilities) {
+  const modules = capabilities?.modules ?? {};
+  const hasSales = Boolean(modules.sales);
+  const hasProcurement = Boolean(modules.customers_suppliers);
+  const hasDistribution = Boolean(modules.distribution);
+  const hasMobileSales = Boolean(modules["sales.mobile"]);
+
+  const footerKeys = Object.keys(PRINT_FOOTER_LABELS).filter((key) => {
+    if (key === "receipt" || key === "invoice") return hasSales;
+    if (key === "lpo") return hasProcurement;
+    if (key === "loading_sheet") return hasDistribution;
+    return false;
+  });
+
+  const previewTypes = [
+    hasSales ? "receipt" : null,
+    hasSales ? "invoice" : null,
+    hasProcurement ? "lpo" : null,
+    hasDistribution ? "loading_sheet" : null,
+  ].filter(Boolean);
+
+  return {
+    hasSales,
+    hasProcurement,
+    hasDistribution,
+    hasMobileSales,
+    footerKeys,
+    previewTypes,
+    hasModuleSections: hasSales || hasProcurement || hasDistribution,
+  };
+}
 
 export function printoutsGeneralFormFromApi(res) {
   const general = generalFormFromApi(res);
