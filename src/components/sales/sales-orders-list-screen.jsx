@@ -374,6 +374,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
         moduleSettings: capabilities?.module_settings,
         capabilities,
         uomById,
+        user,
         printWindow,
         ...(documentType ? { documentType } : {}),
       });

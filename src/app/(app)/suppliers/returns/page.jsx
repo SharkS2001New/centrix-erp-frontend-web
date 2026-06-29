@@ -475,7 +475,7 @@ export default function SupplierReturnsPage() {
         await printSupplierReturn(row, {
           organization,
           generalSettings: generalSettings(),
-          printedBy: user?.full_name ?? user?.username ?? null,
+          user,
         });
       } catch (e) {
         notifyError(e instanceof Error ? e.message : "Failed to print return");

@@ -20,7 +20,7 @@ const PAGE_SIZE = 10;
 
 function LegacyReturnsContent() {
   const searchParams = useSearchParams();
-  const { organization, generalSettings } = useAuth();
+  const { organization, generalSettings, user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -100,6 +100,7 @@ function LegacyReturnsContent() {
     printCreditNote(payload, {
       organization,
       generalSettings: generalSettings(),
+      user,
     });
   }
 

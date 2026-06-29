@@ -2049,6 +2049,7 @@ export function PosScreen({ standalone = false }) {
         organization,
         organizationName: capabilities?.profile_label,
         uomById,
+        user,
       })
         .then((result) => {
           if (!result) {
@@ -2069,7 +2070,7 @@ export function PosScreen({ standalone = false }) {
           );
         });
     },
-    [posSalesConfig.showCheckoutOnCreate, capabilities, organization, uomById],
+    [posSalesConfig.showCheckoutOnCreate, capabilities, organization, uomById, user],
   );
 
   async function handleCheckout(body) {
@@ -2354,6 +2355,7 @@ export function PosScreen({ standalone = false }) {
         organization,
         organizationName: capabilities?.profile_label,
         uomById,
+        user,
       });
       if (!result) {
         setReceiptPrintStatus("failed");

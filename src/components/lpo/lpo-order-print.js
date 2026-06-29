@@ -3,6 +3,7 @@ import { mergeGeneralSettings } from "@/lib/general-settings";
 import { mergeProcurementSettings } from "@/lib/procurement-settings";
 import { fetchPrintModuleSettings } from "@/lib/print-module-settings";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
+import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { buildLpoPrintHtml } from "@/components/lpo/lpo-print-html";
 import {
   disposePrintWindow,
@@ -80,7 +81,7 @@ async function loadLpoPrintPayload(lpoNo, options = {}) {
     printSettings,
     generalSettings,
     documentFooterText: resolvePrintFooter(generalSettings, "lpo"),
-    printedBy: options.user?.full_name ?? options.user?.username ?? null,
+    printedBy: resolvePrintedByUser(options.user ?? options.printedBy),
   };
 }
 

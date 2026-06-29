@@ -40,7 +40,10 @@ function ChangePasswordForm() {
       capabilities: caps,
       requireTillFloat: resolveTillFloatNavFlag(caps),
     });
-    await navigateAfterAuthSessionReady(ctx, caps, router, { switchWorkspace });
+    await navigateAfterAuthSessionReady(ctx, caps, router, {
+      switchWorkspace,
+      afterPasswordLock: true,
+    });
   }
 
   async function onSubmit(e) {

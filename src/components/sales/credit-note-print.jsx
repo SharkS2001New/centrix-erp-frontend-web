@@ -14,6 +14,7 @@ import {
   extractKraReceiptData,
   kraReceiptQrDataUrl,
 } from "@/lib/kra-receipt-qr";
+import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { formatReceiptNumber } from "@/lib/sales";
 
 const KRA_REFUND_REASONS = {
@@ -126,7 +127,8 @@ async function buildCustomerReturnDocumentBody(customerReturn, options = {}) {
   });
 
   const refundMethod = customerReturn.refund_method ?? "CASH";
-  const processedBy = customerReturn.processed_by_name ?? customerReturn.created_by_name ?? printedBy ?? "—";
+  const processedBy = customerReturn.processed_by_name ?? customerReturn.created_by_name ?? "—";
+  const footerPrintedBy = resolvePrintedByUser(printedBy) ?? "—";
 
   return {
     title,
@@ -149,7 +151,7 @@ async function buildCustomerReturnDocumentBody(customerReturn, options = {}) {
         <p>Signature: <span class="sig-line">&nbsp;</span></p>
       </div>
     `,
-    printedBy: printedBy ?? processedBy,
+    printedBy: footerPrintedBy,
   };
 }
 
@@ -161,19 +163,21 @@ export async function printCustomerReturn(
     uomById = null,
     kraEnabled = true,
     printedBy = null,
+    user = null,
   } = {},
 ) {
   if (!customerReturn) return;
 
   const branding = resolveDocumentBranding({ organization, generalSettings });
   const hasCreditNote = Boolean(customerReturn.credit_note ?? customerReturn.creditNote);
+  const resolvedPrintedBy = resolvePrintedByUser(printedBy ?? user);
   const { title, bodyHtml, printedBy: byName } = await buildCustomerReturnDocumentBody(
     customerReturn,
     {
       title: hasCreditNote ? "CREDIT NOTE" : "CUSTOMER RETURN",
       uomById,
       kraEnabled: hasCreditNote && kraEnabled,
-      printedBy,
+      printedBy: resolvedPrintedBy,
     },
   );
 
@@ -197,6 +201,7 @@ export async function printCreditNote(
     uomById = null,
     kraEnabled = true,
     printedBy = null,
+    user = null,
   } = {},
 ) {
   if (!customerReturn) return;
@@ -207,13 +212,14 @@ export async function printCreditNote(
     branding.watermarkText = organizationName;
   }
 
+  const resolvedPrintedBy = resolvePrintedByUser(printedBy ?? user);
   const { title, bodyHtml, printedBy: byName } = await buildCustomerReturnDocumentBody(
     customerReturn,
     {
       title: "CREDIT NOTE",
       uomById,
       kraEnabled,
-      printedBy: printedBy ?? branch?.name ?? null,
+      printedBy: resolvedPrintedBy,
     },
   );
 

@@ -29,7 +29,7 @@ export default function SalesReturnsPage() {
   const router = useRouter();
   const confirm = useConfirm();
   const searchParams = useSearchParams();
-  const { capabilities, organization, generalSettings } = useAuth();
+  const { capabilities, organization, generalSettings, user } = useAuth();
   const { runQueuedTask } = useQueuedTask(
     "Please wait while the credit note is submitted to the KRA device…",
   );
@@ -367,6 +367,7 @@ export default function SalesReturnsPage() {
             organization,
             generalSettings: generalSettings(),
             kraEnabled: kraDeviceEnabled,
+            user,
           });
         }}
         error={actionError}

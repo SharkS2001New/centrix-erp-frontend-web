@@ -262,7 +262,7 @@ export function buildLpoPrintHtml({
     second: "2-digit",
     hour12: true,
   });
-  const byName = printedBy ?? signatures.preparedBy ?? lpo?.created_by_name ?? "—";
+  const printedByName = printedBy ?? "—";
 
   const orgHeaderHtml = branding.showHeader
     ? buildReportOrgHeaderHtml({
@@ -402,7 +402,7 @@ export function buildLpoPrintHtml({
 
     <div class="print-footer">
       <span>Printed On: ${escapeHtml(printedOn)}</span>
-      <span>By: ${escapeHtml(byName)}</span>
+      <span>Printed By: ${escapeHtml(printedByName)}</span>
       <span>Page 1 of 1</span>
     </div>
   </div>

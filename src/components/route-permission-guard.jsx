@@ -29,6 +29,7 @@ export function RoutePermissionGuard({ children }) {
   const homePath = useMemo(() => resolveHomePath(accessCtx), [accessCtx]);
   const fallbackPath = useMemo(() => {
     if (canAccessRoute(homePath, accessCtx)) return homePath;
+    if (canAccessRoute("/choose-workspace", accessCtx)) return "/choose-workspace";
     if (canAccessRoute("/profile", accessCtx)) return "/profile";
     return "/choose-workspace";
   }, [accessCtx, homePath]);

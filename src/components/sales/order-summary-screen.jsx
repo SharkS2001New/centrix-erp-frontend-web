@@ -466,7 +466,7 @@ function PrintIcon() {
 
 export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const confirm = useConfirm();
-  const { capabilities, refreshCapabilities, organization } = useAuth();
+  const { capabilities, refreshCapabilities, organization, user } = useAuth();
   const { floatSessionId } = usePosSession();
 
   const [sale, setSale] = useState(null);
@@ -634,6 +634,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         customer,
         branch: branchName ? { name: branchName } : null,
         preparedBy: cashierName,
+        user,
         uomById,
         printWindow,
       });
@@ -644,7 +645,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       disposePrintWindow(printWindow);
       notifyError(e instanceof Error ? e.message : "Print failed");
     }
-  }, [sale, capabilities, organization, customer, branchName, cashierName, uomById]);
+  }, [sale, capabilities, organization, customer, branchName, cashierName, uomById, user]);
 
   async function transitionOrder(targetStatus, fulfillmentMeta) {
     if (!sale?.id) return;

@@ -1,4 +1,5 @@
 import { buildKraDocumentQrHtml } from "@/lib/kra-receipt-qr";
+import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { openPrintWindow, fillPrintWindow } from "@/lib/open-print-window";
 import {
   buildSaleDocumentLineRows,
@@ -76,6 +77,7 @@ export function buildSaleInvoiceHtml(
     customer = null,
     branch = null,
     preparedBy = null,
+    printedBy = null,
     invoiceValidDays = 7,
     uomById = null,
     branding = null,
@@ -144,6 +146,7 @@ export function buildSaleInvoiceHtml(
     hour12: false,
   });
   const servedByName = resolveOrderCreatorName(sale, preparedBy);
+  const printedByName = resolvePrintedByUser(printedBy) ?? "—";
 
   const orgHeader = branding
     ? buildSaleDocumentOrgHeaderHtml(branding, { layout: "a4" })
@@ -290,7 +293,7 @@ export function buildSaleInvoiceHtml(
       <p class="designed-by">Designed &amp; Developed By ${escapeHtml(PRINT_POWERED_BY)}</p>
       <div class="print-footer">
         <span>Printed On: ${escapeHtml(printedAt)}</span>
-        <span>By: ${escapeHtml(servedByName)}</span>
+        <span>Printed By: ${escapeHtml(printedByName)}</span>
         <span>Page 1 of 1</span>
       </div>
     </div>

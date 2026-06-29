@@ -453,7 +453,7 @@ export function buildLoadingListHtml({
     </div>
     <div class="print-footer">
       <span>Printed On: ${escapeHtml(printedAt)}</span>
-      <span>By: ${escapeHtml(printedByName)}</span>
+      <span>Printed By: ${escapeHtml(printedByName)}</span>
       <span>Page 1 of 1</span>
     </div>
   </div>

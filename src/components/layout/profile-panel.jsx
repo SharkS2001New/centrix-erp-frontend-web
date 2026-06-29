@@ -69,15 +69,22 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
       setPassword("");
       setPasswordConfirmation("");
 
-      if (requiredPasswordChange) {
-        const nextUser = { ...user, must_change_password: false };
+      const releasedFromRequiredChange =
+        requiredPasswordChange ||
+        (Boolean(user?.must_change_password) && res?.must_change_password === false);
+
+      if (releasedFromRequiredChange) {
+        const nextUser = { ...(res?.user ?? user), must_change_password: false };
         const ctx = buildAccessContext({
           user: nextUser,
           organization,
           capabilities: caps,
           requireTillFloat: resolveTillFloatNavFlag(caps),
         });
-        await navigateAfterAuthSessionReady(ctx, caps, router, { switchWorkspace });
+        await navigateAfterAuthSessionReady(ctx, caps, router, {
+          switchWorkspace,
+          afterPasswordLock: true,
+        });
         onPasswordChangeComplete?.();
       }
     } catch (err) {

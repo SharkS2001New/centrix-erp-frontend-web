@@ -197,7 +197,7 @@ export function buildBrandedA4DocumentHtml({
     </div>
     <div class="print-footer">
       <span>Printed On: ${escapeHtml(printedAt)}</span>
-      <span>By: ${escapeHtml(printedBy ?? "—")}</span>
+      <span>Printed By: ${escapeHtml(printedBy ?? "—")}</span>
       <span>${escapeHtml(pageLabel)}</span>
     </div>
   </div>

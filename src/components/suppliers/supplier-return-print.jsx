@@ -1,3 +1,4 @@
+import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { apiRequest } from "@/lib/api";
 import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import {
@@ -49,11 +50,13 @@ export async function printSupplierReturn(
     supplier = null,
     lpoSummary = null,
     printedBy = null,
+    user = null,
   } = {},
 ) {
   if (!document) return;
 
   const branding = resolveDocumentBranding({ organization, generalSettings });
+  const footerPrintedBy = resolvePrintedByUser(printedBy ?? user);
   let supplierRecord = supplier;
   let lpo = lpoSummary;
 
@@ -101,7 +104,7 @@ export async function printSupplierReturn(
   });
 
   const totalAmount = lineRows.reduce((sum, row) => sum + Number(row._amount ?? 0), 0);
-  const returnedBy = document.returned_by_name ?? printedBy ?? "—";
+  const returnedBy = document.returned_by_name ?? "—";
   const reason = resolveReturnReason(document);
 
   const leftMeta = buildMetaFieldRows([
@@ -149,7 +152,7 @@ export async function printSupplierReturn(
     branding,
     organization,
     bodyHtml,
-    printedBy: printedBy ?? returnedBy,
+    printedBy: footerPrintedBy,
     documentFooterText: branding.documentFooterText,
   });
 }

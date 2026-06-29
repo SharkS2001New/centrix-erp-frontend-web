@@ -118,6 +118,7 @@ export default function TripDetailPage() {
         sale: fullSale,
         trip,
         stopNumber,
+        printedBy: user?.full_name ?? user?.username ?? null,
       });
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not load order for delivery note");

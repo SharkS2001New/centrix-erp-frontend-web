@@ -17,14 +17,22 @@ function escapeHtml(value) {
 
 /**
  * Printable delivery note for a single order/stop on a trip.
- * @param {{ organizationName?: string, sale: object, trip?: object, stopNumber?: number }} options
+ * @param {{ organizationName?: string, sale: object, trip?: object, stopNumber?: number, printedBy?: string | null }} options
  */
-export function printDeliveryNote({ organizationName = "Delivery Note", sale, trip, stopNumber }) {
+export function printDeliveryNote({
+  organizationName = "Delivery Note",
+  sale,
+  trip,
+  stopNumber,
+  printedBy = null,
+}) {
   const items = sale?.items ?? [];
   const routeName = trip?.route?.route_name ?? sale?.route?.route_name ?? "—";
   const customer = saleCustomerLabel(sale);
   const orderNum = sale?.order_num ?? sale?.id ?? "—";
   const balance = Math.max(0, Number(sale?.order_total || 0) - Number(sale?.amount_paid || 0));
+  const printedAt = new Date().toLocaleString("en-GB");
+  const printedByName = printedBy ?? "—";
 
   const rows = items
     .map(
@@ -61,6 +69,16 @@ export function printDeliveryNote({ organizationName = "Delivery Note", sale, tr
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 36px; }
     .signatures h3 { margin: 0 0 48px; font-size: 12px; text-transform: uppercase; }
     .signatures .line { border-top: 1px solid #333; padding-top: 6px; margin-top: 40px; font-size: 11px; }
+    .print-footer {
+      margin-top: 24px;
+      padding-top: 8px;
+      border-top: 1px dotted #999;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 9px;
+      color: #333;
+    }
     @media print { body { margin: 12mm; } }
   </style>
 </head>
@@ -120,6 +138,11 @@ export function printDeliveryNote({ organizationName = "Delivery Note", sale, tr
       <div class="line">Name: _________________________</div>
       <div class="line">Date: _________________________</div>
     </div>
+  </div>
+  <div class="print-footer">
+    <span>Printed On: ${escapeHtml(printedAt)}</span>
+    <span>Printed By: ${escapeHtml(printedByName)}</span>
+    <span>Page 1 of 1</span>
   </div>
 </body>
 </html>`;

@@ -5,6 +5,7 @@ import {
   ensureSaleForPrint,
   fetchPrintModuleSettings,
 } from "@/lib/print-module-settings";
+import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import {
   kraReceiptQrDataUrl,
@@ -177,6 +178,8 @@ export async function printSaleOrder(sale, options = {}) {
       overrideDetails: options.paymentInstructions ?? null,
     });
 
+    const printedBy = resolvePrintedByUser(options.printedBy ?? options.user);
+
     const printOptions = {
       ...options,
       seller,
@@ -185,6 +188,7 @@ export async function printSaleOrder(sale, options = {}) {
       route,
       branding,
       organization,
+      printedBy,
       productDiscountsEnabled: Boolean(sales.allow_discounts),
       orderDiscountEnabled: Boolean(sales.enable_order_discount),
       customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
