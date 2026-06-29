@@ -18,6 +18,7 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { SUPPLIER_PAYMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { defaultDateRange } from "@/components/inventory/inventory-shared";
 import { formatSupplierKes, formatSupplierPaymentReference } from "@/components/suppliers/suppliers-shared";
+import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 
 const PAGE_SIZE = 15;
 
@@ -76,6 +77,7 @@ export default function SupplierPaymentsPage() {
         p.reference_number,
         p.payment_method,
         p.paid_by_name,
+        p.po_number,
         p.lpo_no != null ? `lpo ${p.lpo_no}` : "",
       ]
         .filter(Boolean)
@@ -234,7 +236,7 @@ export default function SupplierPaymentsPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 font-mono text-slate-700">
-                          {row.lpo_no ? `#${row.lpo_no}` : "—"}
+                          {row.lpo_no ? lpoRowDisplayNumber(row) : "—"}
                         </td>
                         <td className="px-4 py-3 text-slate-700">{row.payment_method}</td>
                         <td className="px-4 py-3 text-slate-600">

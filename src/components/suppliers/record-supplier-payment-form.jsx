@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { Field, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
+import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import { SupplierFormCard, SupplierFormPageShell } from "./supplier-form";
 import {
   EMPTY_SUPPLIER_PAYMENT_FORM,
@@ -150,7 +151,7 @@ export function RecordSupplierPaymentForm({
           if (!exists) {
             setFormError((prev) =>
               prev ||
-              `LPO #${initialLpoNo} was not found for this supplier. Pick another LPO or leave unlinked.`,
+              `LPO ${lpoRowDisplayNumber({ lpo_no: initialLpoNo })} was not found for this supplier. Pick another LPO or leave unlinked.`,
             );
           }
         }
@@ -456,7 +457,7 @@ export function RecordSupplierPaymentForm({
                     value={String(l.lpo_no)}
                     disabled={!l.can_pay}
                   >
-                    LPO #{l.lpo_no} — {formatSupplierKes(l.balance_due)} due
+                    {lpoRowDisplayNumber(l)} — {formatSupplierKes(l.balance_due)} due
                     {Number(l.total_amount) > 0
                       ? ` (total ${formatSupplierKes(l.total_amount)})`
                       : " (no LPO total)"}
@@ -483,7 +484,7 @@ export function RecordSupplierPaymentForm({
 
             {selectedLpo && !selectedLpo.can_pay ? (
               <div className="md:col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                LPO #{selectedLpo.lpo_no}: receive stock on at least one line before payment is
+                {lpoRowDisplayNumber(selectedLpo)}: receive stock on at least one line before payment is
                 allowed.
               </div>
             ) : null}
@@ -491,7 +492,7 @@ export function RecordSupplierPaymentForm({
             {selectedLpo && !manual && selectedLpo.can_pay ? (
               <div className="md:col-span-2 rounded-lg border border-amber-100 bg-amber-50/80 px-3 py-2 text-sm text-amber-900">
                 <p>
-                  LPO #{selectedLpo.lpo_no} balance due (received stock only):{" "}
+                  {lpoRowDisplayNumber(selectedLpo)} balance due (received stock only):{" "}
                   <span className="font-medium">{formatSupplierKes(selectedLpo.balance_due)}</span>
                   {selectedLpo.received_payable_total != null ? (
                     <span className="text-xs text-amber-800">

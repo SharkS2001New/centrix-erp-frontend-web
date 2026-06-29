@@ -59,11 +59,18 @@ export function lpoOrderDate(lpo) {
   return lpo.order_date ?? lpo.created_at ?? lpo.sent_at ?? null;
 }
 
+export function lpoRowDisplayNumber(row) {
+  if (!row) return "—";
+  const ref = String(row?.reference_number ?? "").trim();
+  if (ref) return ref;
+  if (row?.po_number) return row.po_number;
+  const seq = row?.lpo_seq ?? row?.lpo_no;
+  return formatPoNumber(seq, row?.lpo_order_date ?? row?.order_date ?? row?.created_at ?? row?.sent_at);
+}
+
 /** Printed / linked PO number — custom reference overrides generated LPO-YYYY-####. */
 export function lpoDisplayNumber(lpo) {
-  const ref = String(lpo?.reference_number ?? "").trim();
-  if (ref) return ref;
-  return lpo?.po_number ?? formatPoNumber(lpo?.lpo_no, lpoOrderDate(lpo));
+  return lpoRowDisplayNumber(lpo);
 }
 
 export function isLpoHeaderComplete(form) {

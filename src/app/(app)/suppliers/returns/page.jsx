@@ -20,7 +20,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { SUPPLIER_RETURN_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
-import { formatPoNumber } from "@/components/lpo/lpo-shared";
+import { formatPoNumber, lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import { printSupplierReturn } from "@/components/suppliers/supplier-return-print";
 import { formatReturnQty, formatStockLocationLabel, statusBadgeClass } from "@/components/suppliers/supplier-return-shared";
 
@@ -679,7 +679,7 @@ export default function SupplierReturnsPage() {
                                 href={`/lpo/${row.lpo_no}`}
                                 className="theme-link font-mono hover:underline"
                               >
-                                {formatPoNumber(row.lpo_no, row.lpo_order_date)}
+                                {lpoRowDisplayNumber(row)}
                               </Link>
                             ) : (
                               "—"

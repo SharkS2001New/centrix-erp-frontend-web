@@ -12,7 +12,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { DeleteProductDialog } from "@/components/products/delete-product-dialog";
 import { formatUomOption } from "@/components/products/product-form";
-import { formatPoNumber } from "@/components/lpo/lpo-shared";
+import { formatPoNumber, lpoDisplayNumber, lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import {
   coercePricingTiersInput,
   fullPackageLabel,
@@ -212,7 +212,7 @@ function buildPurchaseRows(lpoLines, receiptTxns, uom) {
       kind: "lpo",
       sortKey: Number(line.lpo_no ?? 0),
       date: "Purchase order",
-      label: `Ordered ${formatQty(line.ordered_qty)} ${packLabel} on ${formatPoNumber(line.lpo_no)}`,
+      label: `Ordered ${formatQty(line.ordered_qty)} ${packLabel} on ${line.po_number ?? lpoRowDisplayNumber(line)}`,
       subtitle: `Received ${formatQty(received)} ${packLabel} · ${formatKes(line.cost_price)} per ${packLabel}`,
       tone: received > 0 ? "in" : "neutral",
       href: `/lpo/${line.lpo_no}`,

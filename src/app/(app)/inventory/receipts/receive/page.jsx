@@ -8,7 +8,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
-import { formatPoNumber } from "@/components/lpo/lpo-shared";
+import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import {
   InventoryProductLines,
   useInventoryCatalogMaps,
@@ -303,7 +303,7 @@ export default function ReceiveStockPage() {
                   <option value="">Select purchase order…</option>
                   {lpoOptions.map((l) => (
                     <option key={l.lpo_no} value={l.lpo_no}>
-                      {formatPoNumber(l.lpo_no)}
+                      {lpoRowDisplayNumber(l)}
                     </option>
                   ))}
                 </select>

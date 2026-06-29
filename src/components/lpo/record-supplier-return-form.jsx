@@ -6,10 +6,10 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
 import {
-  formatPoNumber,
   lpoReturnableLines,
   lpoCanRecordReturn,
   lpoStockDeductQty,
+  lpoRowDisplayNumber,
 } from "./lpo-shared";
 import {
   formatStockLocationLabel,
@@ -28,6 +28,7 @@ export function RecordSupplierReturnForm({
   backLabel = "← Back to LPO",
   pageTitle,
   pageSubtitle,
+  lpoSummary = null,
 }) {
   const { user } = useAuth();
   const returnableLines = useMemo(() => lpoReturnableLines(lines), [lines]);
@@ -143,7 +144,7 @@ export function RecordSupplierReturnForm({
     }
   }
 
-  const title = pageTitle ?? `Supplier return — ${formatPoNumber(lpoNo)}`;
+  const title = pageTitle ?? `Supplier return — ${lpoRowDisplayNumber(lpoSummary ?? { lpo_no: lpoNo })}`;
   const subtitle =
     pageSubtitle ??
     "Record damaged or rejected goods from this LPO. Stock is removed and the payable amount for received items is reduced.";

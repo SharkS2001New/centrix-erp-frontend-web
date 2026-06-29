@@ -774,6 +774,14 @@ const NAV_SECTION_DEFINITIONS = [
         requireAdmin: true,
       },
       {
+        href: "/admin/till-printing",
+        label: "Till printing",
+        module: "admin",
+        moduleAny: ["sales.pos"],
+        permission: "admin.manage",
+        requireAdmin: true,
+      },
+      {
         href: "/admin/branches",
         label: "Branches",
         module: "admin",

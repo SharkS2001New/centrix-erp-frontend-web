@@ -12,7 +12,16 @@ function TillManagementGate() {
   const requireTillFloat = isTillFloatWorkflowEnabled(capabilities?.module_settings);
 
   useEffect(() => {
-    if (capabilities && !requireTillFloat) {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "printing") {
+      router.replace("/admin/till-printing");
+    }
+  }, [router]);
+
+  useEffect(() => {
+    if (!capabilities) return;
+    if (!requireTillFloat) {
       router.replace("/sales");
     }
   }, [capabilities, requireTillFloat, router]);

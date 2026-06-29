@@ -25,7 +25,7 @@ import {
   useLpoListPermissions,
 } from "@/components/lpo/lpo-list-actions";
 import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
-import { formatLpoKes, formatPoNumber, lpoOrderDate, LpoStatusBadge } from "@/components/lpo/lpo-shared";
+import { formatLpoKes, formatPoNumber, lpoDisplayNumber, lpoOrderDate, LpoStatusBadge } from "@/components/lpo/lpo-shared";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
@@ -333,7 +333,7 @@ export default function LpoListPage() {
                       >
                         <td className="px-4 py-3 font-mono font-medium text-[#185FA5]">
                           <Link href={`/lpo/${row.lpo_no}`} className="hover:underline">
-                            {row.po_number ?? formatPoNumber(row.lpo_no, lpoOrderDate(row))}
+                            {lpoDisplayNumber(row)}
                           </Link>
                         </td>
                         <td className="px-4 py-3">

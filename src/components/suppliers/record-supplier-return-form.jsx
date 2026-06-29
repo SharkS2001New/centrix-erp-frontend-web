@@ -9,6 +9,8 @@ import { LpoProductSearchPanel } from "@/components/lpo/lpo-product-search-panel
 import { formatPackagingLabel, packageNameFromUom } from "@/components/lpo/lpo-product-utils";
 import {
   formatPoNumber,
+  lpoDisplayNumber,
+  lpoRowDisplayNumber,
   lpoReturnableLines,
   lpoStockDeductQty,
   LPO_STATUS,
@@ -930,7 +932,7 @@ export function RecordSupplierReturnForm({
                     </option>
                     {lpoOptions.map((l) => (
                       <option key={l.lpo_no} value={String(l.lpo_no)}>
-                        {formatPoNumber(l.lpo_no)} — {l.status_name ?? `Status ${l.lpo_status_code}`}
+                        {lpoRowDisplayNumber(l)} — {l.status_name ?? `Status ${l.lpo_status_code}`}
                       </option>
                     ))}
                   </select>
@@ -956,7 +958,7 @@ export function RecordSupplierReturnForm({
                     </option>
                     {lpoOptions.map((l) => (
                       <option key={l.lpo_no} value={String(l.lpo_no)}>
-                        {formatPoNumber(l.lpo_no)} — {l.status_name ?? `Status ${l.lpo_status_code}`}
+                        {lpoRowDisplayNumber(l)} — {l.status_name ?? `Status ${l.lpo_status_code}`}
                       </option>
                     ))}
                   </select>

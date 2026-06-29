@@ -20,6 +20,7 @@ import {
   ReportTable,
 } from "@/components/reports/report-screen-shared";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
+import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 
 export function SupplierStatementScreen() {
   const searchParams = useSearchParams();
@@ -82,7 +83,7 @@ export function SupplierStatementScreen() {
   );
 
   const purchaseColumns = [
-    { key: "lpo_no", label: "LPO", accessor: (r) => r.lpo_no },
+    { key: "lpo_no", label: "LPO", accessor: (r) => lpoRowDisplayNumber(r) },
     { key: "order_date", label: "Date", accessor: (r) => formatShortDate(r.order_date) },
     { key: "status_name", label: "Status", accessor: (r) => r.status_name ?? "—" },
     { key: "total_amount", label: "Amount", accessor: (r) => formatReportKes(r.total_amount), align: "right" },
@@ -110,7 +111,7 @@ export function SupplierStatementScreen() {
       ...purchases.map((row) => ({
         section: "Purchase",
         date: formatShortDate(row.order_date),
-        reference: row.lpo_no,
+        reference: lpoRowDisplayNumber(row),
         detail: row.status_name ?? "—",
         amount: formatReportKes(row.total_amount),
         balance: formatReportKes(row.balance_due),

@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api";
-import { formatPoNumber } from "@/components/lpo/lpo-shared";
+import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import {
   buildBrandedA4DocumentHtml,
   buildDocItemsTable,
@@ -111,7 +111,7 @@ export async function printSupplierReturn(
     { label: "RETURNS DATE:", value: returnDate },
     { label: "K.R.A Pin:", value: supplierPin },
     { label: "TERMS OF PAYMENT:", value: paymentTerms },
-    { label: "LPO NO:", value: document.lpo_no ? formatPoNumber(document.lpo_no) : "—" },
+    { label: "LPO NO:", value: document.lpo_no ? lpoRowDisplayNumber(document) : "—" },
     { label: "INVOICE NO:", value: document.supplier_invoice_no ?? "—" },
   ]);
 

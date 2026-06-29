@@ -10,6 +10,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { formatPackagingLabel } from "@/components/lpo/lpo-product-utils";
+import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import { displayToBaseQty } from "@/lib/stock-uom";
 import { formatQty } from "@/components/inventory/inventory-shared";
 
@@ -274,7 +275,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
               <option value="">Select purchase order…</option>
               {lpoOptions.map((l) => (
                 <option key={l.lpo_no} value={l.lpo_no}>
-                  PO #{l.lpo_no}
+                  {lpoRowDisplayNumber(l)}
                 </option>
               ))}
             </select>

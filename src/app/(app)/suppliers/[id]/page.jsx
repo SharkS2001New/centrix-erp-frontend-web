@@ -16,6 +16,7 @@ import {
   SupplierStatusBadge,
   formatSupplierKes,
 } from "@/components/suppliers/suppliers-shared";
+import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 
 const TABS = [
   { id: "overview", label: "Overview" },
@@ -285,7 +286,7 @@ function OverviewTab({ supplier, stats, purchases, onOpenLpo }) {
                   onClick={() => onOpenLpo(row)}
                   className="font-mono text-[#185FA5] hover:underline"
                 >
-                  LPO #{row.lpo_no}
+                  {lpoRowDisplayNumber(row)}
                 </button>
                 <span className="text-slate-700">
                   {formatSupplierKes(row.balance_due)} due

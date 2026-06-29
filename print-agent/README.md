@@ -22,7 +22,7 @@ Or trigger **GitHub Actions → Build Print Agent MSI** to build in the cloud an
 
 ### Deploy to till PCs
 
-1. Copy `CentrixPrintAgent-0.1.0.0.msi` to each till (USB, network share, or **Download Windows MSI** in Centrix → Till management → Printing).
+1. Copy `CentrixPrintAgent-0.1.0.0.msi` to each till (USB, network share, or **Download Windows MSI** in Centrix → Administration → Till printing).
 2. Double-click the MSI → Next → Install (admin required).
 3. (Recommended) Install [SumatraPDF](https://www.sumatrapdfreader.org/) for silent thermal printing.
 4. In Centrix: enable print agent → **Test print receipt** → Save.
@@ -44,7 +44,7 @@ Uninstall via Windows Settings → Apps removes files and the scheduled task.
 
 ## Script installer (fallback)
 
-If MSI is not built yet, use **Download script installer** in Till management → Printing, or:
+If MSI is not built yet, use **Download script installer** in Administration → Till printing, or:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File install.ps1 -Autostart

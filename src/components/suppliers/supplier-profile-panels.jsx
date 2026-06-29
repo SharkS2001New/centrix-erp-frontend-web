@@ -5,6 +5,7 @@ import {
   DetailDrawer,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import { PaymentStatusBadge, formatSupplierKes, formatSupplierPaymentReference } from "./suppliers-shared";
 
 export function PurchasesPanel({ items, supplierId, onSelectLpo }) {
@@ -36,7 +37,7 @@ export function PurchasesPanel({ items, supplierId, onSelectLpo }) {
                   href={`/lpo/${row.lpo_no}`}
                   className="font-mono font-medium text-[#185FA5] hover:underline"
                 >
-                  PO-{row.lpo_no}
+                  PO-{lpoRowDisplayNumber(row)}
                 </Link>
               </td>
               <td className="py-2.5 pr-3 text-slate-700">{row.status_name}</td>
@@ -153,7 +154,7 @@ export function PaymentsPanel({ items, supplier }) {
                     )}
                   </td>
                   <td className="py-2.5 pr-3 font-mono text-slate-700">
-                    {row.lpo_no ? `#${row.lpo_no}` : "—"}
+                    {row.lpo_no ? lpoRowDisplayNumber(row) : "—"}
                   </td>
                   <td className="py-2.5 pr-3 text-slate-700">{row.payment_method}</td>
                   <td className="py-2.5 pr-3 text-slate-600">
@@ -198,7 +199,7 @@ export function DocumentsPanel({ items, onSelectLpo }) {
                   onClick={() => onSelectLpo?.({ lpo_no: doc.lpo_no })}
                   className="font-mono font-medium text-[#185FA5] hover:underline"
                 >
-                  {doc.lpo_no}
+                  {lpoRowDisplayNumber(doc)}
                 </button>
               </td>
               <td className="py-2.5 pr-3 font-medium text-slate-900">
@@ -226,7 +227,7 @@ export function LpoDetailDrawer({ lpo, open, onClose, supplierId }) {
 
   return (
     <DetailDrawer
-      title={`LPO #${lpo.lpo_no}`}
+      title={lpoRowDisplayNumber(lpo)}
       subtitle={lpo.status_name}
       open={open}
       onClose={onClose}

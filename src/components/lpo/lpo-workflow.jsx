@@ -6,7 +6,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
 import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
-import { formatLpoKes, formatPoNumber, lpoCanDelete, lpoCanEdit, lpoOrderDate } from "./lpo-shared";
+import { formatLpoKes, lpoCanDelete, lpoCanEdit, lpoDisplayNumber } from "./lpo-shared";
 
 function normalizePhone(phone) {
   const digits = String(phone ?? "").replace(/\D/g, "");
@@ -18,7 +18,7 @@ function normalizePhone(phone) {
 }
 
 function buildWhatsAppText(lpo) {
-  const po = formatPoNumber(lpo.lpo_no, lpoOrderDate(lpo));
+  const po = lpoDisplayNumber(lpo);
   const total = formatLpoKes(lpo.net_amount);
   return [
     `Purchase order ${po}`,
@@ -95,7 +95,7 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
 
   function openEmail() {
     const to = lpo.supplier_email?.trim();
-    const subject = encodeURIComponent(`LPO ${formatPoNumber(lpo.lpo_no, lpoOrderDate(lpo))}`);
+    const subject = encodeURIComponent(`LPO ${lpoDisplayNumber(lpo)}`);
     const body = encodeURIComponent(buildWhatsAppText(lpo));
     window.location.href = `mailto:${to || ""}?subject=${subject}&body=${body}`;
     setAwaitingMarkSent(true);

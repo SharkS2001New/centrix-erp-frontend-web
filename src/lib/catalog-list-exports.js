@@ -105,7 +105,7 @@ export const PAYROLL_RUN_EXPORT_COLUMNS = [
 ];
 
 export const LPO_EXPORT_COLUMNS = [
-  { key: "lpo_no", label: "PO #" },
+  { key: "po_number", label: "PO #" },
   { key: "supplier_name", label: "Supplier" },
   { key: "order_date", label: "Order date" },
   { key: "expected_date", label: "Expected" },
@@ -260,7 +260,7 @@ export const PAYMENT_METHOD_EXPORT_COLUMNS = [
 export const SUPPLIER_PAYMENT_EXPORT_COLUMNS = [
   { key: "payment_date", label: "Date" },
   { key: "supplier_id", label: "Supplier ID" },
-  { key: "lpo_no", label: "PO #" },
+  { key: "po_number", label: "PO #" },
   { key: "amount_paid", label: "Amount", align: "right" },
   { key: "payment_reference", label: "Reference" },
 ];

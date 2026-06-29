@@ -25,6 +25,7 @@ import { formatQty } from "@/components/inventory/inventory-shared";
 import {
   formatLpoKes,
   formatPoNumber,
+  lpoDisplayNumber,
   lpoHasSupplierReturns,
   lpoIsCancelledReturned,
   lpoLineReturnedQty,
@@ -153,7 +154,7 @@ export default function LpoReceivePage() {
     <div className="theme-workspace min-h-full">
       <div className="mb-6">
         <Link href={`/lpo/${lpoNo}`} className="text-base text-[#185FA5] hover:text-[#144f8a]">
-          ← Back to {lpo ? formatPoNumber(lpo.lpo_no) : "PO"}
+          ← Back to {lpo ? lpoDisplayNumber(lpo) : "PO"}
         </Link>
         <h1 className="mt-2 text-2xl font-medium text-slate-900">Stock receipt from LPO</h1>
         <p className="mt-1 text-base text-slate-500">
@@ -180,7 +181,7 @@ export default function LpoReceivePage() {
               <dl className="grid min-w-[800px] grid-cols-5 gap-6">
                 <div className="min-w-0">
                   <dt className="text-sm text-slate-500">PO</dt>
-                  <dd className="mt-1 font-medium text-slate-900">{formatPoNumber(lpo.lpo_no)}</dd>
+                  <dd className="mt-1 font-medium text-slate-900">{lpoDisplayNumber(lpo)}</dd>
                 </div>
                 <div className="min-w-0">
                   <dt className="text-sm text-slate-500">Supplier</dt>
