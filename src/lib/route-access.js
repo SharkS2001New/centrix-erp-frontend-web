@@ -46,7 +46,11 @@ const REPORT_ROUTE_RULES = [
 
 const POS_ROUTE_RULES = [
   { prefix: "/pos", permission: P.pos.terminal.view },
-  { prefix: "/sales/pos", permission: P.pos.checkout.create },
+  {
+    prefix: "/sales/pos",
+    permission: P.pos.checkout.create,
+    altPermissions: [P.sales.orders.create],
+  },
   {
     prefix: "/sales/end-of-day",
     permission: P.pos.end_of_day.view,

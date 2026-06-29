@@ -20,7 +20,10 @@ import { GpsLocationLabel } from "@/components/shared/gps-location-label";
 import { hasValidCustomerLocation } from "@/lib/customer-location";
 import { formatAppDateTime, calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
 import { P } from "@/lib/permission-codes";
-import { formatAttendanceSource, attendanceSourceBadgeClass } from "@/lib/hr-settings";
+import {
+  formatAttendanceLoginChannel,
+  attendanceLoginChannelBadgeClass,
+} from "@/lib/hr-settings";
 import { shouldShowMobileFieldAttendance } from "@/lib/sales-settings";
 
 function daysAgoCalendarDate(days) {
@@ -80,7 +83,7 @@ function AttendanceLocationBlock({ latitude, longitude, address, photoFileUrl, l
   );
 }
 
-export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
+export default function MobileFieldAttendanceScreen({ variant = "sales", embedded = false }) {
   const isHr = variant === "hr";
   const apiBase = isHr ? "/attendance/field-sessions" : "/sales/mobile-field-attendance";
   const { capabilities, hasPermission } = useAuth();
@@ -101,6 +104,7 @@ export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
   const [editForm, setEditForm] = useState({ sign_in_at: "", sign_out_at: "" });
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState(null);
+  const [reopening, setReopening] = useState(false);
 
   const loadRows = useCallback(async () => {
     setLoading(true);
@@ -134,12 +138,16 @@ export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
 
   const totals = useMemo(() => {
     const totalSeconds = rows.reduce((sum, row) => sum + Number(row.work_seconds ?? 0), 0);
+    const suspendedSeconds = rows.reduce((sum, row) => sum + Number(row.suspended_seconds ?? 0), 0);
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const suspendedHours = Math.floor(suspendedSeconds / 3600);
+    const suspendedMinutes = Math.floor((suspendedSeconds % 3600) / 60);
     return {
       sessions: rows.length,
       open: rows.filter((row) => row.is_open).length,
       hoursLabel: `${hours}:${String(minutes).padStart(2, "0")}`,
+      suspendedLabel: `${suspendedHours}:${String(suspendedMinutes).padStart(2, "0")}`,
     };
   }, [rows]);
 
@@ -176,7 +184,38 @@ export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
     }
   }
 
+  async function reopenSession() {
+    if (!selected || !canEdit || !selected.can_reopen) return;
+    setReopening(true);
+    setSaveMessage(null);
+    try {
+      const updated = await apiRequest(`${apiBase}/${selected.id}/reopen`, {
+        method: "POST",
+      });
+      setRows((current) => current.map((row) => (row.id === updated.id ? updated : row)));
+      setSelected(updated);
+      setSaveMessage("Session reopened. The rep can continue working on the mobile app.");
+    } catch (err) {
+      setSaveMessage(err instanceof ApiError ? err.message : "Failed to reopen session");
+    } finally {
+      setReopening(false);
+    }
+  }
+
   if (!allowed) {
+    if (embedded) {
+      return (
+        <section id="field-sessions" className="mt-10 theme-panel rounded-xl border p-5 shadow-sm">
+          <h2 className="text-[15px] font-medium text-slate-900">Mobile sales sessions</h2>
+          <p className="mt-2 text-sm text-amber-800">
+            Field attendance is not enabled. Turn on{" "}
+            <strong>Require sign-in photo and location</strong> under{" "}
+            <OrgSettingsPlatformHint area="Organization settings → Mobile app" />.
+          </p>
+        </section>
+      );
+    }
+
     return (
       <CatalogPageShell
         title="Field attendance"
@@ -197,36 +236,12 @@ export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
     );
   }
 
-  return (
-    <CatalogPageShell
-      title="Field attendance"
-      subtitle={
-        isHr
-          ? "Mobile rep sessions with photos, GPS, and worked hours — part of HR attendance"
-          : "Sign-in and sign-out sessions from the mobile app with photos, GPS, and worked hours"
-      }
-    >
-      {isHr ? (
-        <p className="mb-4 text-sm text-slate-600">
-          Also available under{" "}
-          <Link href="/sales/field-attendance" className="font-medium text-[#185FA5] hover:underline">
-            Sales → Field attendance
-          </Link>{" "}
-          for field sales teams.
-        </p>
-      ) : (
-        <p className="mb-4 text-sm text-slate-600">
-          HR view:{" "}
-          <Link href="/hr/field-attendance" className="font-medium text-[#185FA5] hover:underline">
-            Time &amp; attendance → Field attendance
-          </Link>
-          .
-        </p>
-      )}
+  const panelBody = (
+    <>
       {error ? <DashboardErrorBanner message={error} /> : null}
       {isHr ? <FieldRepHrLinkageBanner linkage={hrLinkage} canManage={canEdit} /> : null}
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+      <div className="mb-4 grid gap-3 sm:grid-cols-4">
         <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
           <p className="text-xs uppercase tracking-wide text-slate-500">Sessions</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">{totals.sessions}</p>
@@ -236,8 +251,12 @@ export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
           <p className="mt-1 text-2xl font-semibold text-emerald-700">{totals.open}</p>
         </div>
         <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Hours in range</p>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Worked hours</p>
           <p className="mt-1 text-2xl font-semibold text-slate-900">{totals.hoursLabel}</p>
+        </div>
+        <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Suspended / offline</p>
+          <p className="mt-1 text-2xl font-semibold text-amber-700">{totals.suspendedLabel}</p>
         </div>
       </div>
 
@@ -268,6 +287,8 @@ export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
               <th className="px-4 py-3">Sign in</th>
               <th className="px-4 py-3">Sign out</th>
               <th className="px-4 py-3">Hours</th>
+              <th className="px-4 py-3">Login channel</th>
+              <th className="px-4 py-3">Suspended</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3" />
             </tr>
@@ -275,13 +296,13 @@ export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                   Loading sessions…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                   No attendance sessions in this date range.
                 </td>
               </tr>
@@ -290,11 +311,6 @@ export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
                 <tr key={row.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{row.user_name || row.username || "—"}</div>
-                    <span
-                      className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${attendanceSourceBadgeClass(row.source || "field_rep")}`}
-                    >
-                      {formatAttendanceSource(row.source || "field_rep", row.source_label)}
-                    </span>
                     {row.hr_link && !row.hr_link.counts_toward_payroll ? (
                       <p className="mt-1 text-[11px] font-medium text-amber-700">
                         Not in HR / payroll — link employee profile
@@ -312,6 +328,14 @@ export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
                   <td className="px-4 py-3">{formatDateTime(row.sign_in_at)}</td>
                   <td className="px-4 py-3">{formatDateTime(row.sign_out_at)}</td>
                   <td className="px-4 py-3 font-medium">{row.work_label || "0:00"}</td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${attendanceLoginChannelBadgeClass(row.source || "field_rep")}`}
+                    >
+                      {formatAttendanceLoginChannel(row.source || "field_rep", row.login_channel_label)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-amber-800">{row.suspended_label || "0:00"}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -347,7 +371,15 @@ export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
                 </h3>
                 <p className="text-sm text-slate-500">
                   Worked {selected.work_label} ({selected.work_hours ?? 0} h)
+                  {Number(selected.suspended_seconds ?? 0) > 0
+                    ? ` · Suspended/offline ${selected.suspended_label}`
+                    : ""}
                 </p>
+                {selected.reopened_at ? (
+                  <p className="mt-1 text-xs text-emerald-700">
+                    Reopened {formatDateTime(selected.reopened_at)}
+                  </p>
+                ) : null}
                 {isHr && selected.hr_link && !selected.hr_link.counts_toward_payroll ? (
                   <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                     {selected.hr_link.hint}
@@ -381,32 +413,54 @@ export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
             </div>
 
             {canEdit ? (
-              <form onSubmit={saveEdit} className="mt-6 space-y-3 border-t border-slate-200 pt-4">
-                <p className="text-sm font-medium text-slate-900">Adjust times</p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Sign in">
-                    <input
-                      type="datetime-local"
-                      className={inputClassName()}
-                      value={editForm.sign_in_at}
-                      onChange={(e) => setEditForm((f) => ({ ...f, sign_in_at: e.target.value }))}
-                      required
-                    />
-                  </Field>
-                  <Field label="Sign out">
-                    <input
-                      type="datetime-local"
-                      className={inputClassName()}
-                      value={editForm.sign_out_at}
-                      onChange={(e) => setEditForm((f) => ({ ...f, sign_out_at: e.target.value }))}
-                    />
-                  </Field>
-                </div>
-                {saveMessage ? <p className="text-sm text-slate-600">{saveMessage}</p> : null}
-                <PrimaryButton type="submit" showIcon={false} disabled={saving}>
-                  {saving ? "Saving…" : "Save changes"}
-                </PrimaryButton>
-              </form>
+              <div className="mt-6 space-y-4 border-t border-slate-200 pt-4">
+                {selected.can_reopen ? (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <p className="text-sm font-medium text-emerald-900">Reopen session</p>
+                    <p className="mt-1 text-xs text-emerald-800">
+                      Lets the rep continue today&apos;s session on the mobile app. Time while the
+                      session was closed is recorded as suspended/offline and does not count as worked
+                      hours.
+                    </p>
+                    <PrimaryButton
+                      type="button"
+                      showIcon={false}
+                      className="mt-3"
+                      disabled={reopening}
+                      onClick={reopenSession}
+                    >
+                      {reopening ? "Reopening…" : "Reopen session"}
+                    </PrimaryButton>
+                  </div>
+                ) : null}
+
+                <form onSubmit={saveEdit} className="space-y-3">
+                  <p className="text-sm font-medium text-slate-900">Adjust times</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Sign in">
+                      <input
+                        type="datetime-local"
+                        className={inputClassName()}
+                        value={editForm.sign_in_at}
+                        onChange={(e) => setEditForm((f) => ({ ...f, sign_in_at: e.target.value }))}
+                        required
+                      />
+                    </Field>
+                    <Field label="Sign out">
+                      <input
+                        type="datetime-local"
+                        className={inputClassName()}
+                        value={editForm.sign_out_at}
+                        onChange={(e) => setEditForm((f) => ({ ...f, sign_out_at: e.target.value }))}
+                      />
+                    </Field>
+                  </div>
+                  {saveMessage ? <p className="text-sm text-slate-600">{saveMessage}</p> : null}
+                  <PrimaryButton type="submit" showIcon={false} disabled={saving}>
+                    {saving ? "Saving…" : "Save changes"}
+                  </PrimaryButton>
+                </form>
+              </div>
             ) : (
               <p className="mt-4 text-sm text-slate-500">
                 You need {isHr ? "HR manage" : "sales manage"} permission to edit attendance times.
@@ -415,6 +469,51 @@ export default function MobileFieldAttendanceScreen({ variant = "sales" }) {
           </div>
         </div>
       ) : null}
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <section id="field-sessions" className="mt-10">
+        <div className="mb-4">
+          <h2 className="text-[15px] font-medium text-slate-900">Mobile sales sessions</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Field reps sign in on the mobile sales app. Closed sessions sync to the attendance
+            records above and count in payroll when the rep is linked to an employee profile.
+          </p>
+        </div>
+        {panelBody}
+      </section>
+    );
+  }
+
+  return (
+    <CatalogPageShell
+      title="Field attendance"
+      subtitle={
+        isHr
+          ? "Mobile rep sessions with photos, GPS, and worked hours"
+          : "Sign-in and sign-out sessions from the mobile app with photos, GPS, and worked hours"
+      }
+    >
+      {isHr ? (
+        <p className="mb-4 text-sm text-slate-600">
+          Unified HR view:{" "}
+          <Link href="/hr/attendance" className="font-medium text-[#185FA5] hover:underline">
+            Time &amp; attendance → Attendance
+          </Link>
+          .
+        </p>
+      ) : (
+        <p className="mb-4 text-sm text-slate-600">
+          HR view:{" "}
+          <Link href="/hr/attendance#field-sessions" className="font-medium text-[#185FA5] hover:underline">
+            Time &amp; attendance → Attendance
+          </Link>
+          .
+        </p>
+      )}
+      {panelBody}
     </CatalogPageShell>
   );
 }

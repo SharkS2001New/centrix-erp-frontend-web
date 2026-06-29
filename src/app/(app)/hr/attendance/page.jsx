@@ -26,11 +26,13 @@ import {
   formatTimeForApi,
 } from "@/components/hr/hr-shared";
 import {
-  attendanceSourceBadgeClass,
+  formatAttendanceLoginChannel,
   formatAttendanceSource,
+  attendanceLoginChannelBadgeClass,
   isCompanyMobileAttendanceEnabled,
 } from "@/lib/hr-settings";
 import { shouldShowMobileFieldAttendance } from "@/lib/sales-settings";
+import MobileFieldAttendanceScreen from "@/components/sales/mobile-field-attendance-screen";
 
 const EMPTY_MANUAL = {
   employee_id: "",
@@ -44,6 +46,10 @@ const EMPTY_MANUAL = {
 
 const NON_WORK_STATUSES = ["leave", "holiday", "absent"];
 
+function attendanceCountsInPayroll(status) {
+  return ["present", "late", "half_day"].includes(status);
+}
+
 export default function HrAttendancePage() {
   const { capabilities, hasPermission } = useAuth();
   const canManageSettings = hasPermission(P.hr.manage);
@@ -53,6 +59,7 @@ export default function HrAttendancePage() {
   const [sessions, setSessions] = useState([]);
   const [records, setRecords] = useState([]);
   const [fieldRepLinkage, setFieldRepLinkage] = useState(null);
+  const [fieldOpenSessions, setFieldOpenSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualForm, setManualForm] = useState(EMPTY_MANUAL);
@@ -92,6 +99,12 @@ export default function HrAttendancePage() {
           key: "fieldRepLinkage",
           promise: apiRequest("/attendance/field-rep-hr-linkage", { searchParams: { days: 30 } }),
         });
+        requestDefs.push({
+          key: "fieldOpenSessions",
+          promise: apiRequest("/attendance/field-sessions", {
+            searchParams: { per_page: 50, open_only: 1 },
+          }),
+        });
       }
 
       const results = await Promise.allSettled(requestDefs.map((item) => item.promise));
@@ -115,6 +128,7 @@ export default function HrAttendancePage() {
         if (key === "attendance") setRecords(res.data ?? []);
         if (key === "sessions") setSessions(res.data ?? []);
         if (key === "fieldRepLinkage") setFieldRepLinkage(res ?? null);
+        if (key === "fieldOpenSessions") setFieldOpenSessions(res.data ?? []);
       });
 
       if (failures.length === requestDefs.length) {
@@ -281,11 +295,7 @@ export default function HrAttendancePage() {
   return (
     <CatalogPageShell
       title="Attendance"
-      subtitle={
-        companyMobileEnabled
-          ? "Company mobile live sessions and manual records"
-          : "Clock device live sessions and manual records"
-      }
+      subtitle="Premises clock-in, company phone, mobile sales app, and manual records — all in one place for payroll"
       action={
         <div className="flex flex-wrap items-center gap-2">
           <CatalogListExport
@@ -316,50 +326,34 @@ export default function HrAttendancePage() {
         </p>
       ) : null}
 
-      {fieldAttendanceEnabled ? (
-        <p className="mb-4 text-sm text-slate-600">
-          When a rep is linked to an employee, closed field sessions appear here with a{" "}
-          <span className="inline-flex rounded-full bg-violet-100 px-1.5 py-0.5 text-xs font-medium text-violet-800">
-            Field rep
-          </span>{" "}
-          badge and count toward payroll like other attendance. Session detail:{" "}
-          <Link href="/hr/field-attendance" className="font-medium text-[#185FA5] hover:underline">
-            Field attendance
-          </Link>
-          {" "}(also under{" "}
-          <Link href="/sales/field-attendance" className="font-medium text-[#185FA5] hover:underline">
-            Sales → Field attendance
-          </Link>
-          ).
-        </p>
-      ) : null}
-
       <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
-        <h2 className="text-[15px] font-medium text-slate-900">
-          {companyMobileEnabled ? "Live company mobile sessions" : "Live clock sessions"}
-        </h2>
+        <h2 className="text-[15px] font-medium text-slate-900">Live on shift now</h2>
         <p className="mt-1 text-sm text-slate-500">
-          {companyMobileEnabled
-            ? "Employees currently on shift via the registered company phone (read-only)."
-            : "Employees currently clocked in on a terminal (read-only)."}
+          Employees currently signed in at premises
+          {fieldAttendanceEnabled ? " or on the mobile sales app" : ""}.
         </p>
         {loading ? (
           <p className="mt-3 text-sm text-slate-500">Loading…</p>
-        ) : openSessions.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">No open sessions.</p>
+        ) : openSessions.length === 0 && fieldOpenSessions.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">No one is on shift right now.</p>
         ) : (
           <ul className="mt-3 divide-y divide-slate-100">
             {openSessions.map((s) => (
-              <li key={s.id} className="py-3">
-                <p className="font-medium text-slate-900">
-                  {companyMobileEnabled
-                    ? s.employee_name || `#${s.employee_id}`
-                    : composeEmployeeDisplayName(s.employee) || `#${s.employee_id}`}
-                </p>
+              <li key={`premises-${s.id}`} className="py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-slate-900">
+                    {companyMobileEnabled
+                      ? s.employee_name || `#${s.employee_id}`
+                      : composeEmployeeDisplayName(s.employee) || `#${s.employee_id}`}
+                  </p>
+                  <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800">
+                    Premises
+                  </span>
+                </div>
                 <p className="text-xs text-slate-500">
                   {companyMobileEnabled ? (
                     <>
-                      On shift · In {formatShortDate(s.clock_in_at)}{" "}
+                      {formatAttendanceSource("company_mobile")} · In {formatShortDate(s.clock_in_at)}{" "}
                       {String(s.clock_in_at).slice(11, 16)}
                       {s.clock_in_geofence_distance_metres != null
                         ? ` · ${s.clock_in_geofence_distance_metres}m from premises`
@@ -367,10 +361,26 @@ export default function HrAttendancePage() {
                     </>
                   ) : (
                     <>
-                      Device {s.device_identifier || "—"} · In{" "}
+                      {formatAttendanceSource("clock_device")} · Device {s.device_identifier || "—"} · In{" "}
                       {formatShortDate(s.clock_in_at)} {String(s.clock_in_at).slice(11, 16)}
                     </>
                   )}
+                </p>
+              </li>
+            ))}
+            {fieldOpenSessions.map((s) => (
+              <li key={`field-${s.id}`} className="py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-slate-900">{s.user_name || s.username || "—"}</p>
+                  <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-800">
+                    Mobile sales app
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Signed in {formatShortDate(s.sign_in_at)} {String(s.sign_in_at).slice(11, 16)}
+                  {s.hr_link && !s.hr_link.counts_toward_payroll
+                    ? " · Not linked to employee — will not count in payroll until linked"
+                    : " · Counts in payroll after sign-out"}
                 </p>
               </li>
             ))}
@@ -381,6 +391,10 @@ export default function HrAttendancePage() {
       <section className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-[15px] font-medium text-slate-900">Attendance records</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            One row per employee per day. Present, late, and half-day rows count toward payroll when
+            attendance proration is enabled.
+          </p>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -391,21 +405,22 @@ export default function HrAttendancePage() {
                 <th className="px-4 py-3">In</th>
                 <th className="px-4 py-3">Out</th>
                 <th className="px-4 py-3">Hours</th>
-                <th className="px-4 py-3">Source</th>
+                <th className="px-4 py-3">Login channel</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Payroll</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                     Loading…
                   </td>
                 </tr>
               ) : records.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                     No attendance records yet.
                   </td>
                 </tr>
@@ -421,12 +436,22 @@ export default function HrAttendancePage() {
                     <td className="px-4 py-3">{r.hours_worked ?? "—"}</td>
                     <td className="px-4 py-3">
                       <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${attendanceSourceBadgeClass(r.source)}`}
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${attendanceLoginChannelBadgeClass(r.source)}`}
                       >
-                        {formatAttendanceSource(r.source, r.source_label)}
+                        {formatAttendanceLoginChannel(r.source, r.login_channel_label)}
                       </span>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {formatAttendanceSource(r.source, r.source_label)}
+                      </p>
                     </td>
                     <td className="px-4 py-3 capitalize">{r.status}</td>
+                    <td className="px-4 py-3">
+                      {attendanceCountsInPayroll(r.status) ? (
+                        <span className="text-xs font-medium text-emerald-700">Counts</span>
+                      ) : (
+                        <span className="text-xs text-slate-500">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
@@ -560,6 +585,8 @@ export default function HrAttendancePage() {
           />
         </Field>
       </FormDrawer>
+
+      {fieldAttendanceEnabled ? <MobileFieldAttendanceScreen variant="hr" embedded /> : null}
     </CatalogPageShell>
   );
 }

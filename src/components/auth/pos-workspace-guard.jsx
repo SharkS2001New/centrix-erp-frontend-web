@@ -76,30 +76,7 @@ export function PosWorkspaceGuard({ children }) {
     });
   }, [capabilities, ctx, loading, loginChannel, platformUser, storedWorkspace, switchWorkspace]);
 
-  if (loading || platformUser) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-slate-500">Loading…</div>
-    );
-  }
-
-  if (needsWorkspaceSelection(capabilities, storedWorkspace, ctx)) {
-    return pathname === "/choose-workspace" ? null : (
-      <div className="flex min-h-screen items-center justify-center text-slate-500">Loading…</div>
-    );
-  }
-
-  const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
-  if (!isPosWorkspace(workspaceId)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-slate-500">Loading…</div>
-    );
-  }
-
-  if (!pathBelongsToWorkspace(pathname, workspaceId)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-slate-500">Loading…</div>
-    );
-  }
+  if (platformUser) return <>{children}</>;
 
   return <>{children}</>;
 }

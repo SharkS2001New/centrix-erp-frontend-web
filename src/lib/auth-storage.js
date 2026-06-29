@@ -22,6 +22,7 @@ const MEMBERSHIPS_KEY = "pos_erp_memberships";
 const LOGIN_CHANNEL_KEY = "pos_erp_login_channel";
 const WORKSPACE_KEY = "pos_erp_workspace";
 const SCREEN_LOCKED_KEY = "pos_erp_screen_locked";
+const CAPABILITIES_KEY = "pos_erp_capabilities";
 
 export function getToken() {
   if (typeof window === "undefined") return null;
@@ -123,6 +124,27 @@ export function getStoredMemberships() {
   }
 }
 
+/** Last capabilities payload — local cache so the shell renders before /erp/capabilities returns. */
+export function getStoredCapabilities() {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(CAPABILITIES_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredCapabilities(capabilities) {
+  if (typeof window === "undefined" || !capabilities) return;
+  try {
+    localStorage.setItem(CAPABILITIES_KEY, JSON.stringify(capabilities));
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
@@ -130,6 +152,7 @@ export function clearSession() {
   localStorage.removeItem(MEMBERSHIPS_KEY);
   localStorage.removeItem(LOGIN_CHANNEL_KEY);
   localStorage.removeItem(WORKSPACE_KEY);
+  localStorage.removeItem(CAPABILITIES_KEY);
   clearWorkspaceRouteMemoryOnLogout();
   clearScreenLocked();
 }

@@ -14,6 +14,7 @@ import {
   workspaceHomePath,
 } from "@/lib/workspaces";
 
+/** Route to the correct workspace — never block the shell on capabilities refresh. */
 export function WorkspaceGuard({ children }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -61,32 +62,6 @@ export function WorkspaceGuard({ children }) {
       }
     }
   }, [capabilities, ctx, loading, organization?.id, pathname, platformUser, router, storedWorkspace, user?.id]);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-slate-500">Loading…</div>
-    );
-  }
-  if (platformUser) return <>{children}</>;
-
-  if (needsWorkspaceSelection(capabilities, storedWorkspace, ctx)) {
-    return pathname === "/choose-workspace" ? <>{children}</> : (
-      <div className="flex min-h-screen items-center justify-center text-slate-500">Loading…</div>
-    );
-  }
-
-  const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
-  if (isPosWorkspace(workspaceId)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-slate-500">Loading…</div>
-    );
-  }
-
-  if (workspaceId && !pathBelongsToWorkspace(pathname, workspaceId)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-slate-500">Loading…</div>
-    );
-  }
 
   return <>{children}</>;
 }

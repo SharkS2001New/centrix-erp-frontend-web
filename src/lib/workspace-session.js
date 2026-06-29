@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api";
-import { setSession, setStoredWorkspace } from "@/lib/auth-storage";
+import { setSession, setStoredCapabilities, setStoredWorkspace } from "@/lib/auth-storage";
 import { workspaceLoginChannel } from "@/lib/workspaces";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
@@ -35,6 +35,9 @@ export async function applyWorkspaceSession(workspaceId) {
     res.memberships ?? [],
     loginChannel,
   );
+  if (res.capabilities) {
+    setStoredCapabilities(res.capabilities);
+  }
   setStoredWorkspace(workspaceId);
   return res;
 }

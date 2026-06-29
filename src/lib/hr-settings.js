@@ -60,11 +60,33 @@ export function isClockDeviceAttendanceEnabled(moduleSettings) {
 
 export function formatAttendanceSource(source, sourceLabel) {
   if (sourceLabel) return sourceLabel;
-  if (source === "field_rep") return "Field rep";
-  if (source === "company_mobile") return "Company phone";
-  if (source === "clock_device") return "Clock";
-  if (source === "manual") return "Manual";
+  if (source === "field_rep") return "Mobile sales app";
+  if (source === "company_mobile") return "Premises (company phone)";
+  if (source === "clock_device") return "Premises (clock)";
+  if (source === "manual") return "Manual entry";
   return source ? String(source).replace(/_/g, " ") : "—";
+}
+
+/** Premises vs mobile sales app vs manual — unified attendance grouping. */
+export function attendanceLoginChannel(source) {
+  if (source === "field_rep") return "mobile_sales";
+  if (source === "clock_device" || source === "company_mobile") return "premises";
+  return "manual";
+}
+
+export function formatAttendanceLoginChannel(source, channelLabel) {
+  if (channelLabel) return channelLabel;
+  const channel = attendanceLoginChannel(source);
+  if (channel === "mobile_sales") return "Mobile sales app";
+  if (channel === "premises") return "Premises";
+  return "Manual entry";
+}
+
+export function attendanceLoginChannelBadgeClass(source) {
+  const channel = attendanceLoginChannel(source);
+  if (channel === "mobile_sales") return "bg-violet-100 text-violet-800";
+  if (channel === "premises") return "bg-sky-100 text-sky-800";
+  return "bg-slate-100 text-slate-700";
 }
 
 export function attendanceSourceBadgeClass(source) {

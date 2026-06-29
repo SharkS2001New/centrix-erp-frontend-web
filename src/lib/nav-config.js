@@ -33,7 +33,7 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, group?: string, reportKey?: string }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, group?: string, reportKey?: string }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, items: NavItem[] }} NavSection */
 
@@ -125,16 +125,10 @@ const NAV_SECTION_DEFINITIONS = [
   },
   {
     id: "pos",
-    label: "Point of sale",
+    label: "Till operations",
     icon: "💳",
     collapsible: true,
     items: [
-      {
-        href: "/sales/pos",
-        label: "Create order",
-        module: "sales.pos",
-        permission: P.pos.checkout.create,
-      },
       {
         href: "/sales/end-of-day",
         label: "End of day report",
@@ -176,6 +170,12 @@ const NAV_SECTION_DEFINITIONS = [
     icon: "🛒",
     collapsible: true,
     items: [
+      {
+        href: "/sales/pos",
+        label: "Create new order",
+        moduleAny: ["sales.backend", "distribution"],
+        permissionAny: [P.pos.checkout.create, P.sales.orders.create],
+      },
       {
         href: "/sales/orders",
         label: "All orders",
@@ -589,13 +589,6 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.hr.attendance.view,
       },
       {
-        href: "/hr/field-attendance",
-        label: "Field attendance",
-        module: "hr_payroll",
-        permission: P.hr.attendance.view,
-        requireMobileFieldAttendance: true,
-      },
-      {
         href: "/hr/leave",
         label: "Leave",
         module: "hr_payroll",
@@ -912,6 +905,8 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
     if (!item.moduleAny.some((key) => isModuleEnabledForNav(key, isModuleEnabled))) return false;
   } else if (item.module && !isModuleEnabledForNav(item.module, isModuleEnabled)) return false;
   if (item.reportKey && !canViewReport(item.reportKey, hasPermission)) return false;
-  else if (item.permission && !hasPermission(item.permission)) return false;
+  if (item.permissionAny?.length) {
+    if (!item.permissionAny.some((code) => hasPermission(code))) return false;
+  } else if (item.permission && !hasPermission(item.permission)) return false;
   return true;
 }

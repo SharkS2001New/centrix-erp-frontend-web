@@ -8,10 +8,9 @@ import { buildAccessContext, resolveHomePath, resolveTillFloatNavFlag } from "@/
 
 export default function HomePage() {
   const router = useRouter();
-  const { user, organization, capabilities, loading, isSuperAdmin } = useAuth();
+  const { user, organization, capabilities, isSuperAdmin } = useAuth();
 
   useEffect(() => {
-    if (loading) return;
     if (!hasAuthSession()) {
       router.replace("/login");
       return;
@@ -24,7 +23,7 @@ export default function HomePage() {
       isSuperAdmin,
     });
     router.replace(resolveHomePath(ctx));
-  }, [capabilities, isSuperAdmin, loading, organization, router, user]);
+  }, [capabilities, isSuperAdmin, organization, router, user]);
 
   return (
     <div className="flex min-h-screen items-center justify-center text-slate-400">

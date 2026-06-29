@@ -28,7 +28,8 @@ export const ATTENDANCE_EXPORT_COLUMNS = [
   { key: "check_out", label: "Check out" },
   { key: "hours_worked", label: "Hours", align: "right" },
   { key: "status", label: "Status" },
-  { key: "source", label: "Source" },
+  { key: "login_channel", label: "Login channel" },
+  { key: "source", label: "Capture method" },
   { key: "notes", label: "Notes" },
 ];
 

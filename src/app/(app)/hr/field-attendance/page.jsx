@@ -1,5 +1,6 @@
-import MobileFieldAttendanceScreen from "@/components/sales/mobile-field-attendance-screen";
+import { redirect } from "next/navigation";
 
-export default function HrFieldAttendancePage() {
-  return <MobileFieldAttendanceScreen variant="hr" />;
+/** Field attendance is now part of the unified HR attendance page. */
+export default function HrFieldAttendanceRedirectPage() {
+  redirect("/hr/attendance#field-sessions");
 }

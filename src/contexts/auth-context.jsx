@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { apiRequest, revokeServerAuthSession, isSessionConflictError } from "@/lib/api";
 import {
   clearSession,
+  getStoredCapabilities,
   getStoredLoginChannel,
   getStoredMemberships,
   getStoredOrganization,
@@ -21,6 +22,7 @@ import {
   isScreenLocked,
   patchStoredUser,
   setSession,
+  setStoredCapabilities,
   setStoredWorkspace,
 } from "@/lib/auth-storage";
 import { clearStoredActiveSession } from "@/lib/pos-till";
@@ -65,11 +67,18 @@ export function AuthProvider({ children }) {
   const [capabilities, setCapabilities] = useState(null);
   const [loginChannel, setLoginChannel] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [capabilitiesRefreshing, setCapabilitiesRefreshing] = useState(false);
 
   const refreshCapabilities = useCallback(async () => {
-    const caps = await apiRequest("/erp/capabilities", { loading: false, reportIssues: false });
-    setCapabilities(caps);
-    return caps;
+    setCapabilitiesRefreshing(true);
+    try {
+      const caps = await apiRequest("/erp/capabilities", { loading: false, reportIssues: false });
+      setCapabilities(caps);
+      setStoredCapabilities(caps);
+      return caps;
+    } finally {
+      setCapabilitiesRefreshing(false);
+    }
   }, []);
 
   const clearMustChangePassword = useCallback(() => {
@@ -99,6 +108,7 @@ export function AuthProvider({ children }) {
     });
     if (res?.capabilities) {
       setCapabilities(res.capabilities);
+      setStoredCapabilities(res.capabilities);
       return res.capabilities;
     }
     if (res?.password_expiry) {
@@ -140,8 +150,11 @@ export function AuthProvider({ children }) {
     setMemberships(res.memberships ?? []);
     setLoginChannel(channel);
     try {
-      const caps = res.capabilities ?? (await apiRequest("/erp/capabilities"));
+      const caps =
+        res.capabilities ??
+        (await apiRequest("/erp/capabilities", { loading: false, reportIssues: false }));
       setCapabilities(caps);
+      setStoredCapabilities(caps);
       return caps;
     } catch (e) {
       await revokeServerAuthSession();
@@ -165,19 +178,26 @@ export function AuthProvider({ children }) {
     setOrganization(getStoredOrganization());
     setMemberships(getStoredMemberships());
     setLoginChannel(getStoredLoginChannel() ?? WEB_LOGIN_CHANNEL);
+    const cachedCaps = getStoredCapabilities();
+    if (cachedCaps) {
+      setCapabilities(cachedCaps);
+    }
+    setLoading(false);
+
     refreshCapabilities()
       .then((caps) => {
         syncStoredWorkspace(caps?.workspaces ?? []);
       })
       .catch(async () => {
         if (isScreenLocked()) return;
+        if (cachedCaps) return;
         await revokeServerAuthSession();
         clearSession();
         setUser(null);
         setOrganization(null);
         setMemberships([]);
-      })
-      .finally(() => setLoading(false));
+        setCapabilities(null);
+      });
   }, [refreshCapabilities]);
 
   const switchWorkspace = useCallback(async (workspaceId) => {
@@ -242,7 +262,7 @@ export function AuthProvider({ children }) {
       if (workspaces.length === 1) {
         const only = workspaces[0];
         if (workspaceLoginChannel(only.id) === POS_LOGIN_CHANNEL) {
-          await switchWorkspace(only.id);
+          void switchWorkspace(only.id);
         } else {
           setStoredWorkspace(only.id);
         }
@@ -318,6 +338,7 @@ export function AuthProvider({ children }) {
       memberships,
       capabilities,
       loading,
+      capabilitiesRefreshing,
       login,
       loginChannel,
       switchOrganization,
@@ -350,6 +371,7 @@ export function AuthProvider({ children }) {
       memberships,
       capabilities,
       loading,
+      capabilitiesRefreshing,
       login,
       loginChannel,
       switchOrganization,

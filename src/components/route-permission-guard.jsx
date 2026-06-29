@@ -35,12 +35,11 @@ export function RoutePermissionGuard({ children }) {
   }, [accessCtx, homePath]);
 
   useEffect(() => {
-    if (!loading && !allowed && pathname !== fallbackPath) {
+    if (!allowed && pathname !== fallbackPath) {
       router.replace(fallbackPath);
     }
-  }, [allowed, fallbackPath, loading, pathname, router]);
+  }, [allowed, fallbackPath, pathname, router]);
 
-  if (loading) return null;
   if (!allowed) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500">

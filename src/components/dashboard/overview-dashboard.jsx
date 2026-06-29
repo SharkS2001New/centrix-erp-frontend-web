@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { P } from "@/lib/permission-codes";
+import { isModuleEnabledForNav } from "@/lib/module-registry";
 import {
   DashboardErrorBanner,
   DashboardQuickLinks,
@@ -14,7 +15,14 @@ import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboar
 
 const MODULE_LINKS = [
   { key: "sales.backend", href: "/sales", title: "Sales", desc: "Orders and today's performance", permission: P.sales.dashboard.view },
-  { key: "sales.pos", href: "/sales/pos", title: "Create Order", desc: "Search products, build a cart, and checkout", permission: P.pos.checkout.create },
+  {
+    key: null,
+    moduleAny: ["sales.backend", "distribution"],
+    href: "/sales/pos",
+    title: "Create Order",
+    desc: "Search products, build a cart, and checkout",
+    permissionAny: [P.pos.checkout.create, P.sales.orders.create],
+  },
   { key: "inventory", href: "/inventory", title: "Inventory", desc: "Stock levels, receipts, and movements", permission: P.inventory.stock.view },
   { key: "customers_suppliers", href: "/customers", title: "Customers", desc: "Debtors, routes, and credit", permission: P.customers.customers.view },
   { key: "customers_suppliers", href: "/suppliers", title: "Suppliers", desc: "Purchasing and payables", permission: P.purchasing.suppliers.view },
@@ -32,11 +40,17 @@ export function OverviewDashboard() {
 
   const quickLinks = useMemo(
     () =>
-      MODULE_LINKS.filter(
-        (link) =>
-          (!link.key || isModuleEnabled(link.key)) &&
-          (!link.permission || hasPermission(link.permission)),
-      ),
+      MODULE_LINKS.filter((link) => {
+        if (link.moduleAny?.length) {
+          if (!link.moduleAny.some((key) => isModuleEnabledForNav(key, isModuleEnabled))) return false;
+        } else if (link.key && !isModuleEnabled(link.key)) {
+          return false;
+        }
+        if (link.permissionAny?.length) {
+          return link.permissionAny.some((code) => hasPermission(code));
+        }
+        return !link.permission || hasPermission(link.permission);
+      }),
     [hasPermission, isModuleEnabled],
   );
 
