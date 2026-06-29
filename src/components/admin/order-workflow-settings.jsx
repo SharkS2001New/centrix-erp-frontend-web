@@ -139,8 +139,8 @@ export function OrderWorkflowSettingsEditor({
 
   const intro = (
     <>
-      {!embedded ? <h3 className="text-sm font-semibold text-slate-900">Order workflow</h3> : null}
-      <p className={embedded ? "text-sm text-slate-500" : "mt-1 text-xs text-slate-500"}>
+      {!embedded ? <h3 className="theme-heading text-sm font-semibold">Order workflow</h3> : null}
+      <p className={embedded ? "theme-subtext text-sm" : "theme-subtext mt-1 text-xs"}>
         Define the order pipeline for this client. Stages can be inserted, edited, reordered, or
         deleted. Status moves follow this pipeline — one step up or down only. Enabled stages
         appear as sidebar order pages in this order (View All, then each stage).
@@ -149,7 +149,7 @@ export function OrderWorkflowSettingsEditor({
           : " POS opens checkout on create order. Payment rules below apply to all orders."}
       </p>
       {pipelinePreview.length > 0 ? (
-        <p className={`${embedded ? "mt-2" : "mt-2"} text-xs text-[#0C447C]`}>
+        <p className={`theme-accent-label ${embedded ? "mt-2" : "mt-2"} text-xs`}>
           Pipeline: {pipelinePreview.map((s) => s.label).join(" → ")}
         </p>
       ) : null}
@@ -161,11 +161,11 @@ export function OrderWorkflowSettingsEditor({
       <div>{intro}</div>
 
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pipeline stages</p>
+        <p className="theme-accent-label text-xs font-semibold uppercase tracking-wide">Pipeline stages</p>
         {wf.steps.map((step, index) => (
           <div
             key={`${step.status}-${index}`}
-            className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
+            className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2"
           >
             <input
               type="checkbox"
@@ -173,7 +173,10 @@ export function OrderWorkflowSettingsEditor({
               onChange={(e) => patchStep(index, { enabled: e.target.checked })}
               title="Include this stage in the active pipeline"
             />
-            <span className="w-28 shrink-0 text-xs font-medium uppercase text-slate-500" title="System key">
+            <span
+              className="theme-text-muted w-28 shrink-0 text-xs font-medium uppercase"
+              title="System key"
+            >
               {step.status}
             </span>
             <Field label="Display name" className="min-w-[10rem] flex-1">
@@ -190,7 +193,7 @@ export function OrderWorkflowSettingsEditor({
                 type="button"
                 disabled={index === 0}
                 onClick={() => patch({ steps: moveStep(wf.steps, index, -1) })}
-                className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                className="theme-secondary-btn rounded px-2 py-1 text-xs disabled:opacity-40"
                 title="Move up"
               >
                 ↑
@@ -199,7 +202,7 @@ export function OrderWorkflowSettingsEditor({
                 type="button"
                 disabled={index === wf.steps.length - 1}
                 onClick={() => patch({ steps: moveStep(wf.steps, index, 1) })}
-                className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                className="theme-secondary-btn rounded px-2 py-1 text-xs disabled:opacity-40"
                 title="Move down"
               >
                 ↓
@@ -208,7 +211,7 @@ export function OrderWorkflowSettingsEditor({
                 type="button"
                 disabled={wf.steps.length <= 1}
                 onClick={() => void removeStep(index)}
-                className="rounded border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
+                className="rounded border border-[color-mix(in_srgb,#ef4444_35%,var(--theme-border))] bg-[color-mix(in_srgb,#ef4444_8%,var(--theme-surface))] px-2 py-1 text-xs text-[color-mix(in_srgb,#ef4444_75%,var(--theme-text))] hover:bg-[color-mix(in_srgb,#ef4444_14%,var(--theme-surface))] disabled:opacity-40"
                 title="Delete stage from pipeline"
               >
                 Delete
@@ -218,7 +221,7 @@ export function OrderWorkflowSettingsEditor({
         ))}
 
         {availableToAdd.length > 0 ? (
-          <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-slate-300 bg-white p-3">
+          <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3">
             <Field label="Insert stage" className="min-w-[10rem] flex-1">
               <select
                 className={inputClassName()}
@@ -237,7 +240,7 @@ export function OrderWorkflowSettingsEditor({
               type="button"
               disabled={!stepToAdd}
               onClick={addStep}
-              className="rounded-lg border border-[#185FA5]/30 bg-[#E6F1FB] px-3 py-2 text-xs font-bold uppercase text-[#0C447C] hover:bg-[#d6e8f8] disabled:opacity-40"
+              className="theme-primary-btn rounded-lg px-3 py-2 text-xs font-bold uppercase disabled:opacity-40"
             >
               Insert
             </button>
@@ -246,13 +249,13 @@ export function OrderWorkflowSettingsEditor({
       </div>
 
       {saveOrderMode ? (
-        <div className="rounded-lg border border-[#185FA5]/20 bg-[#E6F1FB]/50 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#0C447C]">
+        <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3">
+          <p className="theme-accent-label text-xs font-semibold uppercase tracking-wide">
             Save order (no checkout)
           </p>
-          <p className="mt-1 text-xs text-slate-600">
-            <strong>Show checkout on create order</strong> is off, so the POS shows{" "}
-            <strong>Save order</strong> instead of checkout. New orders are created at this status.
+          <p className="theme-subtext mt-1 text-xs">
+            <strong className="theme-heading font-semibold">Show checkout on create order</strong> is off, so the POS shows{" "}
+            <strong className="theme-heading font-semibold">Save order</strong> instead of checkout. New orders are created at this status.
             Stock is deducted immediately when the order is saved.
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
@@ -278,19 +281,19 @@ export function OrderWorkflowSettingsEditor({
           </div>
         </div>
       ) : (
-        <p className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-          Save order settings apply when <strong>Show checkout on create order</strong> is turned off
+        <p className="theme-subtext rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2 text-xs">
+          Save order settings apply when <strong className="theme-heading font-semibold">Show checkout on create order</strong> is turned off
           in Payment fields above. With checkout enabled, cashiers complete orders through the
           payment screen instead.
         </p>
       )}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] p-3">
+        <p className="theme-accent-label text-xs font-semibold uppercase tracking-wide">
           Order status by payment
         </p>
-        <p className="mt-1 text-xs text-slate-600">
-          These rules apply to <strong>all orders</strong> — saved directly or completed through
+        <p className="theme-subtext mt-1 text-xs">
+          These rules apply to <strong className="theme-heading font-semibold">all orders</strong> — saved directly or completed through
           checkout — whenever payment (or lack of it) determines the order status.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -310,7 +313,7 @@ export function OrderWorkflowSettingsEditor({
         </div>
 
         <div className="mt-4 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <p className="theme-accent-label text-xs font-semibold uppercase tracking-wide">
             Status when fully paid
           </p>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -340,7 +343,7 @@ export function OrderWorkflowSettingsEditor({
         </div>
 
         <div className="mt-4 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <p className="theme-accent-label text-xs font-semibold uppercase tracking-wide">
             Status when unpaid
           </p>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -370,9 +373,9 @@ export function OrderWorkflowSettingsEditor({
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stock deduction</p>
-        <p className="mt-1 text-xs text-slate-600">
+      <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] p-3">
+        <p className="theme-accent-label text-xs font-semibold uppercase tracking-wide">Stock deduction</p>
+        <p className="theme-subtext mt-1 text-xs">
           Controls when inventory is reduced for POS checkout and order workflow transitions. Trip
           options apply when distribution operations are enabled.
         </p>
@@ -397,7 +400,7 @@ export function OrderWorkflowSettingsEditor({
             </select>
           </Field>
           {stockDeductOn === "order_created" ? (
-            <p className="text-xs text-slate-500">
+            <p className="theme-subtext text-xs">
               Stock is reduced when the order is placed at checkout (POS, mobile, or backoffice).
               Customer returns and POS order edits reverse stock when processed.
             </p>
@@ -414,13 +417,13 @@ export function OrderWorkflowSettingsEditor({
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="theme-subtext mt-1 text-xs">
                 Inventory is reduced when the order reaches this status (at checkout if already
                 there, otherwise on workflow transition).
               </p>
             </Field>
           ) : (
-            <p className="text-xs text-slate-500">
+            <p className="theme-subtext text-xs">
               Stock is held until the loading list is locked or the trip departs. Order workflow
               status transitions will not reduce inventory.
             </p>
@@ -435,6 +438,6 @@ export function OrderWorkflowSettingsEditor({
   }
 
   return (
-    <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">{body}</div>
+    <div className="theme-panel space-y-4 rounded-xl border p-4">{body}</div>
   );
 }

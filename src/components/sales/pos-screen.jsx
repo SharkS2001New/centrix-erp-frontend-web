@@ -106,6 +106,13 @@ import {
   pickBranchTillForCashier,
   tillDisplayName,
 } from "@/lib/pos-till";
+import {
+  extractSaleCustomerMemory,
+  getPosOrderCustomer,
+  getPosOrderCustomerName,
+  rememberPosOrderCustomer,
+  rememberPosOrderCustomerName,
+} from "@/lib/pos-customer-name-memory";
 
 const cartToolbarBtnClassName =
   "theme-secondary-btn inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold uppercase tracking-wide shadow-sm disabled:opacity-50";
@@ -191,8 +198,9 @@ export function PosScreen({ standalone = false }) {
       getPosSalesConfig(capabilities?.module_settings, {
         allowNegativeStock: capabilities?.allow_negative_stock,
         capabilities,
+        standalone,
       }),
-    [capabilities?.module_settings, capabilities?.allow_negative_stock, capabilities],
+    [capabilities?.module_settings, capabilities?.allow_negative_stock, capabilities, standalone],
   );
   const allowDiscounts = posSalesConfig.allowDiscounts;
   const allowEditLineDiscount = posSalesConfig.allowEditLineDiscount;
@@ -592,6 +600,19 @@ export function PosScreen({ standalone = false }) {
   const canGoNextOrder = sessionPosOrders.length > 0 && editBrowseIndex > 0;
   const hasSessionOrders = sessionPosOrders.length > 0;
 
+  const prefilledEditCustomerName = useMemo(() => {
+    const orderNum = cart?.held_order_num;
+    if (!orderNum) return "";
+    return getPosOrderCustomerName(orderNum);
+  }, [cart?.held_order_num]);
+
+  const prefilledEditCustomerNum = useMemo(() => {
+    const orderNum = cart?.held_order_num;
+    if (!orderNum) return "";
+    const { customerNum } = getPosOrderCustomer(orderNum);
+    return customerNum != null ? String(customerNum) : "";
+  }, [cart?.held_order_num]);
+
   function rememberCompletedPosOrder(sale) {
     if (!sale?.id || !enablePosOrderEdit) return;
     if (!isCheckoutCompleteStatus(sale.status, channelWorkflow, "pos")) return;
@@ -763,7 +784,7 @@ export function PosScreen({ standalone = false }) {
 
   const loadCashierCart = useCallback(async () => {
     if (!user?.branch_id) return null;
-    const body = { channel, order_source: "pos", branch_id: user.branch_id };
+    const body = { channel, order_source: standalone ? "pos" : "backoffice", branch_id: user.branch_id };
     if (tillId) body.till_id = tillId;
     if (usesRouteMarkup) {
       body.route_id = Number(selectedRouteId);
@@ -785,6 +806,7 @@ export function PosScreen({ standalone = false }) {
     return full;
   }, [
     channel,
+    standalone,
     user?.branch_id,
     tillId,
     showRouteOrderUi,
@@ -2092,6 +2114,17 @@ export function PosScreen({ standalone = false }) {
         capabilities,
         cartSummary?.total,
       );
+      if (cart?.held_order_num) {
+        if (body.customer_num) {
+          rememberPosOrderCustomer(cart.held_order_num, {
+            name: body.customer_name_override,
+            customerNum: body.customer_num,
+          });
+        } else if (body.customer_name_override) {
+          rememberPosOrderCustomerName(cart.held_order_num, body.customer_name_override);
+        }
+      }
+
       const checkoutBody = {
         ...body,
         sales_workspace: salesWorkspace,
@@ -2237,6 +2270,16 @@ export function PosScreen({ standalone = false }) {
         body.customer_num = customer.customer_num;
         body.customer_name_override = customer.customer_name;
       }
+      if (cart?.held_order_num) {
+        if (walkIn) {
+          rememberPosOrderCustomerName(cart.held_order_num, body.customer_name_override);
+        } else if (customer) {
+          rememberPosOrderCustomer(cart.held_order_num, {
+            name: customer.customer_name,
+            customerNum: customer.customer_num,
+          });
+        }
+      }
       const sale = await apiRequest(`/sales/carts/${cart.id}/checkout`, {
         method: "POST",
         body: {
@@ -2375,7 +2418,7 @@ export function PosScreen({ standalone = false }) {
     }
   }
 
-  async function restoreOrderForEdit(saleId, { replace = false } = {}) {
+  async function restoreOrderForEdit(saleId, { replace = false, saleSnapshot = null } = {}) {
     setBusy(true);
     setOrderEditError(null);
     try {
@@ -2399,6 +2442,19 @@ export function PosScreen({ standalone = false }) {
           return next.slice(0, 40);
         });
         setEditBrowseIndex(0);
+
+        let customerMemory = extractSaleCustomerMemory(saleSnapshot);
+        if (!customerMemory.name && customerMemory.customerNum == null) {
+          try {
+            const sale = await apiRequest(`/sales/${saleId}`);
+            customerMemory = extractSaleCustomerMemory(sale);
+          } catch {
+            customerMemory = { name: "", customerNum: null };
+          }
+        }
+        if (customerMemory.name || customerMemory.customerNum != null) {
+          rememberPosOrderCustomer(orderNum, customerMemory);
+        }
       }
       const label = restoredCart?.held_order_num ?? saleId;
       setStatusMessage(`Order #${label} loaded for editing — update lines and complete checkout.`);
@@ -2444,7 +2500,7 @@ export function PosScreen({ standalone = false }) {
         setOrderEditError(`No POS order found with number ${trimmed}.`);
         return;
       }
-      await restoreOrderForEdit(match.id);
+      await restoreOrderForEdit(match.id, { saleSnapshot: match });
     } catch (e) {
       setOrderEditError(e instanceof ApiError ? dedupeErrorMessage(e.message) : "Order lookup failed");
     } finally {
@@ -3605,6 +3661,7 @@ export function PosScreen({ standalone = false }) {
         paymentConfig={checkoutPaymentConfig}
         prefillMpesaAmount={cart?.mpesa_payment_amount}
         prefillMpesaCode={cart?.mpesa_transaction_code}
+        prefillWalkInCustomerName={prefilledEditCustomerName}
         lockMpesaFields={Number(cart?.mpesa_payment_amount ?? 0) > 0}
         saving={busy}
         error={paymentError}
@@ -3622,6 +3679,8 @@ export function PosScreen({ standalone = false }) {
           setSaveOrderOpen(false);
           setSaveOrderError(null);
         }}
+        prefillWalkInName={prefilledEditCustomerName}
+        prefillCustomerNum={prefilledEditCustomerNum}
         saving={busy}
         error={saveOrderError}
         onSave={handleSaveOrder}
@@ -3638,11 +3697,16 @@ export function PosScreen({ standalone = false }) {
         open={heldOrdersOpen}
         onClose={() => setHeldOrdersOpen(false)}
         onCountChange={setHeldOrdersCount}
-        onRestored={(restoredCart) => {
+        onRestored={(restoredCart, sourceSale) => {
           setCart(restoredCart);
           setSelectedLineId(null);
           setEditingLineRef(null);
           clearLineEntry();
+          const orderNum = restoredCart?.held_order_num;
+          const customerMemory = extractSaleCustomerMemory(sourceSale);
+          if (orderNum && (customerMemory.name || customerMemory.customerNum != null)) {
+            rememberPosOrderCustomer(orderNum, customerMemory);
+          }
           setStatusMessage("Held order restored to cart — ready to complete or edit.");
           void loadHeldOrdersCount();
         }}

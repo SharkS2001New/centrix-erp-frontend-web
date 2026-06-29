@@ -64,7 +64,7 @@ export function AdminOverviewCards() {
 
   if (visible.length === 0) {
     return (
-      <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+      <p className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-6 text-sm theme-subtext">
         You do not have access to any administration modules.
       </p>
     );

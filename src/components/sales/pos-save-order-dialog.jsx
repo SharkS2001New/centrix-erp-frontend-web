@@ -15,6 +15,8 @@ export function PosSaveOrderDialog({
   error,
   onSave,
   mode = "save",
+  prefillWalkInName = "",
+  prefillCustomerNum = "",
   saveStatusLabel = "",
   workflowPipeline = [],
   embedded = false,
@@ -32,16 +34,18 @@ export function PosSaveOrderDialog({
 
   useEffect(() => {
     if (!open) return;
-    setIsWalkIn(false);
-    setWalkInName("");
-    setCustomerNum("");
+    const prefillName = String(prefillWalkInName ?? "").trim();
+    const prefillNum = String(prefillCustomerNum ?? "").trim();
+    setIsWalkIn(Boolean(prefillName) && !prefillNum);
+    setWalkInName(prefillName);
+    setCustomerNum(prefillNum);
     setLocalError(null);
     setLoading(true);
     apiRequest("/customers", { searchParams: { per_page: 200 } })
       .then((res) => setCustomers(res.data ?? []))
       .catch(() => setLocalError("Failed to load customers."))
       .finally(() => setLoading(false));
-  }, [open]);
+  }, [open, prefillWalkInName, prefillCustomerNum]);
 
   useEffect(() => {
     if (!open) return;

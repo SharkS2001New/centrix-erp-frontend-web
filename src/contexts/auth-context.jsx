@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
 } from "react";
@@ -168,7 +169,7 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const stored = getStoredUser();
     if (!hasAuthSession() || !stored) {
       setLoading(false);
@@ -198,6 +199,28 @@ export function AuthProvider({ children }) {
         setMemberships([]);
         setCapabilities(null);
       });
+  }, [refreshCapabilities]);
+
+  useEffect(() => {
+    if (!hasAuthSession()) return undefined;
+
+    const refreshOnFocus = () => {
+      refreshCapabilities().catch(() => {});
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshOnFocus();
+      }
+    };
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [refreshCapabilities]);
 
   const switchWorkspace = useCallback(async (workspaceId) => {

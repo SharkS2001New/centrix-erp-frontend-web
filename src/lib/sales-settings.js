@@ -20,6 +20,7 @@ const SALES_DEFAULTS = {
   point_cash_value: 1,
   points_earn_per_kes: 1000,
   allow_edit_unit_price: true,
+  allow_pos_edit_unit_price: false,
   enable_barcode_scanner: false,
   default_tax_rate: 16,
   enable_mpesa_amount: true,
@@ -39,6 +40,7 @@ const SALES_DEFAULTS = {
   enable_checkout_customer_name: false,
   retail_shop_wholesale_store_stock: false,
   add_route_markup_prices: false,
+  backoffice_order_type_mode: "toggle",
   pos_order_type_mode: "normal",
   enable_mobile_orders: true,
   mobile_enable_checkout_location_verification: false,
@@ -146,6 +148,7 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   point_cash_value: "1",
   points_earn_per_kes: "1000",
   allow_edit_unit_price: true,
+  allow_pos_edit_unit_price: false,
   default_tax_rate: "16",
   enable_mpesa_amount: true,
   enable_mpesa_code: false,
@@ -163,6 +166,7 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   show_checkout_on_create_order: true,
   enable_checkout_customer_name: false,
   add_route_markup_prices: false,
+  backoffice_order_type_mode: "toggle",
   pos_order_type_mode: "normal",
   blind_till_close: false,
   require_backoffice_till_float: false,
@@ -199,6 +203,7 @@ export function salesOrganizationFormFromApi(res) {
     point_cash_value: String(sales.point_cash_value ?? 1),
     points_earn_per_kes: String(sales.points_earn_per_kes ?? 1000),
     allow_edit_unit_price: Boolean(sales.allow_edit_unit_price),
+    allow_pos_edit_unit_price: Boolean(sales.allow_pos_edit_unit_price),
     default_tax_rate: String(sales.default_tax_rate ?? 16),
     enable_mpesa_amount: Boolean(sales.enable_mpesa_amount),
     enable_mpesa_code: Boolean(sales.enable_mpesa_code),
@@ -216,6 +221,7 @@ export function salesOrganizationFormFromApi(res) {
     show_checkout_on_create_order: Boolean(sales.show_checkout_on_create_order),
     enable_checkout_customer_name: Boolean(sales.enable_checkout_customer_name),
     add_route_markup_prices: Boolean(sales.add_route_markup_prices),
+    backoffice_order_type_mode: resolveBackofficeOrderTypeMode(sales),
     pos_order_type_mode: resolvePosOrderTypeMode(sales),
     blind_till_close: Boolean(sales.blind_till_close),
     require_backoffice_till_float: Boolean(sales.require_backoffice_till_float),
@@ -326,6 +332,14 @@ export function areSalesDiscountsEnabled(moduleSettings) {
   return Boolean(sales.allow_discounts || sales.enable_order_discount);
 }
 
+export function isVouchersEnabled(moduleSettings) {
+  return Boolean(mergeSalesSettings(moduleSettings).enable_vouchers);
+}
+
+export function isRedeemablePointsEnabled(moduleSettings) {
+  return Boolean(mergeSalesSettings(moduleSettings).enable_redeemable_points);
+}
+
 export const ORDER_DOCUMENT_TYPES = ["receipt", "invoice", "both"];
 
 export const ORDER_DOCUMENT_TYPE_OPTIONS = [
@@ -389,6 +403,32 @@ export function resolvePosOrderTypeMode(sales) {
     return "toggle";
   }
   return "normal";
+}
+
+/** Backoffice create order (/sales/pos) — route markup applies here when enabled. */
+export function resolveBackofficeOrderTypeMode(sales) {
+  if (!sales?.add_route_markup_prices) {
+    return "normal";
+  }
+  const mode = sales?.backoffice_order_type_mode;
+  if (POS_ORDER_TYPE_MODES.includes(mode)) {
+    return mode;
+  }
+  return "toggle";
+}
+
+export function resolveAllowEditUnitPrice(sales, { standalone = false } = {}) {
+  if (standalone) {
+    return Boolean(sales?.allow_pos_edit_unit_price);
+  }
+  return Boolean(sales?.allow_edit_unit_price);
+}
+
+export function resolveRouteOrderTypeMode(sales, { standalone = false } = {}) {
+  if (!sales?.add_route_markup_prices) {
+    return "normal";
+  }
+  return standalone ? resolvePosOrderTypeMode(sales) : resolveBackofficeOrderTypeMode(sales);
 }
 
 export function isPosOrderEditEnabled(moduleSettings, capabilities = null) {
@@ -473,12 +513,14 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     enableRedeemablePoints: Boolean(sales.enable_redeemable_points),
     pointCashValue: Number(sales.point_cash_value ?? 1),
     pointsEarnPerKes: Number(sales.points_earn_per_kes ?? 1000),
-    allowEditUnitPrice: Boolean(sales.allow_edit_unit_price),
+    allowEditUnitPrice: resolveAllowEditUnitPrice(sales, {
+      standalone: Boolean(options.standalone),
+    }),
     enableBarcodeScanner: Boolean(sales.enable_barcode_scanner),
     addRouteMarkupPrices: Boolean(sales.add_route_markup_prices),
-    posOrderTypeMode: sales.add_route_markup_prices
-      ? resolvePosOrderTypeMode(sales)
-      : "normal",
+    posOrderTypeMode: resolveRouteOrderTypeMode(sales, {
+      standalone: Boolean(options.standalone),
+    }),
     requirePosTillFloat: Boolean(sales.require_pos_till_float),
     requireBackofficeTillFloat: Boolean(sales.require_backoffice_till_float),
     /** @deprecated Use requirePosTillFloat or requireBackofficeTillFloat for the active workspace. */

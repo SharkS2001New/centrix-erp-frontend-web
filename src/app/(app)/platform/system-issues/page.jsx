@@ -41,24 +41,33 @@ export default function PlatformSystemIssuesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("open");
   const [kindFilter, setKindFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [resolutionNotes, setResolutionNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [resolvingId, setResolvingId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      const extra = {
+        status: statusFilter,
+        kind: kindFilter,
+      };
+      if (priorityFilter === "high") extra.priority = "high";
+      if (fromDate) extra.from_date = fromDate;
+      if (toDate) extra.to_date = toDate;
+
       const [listRes, summaryRes] = await Promise.all([
         apiRequest("/admin/system-issue-reports", {
           searchParams: buildPageParams({
             page,
             perPage: PAGE_SIZE,
             q: search,
-            extra: {
-              status: statusFilter,
-              kind: kindFilter,
-            },
+            extra,
           }),
         }),
         apiRequest("/admin/system-issue-reports/summary", { loading: false }),
@@ -73,7 +82,7 @@ export default function PlatformSystemIssuesPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter, kindFilter]);
+  }, [page, search, statusFilter, kindFilter, priorityFilter, fromDate, toDate]);
 
   useEffect(() => {
     load();
@@ -81,7 +90,7 @@ export default function PlatformSystemIssuesPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, kindFilter]);
+  }, [search, statusFilter, kindFilter, priorityFilter, fromDate, toDate]);
 
   async function openDetail(row) {
     try {
@@ -93,25 +102,43 @@ export default function PlatformSystemIssuesPage() {
     }
   }
 
-  async function updateStatus(status) {
-    if (!selected) return;
+  async function patchIssue(id, body, { closeDetail = false } = {}) {
     setSaving(true);
     try {
-      const updated = await apiRequest(`/admin/system-issue-reports/${selected.id}`, {
+      const updated = await apiRequest(`/admin/system-issue-reports/${id}`, {
         method: "PATCH",
-        body: {
-          status,
-          resolution_notes: resolutionNotes.trim() || null,
-        },
+        body,
       });
-      setSelected(updated);
-      notifySuccess("Issue updated.");
+      if (closeDetail) {
+        setSelected(updated);
+      }
+      notifySuccess(body.status === "resolved" ? "Issue marked resolved." : "Issue updated.");
       await load();
+      return updated;
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to update issue");
+      return null;
     } finally {
       setSaving(false);
+      setResolvingId(null);
     }
+  }
+
+  async function updateStatus(status) {
+    if (!selected) return;
+    await patchIssue(
+      selected.id,
+      {
+        status,
+        resolution_notes: resolutionNotes.trim() || null,
+      },
+      { closeDetail: true },
+    );
+  }
+
+  async function markResolvedQuick(row) {
+    setResolvingId(row.id);
+    await patchIssue(row.id, { status: "resolved" });
   }
 
   return (
@@ -124,7 +151,7 @@ export default function PlatformSystemIssuesPage() {
       />
 
       {summary ? (
-        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <div className="rounded-xl border bg-white px-4 py-3 shadow-sm">
             <p className="text-xs uppercase tracking-wide text-slate-500">Open</p>
             <p className="mt-1 text-2xl font-semibold text-red-700">{summary.open ?? 0}</p>
@@ -132,6 +159,15 @@ export default function PlatformSystemIssuesPage() {
           <div className="rounded-xl border bg-white px-4 py-3 shadow-sm">
             <p className="text-xs uppercase tracking-wide text-slate-500">Acknowledged</p>
             <p className="mt-1 text-2xl font-semibold text-amber-700">{summary.acknowledged ?? 0}</p>
+          </div>
+          <div className="rounded-xl border bg-white px-4 py-3 shadow-sm">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Resolved</p>
+            <p className="mt-1 text-2xl font-semibold text-emerald-700">{summary.resolved ?? 0}</p>
+          </div>
+          <div className="rounded-xl border bg-white px-4 py-3 shadow-sm">
+            <p className="text-xs uppercase tracking-wide text-slate-500">High priority</p>
+            <p className="mt-1 text-2xl font-semibold text-orange-700">{summary.high_priority ?? 0}</p>
+            <p className="mt-0.5 text-[11px] text-slate-500">Repetitive in last 7 days</p>
           </div>
           <div className="rounded-xl border bg-white px-4 py-3 shadow-sm">
             <p className="text-xs uppercase tracking-wide text-slate-500">Today</p>
@@ -166,6 +202,28 @@ export default function PlatformSystemIssuesPage() {
             { value: "user_report", label: "User reports" },
           ]}
         />
+        <FilterSelect
+          value={priorityFilter}
+          onChange={(e) => setPriorityFilter(e.target.value)}
+          options={[
+            { value: "all", label: "All priorities" },
+            { value: "high", label: "High priority only" },
+          ]}
+        />
+        <input
+          type="date"
+          value={fromDate}
+          onChange={(e) => setFromDate(e.target.value)}
+          className="theme-input rounded-lg border px-3 py-2 text-sm"
+          aria-label="From date"
+        />
+        <input
+          type="date"
+          value={toDate}
+          onChange={(e) => setToDate(e.target.value)}
+          className="theme-input rounded-lg border px-3 py-2 text-sm"
+          aria-label="To date"
+        />
       </div>
 
       <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
@@ -174,33 +232,46 @@ export default function PlatformSystemIssuesPage() {
             <tr>
               <th className="px-4 py-3">When</th>
               <th className="px-4 py-3">Kind</th>
+              <th className="px-4 py-3">Priority</th>
               <th className="px-4 py-3">Organization</th>
               <th className="px-4 py-3">User</th>
               <th className="px-4 py-3">Message</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3" />
+              <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                   Loading issues…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                   No system issues found.
                 </td>
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id} className="border-t">
+                <tr
+                  key={row.id}
+                  className={`border-t ${row.is_high_priority ? "bg-orange-50/60" : ""}`}
+                >
                   <td className="px-4 py-3 whitespace-nowrap text-slate-600">
                     {row.created_at ? new Date(row.created_at).toLocaleString() : "—"}
                   </td>
                   <td className="px-4 py-3">{KIND_LABELS[row.kind] ?? row.kind}</td>
+                  <td className="px-4 py-3">
+                    {row.is_high_priority ? (
+                      <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-900">
+                        High · {row.occurrence_count ?? "?"}×
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400">Normal</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     {row.organization?.org_name ?? "—"}
                     {row.organization?.company_code ? (
@@ -213,13 +284,25 @@ export default function PlatformSystemIssuesPage() {
                   </td>
                   <td className="px-4 py-3">{STATUS_LABELS[row.status] ?? row.status}</td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      className="text-sm font-medium text-[#185FA5] hover:underline"
-                      onClick={() => openDetail(row)}
-                    >
-                      View
-                    </button>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        className="text-sm font-medium text-[#185FA5] hover:underline"
+                        onClick={() => openDetail(row)}
+                      >
+                        View
+                      </button>
+                      {row.status !== "resolved" ? (
+                        <button
+                          type="button"
+                          className="text-sm font-medium text-emerald-700 hover:underline disabled:opacity-50"
+                          disabled={resolvingId === row.id || saving}
+                          onClick={() => void markResolvedQuick(row)}
+                        >
+                          {resolvingId === row.id ? "Saving…" : "Resolve"}
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))
@@ -237,6 +320,11 @@ export default function PlatformSystemIssuesPage() {
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Issue details</h2>
                 <p className="mt-1 font-mono text-xs text-slate-500">{selected.id}</p>
+                {selected.is_high_priority ? (
+                  <p className="mt-2 inline-flex rounded-full bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-900">
+                    High priority — repeated {selected.occurrence_count ?? "?"} times recently
+                  </p>
+                ) : null}
               </div>
               <button
                 type="button"

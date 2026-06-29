@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { buildSaleReceiptHtml } from "@/components/sales/sale-receipt-print";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import {
   Field,
@@ -16,7 +15,6 @@ import {
   printViaAgent,
   savePrintAgentConfig,
 } from "@/lib/print-agent";
-import { sampleReceiptPreviewSale } from "@/lib/print-preview-samples";
 import {
   downloadPrintAgentInstaller,
   downloadPrintAgentMsi,
@@ -46,10 +44,10 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   const [downloadingMsi, setDownloadingMsi] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const refreshHealth = useCallback(async (config = form) => {
+  const refreshHealth = useCallback(async (config = form, { quick = false } = {}) => {
     setChecking(true);
     try {
-      const result = await checkPrintAgentHealth(config);
+      const result = await checkPrintAgentHealth(config, { quick });
       setHealth(result);
       return result;
     } finally {
@@ -58,8 +56,14 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   }, [form]);
 
   useEffect(() => {
-    void refreshHealth(getPrintAgentConfig());
-  }, [refreshHealth]);
+    if (!form.enabled) return undefined;
+
+    const timer = window.setTimeout(() => {
+      void refreshHealth(form, { quick: true });
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [form.enabled, form.baseUrl, refreshHealth]);
 
   function updateField(key, value) {
     setSaved(false);
@@ -72,7 +76,9 @@ export function PrintAgentSettingsPanel({ compact = false }) {
     setForm(next);
     setSaved(true);
     notifySuccess("Till print settings saved on this device.");
-    await refreshHealth(next);
+    if (next.enabled) {
+      await refreshHealth(next);
+    }
   }
 
   async function handleTestConnection() {
@@ -133,6 +139,11 @@ export function PrintAgentSettingsPanel({ compact = false }) {
         return;
       }
 
+      const [{ buildSaleReceiptHtml }, { sampleReceiptPreviewSale }] = await Promise.all([
+        import("@/components/sales/sale-receipt-print"),
+        import("@/lib/print-preview-samples"),
+      ]);
+
       const html = buildSaleReceiptHtml(sampleReceiptPreviewSale(), {
         organizationName: DEFAULT_PRINT_ORG_NAME,
         customerNameEnabled: true,
@@ -158,6 +169,14 @@ export function PrintAgentSettingsPanel({ compact = false }) {
     ? "theme-panel rounded-xl border p-4 shadow-sm"
     : "theme-panel rounded-xl border p-6 shadow-sm";
 
+  const statusLabel = checking
+    ? "Checking…"
+    : health?.ok
+      ? "Agent connected"
+      : form.enabled
+        ? "Agent offline"
+        : "Browser print";
+
   return (
     <form onSubmit={handleSave} className={shellClass}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -180,7 +199,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
                 : "bg-slate-100 text-slate-600"
           }`}
         >
-          {checking ? "Checking…" : health?.ok ? "Agent connected" : form.enabled ? "Agent offline" : "Browser print"}
+          {statusLabel}
         </span>
       </div>
 
@@ -287,7 +306,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
         <button
           type="button"
           onClick={() => void handleTestConnection()}
-          disabled={checking || testPrinting}
+          disabled={checking || testPrinting || !form.enabled}
           className="theme-btn-secondary rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50"
         >
           {checking ? "Checking…" : "Test agent"}

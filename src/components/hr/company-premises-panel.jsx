@@ -140,15 +140,15 @@ export function CompanyPremisesPanel({ embedded = false }) {
   }
 
   const shellClass = embedded
-    ? "mt-4 space-y-4 rounded-xl border border-[#185FA5]/20 bg-[#E6F1FB]/30 p-4"
-    : "mb-8 rounded-xl border border-[#185FA5]/20 bg-[#E6F1FB]/30 p-5 shadow-sm";
+    ? "mt-4 space-y-4 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-4"
+    : "mb-8 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-5 shadow-sm";
 
   return (
     <section className={shellClass}>
-      <h2 className={embedded ? "text-sm font-medium text-slate-900" : "text-[15px] font-medium text-slate-900"}>
+      <h2 className={embedded ? "theme-heading text-sm font-medium" : "theme-heading text-[15px] font-medium"}>
         Branch premises (GPS)
       </h2>
-      <p className="mt-1 text-sm text-slate-600">
+      <p className="theme-subtext mt-1 text-sm">
         Employees mark attendance on the shared company phone using face scan and GPS.
         {multiBranch
           ? " Configure premises separately for each branch."

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -10,22 +10,49 @@ import { useAdminApi } from "@/contexts/admin-api-context";
 import { isKraDeviceConfigured, isKraFiscalizationActive } from "@/lib/finance-settings";
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { platformOrgSettingsHref } from "@/lib/platform-admin-nav";
-import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
+import {
+  CatalogPageShell,
+  Field,
+  FilterSelect,
+  FilterToolbar,
+  PaginationBar,
+  SearchInput,
+  inputClassName,
+} from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { KRA_RESPONSE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { todayCalendarDate } from "@/lib/datetime";
+
+const PAGE_SIZE = 25;
+
+const STATUS_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  { value: "success", label: "Success" },
+  { value: "failed", label: "Failed" },
+  { value: "pending", label: "Pending" },
+];
 
 export default function KraResponsesPage() {
   const { dateTime } = useOrgFormat();
   const { capabilities } = useAuth();
   const { adminPath, isPlatformManaged, organizationId: platformOrgId, tenantCapabilities } = useAdminApi();
   const params = useParams();
+  const today = useMemo(() => todayCalendarDate(), []);
+
   const [rows, setRows] = useState([]);
+  const [meta, setMeta] = useState(null);
   const [deviceStatus, setDeviceStatus] = useState(null);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [retryingId, setRetryingId] = useState(null);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [fromDate, setFromDate] = useState(today);
+  const [toDate, setToDate] = useState(today);
 
   const effectiveCapabilities = isPlatformManaged ? tenantCapabilities ?? capabilities : capabilities;
 
@@ -35,26 +62,52 @@ export default function KraResponsesPage() {
     effectiveCapabilities,
   );
   const settingsHref = isPlatformManaged ? platformOrgSettingsHref(platformOrgId ?? params?.id) : null;
+  const showingTodayOnly = fromDate === today && toDate === today;
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      const searchParams = buildPageParams({
+        page,
+        perPage: PAGE_SIZE,
+        q: search,
+        extra: {
+          from_date: fromDate || undefined,
+          to_date: toDate || undefined,
+          status: statusFilter !== "all" ? statusFilter : undefined,
+        },
+      });
+
       const [res, statusRes] = await Promise.all([
-        apiRequest(adminPath("/kra-responses"), { searchParams: { per_page: 100 } }),
+        apiRequest(adminPath("/kra-responses"), { searchParams }),
         apiRequest(adminPath("/kra/device-status")).catch(() => null),
       ]);
-      setRows(res.data ?? []);
+
+      const parsed = parsePaginator(res);
+      setRows(parsed.items);
+      setMeta({
+        current_page: parsed.page,
+        last_page: parsed.totalPages,
+        total: parsed.total,
+        per_page: parsed.perPage,
+      });
       setDeviceStatus(statusRes);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load KRA responses");
+      setRows([]);
+      setMeta(null);
     } finally {
       setLoading(false);
     }
-  }, [adminPath]);
+  }, [adminPath, page, search, fromDate, toDate, statusFilter]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [fromDate, toDate, statusFilter, search]);
 
   async function retryReceipt(row) {
     setRetryingId(row.id);
@@ -70,18 +123,43 @@ export default function KraResponsesPage() {
     }
   }
 
+  function resetFilters() {
+    setSearch("");
+    setStatusFilter("all");
+    setFromDate(today);
+    setToDate(today);
+  }
+
+  const totalPages = meta?.last_page ?? 1;
+  const total = meta?.total ?? 0;
+
   return (
     <CatalogPageShell
       title="KRA device log"
-      subtitle="Fiscal receipt submissions from checkout and credit notes"
+      subtitle={
+        showingTodayOnly
+          ? "Today's fiscal receipt submissions from checkout and credit notes"
+          : "Fiscal receipt submissions from checkout and credit notes"
+      }
       action={
         <CatalogListExport
           title="KRA responses"
           filename="kra-responses"
           apiPath={adminPath("/kra-responses")}
           columns={KRA_RESPONSE_EXPORT_COLUMNS}
-          totalCount={rows.length}
-          getSearchParams={() => ({ per_page: 200 })}
+          totalCount={total}
+          getSearchParams={() =>
+            buildPageParams({
+              page: 1,
+              perPage: 200,
+              q: search,
+              extra: {
+                from_date: fromDate || undefined,
+                to_date: toDate || undefined,
+                status: statusFilter !== "all" ? statusFilter : undefined,
+              },
+            })
+          }
           disabled={loading}
         />
       }
@@ -138,6 +216,44 @@ export default function KraResponsesPage() {
         )}
       </div>
 
+      <FilterToolbar className="mb-4">
+        <SearchInput
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search order #, invoice, sale id…"
+        />
+        <Field label="From">
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className={inputClassName()}
+          />
+        </Field>
+        <Field label="To">
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className={inputClassName()}
+          />
+        </Field>
+        <Field label="Status">
+          <FilterSelect
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            options={STATUS_OPTIONS}
+          />
+        </Field>
+        <button
+          type="button"
+          onClick={resetFilters}
+          className="theme-secondary-btn self-end rounded-lg px-3 py-2 text-sm font-medium"
+        >
+          Today only
+        </button>
+      </FilterToolbar>
+
       <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
@@ -146,7 +262,7 @@ export default function KraResponsesPage() {
               <th className="px-4 py-3">Invoice</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Serial</th>
-              <th className="px-4 py-3">Timestamp</th>
+              <th className="px-4 py-3">Logged at</th>
               <th className="px-4 py-3">Error</th>
               <th className="px-4 py-3" />
             </tr>
@@ -161,7 +277,7 @@ export default function KraResponsesPage() {
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
-                  No KRA responses yet.
+                  {showingTodayOnly ? "No KRA device logs for today yet." : "No KRA device logs in this date range."}
                 </td>
               </tr>
             ) : (
@@ -171,7 +287,9 @@ export default function KraResponsesPage() {
                   <td className="px-4 py-3 font-mono text-xs">{r.invoice_number ?? "—"}</td>
                   <td className="px-4 py-3 capitalize">{r.status ?? "—"}</td>
                   <td className="px-4 py-3 font-mono text-xs">{r.serial_number ?? "—"}</td>
-                  <td className="px-4 py-3">{r.kra_timestamp ? dateTime(r.kra_timestamp) : "—"}</td>
+                  <td className="px-4 py-3">
+                    {r.created_at ? dateTime(r.created_at) : r.kra_timestamp ? dateTime(r.kra_timestamp) : "—"}
+                  </td>
                   <td className="max-w-xs truncate px-4 py-3 text-xs text-red-600" title={r.error_message ?? ""}>
                     {r.error_message ?? "—"}
                   </td>
@@ -183,13 +301,12 @@ export default function KraResponsesPage() {
                     >
                       Details
                     </button>
-                    {r.status !== "success" &&
-                    r.sale_id ? (
+                    {r.status !== "success" && r.sale_id ? (
                       <>
                         {" · "}
                         <button
                           type="button"
-                          disabled={retryingId === r.id || !kraEnabled}
+                          disabled={retryingId === r.id || !kraFiscalizationActive}
                           onClick={() => void retryReceipt(r)}
                           className="text-amber-800 hover:underline disabled:opacity-50"
                         >
@@ -203,6 +320,15 @@ export default function KraResponsesPage() {
             )}
           </tbody>
         </table>
+        {!loading && total > 0 ? (
+          <PaginationBar
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={PAGE_SIZE}
+            onChange={setPage}
+          />
+        ) : null}
       </div>
 
       {selected ? (
@@ -246,10 +372,6 @@ export default function KraResponsesPage() {
           </div>
         </div>
       ) : null}
-
-      <PrimaryButton type="button" className="mt-4" onClick={load} showIcon={false}>
-        Refresh
-      </PrimaryButton>
     </CatalogPageShell>
   );
 }

@@ -161,7 +161,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
         method: "POST",
         body: { replace },
       });
-      onRestored?.(cart);
+      onRestored?.(cart, order);
       onClose?.();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to restore order";

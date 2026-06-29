@@ -139,6 +139,7 @@ export function PosPaymentPanel({
   paymentConfig,
   prefillMpesaAmount = 0,
   prefillMpesaCode = "",
+  prefillWalkInCustomerName = "",
   lockMpesaFields = false,
   saving,
   error,
@@ -214,8 +215,8 @@ export function PosPaymentPanel({
     setOtherBankAmount("0");
     setChequeAmount("0");
     setChequeNo("");
-    setWalkInCustomerName("");
-  }, [open, billTotal, prefillMpesaAmount, prefillMpesaCode]);
+    setWalkInCustomerName(String(prefillWalkInCustomerName ?? "").trim());
+  }, [open, billTotal, prefillMpesaAmount, prefillMpesaCode, prefillWalkInCustomerName]);
 
   useEffect(() => {
     if (!open || step !== "saving" || !error) return;
@@ -605,7 +606,10 @@ export function PosPaymentPanel({
   function handleConfirmYes() {
     setLocalError(null);
     if (needsWalkInCustomerName()) {
-      setWalkInCustomerName("");
+      if (!walkInCustomerName.trim()) {
+        const prefill = String(prefillWalkInCustomerName ?? "").trim();
+        if (prefill) setWalkInCustomerName(prefill);
+      }
       setStep("customerName");
       return;
     }

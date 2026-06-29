@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAdminApi } from "@/contexts/admin-api-context";
+import { useAuth } from "@/contexts/auth-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { PermissionMatrix } from "@/components/admin/permission-matrix";
 import {
@@ -24,6 +25,7 @@ import { useConfirm } from "@/lib/use-confirm";
 export default function AdminRolesPage() {
   const confirm = useConfirm();
   const { adminPath } = useAdminApi();
+  const { refreshCapabilities } = useAuth();
   const [roles, setRoles] = useState([]);
   const [permissionGroups, setPermissionGroups] = useState([]);
   const [permissionApplications, setPermissionApplications] = useState([]);
@@ -134,6 +136,7 @@ export default function AdminRolesPage() {
       });
       setAssignedIds(permissionIdSet(res.permission_ids));
       notifySuccess("Permissions saved.");
+      await refreshCapabilities();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to save permissions");
     } finally {

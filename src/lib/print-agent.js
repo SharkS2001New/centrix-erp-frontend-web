@@ -7,7 +7,8 @@
 
 const STORAGE_KEY = "centrix_print_agent_v1";
 const DEFAULT_BASE_URL = "http://127.0.0.1:9247";
-const HEALTH_TIMEOUT_MS = 2500;
+const HEALTH_TIMEOUT_MS = 1200;
+const QUICK_HEALTH_TIMEOUT_MS = 500;
 const PRINT_TIMEOUT_MS = 30000;
 
 export const PRINT_AGENT_DEFAULTS = {
@@ -77,12 +78,12 @@ async function agentFetch(config, path, init = {}) {
 }
 
 /** Ping the local print agent. Returns null when unreachable. */
-export async function checkPrintAgentHealth(config = getPrintAgentConfig()) {
+export async function checkPrintAgentHealth(config = getPrintAgentConfig(), { quick = false } = {}) {
   if (!config?.baseUrl) return null;
   try {
     const body = await agentFetch(config, "/v1/health", {
       method: "GET",
-      timeoutMs: HEALTH_TIMEOUT_MS,
+      timeoutMs: quick ? QUICK_HEALTH_TIMEOUT_MS : HEALTH_TIMEOUT_MS,
     });
     return {
       ok: Boolean(body.ok),

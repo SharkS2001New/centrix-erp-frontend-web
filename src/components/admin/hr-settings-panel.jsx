@@ -13,7 +13,7 @@ import { useSettingsApi } from "@/contexts/settings-api-context";
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
     <label
-      className={`flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 ${
+      className={`flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 ${
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       }`}
     >
@@ -25,8 +25,8 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
         onChange={(e) => onChange(e.target.checked)}
       />
       <span>
-        <span className="block text-sm font-medium text-slate-900">{label}</span>
-        {description ? <span className="mt-0.5 block text-xs text-slate-500">{description}</span> : null}
+        <span className="theme-heading block text-sm font-medium">{label}</span>
+        {description ? <span className="theme-subtext mt-0.5 block text-xs">{description}</span> : null}
       </span>
     </label>
   );

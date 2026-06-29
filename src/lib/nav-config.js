@@ -2,7 +2,7 @@ import { buildCatalogReportNavItems } from "@/lib/reports/report-nav";
 import { canViewReport, P } from "@/lib/permission-codes";
 import { shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
 import { anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-registry";
-import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled } from "@/lib/sales-settings";
+import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled, isVouchersEnabled, isRedeemablePointsEnabled } from "@/lib/sales-settings";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { usesExternalAccounting, usesNativeAccounting } from "@/lib/finance-settings";
@@ -33,7 +33,7 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, group?: string, reportKey?: string }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, group?: string, reportKey?: string }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, items: NavItem[] }} NavSection */
 
@@ -278,12 +278,14 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Vouchers",
         module: "sales.backend",
         permission: P.sales.vouchers.view,
+        requireSalesVouchers: true,
       },
       {
         href: "/sales/loyalty-cards",
         label: "Loyalty cards",
         module: "sales.backend",
         permission: P.sales.loyalty_cards.view,
+        requireRedeemablePoints: true,
       },
     ],
   },
@@ -900,6 +902,8 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   if (item.requireNativeAccounting && !usesNativeAccounting(capabilities?.module_settings)) return false;
   if (item.requireExternalAccounting && !usesExternalAccounting(capabilities?.module_settings)) return false;
   if (item.requireHrCashAdvances && !isCashAdvanceDeductionsEnabled(capabilities?.module_settings)) return false;
+  if (item.requireSalesVouchers && !isVouchersEnabled(capabilities?.module_settings)) return false;
+  if (item.requireRedeemablePoints && !isRedeemablePointsEnabled(capabilities?.module_settings)) return false;
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;
   if (item.moduleAny?.length) {
     if (!item.moduleAny.some((key) => isModuleEnabledForNav(key, isModuleEnabled))) return false;

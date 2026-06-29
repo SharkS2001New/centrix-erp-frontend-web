@@ -7,7 +7,7 @@ import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { AdminGuard } from "@/components/admin/admin-guard";
 import { PasswordInput } from "@/components/auth/password-input";
 import { UserDetailModal } from "@/components/admin/user-detail-modal";
-import { toggleUserPermissionOverride } from "@/components/admin/user-permission-matrix";
+import { UserPermissionMatrix, toggleUserPermissionOverride } from "@/components/admin/user-permission-matrix";
 import { permissionIdSet } from "@/lib/permission-ids";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
@@ -70,7 +70,7 @@ function userIsPasswordLocked(row) {
 
 export default function AdminUsersPage() {
   const confirm = useConfirm();
-  const { user, capabilities } = useAuth();
+  const { user, capabilities, refreshCapabilities } = useAuth();
   const { adminPath, organizationId: platformOrgId, isPlatformManaged, tenantCapabilities } = useAdminApi();
   const organizationId = platformOrgId ?? user?.organization_id ?? capabilities?.organization_id;
   const effectiveCapabilities = isPlatformManaged ? tenantCapabilities ?? capabilities : capabilities;
@@ -237,8 +237,41 @@ export default function AdminUsersPage() {
       ...EMPTY_FORM,
       login_channels: defaultLoginChannelsForCapabilities(effectiveCapabilities),
     });
+    setRolePermissionIds(new Set());
+    setGrantedIds(new Set());
+    setDeniedIds(new Set());
     setFormError(null);
     setDrawerOpen(true);
+  }
+
+  useEffect(() => {
+    if (!drawerOpen || editing || !form.role_id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiRequest(adminPath(`/roles/${form.role_id}/permissions`));
+        if (cancelled) return;
+        setRolePermissionIds(permissionIdSet(res.permission_ids));
+        setGrantedIds(new Set());
+        setDeniedIds(new Set());
+      } catch {
+        if (!cancelled) setRolePermissionIds(new Set());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [adminPath, drawerOpen, editing, form.role_id]);
+
+  function toggleCreatePermission(permissionId) {
+    const next = toggleUserPermissionOverride(
+      permissionId,
+      rolePermissionIds,
+      grantedIds,
+      deniedIds,
+    );
+    setGrantedIds(next.grantedIds);
+    setDeniedIds(next.deniedIds);
   }
 
   function openEdit(row) {
@@ -362,6 +395,9 @@ export default function AdminUsersPage() {
         },
       });
       await loadUserPermissions(viewUser.id);
+      if (viewUser.id === user?.id) {
+        await refreshCapabilities();
+      }
     } catch (e) {
       setPermError(e instanceof ApiError ? e.message : "Failed to save permissions");
     } finally {
@@ -423,7 +459,21 @@ export default function AdminUsersPage() {
       if (editing) {
         await apiRequest(adminPath(`/users/${editing.id}`), { method: "PUT", body });
       } else {
-        await apiRequest(adminPath("/users"), { method: "POST", body });
+        const created = await apiRequest(adminPath("/users"), { method: "POST", body });
+        const createdId = created?.id;
+        if (
+          createdId &&
+          (grantedIds.size > 0 || deniedIds.size > 0) &&
+          !created?.is_admin
+        ) {
+          await apiRequest(adminPath(`/users/${createdId}/permissions`), {
+            method: "PUT",
+            body: {
+              granted_permission_ids: [...grantedIds],
+              denied_permission_ids: [...deniedIds],
+            },
+          });
+        }
       }
       setDrawerOpen(false);
       await reloadAll();
@@ -595,6 +645,7 @@ export default function AdminUsersPage() {
           saving={saving}
           error={formError}
           submitLabel={editing ? "Save changes" : "Create user"}
+          wide={!editing}
         >
           <Field label="Full name">
             <input
@@ -733,6 +784,22 @@ export default function AdminUsersPage() {
                 : "Organization administrator accounts must stay enabled."
               : "Disable login to block sign-in. Delete removes users without activity permanently; users with sales history are archived."}
           </p>
+          {!editing && form.role_id ? (
+            <div className="mt-2 border-t border-[var(--theme-border)] pt-4">
+              <p className="mb-2 text-sm font-medium text-slate-800">Permission overrides (optional)</p>
+              <p className="mb-3 text-xs text-slate-500">
+                Grant extra rights or deny role permissions for this user when they are created.
+              </p>
+              <UserPermissionMatrix
+                applications={permissionApplications}
+                groups={permissionGroups}
+                rolePermissionIds={rolePermissionIds}
+                grantedIds={grantedIds}
+                deniedIds={deniedIds}
+                onToggle={toggleCreatePermission}
+              />
+            </div>
+          ) : null}
         </FormDrawer>
       </CatalogPageShell>
   );

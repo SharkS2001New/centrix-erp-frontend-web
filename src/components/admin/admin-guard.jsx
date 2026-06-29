@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
@@ -10,56 +10,67 @@ import {
   shouldHideOrgAdminFromPlatformSuperAdmin,
 } from "@/lib/admin-scope";
 import { buildAccessContext, resolveHomePath } from "@/lib/access-control";
+import { hasAuthSession, readCachedAuthSnapshot } from "@/lib/auth-storage";
 
 export function AdminGuard({ children, strict = false }) {
   const { user, organization, capabilities, loading, hasPermission, isSuperAdmin } = useAuth();
   const router = useRouter();
 
-  const platformShellBlock = shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin });
-  const administrationEnabled = isAdministrationModuleEnabled(capabilities);
+  const cached = readCachedAuthSnapshot();
+  const effectiveUser = user ?? cached?.user ?? null;
+  const effectiveOrganization = organization ?? cached?.organization ?? null;
+  const effectiveCapabilities = capabilities ?? cached?.capabilities ?? null;
+  const sessionReady = Boolean(effectiveUser) || hasAuthSession();
 
-  const isAdmin = user?.is_admin || capabilities?.is_admin;
+  const platformShellBlock = shouldHideOrgAdminFromPlatformSuperAdmin({
+    organization: effectiveOrganization,
+    isSuperAdmin,
+  });
+  const administrationEnabled = isAdministrationModuleEnabled(effectiveCapabilities);
+
+  const accessCtx = useMemo(
+    () =>
+      buildAccessContext({
+        user: effectiveUser,
+        organization: effectiveOrganization,
+        capabilities: effectiveCapabilities,
+        isSuperAdmin,
+      }),
+    [effectiveCapabilities, effectiveOrganization, effectiveUser, isSuperAdmin],
+  );
+
+  const isAdmin = effectiveUser?.is_admin || effectiveCapabilities?.is_admin;
   const canAccess = platformShellBlock
     ? false
     : strict
       ? isAdmin
       : isAdmin ||
-        hasPermission("admin.overview.view") ||
-        hasPermission("admin.manage") ||
+        accessCtx.hasPermission("admin.overview.view") ||
+        accessCtx.hasPermission("admin.manage") ||
         canAccessOrgAdminSettings({
-          organization,
+          organization: effectiveOrganization,
           isSuperAdmin,
-          hasPermission,
-          user,
-          capabilities,
+          hasPermission: accessCtx.hasPermission,
+          user: effectiveUser,
+          capabilities: effectiveCapabilities,
         });
 
   useEffect(() => {
-    if (!loading && !canAccess && !platformShellBlock && administrationEnabled) {
-      router.replace(
-        resolveHomePath(
-          buildAccessContext({
-            user,
-            organization,
-            capabilities,
-            isSuperAdmin,
-          }),
-        ),
-      );
+    if (loading && !sessionReady) return;
+    if (!canAccess && !platformShellBlock && administrationEnabled) {
+      router.replace(resolveHomePath(accessCtx));
     }
   }, [
+    accessCtx,
     administrationEnabled,
     canAccess,
-    capabilities,
-    isSuperAdmin,
     loading,
-    organization,
     platformShellBlock,
     router,
-    user,
+    sessionReady,
   ]);
 
-  if (loading) {
+  if (loading && !sessionReady) {
     return (
       <div className="flex h-full items-center justify-center text-slate-500">
         Loading…

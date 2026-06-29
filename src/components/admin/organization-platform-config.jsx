@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { PasswordInput } from "@/components/auth/password-input";
@@ -38,7 +39,7 @@ function OrgRegisterField({ label, children, className = "" }) {
 export function PlatformFormSection({ title, description, children }) {
   return (
     <section className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 shadow-sm">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-[#185FA5] dark:text-sky-400">{title}</h2>
+      <h2 className="theme-accent-label text-sm font-semibold uppercase tracking-wide">{title}</h2>
       {description ? <p className="theme-subtext mt-1 text-sm">{description}</p> : null}
       <div className="mt-4">{children}</div>
     </section>
@@ -328,8 +329,8 @@ export function OrganizationOrderWorkflowSettings({
       description="Order pipeline stages, save and checkout rules, and stock deduction timing."
     >
       {!salesEnabled ? (
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-          Enable the <strong>Sales</strong> module to configure order workflow for this organization.
+        <p className="theme-subtext rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-sm">
+          Enable the <strong className="theme-heading font-semibold">Sales</strong> module to configure order workflow for this organization.
         </p>
       ) : (
         <OrderWorkflowSettingsEditor
@@ -620,16 +621,18 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
-  const [defaultBranchId, setDefaultBranchId] = useState(null);
-  const [defaultAdminRoleId, setDefaultAdminRoleId] = useState(null);
-  const [defaultStaffRoleId, setDefaultStaffRoleId] = useState(null);
-  const [open, setOpen] = useState(false);
+  const [branches, setBranches] = useState([]);
+  const [roles, setRoles] = useState([]);
+  const [modalOpen, setModalOpen] = useState(false);
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [branchId, setBranchId] = useState("");
+  const [roleId, setRoleId] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(true);
+  const [loginChannels, setLoginChannels] = useState(["backoffice"]);
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState(null);
   const [createMessage, setCreateMessage] = useState(null);
@@ -660,16 +663,19 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
         apiRequest(`/admin/organizations/${organizationId}/branches`, { searchParams: { per_page: 200 } }),
         apiRequest(`/admin/organizations/${organizationId}/roles`, { searchParams: { per_page: 200 } }),
       ]);
-      const branches = Array.isArray(branchRes?.data) ? branchRes.data : [];
-      const roles = Array.isArray(roleRes?.data) ? roleRes.data : [];
-      const branch = pickDefaultBranch(branches);
-      setDefaultBranchId(branch?.id ?? null);
-      setDefaultAdminRoleId(pickDefaultRole(roles, { admin: true })?.id ?? null);
-      setDefaultStaffRoleId(pickDefaultRole(roles, { admin: false })?.id ?? null);
+      const branchList = Array.isArray(branchRes?.data) ? branchRes.data : [];
+      const roleList = Array.isArray(roleRes?.data) ? roleRes.data : [];
+      setBranches(branchList);
+      setRoles(roleList);
+      const branch = pickDefaultBranch(branchList);
+      const staffRole = pickDefaultRole(roleList, { admin: false });
+      setBranchId(branch?.id ? String(branch.id) : "");
+      setRoleId(staffRole?.id ? String(staffRole.id) : "");
     } catch {
-      setDefaultBranchId(null);
-      setDefaultAdminRoleId(null);
-      setDefaultStaffRoleId(null);
+      setBranches([]);
+      setRoles([]);
+      setBranchId("");
+      setRoleId("");
     }
   }, [organizationId]);
 
@@ -678,16 +684,50 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
     loadReferenceData();
   }, [loadUsers, loadReferenceData]);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  function openCreateModal() {
+    setCreateError(null);
+    setFullName("");
+    setUsername("");
+    setEmail("");
+    setPassword("");
+    setIsAdmin(false);
+    setMustChangePassword(true);
+    setLoginChannels(["backoffice"]);
+    const branch = pickDefaultBranch(branches);
+    const staffRole = pickDefaultRole(roles, { admin: false });
+    setBranchId(branch?.id ? String(branch.id) : "");
+    setRoleId(staffRole?.id ? String(staffRole.id) : "");
+    setModalOpen(true);
+  }
+
+  function closeCreateModal() {
+    if (saving) return;
+    setModalOpen(false);
+    setCreateError(null);
+  }
+
+  async function handleCreateUser() {
     if (!organizationId) return;
-    const roleId = isAdmin ? defaultAdminRoleId : defaultStaffRoleId;
-    if (!defaultBranchId) {
-      setCreateError("This organization has no branch yet. Add a branch before creating users.");
+    if (!fullName.trim() || !username.trim() || !password.trim()) {
+      setCreateError("Full name, username, and password are required.");
       return;
     }
-    if (!roleId) {
-      setCreateError("No role is available for this organization. Seed roles first.");
+    const resolvedBranchId = branchId ? Number(branchId) : null;
+    const resolvedRoleId = isAdmin
+      ? pickDefaultRole(roles, { admin: true })?.id ?? (roleId ? Number(roleId) : null)
+      : roleId
+        ? Number(roleId)
+        : null;
+    if (!resolvedBranchId) {
+      setCreateError("Select a branch. Add a branch first if none exist.");
+      return;
+    }
+    if (!resolvedRoleId) {
+      setCreateError("Select a role. Seed roles first if none exist.");
+      return;
+    }
+    if (!loginChannels.length) {
+      setCreateError("Select at least one login channel.");
       return;
     }
     setSaving(true);
@@ -705,18 +745,13 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
           is_admin: isAdmin,
           must_change_password: mustChangePassword,
           access_scope: "org",
-          branch_id: defaultBranchId,
-          role_id: roleId,
+          branch_id: resolvedBranchId,
+          role_id: resolvedRoleId,
+          login_channels: loginChannels,
         },
       });
-      setCreateMessage(`User ${res.username ?? res.user?.username ?? username} created.`);
-      setFullName("");
-      setUsername("");
-      setEmail("");
-      setPassword("");
-      setIsAdmin(false);
-      setMustChangePassword(true);
-      setOpen(false);
+      setCreateMessage(`User ${res.username ?? username} created.`);
+      setModalOpen(false);
       await loadUsers();
     } catch (err) {
       const { ApiError } = await import("@/lib/api");
@@ -725,6 +760,167 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
       setSaving(false);
     }
   }
+
+  const createModal =
+    modalOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-900/45 p-4">
+            <div
+              className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border bg-white p-6 shadow-2xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="org-create-user-title"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h3 id="org-create-user-title" className="text-lg font-semibold text-slate-900">
+                  Create user
+                </h3>
+                <button
+                  type="button"
+                  className="text-sm text-slate-500 hover:text-slate-800"
+                  onClick={closeCreateModal}
+                  disabled={saving}
+                >
+                  Close
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                New sign-in account for {companyCode ? `company code ${companyCode}` : "this organization"}.
+              </p>
+
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <OrgRegisterField label="Full name *">
+                  <input
+                    className={inputClass}
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                  />
+                </OrgRegisterField>
+                <OrgRegisterField label="Username *">
+                  <input
+                    className={inputClass}
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
+                  />
+                </OrgRegisterField>
+                <OrgRegisterField label="Email">
+                  <input
+                    type="email"
+                    className={inputClass}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </OrgRegisterField>
+                <OrgRegisterField label="Password *">
+                  <input
+                    type="password"
+                    className={inputClass}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    minLength={6}
+                  />
+                </OrgRegisterField>
+                <OrgRegisterField label="Branch *">
+                  <select
+                    className={inputClass}
+                    value={branchId}
+                    onChange={(e) => setBranchId(e.target.value)}
+                  >
+                    <option value="">Select branch</option>
+                    {branches.map((branch) => (
+                      <option key={branch.id} value={String(branch.id)}>
+                        {branch.branch_name}
+                      </option>
+                    ))}
+                  </select>
+                </OrgRegisterField>
+                <OrgRegisterField label="Role *">
+                  <select
+                    className={inputClass}
+                    value={roleId}
+                    onChange={(e) => setRoleId(e.target.value)}
+                    disabled={isAdmin}
+                  >
+                    <option value="">Select role</option>
+                    {roles.map((role) => (
+                      <option key={role.id} value={String(role.id)}>
+                        {role.role_name}
+                      </option>
+                    ))}
+                  </select>
+                </OrgRegisterField>
+              </div>
+
+              <div className="mt-4">
+                <span className="text-xs font-medium text-slate-600">Login channels *</span>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  {["backoffice", "pos", "mobile"].map((channel) => (
+                    <label key={channel} className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={loginChannels.includes(channel)}
+                        onChange={(e) =>
+                          setLoginChannels((prev) =>
+                            e.target.checked
+                              ? [...prev, channel]
+                              : prev.filter((c) => c !== channel),
+                          )
+                        }
+                      />
+                      {channel}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={isAdmin}
+                  onChange={(e) => setIsAdmin(e.target.checked)}
+                  className="rounded"
+                />
+                Organization administrator (full access)
+              </label>
+              <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={mustChangePassword}
+                  onChange={(e) => setMustChangePassword(e.target.checked)}
+                  className="rounded"
+                />
+                Require password change on first sign-in
+              </label>
+
+              {createError ? (
+                <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {createError}
+                </p>
+              ) : null}
+
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeCreateModal}
+                  disabled={saving}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCreateUser()}
+                  disabled={saving}
+                  className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#144f8a] disabled:opacity-50"
+                >
+                  {saving ? "Creating…" : "Create user"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <PlatformFormSection
@@ -741,15 +937,21 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
         </p>
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
+          onClick={openCreateModal}
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
         >
-          {open ? "Cancel" : "Create user"}
+          Create user
         </button>
       </div>
 
       {loadError ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{loadError}</p>
+      ) : null}
+
+      {createMessage ? (
+        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {createMessage}
+        </p>
       ) : null}
 
       {!loading && users.length > 0 ? (
@@ -785,87 +987,11 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
 
       {!loading && users.length === 0 && !loadError ? (
         <p className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
-          No users yet. Create the first sign-in account below.
+          No users yet. Use Create user to add the first sign-in account.
         </p>
       ) : null}
 
-      {open ? (
-        <form onSubmit={handleSubmit} className="mt-4 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
-          <h3 className="text-sm font-semibold text-slate-900">New user</h3>
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <OrgRegisterField label="Full name *">
-              <input
-                className={inputClass}
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
-              />
-            </OrgRegisterField>
-            <OrgRegisterField label="Username *">
-              <input
-                className={inputClass}
-                value={username}
-                onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
-                required
-              />
-            </OrgRegisterField>
-            <OrgRegisterField label="Email *">
-              <input
-                type="email"
-                className={inputClass}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </OrgRegisterField>
-            <OrgRegisterField label="Password *">
-              <input
-                type="password"
-                className={inputClass}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                minLength={6}
-                required
-              />
-            </OrgRegisterField>
-          </div>
-          <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={isAdmin}
-              onChange={(e) => setIsAdmin(e.target.checked)}
-              className="rounded"
-            />
-            Organization administrator (full access)
-          </label>
-          <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={mustChangePassword}
-              onChange={(e) => setMustChangePassword(e.target.checked)}
-              className="rounded"
-            />
-            Require password change on first sign-in
-          </label>
-          {createError ? (
-            <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</p>
-          ) : null}
-          {createMessage ? (
-            <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-              {createMessage}
-            </p>
-          ) : null}
-          <div className="mt-4">
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#144f8a] disabled:opacity-50"
-            >
-              {saving ? "Creating…" : "Create user"}
-            </button>
-          </div>
-        </form>
-      ) : null}
+      {createModal}
     </PlatformFormSection>
   );
 }
@@ -916,7 +1042,7 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
   }
 
   async function saveDetails(e) {
-    e.preventDefault();
+    e?.preventDefault?.();
     await updateUser({
       full_name: fullName.trim(),
       username: username.trim(),
@@ -1099,14 +1225,13 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
       {editing ? (
         <tr className="bg-slate-50">
           <td colSpan={9} className="px-4 py-3">
-            <form onSubmit={saveDetails} className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-3">
               <label className="block text-xs text-slate-600">
                 Full name
                 <input
                   className={`${inputClass} mt-1`}
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  required
                 />
               </label>
               <label className="block text-xs text-slate-600">
@@ -1115,7 +1240,6 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
                   className={`${inputClass} mt-1 font-mono`}
                   value={username}
                   onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
-                  required
                 />
               </label>
               <label className="block text-xs text-slate-600">
@@ -1125,19 +1249,19 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
                   className={`${inputClass} mt-1`}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  required
                 />
               </label>
               <div className="sm:col-span-3">
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={() => void saveDetails()}
                   disabled={busy}
                   className="rounded-lg bg-[#185FA5] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#144f8a] disabled:opacity-50"
                 >
                   {busy ? "Saving…" : "Save user details"}
                 </button>
               </div>
-            </form>
+            </div>
           </td>
         </tr>
       ) : null}

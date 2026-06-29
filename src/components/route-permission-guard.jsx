@@ -5,24 +5,28 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { buildAccessContext, resolveHomePath, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { canAccessRoute } from "@/lib/route-access";
+import { readCachedAuthSnapshot } from "@/lib/auth-storage";
 
 export function RoutePermissionGuard({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, organization, capabilities, loading, hasPermission, isModuleEnabled, isSuperAdmin } =
-    useAuth();
-  const requireTillFloat = resolveTillFloatNavFlag(capabilities);
+  const { user, organization, capabilities, isSuperAdmin } = useAuth();
+  const cached = readCachedAuthSnapshot();
+  const effectiveUser = user ?? cached?.user ?? null;
+  const effectiveOrganization = organization ?? cached?.organization ?? null;
+  const effectiveCapabilities = capabilities ?? cached?.capabilities ?? null;
+  const requireTillFloat = resolveTillFloatNavFlag(effectiveCapabilities);
 
   const accessCtx = useMemo(
     () =>
       buildAccessContext({
-        user,
-        organization,
-        capabilities,
+        user: effectiveUser,
+        organization: effectiveOrganization,
+        capabilities: effectiveCapabilities,
         requireTillFloat,
         isSuperAdmin,
       }),
-    [capabilities, isSuperAdmin, organization, requireTillFloat, user],
+    [effectiveCapabilities, effectiveOrganization, effectiveUser, isSuperAdmin, requireTillFloat],
   );
 
   const allowed = canAccessRoute(pathname, accessCtx);

@@ -145,6 +145,19 @@ export function setStoredCapabilities(capabilities) {
   }
 }
 
+/** Synchronous session snapshot for route/guard checks before React auth state hydrates. */
+export function readCachedAuthSnapshot() {
+  if (typeof window === "undefined") return null;
+  if (!hasAuthSession()) return null;
+  const user = getStoredUser();
+  if (!user) return null;
+  return {
+    user,
+    organization: getStoredOrganization(),
+    capabilities: getStoredCapabilities(),
+  };
+}
+
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);

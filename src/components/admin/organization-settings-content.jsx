@@ -52,7 +52,7 @@ const TABS = [
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
     <label
-      className={`flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 ${
+      className={`flex items-start gap-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 ${
         disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
       }`}
     >
@@ -64,8 +64,8 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
         onChange={(e) => onChange(e.target.checked)}
       />
       <span>
-        <span className="block text-sm font-medium text-slate-900">{label}</span>
-        {description ? <span className="mt-0.5 block text-xs text-slate-500">{description}</span> : null}
+        <span className="theme-heading block text-sm font-medium">{label}</span>
+        {description ? <span className="theme-subtext mt-0.5 block text-xs">{description}</span> : null}
       </span>
     </label>
   );
@@ -222,79 +222,147 @@ export function OrganizationSettingsContent({
                     {hasCustomers ? (
                       <Toggle
                         label="Add route markup prices"
-                        description="Enables route markup on sales. Choose whether cashiers always use normal pricing, always select a route for markup, or can toggle below."
+                        description="Applies route markup on backoffice create order (Sales → Create new order) by default. External POS cashiers only get route markup when enabled below."
                         checked={salesForm.add_route_markup_prices}
                         onChange={(v) =>
                           setSalesForm((f) => ({
                             ...f,
                             add_route_markup_prices: v,
+                            backoffice_order_type_mode: v
+                              ? f.backoffice_order_type_mode === "normal"
+                                ? "toggle"
+                                : f.backoffice_order_type_mode
+                              : "normal",
                             pos_order_type_mode: v ? f.pos_order_type_mode : "normal",
                           }))
                         }
                       />
                     ) : null}
-                    {hasPosSales && salesForm.add_route_markup_prices ? (
-                      <fieldset className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                        <legend className="px-1 text-sm font-medium text-slate-900">
-                          POS order type (route orders)
+                    {salesForm.add_route_markup_prices ? (
+                      <fieldset className="space-y-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3">
+                        <legend className="theme-heading px-1 text-sm font-medium">
+                          Backoffice create order
                         </legend>
-                        <p className="text-xs text-slate-500">
-                          Route orders appear in the Distribution workspace. Enable route markup prices above first.
+                        <p className="theme-subtext text-xs">
+                          Sales → Create new order and distribution backoffice order entry. Route orders
+                          appear in the Distribution workspace when a route is selected.
                         </p>
                         <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-800">
                           <input
                             type="radio"
-                            name="pos_order_type_mode"
+                            name="backoffice_order_type_mode"
                             className="mt-1"
                             value="normal"
-                            checked={salesForm.pos_order_type_mode === "normal"}
+                            checked={salesForm.backoffice_order_type_mode === "normal"}
                             onChange={() =>
-                              setSalesForm((f) => ({ ...f, pos_order_type_mode: "normal" }))
+                              setSalesForm((f) => ({ ...f, backoffice_order_type_mode: "normal" }))
                             }
                           />
                           <span>
                             <span className="font-medium">Normal orders only</span>
                             <span className="mt-0.5 block text-xs text-slate-500">
-                              POS sells shop/counter orders only. Route orders come from the mobile app.
+                              Shop/counter pricing only — no route markup on backoffice orders.
                             </span>
                           </span>
                         </label>
                         <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-800">
                           <input
                             type="radio"
-                            name="pos_order_type_mode"
+                            name="backoffice_order_type_mode"
                             className="mt-1"
                             value="route"
-                            checked={salesForm.pos_order_type_mode === "route"}
+                            checked={salesForm.backoffice_order_type_mode === "route"}
                             onChange={() =>
-                              setSalesForm((f) => ({ ...f, pos_order_type_mode: "route" }))
+                              setSalesForm((f) => ({ ...f, backoffice_order_type_mode: "route" }))
                             }
                           />
                           <span>
                             <span className="font-medium">Route orders only</span>
                             <span className="mt-0.5 block text-xs text-slate-500">
-                              Cashiers always select a route. Orders count as route orders in Distribution.
+                              Staff always select a route. Markup applies on every backoffice order.
                             </span>
                           </span>
                         </label>
                         <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-800">
                           <input
                             type="radio"
-                            name="pos_order_type_mode"
+                            name="backoffice_order_type_mode"
                             className="mt-1"
                             value="toggle"
-                            checked={salesForm.pos_order_type_mode === "toggle"}
+                            checked={salesForm.backoffice_order_type_mode === "toggle"}
                             onChange={() =>
-                              setSalesForm((f) => ({ ...f, pos_order_type_mode: "toggle" }))
+                              setSalesForm((f) => ({ ...f, backoffice_order_type_mode: "toggle" }))
                             }
                           />
                           <span>
                             <span className="font-medium">Allow normal or route order toggle</span>
                             <span className="mt-0.5 block text-xs text-slate-500">
-                              Cashier chooses normal shop sale or route order with markup per transaction.
+                              Staff choose normal shop sale or route order with markup per transaction.
                             </span>
                           </span>
                         </label>
+                      </fieldset>
+                    ) : null}
+                    {hasPosSales && salesForm.add_route_markup_prices ? (
+                      <fieldset className="space-y-2 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3">
+                        <legend className="theme-heading px-1 text-sm font-medium">
+                          External POS cashier terminal
+                        </legend>
+                        <Toggle
+                          label="Also enable route markup on external POS"
+                          description="When off, the external POS workspace (/pos) sells at normal pricing only. Backoffice create order settings above still apply."
+                          checked={salesForm.pos_order_type_mode !== "normal"}
+                          onChange={(v) =>
+                            setSalesForm((f) => ({
+                              ...f,
+                              pos_order_type_mode: v
+                                ? f.pos_order_type_mode === "normal"
+                                  ? "toggle"
+                                  : f.pos_order_type_mode
+                                : "normal",
+                            }))
+                          }
+                        />
+                        {salesForm.pos_order_type_mode !== "normal" ? (
+                          <>
+                            <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-800">
+                              <input
+                                type="radio"
+                                name="pos_order_type_mode"
+                                className="mt-1"
+                                value="route"
+                                checked={salesForm.pos_order_type_mode === "route"}
+                                onChange={() =>
+                                  setSalesForm((f) => ({ ...f, pos_order_type_mode: "route" }))
+                                }
+                              />
+                              <span>
+                                <span className="font-medium">Route orders only</span>
+                                <span className="mt-0.5 block text-xs text-slate-500">
+                                  Cashiers always select a route on the external POS terminal.
+                                </span>
+                              </span>
+                            </label>
+                            <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-800">
+                              <input
+                                type="radio"
+                                name="pos_order_type_mode"
+                                className="mt-1"
+                                value="toggle"
+                                checked={salesForm.pos_order_type_mode === "toggle"}
+                                onChange={() =>
+                                  setSalesForm((f) => ({ ...f, pos_order_type_mode: "toggle" }))
+                                }
+                              />
+                              <span>
+                                <span className="font-medium">Allow normal or route order toggle</span>
+                                <span className="mt-0.5 block text-xs text-slate-500">
+                                  Cashier chooses normal shop sale or route order with markup per sale.
+                                </span>
+                              </span>
+                            </label>
+                          </>
+                        ) : null}
                       </fieldset>
                     ) : null}
                     <Toggle
@@ -368,12 +436,26 @@ export function OrganizationSettingsContent({
                         How much each point is worth as payment at checkout.
                       </p>
                     </Field>
-                    {hasPosSales ? (
+                    <Toggle
+                      label="Editable unit price on create order"
+                      description="Backoffice create order (Sales → Create new order). When off, unit price is fixed and Enter on quantity adds the line to the cart."
+                      checked={salesForm.allow_edit_unit_price}
+                      onChange={(v) =>
+                        setSalesForm((f) => ({
+                          ...f,
+                          allow_edit_unit_price: v,
+                          allow_pos_edit_unit_price: v ? f.allow_pos_edit_unit_price : false,
+                        }))
+                      }
+                    />
+                    {hasPosSales && salesForm.allow_edit_unit_price ? (
                       <Toggle
-                        label="Editable unit price on POS"
-                        description="When off, unit price is fixed and Enter on quantity adds the line to the cart."
-                        checked={salesForm.allow_edit_unit_price}
-                        onChange={(v) => setSalesForm((f) => ({ ...f, allow_edit_unit_price: v }))}
+                        label="Also allow editable unit price on external POS"
+                        description="When off, external POS cashiers use catalogue prices only. Backoffice create order setting above still applies."
+                        checked={salesForm.allow_pos_edit_unit_price}
+                        onChange={(v) =>
+                          setSalesForm((f) => ({ ...f, allow_pos_edit_unit_price: v }))
+                        }
                       />
                     ) : null}
                     <Field label="Default tax rate (%)">
