@@ -27,46 +27,49 @@ function accessLabel(user, capabilities) {
   return "Single branch";
 }
 
-export function ProfilePanel({ compact = false }) {
+export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
   const router = useRouter();
   const {
     user,
     organization,
     capabilities,
-    applyPasswordExpiry,
-    clearMustChangePassword,
-    refreshCapabilities,
+    completePasswordChange,
     switchWorkspace,
   } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [saving, setSaving] = useState(false);
+  const requiredPasswordChange = Boolean(user?.must_change_password);
 
   async function onSubmit(e) {
     e.preventDefault();
-    const requiredPasswordChange = Boolean(user?.must_change_password);
     setSaving(true);
     try {
-      const res = await apiRequest("/auth/change-password", {
-        method: "POST",
-        body: {
-          current_password: currentPassword,
-          password,
-          password_confirmation: passwordConfirmation,
-        },
-      });
-      applyPasswordExpiry(res.password_expiry ?? null);
-      if (res.must_change_password === false || requiredPasswordChange) {
-        clearMustChangePassword();
-      }
-      const caps = await refreshCapabilities().catch(() => capabilities);
+      const res = requiredPasswordChange
+        ? await apiRequest("/auth/set-required-password", {
+            method: "POST",
+            body: {
+              password,
+              password_confirmation: passwordConfirmation,
+            },
+          })
+        : await apiRequest("/auth/change-password", {
+            method: "POST",
+            body: {
+              current_password: currentPassword,
+              password,
+              password_confirmation: passwordConfirmation,
+            },
+          });
+
+      const caps = (await completePasswordChange(res)) ?? capabilities;
       notifySuccess(res.message);
       setCurrentPassword("");
       setPassword("");
       setPasswordConfirmation("");
 
-      if (requiredPasswordChange && caps) {
+      if (requiredPasswordChange) {
         const nextUser = { ...user, must_change_password: false };
         const ctx = buildAccessContext({
           user: nextUser,
@@ -75,7 +78,7 @@ export function ProfilePanel({ compact = false }) {
           requireTillFloat: resolveTillFloatNavFlag(caps),
         });
         await navigateAfterAuthSessionReady(ctx, caps, router, { switchWorkspace });
-        return;
+        onPasswordChangeComplete?.();
       }
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not update password.");
@@ -125,17 +128,24 @@ export function ProfilePanel({ compact = false }) {
 
       <section className="theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Change password
+          {requiredPasswordChange ? "Set a new password" : "Change password"}
         </h2>
+        {requiredPasswordChange ? (
+          <p className="mt-2 text-sm text-slate-600">
+            Choose a new password to unlock the rest of the application.
+          </p>
+        ) : null}
         <form onSubmit={onSubmit} className="mt-4 space-y-4">
-          <Field label="Current password">
-            <PasswordInput
-              className={inputClassName()}
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              required
-            />
-          </Field>
+          {!requiredPasswordChange ? (
+            <Field label="Current password">
+              <PasswordInput
+                className={inputClassName()}
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+              />
+            </Field>
+          ) : null}
           <Field label="New password">
             <PasswordInput
               className={inputClassName()}
@@ -155,7 +165,11 @@ export function ProfilePanel({ compact = false }) {
             />
           </Field>
           <PrimaryButton type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Update password"}
+            {saving
+              ? "Saving…"
+              : requiredPasswordChange
+                ? "Save password and continue"
+                : "Update password"}
           </PrimaryButton>
         </form>
       </section>

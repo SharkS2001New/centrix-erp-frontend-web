@@ -82,8 +82,47 @@ export function AuthProvider({ children }) {
   }, []);
 
   const applyPasswordExpiry = useCallback((status) => {
-    setCapabilities((prev) => (prev ? { ...prev, password_expiry: status } : prev));
+    if (!status) return;
+    setCapabilities((prev) => ({ ...(prev ?? {}), password_expiry: status }));
   }, []);
+
+  const completePasswordChange = useCallback(async (res) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        ...(res?.user ?? {}),
+        must_change_password: false,
+      };
+      patchStoredUser({ must_change_password: false, ...(res?.user ?? {}) });
+      return next;
+    });
+    if (res?.capabilities) {
+      setCapabilities(res.capabilities);
+      return res.capabilities;
+    }
+    if (res?.password_expiry) {
+      setCapabilities((prev) => ({ ...(prev ?? {}), password_expiry: res.password_expiry }));
+    } else {
+      setCapabilities((prev) => {
+        if (!prev?.password_expiry) return prev;
+        return {
+          ...prev,
+          password_expiry: {
+            ...prev.password_expiry,
+            forced: false,
+            expired: false,
+            reason: null,
+          },
+        };
+      });
+    }
+    try {
+      return await refreshCapabilities();
+    } catch {
+      return res?.capabilities ?? null;
+    }
+  }, [refreshCapabilities]);
 
   const skipPasswordExpiry = useCallback(async () => {
     const res = await apiRequest("/auth/skip-password-expiry", { method: "POST" });
@@ -287,6 +326,7 @@ export function AuthProvider({ children }) {
       refreshCapabilities,
       clearMustChangePassword,
       applyPasswordExpiry,
+      completePasswordChange,
       skipPasswordExpiry,
       passwordExpiry,
       isModuleEnabled: (key) => capabilities?.modules?.[key] ?? false,
@@ -318,6 +358,7 @@ export function AuthProvider({ children }) {
       refreshCapabilities,
       clearMustChangePassword,
       applyPasswordExpiry,
+      completePasswordChange,
       skipPasswordExpiry,
       passwordExpiry,
     ],

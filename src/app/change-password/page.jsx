@@ -21,9 +21,7 @@ function ChangePasswordForm() {
   const {
     user,
     organization,
-    clearMustChangePassword,
-    applyPasswordExpiry,
-    refreshCapabilities,
+    completePasswordChange,
     switchWorkspace,
   } = useAuth();
   const reason = searchParams.get("reason");
@@ -34,9 +32,8 @@ function ChangePasswordForm() {
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  async function redirectAfterSuccess(nextUser) {
-    clearMustChangePassword();
-    const caps = await refreshCapabilities();
+  async function redirectAfterSuccess(nextUser, res) {
+    const caps = (await completePasswordChange(res)) ?? null;
     const ctx = buildAccessContext({
       user: nextUser,
       organization,
@@ -73,8 +70,7 @@ function ChangePasswordForm() {
             password_confirmation: confirmation,
           },
         });
-        applyPasswordExpiry(res.password_expiry ?? null);
-        await redirectAfterSuccess({ ...user, must_change_password: false });
+        await redirectAfterSuccess({ ...user, must_change_password: false }, res);
         return;
       }
 
@@ -85,8 +81,7 @@ function ChangePasswordForm() {
           password_confirmation: confirmation,
         },
       });
-      applyPasswordExpiry(res.password_expiry ?? null);
-      await redirectAfterSuccess({ ...user, must_change_password: false });
+      await redirectAfterSuccess({ ...user, must_change_password: false }, res);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not update password.");
     } finally {

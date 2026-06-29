@@ -43,7 +43,7 @@ export function ProfileModal({ open, onClose }) {
           </button>
         </div>
         <div className="max-h-[min(80vh,720px)] overflow-y-auto p-5">
-          <ProfilePanel compact />
+          <ProfilePanel compact onPasswordChangeComplete={onClose} />
         </div>
       </div>
     </div>

@@ -69,6 +69,7 @@ export function validateSecurityForm(form) {
 
 export function isPasswordExpiryForced(user, passwordExpiry) {
   if (user?.must_change_password) return false;
+  if (passwordExpiry?.reason === "must_change_password") return false;
   return Boolean(passwordExpiry?.forced);
 }
 

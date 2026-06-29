@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { hasAuthSession } from "@/lib/auth-storage";
-import { shouldPromptPasswordExpiry } from "@/lib/security-settings";
+import { shouldPromptPasswordExpiry, isPasswordExpiryForced } from "@/lib/security-settings";
 import { PasswordExpiryPromptModal } from "@/components/auth/password-expiry-prompt-modal";
 
 const CHANGE_PASSWORD_PATH = "/change-password";
@@ -18,7 +18,7 @@ export function PasswordExpiryGuard({ children }) {
   const [skipBusy, setSkipBusy] = useState(false);
 
   const mustChange = Boolean(user?.must_change_password);
-  const expiryForced = Boolean(passwordExpiry?.forced) && !mustChange;
+  const expiryForced = isPasswordExpiryForced(user, passwordExpiry);
   const canPrompt = shouldPromptPasswordExpiry(user, passwordExpiry);
   const onChangePasswordPage = pathname === CHANGE_PASSWORD_PATH;
   const onProfilePage = pathname === PROFILE_PATH;
