@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
+import { navigateAfterAuthSessionReady } from "@/lib/post-auth-navigation";
 import { PasswordInput } from "@/components/auth/password-input";
 import {
   Field,
@@ -25,6 +28,7 @@ function accessLabel(user, capabilities) {
 }
 
 export function ProfilePanel({ compact = false }) {
+  const router = useRouter();
   const {
     user,
     organization,
@@ -32,6 +36,7 @@ export function ProfilePanel({ compact = false }) {
     applyPasswordExpiry,
     clearMustChangePassword,
     refreshCapabilities,
+    switchWorkspace,
   } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
@@ -40,6 +45,7 @@ export function ProfilePanel({ compact = false }) {
 
   async function onSubmit(e) {
     e.preventDefault();
+    const requiredPasswordChange = Boolean(user?.must_change_password);
     setSaving(true);
     try {
       const res = await apiRequest("/auth/change-password", {
@@ -51,14 +57,26 @@ export function ProfilePanel({ compact = false }) {
         },
       });
       applyPasswordExpiry(res.password_expiry ?? null);
-      if (res.must_change_password === false) {
+      if (res.must_change_password === false || requiredPasswordChange) {
         clearMustChangePassword();
       }
-      await refreshCapabilities().catch(() => {});
+      const caps = await refreshCapabilities().catch(() => capabilities);
       notifySuccess(res.message);
       setCurrentPassword("");
       setPassword("");
       setPasswordConfirmation("");
+
+      if (requiredPasswordChange && caps) {
+        const nextUser = { ...user, must_change_password: false };
+        const ctx = buildAccessContext({
+          user: nextUser,
+          organization,
+          capabilities: caps,
+          requireTillFloat: resolveTillFloatNavFlag(caps),
+        });
+        await navigateAfterAuthSessionReady(ctx, caps, router, { switchWorkspace });
+        return;
+      }
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not update password.");
     } finally {

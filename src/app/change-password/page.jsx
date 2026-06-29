@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
-import { resolvePostLoginPath } from "@/lib/workspaces";
+import { navigateAfterAuthSessionReady } from "@/lib/post-auth-navigation";
 import {
   AuthError,
   AuthField,
@@ -18,16 +18,16 @@ import { PasswordInput } from "@/components/auth/password-input";
 function ChangePasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const reason = searchParams.get("reason");
-  const isExpired = reason === "expired" && !user?.must_change_password;
   const {
     user,
     organization,
-    capabilities,
     clearMustChangePassword,
     applyPasswordExpiry,
     refreshCapabilities,
+    switchWorkspace,
   } = useAuth();
+  const reason = searchParams.get("reason");
+  const isExpired = reason === "expired" && !user?.must_change_password;
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -36,14 +36,14 @@ function ChangePasswordForm() {
 
   async function redirectAfterSuccess(nextUser) {
     clearMustChangePassword();
-    const caps = capabilities ?? (await refreshCapabilities());
+    const caps = await refreshCapabilities();
     const ctx = buildAccessContext({
       user: nextUser,
       organization,
       capabilities: caps,
       requireTillFloat: resolveTillFloatNavFlag(caps),
     });
-    router.replace(resolvePostLoginPath(ctx, caps));
+    await navigateAfterAuthSessionReady(ctx, caps, router, { switchWorkspace });
   }
 
   async function onSubmit(e) {
