@@ -34,8 +34,8 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { USER_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import {
-  DEFAULT_LOGIN_CHANNELS,
-  LOGIN_CHANNELS,
+  availableLoginChannelsFromCapabilities,
+  defaultLoginChannelsForCapabilities,
   formatLoginChannels,
   normalizeLoginChannels,
 } from "@/lib/login-channels";
@@ -53,7 +53,7 @@ const EMPTY_FORM = {
   password: "",
   must_change_password: true,
   access_scope: "branch",
-  login_channels: [...DEFAULT_LOGIN_CHANNELS],
+  login_channels: [],
   assigned_route_id: "",
   is_active: true,
 };
@@ -99,12 +99,14 @@ export default function AdminUsersPage() {
   const [deniedIds, setDeniedIds] = useState(new Set());
 
   const mobileOrdersEnabled = isOrgMobileSalesEnabled(effectiveCapabilities);
+  const posEnabled = Boolean(effectiveCapabilities?.modules?.["sales.pos"]);
+  const allowedLoginChannelSet = useMemo(
+    () => new Set(defaultLoginChannelsForCapabilities(effectiveCapabilities)),
+    [effectiveCapabilities],
+  );
   const availableLoginChannels = useMemo(
-    () =>
-      mobileOrdersEnabled
-        ? LOGIN_CHANNELS
-        : LOGIN_CHANNELS.filter((channel) => channel.value !== "mobile"),
-    [mobileOrdersEnabled],
+    () => availableLoginChannelsFromCapabilities(effectiveCapabilities),
+    [effectiveCapabilities],
   );
   const matrix = permissionGroups;
   const branchById = useMemo(() => new Map(branches.map((b) => [b.id, b])), [branches]);
@@ -227,7 +229,10 @@ export default function AdminUsersPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm(EMPTY_FORM);
+    setForm({
+      ...EMPTY_FORM,
+      login_channels: defaultLoginChannelsForCapabilities(effectiveCapabilities),
+    });
     setFormError(null);
     setDrawerOpen(true);
   }
@@ -243,7 +248,7 @@ export default function AdminUsersPage() {
       password: "",
       must_change_password: true,
       access_scope: row.access_scope ?? "branch",
-      login_channels: normalizeLoginChannels(row.login_channels),
+      login_channels: normalizeLoginChannels(row.login_channels, allowedLoginChannelSet),
       assigned_route_id: row.assigned_route_id ? String(row.assigned_route_id) : "",
       is_active: row.is_active !== false,
     });
@@ -376,7 +381,7 @@ export default function AdminUsersPage() {
         branch_id: form.branch_id ? Number(form.branch_id) : null,
         role_id: Number(form.role_id),
         access_scope: form.access_scope,
-        login_channels: normalizeLoginChannels(form.login_channels),
+        login_channels: normalizeLoginChannels(form.login_channels, allowedLoginChannelSet),
       };
       if (userHasMobileChannel(form.login_channels)) {
         body.assigned_route_id = form.assigned_route_id
@@ -613,7 +618,7 @@ export default function AdminUsersPage() {
                     checked={form.login_channels.includes(channel.value)}
                     onChange={(e) =>
                       setForm((f) => {
-                        const current = normalizeLoginChannels(f.login_channels);
+                        const current = normalizeLoginChannels(f.login_channels, allowedLoginChannelSet);
                         const next = e.target.checked
                           ? [...current, channel.value]
                           : current.filter((c) => c !== channel.value);
@@ -628,9 +633,12 @@ export default function AdminUsersPage() {
               ))}
             </div>
             <p className="mt-1 text-xs text-slate-500">
+              Only channels enabled for this organization are listed.
               {mobileOrdersEnabled
-                ? "Mobile-only users can sign in from the mobile app but not the web backoffice or POS."
-                : "Mobile orders are disabled for this organization — only backoffice and POS channels are available."}
+                ? " Mobile-only users can sign in from the mobile app but not the web backoffice or POS."
+                : posEnabled
+                  ? " External POS and backoffice are available; mobile orders are disabled."
+                  : " Backoffice web sign-in is available; external POS and mobile are disabled for this organization."}
             </p>
           </Field>
           {mobileOrdersEnabled && userHasMobileChannel(form.login_channels) ? (

@@ -594,10 +594,35 @@ function formatChannels(channels) {
   return channels.join(", ");
 }
 
+function pickDefaultBranch(branches) {
+  if (!Array.isArray(branches) || branches.length === 0) return null;
+  const hq = branches.find((b) => String(b.branch_code ?? "").toUpperCase() === "HQ");
+  return hq ?? branches[0];
+}
+
+function pickDefaultRole(roles, { admin = false } = {}) {
+  if (!Array.isArray(roles) || roles.length === 0) return null;
+  if (admin) {
+    return (
+      roles.find((r) => String(r.role_name ?? "").toLowerCase() === "administrator") ??
+      roles.find((r) => r.scope === "org") ??
+      roles[0]
+    );
+  }
+  return (
+    roles.find((r) => String(r.role_name ?? "").toLowerCase() === "branch manager") ??
+    roles.find((r) => String(r.role_name ?? "").toLowerCase() === "cashier") ??
+    roles[0]
+  );
+}
+
 export function OrganizationUsersPanel({ organizationId, companyCode, detailed = false }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [defaultBranchId, setDefaultBranchId] = useState(null);
+  const [defaultAdminRoleId, setDefaultAdminRoleId] = useState(null);
+  const [defaultStaffRoleId, setDefaultStaffRoleId] = useState(null);
   const [open, setOpen] = useState(false);
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
@@ -615,8 +640,10 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
     setLoadError(null);
     try {
       const { apiRequest } = await import("@/lib/api");
-      const res = await apiRequest(`/admin/organizations/${organizationId}/users`);
-      setUsers(res.data ?? []);
+      const res = await apiRequest(`/admin/organizations/${organizationId}/users`, {
+        searchParams: { per_page: 200 },
+      });
+      setUsers(Array.isArray(res?.data) ? res.data : []);
     } catch (err) {
       const { ApiError } = await import("@/lib/api");
       setLoadError(err instanceof ApiError ? err.message : "Could not load users.");
@@ -625,13 +652,44 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
     }
   }, [organizationId]);
 
+  const loadReferenceData = useCallback(async () => {
+    if (!organizationId) return;
+    try {
+      const { apiRequest } = await import("@/lib/api");
+      const [branchRes, roleRes] = await Promise.all([
+        apiRequest(`/admin/organizations/${organizationId}/branches`, { searchParams: { per_page: 200 } }),
+        apiRequest(`/admin/organizations/${organizationId}/roles`, { searchParams: { per_page: 200 } }),
+      ]);
+      const branches = Array.isArray(branchRes?.data) ? branchRes.data : [];
+      const roles = Array.isArray(roleRes?.data) ? roleRes.data : [];
+      const branch = pickDefaultBranch(branches);
+      setDefaultBranchId(branch?.id ?? null);
+      setDefaultAdminRoleId(pickDefaultRole(roles, { admin: true })?.id ?? null);
+      setDefaultStaffRoleId(pickDefaultRole(roles, { admin: false })?.id ?? null);
+    } catch {
+      setDefaultBranchId(null);
+      setDefaultAdminRoleId(null);
+      setDefaultStaffRoleId(null);
+    }
+  }, [organizationId]);
+
   useEffect(() => {
     loadUsers();
-  }, [loadUsers]);
+    loadReferenceData();
+  }, [loadUsers, loadReferenceData]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!organizationId) return;
+    const roleId = isAdmin ? defaultAdminRoleId : defaultStaffRoleId;
+    if (!defaultBranchId) {
+      setCreateError("This organization has no branch yet. Add a branch before creating users.");
+      return;
+    }
+    if (!roleId) {
+      setCreateError("No role is available for this organization. Seed roles first.");
+      return;
+    }
     setSaving(true);
     setCreateError(null);
     setCreateMessage(null);
@@ -640,15 +698,18 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
       const res = await apiRequest(`/admin/organizations/${organizationId}/users`, {
         method: "POST",
         body: {
-          full_name: fullName,
-          username,
-          email,
+          full_name: fullName.trim(),
+          username: username.trim(),
+          email: email.trim() || null,
           password,
           is_admin: isAdmin,
           must_change_password: mustChangePassword,
+          access_scope: "org",
+          branch_id: defaultBranchId,
+          role_id: roleId,
         },
       });
-      setCreateMessage(`User ${res.user?.username ?? username} created.`);
+      setCreateMessage(`User ${res.username ?? res.user?.username ?? username} created.`);
       setFullName("");
       setUsername("");
       setEmail("");
