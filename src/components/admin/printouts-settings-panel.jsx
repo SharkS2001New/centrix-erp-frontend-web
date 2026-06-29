@@ -20,6 +20,7 @@ import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-
 import { MultilinePrintNotesField } from "@/components/admin/multiline-print-notes-field";
 import { PrintoutsLivePreview } from "@/components/admin/printouts-live-preview";
 import { useDocumentPrintPreviewContext } from "@/components/admin/document-print-preview";
+import { hasOperationalModule } from "@/lib/admin-scope";
 import { useAuth } from "@/contexts/auth-context";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
@@ -73,8 +74,8 @@ export function PrintoutsSettingsPanel({
   const modules = capabilities?.modules ?? {};
   const hasSales = Boolean(modules.sales);
   const hasProcurement = Boolean(modules.customers_suppliers);
-  const hasGeneral = Boolean(modules.admin);
   const hasLoadingSheets = Boolean(modules.distribution || modules["sales.mobile"]);
+  const hasGeneral = hasOperationalModule(capabilities);
 
   const load = useCallback(async () => {
     setLoading(true);

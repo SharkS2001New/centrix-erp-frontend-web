@@ -229,7 +229,8 @@ export function kraDeviceHealthPayloadFromForm(form) {
   return kraDeviceOpsPayloadFromForm(form);
 }
 
-export function financePayloadFromForm(form) {
+export function financePayloadFromForm(form, options = {}) {
+  const includeMpesa = options.includeMpesa !== false;
   const mpesa = { ...form.mpesa };
   if (mpesa.consumer_secret === "********") delete mpesa.consumer_secret;
   if (mpesa.passkey === "********") delete mpesa.passkey;
@@ -237,12 +238,13 @@ export function financePayloadFromForm(form) {
   const quickbooks = { ...form.quickbooks };
   if (quickbooks.client_secret === "********") delete quickbooks.client_secret;
 
-  return {
+  const kraPin = String(form.kra_pin_number ?? "").trim();
+
+  const payload = {
     enable_kra_device: Boolean(form.enable_kra_device),
     kra_device_ip: form.kra_device_ip.trim(),
     kra_device_hardware_ip: form.kra_device_hardware_ip.trim(),
     kra_serial_number: form.kra_serial_number.trim(),
-    kra_pin_number: form.kra_pin_number.trim(),
     kra_device_test_mode: Boolean(form.kra_device_test_mode),
     kra_plu_register_path: form.kra_plu_register_path.trim() || "/api/upload-plu-data",
     default_submit_kra: Boolean(form.default_submit_kra),
@@ -255,7 +257,20 @@ export function financePayloadFromForm(form) {
     accounting_mode: form.accounting_mode === "external" ? "external" : "native",
     accounting_provider: form.accounting_mode === "external" ? "quickbooks" : null,
     accounting_sync_direction: form.accounting_sync_direction || "export",
-    mpesa: {
+    quickbooks: {
+      client_id: quickbooks.client_id.trim(),
+      redirect_uri: quickbooks.redirect_uri.trim(),
+      environment: quickbooks.environment === "production" ? "production" : "sandbox",
+      ...(quickbooks.client_secret ? { client_secret: quickbooks.client_secret.trim() } : {}),
+    },
+  };
+
+  if (kraPin && kraPin !== "********") {
+    payload.kra_pin_number = kraPin;
+  }
+
+  if (includeMpesa) {
+    payload.mpesa = {
       ...mpesa,
       enable_stk_push: Boolean(form.mpesa?.enable_stk_push),
       consumer_key: mpesa.consumer_key.trim(),
@@ -267,12 +282,8 @@ export function financePayloadFromForm(form) {
       c2b_validation_url: mpesa.c2b_validation_url.trim(),
       ...(mpesa.consumer_secret ? { consumer_secret: mpesa.consumer_secret.trim() } : {}),
       ...(mpesa.passkey ? { passkey: mpesa.passkey.trim() } : {}),
-    },
-    quickbooks: {
-      client_id: quickbooks.client_id.trim(),
-      redirect_uri: quickbooks.redirect_uri.trim(),
-      environment: quickbooks.environment === "production" ? "production" : "sandbox",
-      ...(quickbooks.client_secret ? { client_secret: quickbooks.client_secret.trim() } : {}),
-    },
-  };
+    };
+  }
+
+  return payload;
 }

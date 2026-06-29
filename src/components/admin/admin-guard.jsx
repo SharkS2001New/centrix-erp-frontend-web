@@ -6,12 +6,13 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import {
   canAccessOrgAdminSettings,
+  canAccessTenantOrganizationSettings,
   isAdministrationModuleEnabled,
   shouldHideOrgAdminFromPlatformSuperAdmin,
 } from "@/lib/admin-scope";
 import { buildAccessContext, resolveHomePath } from "@/lib/access-control";
 
-export function AdminGuard({ children, strict = false }) {
+export function AdminGuard({ children, strict = false, settingsOnly = false }) {
   const { user, organization, capabilities, loading, hasPermission, isSuperAdmin } = useAuth();
   const router = useRouter();
 
@@ -19,6 +20,14 @@ export function AdminGuard({ children, strict = false }) {
   const administrationEnabled = isAdministrationModuleEnabled(capabilities);
 
   const isAdmin = user?.is_admin || capabilities?.is_admin;
+  const canAccessSettings = canAccessTenantOrganizationSettings({
+    organization,
+    isSuperAdmin,
+    hasPermission,
+    user,
+    capabilities,
+  });
+
   const canAccess = platformShellBlock
     ? false
     : strict
@@ -34,8 +43,10 @@ export function AdminGuard({ children, strict = false }) {
           capabilities,
         });
 
+  const canEnter = settingsOnly ? canAccessSettings : canAccess;
+
   useEffect(() => {
-    if (!loading && !canAccess && !platformShellBlock && administrationEnabled) {
+    if (!loading && !canEnter && !platformShellBlock && (administrationEnabled || settingsOnly)) {
       router.replace(
         resolveHomePath(
           buildAccessContext({
@@ -49,13 +60,14 @@ export function AdminGuard({ children, strict = false }) {
     }
   }, [
     administrationEnabled,
-    canAccess,
+    canEnter,
     capabilities,
     isSuperAdmin,
     loading,
     organization,
     platformShellBlock,
     router,
+    settingsOnly,
     user,
   ]);
 
@@ -94,7 +106,7 @@ export function AdminGuard({ children, strict = false }) {
     );
   }
 
-  if (!administrationEnabled) {
+  if (!administrationEnabled && !settingsOnly) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950">
         <h2 className="font-medium">Administration is not available</h2>
@@ -109,7 +121,7 @@ export function AdminGuard({ children, strict = false }) {
     );
   }
 
-  if (!canAccess) return null;
+  if (!canEnter) return null;
 
   return <>{children}</>;
 }

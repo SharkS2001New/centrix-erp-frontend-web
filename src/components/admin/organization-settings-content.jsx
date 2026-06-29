@@ -93,7 +93,7 @@ export function OrganizationSettingsContent({
     : "Platform configuration for module provisioning, workflows, integration gates, and legacy archive. Tenants manage day-to-day module preferences under Administration → Organization settings.",
 }) {
   const { settingsPath } = useSettingsApi();
-  const [tab, setTab] = useState(tenantSelfService ? "general" : "sales");
+  const [tab, setTab] = useState(tenantSelfService ? "printouts" : "sales");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const setMessage = toastMessageSetter;
@@ -179,8 +179,8 @@ export function OrganizationSettingsContent({
       <div className="grid gap-6 lg:grid-cols-[200px_1fr]">
         {visibleTabs.length === 0 ? (
           <p className="col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-950">
-            No organization settings are available for this company. Your platform administrator manages
-            preferences because the Administration module is not enabled.
+            No organization settings are available for this company. Enable at least one operational module
+            (sales, inventory, procurement, and so on) to configure printouts and other preferences.
           </p>
         ) : (
           <>

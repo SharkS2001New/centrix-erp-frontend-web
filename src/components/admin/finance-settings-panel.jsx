@@ -118,7 +118,7 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
     try {
       const res = await apiRequest(settingsPath("finance"), {
         method: "PATCH",
-        body: financePayloadFromForm(form),
+        body: financePayloadFromForm(form, { includeMpesa: mpesaAllowed }),
       });
       setForm(financeFormFromApi(res));
 

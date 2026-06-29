@@ -7,7 +7,6 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
-import { ORDER_MIN_TOTAL_OPTIONS } from "@/components/sales/sales-orders-shared";
 import {
   FilterSelect,
   PaginationBar,
@@ -55,6 +54,9 @@ function LegacyOrdersContent() {
   const [toDate, setToDate] = useState("");
   const [returnsFilter, setReturnsFilter] = useState("all");
   const [minTotalFilter, setMinTotalFilter] = useState("");
+  const [maxTotalFilter, setMaxTotalFilter] = useState("");
+  const debouncedMinTotal = useDebouncedValue(minTotalFilter);
+  const debouncedMaxTotal = useDebouncedValue(maxTotalFilter);
   const [page, setPage] = useState(1);
   const [deletingId, setDeletingId] = useState(null);
 
@@ -67,7 +69,8 @@ function LegacyOrdersContent() {
       if (toDate) extra.to_date = toDate;
       if (returnsFilter === "with_returns") extra.has_returns = true;
       if (returnsFilter === "no_returns") extra.has_returns = false;
-      if (minTotalFilter) extra.min_order_total = minTotalFilter;
+      if (debouncedMinTotal !== "") extra.min_order_total = debouncedMinTotal;
+      if (debouncedMaxTotal !== "") extra.max_order_total = debouncedMaxTotal;
 
       const params = buildPageParams({
         page,
@@ -87,7 +90,7 @@ function LegacyOrdersContent() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, debouncedSearch, fromDate, toDate, returnsFilter, minTotalFilter]);
+  }, [page, debouncedSearch, fromDate, toDate, returnsFilter, debouncedMinTotal, debouncedMaxTotal]);
 
   useEffect(() => {
     loadData();
@@ -95,7 +98,7 @@ function LegacyOrdersContent() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, fromDate, toDate, returnsFilter, minTotalFilter]);
+  }, [debouncedSearch, fromDate, toDate, returnsFilter, debouncedMinTotal, debouncedMaxTotal]);
 
   async function deleteLegacyOrder(row) {
     if (!canDeleteLegacyOrder(row) || !row?.id) return;
@@ -147,8 +150,12 @@ function LegacyOrdersContent() {
         </p>
       ) : null}
 
-      <div className="flex flex-wrap gap-3">
-        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Order, customer, legacy ref…" />
+      <div className="flex flex-wrap items-end gap-3">
+        <SearchInput
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Order, customer, legacy ref, total…"
+        />
         <input
           type="date"
           className="rounded-md border px-3 py-2 text-sm"
@@ -170,14 +177,32 @@ function LegacyOrdersContent() {
             { value: "no_returns", label: "No returns yet" },
           ]}
         />
-        <FilterSelect
-          value={minTotalFilter || "all"}
-          onChange={(e) => setMinTotalFilter(e.target.value === "all" ? "" : e.target.value)}
-          options={ORDER_MIN_TOTAL_OPTIONS.map((o) => ({
-            value: o.value || "all",
-            label: o.label,
-          }))}
-        />
+        <label className="flex flex-col gap-1 text-xs text-slate-600">
+          Min total (KES)
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            className="w-36 rounded-md border px-3 py-2 text-sm"
+            value={minTotalFilter}
+            onChange={(e) => setMinTotalFilter(e.target.value)}
+            placeholder="e.g. 10000"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-slate-600">
+          Max total (KES)
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            className="w-36 rounded-md border px-3 py-2 text-sm"
+            value={maxTotalFilter}
+            onChange={(e) => setMaxTotalFilter(e.target.value)}
+            placeholder="e.g. 50000"
+          />
+        </label>
       </div>
 
       <div className="theme-panel overflow-x-auto rounded-lg border">
