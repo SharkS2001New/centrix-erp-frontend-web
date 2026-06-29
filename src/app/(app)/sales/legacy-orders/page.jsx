@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useAuth } from "@/contexts/auth-context";
 import { ORDER_MIN_TOTAL_OPTIONS } from "@/components/sales/sales-orders-shared";
 import {
   FilterSelect,
@@ -15,6 +16,8 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 
 const PAGE_SIZE = 25;
 
@@ -25,6 +28,20 @@ function legacyReturnStatusLabel(summary) {
 }
 
 function LegacyOrdersContent() {
+  const confirm = useConfirm();
+  const { user, hasPermission } = useAuth();
+  const isAdmin = Boolean(user?.is_admin);
+  const canManageSales = Boolean(hasPermission?.("sales.manage"));
+  const canDeleteLegacyOrder = useCallback(
+    (row) => {
+      const summary = row?.legacy_return_summary ?? {};
+      if (isAdmin && summary.can_admin_delete !== false) {
+        return true;
+      }
+      return canManageSales && summary.can_delete !== false;
+    },
+    [isAdmin, canManageSales],
+  );
   const searchParams = useSearchParams();
   const [rows, setRows] = useState([]);
   const [totalOrders, setTotalOrders] = useState(0);
@@ -39,6 +56,7 @@ function LegacyOrdersContent() {
   const [returnsFilter, setReturnsFilter] = useState("all");
   const [minTotalFilter, setMinTotalFilter] = useState("");
   const [page, setPage] = useState(1);
+  const [deletingId, setDeletingId] = useState(null);
 
   const loadData = useCallback(async () => {
     setListLoading(true);
@@ -78,6 +96,35 @@ function LegacyOrdersContent() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, fromDate, toDate, returnsFilter, minTotalFilter]);
+
+  async function deleteLegacyOrder(row) {
+    if (!canDeleteLegacyOrder(row) || !row?.id) return;
+    const summary = row.legacy_return_summary ?? {};
+    const hasReturns = (summary.return_count_all ?? summary.return_count ?? 0) > 0
+      || summary.has_returns
+      || summary.can_delete === false;
+
+    const ok = await confirm({
+      title: "Delete legacy order",
+      message: hasReturns && isAdmin
+        ? `Remove ${formatReceiptNumber(row)} (${row.fulfillment_meta?.legacy_order_label ?? "legacy"}) and its linked legacy returns from Centrix? The original sale stays in the legacy archive and can be materialized again.`
+        : `Remove ${formatReceiptNumber(row)} (${row.fulfillment_meta?.legacy_order_label ?? "legacy"}) from Centrix? The original sale stays in the legacy archive and can be materialized again.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setDeletingId(row.id);
+    try {
+      await apiRequest(`/legacy-orders/${row.id}`, { method: "DELETE" });
+      notifySuccess("Legacy order deleted.");
+      await loadData();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not delete legacy order");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const highlightSaleId = searchParams.get("sale_id");
 
@@ -196,12 +243,24 @@ function LegacyOrdersContent() {
                       ) : null}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <Link
-                        href={`/sales/legacy-returns/new?sale_id=${row.id}`}
-                        className="text-indigo-600 hover:text-indigo-800"
-                      >
-                        Return
-                      </Link>
+                      <div className="flex items-center justify-end gap-3">
+                        <Link
+                          href={`/sales/legacy-returns/new?sale_id=${row.id}`}
+                          className="text-indigo-600 hover:text-indigo-800"
+                        >
+                          Return
+                        </Link>
+                        {canDeleteLegacyOrder(row) ? (
+                          <button
+                            type="button"
+                            className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                            disabled={deletingId === row.id || listLoading}
+                            onClick={() => deleteLegacyOrder(row)}
+                          >
+                            {deletingId === row.id ? "Deleting…" : "Delete"}
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 );
