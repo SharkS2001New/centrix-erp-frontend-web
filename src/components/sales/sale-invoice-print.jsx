@@ -179,12 +179,19 @@ export function buildSaleInvoiceHtml(
 <head>
   <title>Invoice Receipt ${escapeHtml(invoiceNo)}</title>
   <style>
-    @page { size: A4; margin: 12mm; }
+    @page { size: A4; margin: 10mm 12mm 20mm 12mm; }
     html { height: 100%; }
     body { font-family: "Times New Roman", Times, serif; margin: 0; padding: 16px; color: #000; font-size: 11px; line-height: 1.35; min-height: 100%; box-sizing: border-box; }
     .page { max-width: 820px; margin: 0 auto; min-height: calc(100vh - 32px); display: flex; flex-direction: column; }
     .page-body { flex: 1 0 auto; }
-    .page-bottom { margin-top: auto; flex-shrink: 0; padding-top: 8px; }
+    .page-bottom {
+      margin-top: auto;
+      flex-shrink: 0;
+      padding-top: 10px;
+      border-top: 1px dotted #999;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
     .org-brand .org-logo { display: block; margin: 0 auto 8px; max-height: 72px; max-width: 280px; object-fit: contain; }
     .org-brand .org-name { font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
     .brand-name { text-align: center; font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -206,23 +213,27 @@ export function buildSaleInvoiceHtml(
     .served-by { margin: 10px 0 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
     .goods-note { margin: 8px 0 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
     .goods-note-sub { margin: 0 0 0; font-weight: 700; }
-    .receive-signatures { margin: 20px 0 0; font-size: 10px; max-width: 420px; }
-    .sig-row { display: flex; align-items: baseline; gap: 6px; margin: 0 0 16px; }
+    .receive-signatures { margin: 14px 0 0; font-size: 10px; max-width: 420px; }
+    .sig-row { display: flex; align-items: baseline; gap: 6px; margin: 0 0 10px; }
     .sig-row:last-child { margin-bottom: 0; }
     .sig-label { white-space: nowrap; min-width: 5.5rem; }
     .sig-line { flex: 1; border-bottom: 1px dotted #000; min-height: 1.1em; }
-    .footer-notes { margin: 0 0 12px; text-align: center; font-size: 9px; }
+    .footer-notes { margin: 0 0 8px; text-align: center; font-size: 9px; }
     .footer-notes p { margin: 4px 0; }
-    .designed-by { margin: 0 0 6px; text-align: center; font-size: 9px; color: #333; }
+    .designed-by { margin: 0 0 4px; text-align: center; font-size: 9px; color: #333; line-height: 1.35; }
     .print-footer {
       padding-top: 0;
       display: flex;
+      flex-wrap: wrap;
       justify-content: space-between;
-      gap: 12px;
+      align-items: flex-start;
+      gap: 6px 12px;
       font-size: 9px;
       color: #333;
       flex-shrink: 0;
+      line-height: 1.35;
     }
+    .print-footer span { min-width: 0; word-break: break-word; }
     .pay-instructions { margin: 10px 0 12px; padding: 8px 10px; border: 1px dotted #000; font-size: 10px; }
     .pay-instructions .pay-title { font-weight: 700; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
     .pay-instructions .pay-line { display: flex; justify-content: space-between; gap: 12px; margin: 2px 0; }
@@ -231,8 +242,21 @@ export function buildSaleInvoiceHtml(
     .pay-instructions .pay-note { margin-top: 6px; font-size: 9px; color: #333; }
     .center { text-align: center; }
     @media print {
+      html, body { height: auto; min-height: 0; overflow: visible; }
       body { padding: 0; }
-      .page { min-height: calc(297mm - 24mm); }
+      .page {
+        display: block;
+        min-height: 0;
+        max-width: none;
+        margin: 0;
+      }
+      .page-body { display: block; }
+      .page-bottom {
+        margin-top: 10px;
+        padding-top: 8px;
+        border-top: 1px dotted #999;
+      }
+      .print-footer { font-size: 8px; }
     }
   </style>
 </head>
