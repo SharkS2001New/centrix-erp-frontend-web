@@ -15,7 +15,8 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
-import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
+import { formatReceiptNumber, formatSaleKes, legacyOrderDisplayTotal } from "@/lib/sales";
+import { currentMonthDateRange } from "@/lib/dashboard-dates";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { getOrderDocumentType } from "@/lib/sales-settings";
 import {
@@ -28,6 +29,42 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
 const PAGE_SIZE = 25;
+const defaultMonthRange = currentMonthDateRange();
+
+function ThermalPrintIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <polyline points="6 9 6 2 18 2 18 9" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="8" />
+    </svg>
+  );
+}
+
+function A4PrintIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+    </svg>
+  );
+}
+
+function LegacyPrintButton({ icon, label, disabled, onClick }) {
+  return (
+    <button
+      type="button"
+      className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
 
 function legacyReturnStatusLabel(summary) {
   if (!summary?.has_returns) return "No returns";
@@ -59,8 +96,8 @@ function LegacyOrdersContent() {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(defaultMonthRange.from);
+  const [toDate, setToDate] = useState(defaultMonthRange.to);
   const [returnsFilter, setReturnsFilter] = useState("all");
   const [minTotalFilter, setMinTotalFilter] = useState("");
   const [maxTotalFilter, setMaxTotalFilter] = useState("");
@@ -210,12 +247,14 @@ function LegacyOrdersContent() {
           className="rounded-md border px-3 py-2 text-sm"
           value={fromDate}
           onChange={(e) => setFromDate(e.target.value)}
+          title="From date"
         />
         <input
           type="date"
           className="rounded-md border px-3 py-2 text-sm"
           value={toDate}
           onChange={(e) => setToDate(e.target.value)}
+          title="To date"
         />
         <FilterSelect
           value={returnsFilter}
@@ -262,7 +301,7 @@ function LegacyOrdersContent() {
               <th className="px-3 py-2">Legacy ref</th>
               <th className="px-3 py-2">Customer</th>
               <th className="px-3 py-2">Date</th>
-              <th className="px-3 py-2 text-right">Total</th>
+              <th className="px-3 py-2 text-right">Legacy total</th>
               <th className="px-3 py-2">Returns</th>
               <th className="px-3 py-2" />
             </tr>
@@ -299,7 +338,9 @@ function LegacyOrdersContent() {
                     <td className="px-3 py-2">
                       {formatShortDate(row.completed_at ?? row.fulfillment_meta?.legacy_sale_date)}
                     </td>
-                    <td className="px-3 py-2 text-right">{formatSaleKes(row.order_total)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatSaleKes(legacyOrderDisplayTotal(row))}
+                    </td>
                     <td className="px-3 py-2">
                       <span
                         className={
@@ -320,22 +361,18 @@ function LegacyOrdersContent() {
                     </td>
                     <td className="px-3 py-2 text-right">
                       <div className="flex flex-wrap items-center justify-end gap-3">
-                        <button
-                          type="button"
-                          className="text-slate-700 hover:text-slate-900 disabled:opacity-50"
+                        <LegacyPrintButton
+                          icon={<ThermalPrintIcon />}
+                          label={printingId === row.id ? "Printing…" : "Print thermal"}
                           disabled={printingId === row.id || listLoading}
                           onClick={() => printLegacyOrder(row, "receipt")}
-                        >
-                          {printingId === row.id ? "Printing…" : "Print thermal"}
-                        </button>
-                        <button
-                          type="button"
-                          className="text-slate-700 hover:text-slate-900 disabled:opacity-50"
+                        />
+                        <LegacyPrintButton
+                          icon={<A4PrintIcon />}
+                          label="Print A4"
                           disabled={printingId === row.id || listLoading}
                           onClick={() => printLegacyOrder(row, "invoice")}
-                        >
-                          Print A4
-                        </button>
+                        />
                         <Link
                           href={`/sales/legacy-returns/new?sale_id=${row.id}`}
                           className="text-indigo-600 hover:text-indigo-800"

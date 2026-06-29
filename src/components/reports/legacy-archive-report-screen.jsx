@@ -4,8 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
+import { printLegacyArchiveSale } from "@/components/sales/sale-order-print";
 import { ReportBadge } from "@/components/reports/report-screen-shared";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
+import { useAuth } from "@/contexts/auth-context";
+import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { defaultDashboardDateRange } from "@/lib/dashboard-dates";
 import {
   fetchLegacyArchiveSale,
@@ -14,6 +17,14 @@ import {
   fetchLegacyArchiveSummary,
   materializeLegacySale,
 } from "@/lib/legacy-archive-api";
+import {
+  disposePrintWindow,
+  openBlankPrintWindow,
+  printWindowFeatures,
+  PRINT_BLOCKED_MESSAGE,
+} from "@/lib/open-print-window";
+import { notifyError } from "@/lib/notify";
+import { getOrderDocumentType } from "@/lib/sales-settings";
 
 const PAGE_SIZE = 20;
 
@@ -24,13 +35,34 @@ const CHANNELS = [
   { key: "debtor", label: "Debtor / credit" },
 ];
 
-const defaultRange = defaultDashboardDateRange(29);
+const defaultRange = defaultDashboardDateRange(13);
 
 const CHANNEL_LABELS = {
   pos: "POS",
   mobile: "MOBILE",
   debtor: "DEBTOR",
 };
+
+function ThermalPrintIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <polyline points="6 9 6 2 18 2 18 9" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="8" />
+    </svg>
+  );
+}
+
+function A4PrintIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+    </svg>
+  );
+}
 
 function legacySaleDate(row) {
   const value = row?.legacy_sale_date ?? row?.sale_date;
@@ -71,7 +103,9 @@ const LEGACY_EXPORT_COLUMNS = [
 ];
 
 function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
+  const { user, organization, capabilities } = useAuth();
   const [materializing, setMaterializing] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [notice, setNotice] = useState(null);
 
   if (!sale) return null;
@@ -79,6 +113,39 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
   const orderLabel = sale.legacy_order_label ?? sale.legacy_order_num;
   const orderNum = sale.legacy_order_num;
   const centrixSaleId = sale.materialized_sale_id ?? sale.centrix_sale_id;
+
+  async function printArchiveSale(documentType) {
+    if (printing) return;
+
+    const cachedType = documentType ?? getOrderDocumentType(capabilities?.module_settings);
+    const printWindow =
+      cachedType !== "both" ? openBlankPrintWindow(printWindowFeatures(cachedType)) : null;
+    if (cachedType !== "both" && !printWindow) {
+      notifyError(PRINT_BLOCKED_MESSAGE);
+      return;
+    }
+
+    setPrinting(true);
+    try {
+      const printed = await printLegacyArchiveSale(sale, {
+        organization,
+        organizationName: capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME,
+        moduleSettings: capabilities?.module_settings,
+        capabilities,
+        user,
+        printWindow,
+        ...(documentType ? { documentType } : {}),
+      });
+      if (!printed) {
+        disposePrintWindow(printWindow);
+      }
+    } catch (err) {
+      disposePrintWindow(printWindow);
+      notifyError(err instanceof Error ? err.message : "Print failed");
+    } finally {
+      setPrinting(false);
+    }
+  }
 
   const handleMaterialize = async () => {
     setMaterializing(true);
@@ -189,12 +256,12 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
           <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <p className="font-medium">Legacy accuracy &amp; returns</p>
             <p className="mt-2 text-amber-900/90">
-              Centrix copies this order <strong>exactly as recorded in LightStores</strong> — same quantities,
-              unit prices, line amounts, and VAT. Centrix does not recalculate pricing; it is only used to process
-              returns and KRA credit notes against the original figures.
+              Print a thermal receipt or A4 invoice from the buttons below — no need to materialize first.
+              To process returns and KRA credit notes, materialize the sale into Centrix so it matches the
+              original LightStores quantities, unit prices, line amounts, and VAT.
             </p>
             <ol className="mt-3 list-decimal space-y-1 pl-4 text-amber-900/90">
-              <li>Click <strong>Materialize into Centrix</strong> to copy the sale into the live database.</li>
+              <li>Click <strong>Materialize into Centrix</strong> when you need returns or credit notes.</li>
               <li>
                 Then open <strong>Create legacy return / credit note</strong> at{" "}
                 <code className="rounded bg-amber-100 px-1">Sales → Legacy returns</code>.
@@ -204,6 +271,24 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
         </div>
 
         <div className="flex flex-wrap gap-2 border-t border-slate-200 px-5 py-4">
+          <button
+            type="button"
+            disabled={printing}
+            onClick={() => printArchiveSale("receipt")}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <ThermalPrintIcon />
+            {printing ? "Printing…" : "Print thermal"}
+          </button>
+          <button
+            type="button"
+            disabled={printing}
+            onClick={() => printArchiveSale("invoice")}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <A4PrintIcon />
+            Print A4
+          </button>
           {centrixSaleId ? (
             <Link
               href={`/sales/legacy-returns/new?sale_id=${centrixSaleId}`}

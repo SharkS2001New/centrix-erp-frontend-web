@@ -89,7 +89,7 @@ export function buildSaleDocumentTableHead({ showDiscountColumn = false, layout 
 
 export function buildSaleDocumentLineRows(
   items,
-  { uomById = null, showDiscountColumn = false, layout = "thermal" } = {},
+  { uomById = null, showDiscountColumn = false, layout = "thermal", legacyPrint = false } = {},
 ) {
   const rows = items ?? [];
   const colspan =
@@ -102,11 +102,19 @@ export function buildSaleDocumentLineRows(
   return rows
     .map((line) => {
       const description = escapeHtml(saleLineProductLabel(line));
-      const uom = saleLineUom(line, uomById);
+      const uom = legacyPrint ? null : saleLineUom(line, uomById);
+      const linePrintOptions = { legacyPrint };
 
       if (layout === "thermal") {
-        const { unitPrice, discount, amount } = resolveSaleLinePrintColumns(line, { uom });
-        const { quantity, package: packageLabel } = saleLinePrintQtyPackage(line, uomById);
+        const { unitPrice, discount, amount } = resolveSaleLinePrintColumns(line, {
+          uom,
+          legacyPrint,
+        });
+        const { quantity, package: packageLabel } = saleLinePrintQtyPackage(
+          line,
+          uomById,
+          linePrintOptions,
+        );
 
         if (showDiscountColumn) {
           return `<tr>
@@ -129,12 +137,14 @@ export function buildSaleDocumentLineRows(
       }
 
       const qty = escapeHtml(
-        uomById ? saleLineQtyLabel(line, uomById) : formatPrintAmount(line.quantity),
+        legacyPrint || uomById
+          ? saleLineQtyLabel(line, uomById, linePrintOptions)
+          : formatPrintAmount(line.quantity),
       );
       const unitPrice = escapeHtml(
         formatPrintAmount(
-          uom
-            ? resolveSaleLinePrintColumns(line, { uom }).unitPrice
+          legacyPrint || uom
+            ? resolveSaleLinePrintColumns(line, { uom, legacyPrint }).unitPrice
             : (line.selling_price ?? line.unit_price ?? line.price ?? 0),
         ),
       );

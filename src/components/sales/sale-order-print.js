@@ -23,6 +23,7 @@ import {
 } from "@/lib/receipt-payment-details";
 import { printSaleInvoice } from "@/components/sales/sale-invoice-print";
 import { printSaleReceipt } from "@/components/sales/sale-receipt-print";
+import { fetchLegacyArchiveSaleForPrint } from "@/lib/legacy-archive-api";
 import {
   disposePrintWindow,
   openBlankPrintWindow,
@@ -99,6 +100,34 @@ export async function resolveOrderPrintType(moduleSettings, explicitType) {
     documentType = await requestOrderPrintType();
   }
   return documentType ?? null;
+}
+
+function legacyArchiveSaleDate(archiveSale) {
+  const raw = archiveSale?.legacy_sale_date ?? archiveSale?.sale_date;
+  if (!raw) return null;
+  const text = String(raw);
+  return text.length >= 10 ? text.slice(0, 10) : text;
+}
+
+/**
+ * Print a legacy archive sale directly from LightStores (no Centrix materialization).
+ */
+export async function printLegacyArchiveSale(archiveSale, options = {}) {
+  if (!archiveSale) return null;
+
+  const channel = archiveSale.archive_channel ?? archiveSale.channel;
+  const legacyOrderNum = archiveSale.legacy_order_num;
+  const saleDate = legacyArchiveSaleDate(archiveSale);
+  if (!channel || legacyOrderNum == null || !saleDate) {
+    throw new Error("Legacy archive sale is missing channel, order number, or sale date.");
+  }
+
+  const saleForPrint =
+    Array.isArray(archiveSale.items) && archiveSale.items.length > 0
+      ? archiveSale
+      : await fetchLegacyArchiveSaleForPrint(channel, legacyOrderNum, { sale_date: saleDate });
+
+  return printSaleOrder(saleForPrint, options);
 }
 
 /**

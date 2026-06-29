@@ -16,8 +16,10 @@ import { printCreditNote } from "@/components/sales/credit-note-print";
 import { LegacyReturnDetailModal } from "@/components/sales/legacy-return-detail-modal";
 import { ReturnStatusBadge } from "@/components/sales/customer-returns-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
+import { currentMonthDateRange } from "@/lib/dashboard-dates";
 
 const PAGE_SIZE = 10;
+const defaultMonthRange = currentMonthDateRange();
 
 function LegacyReturnsContent() {
   const searchParams = useSearchParams();
@@ -27,8 +29,8 @@ function LegacyReturnsContent() {
   const [actionError, setActionError] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(defaultMonthRange.from);
+  const [toDate, setToDate] = useState(defaultMonthRange.to);
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState([]);
   const [detailOpen, setDetailOpen] = useState(false);

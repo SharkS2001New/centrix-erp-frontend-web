@@ -41,7 +41,7 @@ import {
 } from "@/lib/product-discount";
 import { lineProductVat } from "@/lib/sales-vat";
 import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
-import { getChannelWorkflow, workflowPipelineSteps } from "@/lib/order-workflow";
+import { getChannelWorkflow, workflowPipelineSteps, checkoutCompleteStatuses, isCheckoutCompleteStatus } from "@/lib/order-workflow";
 import {
   getPosSalesConfig,
   isWorkspaceTillFloatRequired,
@@ -594,8 +594,7 @@ export function PosScreen({ standalone = false }) {
 
   function rememberCompletedPosOrder(sale) {
     if (!sale?.id || !enablePosOrderEdit) return;
-    const status = String(sale.status ?? "").toLowerCase();
-    if (!["completed", "paid", "delivered"].includes(status)) return;
+    if (!isCheckoutCompleteStatus(sale.status, channelWorkflow, "pos")) return;
     const entry = { id: sale.id, order_num: sale.order_num };
     setSessionPosOrders((prev) => {
       const next = [entry, ...prev.filter((row) => row.id !== entry.id)];
@@ -607,11 +606,12 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     if (!enablePosOrderEdit || !standalone) return;
+    const completeStatuses = checkoutCompleteStatuses(channelWorkflow, "pos");
     apiRequest("/sales", {
       searchParams: {
         per_page: 40,
         channel: "pos",
-        status: "completed",
+        status_in: completeStatuses.join(","),
         sort: "-order_num",
         with_items: 0,
       },
@@ -626,7 +626,7 @@ export function PosScreen({ standalone = false }) {
         setEditOrderNo(String(orders[0].order_num));
       })
       .catch(() => {});
-  }, [enablePosOrderEdit, standalone]);
+  }, [enablePosOrderEdit, standalone, channelWorkflow]);
 
   const cartSummary = useMemo(() => {
     const rows = cart?.lines ?? [];

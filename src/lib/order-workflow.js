@@ -245,6 +245,61 @@ export function isTerminalStatus(status, workflow) {
   return last != null && alignStatusToWorkflow(key, workflow) === last;
 }
 
+export function normalizeSalesChannel(channel = "backend") {
+  const key = String(channel ?? "backend").toLowerCase();
+  return key === "backoffice" ? "backend" : key;
+}
+
+/** Statuses stored on sales after a fully-paid checkout for this org/channel workflow. */
+export function checkoutCompleteStatuses(workflow, channel = "backend") {
+  const normalized = normalizeSalesChannel(channel);
+  const wf = workflow ?? buildChannelWorkflow(DEFAULT_ORDER_WORKFLOW, normalized);
+  const fullPaid = pickEnabledStatus(wf.checkout?.full_paid ?? "paid", wf);
+  const terminal = lastPipelineStatus(wf);
+  const statuses = new Set([fullPaid]);
+
+  if (terminal) {
+    statuses.add(terminal);
+    for (const alias of ["completed", "delivered", "processed", "paid"]) {
+      if (alignStatusToWorkflow(alias, wf) === terminal) {
+        statuses.add(alias);
+      }
+    }
+  }
+
+  return [...statuses];
+}
+
+/** Statuses an order may have to be restored back into a cart for editing. */
+export function restorableToCartStatuses(workflow, { allowCheckoutReEdit = false } = {}) {
+  const allowed = workflow?.statuses ?? [];
+  const terminal = lastPipelineStatus(workflow);
+  const restorable = new Set(["held", "draft"]);
+
+  for (const status of allowed) {
+    if (status === "cancelled") continue;
+    if (terminal && status === terminal && !allowCheckoutReEdit) continue;
+    restorable.add(status);
+  }
+
+  return [...restorable];
+}
+
+export function isCheckoutCompleteStatus(status, workflow, channel = "pos") {
+  const key = String(status ?? "").toLowerCase();
+  if (!key) return false;
+  const completeStatuses = checkoutCompleteStatuses(workflow, channel);
+  const aligned = alignStatusToWorkflow(key, workflow);
+  return completeStatuses.includes(key) || completeStatuses.includes(aligned);
+}
+
+export function isRestorableToCartStatus(status, workflow, { allowCheckoutReEdit = false } = {}) {
+  const key = String(status ?? "").toLowerCase();
+  const restorable = restorableToCartStatuses(workflow, { allowCheckoutReEdit });
+  const aligned = alignStatusToWorkflow(key, workflow);
+  return restorable.includes(key) || restorable.includes(aligned);
+}
+
 /** Map stored statuses (e.g. completed) to the nearest org pipeline step for display. */
 export function alignStatusToWorkflow(status, workflow) {
   const key = String(status ?? "").toLowerCase();

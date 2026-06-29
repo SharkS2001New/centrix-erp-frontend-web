@@ -13,6 +13,7 @@ import {
 } from "@/lib/sale-document-print-shared";
 import { buildReceiptPaymentDetailsHtml } from "@/lib/receipt-payment-details";
 import { formatOrderNumber, saleCustomerLabel } from "@/lib/sales";
+import { isLegacySale } from "@/lib/sale-line-items";
 
 function buildUsedPaymentRows(sale, orderTotal) {
   const rows = [];
@@ -150,6 +151,7 @@ export function buildSaleReceiptHtml(
     uomById,
     showDiscountColumn,
     layout: "thermal",
+    legacyPrint: isLegacySale(sale),
   });
   const tableHead = buildSaleDocumentTableHead({
     showDiscountColumn,

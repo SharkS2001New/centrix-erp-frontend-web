@@ -19,6 +19,10 @@ export async function fetchLegacyArchiveSale(channel, legacyOrderNum, params = {
   );
 }
 
+export async function fetchLegacyArchiveSaleForPrint(channel, legacyOrderNum, params = {}) {
+  return fetchLegacyArchiveSale(channel, legacyOrderNum, { ...params, for_print: "1" });
+}
+
 export async function materializeLegacySale(channel, legacyOrderNum, saleDate) {
   return apiRequest("/reports/legacy-archive/sales/materialize", {
     method: "POST",

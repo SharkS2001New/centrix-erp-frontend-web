@@ -34,9 +34,15 @@ function resolveCustomerReturnReason(customerReturn, creditNote) {
   return customerReturn?.reason ?? customerReturn?.return_reason ?? "—";
 }
 
-function buildCustomerReturnLineRows(lines, uomById) {
+function buildCustomerReturnLineRows(lines, uomById, customerReturn) {
+  const legacyOptions =
+    customerReturn?.return_kind === "legacy" ||
+    customerReturn?.display_uom_mode === "legacy"
+      ? { returnKind: "legacy" }
+      : {};
+
   return (lines ?? []).map((line) => {
-    const qty = customerReturnLineQtyLabel(line, uomById, "return_qty");
+    const qty = customerReturnLineQtyLabel(line, uomById, "return_qty", legacyOptions);
     const unitPrice = Number(line.unit_price ?? 0);
     const amount = Number(line.amount ?? 0);
     return {
@@ -69,7 +75,7 @@ async function buildCustomerReturnDocumentBody(customerReturn, options = {}) {
     creditNote?.credit_date ?? customerReturn.return_date ?? customerReturn.created_at,
   );
   const reason = resolveCustomerReturnReason(customerReturn, creditNote);
-  const lineRows = buildCustomerReturnLineRows(lines, uomById);
+  const lineRows = buildCustomerReturnLineRows(lines, uomById, customerReturn);
   const totalAmount = Number(customerReturn.total_amount ?? 0) || lineRows.reduce((s, r) => s + r._amount, 0);
 
   const kraSource =

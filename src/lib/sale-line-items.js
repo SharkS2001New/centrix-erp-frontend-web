@@ -37,6 +37,27 @@ export function saleLineProductLabel(line, productByCode) {
   return saleLineProductName(line, productByCode) || line?.product_code || "—";
 }
 
+export function isLegacySale(sale) {
+  return Boolean(sale?.fulfillment_meta?.legacy_import);
+}
+
+/** Legacy import lines — show stored quantity and UOM without Centrix conversion. */
+export function legacySaleLineQtyLabel(line) {
+  const qty = Number(line?.quantity ?? 0);
+  const unit = String(line?.uom ?? "").trim() || "units";
+  return `${formatDisplayQty(qty)} ${unit}`;
+}
+
+/** Thermal receipt columns for legacy import lines. */
+export function legacySaleLinePrintQtyPackage(line) {
+  const baseQty = Number(line?.quantity ?? 0);
+  const unit = String(line?.uom ?? "").trim() || "units";
+  return {
+    quantity: formatDisplayQty(baseQty),
+    package: unit,
+  };
+}
+
 /** Display sale line quantity with packaging labels when UOM data is available. */
 /** Unit price shown per pack (wholesale) or per retail measure — from stored line amount ÷ qty. */
 export function saleLineDisplayUnitPrice(line, uomById) {
@@ -73,7 +94,28 @@ function saleLineRetailPackage(line) {
  * Receipt / thermal print columns — unit price is reverse-computed from line amount ÷ qty
  * so wholesale line markups (on total, not per unit) display correctly.
  */
-export function resolveSaleLinePrintColumns(line, { uom = null, retailPackage = null } = {}) {
+export function resolveSaleLinePrintColumns(
+  line,
+  { uom = null, retailPackage = null, legacyPrint = false } = {},
+) {
+  if (legacyPrint) {
+    const baseQty = Number(line?.quantity ?? 0);
+    const discount = Math.max(0, Number(line?.discount_given ?? 0));
+    const amountAfterDisc = Number(line?.amount ?? 0);
+    const amountBeforeDisc = amountAfterDisc + discount;
+    const qty = baseQty > 0 ? baseQty : 0;
+    const unitPrice = qty > 0 ? Math.round((amountBeforeDisc / qty) * 100) / 100 : 0;
+
+    return {
+      qty,
+      unitPrice,
+      basePrice: unitPrice,
+      markup: 0,
+      discount,
+      amount: Math.round(amountAfterDisc * 100) / 100,
+    };
+  }
+
   const isRetail = Number(line?.on_wholesale_retail) === 1;
   const baseQty = Number(line?.quantity ?? 0);
   const factor = uomConversionFactor(uom);
@@ -147,7 +189,11 @@ export function resolveSaleLinePrintColumns(line, { uom = null, retailPackage = 
   };
 }
 
-export function saleLineQtyLabel(line, uomById) {
+export function saleLineQtyLabel(line, uomById, { legacyPrint = false } = {}) {
+  if (legacyPrint) {
+    return legacySaleLineQtyLabel(line);
+  }
+
   const uom = saleLineUom(line, uomById);
 
   if (uom) {
@@ -162,7 +208,11 @@ export function saleLineQtyLabel(line, uomById) {
 }
 
 /** Thermal receipt — quantity count and packaging label as separate right-aligned columns. */
-export function saleLinePrintQtyPackage(line, uomById) {
+export function saleLinePrintQtyPackage(line, uomById, { legacyPrint = false } = {}) {
+  if (legacyPrint) {
+    return legacySaleLinePrintQtyPackage(line);
+  }
+
   const uom = saleLineUom(line, uomById);
   const baseQty = Number(line?.quantity ?? 0);
 

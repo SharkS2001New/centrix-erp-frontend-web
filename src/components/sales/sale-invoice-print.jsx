@@ -13,6 +13,7 @@ import {
 import { buildReceiptPaymentDetailsHtml } from "@/lib/receipt-payment-details";
 import { PRINT_POWERED_BY } from "@/lib/branding";
 import { formatOrderNumber, saleCustomerLabel, salePaymentMethodDisplay } from "@/lib/sales";
+import { isLegacySale } from "@/lib/sale-line-items";
 
 function formatInvoiceDate(value) {
   if (!value) return "—";
@@ -130,6 +131,7 @@ export function buildSaleInvoiceHtml(
     uomById,
     showDiscountColumn,
     layout: "a4",
+    legacyPrint: isLegacySale(sale),
   });
   const tableHead = buildSaleDocumentTableHead({
     showDiscountColumn,
