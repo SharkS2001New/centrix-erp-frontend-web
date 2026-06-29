@@ -131,12 +131,12 @@ export function LegacyArchiveSettingsPanel({ saving, setSaving, setError, setMes
                 className={inputClassName()}
                 value={form.database}
                 onChange={(e) => setForm((f) => ({ ...f, database: e.target.value }))}
-                placeholder="lightstores_moonlight"
+                placeholder="superdb_moonlight"
                 disabled={!form.enabled}
                 required={form.enabled}
               />
               <p className="mt-1 text-xs text-slate-500">
-                Database on the same MySQL server as Centrix (restored from LightStoresDBBackup.sql).
+                Your restored LightStores MySQL database on the same server as Centrix (e.g. superdb_moonlight).
               </p>
             </Field>
 
