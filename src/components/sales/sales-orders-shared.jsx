@@ -318,17 +318,28 @@ export function buildOrderContextMenuItems({
   workflow,
   busy,
   onView,
-  onPrint,
+  onPrintThermal,
+  onPrintA4,
   onAdvance,
   onCancel,
   includePrint = true,
-  printLabel = "Print receipt",
 }) {
   const items = [
     { key: "view", label: "View Full Order Summary", icon: "view", onClick: onView },
   ];
   if (includePrint) {
-    items.push({ key: "print", label: printLabel, icon: "print", onClick: onPrint });
+    items.push({
+      key: "print-thermal",
+      label: "Print (Thermal)",
+      icon: "print",
+      onClick: onPrintThermal,
+    });
+    items.push({
+      key: "print-a4",
+      label: "Print (A4)",
+      icon: "print",
+      onClick: onPrintA4,
+    });
   }
 
   if (!sale || sale.status === "cancelled" || sale.status === "completed") {

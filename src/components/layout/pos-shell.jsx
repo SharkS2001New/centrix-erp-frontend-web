@@ -6,6 +6,7 @@ import { PosWorkspaceGuard } from "@/components/auth/pos-workspace-guard";
 import { PasswordExpiryGuard } from "@/components/auth/password-expiry-guard";
 import { WorkspaceNavigationTracker } from "@/components/layout/workspace-navigation-tracker";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
+import { OrderPrintTypePickerHost } from "@/components/sales/order-print-type-picker-host";
 
 export function PosShell({ children }) {
   return (
@@ -17,6 +18,7 @@ export function PosShell({ children }) {
             <div className="flex h-screen min-h-0 flex-col overflow-hidden app-main-bg">
               <NetworkStatusBanner />
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
+              <OrderPrintTypePickerHost />
             </div>
           </PosWorkspaceGuard>
         </PasswordExpiryGuard>

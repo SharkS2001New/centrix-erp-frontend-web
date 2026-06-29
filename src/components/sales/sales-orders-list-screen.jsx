@@ -40,7 +40,7 @@ import {
   summarizeOrders,
 } from "@/components/sales/sales-orders-shared";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
-import { getOrderDocumentType, isOrgMobileSalesEnabled, orderDocumentPrintLabel } from "@/lib/sales-settings";
+import { getOrderDocumentType, isOrgMobileSalesEnabled } from "@/lib/sales-settings";
 import {
   disposePrintWindow,
   openBlankPrintWindow,
@@ -348,10 +348,10 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
     router.push(`/sales/orders/${sale.id}?from=${encodeURIComponent(from)}`);
   }
 
-  async function printOrder(sale) {
+  async function printOrder(sale, documentType = null) {
     if (!sale?.id) return;
 
-    const cachedType = getOrderDocumentType(capabilities?.module_settings);
+    const cachedType = documentType ?? getOrderDocumentType(capabilities?.module_settings);
     const printWindow =
       cachedType !== "both"
         ? openBlankPrintWindow(printWindowFeatures(cachedType))
@@ -375,6 +375,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
         capabilities,
         uomById,
         printWindow,
+        ...(documentType ? { documentType } : {}),
       });
       if (!printed) {
         disposePrintWindow(printWindow);
@@ -477,8 +478,6 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
     void expandAllOnPage(pageSlice);
   }
 
-  const printLabel = orderDocumentPrintLabel(capabilities?.module_settings);
-
   const contextMenuItems = useMemo(() => {
     if (!contextMenu?.sale) return [];
     const sale = contextMenu.sale;
@@ -488,13 +487,13 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       workflow,
       busy: transitionBusyId === sale.id || fulfillment.busy,
       includePrint: contextMenu.includePrint !== false,
-      printLabel,
       onView: () => viewOrder(sale),
-      onPrint: () => void printOrder(sale),
+      onPrintThermal: () => void printOrder(sale, "receipt"),
+      onPrintA4: () => void printOrder(sale, "invoice"),
       onAdvance: (status) => void handleAdvance(sale, status),
       onCancel: () => void handleAdvance(sale, "cancelled"),
     });
-  }, [contextMenu, capabilities, transitionBusyId, printLabel]);
+  }, [contextMenu, capabilities, transitionBusyId]);
 
   useEffect(() => {
     setPage(1);

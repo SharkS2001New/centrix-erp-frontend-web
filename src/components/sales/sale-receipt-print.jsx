@@ -238,9 +238,9 @@ export function buildSaleReceiptHtml(
     .amount-value { font-weight: 400; text-align: right; white-space: nowrap; }
     .amount-line-grand { font-size: 11px; font-weight: 700; margin-top: 6px; padding-top: 4px; border-top: 1px solid #111827; }
     .amount-line-grand .amount-value { font-weight: 700; }
-    .payment-title { text-align: left; font-weight: 700; letter-spacing: .08em; margin: 0 0 0; font-size: 9px; text-transform: uppercase; }
-    .pay-instructions { margin: 0; font-size: 9px; text-align: left; }
-    .pay-instructions .divider { margin: 6px 0; }
+    .payment-title { text-align: left; font-weight: 700; letter-spacing: .08em; margin: 0 0 6px; font-size: 9px; text-transform: uppercase; }
+    .pay-instructions { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #64748b; font-size: 9px; text-align: left; }
+    .pay-instructions .pay-lines { margin: 0; }
     .pay-instructions .pay-line { margin: 3px 0; line-height: 1.45; text-align: left; }
     .pay-instructions .pay-label { font-weight: 700; }
     .pay-instructions .pay-value { font-weight: 400; }
@@ -276,8 +276,8 @@ export function buildSaleReceiptHtml(
     </table>
     <div class="divider"></div>
     <div class="amount-lines totals">${totalsHtml}</div>
-    ${paymentDetailsHtml ? `<div class="divider"></div><div class="amount-lines payments">${paymentDetailsHtml}</div>` : ""}
-    ${paymentInstructionsHtml ? `<div class="divider"></div>${paymentInstructionsHtml}<div class="divider"></div>` : ""}
+    ${paymentDetailsHtml ? `<div class="divider"></div><div class="payment-title">Amount tendered</div><div class="amount-lines payments">${paymentDetailsHtml}</div>` : ""}
+    ${paymentInstructionsHtml ? paymentInstructionsHtml : ""}
     ${kraQrHtml}
     ${footerHtml}
   </div>

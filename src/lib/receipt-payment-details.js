@@ -129,8 +129,6 @@ export function buildReceiptPaymentDetailsHtml(details, { layout = "thermal" } =
 
   return `<div class="pay-instructions">
     <div class="payment-title">${escapeHtml(payload.title || "Payment details")}</div>
-    <div class="divider"></div>
-    ${lineRows}
-    ${note}
+    <div class="pay-lines">${lineRows}${note}</div>
   </div>`;
 }

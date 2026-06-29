@@ -2023,7 +2023,14 @@ export function PosScreen({ standalone = false }) {
         organizationName: capabilities?.profile_label,
         uomById,
       })
-        .then(() => {
+        .then((result) => {
+          if (!result) {
+            setReceiptPrintStatus("failed");
+            notifyError(
+              `Order ${sale.order_num ? `#${sale.order_num}` : ""} saved. Print was cancelled or no format was selected.`,
+            );
+            return;
+          }
           setReceiptPrintStatus("printed");
         })
         .catch((printErr) => {
@@ -2314,12 +2321,18 @@ export function PosScreen({ standalone = false }) {
     }
     setReceiptPrintStatus("pending");
     try {
-      await printSaleOrder(sale, {
+      const result = await printSaleOrder(sale, {
         capabilities,
         organization,
         organizationName: capabilities?.profile_label,
         uomById,
       });
+      if (!result) {
+        setReceiptPrintStatus("failed");
+        notifyError("Print cancelled or no format was selected.");
+        if (!standalone) setStatusMessage("Print cancelled.");
+        return;
+      }
       setReceiptPrintStatus("printed");
       const message = `Reprinting order #${sale.order_num}.`;
       if (standalone) notifySuccess(message);
