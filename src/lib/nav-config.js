@@ -1,6 +1,6 @@
 import { buildCatalogReportNavItems } from "@/lib/reports/report-nav";
 import { canViewReport, P } from "@/lib/permission-codes";
-import { hasOperationalModule, shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
+import { shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
 import { anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-registry";
 import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled } from "@/lib/sales-settings";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
@@ -33,7 +33,7 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, group?: string, reportKey?: string }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, group?: string, reportKey?: string }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, items: NavItem[] }} NavSection */
 
@@ -735,21 +735,6 @@ const NAV_SECTION_DEFINITIONS = [
     ],
   },
   {
-    id: "org_preferences",
-    label: "Organization",
-    icon: "⚙️",
-    collapsible: true,
-    items: [
-      {
-        href: "/admin/settings",
-        label: "Organization settings",
-        requireOperationalModule: true,
-        permission: "admin.manage",
-        requireAdmin: true,
-      },
-    ],
-  },
-  {
     id: "reports",
     label: "Reports",
     icon: "📈",
@@ -788,7 +773,7 @@ const NAV_SECTION_DEFINITIONS = [
       {
         href: "/admin/settings",
         label: "Organization settings",
-        requireOperationalModule: true,
+        module: "admin",
         permission: "admin.manage",
         orgAdminOnly: true,
         requireAdmin: true,
@@ -923,7 +908,6 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   if (item.requireExternalAccounting && !usesExternalAccounting(capabilities?.module_settings)) return false;
   if (item.requireHrCashAdvances && !isCashAdvanceDeductionsEnabled(capabilities?.module_settings)) return false;
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;
-  if (item.requireOperationalModule && !hasOperationalModule(capabilities)) return false;
   if (item.moduleAny?.length) {
     if (!item.moduleAny.some((key) => isModuleEnabledForNav(key, isModuleEnabled))) return false;
   } else if (item.module && !isModuleEnabledForNav(item.module, isModuleEnabled)) return false;

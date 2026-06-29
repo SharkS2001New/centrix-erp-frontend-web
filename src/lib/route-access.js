@@ -1,8 +1,8 @@
 import { isNavItemVisible, navSections } from "@/lib/nav-config";
 import { canViewReport, P } from "@/lib/permission-codes";
 import {
-  canAccessTenantOrganizationSettings,
   isAdministrationModuleEnabled,
+  isOrgAdministrator,
   isOrgAdminSettingsPath,
   shouldHideOrgAdminFromPlatformSuperAdmin,
 } from "@/lib/admin-scope";
@@ -66,13 +66,21 @@ export function canAccessRoute(pathname, ctx) {
   }
 
   if (pathname === "/admin/settings" || pathname.startsWith("/admin/settings/")) {
-    return canAccessTenantOrganizationSettings({
-      organization: ctx.organization,
-      isSuperAdmin: ctx.isSuperAdmin,
-      hasPermission: ctx.hasPermission,
-      user: ctx.user,
-      capabilities: ctx.capabilities,
-    });
+    if (!isAdministrationModuleEnabled(ctx.capabilities)) {
+      return false;
+    }
+    if (
+      shouldHideOrgAdminFromPlatformSuperAdmin({
+        organization: ctx.organization,
+        isSuperAdmin: ctx.isSuperAdmin,
+      })
+    ) {
+      return false;
+    }
+    if (isOrgAdministrator(ctx.user, ctx.capabilities)) {
+      return true;
+    }
+    return ctx.hasPermission("admin.manage");
   }
 
   if (
