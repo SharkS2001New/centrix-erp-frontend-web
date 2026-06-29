@@ -242,6 +242,8 @@ export function LegacyArchiveReportScreen() {
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
   const [q, setQ] = useState("");
+  const [minTotalFilter, setMinTotalFilter] = useState("");
+  const [maxTotalFilter, setMaxTotalFilter] = useState("");
   const [page, setPage] = useState(1);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [loadingSales, setLoadingSales] = useState(true);
@@ -252,6 +254,8 @@ export function LegacyArchiveReportScreen() {
     fromDate: defaultRange.from,
     toDate: defaultRange.to,
     q: "",
+    minOrderTotal: "",
+    maxOrderTotal: "",
     page: 1,
   });
 
@@ -285,6 +289,8 @@ export function LegacyArchiveReportScreen() {
           from_date: applied.fromDate,
           to_date: applied.toDate,
           ...(applied.q ? { q: applied.q } : {}),
+          ...(applied.minOrderTotal !== "" ? { min_order_total: applied.minOrderTotal } : {}),
+          ...(applied.maxOrderTotal !== "" ? { max_order_total: applied.maxOrderTotal } : {}),
         }),
       ]);
       setSummary(sumRes?.summary ?? null);
@@ -320,7 +326,15 @@ export function LegacyArchiveReportScreen() {
 
   function applyFilters() {
     setPage(1);
-    setApplied({ channel, fromDate, toDate, q, page: 1 });
+    setApplied({
+      channel,
+      fromDate,
+      toDate,
+      q,
+      minOrderTotal: minTotalFilter,
+      maxOrderTotal: maxTotalFilter,
+      page: 1,
+    });
   }
 
   function handlePageChange(nextPage) {
@@ -383,12 +397,18 @@ export function LegacyArchiveReportScreen() {
                 from_date: applied.fromDate,
                 to_date: applied.toDate,
                 ...(applied.q ? { q: applied.q } : {}),
+                ...(applied.minOrderTotal !== "" ? { min_order_total: applied.minOrderTotal } : {}),
+                ...(applied.maxOrderTotal !== "" ? { max_order_total: applied.maxOrderTotal } : {}),
               },
             }}
             meta={{
               fromDate: applied.fromDate,
               toDate: applied.toDate,
-              extraLines: applied.q ? [`Search: ${applied.q}`] : [],
+              extraLines: [
+                ...(applied.q ? [`Search: ${applied.q}`] : []),
+                ...(applied.minOrderTotal !== "" ? [`Min total (KES): ${applied.minOrderTotal}`] : []),
+                ...(applied.maxOrderTotal !== "" ? [`Max total (KES): ${applied.maxOrderTotal}`] : []),
+              ],
             }}
             disabled={loadingSales}
           />
@@ -454,8 +474,34 @@ export function LegacyArchiveReportScreen() {
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Order # (P/M/D), customer, cashier…"
+            placeholder="Order # (P/M/D), customer, cashier, total…"
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Min total (KES)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            value={minTotalFilter}
+            onChange={(e) => setMinTotalFilter(e.target.value)}
+            placeholder="e.g. 10000"
+            className="w-36 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Max total (KES)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            value={maxTotalFilter}
+            onChange={(e) => setMaxTotalFilter(e.target.value)}
+            placeholder="e.g. 50000"
+            className="w-36 rounded-lg border border-slate-200 px-3 py-2 text-sm"
           />
         </div>
         <button
