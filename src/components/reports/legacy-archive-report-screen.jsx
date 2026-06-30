@@ -113,6 +113,16 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
   const orderLabel = sale.legacy_order_label ?? sale.legacy_order_num;
   const orderNum = sale.legacy_order_num;
   const centrixSaleId = sale.materialized_sale_id ?? sale.centrix_sale_id;
+  const isMaterialized = Boolean(centrixSaleId);
+  const returnSummary = sale.legacy_return_summary ?? null;
+  const returnCompleted = Boolean(
+    returnSummary?.fully_returned || (returnSummary?.return_count ?? 0) > 0,
+  );
+  const canMaterialize = sale.can_materialize !== false && !isMaterialized;
+  const canCreateReturn =
+    sale.can_create_return !== false && isMaterialized && !returnCompleted;
+  const completedReturnId = returnSummary?.legacy_return_id ?? null;
+  const completedReturnNo = returnSummary?.legacy_return_no ?? null;
 
   async function printArchiveSale(documentType) {
     if (printing) return;
@@ -161,7 +171,7 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
         type: "success",
         text: "Legacy sale copied into Centrix with original quantities and amounts preserved.",
       });
-      onMaterialized?.(saleId);
+      onMaterialized?.(saleId, result?.sale);
     } catch (err) {
       setNotice({
         type: "error",
@@ -253,6 +263,33 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
             </p>
           ) : null}
 
+          {returnCompleted ? (
+            <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+              <p className="font-medium">Legacy return completed</p>
+              <p className="mt-1">
+                {completedReturnNo
+                  ? `Return ${completedReturnNo} is already recorded in Centrix.`
+                  : "This order already has a legacy return on file."}{" "}
+                A second return is not allowed.
+              </p>
+              {completedReturnId ? (
+                <Link
+                  href={`/sales/legacy-returns?return_id=${completedReturnId}`}
+                  className="mt-2 inline-block font-medium text-emerald-800 underline"
+                >
+                  View legacy return
+                </Link>
+              ) : (
+                <Link
+                  href="/sales/legacy-returns"
+                  className="mt-2 inline-block font-medium text-emerald-800 underline"
+                >
+                  Open legacy returns
+                </Link>
+              )}
+            </div>
+          ) : null}
+
           <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <p className="font-medium">Legacy accuracy &amp; returns</p>
             <p className="mt-2 text-amber-900/90">
@@ -289,14 +326,23 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
             <A4PrintIcon />
             Print A4
           </button>
-          {centrixSaleId ? (
+          {canCreateReturn ? (
             <Link
               href={`/sales/legacy-returns/new?sale_id=${centrixSaleId}`}
               className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#144a85]"
             >
               Create legacy return / credit note
             </Link>
-          ) : (
+          ) : isMaterialized ? (
+            <button
+              type="button"
+              disabled
+              className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-500"
+              title="Legacy return already completed"
+            >
+              Return completed
+            </button>
+          ) : canMaterialize ? (
             <button
               type="button"
               disabled={materializing}
@@ -304,6 +350,15 @@ function SaleDetailDrawer({ sale, onClose, onMaterialized }) {
               className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#144a85] disabled:opacity-60"
             >
               {materializing ? "Copying…" : "Materialize into Centrix"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-500"
+              title="This order is already in Centrix"
+            >
+              Already in Centrix
             </button>
           )}
           <button
@@ -404,8 +459,18 @@ export function LegacyArchiveReportScreen() {
     }
   };
 
-  const handleMaterialized = (saleId) => {
-    setSelectedSale((prev) => (prev ? { ...prev, materialized_sale_id: saleId } : prev));
+  const handleMaterialized = (saleId, salePayload) => {
+    setSelectedSale((prev) =>
+      prev
+        ? {
+            ...prev,
+            materialized_sale_id: saleId,
+            can_materialize: false,
+            can_create_return: true,
+            legacy_return_summary: salePayload?.legacy_return_summary ?? prev.legacy_return_summary,
+          }
+        : prev,
+    );
     loadSales();
   };
 
@@ -649,7 +714,12 @@ export function LegacyArchiveReportScreen() {
                   <td className="px-4 py-2.5 text-right">{money(row.order_total)}</td>
                   <td className="px-4 py-2.5">
                     {row.materialized_sale_id ? (
-                      <ReportBadge label="Yes" tone="success" />
+                      row.legacy_return_summary?.fully_returned ||
+                      (row.legacy_return_summary?.return_count ?? 0) > 0 ? (
+                        <ReportBadge label="Returned" tone="success" />
+                      ) : (
+                        <ReportBadge label="Yes" tone="success" />
+                      )
                     ) : (
                       <ReportBadge label="Archive only" tone="neutral" />
                     )}

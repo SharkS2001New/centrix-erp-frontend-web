@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getToken } from "@/lib/auth-storage";
 import { apiFetchCredentials } from "@/lib/auth-config";
-import { apiBaseOrigin, resolveCustomerMediaUrl } from "@/lib/api";
+import { apiBaseOrigin, resolveCustomerMediaUrl, resolveProtectedFileUrl } from "@/lib/api";
 
 export function EntityPhotoDisplay({
   fileUrl,
@@ -29,9 +29,14 @@ export function EntityPhotoDisplay({
       }
 
       const token = getToken();
-      const tryUrls = [fileUrl, resolveCustomerMediaUrl(imageUrl)].filter(Boolean);
+      const tryUrls = [
+        resolveProtectedFileUrl(fileUrl),
+        resolveProtectedFileUrl(imageUrl),
+        resolveCustomerMediaUrl(imageUrl),
+      ].filter(Boolean);
+      const uniqueUrls = [...new Set(tryUrls)];
 
-      for (const url of tryUrls) {
+      for (const url of uniqueUrls) {
         try {
           const headers = { Accept: "image/*" };
           if (token) headers.Authorization = `Bearer ${token}`;
@@ -81,4 +86,11 @@ export function employeePhotoFileUrl(employeeId) {
 
 export function organizationLogoFileUrl(organizationId) {
   return `${apiBaseOrigin()}/api/v1/organizations/${organizationId}/logo/file`;
+}
+
+export function fieldAttendancePhotoFileUrl(sessionId, kind, variant = "sales") {
+  const segment = kind === "sign-out" ? "sign-out-photo" : "sign-in-photo";
+  const prefix =
+    variant === "hr" ? "/attendance/field-sessions" : "/sales/mobile-field-attendance";
+  return `${apiBaseOrigin()}/api/v1${prefix}/${sessionId}/${segment}/file`;
 }

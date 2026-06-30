@@ -15,7 +15,7 @@ import {
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 import { FieldRepHrLinkageBanner } from "@/components/hr/field-rep-hr-linkage-banner";
 import { CustomerLocationMapEmbed } from "@/components/customers/customer-location-map-embed";
-import { EntityPhotoDisplay } from "@/components/media/entity-photo-display";
+import { EntityPhotoDisplay, fieldAttendancePhotoFileUrl } from "@/components/media/entity-photo-display";
 import { GpsLocationLabel } from "@/components/shared/gps-location-label";
 import { hasValidCustomerLocation } from "@/lib/customer-location";
 import { formatAppDateTime, calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
@@ -51,7 +51,7 @@ function fromLocalInputValue(value) {
   return d.toISOString();
 }
 
-function AttendanceLocationBlock({ latitude, longitude, address, photoFileUrl, label }) {
+function AttendanceLocationBlock({ latitude, longitude, address, photoFileUrl, label, sessionId, photoKind, variant }) {
   const hasCoords = hasValidCustomerLocation(latitude, longitude);
 
   return (
@@ -72,7 +72,11 @@ function AttendanceLocationBlock({ latitude, longitude, address, photoFileUrl, l
       {photoFileUrl ? (
         <div className="mt-2 max-h-48 overflow-hidden rounded-lg border bg-slate-900/40">
           <EntityPhotoDisplay
-            fileUrl={photoFileUrl}
+            fileUrl={
+              sessionId && photoKind
+                ? fieldAttendancePhotoFileUrl(sessionId, photoKind, variant)
+                : photoFileUrl
+            }
             alt={label}
             className="max-h-48 w-full object-cover"
             placeholderClassName="flex h-24 items-center justify-center px-2 text-center text-xs text-slate-400"
@@ -402,6 +406,9 @@ export default function MobileFieldAttendanceScreen({ variant = "sales", embedde
                 longitude={selected.sign_in_longitude}
                 address={selected.sign_in_address}
                 photoFileUrl={selected.sign_in_photo_url}
+                sessionId={selected.id}
+                photoKind="sign-in"
+                variant={isHr ? "hr" : "sales"}
               />
               <AttendanceLocationBlock
                 label="Sign-out location"
@@ -409,6 +416,9 @@ export default function MobileFieldAttendanceScreen({ variant = "sales", embedde
                 longitude={selected.sign_out_longitude}
                 address={selected.sign_out_address}
                 photoFileUrl={selected.sign_out_photo_url}
+                sessionId={selected.id}
+                photoKind="sign-out"
+                variant={isHr ? "hr" : "sales"}
               />
             </div>
 

@@ -36,6 +36,37 @@ export function apiBaseOrigin() {
   return baseUrl().replace(/\/api\/v1\/?$/, "");
 }
 
+/**
+ * Rewrites authenticated API file URLs to the browser's configured API origin.
+ * Backend serializers often use APP_URL, which may differ from NEXT_PUBLIC_API_URL.
+ */
+export function resolveProtectedFileUrl(url) {
+  if (!url || typeof url !== "string") return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("blob:") || trimmed.startsWith("data:")) return trimmed;
+
+  const origin = apiBaseOrigin();
+
+  if (trimmed.startsWith("/api/v1/") || trimmed.startsWith("/api/")) {
+    return `${origin}${trimmed}`;
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.pathname.startsWith("/api/v1/") || parsed.pathname.startsWith("/api/")) {
+        return `${origin}${parsed.pathname}${parsed.search}`;
+      }
+    } catch {
+      return trimmed;
+    }
+    return trimmed;
+  }
+
+  return null;
+}
+
 /** Turn API storage paths into absolute URLs the browser can load. */
 export function resolveCustomerMediaUrl(url) {
   if (!url || typeof url !== "string") return null;

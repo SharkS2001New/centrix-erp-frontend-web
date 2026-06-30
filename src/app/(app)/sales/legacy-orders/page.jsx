@@ -375,9 +375,26 @@ function LegacyOrdersContent() {
                         />
                         <Link
                           href={`/sales/legacy-returns/new?sale_id=${row.id}`}
-                          className="text-indigo-600 hover:text-indigo-800"
+                          className={
+                            summary.fully_returned || (summary.return_count_all ?? 0) > 0
+                              ? "cursor-not-allowed text-slate-400"
+                              : "text-indigo-600 hover:text-indigo-800"
+                          }
+                          aria-disabled={summary.fully_returned || (summary.return_count_all ?? 0) > 0}
+                          onClick={(event) => {
+                            if (summary.fully_returned || (summary.return_count_all ?? 0) > 0) {
+                              event.preventDefault();
+                              notifyError(
+                                summary.legacy_return_no
+                                  ? `Return ${summary.legacy_return_no} is already completed for this order.`
+                                  : "A legacy return is already on file for this order.",
+                              );
+                            }
+                          }}
                         >
-                          Return
+                          {summary.fully_returned || (summary.return_count ?? 0) > 0
+                            ? "Returned"
+                            : "Return"}
                         </Link>
                         {canDeleteLegacyOrder(row) ? (
                           <button

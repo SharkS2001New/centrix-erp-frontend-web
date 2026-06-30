@@ -42,27 +42,40 @@ export function LegacyReturnForm({
   const [loadingSale, setLoadingSale] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [returnBlockedReason, setReturnBlockedReason] = useState(null);
 
   const totalCredit = useMemo(() => totalLegacyReturnCredit(lines), [lines]);
   const needsManualKraInvoice = Boolean(kraHint?.requires_manual_invoice_number);
+  const returnSummary = sale?.legacy_return_summary ?? null;
+  const returnBlocked =
+    Boolean(returnBlockedReason) ||
+    returnSummary?.can_create_return === false ||
+    Boolean(returnSummary?.fully_returned) ||
+    (returnSummary?.return_count_all ?? 0) > 0;
 
   const loadSaleContext = useCallback(async (id) => {
     if (!id) {
       setSale(null);
       setLines([]);
       setKraHint(null);
+      setReturnBlockedReason(null);
       return;
     }
 
     setLoadingSale(true);
     setError(null);
+    setReturnBlockedReason(null);
     try {
       const [saleRes, linesRes] = await Promise.all([
         apiRequest(`/legacy-orders/${id}`),
         apiRequest(`/legacy-orders/${id}/return-lines`),
       ]);
-      setSale(saleRes);
+      setSale({
+        ...saleRes,
+        legacy_return_summary: linesRes.legacy_return_summary ?? saleRes.legacy_return_summary,
+      });
       setKraHint(linesRes.kra_invoice_hint ?? saleRes.kra_invoice_hint ?? null);
+      setReturnBlockedReason(linesRes.return_blocked_reason ?? null);
       const known = linesRes.kra_invoice_hint?.known_invoice_number ?? "";
       setKraInvoiceNumber(known);
       setLines((linesRes.lines ?? []).map((line) => legacyFullReturnLine(line)));
@@ -86,6 +99,10 @@ export function LegacyReturnForm({
     event.preventDefault();
     if (!saleId) {
       setError("Select a legacy order first.");
+      return;
+    }
+    if (returnBlocked) {
+      setError(returnBlockedReason ?? "A legacy return has already been completed for this order.");
       return;
     }
     if (!kraEnabled) {
@@ -166,6 +183,33 @@ export function LegacyReturnForm({
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           {error}
         </p>
+      ) : null}
+
+      {returnBlocked ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
+          <p className="font-medium">Legacy return already completed</p>
+          <p className="mt-1">
+            {returnBlockedReason ??
+              (returnSummary?.legacy_return_no
+                ? `Return ${returnSummary.legacy_return_no} is already on file for this order.`
+                : "This order already has a legacy return. A second return is not allowed.")}
+          </p>
+          {returnSummary?.legacy_return_id ? (
+            <Link
+              href={`/sales/legacy-returns?return_id=${returnSummary.legacy_return_id}`}
+              className="mt-2 inline-block font-medium text-emerald-800 underline"
+            >
+              View legacy return
+            </Link>
+          ) : (
+            <Link
+              href="/sales/legacy-returns"
+              className="mt-2 inline-block font-medium text-emerald-800 underline"
+            >
+              Open legacy returns
+            </Link>
+          )}
+        </div>
       ) : null}
 
       {sale ? (
@@ -297,7 +341,7 @@ export function LegacyReturnForm({
             </div>
           ) : null}
         </div>
-        <PrimaryButton type="submit" disabled={saving || !kraEnabled || loadingSale}>
+        <PrimaryButton type="submit" disabled={saving || !kraEnabled || loadingSale || returnBlocked}>
           {saving ? "Processing…" : "Issue legacy return & credit note"}
         </PrimaryButton>
       </div>
