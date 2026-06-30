@@ -31,6 +31,7 @@ import {
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { CatalogDataImportButton, filterNonEmptyImportRows } from "@/components/catalog/catalog-data-import";
 import { UOM_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
@@ -300,6 +301,24 @@ export default function UomsPage() {
       subtitle="Define how stock is counted and reported — base unit, optional middle packs, and full packages"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <CatalogDataImportButton
+            title="Import units of measure"
+            description="Upload CSV or Excel with measure_name, full_name, conversion_factor, uom_type, and optional packaging labels."
+            sampleHeaders={[
+              "measure_name",
+              "full_name",
+              "small_packaging_label",
+              "middle_packaging_label",
+              "middle_factor",
+              "conversion_factor",
+              "uom_type",
+              "is_active",
+            ]}
+            sampleRow={["Piece", "Piece", "piece", "", "", "1", "piece", "true"]}
+            apiPath="/uoms/import-batch"
+            normalizeRows={(rows) => filterNonEmptyImportRows(rows, ["measure_name"])}
+            onImported={loadData}
+          />
           <CatalogListExport
             title="Units of measure"
             apiPath="/uoms"

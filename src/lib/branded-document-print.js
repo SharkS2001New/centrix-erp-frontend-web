@@ -1,5 +1,10 @@
 import { openPrintWindow } from "@/lib/open-print-window";
 import {
+  buildDocumentPrintEdgeFooterHtml,
+  documentPrintEdgeFooterStyles,
+  DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN,
+} from "@/lib/document-print-edge-footer";
+import {
   buildReportOrgHeaderHtml,
   buildReportWatermarkHtml,
   resolveReportBranding,
@@ -55,7 +60,7 @@ export function buildOrgContactLines(organization) {
 
 export function brandedDocumentStyles() {
   return `
-  @page { size: A4; margin: 8mm 10mm; }
+  @page { size: A4; margin: 8mm 10mm ${DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN} 10mm; }
   html { height: 100%; }
   body {
     font-family: "Times New Roman", Times, serif;
@@ -73,11 +78,8 @@ export function brandedDocumentStyles() {
     margin: 0 auto;
     position: relative;
     z-index: 1;
-    min-height: calc(100vh - 24px);
-    display: flex;
-    flex-direction: column;
   }
-  .page-body { flex: 1 0 auto; }
+  .page-body { }
   .org-header { text-align: center; margin-bottom: 6px; padding-bottom: 0; border-bottom: none; }
   .org-logo { display: block; margin: 0 auto 4px; max-height: 56px; max-width: 220px; object-fit: contain; }
   .org-name { font-size: 18px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -106,17 +108,7 @@ export function brandedDocumentStyles() {
   .signatures p { margin: 0 0 10px; }
   .sig-line { display: inline-block; min-width: 180px; border-bottom: 1px dotted #000; }
   .doc-footer-text { margin-top: 8px; text-align: center; font-size: 8px; color: #64748b; }
-  .print-footer {
-    margin-top: auto;
-    padding-top: 10px;
-    border-top: 1px dotted #999;
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    font-size: 8px;
-    color: #333;
-    flex-shrink: 0;
-  }
+  ${documentPrintEdgeFooterStyles()}
   .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
   .watermark-text {
     position: absolute;
@@ -143,7 +135,6 @@ export function brandedDocumentStyles() {
   @media print {
     body { padding: 0; }
     .watermark-text { color: rgba(15, 23, 42, 0.08); }
-    .page { min-height: calc(297mm - 16mm); }
   }
 `;
 }
@@ -178,7 +169,7 @@ export function buildBrandedA4DocumentHtml({
   <title>${escapeHtml(title)}</title>
   <style>${brandedDocumentStyles()}</style>
 </head>
-<body>
+<body class="has-doc-print-edge-footer">
   ${watermarkHtml}
   <div class="page">
     <div class="page-body">
@@ -195,12 +186,12 @@ export function buildBrandedA4DocumentHtml({
     ${bodyHtml}
     ${footerText ? `<div class="doc-footer-text">${escapeHtml(footerText)}</div>` : ""}
     </div>
-    <div class="print-footer">
-      <span>Printed On: ${escapeHtml(printedAt)}</span>
-      <span>Printed By: ${escapeHtml(printedBy ?? "—")}</span>
-      <span>${escapeHtml(pageLabel)}</span>
-    </div>
   </div>
+  ${buildDocumentPrintEdgeFooterHtml({
+    printedBy,
+    printedAt,
+    pageLabel,
+  })}
 </body>
 </html>`;
 }

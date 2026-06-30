@@ -18,6 +18,7 @@ import {
   wholesaleTierPriceAtMeasureLevel,
 } from "./retail-pricing";
 import { uomConversionFactor } from "./stock-uom";
+import { computeProfitMarginPercent } from "./product-margin";
 
 export function formatPriceSheetAmount(value) {
   if (value == null || value === "" || !Number.isFinite(Number(value))) return null;
@@ -69,8 +70,10 @@ export function buildPriceSheetRow({
   retailPackage,
   categoryName = "Uncategorized",
   retailPricingEnabled = true,
+  lastCostPrice = null,
 }) {
   const unitPrice = Number(product?.unit_price ?? 0);
+  const costPrice = Number(lastCostPrice ?? product?.last_cost_price ?? 0);
   const hasUnitPrice = unitPrice > 0;
   const sellOnRetail = Boolean(
     retailPricingEnabled &&
@@ -102,6 +105,7 @@ export function buildPriceSheetRow({
     category_name: categoryName,
     packaging: priceSheetPackagingLabel(uom),
     unit_price: unitPrice,
+    last_cost_price: costPrice > 0 ? costPrice : null,
     sell_on_retail: sellOnRetail,
     has_tiers: hasTiers,
     has_middle_pack: uomHasMiddlePack(uom),
@@ -110,6 +114,10 @@ export function buildPriceSheetRow({
     dozens_price: dozensPrice,
     above_dozens_price: aboveDozensPrice,
     wholesale_price: wholesalePrice,
+    wholesale_margin: computeProfitMarginPercent(wholesalePrice, costPrice),
+    retail_margin: computeProfitMarginPercent(retailPrice, costPrice),
+    dozens_margin: computeProfitMarginPercent(dozensPrice, costPrice),
+    above_dozens_margin: computeProfitMarginPercent(aboveDozensPrice, costPrice),
     retail_label: smallPackagingLabel(uom),
     dozens_label: middlePackagingLabel(uom) || "dozen",
     wholesale_label: fullPackageLabel(uom),
@@ -161,4 +169,11 @@ export function priceSheetCellValue(price, enabled = true) {
   if (!enabled) return "—";
   if (price == null || !Number.isFinite(Number(price))) return "N/A";
   return formatPriceSheetAmount(price);
+}
+
+export function priceSheetPriceWithMargin(price, marginPercent, enabled = true) {
+  const amount = priceSheetCellValue(price, enabled);
+  if (amount === "—" || amount === "N/A") return amount;
+  if (marginPercent == null || !Number.isFinite(Number(marginPercent))) return amount;
+  return `${amount} (${Number(marginPercent)}%)`;
 }

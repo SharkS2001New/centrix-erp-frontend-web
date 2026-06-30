@@ -23,3 +23,7 @@ export function isPlatformAiEnabled(capabilities) {
   if (capabilities?.ai_assistant?.platform_enabled === false) return false;
   return true;
 }
+
+export function isPlatformAdvancedDataImportEnabled(capabilities) {
+  return capabilities?.platform_advanced_data_import_enabled === true;
+}

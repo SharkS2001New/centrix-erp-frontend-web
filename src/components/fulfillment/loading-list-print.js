@@ -5,6 +5,11 @@ import {
 } from "@/lib/reports/report-branding";
 
 import { resolveLoadingSheetFooterLines } from "@/lib/loading-sheet-print-settings";
+import {
+  buildDocumentPrintEdgeFooterHtml,
+  documentPrintEdgeFooterStyles,
+  DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN,
+} from "@/lib/document-print-edge-footer";
 
 function formatKes(amount) {
   const n = Number(amount) || 0;
@@ -252,6 +257,7 @@ export function buildLoadingListHtml({
   <meta charset="utf-8" />
   <title>Loading List — ${escapeHtml(routeName)}</title>
   <style>
+    @page { size: A4; margin: 12mm 12mm ${DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN} 12mm; }
     * { box-sizing: border-box; }
     html { height: 100%; }
     body {
@@ -266,13 +272,10 @@ export function buildLoadingListHtml({
     .page {
       max-width: 900px;
       margin: 0 auto;
-      min-height: calc(100vh - 40px);
-      display: flex;
-      flex-direction: column;
       position: relative;
       z-index: 1;
     }
-    .page-body { flex: 1 0 auto; }
+    .page-body { }
     .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
     .watermark-text {
       position: absolute;
@@ -397,25 +400,14 @@ export function buildLoadingListHtml({
       font-weight: 700;
       color: #334155;
     }
-    .print-footer {
-      margin-top: auto;
-      padding-top: 10px;
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 9px;
-      color: #333;
-      border-top: 1px dotted #999;
-      flex-shrink: 0;
-    }
+    ${documentPrintEdgeFooterStyles()}
     @media print {
-      body { margin: 12mm; }
-      .page { min-height: calc(297mm - 24mm); }
+      body { margin: 0; }
       .watermark-text { color: rgba(15, 23, 42, 0.08); }
     }
   </style>
 </head>
-<body>
+<body class="has-doc-print-edge-footer">
   ${watermark}
   <div class="page">
     <div class="page-body">
@@ -451,12 +443,11 @@ export function buildLoadingListHtml({
     ${footerHtml}
   </div>
     </div>
-    <div class="print-footer">
-      <span>Printed On: ${escapeHtml(printedAt)}</span>
-      <span>Printed By: ${escapeHtml(printedByName)}</span>
-      <span>Page 1 of 1</span>
-    </div>
   </div>
+  ${buildDocumentPrintEdgeFooterHtml({
+    printedBy: printedByName,
+    printedAt,
+  })}
 </body>
 </html>`;
 }

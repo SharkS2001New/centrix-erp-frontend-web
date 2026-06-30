@@ -464,7 +464,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
           }`}
         >
           <Link href="/dashboard" data-pos-leave-ignore="true" className="flex items-center" title={PRODUCT_NAME}>
-            <CentrixLogo collapsed={iconOnly} />
+            <CentrixLogo collapsed={iconOnly} orgSubtitle={organization?.org_name} />
           </Link>
         </div>
 

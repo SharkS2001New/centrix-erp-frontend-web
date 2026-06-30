@@ -11,6 +11,7 @@ import {
   groupPriceSheetByCategory,
   priceSheetCellValue,
   priceSheetColumnVisibility,
+  priceSheetPriceWithMargin,
 } from "@/lib/product-price-sheet";
 import { openPrintWindow } from "@/lib/open-print-window";
 import {
@@ -38,9 +39,12 @@ function buildPriceSheetPrintHtml({
   organizationName,
   subtitle,
   effectiveDate,
+  showCost,
+  showMargins,
 }) {
   const colCount =
     2 +
+    (showCost ? 1 : 0) +
     (columns.retail ? 1 : 0) +
     (columns.dozens ? 1 : 0) +
     (columns.aboveDozens ? 1 : 0) +
@@ -49,11 +53,20 @@ function buildPriceSheetPrintHtml({
   const headCells = [
     "<th>Product Name</th>",
     "<th>Packaging</th>",
+    showCost ? '<th class="num">Unit Cost</th>' : "",
     columns.retail ? '<th class="num">Price (Retail)</th>' : "",
     columns.dozens ? '<th class="num">Price (Dozens)</th>' : "",
     columns.aboveDozens ? '<th class="num">Price (Above Dozens)</th>' : "",
     columns.wholesale ? '<th class="num">Price (Wholesale)</th>' : "",
   ].join("");
+
+  const priceCell = (price, margin, enabled = true) => {
+    if (!enabled) return "—";
+    if (showMargins && margin != null) {
+      return escapeHtml(priceSheetPriceWithMargin(price, margin, true));
+    }
+    return escapeHtml(priceSheetCellValue(price, enabled));
+  };
 
   const body = groups
     .map((group) => {
@@ -63,24 +76,24 @@ function buildPriceSheetPrintHtml({
           const cells = [
             `<td>${escapeHtml(row.product_name)}</td>`,
             `<td>${escapeHtml(row.packaging)}</td>`,
+            showCost
+              ? `<td class="num">${escapeHtml(priceSheetCellValue(row.last_cost_price, row.last_cost_price != null))}</td>`
+              : "",
             columns.retail
-              ? `<td class="num">${escapeHtml(priceSheetCellValue(row.retail_price, row.sell_on_retail))}</td>`
+              ? `<td class="num">${priceCell(row.retail_price, row.retail_margin, row.sell_on_retail)}</td>`
               : "",
             columns.dozens
-              ? `<td class="num">${escapeHtml(
-                  priceSheetCellValue(
-                    row.dozens_price,
-                    row.sell_on_retail && row.has_middle_pack,
-                  ),
+              ? `<td class="num">${priceCell(
+                  row.dozens_price,
+                  row.dozens_margin,
+                  row.sell_on_retail && row.has_middle_pack,
                 )}</td>`
               : "",
             columns.aboveDozens
-              ? `<td class="num">${escapeHtml(
-                  priceSheetCellValue(row.above_dozens_price, row.sell_on_retail),
-                )}</td>`
+              ? `<td class="num">${priceCell(row.above_dozens_price, row.above_dozens_margin, row.sell_on_retail)}</td>`
               : "",
             columns.wholesale
-              ? `<td class="num">${escapeHtml(priceSheetCellValue(row.wholesale_price))}</td>`
+              ? `<td class="num">${priceCell(row.wholesale_price, row.wholesale_margin)}</td>`
               : "",
           ].join("");
           return `<tr>${cells}</tr>`;
@@ -218,6 +231,13 @@ export function ProductPriceSheetScreen() {
     [filteredRows, retailPricingEnabled],
   );
 
+  const showCost = useMemo(
+    () => filteredRows.some((row) => row.last_cost_price != null && Number(row.last_cost_price) > 0),
+    [filteredRows],
+  );
+
+  const showMargins = showCost;
+
   const effectiveDate = new Date().toLocaleString("en-GB", {
     day: "2-digit",
     month: "2-digit",
@@ -227,8 +247,8 @@ export function ProductPriceSheetScreen() {
   });
 
   const subtitle = retailPricingEnabled
-    ? "Pricing in pieces, dozens, and cartons (grouped by category)"
-    : "Wholesale pricing by packaging (retail pricing is disabled in sales settings)";
+    ? "Pricing in pieces, dozens, and cartons with expected profit margins (grouped by category)"
+    : "Wholesale pricing and expected profit margins by packaging";
 
   function handlePrint() {
     const html = buildPriceSheetPrintHtml({
@@ -237,14 +257,16 @@ export function ProductPriceSheetScreen() {
       organizationName: organization?.org_name ?? capabilities?.profile_label ?? "",
       subtitle,
       effectiveDate,
+      showCost,
+      showMargins,
     });
     openPrintWindow(html, "width=1100,height=800");
   }
 
   return (
     <CatalogPageShell
-      title="Product price sheet"
-      subtitle="Computed from catalog unit prices, UOM packaging, and retail package tiers."
+      title="Product price list"
+      subtitle="Selling prices, unit costs, and expected profit margins from catalog and retail tiers."
       action={
         <div className="flex flex-wrap items-center gap-2">
           <Link
@@ -302,9 +324,14 @@ export function ProductPriceSheetScreen() {
         <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
           <div className="border-b border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-5 py-4 text-center">
             <h2 className="theme-heading text-xl font-extrabold tracking-wide uppercase">
-              Product price sheet
+              Product price list
             </h2>
             <p className="theme-subtext mt-1 text-sm italic">{subtitle}</p>
+            {showMargins ? (
+              <p className="theme-subtext mt-1 text-xs">
+                Expected margin % = (sell price − last cost) ÷ sell price. Shown in brackets after each price.
+              </p>
+            ) : null}
             <p className="theme-subtext mt-1 text-xs">Effective date: {effectiveDate}</p>
           </div>
 
@@ -314,8 +341,9 @@ export function ProductPriceSheetScreen() {
                 <tr className="theme-table-head-row text-left text-xs font-semibold uppercase tracking-wide">
                   <th className="px-3 py-2.5">Product name</th>
                   <th className="px-3 py-2.5">Packaging</th>
+                  {showCost ? <th className="px-3 py-2.5 text-right">Unit cost</th> : null}
                   {columns.retail ? (
-                    <th className="px-3 py-2.5 text-right">Price (Retail)</th>
+                    <th className="px-3 py-2.5 text-right">Price (retail)</th>
                   ) : null}
                   {columns.dozens ? (
                     <th className="px-3 py-2.5 text-right">Price (Dozens)</th>
@@ -335,6 +363,7 @@ export function ProductPriceSheetScreen() {
                       <td
                         colSpan={
                           2 +
+                          (showCost ? 1 : 0) +
                           (columns.retail ? 1 : 0) +
                           (columns.dozens ? 1 : 0) +
                           (columns.aboveDozens ? 1 : 0) +
@@ -349,27 +378,52 @@ export function ProductPriceSheetScreen() {
                       <tr key={row.product_code} className={TABLE_BODY_ROW_CLASS}>
                         <td className="px-3 py-2 font-medium">{row.product_name}</td>
                         <td className="theme-subtext px-3 py-2">{row.packaging}</td>
+                        {showCost ? (
+                          <td className="theme-subtext px-3 py-2 text-right font-semibold tabular-nums">
+                            {priceSheetCellValue(row.last_cost_price, row.last_cost_price != null)}
+                          </td>
+                        ) : null}
                         {columns.retail ? (
                           <td className="px-3 py-2 text-right font-semibold tabular-nums">
-                            {priceSheetCellValue(row.retail_price, row.sell_on_retail)}
+                            {showMargins
+                              ? priceSheetPriceWithMargin(
+                                  row.retail_price,
+                                  row.retail_margin,
+                                  row.sell_on_retail,
+                                )
+                              : priceSheetCellValue(row.retail_price, row.sell_on_retail)}
                           </td>
                         ) : null}
                         {columns.dozens ? (
                           <td className="px-3 py-2 text-right font-semibold tabular-nums">
-                            {priceSheetCellValue(
-                              row.dozens_price,
-                              row.sell_on_retail && row.has_middle_pack,
-                            )}
+                            {showMargins
+                              ? priceSheetPriceWithMargin(
+                                  row.dozens_price,
+                                  row.dozens_margin,
+                                  row.sell_on_retail && row.has_middle_pack,
+                                )
+                              : priceSheetCellValue(
+                                  row.dozens_price,
+                                  row.sell_on_retail && row.has_middle_pack,
+                                )}
                           </td>
                         ) : null}
                         {columns.aboveDozens ? (
                           <td className="px-3 py-2 text-right font-semibold tabular-nums">
-                            {priceSheetCellValue(row.above_dozens_price, row.sell_on_retail)}
+                            {showMargins
+                              ? priceSheetPriceWithMargin(
+                                  row.above_dozens_price,
+                                  row.above_dozens_margin,
+                                  row.sell_on_retail,
+                                )
+                              : priceSheetCellValue(row.above_dozens_price, row.sell_on_retail)}
                           </td>
                         ) : null}
                         {columns.wholesale ? (
                           <td className="px-3 py-2 text-right font-semibold tabular-nums">
-                            {priceSheetCellValue(row.wholesale_price)}
+                            {showMargins
+                              ? priceSheetPriceWithMargin(row.wholesale_price, row.wholesale_margin)
+                              : priceSheetCellValue(row.wholesale_price)}
                           </td>
                         ) : null}
                       </tr>

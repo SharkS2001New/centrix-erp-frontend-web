@@ -25,6 +25,7 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { CatalogDataImportButton, filterNonEmptyImportRows } from "@/components/catalog/catalog-data-import";
 import { CATEGORY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { toast } from "@/lib/toast";
 import { useConfirm } from "@/lib/use-confirm";
@@ -283,6 +284,26 @@ export default function CategoriesPage() {
       subtitle="Manage product categories and sub-categories in one hierarchy"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <CatalogDataImportButton
+            label="Import categories"
+            title="Import categories"
+            description="Upload CSV or Excel with category_name for each row."
+            sampleHeaders={["category_name"]}
+            sampleRow={["Beverages"]}
+            apiPath="/categories/import-batch"
+            normalizeRows={(rows) => filterNonEmptyImportRows(rows, ["category_name"])}
+            onImported={loadData}
+          />
+          <CatalogDataImportButton
+            label="Import sub-categories"
+            title="Import sub-categories"
+            description="Upload CSV or Excel with subcategory_name and category_name (or category_id)."
+            sampleHeaders={["category_name", "subcategory_name"]}
+            sampleRow={["Beverages", "Soft drinks"]}
+            apiPath="/sub-categories/import-batch"
+            normalizeRows={(rows) => filterNonEmptyImportRows(rows, ["subcategory_name"])}
+            onImported={loadData}
+          />
           <CatalogListExport
             title="Categories"
             apiPath="/categories"

@@ -19,6 +19,7 @@ import {
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { CatalogDataImportButton, filterNonEmptyImportRows } from "@/components/catalog/catalog-data-import";
 import { VAT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { toast } from "@/lib/toast";
 import { useConfirm } from "@/lib/use-confirm";
@@ -164,6 +165,17 @@ export default function VatsPage() {
       subtitle="Configure tax codes and percentages for products"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <CatalogDataImportButton
+            title="Import VAT rates"
+            description="Upload CSV or Excel with vat_code, vat_name, vat_percentage, and optional is_active."
+            sampleHeaders={["vat_code", "vat_name", "vat_percentage", "is_active"]}
+            sampleRow={["VAT16", "Standard VAT", "16", "true"]}
+            apiPath={adminPath("/vats/import-batch")}
+            normalizeRows={(rows) =>
+              filterNonEmptyImportRows(rows, ["vat_code", "vat_name", "vat_percentage"])
+            }
+            onImported={loadData}
+          />
           <CatalogListExport
             title="VAT rates"
             apiPath="/vats"

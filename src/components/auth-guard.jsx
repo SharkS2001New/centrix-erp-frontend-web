@@ -1,30 +1,49 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { hasAuthSession } from "@/lib/auth-storage";
 
+function AuthGuardPlaceholder() {
+  return (
+    <div className="app-shell-bg flex h-screen overflow-hidden" aria-busy="true" aria-live="polite">
+      <div className="flex flex-1 items-center justify-center">
+        <p className="theme-subtext text-sm">Loading…</p>
+      </div>
+    </div>
+  );
+}
+
 export function AuthGuard({ children }) {
+  const [ready, setReady] = useState(false);
   const { loading, user } = useAuth();
   const router = useRouter();
-  const sessionReady = Boolean(user) || hasAuthSession();
 
   useEffect(() => {
-    if (!loading && !hasAuthSession()) {
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!ready || loading) return;
+    if (!hasAuthSession()) {
       router.replace("/login");
     }
-  }, [loading, router]);
+  }, [ready, loading, router]);
 
-  if (loading && !sessionReady) {
-    return (
-      <div className="flex h-full items-center justify-center bg-slate-950 text-slate-300">
-        Loading…
-      </div>
-    );
+  if (!ready) {
+    return <AuthGuardPlaceholder />;
   }
 
-  if (!hasAuthSession()) return null;
+  const sessionReady = Boolean(user) || hasAuthSession();
+
+  if (loading && !sessionReady) {
+    return <AuthGuardPlaceholder />;
+  }
+
+  if (!hasAuthSession()) {
+    return null;
+  }
 
   return <>{children}</>;
 }

@@ -11,6 +11,8 @@ import { queueReportExport, serializeExportMeta } from "@/lib/report-export-api"
 import { downloadExcelFromRows } from "@/lib/spreadsheet";
 import { reportPrintedAt } from "@/lib/reports/export";
 import { ImportExportIcons, parseSpreadsheet, downloadBlob } from "@/components/catalog/catalog-import-export-shared";
+import { canUseAdvancedDataImport } from "@/lib/advanced-data-import";
+import { useAuth } from "@/contexts/auth-context";
 
 const SAMPLE_HEADERS = [
   "first_name",
@@ -204,16 +206,20 @@ function ImportModal({ open, onClose, onImported }) {
 }
 
 export function EmployeeImportExport({ totalCount, exportSearchParams, onImported }) {
+  const { user, capabilities } = useAuth();
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const { ImportIcon, ExportIcon } = ImportExportIcons;
+  const showImport = canUseAdvancedDataImport({ user, capabilities });
 
   return (
     <>
-      <button type="button" onClick={() => setImportOpen(true)} className={`${SECONDARY_BTN_CLASS} gap-2 px-3.5 py-2`}>
-        <ImportIcon />
-        Import
-      </button>
+      {showImport ? (
+        <button type="button" onClick={() => setImportOpen(true)} className={`${SECONDARY_BTN_CLASS} gap-2 px-3.5 py-2`}>
+          <ImportIcon />
+          Import
+        </button>
+      ) : null}
       <button type="button" onClick={() => setExportOpen(true)} className={`${SECONDARY_BTN_CLASS} gap-2 px-3.5 py-2`}>
         <ExportIcon />
         Export

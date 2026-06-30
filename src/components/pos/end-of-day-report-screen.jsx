@@ -181,11 +181,13 @@ ${meta.organizationName ? `<h1>${meta.organizationName}</h1>` : ""}
 <p class="muted">Printed: ${formatAppDateTime(new Date())}</p>
 <div class="grid">
 <div class="box"><strong>Sales</strong>
-<div class="row"><span>Gross</span><span>${kesNum(s.gross_sales)}</span></div>
+<div class="row"><span>Gross sales (ex VAT)</span><span>${kesNum(s.gross_sales_ex_vat ?? Math.max(0, Number(s.gross_sales ?? 0) - Number(s.total_vat ?? 0)))}</span></div>
+<div class="row"><span>VAT collected</span><span>${kesNum(s.total_vat)}</span></div>
+<div class="row"><span>Gross sales (incl VAT)</span><span>${kesNum(s.gross_sales)}</span></div>
 ${meta.showDiscounts ? `<div class="row"><span>Discounts</span><span>${kesNum(s.total_discounts)}</span></div>` : ""}
 <div class="row"><span>Refunds</span><span>${kesNum(s.total_refunds)}</span></div>
-<div class="row"><span>Net sales</span><span>${kesNum(s.net_sales)}</span></div>
-${Number(s.total_vat) > 0 ? `<div class="row"><span>VAT total</span><span>${kesNum(s.total_vat)}</span></div>` : ""}
+<div class="row"><span>Net sales (incl VAT)</span><span>${kesNum(s.net_sales)}</span></div>
+<div class="row"><span>Net sales (ex VAT)</span><span>${kesNum(s.net_sales_ex_vat ?? Math.max(0, Number(s.net_sales ?? 0) - Number(s.total_vat ?? 0)))}</span></div>
 ${meta.showFloat ? `<div class="row"><span>Opening float</span><span>${kesNum(s.opening_float)}</span></div>` : ""}
 ${meta.showFloat ? `<div class="row"><span>Net sales minus float</span><span>${kesNum(resolveNetSalesMinusFloat({ netSales: s.net_sales, openingFloat: s.opening_float, netSalesMinusFloat: s.net_sales_minus_float }))}</span></div>` : ""}
 <div class="row"><span>Net cash expected</span><span>${kesNum(s.net_cash_expected)}</span></div>
@@ -207,11 +209,13 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
   const rows = [];
   const push = (section, item, value) => rows.push({ section, item, value });
 
-  push("Sales", "Gross sales", kesNum(s.gross_sales));
+  push("Sales", "Gross sales (ex VAT)", kesNum(s.gross_sales_ex_vat ?? Math.max(0, Number(s.gross_sales ?? 0) - Number(s.total_vat ?? 0))));
+  push("Sales", "VAT collected", kesNum(s.total_vat));
+  push("Sales", "Gross sales (incl VAT)", kesNum(s.gross_sales));
   if (discountsEnabled) push("Sales", "Total discounts", kesNum(s.total_discounts));
   push("Sales", "Total refunds", kesNum(s.total_refunds));
-  push("Sales", "Net sales", kesNum(s.net_sales));
-  if (Number(s.total_vat) > 0) push("Sales", "VAT total", kesNum(s.total_vat));
+  push("Sales", "Net sales (incl VAT)", kesNum(s.net_sales));
+  push("Sales", "Net sales (ex VAT)", kesNum(s.net_sales_ex_vat ?? Math.max(0, Number(s.net_sales ?? 0) - Number(s.total_vat ?? 0))));
   push("Sales", "Transactions", String(s.transactions ?? 0));
   if (requireTillFloat) push("Sales", "Opening float", kesNum(s.opening_float));
   if (requireTillFloat) {
@@ -244,7 +248,7 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
     push(
       "Cashier sales",
       row.cashier ?? "—",
-      `${kesNum(row.gross_sales)} · ${row.transactions ?? 0} txns`,
+      `${kesNum(row.gross_sales)} · VAT ${kesNum(row.total_vat)} · ${row.transactions ?? 0} txns`,
     );
   }
 
@@ -368,6 +372,16 @@ export function EndOfDayReportScreen() {
   const cashierName =
     report?.cashier_name ??
     (cashierId ? cashierOptions.find((c) => c.value === cashierId)?.label : null);
+
+  const netSalesExVat = useMemo(() => {
+    if (summary.net_sales_ex_vat != null) return Number(summary.net_sales_ex_vat);
+    return Math.max(0, Number(summary.net_sales ?? 0) - Number(summary.total_vat ?? 0));
+  }, [summary.net_sales, summary.net_sales_ex_vat, summary.total_vat]);
+
+  const grossSalesExVat = useMemo(() => {
+    if (summary.gross_sales_ex_vat != null) return Number(summary.gross_sales_ex_vat);
+    return Math.max(0, Number(summary.gross_sales ?? 0) - Number(summary.total_vat ?? 0));
+  }, [summary.gross_sales, summary.gross_sales_ex_vat, summary.total_vat]);
 
   const paymentTotal = useMemo(
     () =>
@@ -539,26 +553,26 @@ export function EndOfDayReportScreen() {
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <StatCard label="Total sales" value={formatTillKes(summary.gross_sales)} hint="Gross sales" />
+            <StatCard label="Gross sales (ex VAT)" value={formatTillKes(grossSalesExVat)} hint="Before VAT" />
+            <StatCard label="VAT collected" value={formatTillKes(summary.total_vat)} hint="Tax on sales" />
+            <StatCard label="Gross sales (incl VAT)" value={formatTillKes(summary.gross_sales)} hint="Including VAT" />
             <StatCard label="Total transactions" value={summary.transactions ?? 0} hint="All transactions" />
             {discountsEnabled ? (
               <StatCard label="Total discounts" value={formatTillKes(summary.total_discounts)} hint="Discounts given" />
             ) : null}
             <StatCard label="Total refunds" value={formatTillKes(summary.total_refunds)} hint="Refunds issued" />
             <StatCard
-              label="Net sales"
+              label="Net sales (incl VAT)"
               value={formatTillKes(summary.net_sales)}
               hint={discountsEnabled ? "After discounts & refunds" : "After refunds"}
             />
+            <StatCard label="Net sales (ex VAT)" value={formatTillKes(netSalesExVat)} hint="Net after VAT" />
             {requireTillFloat ? (
               <StatCard
                 label="Net sales minus float"
                 value={formatTillKes(netSalesMinusFloat)}
                 hint="Net sales after operating float"
               />
-            ) : null}
-            {Number(summary.total_vat) > 0 ? (
-              <StatCard label="VAT total" value={formatTillKes(summary.total_vat)} hint="Tax collected" />
             ) : null}
             {Number(report?.total_expenses) > 0 ? (
               <StatCard label="Total expenses" value={formatTillKes(report.total_expenses)} hint="All expense groups" />
@@ -567,16 +581,16 @@ export function EndOfDayReportScreen() {
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
             <Panel title="Sales summary">
-              <SummaryRow label="Gross sales" value={formatTillKes(summary.gross_sales)} />
+              <SummaryRow label="Gross sales (ex VAT)" value={formatTillKes(grossSalesExVat)} />
+              <SummaryRow label="VAT collected" value={formatTillKes(summary.total_vat)} tone="primary" />
+              <SummaryRow label="Gross sales (incl VAT)" value={formatTillKes(summary.gross_sales)} bold />
               {discountsEnabled ? (
                 <SummaryRow label="Total discounts" value={`-${formatTillKes(summary.total_discounts)}`} tone="danger" />
               ) : null}
               <SummaryRow label="Total refunds" value={`-${formatTillKes(summary.total_refunds)}`} tone="danger" />
               <div className="my-2 border-t border-[var(--theme-border)]" />
-              <SummaryRow label="Net sales" value={formatTillKes(summary.net_sales)} tone="success" bold />
-              {Number(summary.total_vat) > 0 ? (
-                <SummaryRow label="VAT total" value={formatTillKes(summary.total_vat)} />
-              ) : null}
+              <SummaryRow label="Net sales (incl VAT)" value={formatTillKes(summary.net_sales)} tone="success" bold />
+              <SummaryRow label="Net sales (ex VAT)" value={formatTillKes(netSalesExVat)} />
               {requireTillFloat ? (
                 <SummaryRow label="Opening float" value={formatTillKes(summary.opening_float)} />
               ) : null}
@@ -619,6 +633,7 @@ export function EndOfDayReportScreen() {
                     <tr className="theme-subtext border-b border-[var(--theme-border)] text-left text-xs font-medium">
                       <th className="pb-2 pr-3">Cashier</th>
                       <th className="pb-2 pr-3 text-right">Total sales</th>
+                      <th className="pb-2 pr-3 text-right">VAT</th>
                       <th className="pb-2 pr-3 text-right">Transactions</th>
                       <th className="pb-2 pr-3 text-right">Cash</th>
                       <th className="pb-2 pr-3 text-right">M-Pesa</th>
@@ -647,6 +662,9 @@ export function EndOfDayReportScreen() {
                           </td>
                           <td className="py-2.5 pr-3 text-right font-medium text-[var(--theme-text)]">
                             {formatTillKes(row.gross_sales)}
+                          </td>
+                          <td className="theme-text-muted py-2.5 pr-3 text-right">
+                            {formatTillKes(row.total_vat)}
                           </td>
                           <td className="theme-text-muted py-2.5 pr-3 text-right">{row.transactions ?? 0}</td>
                           <td className="theme-text-muted py-2.5 pr-3 text-right">{formatTillKes(row.cash_collected)}</td>

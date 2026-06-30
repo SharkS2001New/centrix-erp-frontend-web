@@ -14,6 +14,11 @@ import {
   resolveLpoVatNote,
 } from "@/lib/lpo-print-settings";
 import { computeLpoLineTotals, formatLpoAmount, lpoDisplayNumber } from "./lpo-shared";
+import {
+  buildDocumentPrintEdgeFooterHtml,
+  documentPrintEdgeFooterStyles,
+  DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN,
+} from "@/lib/document-print-edge-footer";
 
 function formatPrintDate(value) {
   if (!value) return "—";
@@ -108,7 +113,7 @@ function lpoDocumentTitle(variant) {
 
 function lpoPrintStyles() {
   return `
-    @page { size: A4; margin: 12mm; }
+    @page { size: A4; margin: 12mm 12mm ${DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN} 12mm; }
     html { height: 100%; }
     body {
       font-family: "Times New Roman", Times, serif;
@@ -123,11 +128,8 @@ function lpoPrintStyles() {
     .page {
       max-width: 820px;
       margin: 0 auto;
-      min-height: calc(100vh - 32px);
-      display: flex;
-      flex-direction: column;
     }
-    .page-body { flex: 1 0 auto; }
+    .page-body { }
     .org-header { text-align: center; margin-bottom: 8px; }
     .org-logo { display: block; margin: 0 auto 8px; max-height: 72px; max-width: 280px; object-fit: contain; }
     .org-name { font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -159,20 +161,9 @@ function lpoPrintStyles() {
     .footer-line { font-weight: 700; }
     .warn { font-weight: 700; text-decoration: underline; text-transform: uppercase; }
     .note-line { margin-top: 4px; }
-    .print-footer {
-      margin-top: auto;
-      padding-top: 10px;
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 9px;
-      color: #333;
-      border-top: 1px dotted #999;
-      flex-shrink: 0;
-    }
+    ${documentPrintEdgeFooterStyles()}
     @media print {
       body { padding: 0; }
-      .page { min-height: calc(297mm - 24mm); }
     }
   `;
 }
@@ -338,7 +329,7 @@ export function buildLpoPrintHtml({
   <title>${escapeHtml(docTitle)} ${escapeHtml(lpoDisplayNumber(lpo))}</title>
   <style>${lpoPrintStyles()}</style>
 </head>
-<body>
+<body class="has-doc-print-edge-footer">
   <div class="page">
     <div class="page-body">
     <div class="org-header">
@@ -399,13 +390,11 @@ export function buildLpoPrintHtml({
       }
     </div>
     </div>
-
-    <div class="print-footer">
-      <span>Printed On: ${escapeHtml(printedOn)}</span>
-      <span>Printed By: ${escapeHtml(printedByName)}</span>
-      <span>Page 1 of 1</span>
-    </div>
   </div>
+  ${buildDocumentPrintEdgeFooterHtml({
+    printedBy: printedByName,
+    printedAt: printedOn,
+  })}
 </body>
 </html>`;
 

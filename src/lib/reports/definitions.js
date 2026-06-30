@@ -91,6 +91,117 @@ export const REPORT_DEFINITIONS = {
     charts: [{ type: "bar", title: "Daily gross sales", labelKey: "sale_day", valueKey: "gross" }],
   },
 
+  "sales-by-product": {
+    title: "Sales by Product",
+    subtitle: "Revenue and VAT by product",
+    section: "Sales",
+    apiPath: "/reports/sales-by-product",
+    dateColumn: "sale_date",
+    showDateRange: true,
+    columns: [
+      { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
+      { key: "product_code", label: "Product Code", accessor: (r) => r.product_code },
+      { key: "product_name", label: "Product", accessor: (r) => r.product_name },
+      { key: "channel", label: "Channel", accessor: (r) => r.channel },
+      { key: "qty_sold", label: "Qty Sold", accessor: (r) => r.qty_sold, align: "right", total: true },
+      {
+        key: "net_ex_vat",
+        label: "Net (ex VAT)",
+        accessor: (r) => netExVatAmount(r, "total_revenue", "total_vat"),
+        align: "right",
+        total: true,
+      },
+      { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
+      { key: "total_revenue", label: "Gross (incl VAT)", accessor: (r) => r.total_revenue, align: "right", total: true },
+      { key: "total_discount", label: "Discount", accessor: (r) => r.total_discount, align: "right", total: true },
+    ],
+    kpis: vatReportKpis("total_revenue", "total_vat"),
+    footerTotals: ["qty_sold", "total_vat", "total_revenue", "total_discount"],
+  },
+
+  "sales-by-channel": {
+    title: "Sales by Channel",
+    subtitle: "Gross sales, VAT, and collections by channel",
+    section: "Sales",
+    apiPath: "/reports/sales-by-channel",
+    dateColumn: "sale_date",
+    showDateRange: true,
+    extraFilters: [
+      {
+        id: "include_legacy_archive",
+        type: "checkbox",
+        label: "Include legacy archive (requires date range)",
+      },
+    ],
+    columns: [
+      { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
+      { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
+      { key: "channel", label: "Channel", accessor: (r) => r.channel },
+      { key: "payment_status", label: "Payment", accessor: (r) => r.payment_status },
+      { key: "order_count", label: "Orders", accessor: (r) => r.order_count, align: "right", total: true },
+      { key: "net_sales", label: "Net (ex VAT)", accessor: (r) => r.net_sales, align: "right", total: true },
+      { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
+      { key: "gross_sales", label: "Gross (incl VAT)", accessor: (r) => r.gross_sales, align: "right", total: true },
+      { key: "collected", label: "Collected", accessor: (r) => r.collected, align: "right", total: true },
+    ],
+    kpis: vatReportKpis("gross_sales", "total_vat"),
+    footerTotals: ["order_count", "net_sales", "total_vat", "gross_sales", "collected"],
+  },
+
+  "sales-by-user": {
+    title: "Sales by Cashier / User",
+    subtitle: "Sales performance with VAT breakdown",
+    section: "Sales",
+    apiPath: "/reports/sales-by-user",
+    dateColumn: "sale_date",
+    showDateRange: true,
+    columns: [
+      { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
+      { key: "salesperson", label: "Cashier", accessor: (r) => r.salesperson },
+      { key: "channel", label: "Channel", accessor: (r) => r.channel },
+      { key: "order_count", label: "Orders", accessor: (r) => r.order_count, align: "right", total: true },
+      {
+        key: "net_ex_vat",
+        label: "Net (ex VAT)",
+        accessor: (r) => netExVatAmount(r, "gross_sales", "total_vat"),
+        align: "right",
+        total: true,
+      },
+      { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
+      { key: "gross_sales", label: "Gross (incl VAT)", accessor: (r) => r.gross_sales, align: "right", total: true },
+      { key: "amount_collected", label: "Collected", accessor: (r) => r.amount_collected, align: "right", total: true },
+    ],
+    kpis: vatReportKpis("gross_sales", "total_vat"),
+    footerTotals: ["order_count", "total_vat", "gross_sales", "amount_collected"],
+  },
+
+  "category-sales": {
+    title: "Sales by Category",
+    subtitle: "Category revenue with VAT",
+    section: "Sales",
+    apiPath: "/reports/category-sales",
+    dateColumn: "sale_date",
+    showDateRange: true,
+    columns: [
+      { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
+      { key: "category_name", label: "Category", accessor: (r) => r.category_name },
+      { key: "subcategory_name", label: "Subcategory", accessor: (r) => r.subcategory_name },
+      { key: "qty_sold", label: "Qty Sold", accessor: (r) => r.qty_sold, align: "right", total: true },
+      {
+        key: "net_ex_vat",
+        label: "Net (ex VAT)",
+        accessor: (r) => netExVatAmount(r, "revenue", "vat"),
+        align: "right",
+        total: true,
+      },
+      { key: "vat", label: "VAT", accessor: (r) => r.vat, align: "right", total: true },
+      { key: "revenue", label: "Gross (incl VAT)", accessor: (r) => r.revenue, align: "right", total: true },
+      { key: "discounts", label: "Discount", accessor: (r) => r.discounts, align: "right", total: true },
+    ],
+    kpis: vatReportKpis("revenue", "vat"),
+    footerTotals: ["qty_sold", "vat", "revenue", "discounts"],
+  },
+
   "stock-on-hand": {
     title: "Stock On Hand Report",
     subtitle: "Current inventory levels and valuation",
@@ -404,6 +515,32 @@ export const REPORT_DEFINITIONS = {
     footerTotals: ["expense_count", "total_amount"],
   },
 };
+
+function netExVatAmount(row, grossKey, vatKey) {
+  return Math.max(0, (Number(row[grossKey]) || 0) - (Number(row[vatKey]) || 0));
+}
+
+function vatReportKpis(grossKey, vatKey) {
+  return [
+    {
+      id: "gross-ex-vat",
+      label: "Sales (ex VAT)",
+      compute: (rows) => ({
+        value: kes(Math.max(0, sum(rows, grossKey) - sum(rows, vatKey))),
+      }),
+    },
+    {
+      id: "vat",
+      label: "VAT",
+      compute: (rows) => ({ value: kes(sum(rows, vatKey)) }),
+    },
+    {
+      id: "gross-incl-vat",
+      label: "Sales (incl VAT)",
+      compute: (rows) => ({ value: kes(sum(rows, grossKey)) }),
+    },
+  ];
+}
 
 function sum(rows, field) {
   return rows.reduce((s, r) => s + (Number(r[field]) || 0), 0);

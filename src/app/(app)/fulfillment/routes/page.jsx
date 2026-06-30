@@ -16,6 +16,7 @@ import {
   updateRouteFormField,
 } from "@/components/routes/route-form";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { CatalogDataImportButton, filterNonEmptyImportRows } from "@/components/catalog/catalog-data-import";
 import { ROUTE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import {
   CatalogPageShell,
@@ -234,6 +235,15 @@ export default function RoutesPage() {
       subtitle="Manage delivery and sales routes"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <CatalogDataImportButton
+            title="Import routes"
+            description="Upload CSV or Excel with route_name and optional direction, route_markup_price, is_active."
+            sampleHeaders={["route_name", "direction", "route_markup_price", "is_active"]}
+            sampleRow={["Westlands", "Outbound", "0", "true"]}
+            apiPath="/routes/import-batch"
+            normalizeRows={(rows) => filterNonEmptyImportRows(rows, ["route_name"])}
+            onImported={loadData}
+          />
           <CatalogListExport
             title="Routes"
             apiPath="/routes"

@@ -1,5 +1,10 @@
 import { openPrintWindow } from "@/lib/open-print-window";
 import { formatSaleKes, saleCustomerLabel } from "@/lib/sales";
+import {
+  buildDocumentPrintEdgeFooterHtml,
+  documentPrintEdgeFooterStyles,
+  DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN,
+} from "@/lib/document-print-edge-footer";
 
 function formatDisplayDate(dateStr) {
   if (!dateStr) return "";
@@ -53,6 +58,7 @@ export function printDeliveryNote({
   <meta charset="utf-8" />
   <title>Delivery Note — ${escapeHtml(orderNum)}</title>
   <style>
+    @page { size: A4; margin: 12mm 12mm ${DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN} 12mm; }
     * { box-sizing: border-box; }
     body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 24px; font-size: 12px; }
     .header { text-align: center; margin-bottom: 20px; }
@@ -69,20 +75,11 @@ export function printDeliveryNote({
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 36px; }
     .signatures h3 { margin: 0 0 48px; font-size: 12px; text-transform: uppercase; }
     .signatures .line { border-top: 1px solid #333; padding-top: 6px; margin-top: 40px; font-size: 11px; }
-    .print-footer {
-      margin-top: 24px;
-      padding-top: 8px;
-      border-top: 1px dotted #999;
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 9px;
-      color: #333;
-    }
-    @media print { body { margin: 12mm; } }
+    ${documentPrintEdgeFooterStyles()}
+    @media print { body { margin: 0; } }
   </style>
 </head>
-<body>
+<body class="has-doc-print-edge-footer">
   <div class="header">
     <h1>${escapeHtml(organizationName)}</h1>
     <h2>Delivery Note</h2>
@@ -139,11 +136,10 @@ export function printDeliveryNote({
       <div class="line">Date: _________________________</div>
     </div>
   </div>
-  <div class="print-footer">
-    <span>Printed On: ${escapeHtml(printedAt)}</span>
-    <span>Printed By: ${escapeHtml(printedByName)}</span>
-    <span>Page 1 of 1</span>
-  </div>
+  ${buildDocumentPrintEdgeFooterHtml({
+    printedBy: printedByName,
+    printedAt,
+  })}
 </body>
 </html>`;
 

@@ -71,6 +71,14 @@ export function resolveRouteSkeleton(pathname) {
     return { variant: "pos", title: "Create order", subtitle: "Point of sale" };
   }
 
+  if (path === "/admin" || path === "/admin/") {
+    return { variant: "workspace", title: "Admin home", subtitle: "Company setup and access control" };
+  }
+
+  if (path.startsWith("/admin/")) {
+    return { variant: "workspace", title: "Administration", subtitle: "Loading administration…" };
+  }
+
   if (/\/new$/.test(path) || /\/edit$/.test(path) || /\/receive$/.test(path)) {
     const action = /\/edit$/.test(path) ? "Edit" : /\/receive$/.test(path) ? "Receive" : "New";
     return { variant: "form", title: `${action} · ${title}`, subtitle: "Loading form…" };

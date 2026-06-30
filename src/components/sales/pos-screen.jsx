@@ -2666,7 +2666,11 @@ export function PosScreen({ standalone = false }) {
           <div className="pos-header shrink-0 shadow-sm">
             <div className="pos-header-bar flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 lg:px-5">
               <div className="shrink-0">
-                <CentrixLogoHeader markSize={28} title={PRODUCT_NAME} />
+                <CentrixLogoHeader
+                  markSize={28}
+                  title={PRODUCT_NAME}
+                  orgSubtitle={organization?.org_name ?? organizationName}
+                />
               </div>
               <div className="flex min-w-0 flex-1 items-center justify-center gap-2 overflow-x-auto px-1">
                 <button

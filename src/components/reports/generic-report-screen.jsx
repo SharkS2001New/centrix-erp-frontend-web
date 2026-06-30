@@ -7,6 +7,9 @@ import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
+import { reportVatKpis } from "@/lib/reports/vat-summary";
+import { formatReportKes } from "@/lib/reports/format";
+import { ReportKpiGrid } from "@/components/reports/report-screen-shared";
 import {
   CatalogPageShell,
   Field,
@@ -192,6 +195,11 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const legacyMeta = legacyArchiveMeta?.meta;
   const legacyTotalPages = legacyMeta?.last_page ?? 1;
 
+  const vatKpis = useMemo(
+    () => reportVatKpis(rows, (value) => formatReportKes(value)),
+    [rows],
+  );
+
   return (
     <>
       <CatalogPageShell
@@ -308,6 +316,9 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
         ) : null
       }
     >
+      {vatKpis.length ? (
+        <ReportKpiGrid items={vatKpis.map((item) => ({ ...item, hint: `${item.hint ?? ""} (current page)`.trim() }))} />
+      ) : null}
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {!loading && rows.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-slate-500">No rows for this filter.</p>

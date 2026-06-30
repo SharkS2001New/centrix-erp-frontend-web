@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { apiRequest, ApiError } from "@/lib/api";
+import { canUseAdvancedDataImport } from "@/lib/advanced-data-import";
+import { useAuth } from "@/contexts/auth-context";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useBackgroundTasks } from "@/contexts/background-task-context";
 import {
@@ -361,19 +363,23 @@ function ImportModal({ open, onClose, onImported }) {
 }
 
 export function ProductImportExport({ totalCount, exportSearchParams, onImported }) {
+  const { user, capabilities } = useAuth();
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const showImport = canUseAdvancedDataImport({ user, capabilities });
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setImportOpen(true)}
-        className={`${SECONDARY_BTN_CLASS} gap-2 px-3.5 py-2`}
-      >
-        <ImportIcon />
-        Import
-      </button>
+      {showImport ? (
+        <button
+          type="button"
+          onClick={() => setImportOpen(true)}
+          className={`${SECONDARY_BTN_CLASS} gap-2 px-3.5 py-2`}
+        >
+          <ImportIcon />
+          Import
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={() => setExportOpen(true)}

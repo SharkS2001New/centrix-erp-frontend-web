@@ -1,20 +1,8 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
-
-const PrintAgentSettingsPanel = dynamic(
-  () =>
-    import("@/components/pos/print-agent-settings-panel").then((mod) => mod.PrintAgentSettingsPanel),
-  {
-    loading: () => (
-      <div className="theme-panel rounded-xl border p-6 shadow-sm">
-        <p className="theme-subtext text-sm">Loading till printing settings…</p>
-      </div>
-    ),
-  },
-);
+import { PrintAgentSettingsPanel } from "@/components/pos/print-agent-settings-panel";
 
 export default function AdminTillPrintingPage() {
   return (

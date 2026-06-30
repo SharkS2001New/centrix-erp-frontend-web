@@ -215,6 +215,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mpesa_stk: true,
     enable_kra_integration: true,
     enable_ai: true,
+    enable_advanced_data_import: false,
     stock_deduct_on: "order_created",
     require_pos_till_float: false,
     enable_pos_order_edit: false,
@@ -230,6 +231,7 @@ export function salesPlatformFromApi(apiPayload) {
     enable_mpesa_stk: apiPayload.enable_mpesa_stk !== false,
     enable_kra_integration: apiPayload.enable_kra_integration !== false,
     enable_ai: apiPayload.enable_ai !== false,
+    enable_advanced_data_import: Boolean(apiPayload.enable_advanced_data_import ?? false),
     stock_deduct_on: apiPayload.stock_deduct_on ?? "order_created",
     require_pos_till_float: Boolean(apiPayload.require_pos_till_float ?? false),
     enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
@@ -302,6 +304,12 @@ export function OrganizationPlatformSalesSettings({
             description="When off, this organization cannot configure or use the floating AI assistant, regardless of user permissions."
             checked={salesPlatform?.enable_ai !== false}
             onChange={(v) => patch({ enable_ai: v })}
+          />
+          <Toggle
+            label="Advanced data import"
+            description="When on, organization administrators can import master data (UOMs, categories, VAT rates, routes, products, customers, and more) from CSV or Excel."
+            checked={Boolean(salesPlatform?.enable_advanced_data_import)}
+            onChange={(v) => patch({ enable_advanced_data_import: v })}
           />
         </div>
       )}

@@ -36,13 +36,25 @@ function Toggle({ checked, onChange, label, description }) {
 
 /** Per-till print agent settings — stored on this device only. */
 export function PrintAgentSettingsPanel({ compact = false }) {
-  const [form, setForm] = useState(() => getPrintAgentConfig());
+  const [ready, setReady] = useState(false);
+  const [form, setForm] = useState(() => normalizePrintAgentConfig());
+  const [installerHelp, setInstallerHelp] = useState(
+    "Open the downloaded centrix-install-print-agent.bat file (double-click). Node.js 20+ is installed automatically if needed. Run once on each till PC.",
+  );
   const [health, setHealth] = useState(null);
   const [checking, setChecking] = useState(false);
   const [testPrinting, setTestPrinting] = useState(false);
   const [downloadingInstaller, setDownloadingInstaller] = useState(false);
   const [downloadingMsi, setDownloadingMsi] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setForm(getPrintAgentConfig());
+    setInstallerHelp(printAgentInstallerHelp());
+    setReady(true);
+    void import("@/components/sales/sale-receipt-print");
+    void import("@/lib/print-preview-samples");
+  }, []);
 
   const refreshHealth = useCallback(async (config = form, { quick = false } = {}) => {
     setChecking(true);
@@ -56,14 +68,14 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   }, [form]);
 
   useEffect(() => {
-    if (!form.enabled) return undefined;
+    if (!ready || !form.enabled) return undefined;
 
     const timer = window.setTimeout(() => {
       void refreshHealth(form, { quick: true });
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [form.enabled, form.baseUrl, refreshHealth]);
+  }, [ready, form.enabled, form.baseUrl, refreshHealth]);
 
   function updateField(key, value) {
     setSaved(false);
@@ -168,6 +180,14 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   const shellClass = compact
     ? "theme-panel rounded-xl border p-4 shadow-sm"
     : "theme-panel rounded-xl border p-6 shadow-sm";
+
+  if (!ready) {
+    return (
+      <div className={shellClass} aria-busy="true">
+        <p className="theme-subtext text-sm">Loading till printing settings…</p>
+      </div>
+    );
+  }
 
   const statusLabel = checking
     ? "Checking…"
@@ -282,7 +302,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
         </div>
         <p className="theme-subtext mt-2 text-xs">
           <strong>MSI:</strong> copy to till PC (or USB), double-click, Next → Install. Includes Node.js, Chromium,
-          and auto-start. <strong>Script:</strong> {printAgentInstallerHelp()}
+          and auto-start. <strong>Script:</strong> {installerHelp}
         </p>
         <ol className="theme-subtext mt-3 list-decimal space-y-1 pl-4 text-xs">
           <li>Install SumatraPDF on Windows tills for reliable silent printing (recommended).</li>

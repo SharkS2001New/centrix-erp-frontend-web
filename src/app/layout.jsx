@@ -1,4 +1,5 @@
 import { DM_Sans } from "next/font/google";
+import Script from "next/script";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -27,11 +28,9 @@ export default function RootLayout({ children }) {
       suppressHydrationWarning
     >
       <body className="theme-body h-full overflow-hidden font-sans antialiased">
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try{if(sessionStorage.getItem("pos_erp_screen_locked")==="1"){document.documentElement.classList.add("screen-locked");}}catch(e){}`,
-          }}
-        />
+        <Script id="screen-lock-class" strategy="beforeInteractive">
+          {`try{if(sessionStorage.getItem("pos_erp_screen_locked")==="1"){document.documentElement.classList.add("screen-locked");}}catch(e){}`}
+        </Script>
         <Providers>{children}</Providers>
       </body>
     </html>
