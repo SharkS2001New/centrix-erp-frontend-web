@@ -75,7 +75,7 @@ export function SubcategoryCreateModal({ open, categories = [], onClose, onCreat
           ))}
         </select>
       </Field>
-      <Field label="Sub-category name">
+      <Field label="Sub-category name" required>
         <input
           className={inputClassName()}
           value={name}

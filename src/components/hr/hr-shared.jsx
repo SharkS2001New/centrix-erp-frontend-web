@@ -527,7 +527,11 @@ export function validateEmployeeTab(tabId, form, { showBranchSelect = false } = 
   if (tabId === "employment") {
     if (showBranchSelect && !form.branch_id) errors.branch_id = "Select a branch.";
     if (!form.department_id) errors.department_id = "Select a department.";
-    if (!form.shift_id) errors.shift_id = "Select a work shift (required for payroll and attendance).";
+    const status = form.employment_status || "active";
+    const salary = form.base_salary === "" ? 0 : Number(form.base_salary);
+    if (!form.shift_id && status === "active" && salary > 0) {
+      errors.shift_id = "Select a work shift (required for payroll and attendance).";
+    }
     if (!form.hire_date) errors.hire_date = "Date hired is required.";
     if (!form.job_title?.trim()) errors.job_title = "Job title is required.";
   }

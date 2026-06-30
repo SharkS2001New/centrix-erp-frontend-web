@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Children, isValidElement, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCanAccess } from "@/components/permission-gate";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
@@ -485,10 +485,38 @@ function DrawerCloseIcon() {
   );
 }
 
-export function Field({ label, children }) {
+export function RequiredMark() {
+  return (
+    <span className="text-red-500" aria-hidden="true">
+      {" "}
+      *
+    </span>
+  );
+}
+
+function childIsRequired(node) {
+  if (!node) return false;
+  if (typeof node === "string" || typeof node === "number") return false;
+  if (Array.isArray(node)) return node.some(childIsRequired);
+  if (!isValidElement(node)) return false;
+
+  const { required, children } = node.props ?? {};
+  if (required === true || required === "") return true;
+  if (typeof required !== "undefined" && required !== false) return Boolean(required);
+  if (children) return childIsRequired(Children.toArray(children));
+
+  return false;
+}
+
+export function Field({ label, required = false, children }) {
+  const showRequired = required || childIsRequired(children);
+
   return (
     <label className="block">
-      <span className="theme-subtext mb-1 block text-xs font-medium">{label}</span>
+      <span className="theme-subtext mb-1 block text-xs font-medium">
+        {label}
+        {showRequired ? <RequiredMark /> : null}
+      </span>
       {children}
     </label>
   );

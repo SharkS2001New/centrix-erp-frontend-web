@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { isAdminUser } from "@/components/hr/hr-shared";
 import {
   CatalogPageShell,
+  Field,
   FilterSelect,
   PaginationBar,
   PencilIcon,
@@ -175,18 +176,18 @@ function ReturnActionDialog({
         <p className="mt-2 text-sm text-slate-600">{config.message}</p>
 
         {type === "reject" ? (
-          <label className="mt-4 block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">
-              Reason for rejection (required)
-            </span>
-            <textarea
-              rows={3}
-              className={inputClassName()}
-              value={rejectReason}
-              onChange={(e) => onRejectReasonChange(e.target.value)}
-              placeholder="Explain why this return is rejected"
-            />
-          </label>
+          <div className="mt-4">
+            <Field label="Reason for rejection" required>
+              <textarea
+                rows={3}
+                className={inputClassName()}
+                value={rejectReason}
+                onChange={(e) => onRejectReasonChange(e.target.value)}
+                placeholder="Explain why this return is rejected"
+                required
+              />
+            </Field>
+          </div>
         ) : null}
 
         {error ? (

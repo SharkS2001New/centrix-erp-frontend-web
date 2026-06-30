@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { Field, inputClassName, formatShortDate } from "@/components/catalog/catalog-shared";
+import { Field, inputClassName, formatShortDate, RequiredMark } from "@/components/catalog/catalog-shared";
 import { LpoProductSearchPanel } from "@/components/lpo/lpo-product-search-panel";
 import { formatPackagingLabel, packageNameFromUom } from "@/components/lpo/lpo-product-utils";
 import {
@@ -761,7 +761,7 @@ export function RecordSupplierReturnForm({
           </div>
           {reasonScope === REASON_SCOPE.PER_PRODUCT ? (
             <div className="sm:col-span-2">
-              <Field label="Reason for this product (required)">
+              <Field label="Reason for this product" required>
                 <textarea
                   rows={2}
                   autoComplete="off"
@@ -891,7 +891,7 @@ export function RecordSupplierReturnForm({
             </p>
 
             <div className="grid shrink-0 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label="Supplier (required)">
+              <Field label="Supplier" required>
                 <select
                   className={inputClassName()}
                   value={supplierId}
@@ -984,7 +984,7 @@ export function RecordSupplierReturnForm({
               <div className="min-w-0">
                 {mode === RETURN_MODES.LPO && lpoNo && lpoHasReceivedStock ? (
                   lpoInvoiceChoices.length > 1 ? (
-                    <Field label="Supplier inv. no. (required)">
+                    <Field label="Supplier inv. no." required>
                       <select
                         className={inputClassName()}
                         value={supplierInvoiceNo}
@@ -1175,7 +1175,10 @@ export function RecordSupplierReturnForm({
                 ) : null}
 
                 <div className="space-y-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3">
-                  <p className="theme-heading text-sm font-semibold">Return reason (required)</p>
+                  <p className="theme-heading text-sm font-semibold">
+                    Return reason
+                    <RequiredMark />
+                  </p>
                   {reasonScopeLocked ? (
                     <p className="theme-subtext text-xs">
                       {reasonScope === REASON_SCOPE.ORDER
@@ -1220,7 +1223,7 @@ export function RecordSupplierReturnForm({
                     </label>
                   </div>
                   {reasonScope === REASON_SCOPE.ORDER ? (
-                    <Field label="Reason to return (required)">
+                    <Field label="Reason to return" required>
                       <textarea
                         rows={2}
                         autoComplete="off"

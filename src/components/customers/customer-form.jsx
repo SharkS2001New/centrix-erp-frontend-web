@@ -174,7 +174,7 @@ export function CustomerFormFields({
         </div>
       )}
 
-      <Field label="Name">
+      <Field label="Name" required>
         <input
           type="text"
           value={form.customer_name}
@@ -203,7 +203,7 @@ export function CustomerFormFields({
 
       {showBranchSelect && (
         <div className="md:col-span-2 xl:col-span-3">
-          <Field label="Branch">
+          <Field label="Branch" required>
             <select
               value={form.branch_id}
               onChange={(e) => onChange("branch_id", e.target.value)}
@@ -254,7 +254,7 @@ export function CustomerFormFields({
       </Field>
 
       {form.customer_type === "route" ? (
-        <Field label="Route">
+        <Field label="Route" required>
           <select
             value={form.route_id}
             onChange={(e) => onChange("route_id", e.target.value)}

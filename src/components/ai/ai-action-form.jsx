@@ -19,13 +19,9 @@ export function buildInitialFormValues(formSpec) {
 
 function AiField({ label, required, children }) {
   return (
-    <label className="block">
-      <span className="theme-heading mb-1 block text-xs font-medium">
-        {label}
-        {required ? <span className="text-red-500"> *</span> : null}
-      </span>
+    <Field label={label} required={required}>
       {children}
-    </label>
+    </Field>
   );
 }
 

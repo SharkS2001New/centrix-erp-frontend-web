@@ -402,7 +402,7 @@ export function ProductFormFields({
 
   return (
     <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-2 xl:grid-cols-3">
-      <Field label="SKU / barcode">
+      <Field label="SKU / barcode" required>
         <div className="flex gap-2">
           <input
             type="text"
@@ -433,7 +433,7 @@ export function ProductFormFields({
         ) : null}
       </Field>
 
-      <Field label="Product name">
+      <Field label="Product name" required>
         <input
           type="text"
           value={form.product_name}
@@ -444,7 +444,7 @@ export function ProductFormFields({
         />
       </Field>
 
-      <Field label="Sub-category">
+      <Field label="Sub-category" required>
         <div className="flex gap-2">
           <select
             value={form.subcategory_id}
@@ -486,7 +486,7 @@ export function ProductFormFields({
         </select>
       </Field>
 
-      <Field label="Unit of measure">
+      <Field label="Unit of measure" required>
         <select
           value={form.unit_id}
           onChange={(e) => {
@@ -569,7 +569,7 @@ export function ProductFormFields({
         <p className="mt-1 text-xs text-slate-500">What you pay suppliers per {packLabel}.</p>
       </Field>
 
-      <Field label={`Selling price per ${packLabel} (KES)`}>
+      <Field label={`Selling price per ${packLabel} (KES)`} required>
         <input
           type="text"
           inputMode="decimal"
@@ -621,7 +621,7 @@ export function ProductFormFields({
         </>
       ) : null}
 
-      <Field label="VAT status">
+      <Field label="VAT status" required>
         <select
           value={form.vat_id}
           onChange={(e) => onChange("vat_id", e.target.value)}
@@ -676,7 +676,7 @@ export function ProductFormFields({
           </div>
           {form.catalog_scope === "branch" ? (
             <div className="mt-3 max-w-md">
-              <Field label="Branch">
+              <Field label="Branch" required>
                 <select
                   value={form.branch_id}
                   onChange={(e) => onChange("branch_id", e.target.value)}

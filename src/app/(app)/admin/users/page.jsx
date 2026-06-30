@@ -681,12 +681,13 @@ export default function AdminUsersPage() {
               <option value="branch">Single branch only</option>
             </select>
           </Field>
-          <Field label="Branch">
+          <Field label="Branch" required={form.access_scope === "branch"}>
             <HrSearchableSelect
               value={form.branch_id}
               onChange={(v) => setForm((f) => ({ ...f, branch_id: v }))}
               options={branches.map((b) => ({ value: String(b.id), label: b.branch_name }))}
-              placeholder={form.access_scope === "branch" ? "Select branch (required)" : "Optional home branch"}
+              placeholder={form.access_scope === "branch" ? "Select branch" : "Optional home branch"}
+              required={form.access_scope === "branch"}
             />
           </Field>
           <Field label="Role">

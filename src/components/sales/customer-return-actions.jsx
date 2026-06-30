@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createPortal } from "react-dom";
-import { PencilIcon, TrashIcon, inputClassName } from "@/components/catalog/catalog-shared";
+import { PencilIcon, TrashIcon, Field, inputClassName } from "@/components/catalog/catalog-shared";
 import { normalizeReturnStatus } from "@/components/sales/customer-returns-shared";
 
 function CheckCircleIcon() {
@@ -140,18 +140,18 @@ export function CustomerReturnActionDialog({
         <p className="mt-2 text-sm text-slate-600">{config.message}</p>
 
         {type === "reject" ? (
-          <label className="mt-4 block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">
-              Reason for rejection (required)
-            </span>
-            <textarea
-              rows={3}
-              className={inputClassName()}
-              value={rejectReason}
-              onChange={(e) => onRejectReasonChange(e.target.value)}
-              placeholder="Explain why this return is rejected"
-            />
-          </label>
+          <div className="mt-4">
+            <Field label="Reason for rejection" required>
+              <textarea
+                rows={3}
+                className={inputClassName()}
+                value={rejectReason}
+                onChange={(e) => onRejectReasonChange(e.target.value)}
+                placeholder="Explain why this return is rejected"
+                required
+              />
+            </Field>
+          </div>
         ) : null}
 
         {error ? (

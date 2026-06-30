@@ -577,7 +577,7 @@ export default function CategoriesPage() {
             </select>
           </Field>
         )}
-        <Field label={modalKind === "category" ? "Category name" : "Sub-category name"}>
+        <Field label={modalKind === "category" ? "Category name" : "Sub-category name"} required>
           <input
             type="text"
             value={name}

@@ -283,7 +283,7 @@ export function RecordSupplierReturnForm({
               </select>
             </Field>
 
-            <Field label="Reason (required)">
+            <Field label="Reason" required>
               <textarea
                 className={`${inputClassName()} min-h-[88px]`}
                 value={form.reason}

@@ -543,7 +543,7 @@ export function EmployeeFormWizard({
                 removing={removingPhoto}
               />
             ) : null}
-            <Field label="First name">
+            <Field label="First name" required>
               <input
                 type="text"
                 value={form.first_name}
@@ -564,7 +564,7 @@ export function EmployeeFormWizard({
                 placeholder="Kamau"
               />
             </Field>
-            <Field label="Last name">
+            <Field label="Last name" required>
               <input
                 type="text"
                 value={form.last_name}
@@ -634,7 +634,7 @@ export function EmployeeFormWizard({
 
         {currentTab.id === "contact" && (
           <>
-            <Field label="Mobile number">
+            <Field label="Mobile number" required>
               <input
                 type="tel"
                 value={form.phone}
@@ -702,7 +702,7 @@ export function EmployeeFormWizard({
         {currentTab.id === "employment" && (
           <>
             {showBranchSelect ? (
-              <Field label="Branch">
+              <Field label="Branch" required>
                 <HrSearchableSelect
                   value={form.branch_id}
                   onChange={(v) => updateField("branch_id", v)}
@@ -715,7 +715,7 @@ export function EmployeeFormWizard({
                 <FieldError message={tabErrors.branch_id} />
               </Field>
             ) : null}
-            <Field label="Department">
+            <Field label="Department" required>
               <div className="flex gap-2">
                 <div className="min-w-0 flex-1">
                   <HrSearchableSelect
@@ -754,7 +754,10 @@ export function EmployeeFormWizard({
                 placeholder="Search position…"
               />
             </Field>
-            <Field label="Work shift" required>
+            <Field
+              label="Work shift"
+              required={form.base_salary !== "" && Number(form.base_salary) > 0}
+            >
               <HrSearchableSelect
                 value={form.shift_id}
                 onChange={(v) => updateField("shift_id", v)}
@@ -765,11 +768,13 @@ export function EmployeeFormWizard({
                 placeholder="Search shift…"
               />
               <p className="mt-1 text-xs text-slate-500">
-                Required for payroll, attendance, and overtime. Controls weekends and holidays.
+                {form.base_salary !== "" && Number(form.base_salary) > 0
+                  ? "Required for payroll, attendance, and overtime. Controls weekends and holidays."
+                  : "Optional for casual or unpaid roles. Add a shift when this employee is on payroll."}
               </p>
               <FieldError message={tabErrors.shift_id} />
             </Field>
-            <Field label="Job title">
+            <Field label="Job title" required>
               <input
                 type="text"
                 value={form.job_title}
@@ -811,7 +816,7 @@ export function EmployeeFormWizard({
                 </p>
               ) : null}
             </Field>
-            <Field label="Date hired">
+            <Field label="Date hired" required>
               <input
                 type="date"
                 value={form.hire_date}
@@ -832,7 +837,7 @@ export function EmployeeFormWizard({
                 placeholder="Search employee…"
               />
             </Field>
-            <Field label="Linked system user">
+            <Field label="Linked system user (optional)">
               <HrSearchableSelect
                 value={form.user_id}
                 onChange={(v) => updateField("user_id", v)}
@@ -840,12 +845,15 @@ export function EmployeeFormWizard({
                   value: String(u.id),
                   label: u.full_name ?? u.username,
                 }))}
-                placeholder="Search user…"
+                placeholder="No login linked"
               />
-              {fieldAttendanceEnabled ? (
+              <p className="mt-1 text-xs text-slate-500">
+                Only link a user when this person signs in to Centrix (managers, field reps, etc.).
+                Casual workers paid in cash or M-Pesa do not need a linked account.
+              </p>
+              {fieldAttendanceEnabled && form.user_id ? (
                 <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">
-                  For mobile sales reps: link their login here so field attendance counts in HR and
-                  payroll. Without this link, sign-in sessions stay in Field attendance only.
+                  Field attendance for this rep will count in HR and payroll through the linked login.
                 </p>
               ) : null}
             </Field>
@@ -990,7 +998,7 @@ export function EmployeeFormWizard({
 
         {currentTab.id === "payroll" && (
           <>
-            <Field label="Basic salary (KES / month)">
+            <Field label="Basic salary (KES / month)" required>
               <input
                 type="number"
                 value={form.base_salary}
@@ -1136,7 +1144,7 @@ function EmployeeDepartmentModal({
       error={deptError}
       submitLabel="Create department"
     >
-      <Field label="Department name">
+      <Field label="Department name" required>
         <input
           type="text"
           value={deptForm.department_name}

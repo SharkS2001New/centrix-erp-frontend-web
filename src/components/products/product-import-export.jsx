@@ -16,14 +16,43 @@ import {
   queueReportExport,
   serializeExportMeta,
 } from "@/lib/report-export-api";
-import { downloadExcelFromRows, readExcelFile } from "@/lib/spreadsheet";
+import { downloadExcelFromRows } from "@/lib/spreadsheet";
 import { reportPrintedAt } from "@/lib/reports/export";
+import { downloadBlob, parseSpreadsheet } from "@/components/catalog/catalog-import-export-shared";
+import { mapImportHeaders } from "@/components/catalog/catalog-data-import";
+
+/** Centrix product import columns (name-based linking; IDs also accepted). */
+const PRODUCT_IMPORT_COLUMNS = [
+  { key: "product_code", label: "Product code" },
+  { key: "product_name", label: "Product name" },
+  { key: "category_name", label: "Category" },
+  { key: "subcategory_name", label: "Subcategory" },
+  { key: "subcategory_id", label: "Subcategory ID" },
+  { key: "measure_name", label: "Unit" },
+  { key: "unit_id", label: "Unit ID" },
+  { key: "uom_label", label: "Unit of measure" },
+  { key: "unit_price", label: "Unit price" },
+  { key: "last_cost_price", label: "Cost price" },
+  { key: "discount_type", label: "Discount type" },
+  { key: "discount_percentage", label: "Discount percentage" },
+  { key: "discount_value", label: "Discount value" },
+  { key: "product_weight", label: "Product weight" },
+  { key: "stock_in_shop", label: "Shop stock" },
+  { key: "stock_in_store", label: "Store stock" },
+  { key: "reorder_point", label: "Reorder point" },
+  { key: "supplier_name", label: "Supplier" },
+  { key: "supplier_id", label: "Supplier ID" },
+  { key: "vat_code", label: "VAT code" },
+  { key: "vat_id", label: "VAT ID" },
+  { key: "sell_on_retail", label: "Sell on retail" },
+];
 
 const SAMPLE_HEADERS = [
   "product_code",
   "product_name",
-  "subcategory_id",
-  "unit_id",
+  "category_name",
+  "subcategory_name",
+  "measure_name",
   "unit_price",
   "last_cost_price",
   "discount_type",
@@ -33,16 +62,17 @@ const SAMPLE_HEADERS = [
   "stock_in_shop",
   "stock_in_store",
   "reorder_point",
-  "supplier_id",
-  "vat_id",
+  "supplier_name",
+  "vat_code",
   "sell_on_retail",
 ];
 
 const SAMPLE_ROW = [
   "SKU-001",
   "Sample product",
-  "1",
-  "1",
+  "GROCERY",
+  "FLOUR",
+  "CARTON",
   "100",
   "80",
   "percentage",
@@ -52,8 +82,8 @@ const SAMPLE_ROW = [
   "0",
   "0",
   "0",
-  "",
-  "1",
+  "Sample Supplier Ltd",
+  "A",
   "false",
 ];
 
@@ -75,42 +105,6 @@ function ExportIcon() {
       <line x1="12" y1="15" x2="12" y2="3" />
     </svg>
   );
-}
-
-function parseCsv(text) {
-  const lines = text.split(/\r?\n/).filter((line) => line.trim());
-  if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
-  return lines.slice(1).map((line) => {
-    const values = line.match(/("([^"]|"")*"|[^,]*)/g) ?? [];
-    const row = {};
-    headers.forEach((header, i) => {
-      let val = (values[i] ?? "").trim();
-      if (val.startsWith('"') && val.endsWith('"')) {
-        val = val.slice(1, -1).replace(/""/g, '"');
-      }
-      row[header] = val;
-    });
-    return row;
-  });
-}
-
-async function parseSpreadsheet(file) {
-  const name = file.name.toLowerCase();
-  if (name.endsWith(".csv")) {
-    const text = await file.text();
-    return parseCsv(text);
-  }
-  return readExcelFile(file);
-}
-
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
@@ -234,7 +228,7 @@ function ImportModal({ open, onClose, onImported }) {
     if (Number.isFinite(unitId) && unitId > 0) {
       body.unit_id = unitId;
     } else {
-      const measureName = String(row.measure_name ?? "").trim();
+      const measureName = String(row.measure_name ?? row.uom_label ?? "").trim();
       if (measureName) body.measure_name = measureName;
     }
 
@@ -278,7 +272,7 @@ function ImportModal({ open, onClose, onImported }) {
     setImportProgress(null);
     setImporting(true);
     try {
-      const rows = await parseSpreadsheet(file);
+      const rows = mapImportHeaders(await parseSpreadsheet(file), PRODUCT_IMPORT_COLUMNS);
       if (!rows.length) throw new Error("The file has no data rows.");
 
       const { rows: normalizedRows, failures: prepFailures } = prepareImportRows({
@@ -286,15 +280,23 @@ function ImportModal({ open, onClose, onImported }) {
         mapRow: (row) => {
           if (!row.product_code && !row.product_name) return null;
           const body = normalizeRow(row);
-          if (!body.product_code || !body.product_name || !hasResolvedSubcategory(body) || !hasResolvedUnit(body)) {
+          if (!body.product_name || !hasResolvedSubcategory(body) || !hasResolvedUnit(body)) {
             throw new Error(
-              `Row "${row.product_code || row.product_name}" is missing required fields (product code, name, subcategory, unit).`,
+              `Row "${row.product_code || row.product_name}" is missing required fields (product name, subcategory, unit).`,
             );
           }
           return body;
         },
       });
-      if (!normalizedRows.length && !prepFailures.length) {
+      if (!normalizedRows.length) {
+        const failureSummary = summarizeImportFailures(prepFailures);
+        if (prepFailures.length) {
+          throw new Error(
+            failureSummary
+              ? `No rows could be imported.\n${failureSummary}`
+              : "No rows could be imported.",
+          );
+        }
         throw new Error("The file has no valid product rows.");
       }
 
