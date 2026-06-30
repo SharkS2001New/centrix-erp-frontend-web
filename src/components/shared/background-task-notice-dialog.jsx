@@ -31,7 +31,7 @@ export function BackgroundTaskNoticeDialog({ notice, onDismiss, onDownloadAgain 
         {notice.taskLabel ? (
           <p className="mt-1 text-sm font-medium text-slate-800">{notice.taskLabel}</p>
         ) : null}
-        <p className={`mt-2 text-sm ${isSuccess ? "text-slate-600" : "text-red-600"}`}>{notice.message}</p>
+        <p className={`mt-2 text-sm whitespace-pre-wrap ${isSuccess ? "text-slate-600" : "text-red-600"}`}>{notice.message}</p>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           {canDownloadAgain ? (
             <button

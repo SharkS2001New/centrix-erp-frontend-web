@@ -98,6 +98,9 @@ export function formatApiErrorMessage(data, fallback = "Request failed") {
     if (typeof data.message === "string" && data.message.trim()) {
       const detail = typeof data.detail === "string" && data.detail.trim() ? data.detail.trim() : "";
       const message = data.message.trim();
+      if (/^server error$/i.test(message) && detail) {
+        return detail;
+      }
       if (detail && detail !== message && !message.includes(detail) && !detail.includes(message)) {
         return `${message} ${detail}`;
       }

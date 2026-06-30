@@ -10,7 +10,7 @@ import {
 } from "@/lib/background-task";
 import { resolveBackgroundTaskMessage } from "@/lib/background-task-messages";
 import { ApiError } from "@/lib/api";
-import { humanizeBackgroundTaskError } from "@/lib/background-task-errors";
+import { resolveImportTaskError } from "@/lib/background-task-errors";
 import { BackgroundTaskExpandedModal } from "@/components/shared/background-task-expanded-modal";
 import { BackgroundTaskNoticeDialog } from "@/components/shared/background-task-notice-dialog";
 
@@ -19,13 +19,7 @@ const BackgroundTaskContext = createContext(null);
 const TASK_BUSY_MESSAGE = "Another background task is already running. Wait for it to finish before starting a new one.";
 
 function taskErrorMessage(error) {
-  if (error instanceof ApiError) {
-    return humanizeBackgroundTaskError(error.message);
-  }
-  if (error instanceof Error && error.message) {
-    return humanizeBackgroundTaskError(error.message);
-  }
-  return humanizeBackgroundTaskError(null);
+  return resolveImportTaskError(error, "The task could not be completed. Please try again.");
 }
 
 export function BackgroundTaskProvider({ children }) {

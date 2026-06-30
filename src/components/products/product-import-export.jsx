@@ -4,7 +4,10 @@ import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { apiRequest, ApiError } from "@/lib/api";
+import { resolveImportTaskError } from "@/lib/background-task-errors";
+import { formatImportBatchProgress, prepareImportRows, runBatchedQueuedImport, summarizeImportFailures } from "@/lib/import-batch";
 import { canUseAdvancedDataImport } from "@/lib/advanced-data-import";
+import { ImportProgressLine, ImportResultPanel } from "@/components/catalog/import-feedback";
 import { useAuth } from "@/contexts/auth-context";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useBackgroundTasks } from "@/contexts/background-task-context";
@@ -278,38 +281,45 @@ function ImportModal({ open, onClose, onImported }) {
       const rows = await parseSpreadsheet(file);
       if (!rows.length) throw new Error("The file has no data rows.");
 
-      const normalizedRows = [];
-      for (const row of rows) {
-        if (!row.product_code && !row.product_name) continue;
-        const body = normalizeRow(row);
-        if (!body.product_code || !body.product_name || !hasResolvedSubcategory(body) || !hasResolvedUnit(body)) {
-          throw new Error(`Row "${row.product_code || row.product_name}" is missing required fields.`);
-        }
-        normalizedRows.push(body);
+      const { rows: normalizedRows, failures: prepFailures } = prepareImportRows({
+        rows,
+        mapRow: (row) => {
+          if (!row.product_code && !row.product_name) return null;
+          const body = normalizeRow(row);
+          if (!body.product_code || !body.product_name || !hasResolvedSubcategory(body) || !hasResolvedUnit(body)) {
+            throw new Error(
+              `Row "${row.product_code || row.product_name}" is missing required fields (product code, name, subcategory, unit).`,
+            );
+          }
+          return body;
+        },
+      });
+      if (!normalizedRows.length && !prepFailures.length) {
+        throw new Error("The file has no valid product rows.");
       }
-      if (!normalizedRows.length) throw new Error("The file has no valid product rows.");
 
-      const res = await runQueuedTask(
-        () =>
+      const res = await runBatchedQueuedImport({
+        rows: normalizedRows,
+        runQueuedTask,
+        importChunk: (chunk) =>
           apiRequest("/products/import-batch", {
             method: "POST",
-            body: { rows: normalizedRows },
+            body: { rows: chunk },
           }),
-        {
-          message: `Please wait while ${normalizedRows.length} product(s) are imported…`,
-          onProgress: (task) => {
-            setImportProgress(Number(task.progress ?? 0));
-          },
-        },
-      );
+        onBatchProgress: (info) => setImportProgress(formatImportBatchProgress(info)),
+      });
 
       setResult({
         created: Number(res.created ?? 0),
-        failures: Array.isArray(res.failures) ? res.failures : [],
+        skipped: Number(res.skipped ?? 0),
+        failures: [...prepFailures, ...(Array.isArray(res.failures) ? res.failures : [])],
       });
       if (Number(res.created ?? 0) > 0) onImported?.();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Could not read file");
+      const failures = err instanceof ApiError && Array.isArray(err.body?.failures) ? err.body.failures : [];
+      const failureSummary = summarizeImportFailures(failures);
+      const message = resolveImportTaskError(err, "Could not read file");
+      setError(failureSummary ? `${message}\n${failureSummary}` : message);
     } finally {
       setImporting(false);
       setImportProgress(null);
@@ -351,26 +361,11 @@ function ImportModal({ open, onClose, onImported }) {
           onChange={handleFile}
           disabled={importing}
         />
-        {importing && importProgress != null ? (
-          <p className="mt-3 text-sm text-slate-600">Importing… {importProgress}%</p>
-        ) : null}
+        {importing ? <ImportProgressLine progress={importProgress} /> : null}
         {error ? (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         ) : null}
-        {result ? (
-          <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
-            <p>{result.created} product{result.created === 1 ? "" : "s"} imported.</p>
-            {result.failures.length > 0 ? (
-              <ul className="mt-2 max-h-32 overflow-y-auto text-xs text-red-700">
-                {result.failures.slice(0, 8).map((f, idx) => (
-                  <li key={`${f.code ?? "row"}-${idx}`}>
-                    {f.code ?? `Row ${f.row ?? idx + 1}`}: {f.message}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-        ) : null}
+        <ImportResultPanel result={result} entityLabel="product" />
         <div className="mt-4 flex justify-end">
           <button
             type="button"

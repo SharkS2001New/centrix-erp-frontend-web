@@ -11,8 +11,16 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { canUseAdvancedDataImport } from "@/lib/advanced-data-import";
 import { apiRequest, ApiError } from "@/lib/api";
+import { resolveImportTaskError } from "@/lib/background-task-errors";
+import {
+  formatImportBatchProgress,
+  prepareImportRows,
+  runBatchedQueuedImport,
+  summarizeImportFailures,
+} from "@/lib/import-batch";
 import { downloadExcelFromRows } from "@/lib/spreadsheet";
 import { useQueuedTask } from "@/lib/use-queued-task";
+import { ImportProgressLine, ImportResultPanel } from "@/components/catalog/import-feedback";
 
 function ImportModal({
   open,
@@ -57,28 +65,35 @@ function ImportModal({
     try {
       const rows = await parseSpreadsheet(file);
       if (!rows.length) throw new Error("The file has no data rows.");
-      const normalizedRows = normalizeRows(rows);
-      if (!normalizedRows.length) throw new Error("The file has no valid rows.");
+      const parsed = normalizeRows(rows);
+      const normalizedRows = Array.isArray(parsed) ? parsed : parsed.rows ?? [];
+      const prepFailures = Array.isArray(parsed) ? [] : parsed.failures ?? [];
+      if (!normalizedRows.length && !prepFailures.length) {
+        throw new Error("The file has no valid rows.");
+      }
 
-      const res = await runQueuedTask(
-        () =>
+      const res = await runBatchedQueuedImport({
+        rows: normalizedRows,
+        runQueuedTask,
+        importChunk: (chunk) =>
           apiRequest(apiPath, {
             method: "POST",
-            body: { rows: normalizedRows },
+            body: { rows: chunk },
           }),
-        {
-          message: `Please wait while ${normalizedRows.length} row(s) are imported…`,
-          onProgress: (task) => setImportProgress(Number(task.progress ?? 0)),
-        },
-      );
+        onBatchProgress: (info) => setImportProgress(formatImportBatchProgress(info)),
+      });
 
       setResult({
         created: Number(res.created ?? 0),
-        failures: Array.isArray(res.failures) ? res.failures : [],
+        skipped: Number(res.skipped ?? 0),
+        failures: [...prepFailures, ...(Array.isArray(res.failures) ? res.failures : [])],
       });
       if (Number(res.created ?? 0) > 0) onImported?.();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Could not read file");
+      const failures = err instanceof ApiError && Array.isArray(err.body?.failures) ? err.body.failures : [];
+      const failureSummary = summarizeImportFailures(failures);
+      const message = resolveImportTaskError(err, "Could not read file");
+      setError(failureSummary ? `${message}\n${failureSummary}` : message);
     } finally {
       setImporting(false);
       setImportProgress(null);
@@ -108,27 +123,11 @@ function ImportModal({
           onChange={handleFile}
           disabled={importing}
         />
-        {importing && importProgress != null ? (
-          <p className="mt-3 text-sm text-slate-600">Importing… {importProgress}%</p>
+        {importing ? <ImportProgressLine progress={importProgress} /> : null}
+        {error ? (
+          <p className="mt-3 whitespace-pre-wrap rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         ) : null}
-        {error ? <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-        {result ? (
-          <div className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-            <p>
-              Imported <strong>{result.created}</strong> row(s).
-              {result.failures.length ? ` ${result.failures.length} row(s) failed.` : ""}
-            </p>
-            {result.failures.length ? (
-              <ul className="mt-2 max-h-32 list-disc overflow-y-auto pl-4 text-xs">
-                {result.failures.slice(0, 10).map((failure) => (
-                  <li key={`${failure.row}-${failure.message}`}>
-                    Row {failure.row}: {failure.message}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-        ) : null}
+        <ImportResultPanel result={result} />
         <div className="mt-4 flex justify-end">
           <button
             type="button"
@@ -227,20 +226,5 @@ export function mapImportHeaders(rows, columnDefs = []) {
 }
 
 export function filterNonEmptyImportRows(rows, requiredKeys = []) {
-  const normalized = [];
-  for (const row of rows) {
-    if (!row || typeof row !== "object") continue;
-    const hasAny = Object.values(row).some((value) => String(value ?? "").trim() !== "");
-    if (!hasAny) continue;
-    const missing = requiredKeys.filter((key) => !String(row[key] ?? "").trim());
-    if (missing.length) {
-      throw new Error(`A row is missing required field(s): ${missing.join(", ")}`);
-    }
-    normalized.push(
-      Object.fromEntries(
-        Object.entries(row).map(([key, value]) => [key, typeof value === "string" ? value.trim() : value]),
-      ),
-    );
-  }
-  return normalized;
+  return prepareImportRows({ rows, requiredKeys });
 }

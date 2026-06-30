@@ -1,5 +1,5 @@
 import { apiRequest, ApiError, apiFetchBlob } from "@/lib/api";
-import { humanizeBackgroundTaskError } from "@/lib/background-task-errors";
+import { humanizeBackgroundTaskError, resolveImportTaskError } from "@/lib/background-task-errors";
 
 /** @param {string} taskId */
 export function fetchBackgroundTask(taskId) {
@@ -105,7 +105,11 @@ export async function runQueuedTask(requestFn, opts = {}) {
 
   const task = await waitForBackgroundTask(String(res.task_id), opts);
   if (task.status === "failed") {
-    throw new ApiError(backgroundTaskErrorMessage(task), 422, task);
+    const message = resolveImportTaskError(
+      { body: task, message: backgroundTaskErrorMessage(task) },
+      backgroundTaskErrorMessage(task),
+    );
+    throw new ApiError(message, 422, task);
   }
   if (task.status === "cancelled") {
     return null;
