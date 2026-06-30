@@ -372,3 +372,24 @@ export function PosRouteSkeleton() {
     </div>
   );
 }
+
+/** Minimal centered loader for static hub pages (e.g. Admin home). */
+export function LoadingRouteSkeleton({ title = "Loading…", subtitle }) {
+  return (
+    <div
+      className="route-loading-skeleton theme-workspace flex min-h-[40vh] items-center justify-center"
+      aria-busy="true"
+      aria-live="polite"
+      role="status"
+    >
+      <div className="text-center">
+        <div
+          className="mx-auto h-9 w-9 animate-spin rounded-full border-[3px] border-[var(--theme-border)] border-t-[var(--theme-primary)]"
+          aria-hidden="true"
+        />
+        <p className="theme-heading mt-4 text-sm font-medium">{title}</p>
+        {subtitle ? <p className="theme-subtext mt-1 text-sm">{subtitle}</p> : null}
+      </div>
+    </div>
+  );
+}

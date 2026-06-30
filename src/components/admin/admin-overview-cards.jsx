@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AppNavLink } from "@/components/layout/app-nav-link";
 import { useAuth } from "@/contexts/auth-context";
 import { workspaceCardClassName } from "@/components/catalog/catalog-shared";
 import { canAccessOrgAdminSettings } from "@/lib/admin-scope";
@@ -73,7 +73,7 @@ export function AdminOverviewCards() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {visible.map((card) => (
-        <Link
+        <AppNavLink
           key={card.href}
           href={card.href}
           className={`group ${workspaceCardClassName} p-5 transition hover:border-[color-mix(in_srgb,var(--theme-primary)_30%,var(--theme-border))] hover:shadow-md`}
@@ -89,7 +89,7 @@ export function AdminOverviewCards() {
               <p className="theme-subtext mt-1 text-sm">{card.description}</p>
             </div>
           </div>
-        </Link>
+        </AppNavLink>
       ))}
     </div>
   );

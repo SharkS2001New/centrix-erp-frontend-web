@@ -26,7 +26,6 @@ import {
 } from "@/components/lpo/lpo-list-actions";
 import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
 import { formatLpoKes, formatPoNumber, lpoDisplayNumber, lpoOrderDate, LpoStatusBadge } from "@/components/lpo/lpo-shared";
-import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
@@ -64,8 +63,6 @@ export default function LpoListPage() {
   const [supplierFilter, setSupplierFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
-
-  usePageNavigationReady(!loading);
 
   const loadReferenceData = useCallback(async () => {
     try {
@@ -232,6 +229,7 @@ export default function LpoListPage() {
 
   return (
     <CatalogPageShell
+      navigationReady={!loading}
       title="Purchase orders (LPO)"
       subtitle="Procure from suppliers — links to supplier accounts payable and stock receipt"
       action={

@@ -241,6 +241,7 @@ export default function RoutesPage() {
             sampleHeaders={["route_name", "direction", "route_markup_price", "is_active"]}
             sampleRow={["Westlands", "Outbound", "0", "true"]}
             apiPath="/routes/import-batch"
+            permission="fulfillment.manage"
             normalizeRows={(rows) => filterNonEmptyImportRows(rows, ["route_name"])}
             onImported={loadData}
           />

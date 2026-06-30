@@ -1737,6 +1737,11 @@ html[data-theme="dark"] .theme-legacy-archive-row {
   background-color: color-mix(in srgb, rgb(245 158 11) 12%, var(--theme-page-bg)) !important;
 }
 
+html[data-theme="dark"] .bg-orange-50\/60,
+html[data-theme="dark"] tr.bg-orange-50\/60 {
+  background-color: color-mix(in srgb, rgb(249 115 22) 12%, var(--theme-page-bg)) !important;
+}
+
 html[data-theme="dark"] .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
 html[data-theme="dark"] .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
   border-color: var(--theme-border);

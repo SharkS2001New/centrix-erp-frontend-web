@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCanAccess } from "@/components/permission-gate";
+import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import { formatOrgCurrency, formatOrgCurrencyCompact, formatOrgDate, formatOrgNumber } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 
@@ -96,7 +97,17 @@ export function buildPageNumbers(current, total) {
 /** Flat workspace card — matches page canvas, not elevated surface. */
 export const workspaceCardClassName = "theme-panel rounded-xl border shadow-sm";
 
-export function CatalogPageShell({ title, subtitle, action, banner, toolbar, children }) {
+export function CatalogPageShell({
+  title,
+  subtitle,
+  action,
+  banner,
+  toolbar,
+  children,
+  navigationReady = true,
+}) {
+  usePageNavigationReady(navigationReady);
+
   return (
     <div className="theme-workspace min-h-full">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -148,6 +159,7 @@ export function PrimaryLink({ href, children, showIcon = true, permission, modul
   return (
     <Link
       href={href}
+      prefetch
       className="theme-primary-btn inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium"
     >
       {showIcon ? <PlusIcon /> : null}

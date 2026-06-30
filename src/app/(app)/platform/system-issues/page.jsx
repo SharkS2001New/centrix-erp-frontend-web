@@ -152,26 +152,26 @@ export default function PlatformSystemIssuesPage() {
 
       {summary ? (
         <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <div className="rounded-xl border bg-white px-4 py-3 shadow-sm">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Open</p>
-            <p className="mt-1 text-2xl font-semibold text-red-700">{summary.open ?? 0}</p>
+          <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
+            <p className="theme-subtext text-xs uppercase tracking-wide">Open</p>
+            <p className="mt-1 text-2xl font-semibold text-red-600 dark:text-red-400">{summary.open ?? 0}</p>
           </div>
-          <div className="rounded-xl border bg-white px-4 py-3 shadow-sm">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Acknowledged</p>
-            <p className="mt-1 text-2xl font-semibold text-amber-700">{summary.acknowledged ?? 0}</p>
+          <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
+            <p className="theme-subtext text-xs uppercase tracking-wide">Acknowledged</p>
+            <p className="mt-1 text-2xl font-semibold text-amber-600 dark:text-amber-400">{summary.acknowledged ?? 0}</p>
           </div>
-          <div className="rounded-xl border bg-white px-4 py-3 shadow-sm">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Resolved</p>
-            <p className="mt-1 text-2xl font-semibold text-emerald-700">{summary.resolved ?? 0}</p>
+          <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
+            <p className="theme-subtext text-xs uppercase tracking-wide">Resolved</p>
+            <p className="mt-1 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">{summary.resolved ?? 0}</p>
           </div>
-          <div className="rounded-xl border bg-white px-4 py-3 shadow-sm">
-            <p className="text-xs uppercase tracking-wide text-slate-500">High priority</p>
-            <p className="mt-1 text-2xl font-semibold text-orange-700">{summary.high_priority ?? 0}</p>
-            <p className="mt-0.5 text-[11px] text-slate-500">Repetitive in last 7 days</p>
+          <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
+            <p className="theme-subtext text-xs uppercase tracking-wide">High priority</p>
+            <p className="mt-1 text-2xl font-semibold text-orange-600 dark:text-orange-400">{summary.high_priority ?? 0}</p>
+            <p className="theme-subtext mt-0.5 text-[11px]">Repetitive in last 7 days</p>
           </div>
-          <div className="rounded-xl border bg-white px-4 py-3 shadow-sm">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Today</p>
-            <p className="mt-1 text-2xl font-semibold text-slate-900">{summary.today ?? 0}</p>
+          <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
+            <p className="theme-subtext text-xs uppercase tracking-wide">Today</p>
+            <p className="theme-heading mt-1 text-2xl font-semibold">{summary.today ?? 0}</p>
           </div>
         </div>
       ) : null}
@@ -226,9 +226,9 @@ export default function PlatformSystemIssuesPage() {
         />
       </div>
 
-      <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
+      <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+          <thead className="theme-table-head-row text-left text-xs uppercase">
             <tr>
               <th className="px-4 py-3">When</th>
               <th className="px-4 py-3">Kind</th>
@@ -243,13 +243,13 @@ export default function PlatformSystemIssuesPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={8} className="theme-subtext px-4 py-8 text-center">
                   Loading issues…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={8} className="theme-subtext px-4 py-8 text-center">
                   No system issues found.
                 </td>
               </tr>
@@ -257,29 +257,29 @@ export default function PlatformSystemIssuesPage() {
               rows.map((row) => (
                 <tr
                   key={row.id}
-                  className={`border-t ${row.is_high_priority ? "bg-orange-50/60" : ""}`}
+                  className={`theme-table-body-row ${row.is_high_priority ? "theme-legacy-archive-row" : ""}`}
                 >
-                  <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                  <td className="theme-text-muted px-4 py-3 whitespace-nowrap">
                     {row.created_at ? new Date(row.created_at).toLocaleString() : "—"}
                   </td>
                   <td className="px-4 py-3">{KIND_LABELS[row.kind] ?? row.kind}</td>
                   <td className="px-4 py-3">
                     {row.is_high_priority ? (
-                      <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-900">
+                      <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-900 dark:bg-orange-500/20 dark:text-orange-200">
                         High · {row.occurrence_count ?? "?"}×
                       </span>
                     ) : (
-                      <span className="text-xs text-slate-400">Normal</span>
+                      <span className="theme-subtext text-xs">Normal</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
                     {row.organization?.org_name ?? "—"}
                     {row.organization?.company_code ? (
-                      <div className="text-xs text-slate-500">{row.organization.company_code}</div>
+                      <div className="theme-subtext text-xs">{row.organization.company_code}</div>
                     ) : null}
                   </td>
                   <td className="px-4 py-3">{userLabel(row.user)}</td>
-                  <td className="max-w-xs truncate px-4 py-3" title={row.message}>
+                  <td className="theme-text-muted max-w-xs truncate px-4 py-3" title={row.message}>
                     {row.message}
                   </td>
                   <td className="px-4 py-3">{STATUS_LABELS[row.status] ?? row.status}</td>
@@ -287,7 +287,7 @@ export default function PlatformSystemIssuesPage() {
                     <div className="flex justify-end gap-2">
                       <button
                         type="button"
-                        className="text-sm font-medium text-[#185FA5] hover:underline"
+                        className="theme-link text-sm font-medium hover:underline"
                         onClick={() => openDetail(row)}
                       >
                         View
@@ -295,7 +295,7 @@ export default function PlatformSystemIssuesPage() {
                       {row.status !== "resolved" ? (
                         <button
                           type="button"
-                          className="text-sm font-medium text-emerald-700 hover:underline disabled:opacity-50"
+                          className="text-sm font-medium text-emerald-600 hover:underline disabled:opacity-50 dark:text-emerald-400"
                           disabled={resolvingId === row.id || saving}
                           onClick={() => void markResolvedQuick(row)}
                         >
@@ -315,20 +315,20 @@ export default function PlatformSystemIssuesPage() {
 
       {selected ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/45 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border bg-white p-6 shadow-2xl">
+          <div className="theme-modal max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Issue details</h2>
-                <p className="mt-1 font-mono text-xs text-slate-500">{selected.id}</p>
+                <h2 className="theme-heading text-lg font-semibold">Issue details</h2>
+                <p className="theme-subtext mt-1 font-mono text-xs">{selected.id}</p>
                 {selected.is_high_priority ? (
-                  <p className="mt-2 inline-flex rounded-full bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-900">
+                  <p className="mt-2 inline-flex rounded-full bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-900 dark:bg-orange-500/20 dark:text-orange-200">
                     High priority — repeated {selected.occurrence_count ?? "?"} times recently
                   </p>
                 ) : null}
               </div>
               <button
                 type="button"
-                className="text-sm text-slate-500 hover:text-slate-800"
+                className="theme-subtext text-sm hover:text-[var(--theme-text)]"
                 onClick={() => setSelected(null)}
               >
                 Close
@@ -337,42 +337,42 @@ export default function PlatformSystemIssuesPage() {
 
             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
               <div>
-                <dt className="text-xs uppercase text-slate-500">Kind</dt>
+                <dt className="theme-subtext text-xs uppercase">Kind</dt>
                 <dd>{KIND_LABELS[selected.kind] ?? selected.kind}</dd>
               </div>
               <div>
-                <dt className="text-xs uppercase text-slate-500">Status</dt>
+                <dt className="theme-subtext text-xs uppercase">Status</dt>
                 <dd>{STATUS_LABELS[selected.status] ?? selected.status}</dd>
               </div>
               <div>
-                <dt className="text-xs uppercase text-slate-500">Organization</dt>
+                <dt className="theme-subtext text-xs uppercase">Organization</dt>
                 <dd>{selected.organization?.org_name ?? "—"}</dd>
               </div>
               <div>
-                <dt className="text-xs uppercase text-slate-500">User</dt>
+                <dt className="theme-subtext text-xs uppercase">User</dt>
                 <dd>{userLabel(selected.user)}</dd>
               </div>
               <div className="sm:col-span-2">
-                <dt className="text-xs uppercase text-slate-500">Message</dt>
-                <dd className="mt-1 rounded-lg border bg-slate-50 px-3 py-2">{selected.message}</dd>
+                <dt className="theme-subtext text-xs uppercase">Message</dt>
+                <dd className="theme-panel mt-1 rounded-lg border px-3 py-2">{selected.message}</dd>
               </div>
               {selected.user_notes ? (
                 <div className="sm:col-span-2">
-                  <dt className="text-xs uppercase text-slate-500">User notes</dt>
-                  <dd className="mt-1 rounded-lg border bg-amber-50 px-3 py-2 text-amber-950">
+                  <dt className="theme-subtext text-xs uppercase">User notes</dt>
+                  <dd className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
                     {selected.user_notes}
                   </dd>
                 </div>
               ) : null}
               {selected.page_url ? (
                 <div className="sm:col-span-2">
-                  <dt className="text-xs uppercase text-slate-500">Page</dt>
+                  <dt className="theme-subtext text-xs uppercase">Page</dt>
                   <dd className="break-all">{selected.page_url}</dd>
                 </div>
               ) : null}
               {selected.api_path ? (
                 <div className="sm:col-span-2">
-                  <dt className="text-xs uppercase text-slate-500">API</dt>
+                  <dt className="theme-subtext text-xs uppercase">API</dt>
                   <dd className="break-all">
                     {selected.http_method ? `${selected.http_method} ` : ""}
                     {selected.api_path}
@@ -390,7 +390,7 @@ export default function PlatformSystemIssuesPage() {
             ) : null}
 
             <label className="mt-4 block text-sm">
-              <span className="mb-1 block font-medium text-slate-700">Resolution notes</span>
+              <span className="theme-heading mb-1 block font-medium">Resolution notes</span>
               <textarea
                 className="theme-input w-full rounded-lg border px-3 py-2 text-sm"
                 rows={3}

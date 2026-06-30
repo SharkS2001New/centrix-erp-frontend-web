@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { AppNavLink } from "@/components/layout/app-nav-link";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isNavItemActive, isNavSectionActive, isNavItemVisible } from "@/lib/nav-config";
 import { defaultWorkspaceId, groupNavSectionsByZone } from "@/lib/workspaces";
@@ -101,7 +101,7 @@ function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = fals
   const active = isNavItemActive(item, pathname);
 
   return (
-    <Link
+    <AppNavLink
       href={item.href}
       data-pos-leave-ignore="true"
       onClick={onNavigate}
@@ -117,7 +117,7 @@ function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = fals
     >
       <NavItemIcon item={item} sectionId={sectionId} />
       <span className="min-w-0 truncate">{item.label}</span>
-    </Link>
+    </AppNavLink>
   );
 }
 
@@ -175,7 +175,7 @@ function StandaloneNavSection({ section, pathname, onNavigate }) {
   const active = isNavItemActive(item, pathname);
 
   return (
-    <Link
+    <AppNavLink
       href={item.href}
       data-pos-leave-ignore="true"
       onClick={onNavigate}
@@ -185,7 +185,7 @@ function StandaloneNavSection({ section, pathname, onNavigate }) {
     >
       <NavSectionIcon sectionId={section.id} />
       <span className="min-w-0 flex-1 truncate">{section.label}</span>
-    </Link>
+    </AppNavLink>
   );
 }
 
@@ -229,7 +229,7 @@ function CollapsibleNavSection({
       if (!item) return null;
       const active = isNavItemActive(item, pathname);
       return (
-        <Link
+        <AppNavLink
           href={item.href}
           data-pos-leave-ignore="true"
           onClick={onNavigate}
@@ -240,7 +240,7 @@ function CollapsibleNavSection({
           aria-label={section.label}
         >
       <NavSectionIcon sectionId={section.id} />
-        </Link>
+        </AppNavLink>
       );
     }
     return (
@@ -301,6 +301,7 @@ function CollapsibleNavSection({
 
 export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, organization, capabilities, isModuleEnabled, hasPermission, isSuperAdmin } = useAuth();
   const [activeFlyoutId, setActiveFlyoutId] = useState(null);
   const [customReportTemplates, setCustomReportTemplates] = useState([]);
@@ -358,6 +359,22 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
     () => groupNavSectionsByZone(visibleSections, workspaceId),
     [visibleSections, workspaceId],
   );
+
+  const navHrefs = useMemo(() => {
+    const hrefs = new Set();
+    for (const section of visibleSections) {
+      for (const item of section.items ?? []) {
+        if (item.href) hrefs.add(item.href);
+      }
+    }
+    return [...hrefs];
+  }, [visibleSections]);
+
+  useEffect(() => {
+    for (const href of navHrefs) {
+      router.prefetch(href);
+    }
+  }, [navHrefs, router]);
 
   const [expandedSections, setExpandedSections] = useState(() => {
     const stored = readStoredSections();
@@ -463,9 +480,9 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
             iconOnly ? "justify-center px-0" : "px-[22px]"
           }`}
         >
-          <Link href="/dashboard" data-pos-leave-ignore="true" className="flex items-center" title={PRODUCT_NAME}>
+          <AppNavLink href="/dashboard" data-pos-leave-ignore="true" className="flex items-center" title={PRODUCT_NAME}>
             <CentrixLogo collapsed={iconOnly} orgSubtitle={organization?.org_name} />
-          </Link>
+          </AppNavLink>
         </div>
 
         <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-4 pt-1">

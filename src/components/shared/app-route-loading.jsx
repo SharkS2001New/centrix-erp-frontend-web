@@ -6,6 +6,7 @@ import {
   DetailRouteSkeleton,
   FormRouteSkeleton,
   ListRouteSkeleton,
+  LoadingRouteSkeleton,
   PosRouteSkeleton,
   ReportRouteSkeleton,
   WorkspaceRouteSkeleton,
@@ -27,6 +28,7 @@ export function AppRouteLoading({ pathname = null }) {
       {variant === "workspace" ? <WorkspaceRouteSkeleton title={title} subtitle={subtitle} /> : null}
       {variant === "pos" ? <PosRouteSkeleton /> : null}
       {variant === "list" ? <ListRouteSkeleton title={title} subtitle={subtitle} /> : null}
+      {variant === "loading" ? <LoadingRouteSkeleton title={title} subtitle={subtitle} /> : null}
     </div>
   );
 }

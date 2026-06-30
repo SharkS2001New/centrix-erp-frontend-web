@@ -31,7 +31,7 @@ function resolveInternalHref(anchor) {
 }
 
 /**
- * Capture-phase listener: start navigation feedback immediately and block duplicate clicks.
+ * Capture-phase listener: start route skeleton immediately on internal link clicks.
  * Attach once on the app shell root.
  */
 export function handleNavigationIntentClick(event) {
@@ -49,11 +49,7 @@ export function handleNavigationIntentClick(event) {
   const current = `${window.location.pathname}${window.location.search}`;
   if (href === current || href === window.location.pathname) return;
 
-  if (isNavigationPending()) {
-    event.preventDefault();
-    event.stopPropagation();
-    return;
-  }
+  if (isNavigationPending()) return;
 
   beginNavigationIntent("Opening page…", href);
 }

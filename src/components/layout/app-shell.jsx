@@ -13,11 +13,10 @@ import { AppTopbar } from "@/components/layout/app-topbar";
 import { OrderPrintTypePickerHost } from "@/components/sales/order-print-type-picker-host";
 import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
 import { AppRouteLoading } from "@/components/shared/app-route-loading";
-import { NavigationProgressBar, useNavigationBusy, usePendingNavigationHref } from "@/components/shared/navigation-progress-bar";
+import { useNavigationBusy, usePendingNavigationHref } from "@/components/shared/navigation-progress-bar";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
 import {
   beginNavigationIntent,
-  beginPageNavigation,
   finishNavigation,
 } from "@/lib/app-loading";
 import { handleNavigationIntentClick } from "@/lib/navigation-intent";
@@ -67,8 +66,7 @@ export function AppShell({ children }) {
   }, []);
 
   useEffect(() => {
-    beginPageNavigation();
-    const safetyTimer = window.setTimeout(() => finishNavigation(), 30000);
+    const safetyTimer = window.setTimeout(() => finishNavigation(), 10000);
     return () => window.clearTimeout(safetyTimer);
   }, [pathname]);
 
@@ -116,16 +114,7 @@ export function AppShell({ children }) {
                 }
                 aria-busy={navigationBusy || undefined}
               >
-                <div
-                  className={
-                    isPos
-                      ? `flex min-h-0 min-w-0 flex-1 flex-col${navigationBusy ? " invisible" : ""}`
-                      : navigationBusy
-                        ? "invisible"
-                        : undefined
-                  }
-                  aria-hidden={navigationBusy || undefined}
-                >
+                <div className={isPos ? "flex min-h-0 min-w-0 flex-1 flex-col" : undefined}>
                   {children}
                 </div>
                 {navigationBusy ? (
@@ -143,7 +132,6 @@ export function AppShell({ children }) {
             </div>
             <AiAssistPanel />
             <OrderPrintTypePickerHost />
-            <NavigationProgressBar />
           </div>
           </BackgroundTaskProvider>
           </SystemIssueProvider>

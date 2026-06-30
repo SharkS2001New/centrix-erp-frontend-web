@@ -307,7 +307,7 @@ export function OrganizationPlatformSalesSettings({
           />
           <Toggle
             label="Advanced data import"
-            description="When on, organization administrators can import master data (UOMs, categories, VAT rates, routes, products, customers, and more) from CSV or Excel."
+            description="When on, users with the relevant manage permissions (and organization administrators) can import master data (UOMs, categories, VAT rates, routes, products, customers, and more) from CSV or Excel."
             checked={Boolean(salesPlatform?.enable_advanced_data_import)}
             onChange={(v) => patch({ enable_advanced_data_import: v })}
           />

@@ -8,7 +8,6 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
-import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -117,8 +116,6 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   const [routeById, setRouteById] = useState(() => new Map());
   const [paymentRefsBySaleId, setPaymentRefsBySaleId] = useState(() => new Map());
   const [contextMenu, setContextMenu] = useState(null);
-
-  usePageNavigationReady(!loading);
 
   const effectiveStatusFilter = queueConfig?.lockStatusFilter
     ? queueConfig.fixedStatusFilter
@@ -527,6 +524,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
 
   return (
     <CatalogPageShell
+      navigationReady={!loading}
       title={
         routeOrdersOnly
           ? "Route orders"

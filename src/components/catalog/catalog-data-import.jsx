@@ -142,7 +142,7 @@ function ImportModal({
 }
 
 /**
- * Admin-only import button when platform advanced data import is enabled.
+ * Import button when platform advanced data import is enabled and the user can manage the data.
  */
 export function CatalogDataImportButton({
   label = "Import",
@@ -153,13 +153,14 @@ export function CatalogDataImportButton({
   apiPath,
   normalizeRows,
   onImported,
+  permission = "products.manage",
   className = "",
 }) {
-  const { user, capabilities } = useAuth();
+  const { user, organization, capabilities } = useAuth();
   const [open, setOpen] = useState(false);
   const { ImportIcon } = ImportExportIcons;
 
-  if (!canUseAdvancedDataImport({ user, capabilities })) {
+  if (!canUseAdvancedDataImport({ user, organization, capabilities, permission })) {
     return null;
   }
 

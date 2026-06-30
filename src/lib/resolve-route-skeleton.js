@@ -1,4 +1,4 @@
-/** @typedef {'list' | 'detail' | 'dashboard' | 'form' | 'report' | 'workspace' | 'pos'} RouteSkeletonVariant */
+/** @typedef {'list' | 'detail' | 'dashboard' | 'form' | 'report' | 'workspace' | 'pos' | 'loading'} RouteSkeletonVariant */
 
 const MODULE_LABELS = {
   dashboard: "Dashboard",
@@ -72,7 +72,7 @@ export function resolveRouteSkeleton(pathname) {
   }
 
   if (path === "/admin" || path === "/admin/") {
-    return { variant: "workspace", title: "Admin home", subtitle: "Company setup and access control" };
+    return { variant: "loading", title: "Admin home", subtitle: "Loading…" };
   }
 
   if (path.startsWith("/admin/")) {

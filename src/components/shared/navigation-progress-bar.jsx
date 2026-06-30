@@ -31,14 +31,14 @@ export function NavigationProgressBar() {
   );
 }
 
-/** Blocks accidental double-clicks on main content while a route is opening. */
+/** True while a clicked route is still opening (drives the in-page skeleton). */
 export function useNavigationBusy() {
   const [busy, setBusy] = useState(false);
 
   useEffect(
     () =>
-      subscribeAppLoading(({ navigating, pageNavigationActive }) => {
-        setBusy(navigating || pageNavigationActive);
+      subscribeAppLoading(({ navigating }) => {
+        setBusy(navigating);
       }),
     [],
   );

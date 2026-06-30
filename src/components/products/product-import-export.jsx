@@ -363,10 +363,15 @@ function ImportModal({ open, onClose, onImported }) {
 }
 
 export function ProductImportExport({ totalCount, exportSearchParams, onImported }) {
-  const { user, capabilities } = useAuth();
+  const { user, organization, capabilities } = useAuth();
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const showImport = canUseAdvancedDataImport({ user, capabilities });
+  const showImport = canUseAdvancedDataImport({
+    user,
+    organization,
+    capabilities,
+    permission: "products.manage",
+  });
 
   return (
     <>

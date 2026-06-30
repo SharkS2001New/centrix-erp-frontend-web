@@ -266,11 +266,16 @@ function ImportModal({ open, onClose, onImported }) {
 }
 
 export function SupplierImportExport({ totalCount, exportSearchParams, onImported }) {
-  const { user, capabilities } = useAuth();
+  const { user, organization, capabilities } = useAuth();
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const { ImportIcon, ExportIcon } = ImportExportIcons;
-  const showImport = canUseAdvancedDataImport({ user, capabilities });
+  const showImport = canUseAdvancedDataImport({
+    user,
+    organization,
+    capabilities,
+    permission: "purchasing.manage",
+  });
 
   return (
     <>
