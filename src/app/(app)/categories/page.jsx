@@ -29,6 +29,13 @@ import { CatalogDataImportButton, filterNonEmptyImportRows, mapImportHeaders } f
 import { CATEGORY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { toast } from "@/lib/toast";
 import { useConfirm } from "@/lib/use-confirm";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 
 const PAGE_SIZE = 15;
 
@@ -90,7 +97,16 @@ export default function CategoriesPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [collapsed, setCollapsed] = useState(new Set());
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState(new Set());
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const {
+    selectedIds: selected,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [modalKind, setModalKind] = useState("category");
@@ -153,6 +169,9 @@ export default function CategoriesPage() {
   const totalPages = Math.max(1, Math.ceil(treeRows.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pageSlice = treeRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageRowIds = useMemo(() => pageSlice.map((r) => rowKey(r.type, r.id)), [pageSlice]);
+  const allSelected = isAllOnPageSelected(pageRowIds);
+  const someSelected = isSomeOnPageSelected(pageRowIds);
 
   useEffect(() => {
     setPage(1);
@@ -281,8 +300,56 @@ export default function CategoriesPage() {
     }
   }
 
-  const allSelected =
-    pageSlice.length > 0 && pageSlice.every((r) => selected.has(rowKey(r.type, r.id)));
+  async function deleteSelectedRows() {
+    const keys = [...selected];
+    if (keys.length === 0) return;
+
+    const ok = await confirm({
+      title: "Delete selected",
+      message: `Delete ${keys.length} selected categor${keys.length === 1 ? "y" : "ies"} / sub-categor${keys.length === 1 ? "y" : "ies"}?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBatchDeleting(true);
+    let succeeded = 0;
+    const failed = [];
+
+    try {
+      for (const key of keys) {
+        const dash = key.indexOf("-");
+        const type = key.slice(0, dash);
+        const id = key.slice(dash + 1);
+        try {
+          if (type === "category") {
+            await apiRequest(`/categories/${id}`, { method: "DELETE" });
+          } else {
+            await apiRequest(`/sub-categories/${id}`, { method: "DELETE" });
+          }
+          succeeded += 1;
+        } catch (e) {
+          failed.push({
+            key,
+            message: e instanceof ApiError ? e.message : "Delete failed",
+          });
+        }
+      }
+
+      clearSelection();
+      await loadData();
+
+      if (failed.length === 0) {
+        toast.success(`Deleted ${succeeded} item${succeeded === 1 ? "" : "s"}`);
+      } else if (succeeded === 0) {
+        toast.error(failed[0]?.message ?? "Delete failed");
+      } else {
+        toast.error(`Deleted ${succeeded}; ${failed.length} failed`);
+      }
+    } finally {
+      setBatchDeleting(false);
+    }
+  }
 
   return (
     <CatalogPageShell
@@ -358,20 +425,11 @@ export default function CategoriesPage() {
               <table className="w-full min-w-[800px] border-collapse text-sm">
                 <thead>
                   <tr className={TABLE_HEAD_ROW_CLASS}>
-                    <th className="w-10 px-4 py-2.5">
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        onChange={(e) =>
-                          setSelected(
-                            e.target.checked
-                              ? new Set(pageSlice.map((r) => rowKey(r.type, r.id)))
-                              : new Set(),
-                          )
-                        }
-                        className="rounded border-slate-300"
-                      />
-                    </th>
+                    <TableSelectAllHeader
+                      checked={allSelected}
+                      indeterminate={someSelected}
+                      onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                    />
                     <th className="px-4 py-2.5">Name</th>
                     <th className="px-4 py-2.5">Parent</th>
                     <th className="px-4 py-2.5">Sub-categories</th>
@@ -400,21 +458,11 @@ export default function CategoriesPage() {
                             key={key}
                             className={TABLE_SECTION_ROW_CLASS}
                           >
-                            <td className="px-4 py-3">
-                              <input
-                                type="checkbox"
-                                checked={selected.has(key)}
-                                onChange={() =>
-                                  setSelected((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(key)) next.delete(key);
-                                    else next.add(key);
-                                    return next;
-                                  })
-                                }
-                                className="rounded border-slate-300"
-                              />
-                            </td>
+                            <TableRowSelectCell
+                              checked={selected.has(key)}
+                              onChange={() => toggleOne(key)}
+                              label={`Select ${cat.category_name}`}
+                            />
                             <td className="px-4 py-3 font-medium text-slate-900">
                               <button
                                 type="button"
@@ -472,21 +520,11 @@ export default function CategoriesPage() {
                           key={key}
                           className={TABLE_BODY_ROW_CLASS}
                         >
-                          <td className="px-4 py-3">
-                            <input
-                              type="checkbox"
-                              checked={selected.has(key)}
-                              onChange={() =>
-                                setSelected((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(key)) next.delete(key);
-                                  else next.add(key);
-                                  return next;
-                                })
-                              }
-                              className="rounded border-slate-300"
-                            />
-                          </td>
+                          <TableRowSelectCell
+                            checked={selected.has(key)}
+                            onChange={() => toggleOne(key)}
+                            label={`Select ${sub.subcategory_name}`}
+                          />
                           <td className="px-4 py-3 font-medium text-slate-900">
                             <span className="inline-flex items-center pl-8">
                               <CornerIcon />
@@ -588,6 +626,14 @@ export default function CategoriesPage() {
           />
         </Field>
       </FormDrawer>
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <BatchDeleteButton
+          count={selectedCount}
+          busy={batchDeleting}
+          onClick={() => void deleteSelectedRows()}
+        />
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

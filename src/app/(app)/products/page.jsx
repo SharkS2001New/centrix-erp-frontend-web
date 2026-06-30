@@ -610,10 +610,6 @@ export default function ProductsPage() {
     setVisibleColumnIds(defaultVisibleColumnIds());
   }
 
-  function clearKraSelection() {
-    clearSelection();
-  }
-
   async function deleteSelectedProducts() {
     const ids = [...selected];
     if (ids.length === 0) return;
@@ -855,17 +851,11 @@ export default function ProductsPage() {
             <table className="w-full min-w-[960px] text-left text-sm">
               <thead>
                 <tr className={TABLE_HEAD_ROW_CLASS}>
-                  {selectionEnabled ? (
-                    <th className="w-10 px-3 py-3">
-                      <input
-                        type="checkbox"
-                        checked={allOnPageSelected}
-                        onChange={(e) => toggleAll(e.target.checked)}
-                        className="rounded border-slate-300"
-                        aria-label="Select all on this page"
-                      />
-                    </th>
-                  ) : null}
+                  <TableSelectAllHeader
+                    checked={allOnPageSelected}
+                    indeterminate={someOnPageSelected}
+                    onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                  />
                   {visibleColumns.map((col) => (
                     <th key={col.id} className={`px-3 py-3 ${alignClass(col.align)}`}>
                       {col.sortable ? (
@@ -897,6 +887,7 @@ export default function ProductsPage() {
                       selectionEnabled={selectionEnabled}
                       selected={selected}
                       onToggle={toggleOne}
+                      showCategoryHeader={showCategoryHeaders}
                       isCollapsed={isCollapsed}
                       onToggleSection={toggleSection}
                       visibleColumns={visibleColumns}
@@ -943,6 +934,24 @@ export default function ProductsPage() {
         onConfirm={confirmDelete}
       />
       {kraOverlay}
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <BatchDeleteButton
+          count={selectedCount}
+          busy={batchDeleting}
+          onClick={() => void deleteSelectedProducts()}
+        />
+        {kraDeviceEnabled ? (
+          <button
+            type="button"
+            disabled={kraUploadBusy || selectedCount === 0}
+            onClick={() => void handleKraUploadSelected()}
+            className="theme-primary-btn rounded-lg px-4 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {kraUploadBusy ? "Uploading…" : "Upload to KRA"}
+          </button>
+        ) : null}
+      </BatchActionBar>
     </div>
   );
 }
@@ -975,11 +984,11 @@ function CategoryGroup({
             <button
               type="button"
               onClick={() => onToggleSection(categoryKey)}
-              className="theme-subtext flex w-full items-center gap-2 text-left text-xs font-semibold uppercase tracking-wide"
+              className="theme-heading flex w-full items-center gap-2 text-left text-xs font-semibold uppercase tracking-wide"
             >
               <ChevronToggle expanded={!categoryCollapsed} />
               {categoryName}
-              <span className="font-normal normal-case opacity-80">
+              <span className="theme-subtext font-normal normal-case">
                 ({productCount} products)
               </span>
             </button>
@@ -1030,6 +1039,7 @@ function SubCategoryGroup({
 }) {
   const subKey = `subcategory:${categoryName}/${subName}`;
   const subCollapsed = isCollapsed(subKey);
+  const subIndent = showCategoryHeader ? "pl-6" : "pl-2";
 
   return (
     <>
@@ -1038,11 +1048,11 @@ function SubCategoryGroup({
           <button
             type="button"
             onClick={() => onToggleSection(subKey)}
-            className={`theme-subtext flex w-full items-center gap-2 text-left text-xs font-medium ${showCategoryHeader ? "pl-4" : ""}`}
+            className={`theme-heading flex w-full items-center gap-2 text-left text-sm font-medium ${subIndent}`}
           >
             <ChevronToggle expanded={!subCollapsed} />
             {subName}
-            <span className="font-normal opacity-80">({items.length})</span>
+            <span className="theme-subtext text-xs font-normal">({items.length})</span>
           </button>
         </td>
       </tr>
@@ -1052,9 +1062,10 @@ function SubCategoryGroup({
             key={p.product_code}
             product={p}
             selectionEnabled={selectionEnabled}
-            checked={selected.has(p.product_code)}
+            checked={selected.has(String(p.product_code))}
             onToggle={() => onToggle(p.product_code)}
             visibleColumns={visibleColumns}
+            nestedIndent={showCategoryHeader ? "pl-10" : "pl-6"}
             onView={onView}
             onEdit={onEdit}
             onDelete={onDelete}
@@ -1071,23 +1082,20 @@ function ProductRow({
   checked,
   onToggle,
   visibleColumns,
+  nestedIndent = "pl-6",
   onView,
   onEdit,
   onDelete,
   onPriceSaved,
 }) {
   return (
-    <tr className={TABLE_BODY_ROW_CLASS}>
+    <tr className={`${TABLE_BODY_ROW_CLASS} bg-[var(--theme-surface)]`}>
       {selectionEnabled ? (
-        <td className="px-3 py-3">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={onToggle}
-            className="rounded border-slate-300"
-            aria-label={`Select ${product.product_name}`}
-          />
-        </td>
+        <TableRowSelectCell
+          checked={checked}
+          onChange={onToggle}
+          label={`Select ${product.product_name}`}
+        />
       ) : null}
       {visibleColumns.map((col) => (
         <td key={col.id} className={`px-3 py-3 ${alignClass(col.align)}`}>
@@ -1116,7 +1124,7 @@ function ProductRow({
               </ActionButton>
             </div>
           ) : (
-            renderProductCell(product, col.id, onPriceSaved)
+            renderProductCell(product, col.id, onPriceSaved, nestedIndent)
           )}
         </td>
       ))}
@@ -1124,22 +1132,25 @@ function ProductRow({
   );
 }
 
-function renderProductCell(product, columnId, onPriceSaved) {
+function renderProductCell(product, columnId, onPriceSaved, nestedIndent = "") {
   switch (columnId) {
     case "product":
       return (
-        <>
-          <Link
-            href={`/products/${encodeURIComponent(product.product_code)}`}
-            className="theme-link font-medium"
-          >
-            {product.product_name}
-          </Link>
-          <p className="theme-subtext mt-0.5 font-mono text-xs">{product.product_code}</p>
-          {product.catalog_scope === "branch" || product.branch_id ? (
-            <p className="mt-1 text-xs font-medium text-amber-700">{productScopeLabel(product)}</p>
-          ) : null}
-        </>
+        <div className={`flex items-start gap-1.5 ${nestedIndent}`}>
+          <TableTreeCornerIcon />
+          <div className="min-w-0">
+            <Link
+              href={`/products/${encodeURIComponent(product.product_code)}`}
+              className="theme-link font-medium"
+            >
+              {product.product_name}
+            </Link>
+            <p className="theme-subtext mt-0.5 font-mono text-xs">{product.product_code}</p>
+            {product.catalog_scope === "branch" || product.branch_id ? (
+              <p className="mt-1 text-xs font-medium text-amber-700">{productScopeLabel(product)}</p>
+            ) : null}
+          </div>
+        </div>
       );
     case "unit_price":
       return (
