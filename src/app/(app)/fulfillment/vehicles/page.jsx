@@ -19,6 +19,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { VEHICLE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { useConfirm } from "@/lib/use-confirm";
 import {
   EMPTY_VEHICLE_FORM,
   VehicleStatusBadge,

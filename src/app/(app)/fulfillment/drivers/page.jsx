@@ -22,6 +22,7 @@ import {
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { DRIVER_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { useConfirm } from "@/lib/use-confirm";
 import {
   DriverStatusBadge,
   EMPTY_DRIVER_FORM,
