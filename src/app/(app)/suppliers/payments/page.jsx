@@ -14,13 +14,13 @@ import {
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { SUPPLIER_PAYMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { defaultDateRange } from "@/components/inventory/inventory-shared";
 import { formatSupplierKes, formatSupplierPaymentReference } from "@/components/suppliers/suppliers-shared";
 import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 
-const PAGE_SIZE = 15;
 
 export default function SupplierPaymentsPage() {
   const searchParams = useSearchParams();
@@ -32,6 +32,7 @@ export default function SupplierPaymentsPage() {
   const [supplierFilter, setSupplierFilter] = useState(presetSupplier ?? "all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(15);
   const initialRange = defaultDateRange(7);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
@@ -87,13 +88,18 @@ export default function SupplierPaymentsPage() {
     });
   }, [payments, search]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   useEffect(() => {
     setPage(1);
   }, [search, supplierFilter, fromDate, toDate]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   const totalPaid = useMemo(
     () => filtered.reduce((sum, p) => sum + Number(p.amount_paid ?? 0), 0),
@@ -253,8 +259,9 @@ export default function SupplierPaymentsPage() {
               page={safePage}
               totalPages={totalPages}
               total={filtered.length}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
             />
           </>
         )}

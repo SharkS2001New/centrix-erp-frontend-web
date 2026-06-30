@@ -16,8 +16,7 @@ import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboar
 const MODULE_LINKS = [
   { key: "sales.backend", href: "/sales", title: "Sales", desc: "Orders and today's performance", permission: P.sales.dashboard.view },
   {
-    key: null,
-    moduleAny: ["sales.backend", "distribution"],
+    key: "sales.backend",
     href: "/sales/pos",
     title: "Create Order",
     desc: "Search products, build a cart, and checkout",

@@ -10,17 +10,20 @@ import { formatCustomerKes } from "@/components/customers/customer-form";
 import { CustomerImportExport } from "@/components/customers/customer-import-export";
 import {
   CatalogPageShell,
+  ActiveSortChip,
   FilterSelect,
   FilterToolbar,
   IconButton,
   PaginationBar,
   PencilIcon,
   SearchInput,
+  SortableColumnHeader,
   StatCard,
   TrashIcon,
   formatKesCompact,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
 import {
   BatchActionBar,
   BatchDeleteButton,
@@ -32,8 +35,8 @@ import {
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
-const PAGE_SIZE = 10;
 const COLUMN_STORAGE_KEY = "centrix-erp-customers-visible-columns";
+const SORT_STORAGE_KEY = "centrix-erp-customers-sort";
 
 const CUSTOMER_COLUMNS = [
   {
@@ -42,6 +45,7 @@ const CUSTOMER_COLUMNS = [
     hint: "Auto-generated unique number that identifies this customer across sales and invoices.",
     defaultVisible: true,
     required: true,
+    sortKey: "customer_num",
   },
   {
     id: "customer_name",
@@ -49,18 +53,21 @@ const CUSTOMER_COLUMNS = [
     hint: "Legal or trading name of the customer.",
     defaultVisible: true,
     required: true,
+    sortKey: "customer_name",
   },
   {
     id: "customer_type",
     label: "Type",
     hint: "Debtor — credit account customer. Route — customer linked to a delivery/sales route.",
     defaultVisible: true,
+    sortKey: "customer_type",
   },
   {
     id: "phone_number",
     label: "Phone",
     hint: "Primary contact phone number.",
     defaultVisible: true,
+    sortKey: "phone_number",
   },
   {
     id: "additional_phone",
@@ -73,6 +80,7 @@ const CUSTOMER_COLUMNS = [
     label: "Town",
     hint: "Town or area where the customer is located.",
     defaultVisible: true,
+    sortKey: "town",
   },
   {
     id: "route",
@@ -86,6 +94,7 @@ const CUSTOMER_COLUMNS = [
     hint: "Maximum outstanding credit allowed for this customer, in KES.",
     defaultVisible: true,
     align: "right",
+    sortKey: "credit_limit",
   },
   {
     id: "current_balance",
@@ -93,6 +102,7 @@ const CUSTOMER_COLUMNS = [
     hint: "Current amount owed by the customer on credit (outstanding balance).",
     defaultVisible: true,
     align: "right",
+    sortKey: "current_balance",
   },
   {
     id: "kra_pin",
@@ -296,6 +306,8 @@ export default function CustomersPage() {
   const debouncedSearch = useDebouncedValue(search);
   const [deletedFilter, setDeletedFilter] = useState("active");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
+  const { sort, sortDir, sortActive, toggleSort, clearSort } = useTableSort(SORT_STORAGE_KEY);
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [batchDeleting, setBatchDeleting] = useState(false);
@@ -353,8 +365,10 @@ export default function CustomersPage() {
             : "active";
       const searchParams = buildPageParams({
         page,
-        perPage: PAGE_SIZE,
+        perPage: pageSize,
         q: debouncedSearch,
+        sort,
+        sortDir,
         extra: { status },
       });
       const custRes = await apiRequest("/customers", { searchParams });
@@ -367,7 +381,7 @@ export default function CustomersPage() {
     } finally {
       setListLoading(false);
     }
-  }, [page, debouncedSearch, deletedFilter]);
+  }, [page, pageSize, debouncedSearch, deletedFilter, sort, sortDir]);
 
   const reloadAll = useCallback(async () => {
     await Promise.all([loadReferenceData(), loadCustomers()]);
@@ -419,7 +433,26 @@ export default function CustomersPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, deletedFilter]);
+  }, [debouncedSearch, deletedFilter, pageSize, sort, sortDir]);
+
+  const activeSortLabel = useMemo(() => {
+    if (!sort) return null;
+    const col = CUSTOMER_COLUMNS.find((c) => c.sortKey === sort);
+    const dir = sortDir === "desc" ? "high to low" : "low to high";
+    return col ? `${col.label} (${dir})` : null;
+  }, [sort, sortDir]);
+
+  function handleSort(columnId) {
+    const col = CUSTOMER_COLUMNS.find((c) => c.id === columnId);
+    if (!col?.sortKey) return;
+    toggleSort(col.sortKey);
+    setPage(1);
+  }
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   function toggleColumn(id) {
     const col = CUSTOMER_COLUMNS.find((c) => c.id === id);
@@ -580,6 +613,7 @@ export default function CustomersPage() {
           <p className="p-8 text-sm text-slate-500">Loading customers…</p>
         ) : (
           <>
+            {sortActive ? <ActiveSortChip label={activeSortLabel} onClear={() => { clearSort(); setPage(1); }} /> : null}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[960px] border-collapse text-sm">
                 <thead>
@@ -593,9 +627,20 @@ export default function CustomersPage() {
                       <th
                         key={col.id}
                         title={col.hint}
-                        className={`cursor-help px-4 py-2.5 underline decoration-dotted decoration-slate-300 underline-offset-2 ${alignClass(col.align)}`}
+                        className={`px-4 py-2.5 ${col.sortKey ? "" : "cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2"} ${alignClass(col.align)}`}
                       >
-                        {col.label}
+                        {col.sortKey ? (
+                          <SortableColumnHeader
+                            label={col.label}
+                            columnId={col.sortKey}
+                            sort={sort}
+                            sortDir={sortDir}
+                            onSort={() => handleSort(col.id)}
+                            align={col.align}
+                          />
+                        ) : (
+                          col.label
+                        )}
                       </th>
                     ))}
                   </tr>
@@ -639,8 +684,9 @@ export default function CustomersPage() {
               page={safePage}
               totalPages={totalPages}
               total={totalCustomers}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
             />
             {listLoading ? (
               <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">Updating…</p>

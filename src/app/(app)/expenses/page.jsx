@@ -8,6 +8,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
+  ActiveSortChip,
   Field,
   FilterSelect,
   FormModal,
@@ -16,15 +17,23 @@ import {
   PaginationBar,
   PencilIcon,
   SearchInput,
+  SortableColumnHeader,
   TrashIcon,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { EXPENSE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
-const PAGE_SIZE = 10;
+const SORT_STORAGE_KEY = "centrix-erp-expenses-sort";
+
+const EXPENSE_SORT_COLUMNS = {
+  expense_date: "Date",
+  description: "Expense",
+  expense_amount: "Amount",
+};
 
 const EMPTY_EXPENSE_FORM = {
   description: "",
@@ -117,6 +126,8 @@ export default function ExpensesPage() {
   const [dateFilter, setDateFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("active");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
+  const { sort, sortDir, sortActive, toggleSort, clearSort } = useTableSort(SORT_STORAGE_KEY);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState("create");
@@ -165,8 +176,10 @@ export default function ExpensesPage() {
 
       const searchParams = buildPageParams({
         page,
-        perPage: PAGE_SIZE,
+        perPage: pageSize,
         q: debouncedSearch,
+        sort,
+        sortDir,
         filters,
         extra,
       });
@@ -180,7 +193,7 @@ export default function ExpensesPage() {
     } finally {
       setListLoading(false);
     }
-  }, [page, debouncedSearch, groupFilter, dateFilter, statusFilter, hasUrlDateRange, urlFromDate, urlToDate]);
+  }, [page, pageSize, debouncedSearch, groupFilter, dateFilter, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
 
   useEffect(() => {
     loadReferenceData();
@@ -227,7 +240,21 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, groupFilter, dateFilter, statusFilter]);
+  }, [debouncedSearch, groupFilter, dateFilter, statusFilter, pageSize, sort, sortDir]);
+
+  const activeSortLabel = sort
+    ? `${EXPENSE_SORT_COLUMNS[sort] ?? sort} (${sortDir === "desc" ? "high to low" : "low to high"})`
+    : null;
+
+  function handleSort(columnId) {
+    toggleSort(columnId);
+    setPage(1);
+  }
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   function openCreateDrawer() {
     setDrawerMode("create");
@@ -444,14 +471,44 @@ export default function ExpensesPage() {
           <p className="p-8 text-sm text-slate-500">Loading expenses…</p>
         ) : (
           <>
+            {sortActive ? (
+              <div className="px-4 pt-3">
+                <ActiveSortChip label={activeSortLabel} onClear={() => { clearSort(); setPage(1); }} />
+              </div>
+            ) : null}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[800px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
-                    <th className="px-4 py-2.5">Date</th>
-                    <th className="px-4 py-2.5">Expense</th>
+                    <th className="px-4 py-2.5">
+                      <SortableColumnHeader
+                        label="Date"
+                        columnId="expense_date"
+                        sort={sort}
+                        sortDir={sortDir}
+                        onSort={handleSort}
+                      />
+                    </th>
+                    <th className="px-4 py-2.5">
+                      <SortableColumnHeader
+                        label="Expense"
+                        columnId="description"
+                        sort={sort}
+                        sortDir={sortDir}
+                        onSort={handleSort}
+                      />
+                    </th>
                     <th className="px-4 py-2.5">Group</th>
-                    <th className="px-4 py-2.5 text-right">Amount</th>
+                    <th className="px-4 py-2.5 text-right">
+                      <SortableColumnHeader
+                        label="Amount"
+                        columnId="expense_amount"
+                        sort={sort}
+                        sortDir={sortDir}
+                        onSort={handleSort}
+                        align="right"
+                      />
+                    </th>
                     <th className="px-4 py-2.5">User</th>
                     <th className="w-[110px] px-4 py-2.5 text-center">Actions</th>
                   </tr>
@@ -521,8 +578,9 @@ export default function ExpensesPage() {
               page={page}
               totalPages={totalPages}
               total={totalExpenses}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
             />
           </>
         )}

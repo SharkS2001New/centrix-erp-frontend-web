@@ -23,10 +23,10 @@ import {
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { AUDIT_LOG_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
-const PAGE_SIZE = 25;
 
 function ActionBadge({ action }) {
   return (
@@ -52,6 +52,7 @@ export default function AdminAuditPage() {
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(25);
   const [search, setSearch] = useState("");
   const [userFilter, setUserFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState(
@@ -89,7 +90,7 @@ export default function AdminAuditPage() {
     setLoading(true);
     try {
       const searchParams = {
-        per_page: PAGE_SIZE,
+        per_page: pageSize,
         page,
         from_date: fromDate || undefined,
         to_date: toDate || undefined,
@@ -106,7 +107,7 @@ export default function AdminAuditPage() {
         current_page: res.current_page ?? page,
         last_page: res.last_page ?? 1,
         total: res.total ?? 0,
-        per_page: res.per_page ?? PAGE_SIZE,
+        per_page: res.per_page ?? pageSize,
       });
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load audit trail");
@@ -128,6 +129,11 @@ export default function AdminAuditPage() {
   useEffect(() => {
     setPage(1);
   }, [fromDate, toDate, userFilter, branchFilter, actionFilter, moduleFilter, search]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const branchById = useMemo(() => new Map(branches.map((b) => [b.id, b])), [branches]);
@@ -327,9 +333,10 @@ export default function AdminAuditPage() {
             page={page}
             totalPages={totalPages}
             total={total}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             onChange={setPage}
-          />
+              onPageSizeChange={handlePageSizeChange}
+            />
         ) : null}
       </div>
 

@@ -14,6 +14,7 @@ import {
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { P } from "@/lib/permission-codes";
 import {
   defaultDateRange,
@@ -29,7 +30,6 @@ import { EditDamageDrawer } from "@/components/inventory/edit-damage-drawer";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
-const PAGE_SIZE = 15;
 
 export default function DamagesPage() {
   const confirm = useConfirm();
@@ -44,6 +44,7 @@ export default function DamagesPage() {
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(15);
   const [deletingId, setDeletingId] = useState(null);
   const [editingDamage, setEditingDamage] = useState(null);
 
@@ -90,13 +91,18 @@ export default function DamagesPage() {
     [rows, fromDate, toDate],
   );
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   useEffect(() => {
     setPage(1);
   }, [fromDate, toDate]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   async function deleteDamage(row) {
     const product = productByCode.get(row.product_code);
@@ -244,8 +250,9 @@ export default function DamagesPage() {
               page={safePage}
               totalPages={totalPages}
               total={filtered.length}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
             />
           </>
         )}

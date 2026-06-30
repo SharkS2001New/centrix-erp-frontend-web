@@ -23,7 +23,7 @@ const FULFILLMENT_LINKS = [
   { href: "/fulfillment/drivers", title: "Drivers", desc: "Driver roster and assignments" },
   { href: "/fulfillment/vehicles", title: "Vehicles", desc: "Fleet and capacity" },
   { href: "/fulfillment/routes", title: "Routes", desc: "Delivery routes and schedules" },
-  { href: "/sales/orders", title: "Sales orders", desc: "Orders awaiting delivery" },
+  { href: "/fulfillment/orders", title: "Route orders", desc: "Orders on delivery routes" },
 ];
 
 export function FulfillmentDashboardContent() {

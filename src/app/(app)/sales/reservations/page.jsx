@@ -11,11 +11,11 @@ import {
   SearchInput,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_RESERVATION_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { formatReceiptNumber } from "@/components/sales/sales-shared";
 
-const PAGE_SIZE = 20;
 
 export default function SalesReservationsPage() {
   const [rows, setRows] = useState([]);
@@ -23,6 +23,7 @@ export default function SalesReservationsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(20);
 
   const loadData = useCallback(async () => {
     try {
@@ -66,9 +67,9 @@ export default function SalesReservationsPage() {
     });
   }, [rows, search, salesById]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   return (
     <CatalogPageShell
@@ -149,9 +150,10 @@ export default function SalesReservationsPage() {
           page={safePage}
           totalPages={totalPages}
           total={filtered.length}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           onChange={setPage}
-        />
+              onPageSizeChange={handlePageSizeChange}
+            />
       </div>
     </CatalogPageShell>
   );

@@ -18,6 +18,7 @@ import {
   TABLE_SHELL_CLASS,
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
 import {
   EMPTY_PRICING_TIER,
@@ -41,7 +42,6 @@ import {
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 
-const PAGE_SIZE = 10;
 
 const EMPTY_FORM = {
   product_code: "",
@@ -73,6 +73,7 @@ export default function RetailPackageSettingsPage() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subCategoryFilter, setSubCategoryFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -167,9 +168,9 @@ export default function RetailPackageSettingsPage() {
     });
   }, [enriched, search, categoryFilter, subCategoryFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
   const pageRowIds = useMemo(() => pageSlice.map((r) => r.id), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
@@ -178,6 +179,11 @@ export default function RetailPackageSettingsPage() {
   useEffect(() => {
     setPage(1);
   }, [search, categoryFilter, subCategoryFilter]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   const usedProductCodes = useMemo(
     () => settings.map((s) => s.product_code),
@@ -446,8 +452,9 @@ export default function RetailPackageSettingsPage() {
               page={safePage}
               totalPages={totalPages}
               total={filtered.length}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
             />
           </>
         )}

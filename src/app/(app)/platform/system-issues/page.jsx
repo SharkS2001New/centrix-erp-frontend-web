@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
   CatalogPageShell,
@@ -13,7 +14,6 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
-const PAGE_SIZE = 25;
 
 const KIND_LABELS = {
   error: "Error",
@@ -38,6 +38,7 @@ export default function PlatformSystemIssuesPage() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(25);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("open");
   const [kindFilter, setKindFilter] = useState("all");
@@ -65,7 +66,7 @@ export default function PlatformSystemIssuesPage() {
         apiRequest("/admin/system-issue-reports", {
           searchParams: buildPageParams({
             page,
-            perPage: PAGE_SIZE,
+            perPage: pageSize,
             q: search,
             extra,
           }),
@@ -82,7 +83,7 @@ export default function PlatformSystemIssuesPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter, kindFilter, priorityFilter, fromDate, toDate]);
+  }, [page, pageSize, search, statusFilter, kindFilter, priorityFilter, fromDate, toDate]);
 
   useEffect(() => {
     load();
@@ -91,6 +92,11 @@ export default function PlatformSystemIssuesPage() {
   useEffect(() => {
     setPage(1);
   }, [search, statusFilter, kindFilter, priorityFilter, fromDate, toDate]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   async function openDetail(row) {
     try {
@@ -311,7 +317,9 @@ export default function PlatformSystemIssuesPage() {
         </table>
       </div>
 
-      <PaginationBar page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
+      <PaginationBar page={page} totalPages={totalPages} total={total} pageSize={pageSize} onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
+            />
 
       {selected ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/45 p-4">

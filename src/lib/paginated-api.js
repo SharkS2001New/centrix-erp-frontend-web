@@ -21,12 +21,17 @@ export function parsePaginator(res) {
  *   extra?: Record<string, string | number | boolean | null | undefined>,
  * }} opts
  */
-export function buildPageParams({ page = 1, perPage = 25, q = "", filters = {}, extra = {} }) {
+export function buildPageParams({ page = 1, perPage = 25, q = "", filters = {}, extra = {}, sort, sortDir } = {}) {
   /** @type {Record<string, string | number>} */
   const searchParams = { page, per_page: perPage };
 
   const trimmed = String(q ?? "").trim();
   if (trimmed) searchParams.q = trimmed;
+
+  if (sort) {
+    searchParams.sort = sort;
+    searchParams.sort_dir = sortDir === "desc" ? "desc" : "asc";
+  }
 
   for (const [key, value] of Object.entries(filters)) {
     if (value === undefined || value === null || value === "" || value === "all") continue;

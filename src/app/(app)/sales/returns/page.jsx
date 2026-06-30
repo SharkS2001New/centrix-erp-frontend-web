@@ -15,6 +15,7 @@ import {
   SearchInput,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { isAdminUser } from "@/components/hr/hr-shared";
 import {
   CustomerReturnActionDialog,
@@ -27,7 +28,6 @@ import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import { useAuth } from "@/contexts/auth-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
-const PAGE_SIZE = 10;
 
 export default function SalesReturnsPage() {
   const router = useRouter();
@@ -46,6 +46,7 @@ export default function SalesReturnsPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [busyId, setBusyId] = useState(null);
@@ -79,6 +80,11 @@ export default function SalesReturnsPage() {
     setPage(1);
   }, [search, statusFilter, fromDate, toDate]);
 
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
@@ -93,9 +99,9 @@ export default function SalesReturnsPage() {
     });
   }, [rows, search]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const openDetail = useCallback(async (row) => {
     setActionError(null);
@@ -351,9 +357,10 @@ export default function SalesReturnsPage() {
           page={safePage}
           totalPages={totalPages}
           total={filtered.length}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           onChange={setPage}
-        />
+              onPageSizeChange={handlePageSizeChange}
+            />
       </section>
 
       <CustomerReturnActionDialog

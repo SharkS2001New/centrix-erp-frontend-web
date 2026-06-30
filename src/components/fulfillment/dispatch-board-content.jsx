@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell, Field, PaginationBar, PrimaryLink, inputClassName } from "@/components/catalog/catalog-shared";
 import { DashboardSection, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
@@ -24,7 +25,6 @@ function isoDate(d = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
-const DISPATCH_PAGE_SIZE = 25;
 
 export function DispatchBoardContent() {
   const router = useRouter();
@@ -41,6 +41,7 @@ export function DispatchBoardContent() {
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(25);
   const [routes, setRoutes] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -62,7 +63,7 @@ export function DispatchBoardContent() {
 
       const [salesRes, routeRes, driverRes, vehicleRes] = await Promise.all([
         apiRequest("/sales", {
-          searchParams: buildPageParams({ page, perPage: DISPATCH_PAGE_SIZE, extra }),
+          searchParams: buildPageParams({ page, perPage: pageSize, extra }),
         }),
         apiRequest("/routes", { searchParams: { per_page: 200 } }),
         apiRequest("/drivers", { searchParams: { per_page: 200 } }),
@@ -85,6 +86,11 @@ export function DispatchBoardContent() {
   useEffect(() => {
     setPage(1);
   }, [runDate, routeFilter]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   useEffect(() => {
     loadData();
@@ -331,9 +337,10 @@ export function DispatchBoardContent() {
           page={page}
           totalPages={totalPages}
           total={totalOrders}
-          pageSize={DISPATCH_PAGE_SIZE}
+          pageSize={pageSize}
           onChange={setPage}
-        />
+              onPageSizeChange={handlePageSizeChange}
+            />
       ) : null}
 
       {selectedIds.size > 0 ? (

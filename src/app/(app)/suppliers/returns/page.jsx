@@ -19,13 +19,13 @@ import {
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { SUPPLIER_RETURN_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { formatPoNumber, lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import { printSupplierReturn } from "@/components/suppliers/supplier-return-print";
 import { formatReturnQty, formatStockLocationLabel, statusBadgeClass } from "@/components/suppliers/supplier-return-shared";
 
-const PAGE_SIZE = 15;
 
 const COLS = [
   { key: "toggle", label: "", className: "w-10 px-2" },
@@ -348,6 +348,7 @@ export default function SupplierReturnsPage() {
   const [dateTo, setDateTo] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(15);
   const [collapsedIds, setCollapsedIds] = useState(() => new Set());
 
   const loadData = useCallback(async () => {
@@ -408,13 +409,18 @@ export default function SupplierReturnsPage() {
     });
   }, [rows, typeFilter, search]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   useEffect(() => {
     setPage(1);
   }, [search, supplierFilter, typeFilter, statusFilter, dateFrom, dateTo]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   function toggleCollapsed(id) {
     setCollapsedIds((prev) => {
@@ -749,8 +755,9 @@ export default function SupplierReturnsPage() {
               page={safePage}
               totalPages={totalPages}
               total={filtered.length}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
             />
           </>
         )}

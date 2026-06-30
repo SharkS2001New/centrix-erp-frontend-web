@@ -12,6 +12,7 @@ import { permissionIdSet } from "@/lib/permission-ids";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import {
   ActiveBadge,
@@ -66,7 +67,6 @@ const EMPTY_FORM = {
   is_active: true,
 };
 
-const PAGE_SIZE = 15;
 
 function isProtectedUserAccount(row, currentUserId) {
   return row.id === currentUserId || Boolean(row.is_admin);
@@ -87,6 +87,7 @@ export default function AdminUsersPage() {
   const [totalUsers, setTotalUsers] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(15);
   const [branches, setBranches] = useState([]);
   const [roles, setRoles] = useState([]);
   const [routes, setRoutes] = useState([]);
@@ -192,7 +193,7 @@ export default function AdminUsersPage() {
     try {
       const searchParams = buildPageParams({
         page,
-        perPage: PAGE_SIZE,
+        perPage: pageSize,
         q: debouncedSearch,
         extra: orgListParams(organizationId),
       });
@@ -238,6 +239,11 @@ export default function AdminUsersPage() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   useEffect(() => {
     if (viewUser?.id) loadUserPermissions(viewUser.id);
@@ -671,9 +677,10 @@ export default function AdminUsersPage() {
           page={page}
           totalPages={totalPages}
           total={totalUsers}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           onChange={setPage}
-        />
+              onPageSizeChange={handlePageSizeChange}
+            />
 
         <UserDetailModal
           open={Boolean(viewUser)}

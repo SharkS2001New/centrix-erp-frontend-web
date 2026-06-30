@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import {
   CatalogPageShell,
   PaginationBar,
@@ -17,7 +18,6 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { JOURNAL_ENTRY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { JournalStatusBadge } from "@/components/accounting/accounting-shared";
 
-const PAGE_SIZE = 10;
 
 export default function JournalEntriesPage() {
   const router = useRouter();
@@ -29,13 +29,14 @@ export default function JournalEntriesPage() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
 
   const load = useCallback(async () => {
     setListLoading(true);
     try {
       const searchParams = buildPageParams({
         page,
-        perPage: PAGE_SIZE,
+        perPage: pageSize,
         q: debouncedSearch,
       });
       const res = await apiRequest("/journal-entries", { searchParams });
@@ -49,7 +50,7 @@ export default function JournalEntriesPage() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, debouncedSearch]);
+  }, [page, pageSize, debouncedSearch]);
 
   useEffect(() => {
     load();
@@ -58,6 +59,11 @@ export default function JournalEntriesPage() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   return (
     <CatalogPageShell
@@ -135,9 +141,10 @@ export default function JournalEntriesPage() {
         page={page}
         totalPages={totalPages}
         total={totalRows}
-        pageSize={PAGE_SIZE}
+        pageSize={pageSize}
         onChange={setPage}
-      />
+              onPageSizeChange={handlePageSizeChange}
+            />
     </CatalogPageShell>
   );
 }

@@ -8,6 +8,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -54,7 +55,6 @@ import {
   PodCaptureDialog,
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
 
-const PAGE_SIZE = 15;
 
 function indexPaymentRefs(payments) {
   const map = new Map();
@@ -106,6 +106,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   const [appliedFromDate, setAppliedFromDate] = useState(() => isoDate());
   const [appliedToDate, setAppliedToDate] = useState(() => isoDate());
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(15);
   const [detailsById, setDetailsById] = useState({});
   const [detailLoadingId, setDetailLoadingId] = useState(null);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
@@ -223,7 +224,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
 
       const searchParams = buildPageParams({
         page,
-        perPage: PAGE_SIZE,
+        perPage: pageSize,
         q: debouncedSearch,
         filters,
         extra,
@@ -260,6 +261,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
     }
   }, [
     page,
+    pageSize,
     debouncedSearch,
     appliedFromDate,
     appliedToDate,
@@ -497,6 +499,11 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
     setPage(1);
   }, [debouncedSearch, statusFilter, sourceFilter, minTotalFilter, appliedFromDate, appliedToDate, queueSlug]);
 
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
+
   useEffect(() => {
     if (queueConfig?.lockSourceFilter && queueConfig.fixedSourceFilter) {
       setSourceFilter(queueConfig.fixedSourceFilter);
@@ -711,9 +718,10 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
             page={page}
             totalPages={totalPages}
             total={totalOrders}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             onChange={setPage}
-          />
+              onPageSizeChange={handlePageSizeChange}
+            />
         </div>
       </div>
 

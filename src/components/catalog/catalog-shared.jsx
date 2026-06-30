@@ -7,6 +7,7 @@ import { useCanAccess } from "@/components/permission-gate";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import { formatOrgCurrency, formatOrgCurrencyCompact, formatOrgDate, formatOrgNumber } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
+import { LIST_PAGE_SIZE_OPTIONS } from "@/lib/use-list-page-controls";
 
 export function formatShortDate(value, settings = GENERAL_DEFAULTS) {
   return formatOrgDate(value, settings);
@@ -213,16 +214,43 @@ export function FilterSelect({ value, onChange, options, className = "" }) {
   );
 }
 
-export function PaginationBar({ page, totalPages, total, pageSize, onChange }) {
+export function PaginationBar({
+  page,
+  totalPages,
+  total,
+  pageSize,
+  onChange,
+  pageSizeOptions = LIST_PAGE_SIZE_OPTIONS,
+  onPageSizeChange,
+}) {
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, total);
   const pages = buildPageNumbers(page, totalPages);
 
   return (
     <div className="theme-pagination-bar flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs">
-      <span>
-        Showing {from}–{to} of {total}
-      </span>
+      <div className="flex flex-wrap items-center gap-3">
+        <span>
+          Showing {from}–{to} of {total}
+        </span>
+        {onPageSizeChange ? (
+          <label className="theme-subtext inline-flex items-center gap-2">
+            <span>Rows per page</span>
+            <select
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              className="theme-input theme-input-focus h-7 rounded-md border px-2 py-0 text-xs outline-none"
+              aria-label="Rows per page"
+            >
+              {pageSizeOptions.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
       <div className="flex gap-1">
         <PagBtn disabled={page <= 1} onClick={() => onChange(page - 1)}>
           ‹
@@ -242,6 +270,73 @@ export function PaginationBar({ page, totalPages, total, pageSize, onChange }) {
           ›
         </PagBtn>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Clickable table header for server-side column sorting.
+ * Cycles: unsorted → ascending → descending → unsorted.
+ */
+export function SortableColumnHeader({
+  label,
+  columnId,
+  sort,
+  sortDir,
+  onSort,
+  align = "left",
+  className = "",
+}) {
+  const active = sort === columnId;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(columnId)}
+      title={active ? `Sorted ${sortDir === "asc" ? "ascending" : "descending"}. Click to change.` : "Click to sort"}
+      className={`group inline-flex w-full items-center gap-1 font-medium text-inherit hover:text-[var(--theme-text)] ${
+        align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start"
+      } ${className}`.trim()}
+    >
+      <span>{label}</span>
+      <span className="inline-flex flex-col leading-none text-[var(--theme-subtext)]" aria-hidden="true">
+        <SortArrow direction="up" active={active && sortDir === "asc"} />
+        <SortArrow direction="down" active={active && sortDir === "desc"} />
+      </span>
+    </button>
+  );
+}
+
+function SortArrow({ direction, active }) {
+  return (
+    <svg
+      width="10"
+      height="6"
+      viewBox="0 0 10 6"
+      className={`-mb-px ${direction === "down" ? "rotate-180" : ""} ${
+        active ? "text-[var(--theme-accent)]" : "opacity-35 group-hover:opacity-70"
+      }`}
+      fill="currentColor"
+    >
+      <path d="M5 0 10 6H0z" />
+    </svg>
+  );
+}
+
+/** Chip shown when a table sort is active; includes clear action. */
+export function ActiveSortChip({ label, onClear }) {
+  if (!label) return null;
+  return (
+    <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-3 py-1 text-xs text-[var(--theme-text)]">
+      <span className="theme-subtext">Sorted by</span>
+      <span className="font-medium">{label}</span>
+      <button
+        type="button"
+        onClick={onClear}
+        className="rounded px-1.5 py-0.5 font-medium text-[var(--theme-accent-text)] hover:bg-[var(--theme-hover)]"
+      >
+        Clear
+      </button>
     </div>
   );
 }

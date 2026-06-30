@@ -24,6 +24,7 @@ import {
   TrashIcon,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { CatalogDataImportButton, filterNonEmptyImportRows, mapImportHeaders } from "@/components/catalog/catalog-data-import";
 import { CATEGORY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
@@ -37,7 +38,6 @@ import {
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 
-const PAGE_SIZE = 15;
 
 const SUBCATEGORY_IMPORT_COLUMNS = [
   { key: "subcategory_name", label: "Subcategory" },
@@ -97,6 +97,7 @@ export default function CategoriesPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [collapsed, setCollapsed] = useState(new Set());
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(15);
   const [batchDeleting, setBatchDeleting] = useState(false);
   const {
     selectedIds: selected,
@@ -166,9 +167,9 @@ export default function CategoriesPage() {
     [categories, subCategories, collapsed, search, typeFilter],
   );
 
-  const totalPages = Math.max(1, Math.ceil(treeRows.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(treeRows.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = treeRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageSlice = treeRows.slice((safePage - 1) * pageSize, safePage * pageSize);
   const pageRowIds = useMemo(() => pageSlice.map((r) => rowKey(r.type, r.id)), [pageSlice]);
   const allSelected = isAllOnPageSelected(pageRowIds);
   const someSelected = isSomeOnPageSelected(pageRowIds);
@@ -176,6 +177,11 @@ export default function CategoriesPage() {
   useEffect(() => {
     setPage(1);
   }, [search, typeFilter]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -572,8 +578,9 @@ export default function CategoriesPage() {
               page={safePage}
               totalPages={totalPages}
               total={treeRows.length}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
             />
           </>
         )}

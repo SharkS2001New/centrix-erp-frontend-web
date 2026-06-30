@@ -24,9 +24,9 @@ import { KRA_RESPONSE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { todayCalendarDate } from "@/lib/datetime";
 
-const PAGE_SIZE = 25;
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
@@ -49,6 +49,7 @@ export default function KraResponsesPage() {
   const [loading, setLoading] = useState(true);
   const [retryingId, setRetryingId] = useState(null);
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(25);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [fromDate, setFromDate] = useState(today);
@@ -69,7 +70,7 @@ export default function KraResponsesPage() {
     try {
       const searchParams = buildPageParams({
         page,
-        perPage: PAGE_SIZE,
+        perPage: pageSize,
         q: search,
         extra: {
           from_date: fromDate || undefined,
@@ -108,6 +109,11 @@ export default function KraResponsesPage() {
   useEffect(() => {
     setPage(1);
   }, [fromDate, toDate, statusFilter, search]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   async function retryReceipt(row) {
     setRetryingId(row.id);
@@ -325,9 +331,10 @@ export default function KraResponsesPage() {
             page={page}
             totalPages={totalPages}
             total={total}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             onChange={setPage}
-          />
+              onPageSizeChange={handlePageSizeChange}
+            />
         ) : null}
       </div>
 

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import {
   CatalogPageShell,
   FilterSelect,
@@ -36,7 +37,6 @@ import {
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
-const PAGE_SIZE = 10;
 
 export default function HrEmployeesPage() {
   const confirm = useConfirm();
@@ -54,6 +54,7 @@ export default function HrEmployeesPage() {
   const [deptFilter, setDeptFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
   const [batchDeleting, setBatchDeleting] = useState(false);
   const {
     selectedIds,
@@ -92,7 +93,7 @@ export default function HrEmployeesPage() {
 
       const searchParams = buildPageParams({
         page,
-        perPage: PAGE_SIZE,
+        perPage: pageSize,
         q: debouncedSearch,
         filters,
         extra,
@@ -107,7 +108,7 @@ export default function HrEmployeesPage() {
     } finally {
       setListLoading(false);
     }
-  }, [page, debouncedSearch, deptFilter, statusFilter]);
+  }, [page, pageSize, debouncedSearch, deptFilter, statusFilter]);
 
   useEffect(() => {
     loadReferenceData();
@@ -163,6 +164,11 @@ export default function HrEmployeesPage() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, deptFilter, statusFilter]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   async function deleteEmployee(employee) {
     const name = composeEmployeeDisplayName(employee);
@@ -393,8 +399,9 @@ export default function HrEmployeesPage() {
               page={page}
               totalPages={totalPages}
               total={totalEmployees}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
             />
           </>
         )}

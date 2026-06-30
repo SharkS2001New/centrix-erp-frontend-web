@@ -62,7 +62,7 @@ export const WORKSPACE_SECTION_IDS = {
   admin: ["admin_dashboard", "admin_organization", "admin_users", "admin_finance_tax", "admin_settings"],
   accounting: ["accounting", "org_preferences", "reports"],
   hr: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "org_preferences", "reports"],
-  distribution: ["dashboard", "sales_orders", "distribution_ops", "distribution_fleet", "distribution_orders", "org_preferences", "reports"],
+  distribution: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "org_preferences", "reports"],
 };
 
 /** Sidebar zone headers for workspaces that still use grouped sections. */
@@ -76,7 +76,7 @@ export const WORKSPACE_NAV_ZONES = {
   distribution: [
     {
       label: null,
-      sectionIds: ["dashboard", "sales_orders", "distribution_ops", "distribution_fleet", "distribution_orders", "org_preferences", "reports"],
+      sectionIds: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "org_preferences", "reports"],
     },
   ],
   admin: [
@@ -148,7 +148,7 @@ export const WORKSPACE_PATH_PREFIXES = {
   admin: ["/admin", "/vats"],
   accounting: ["/accounting", "/expenses", "/finance", "/vats"],
   hr: ["/hr", "/employees"],
-  distribution: ["/fulfillment", "/fulfillment/orders", "/sales/orders", "/sales/pos"],
+  distribution: ["/fulfillment"],
 };
 
 export const SHARED_WORKSPACE_PATHS = ["/profile", "/choose-workspace", "/admin/settings"];
@@ -228,11 +228,14 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
   }
 
   if (workspaceId === "distribution") {
-    return (
-      item.href?.startsWith("/fulfillment") ||
-      item.href === "/sales/pos" ||
-      item.href?.startsWith("/sales/orders")
-    );
+    if (item.href?.startsWith("/fulfillment")) {
+      return true;
+    }
+    // Allow opening a specific sales order from distribution workflows (dispatch, POD, trips).
+    if (item.href?.match(/^\/sales\/orders\/[^/]+/)) {
+      return true;
+    }
+    return false;
   }
 
   if (workspaceId === "backoffice") {
@@ -263,6 +266,10 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
 
   const prefixes = WORKSPACE_PATH_PREFIXES[workspaceId] ?? [];
   if (prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return true;
+  }
+
+  if (workspaceId === "distribution" && /^\/sales\/orders\/[^/]+/.test(pathname)) {
     return true;
   }
 

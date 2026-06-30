@@ -12,13 +12,13 @@ import {
   SearchInput,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { printCreditNote } from "@/components/sales/credit-note-print";
 import { LegacyReturnDetailModal } from "@/components/sales/legacy-return-detail-modal";
 import { ReturnStatusBadge } from "@/components/sales/customer-returns-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import { currentMonthDateRange } from "@/lib/dashboard-dates";
 
-const PAGE_SIZE = 10;
 const defaultMonthRange = currentMonthDateRange();
 
 function LegacyReturnsContent() {
@@ -32,6 +32,7 @@ function LegacyReturnsContent() {
   const [fromDate, setFromDate] = useState(defaultMonthRange.from);
   const [toDate, setToDate] = useState(defaultMonthRange.to);
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
   const [rows, setRows] = useState([]);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
@@ -62,6 +63,11 @@ function LegacyReturnsContent() {
     setPage(1);
   }, [search, statusFilter, fromDate, toDate]);
 
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
@@ -76,9 +82,9 @@ function LegacyReturnsContent() {
     });
   }, [rows, search]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const openDetail = useCallback(async (row) => {
     setActionError(null);
@@ -257,9 +263,10 @@ function LegacyReturnsContent() {
         page={safePage}
         totalPages={totalPages}
         total={filtered.length}
-        pageSize={PAGE_SIZE}
+        pageSize={pageSize}
         onChange={setPage}
-      />
+              onPageSizeChange={handlePageSizeChange}
+            />
 
       <LegacyReturnDetailModal
         open={detailOpen}

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
 import {
   FilterSelect,
@@ -36,7 +37,6 @@ import {
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 
-const PAGE_SIZE = 15;
 const COLUMN_STORAGE_KEY = "centrix-erp-inventory-stock-columns";
 
 const STOCK_COLUMNS = [
@@ -91,6 +91,7 @@ export default function CurrentStockPage() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(15);
   const {
     selectedIds,
     selectedCount,
@@ -125,7 +126,7 @@ export default function CurrentStockPage() {
     try {
       const searchParams = buildPageParams({
         page,
-        perPage: PAGE_SIZE,
+        perPage: pageSize,
         q: debouncedSearch,
         extra: {
           branch_id: branchId,
@@ -161,6 +162,11 @@ export default function CurrentStockPage() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, categoryFilter, locationFilter]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   const retailByCode = useMemo(
     () => new Map(retailPackages.map((r) => [r.product_code, r])),
@@ -290,15 +296,15 @@ export default function CurrentStockPage() {
     }
   }
 
-  function generatePriceList(rows = pageSlice) {
-    const inStock = rows.filter(
+  function generatePriceList(sourceRows = pageSlice) {
+    const inStock = sourceRows.filter(
       (row) => Number(row.shop_quantity ?? 0) > 0 || Number(row.store_quantity ?? 0) > 0,
     );
     if (inStock.length === 0) {
       notifyError("No in-stock items in the selection.");
       return;
     }
-    const rows = inStock.map((row) =>
+    const priceListRows = inStock.map((row) =>
       priceListRowsForProduct({
         product: row.product,
         uom: row.uom,
@@ -307,7 +313,7 @@ export default function CurrentStockPage() {
         storeQty: row.store_quantity,
       }),
     );
-    const csv = priceListToCsv(rows);
+    const csv = priceListToCsv(priceListRows);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -476,8 +482,9 @@ export default function CurrentStockPage() {
               page={safePage}
               totalPages={totalPages}
               total={totalStockRows}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
             />
           </>
         )}

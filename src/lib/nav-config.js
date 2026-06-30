@@ -173,7 +173,7 @@ const NAV_SECTION_DEFINITIONS = [
       {
         href: "/sales/pos",
         label: "Create new order",
-        moduleAny: ["sales.backend", "distribution"],
+        module: "sales.backend",
         permissionAny: [P.pos.checkout.create, P.sales.orders.create],
       },
       {

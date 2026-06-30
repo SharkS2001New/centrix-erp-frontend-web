@@ -33,6 +33,7 @@ import {
   StatCard,
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import {
@@ -44,7 +45,6 @@ import {
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 
-const PAGE_SIZE = 10;
 
 export default function RoutesPage() {
   const confirm = useConfirm();
@@ -59,6 +59,7 @@ export default function RoutesPage() {
   const [search, setSearch] = useState("");
   const [salesPeriod, setSalesPeriod] = useState("day");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState("create");
@@ -141,9 +142,9 @@ export default function RoutesPage() {
     });
   }, [routes, search, salesByRoute]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
   const pageRowIds = useMemo(() => pageSlice.map((r) => r.id), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
@@ -152,6 +153,11 @@ export default function RoutesPage() {
   useEffect(() => {
     setPage(1);
   }, [search, salesPeriod]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -445,8 +451,9 @@ export default function RoutesPage() {
               page={safePage}
               totalPages={totalPages}
               total={filtered.length}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
             />
           </>
         )}

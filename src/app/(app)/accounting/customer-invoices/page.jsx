@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
 import { useOrgFormat } from "@/lib/org-format";
@@ -18,7 +19,6 @@ import {
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { CUSTOMER_INVOICE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 
-const PAGE_SIZE = 20;
 
 const PAYMENT_STATUS = {
   0: { label: "Unpaid", tone: "text-amber-700 bg-amber-50" },
@@ -43,6 +43,7 @@ export default function CustomerInvoicesPage() {
   const debouncedSearch = useDebouncedValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(20);
 
   const load = useCallback(async () => {
     setListLoading(true);
@@ -54,7 +55,7 @@ export default function CustomerInvoicesPage() {
 
       const searchParamsApi = buildPageParams({
         page,
-        perPage: PAGE_SIZE,
+        perPage: pageSize,
         q: debouncedSearch,
         extra,
       });
@@ -69,7 +70,7 @@ export default function CustomerInvoicesPage() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, debouncedSearch, statusFilter, presetCustomer]);
+  }, [page, pageSize, debouncedSearch, statusFilter, presetCustomer]);
 
   useEffect(() => {
     load();
@@ -78,6 +79,11 @@ export default function CustomerInvoicesPage() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, statusFilter, presetCustomer]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   return (
     <CatalogPageShell
@@ -187,9 +193,10 @@ export default function CustomerInvoicesPage() {
         page={page}
         totalPages={totalPages}
         total={totalInvoices}
-        pageSize={PAGE_SIZE}
+        pageSize={pageSize}
         onChange={setPage}
-      />
+              onPageSizeChange={handlePageSizeChange}
+            />
     </CatalogPageShell>
   );
 }

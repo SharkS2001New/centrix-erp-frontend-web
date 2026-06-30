@@ -5,6 +5,7 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAppRouter } from "@/lib/use-app-router";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -29,7 +30,6 @@ import { formatLpoKes, formatPoNumber, lpoDisplayNumber, lpoOrderDate, LpoStatus
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
-const PAGE_SIZE = 15;
 
 function PlusIcon() {
   return (
@@ -63,6 +63,7 @@ export default function LpoListPage() {
   const [supplierFilter, setSupplierFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(15);
 
   const loadReferenceData = useCallback(async () => {
     try {
@@ -92,7 +93,7 @@ export default function LpoListPage() {
 
       const searchParams = buildPageParams({
         page,
-        perPage: PAGE_SIZE,
+        perPage: pageSize,
         q: debouncedSearch,
         extra,
       });
@@ -106,7 +107,7 @@ export default function LpoListPage() {
     } finally {
       setListLoading(false);
     }
-  }, [page, debouncedSearch, supplierFilter, statusFilter]);
+  }, [page, pageSize, debouncedSearch, supplierFilter, statusFilter]);
 
   useEffect(() => {
     loadReferenceData();
@@ -119,6 +120,11 @@ export default function LpoListPage() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, supplierFilter, statusFilter]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   const statusOptions = useMemo(
     () => [
@@ -398,8 +404,9 @@ export default function LpoListPage() {
               page={page}
               totalPages={totalPages}
               total={totalRows}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
             />
             <LpoListContextMenu
               open={Boolean(contextMenu)}

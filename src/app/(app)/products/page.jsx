@@ -19,6 +19,8 @@ import {
   FilterToolbar,
   formatShortDate,
   PaginationBar,
+  ActiveSortChip,
+  SortableColumnHeader,
   PrimaryLink,
   SearchInput,
   SECONDARY_BTN_CLASS,
@@ -48,19 +50,20 @@ import {
 } from "@/components/catalog/table-row-selection";
 import { useConfirm } from "@/lib/use-confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
 
-const PAGE_SIZE = 10;
 const COLUMN_STORAGE_KEY = "centrix-erp-products-visible-columns";
+const SORT_STORAGE_KEY = "centrix-erp-products-sort";
 
 const PRODUCT_COLUMNS = [
-  { id: "product", label: "Product name", defaultVisible: true, required: true },
-  { id: "unit_price", label: "Unit price", defaultVisible: true, align: "right" },
-  { id: "cost_price", label: "Cost price", defaultVisible: true, align: "right" },
+  { id: "product", label: "Product name", defaultVisible: true, required: true, sortKey: "product_name" },
+  { id: "unit_price", label: "Unit price", defaultVisible: true, align: "right", sortKey: "unit_price" },
+  { id: "cost_price", label: "Cost price", defaultVisible: true, align: "right", sortKey: "last_cost_price" },
   { id: "discount", label: "Discount", defaultVisible: true },
-  { id: "weight", label: "Weight", defaultVisible: false, align: "right" },
-  { id: "shop", label: "Shop", defaultVisible: true, align: "center", sortable: true },
+  { id: "weight", label: "Weight", defaultVisible: false, align: "right", sortKey: "product_weight" },
+  { id: "shop", label: "Shop", defaultVisible: true, align: "center" },
   { id: "store", label: "Store", defaultVisible: true, align: "center" },
-  { id: "reorder", label: "Reorder", defaultVisible: false, align: "right" },
+  { id: "reorder", label: "Reorder", defaultVisible: false, align: "right", sortKey: "reorder_point" },
   { id: "supplier", label: "Supplier", defaultVisible: true },
   { id: "vat", label: "VAT", defaultVisible: true },
   { id: "pricing", label: "Pricing", defaultVisible: true },
@@ -273,6 +276,8 @@ export default function ProductsPage() {
   const [pricingFilter, setPricingFilter] = useState("all");
   const [activeFilter, setActiveFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
+  const { sort, sortDir, sortActive, toggleSort, clearSort } = useTableSort(SORT_STORAGE_KEY);
   const {
     selectedIds: selected,
     selectedCount,
@@ -394,8 +399,10 @@ export default function ProductsPage() {
     try {
       const searchParams = buildPageParams({
         page,
-        perPage: PAGE_SIZE,
+        perPage: pageSize,
         q: debouncedSearch,
+        sort,
+        sortDir,
         filters: {
           subcategory_id: subCategoryFilter !== "all" ? subCategoryFilter : undefined,
           category_id: categoryFilter !== "all" ? categoryFilter : undefined,
@@ -420,6 +427,7 @@ export default function ProductsPage() {
     }
   }, [
     page,
+    pageSize,
     debouncedSearch,
     categoryFilter,
     subCategoryFilter,
@@ -427,6 +435,8 @@ export default function ProductsPage() {
     pricingFilter,
     activeFilter,
     effectiveStockBranchId,
+    sort,
+    sortDir,
   ]);
 
   const reloadAll = useCallback(async () => {
@@ -578,7 +588,26 @@ export default function ProductsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, categoryFilter, subCategoryFilter, stockFilter, pricingFilter, activeFilter, effectiveStockBranchId]);
+  }, [debouncedSearch, categoryFilter, subCategoryFilter, stockFilter, pricingFilter, activeFilter, effectiveStockBranchId, pageSize, sort, sortDir]);
+
+  const activeSortLabel = useMemo(() => {
+    if (!sort) return null;
+    const col = PRODUCT_COLUMNS.find((c) => c.sortKey === sort);
+    const dir = sortDir === "desc" ? "high to low" : "low to high";
+    return col ? `${col.label} (${dir})` : null;
+  }, [sort, sortDir]);
+
+  function handleSort(columnId) {
+    const col = PRODUCT_COLUMNS.find((c) => c.id === columnId);
+    if (!col?.sortKey) return;
+    toggleSort(col.sortKey);
+    setPage(1);
+  }
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   function toggleSection(key) {
     setCollapsed((prev) => {
@@ -847,6 +876,11 @@ export default function ProductsPage() {
 
       {!loading && !error && (
         <div className={`mt-6 ${TABLE_SHELL_CLASS}`}>
+          {sortActive ? (
+            <div className="px-4 pt-3">
+              <ActiveSortChip label={activeSortLabel} onClear={() => { clearSort(); setPage(1); }} />
+            </div>
+          ) : null}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] text-left text-sm">
               <thead>
@@ -858,11 +892,15 @@ export default function ProductsPage() {
                   />
                   {visibleColumns.map((col) => (
                     <th key={col.id} className={`px-3 py-3 ${alignClass(col.align)}`}>
-                      {col.sortable ? (
-                        <span className="inline-flex items-center gap-1">
-                          {col.label}
-                          <SortIcon />
-                        </span>
+                      {col.sortKey ? (
+                        <SortableColumnHeader
+                          label={col.label}
+                          columnId={col.sortKey}
+                          sort={sort}
+                          sortDir={sortDir}
+                          onSort={() => handleSort(col.id)}
+                          align={col.align}
+                        />
                       ) : (
                         col.label
                       )}
@@ -908,8 +946,9 @@ export default function ProductsPage() {
             page={safePage}
             totalPages={totalPages}
             total={totalProducts}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             onChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
           />
           {listLoading ? (
             <p className="theme-subtext border-t border-[var(--theme-border)] px-4 pb-3 text-center text-xs">
@@ -1466,15 +1505,6 @@ function ColumnsIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <rect x="3" y="3" width="7" height="18" rx="1" />
       <rect x="14" y="3" width="7" height="18" rx="1" />
-    </svg>
-  );
-}
-
-function SortIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="theme-subtext">
-      <path d="M8 9l4-4 4 4" />
-      <path d="M8 15l4 4 4-4" />
     </svg>
   );
 }

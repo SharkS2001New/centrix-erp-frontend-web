@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import {
   CatalogPageShell,
   FilterSelect,
@@ -52,7 +53,6 @@ function PlusIcon() {
   );
 }
 
-const PAGE_SIZE = 10;
 
 export default function SuppliersPage() {
   const router = useRouter();
@@ -70,6 +70,7 @@ export default function SuppliersPage() {
   const debouncedSearch = useDebouncedValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [batchDeleting, setBatchDeleting] = useState(false);
@@ -131,7 +132,7 @@ export default function SuppliersPage() {
 
       const searchParams = buildPageParams({
         page,
-        perPage: PAGE_SIZE,
+        perPage: pageSize,
         q: debouncedSearch,
         extra,
       });
@@ -145,7 +146,7 @@ export default function SuppliersPage() {
     } finally {
       setListLoading(false);
     }
-  }, [page, debouncedSearch, statusFilter]);
+  }, [page, pageSize, debouncedSearch, statusFilter]);
 
   useEffect(() => {
     loadReferenceData();
@@ -184,6 +185,11 @@ export default function SuppliersPage() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, statusFilter]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   function toggleColumn(id) {
     const col = SUPPLIER_COLUMNS.find((c) => c.id === id);
@@ -415,8 +421,9 @@ export default function SuppliersPage() {
               page={page}
               totalPages={totalPages}
               total={totalSuppliers}
-              pageSize={PAGE_SIZE}
+              pageSize={pageSize}
               onChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
             />
           </>
         )}
