@@ -145,6 +145,7 @@ function ImportModal({ open, onClose, onImported }) {
       "phone_number",
       "additional_phone",
       "town",
+      "route_name",
       "kra_pin",
       "terms_of_payment",
       "latitude",

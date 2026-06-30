@@ -214,10 +214,27 @@ function ImportModal({ open, onClose, onImported }) {
     const body = {
       product_code: String(row.product_code ?? "").trim(),
       product_name: String(row.product_name ?? "").trim(),
-      subcategory_id: Number(row.subcategory_id),
-      unit_id: Number(row.unit_id),
-      unit_price: Number(row.unit_price),
+      unit_price: Number(row.unit_price ?? 0),
     };
+
+    const subcategoryId = Number(row.subcategory_id);
+    if (Number.isFinite(subcategoryId) && subcategoryId > 0) {
+      body.subcategory_id = subcategoryId;
+    } else {
+      const subcategoryName = String(row.subcategory_name ?? "").trim();
+      if (subcategoryName) body.subcategory_name = subcategoryName;
+      const categoryName = String(row.category_name ?? "").trim();
+      if (categoryName) body.category_name = categoryName;
+    }
+
+    const unitId = Number(row.unit_id);
+    if (Number.isFinite(unitId) && unitId > 0) {
+      body.unit_id = unitId;
+    } else {
+      const measureName = String(row.measure_name ?? "").trim();
+      if (measureName) body.measure_name = measureName;
+    }
+
     const optional = [
       "last_cost_price",
       "discount_type",
@@ -229,6 +246,8 @@ function ImportModal({ open, onClose, onImported }) {
       "reorder_point",
       "supplier_id",
       "vat_id",
+      "supplier_name",
+      "vat_code",
     ];
     for (const key of optional) {
       const val = row[key];
@@ -238,6 +257,14 @@ function ImportModal({ open, onClose, onImported }) {
     if (sell === "true" || sell === "1" || sell === "yes") body.sell_on_retail = true;
     if (sell === "false" || sell === "0" || sell === "no") body.sell_on_retail = false;
     return body;
+  }
+
+  function hasResolvedSubcategory(body) {
+    return (Number(body.subcategory_id) > 0) || Boolean(body.subcategory_name);
+  }
+
+  function hasResolvedUnit(body) {
+    return (Number(body.unit_id) > 0) || Boolean(body.measure_name);
   }
 
   async function handleFile(e) {
@@ -255,7 +282,7 @@ function ImportModal({ open, onClose, onImported }) {
       for (const row of rows) {
         if (!row.product_code && !row.product_name) continue;
         const body = normalizeRow(row);
-        if (!body.product_code || !body.product_name || !body.subcategory_id || !body.unit_id) {
+        if (!body.product_code || !body.product_name || !hasResolvedSubcategory(body) || !hasResolvedUnit(body)) {
           throw new Error(`Row "${row.product_code || row.product_name}" is missing required fields.`);
         }
         normalizedRows.push(body);
