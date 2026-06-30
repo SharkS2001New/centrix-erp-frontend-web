@@ -5,6 +5,13 @@ import { getToken } from "@/lib/auth-storage";
 import { apiFetchCredentials } from "@/lib/auth-config";
 import { apiBaseOrigin, resolveCustomerMediaUrl, resolveProtectedFileUrl } from "@/lib/api";
 
+function isDisplayableImageBlob(blob) {
+  if (!blob || blob.size <= 0) return false;
+  if (blob.type.startsWith("image/")) return true;
+  // Some PHP/file servers return octet-stream for JPEG uploads.
+  return blob.type === "" || blob.type === "application/octet-stream";
+}
+
 export function EntityPhotoDisplay({
   fileUrl,
   imageUrl,
@@ -38,12 +45,12 @@ export function EntityPhotoDisplay({
 
       for (const url of uniqueUrls) {
         try {
-          const headers = { Accept: "image/*" };
+          const headers = { Accept: "image/*,*/*" };
           if (token) headers.Authorization = `Bearer ${token}`;
           const res = await fetch(url, { headers, credentials: apiFetchCredentials() });
           if (!res.ok) continue;
           const blob = await res.blob();
-          if (!blob.type.startsWith("image/")) continue;
+          if (!isDisplayableImageBlob(blob)) continue;
           objectUrl = URL.createObjectURL(blob);
           setSrc(objectUrl);
           return;

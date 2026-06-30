@@ -77,6 +77,7 @@ function AttendanceLocationBlock({ latitude, longitude, address, photoFileUrl, l
                 ? fieldAttendancePhotoFileUrl(sessionId, photoKind, variant)
                 : photoFileUrl
             }
+            imageUrl={photoFileUrl}
             alt={label}
             className="max-h-48 w-full object-cover"
             placeholderClassName="flex h-24 items-center justify-center px-2 text-center text-xs text-slate-400"
