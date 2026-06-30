@@ -159,7 +159,9 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     [loading, messages, pendingAction, formValues, applyChatResponse, workspaceId, pathname],
   );
 
-  sendRef.current = send;
+  useEffect(() => {
+    sendRef.current = send;
+  }, [send]);
 
   useEffect(() => {
     if (!canUse) return undefined;

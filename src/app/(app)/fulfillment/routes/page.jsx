@@ -305,6 +305,9 @@ export default function RoutesPage() {
             onImported={loadData}
             importPage="routes"
           />
+          <CatalogListExport
+            title="Routes"
+            filename="routes"
             apiPath="/routes"
             columns={ROUTE_EXPORT_COLUMNS}
             totalCount={filtered.length}
