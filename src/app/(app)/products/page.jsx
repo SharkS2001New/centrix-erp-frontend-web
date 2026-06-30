@@ -887,7 +887,6 @@ export default function ProductsPage() {
                       selectionEnabled={selectionEnabled}
                       selected={selected}
                       onToggle={toggleOne}
-                      showCategoryHeader={showCategoryHeaders}
                       isCollapsed={isCollapsed}
                       onToggleSection={toggleSection}
                       visibleColumns={visibleColumns}

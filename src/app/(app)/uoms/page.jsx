@@ -35,6 +35,14 @@ import { CatalogDataImportButton, filterNonEmptyImportRows } from "@/components/
 import { UOM_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  batchDeleteWithConfirm,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 
 const PACK_FILTER_OPTIONS = [
   { value: "all", label: "All units" },
@@ -142,6 +150,16 @@ export default function UomsPage() {
   const [drawerMode, setDrawerMode] = useState("create");
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   const loadData = useCallback(async () => {
     try {
@@ -189,6 +207,11 @@ export default function UomsPage() {
       return true;
     });
   }, [uoms, search, typeFilter, packFilter]);
+
+  const pageRowIds = useMemo(() => filtered.map((u) => u.id), [filtered]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const uomById = useMemo(() => new Map(filtered.map((u) => [String(u.id), u])), [filtered]);
 
   const formTitle = drawerMode === "create" ? "Add UOM" : "Edit UOM";
   const formFactor = uomConversionFactor(form.conversion_factor);
@@ -295,6 +318,27 @@ export default function UomsPage() {
     }
   }
 
+  async function deleteSelectedUoms() {
+    setBatchDeleting(true);
+    try {
+      await batchDeleteWithConfirm({
+        confirm,
+        selectedIds,
+        entityName: "unit",
+        deleteItem: async (id) => {
+          await apiRequest(`/uoms/${id}`, { method: "DELETE" });
+        },
+        clearSelection,
+        reload: loadData,
+        notifySuccess,
+        notifyError,
+        labelForId: (id) => uomById.get(String(id))?.full_name ?? id,
+      });
+    } finally {
+      setBatchDeleting(false);
+    }
+  }
+
   return (
     <CatalogPageShell
       title="Units of measure"
@@ -358,6 +402,11 @@ export default function UomsPage() {
             <table className="w-full min-w-[640px] border-collapse text-sm">
               <thead>
                 <tr className={TABLE_HEAD_ROW_CLASS}>
+                  <TableSelectAllHeader
+                    checked={allOnPageSelected}
+                    indeterminate={someOnPageSelected}
+                    onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                  />
                   <th className="px-4 py-2.5">Hierarchy</th>
                   <th className="px-4 py-2.5">Example stock</th>
                   <th className="px-4 py-2.5">Type</th>
@@ -369,7 +418,7 @@ export default function UomsPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                    <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
                       No units match your filters.
                     </td>
                   </tr>
@@ -381,6 +430,11 @@ export default function UomsPage() {
                         key={uom.id}
                         className={TABLE_BODY_ROW_CLASS}
                       >
+                        <TableRowSelectCell
+                          checked={selectedIds.has(String(uom.id))}
+                          onChange={() => toggleOne(uom.id)}
+                          label={`Select ${uom.full_name}`}
+                        />
                         <td className="px-4 py-3 text-slate-700">
                           <span className="font-medium text-slate-900">{uomHierarchyChain(uom)}</span>
                           {Number(uom.conversion_factor ?? 1) > 1 ? (

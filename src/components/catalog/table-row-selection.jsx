@@ -84,6 +84,50 @@ export async function runSequentialDeletes({ ids, deleteItem }) {
   return { succeeded, failed };
 }
 
+/**
+ * Confirm once, delete each selected id, notify summary, clear selection, reload.
+ */
+export async function batchDeleteWithConfirm({
+  confirm,
+  selectedIds,
+  entityName,
+  deleteItem,
+  clearSelection,
+  reload,
+  notifySuccess,
+  notifyError,
+  labelForId,
+}) {
+  const ids = [...selectedIds];
+  if (ids.length === 0) return;
+
+  const ok = await confirm({
+    title: `Delete selected ${entityName}`,
+    message: `Delete ${ids.length} ${entityName}${ids.length === 1 ? "" : "s"}? This cannot be undone.`,
+    confirmLabel: "Delete",
+    destructive: true,
+  });
+  if (!ok) return;
+
+  const { succeeded, failed } = await runSequentialDeletes({ ids, deleteItem });
+  clearSelection();
+  await reload();
+
+  if (failed.length === 0) {
+    notifySuccess(`Deleted ${succeeded.length} ${entityName}${succeeded.length === 1 ? "" : "s"}`);
+    return;
+  }
+  if (succeeded.length === 0) {
+    notifyError(failed[0]?.message ?? "Delete failed");
+    return;
+  }
+  const names = failed
+    .slice(0, 3)
+    .map((f) => labelForId?.(f.id) ?? f.id)
+    .join(", ");
+  notifyError(`Deleted ${succeeded.length}; ${failed.length} failed${names ? ` (${names})` : ""}`);
+}
+
 export function TableSelectAllHeader({ checked, indeterminate = false, onChange, label }) {
   const ref = useRef(null);
 
