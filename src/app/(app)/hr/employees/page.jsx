@@ -25,6 +25,14 @@ import {
   formatWorkShiftLabel,
 } from "@/components/hr/hr-shared";
 import { EmployeeImportExport } from "@/components/hr/employee-import-export";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  runSequentialDeletes,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
@@ -46,6 +54,16 @@ export default function HrEmployeesPage() {
   const [deptFilter, setDeptFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   const loadReferenceData = useCallback(async () => {
     try {
@@ -119,6 +137,9 @@ export default function HrEmployeesPage() {
   }, [debouncedSearch, deptFilter, statusFilter]);
 
   const deptById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
+  const pageRowIds = useMemo(() => employees.map((e) => e.id), [employees]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
 
   const stats = useMemo(() => {
     if (employeeStats) {
@@ -158,6 +179,54 @@ export default function HrEmployeesPage() {
       notifySuccess(`"${name}" deleted`);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Delete failed");
+    }
+  }
+
+  async function deleteSelectedEmployees() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+
+    const ok = await confirm({
+      title: "Delete selected employees",
+      message: `Delete ${ids.length} employee${ids.length === 1 ? "" : "s"}? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBatchDeleting(true);
+    try {
+      const byId = new Map(employees.map((row) => [String(row.id), row]));
+      const { succeeded, failed } = await runSequentialDeletes({
+        ids,
+        deleteItem: async (id) => {
+          await apiRequest(`/employees/${id}`, { method: "DELETE" });
+        },
+      });
+
+      clearSelection();
+      await reloadAll();
+
+      if (failed.length === 0) {
+        notifySuccess(
+          `Deleted ${succeeded.length} employee${succeeded.length === 1 ? "" : "s"}`,
+        );
+      } else if (succeeded.length === 0) {
+        notifyError(failed[0]?.message ?? "Delete failed");
+      } else {
+        const names = failed
+          .slice(0, 3)
+          .map((f) => {
+            const row = byId.get(String(f.id));
+            return row ? composeEmployeeDisplayName(row) : f.id;
+          })
+          .join(", ");
+        notifyError(
+          `Deleted ${succeeded.length}; ${failed.length} failed${names ? ` (${names})` : ""}`,
+        );
+      }
+    } finally {
+      setBatchDeleting(false);
     }
   }
 
@@ -226,6 +295,11 @@ export default function HrEmployeesPage() {
               <table className="w-full min-w-[960px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
+                    <TableSelectAllHeader
+                      checked={allOnPageSelected}
+                      indeterminate={someOnPageSelected}
+                      onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                    />
                     <th className="px-4 py-2.5">Employee</th>
                     <th className="px-4 py-2.5">Department</th>
                     <th className="px-4 py-2.5">Shift</th>
@@ -239,7 +313,7 @@ export default function HrEmployeesPage() {
                 <tbody>
                   {employees.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
                         No employees found.
                       </td>
                     </tr>
@@ -249,6 +323,11 @@ export default function HrEmployeesPage() {
                         key={employee.id}
                         className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
                       >
+                        <TableRowSelectCell
+                          checked={selectedIds.has(String(employee.id))}
+                          onChange={() => toggleOne(employee.id)}
+                          label={`Select ${composeEmployeeDisplayName(employee)}`}
+                        />
                         <td className="px-4 py-3">
                           <Link
                             href={`/hr/employees/${employee.id}`}
@@ -320,6 +399,14 @@ export default function HrEmployeesPage() {
           </>
         )}
       </div>
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <BatchDeleteButton
+          count={selectedCount}
+          busy={batchDeleting}
+          onClick={() => void deleteSelectedEmployees()}
+        />
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

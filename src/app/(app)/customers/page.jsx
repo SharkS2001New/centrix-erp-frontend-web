@@ -21,6 +21,14 @@ import {
   formatKesCompact,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  runSequentialDeletes,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
@@ -290,6 +298,16 @@ export default function CustomersPage() {
   const [page, setPage] = useState(1);
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   useEffect(() => {
     setVisibleColumnIds(readStoredColumnIds());
@@ -395,6 +413,9 @@ export default function CustomersPage() {
 
   const safePage = Math.min(page, totalPages);
   const pageSlice = enriched;
+  const pageRowIds = useMemo(() => pageSlice.map((c) => c.customer_num), [pageSlice]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
 
   useEffect(() => {
     setPage(1);
@@ -431,6 +452,51 @@ export default function CustomersPage() {
       notifySuccess(`"${customer.customer_name}" deleted`);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Delete failed");
+    }
+  }
+
+  async function deleteSelectedCustomers() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+
+    const ok = await confirm({
+      title: "Delete selected customers",
+      message: `Delete ${ids.length} customer${ids.length === 1 ? "" : "s"}? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBatchDeleting(true);
+    try {
+      const byId = new Map(pageSlice.map((c) => [String(c.customer_num), c]));
+      const { succeeded, failed } = await runSequentialDeletes({
+        ids,
+        deleteItem: async (customerNum) => {
+          await apiRequest(`/customers/${customerNum}`, { method: "DELETE" });
+        },
+      });
+
+      clearSelection();
+      await reloadAll();
+
+      if (failed.length === 0) {
+        notifySuccess(
+          `Deleted ${succeeded.length} customer${succeeded.length === 1 ? "" : "s"}`,
+        );
+      } else if (succeeded.length === 0) {
+        notifyError(failed[0]?.message ?? "Delete failed");
+      } else {
+        const names = failed
+          .slice(0, 3)
+          .map((f) => byId.get(String(f.id))?.customer_name ?? f.id)
+          .join(", ");
+        notifyError(
+          `Deleted ${succeeded.length}; ${failed.length} failed${names ? ` (${names})` : ""}`,
+        );
+      }
+    } finally {
+      setBatchDeleting(false);
     }
   }
 
@@ -518,6 +584,11 @@ export default function CustomersPage() {
               <table className="w-full min-w-[960px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
+                    <TableSelectAllHeader
+                      checked={allOnPageSelected}
+                      indeterminate={someOnPageSelected}
+                      onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                    />
                     {visibleColumns.map((col) => (
                       <th
                         key={col.id}
@@ -533,7 +604,7 @@ export default function CustomersPage() {
                   {pageSlice.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={visibleColumns.length}
+                        colSpan={visibleColumns.length + 1}
                         className="px-4 py-12 text-center text-slate-500"
                       >
                         No customers found.
@@ -545,6 +616,11 @@ export default function CustomersPage() {
                         key={customer.customer_num}
                         className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
                       >
+                        <TableRowSelectCell
+                          checked={selectedIds.has(String(customer.customer_num))}
+                          onChange={() => toggleOne(customer.customer_num)}
+                          label={`Select ${customer.customer_name}`}
+                        />
                         {visibleColumns.map((col) => (
                           <td
                             key={col.id}
@@ -572,6 +648,14 @@ export default function CustomersPage() {
           </>
         )}
       </div>
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <BatchDeleteButton
+          count={selectedCount}
+          busy={batchDeleting}
+          onClick={() => void deleteSelectedCustomers()}
+        />
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

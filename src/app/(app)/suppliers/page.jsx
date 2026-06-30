@@ -32,6 +32,14 @@ import {
 } from "@/components/suppliers/suppliers-columns";
 import { SupplierImportExport } from "@/components/suppliers/supplier-import-export";
 import { OtherContactsModal } from "@/components/suppliers/other-contacts-modal";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  runSequentialDeletes,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
@@ -64,6 +72,16 @@ export default function SuppliersPage() {
   const [page, setPage] = useState(1);
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   useEffect(() => {
     setVisibleColumnIds(readStoredColumnIds());
@@ -159,6 +177,9 @@ export default function SuppliersPage() {
     () => suppliers.map((s) => enrichSupplier(s, userById)),
     [suppliers, userById],
   );
+  const pageRowIds = useMemo(() => enriched.map((row) => row.id), [enriched]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
 
   useEffect(() => {
     setPage(1);
@@ -191,6 +212,51 @@ export default function SuppliersPage() {
       notifySuccess(`"${row.supplier_name}" removed`);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Delete failed");
+    }
+  }
+
+  async function deleteSelectedSuppliers() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+
+    const ok = await confirm({
+      title: "Delete selected suppliers",
+      message: `Remove ${ids.length} supplier${ids.length === 1 ? "" : "s"}? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBatchDeleting(true);
+    try {
+      const byId = new Map(enriched.map((row) => [String(row.id), row]));
+      const { succeeded, failed } = await runSequentialDeletes({
+        ids,
+        deleteItem: async (id) => {
+          await apiRequest(`/suppliers/${id}`, { method: "DELETE" });
+        },
+      });
+
+      clearSelection();
+      await reloadAll();
+
+      if (failed.length === 0) {
+        notifySuccess(
+          `Removed ${succeeded.length} supplier${succeeded.length === 1 ? "" : "s"}`,
+        );
+      } else if (succeeded.length === 0) {
+        notifyError(failed[0]?.message ?? "Delete failed");
+      } else {
+        const names = failed
+          .slice(0, 3)
+          .map((f) => byId.get(String(f.id))?.supplier_name ?? f.id)
+          .join(", ");
+        notifyError(
+          `Removed ${succeeded.length}; ${failed.length} failed${names ? ` (${names})` : ""}`,
+        );
+      }
+    } finally {
+      setBatchDeleting(false);
     }
   }
 
@@ -298,6 +364,11 @@ export default function SuppliersPage() {
               <table className="w-full min-w-[960px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
+                    <TableSelectAllHeader
+                      checked={allOnPageSelected}
+                      indeterminate={someOnPageSelected}
+                      onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                    />
                     {visibleColumns.map((col) => (
                       <th key={col.id} className={`px-4 py-2.5 ${alignClass(col.align)}`}>
                         {col.label}
@@ -309,7 +380,7 @@ export default function SuppliersPage() {
                   {enriched.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={visibleColumns.length}
+                        colSpan={visibleColumns.length + 1}
                         className="px-4 py-12 text-center text-slate-500"
                       >
                         No suppliers found.
@@ -321,6 +392,11 @@ export default function SuppliersPage() {
                         key={row.id}
                         className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
                       >
+                        <TableRowSelectCell
+                          checked={selectedIds.has(String(row.id))}
+                          onChange={() => toggleOne(row.id)}
+                          label={`Select ${row.supplier_name}`}
+                        />
                         {visibleColumns.map((col) => (
                           <td
                             key={col.id}
@@ -352,6 +428,14 @@ export default function SuppliersPage() {
         open={contactsModal != null}
         onClose={() => setContactsModal(null)}
       />
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <BatchDeleteButton
+          count={selectedCount}
+          busy={batchDeleting}
+          onClick={() => void deleteSelectedSuppliers()}
+        />
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

@@ -2,7 +2,8 @@
 
 /** @typedef {{ label: string, percent?: number | null }} ImportProgressState */
 
-export const IMPORT_BATCH_SIZE = 250;
+/** Must stay within the API inline import row limit (stored in background_tasks, not local disk). */
+export const IMPORT_BATCH_SIZE = 200;
 
 /**
  * @param {{

@@ -37,6 +37,17 @@ import { isKraDeviceEnabled } from "@/lib/finance-settings";
 import { productScopeLabel, isMultiBranchCatalog, defaultProductBranchId } from "@/lib/catalog-scope";
 import { useAuth } from "@/contexts/auth-context";
 import { loadReferenceDataPhased, fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  TableTreeCornerIcon,
+  runSequentialDeletes,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
+import { useConfirm } from "@/lib/use-confirm";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 const PAGE_SIZE = 10;
 const COLUMN_STORAGE_KEY = "centrix-erp-products-visible-columns";
@@ -225,11 +236,11 @@ function groupProducts(products) {
 
 export default function ProductsPage() {
   const router = useAppRouter();
+  const confirm = useConfirm();
   const { capabilities, user } = useAuth();
   const multiBranch = isMultiBranchCatalog(capabilities);
-  const [kraSelectMode, setKraSelectMode] = useState(false);
   const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
-  const selectionEnabled = kraDeviceEnabled && kraSelectMode;
+  const selectionEnabled = true;
   const [products, setProducts] = useState([]);
   const [totalProducts, setTotalProducts] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -262,7 +273,16 @@ export default function ProductsPage() {
   const [pricingFilter, setPricingFilter] = useState("all");
   const [activeFilter, setActiveFilter] = useState("all");
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState(new Set());
+  const {
+    selectedIds: selected,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
+  const [batchDeleting, setBatchDeleting] = useState(false);
   const [kraUploadBusy, setKraUploadBusy] = useState(false);
   const [kraUploadMessage, setKraUploadMessage] = useState(null);
   const [kraUploadError, setKraUploadError] = useState(null);
@@ -306,7 +326,7 @@ export default function ProductsPage() {
     [visibleColumnIds],
   );
 
-  const tableColCount = (selectionEnabled ? 1 : 0) + visibleColumns.length;
+  const tableColCount = 1 + visibleColumns.length;
 
   const loadReferenceData = useCallback(async () => {
     setReferenceWarning(null);
@@ -547,6 +567,9 @@ export default function ProductsPage() {
   const pageSlice = enriched;
   const grouped = useMemo(() => groupProducts(pageSlice), [pageSlice]);
   const showCategoryHeaders = categoryFilter === "all";
+  const pageRowIds = useMemo(() => pageSlice.map((p) => p.product_code), [pageSlice]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
 
   const subCategoryOptions = useMemo(() => {
     if (categoryFilter === "all") return subCategories;
@@ -556,20 +579,6 @@ export default function ProductsPage() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, categoryFilter, subCategoryFilter, stockFilter, pricingFilter, activeFilter, effectiveStockBranchId]);
-
-  function toggleAll(checked) {
-    if (checked) setSelected(new Set(pageSlice.map((p) => p.product_code)));
-    else setSelected(new Set());
-  }
-
-  function toggleOne(code) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
-    });
-  }
 
   function toggleSection(key) {
     setCollapsed((prev) => {
@@ -601,21 +610,51 @@ export default function ProductsPage() {
     setVisibleColumnIds(defaultVisibleColumnIds());
   }
 
-  function enterKraSelectMode() {
-    setKraSelectMode(true);
-    setKraUploadMessage(null);
-    setKraUploadError(null);
-  }
-
-  function exitKraSelectMode() {
-    setKraSelectMode(false);
-    setSelected(new Set());
-    setKraUploadMessage(null);
-    setKraUploadError(null);
-  }
-
   function clearKraSelection() {
-    setSelected(new Set());
+    clearSelection();
+  }
+
+  async function deleteSelectedProducts() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+
+    const ok = await confirm({
+      title: "Delete selected products",
+      message: `Delete ${ids.length} product${ids.length === 1 ? "" : "s"}? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBatchDeleting(true);
+    try {
+      const byCode = new Map(pageSlice.map((p) => [String(p.product_code), p]));
+      const { succeeded, failed } = await runSequentialDeletes({
+        ids,
+        deleteItem: async (productCode) => {
+          await apiRequest(`/products/${encodeURIComponent(productCode)}`, { method: "DELETE" });
+        },
+      });
+
+      clearSelection();
+      await reloadAll();
+
+      if (failed.length === 0) {
+        notifySuccess(`Deleted ${succeeded.length} product${succeeded.length === 1 ? "" : "s"}`);
+      } else if (succeeded.length === 0) {
+        notifyError(failed[0]?.message ?? "Delete failed");
+      } else {
+        const names = failed
+          .slice(0, 3)
+          .map((f) => byCode.get(String(f.id))?.product_name ?? f.id)
+          .join(", ");
+        notifyError(
+          `Deleted ${succeeded.length}; ${failed.length} failed${names ? ` (${names})` : ""}`,
+        );
+      }
+    } finally {
+      setBatchDeleting(false);
+    }
   }
 
   async function handleKraUploadSelected() {
@@ -662,9 +701,6 @@ export default function ProductsPage() {
     }
   }
 
-  const allOnPageSelected =
-    pageSlice.length > 0 && pageSlice.every((p) => selected.has(p.product_code));
-
   return (
     <div className="theme-workspace min-h-full">
       {/* Header */}
@@ -690,19 +726,13 @@ export default function ProductsPage() {
       </div>
 
       {kraDeviceEnabled ? (
-        <div className={kraSelectMode ? "mt-4" : "mt-6"}>
+        <div className="mt-6">
           <KraProductUploadToolbar
             enabled={kraDeviceEnabled}
-            selectMode={kraSelectMode}
-            selectedCount={selected.size}
             filteredCount={totalProducts}
             busy={kraUploadBusy}
             message={kraUploadMessage}
             error={kraUploadError}
-            onEnterSelectMode={enterKraSelectMode}
-            onExitSelectMode={exitKraSelectMode}
-            onClearSelection={clearKraSelection}
-            onUploadSelected={handleKraUploadSelected}
             onUploadAll={handleKraUploadAll}
           />
         </div>

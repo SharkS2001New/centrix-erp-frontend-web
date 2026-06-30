@@ -17,8 +17,27 @@ import {
 import { downloadExcelFromRows, readExcelFile } from "@/lib/spreadsheet";
 import { reportPrintedAt } from "@/lib/reports/export";
 import { ImportExportIcons, parseSpreadsheet, downloadBlob } from "@/components/catalog/catalog-import-export-shared";
+import { mapImportHeaders } from "@/components/catalog/catalog-data-import";
 import { canUseAdvancedDataImport } from "@/lib/advanced-data-import";
 import { useAuth } from "@/contexts/auth-context";
+
+/** Centrix customer import columns (name-based linking; IDs also accepted). */
+const CUSTOMER_IMPORT_COLUMNS = [
+  { key: "customer_name", label: "Name" },
+  { key: "customer_type", label: "Type" },
+  { key: "phone_number", label: "Phone" },
+  { key: "additional_phone", label: "Alt. phone" },
+  { key: "town", label: "Town" },
+  { key: "route_name", label: "Route" },
+  { key: "route_id", label: "Route ID" },
+  { key: "branch_id", label: "Branch ID" },
+  { key: "branch_name", label: "Branch" },
+  { key: "kra_pin", label: "KRA PIN" },
+  { key: "terms_of_payment", label: "Payment terms" },
+  { key: "credit_limit", label: "Credit limit" },
+  { key: "latitude", label: "Latitude" },
+  { key: "longitude", label: "Longitude" },
+];
 
 const SAMPLE_HEADERS = [
   "customer_name",
@@ -172,7 +191,7 @@ function ImportModal({ open, onClose, onImported }) {
     setImportProgress(null);
     setImporting(true);
     try {
-      const rows = await parseSpreadsheet(file);
+      const rows = mapImportHeaders(await parseSpreadsheet(file), CUSTOMER_IMPORT_COLUMNS);
       if (!rows.length) throw new Error("The file has no data rows.");
 
       const { rows: normalizedRows, failures: prepFailures } = prepareImportRows({
@@ -180,7 +199,15 @@ function ImportModal({ open, onClose, onImported }) {
         requiredKeys: ["customer_name"],
         mapRow: (row) => normalizeRow(row),
       });
-      if (!normalizedRows.length && !prepFailures.length) {
+      if (!normalizedRows.length) {
+        const failureSummary = summarizeImportFailures(prepFailures);
+        if (prepFailures.length) {
+          throw new Error(
+            failureSummary
+              ? `No rows could be imported.\n${failureSummary}`
+              : "No rows could be imported.",
+          );
+        }
         throw new Error("The file has no valid customer rows.");
       }
 
