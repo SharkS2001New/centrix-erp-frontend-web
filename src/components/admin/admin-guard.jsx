@@ -6,13 +6,14 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import {
   canAccessOrgAdminSettings,
+  canAccessTenantOrganizationSettings,
   isAdministrationModuleEnabled,
   shouldHideOrgAdminFromPlatformSuperAdmin,
 } from "@/lib/admin-scope";
 import { buildAccessContext, resolveHomePath } from "@/lib/access-control";
 import { hasAuthSession, readCachedAuthSnapshot } from "@/lib/auth-storage";
 
-export function AdminGuard({ children, strict = false }) {
+export function AdminGuard({ children, strict = false, settingsOnly = false }) {
   const { user, organization, capabilities, loading, hasPermission, isSuperAdmin } = useAuth();
   const router = useRouter();
 
@@ -40,6 +41,13 @@ export function AdminGuard({ children, strict = false }) {
   );
 
   const isAdmin = effectiveUser?.is_admin || effectiveCapabilities?.is_admin;
+  const canAccessSettings = canAccessTenantOrganizationSettings({
+    organization: effectiveOrganization,
+    isSuperAdmin,
+    hasPermission: accessCtx.hasPermission,
+    user: effectiveUser,
+    capabilities: effectiveCapabilities,
+  });
   const canAccess = platformShellBlock
     ? false
     : strict
@@ -55,19 +63,22 @@ export function AdminGuard({ children, strict = false }) {
           capabilities: effectiveCapabilities,
         });
 
+  const canEnter = settingsOnly ? canAccessSettings : canAccess;
+
   useEffect(() => {
     if (loading && !sessionReady) return;
-    if (!canAccess && !platformShellBlock && administrationEnabled) {
+    if (!canEnter && !platformShellBlock && (administrationEnabled || settingsOnly)) {
       router.replace(resolveHomePath(accessCtx));
     }
   }, [
     accessCtx,
     administrationEnabled,
-    canAccess,
+    canEnter,
     loading,
     platformShellBlock,
     router,
     sessionReady,
+    settingsOnly,
   ]);
 
   if (loading && !sessionReady) {
@@ -105,7 +116,7 @@ export function AdminGuard({ children, strict = false }) {
     );
   }
 
-  if (!administrationEnabled) {
+  if (!administrationEnabled && !settingsOnly) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950">
         <h2 className="font-medium">Administration is not available</h2>
@@ -120,7 +131,7 @@ export function AdminGuard({ children, strict = false }) {
     );
   }
 
-  if (!canAccess) return null;
+  if (!canEnter) return null;
 
   return <>{children}</>;
 }

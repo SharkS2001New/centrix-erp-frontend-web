@@ -11,7 +11,7 @@ export default function AdminSettingsPage() {
   const { capabilities, refreshCapabilities } = useAuth();
 
   return (
-    <AdminGuard>
+    <AdminGuard settingsOnly>
       <SettingsApiProvider apiPrefix="/erp/settings">
         <OrganizationSettingsContent
           capabilities={capabilities}

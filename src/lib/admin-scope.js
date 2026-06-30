@@ -37,6 +37,23 @@ const TRADING_MODULE_KEYS = [
   "distribution",
 ];
 
+const OPERATIONAL_MODULE_KEYS = [
+  "admin",
+  "sales",
+  "inventory",
+  "customers_suppliers",
+  "accounting",
+  "payments",
+  "hr_payroll",
+  "distribution",
+];
+
+/** Whether the tenant has any operational ERP module (can print documents, run sales, etc.). */
+export function hasOperationalModule(capabilities) {
+  const modules = capabilities?.modules ?? {};
+  return OPERATIONAL_MODULE_KEYS.some((key) => Boolean(modules[key]));
+}
+
 /** Whether the tenant Administration workspace/module is enabled for this organization. */
 export function isAdministrationModuleEnabled(capabilities) {
   if (Boolean(capabilities?.modules?.admin)) {
@@ -44,6 +61,26 @@ export function isAdministrationModuleEnabled(capabilities) {
   }
   const modules = capabilities?.modules ?? {};
   return TRADING_MODULE_KEYS.some((key) => Boolean(modules[key]));
+}
+
+/** Organization preferences (printouts, sales, security) without the full Administration workspace. */
+export function canAccessTenantOrganizationSettings({
+  organization,
+  isSuperAdmin,
+  hasPermission,
+  user,
+  capabilities,
+}) {
+  if (shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin })) {
+    return false;
+  }
+  if (!hasOperationalModule(capabilities)) {
+    return false;
+  }
+  if (isOrgAdministrator(user, capabilities)) {
+    return true;
+  }
+  return hasPermission(P.admin.manage);
 }
 
 export function isOrgAdministrator(user, capabilities) {

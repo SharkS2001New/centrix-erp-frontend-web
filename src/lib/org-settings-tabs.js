@@ -1,3 +1,4 @@
+import { hasOperationalModule } from "@/lib/admin-scope";
 import {
   isPlatformAiEnabled,
   isPlatformKraIntegrationEnabled,
@@ -8,7 +9,16 @@ import {
 /** Map organization settings tabs to ERP module keys (platform super-admin controlled). */
 export const ORG_SETTINGS_TAB_MODULES = {
   general: ["admin"],
-  printouts: ["admin"],
+  printouts: [
+    "admin",
+    "sales",
+    "inventory",
+    "customers_suppliers",
+    "accounting",
+    "payments",
+    "hr_payroll",
+    "distribution",
+  ],
   sales: ["sales"],
   mobile: ["sales.mobile"],
   distribution: ["distribution"],
@@ -39,7 +49,6 @@ function moduleEnabled(capabilities, moduleKey) {
 export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged = false, tenantSelfService = false } = {}) {
   switch (tabId) {
     case "general":
-    case "printouts":
     case "notifications":
     case "security":
       if (tenantSelfService && TENANT_CORE_SETTINGS_TABS.has(tabId)) {
@@ -49,6 +58,9 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
         return true;
       }
       return moduleEnabled(capabilities, "admin");
+
+    case "printouts":
+      return hasOperationalModule(capabilities);
 
     case "sales":
       return moduleEnabled(capabilities, "sales");
