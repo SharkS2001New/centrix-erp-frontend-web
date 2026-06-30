@@ -8,7 +8,6 @@ export const BACKOFFICE_FINANCE_REPORT_SLUGS = [
   "profit-loss",
   "top-debtors",
   "ar-aging",
-  "expenses",
   "invoice-payments",
   "kra-receipts",
 ];

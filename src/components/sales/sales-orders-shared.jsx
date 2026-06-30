@@ -319,6 +319,8 @@ export function buildOrderContextMenuItems({
   workflow,
   busy,
   onView,
+  onEdit,
+  canEdit = false,
   onPrintThermal,
   onPrintA4,
   onAdvance,
@@ -328,6 +330,15 @@ export function buildOrderContextMenuItems({
   const items = [
     { key: "view", label: "View Full Order Summary", icon: "view", onClick: onView },
   ];
+  if (canEdit && onEdit && sale?.status !== "cancelled") {
+    items.push({
+      key: "edit",
+      label: "Edit Order",
+      icon: "edit",
+      disabled: busy,
+      onClick: onEdit,
+    });
+  }
   if (includePrint) {
     items.push({
       key: "print-thermal",
@@ -390,6 +401,14 @@ function ContextMenuIcon({ name }) {
       <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
         <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
         <path d="M6 14h12v8H6z" />
+      </svg>
+    );
+  }
+  if (name === "edit") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
       </svg>
     );
   }

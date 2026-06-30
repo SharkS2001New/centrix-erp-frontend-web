@@ -53,6 +53,7 @@ export const WORKSPACE_SECTION_IDS = {
     "after_sales",
     "promotions",
     "customers",
+    "expenses",
     "inventory",
     "stock_movements",
     "suppliers",
@@ -60,7 +61,7 @@ export const WORKSPACE_SECTION_IDS = {
     "reports",
   ],
   admin: ["admin_dashboard", "admin_organization", "admin_users", "admin_finance_tax", "admin_settings"],
-  accounting: ["accounting", "org_preferences", "reports"],
+  accounting: ["accounting", "expenses", "org_preferences", "reports"],
   hr: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "org_preferences", "reports"],
   distribution: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "org_preferences", "reports"],
 };
@@ -68,7 +69,7 @@ export const WORKSPACE_SECTION_IDS = {
 /** Sidebar zone headers for workspaces that still use grouped sections. */
 export const WORKSPACE_NAV_ZONES = {
   accounting: [
-    { label: null, sectionIds: ["accounting", "org_preferences", "reports"] },
+    { label: null, sectionIds: ["accounting", "expenses", "org_preferences", "reports"] },
   ],
   hr: [
     { label: null, sectionIds: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "org_preferences", "reports"] },
@@ -141,6 +142,7 @@ export const WORKSPACE_PATH_PREFIXES = {
     "/suppliers",
     "/lpo",
     "/purchases",
+    "/expenses",
     "/routes",
     "/till-management",
     "/platform",
@@ -239,6 +241,9 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
   }
 
   if (workspaceId === "backoffice") {
+    if (item.href === "/expenses" || item.href?.startsWith("/expenses/")) {
+      return true;
+    }
     return pathBelongsToWorkspace(item.href, "backoffice");
   }
 

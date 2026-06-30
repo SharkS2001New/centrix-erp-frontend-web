@@ -51,6 +51,7 @@ const SALES_DEFAULTS = {
   require_backoffice_till_float: false,
   blind_till_close: false,
   enable_pos_order_edit: false,
+  enable_backoffice_order_edit: true,
   order_document_type: "receipt",
   invoice_valid_days: 7,
   receipt_copies: 1,

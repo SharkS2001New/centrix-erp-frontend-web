@@ -4,11 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   CatalogPageShell,
   Field,
   PaginationBar,
   PrimaryButton,
+  SearchInput,
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
@@ -60,6 +63,7 @@ export function AccountingReportScreen({
   subtitle,
   apiPath,
   showAccountFilter = false,
+  enableSearch = false,
   backHref = "/accounting",
   emptyLabel = "No rows for this filter.",
   intro = null,
@@ -76,6 +80,8 @@ export function AccountingReportScreen({
   const [toDate, setToDate] = useState("");
   const [branchId, setBranchId] = useState("");
   const [accountId, setAccountId] = useState("");
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [branches, setBranches] = useState([]);
 
   useEffect(() => {
@@ -104,11 +110,23 @@ export function AccountingReportScreen({
       if (toDate) searchParams.to_date = toDate;
       if (branchId) searchParams.branch_id = branchId;
       if (accountId) searchParams.account_id = accountId;
+      if (enableSearch && debouncedSearch.trim()) searchParams.q = debouncedSearch.trim();
 
       const res = await apiRequest(apiPath, { searchParams });
-      setRows(res.data ?? []);
+      if (res?.current_page != null || res?.last_page != null || res?.total != null) {
+        const parsed = parsePaginator(res);
+        setRows(parsed.items);
+        setMeta({
+          last_page: parsed.totalPages,
+          total: parsed.total,
+          current_page: parsed.page,
+          per_page: parsed.perPage,
+        });
+      } else {
+        setRows(res.data ?? []);
+        setMeta(res.meta ?? null);
+      }
       setSummary(res.summary ?? null);
-      setMeta(res.meta ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
       setRows([]);
@@ -117,7 +135,11 @@ export function AccountingReportScreen({
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, fromDate, toDate, branchId, accountId]);
+  }, [apiPath, page, fromDate, toDate, branchId, accountId, enableSearch, debouncedSearch]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     loadReport();
@@ -153,11 +175,14 @@ export function AccountingReportScreen({
     if (toDate) searchParams.to_date = toDate;
     if (branchId) searchParams.branch_id = branchId;
     if (accountId) searchParams.account_id = accountId;
+    if (enableSearch && debouncedSearch.trim()) searchParams.q = debouncedSearch.trim();
     return searchParams;
-  }, [accountId, branchId, fromDate, toDate]);
+  }, [accountId, branchId, debouncedSearch, enableSearch, fromDate, toDate]);
 
+  const pageSize = meta?.per_page ?? 50;
   const totalPages = meta?.last_page ?? 1;
   const total = meta?.total ?? rows.length;
+  const showPagination = Boolean(meta) && (totalPages > 1 || total > pageSize);
 
   return (
     <CatalogPageShell
@@ -189,6 +214,14 @@ export function AccountingReportScreen({
           <Link href={backHref} className="text-sm text-[#185FA5] hover:underline">
             ← Accounting
           </Link>
+          {enableSearch ? (
+            <SearchInput
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search entry #, account, description…"
+              className="min-w-[220px] flex-1"
+            />
+          ) : null}
           <Field label="From">
             <input
               type="date"
@@ -320,8 +353,8 @@ export function AccountingReportScreen({
             </table>
           </div>
         )}
-        {meta ? (
-          <PaginationBar page={page} totalPages={totalPages} total={total} pageSize={50} onChange={setPage} />
+        {showPagination ? (
+          <PaginationBar page={page} totalPages={totalPages} total={total} pageSize={pageSize} onChange={setPage} />
         ) : null}
       </div>
     </CatalogPageShell>

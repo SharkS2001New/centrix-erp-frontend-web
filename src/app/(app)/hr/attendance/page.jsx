@@ -18,7 +18,6 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { HrSelectField } from "@/components/hr/hr-crud-page";
 import { HrTimePickerField } from "@/components/hr/hr-time-picker";
-import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 import { FieldRepHrLinkageBanner } from "@/components/hr/field-rep-hr-linkage-banner";
 import {
   composeEmployeeDisplayName,
@@ -33,6 +32,12 @@ import {
 } from "@/lib/hr-settings";
 import { shouldShowMobileFieldAttendance } from "@/lib/sales-settings";
 import MobileFieldAttendanceScreen from "@/components/sales/mobile-field-attendance-screen";
+
+function daysAgoCalendarDate(days) {
+  const today = todayCalendarDate();
+  const ms = Date.parse(`${today}T12:00:00+03:00`) - days * 86_400_000;
+  return calendarDateInTimezone(new Date(ms)) ?? today;
+}
 
 const EMPTY_MANUAL = {
   employee_id: "",
@@ -55,12 +60,15 @@ export default function HrAttendancePage() {
   const canManageSettings = hasPermission(P.hr.manage);
   const companyMobileEnabled = isCompanyMobileAttendanceEnabled(capabilities?.module_settings);
   const fieldAttendanceEnabled = shouldShowMobileFieldAttendance(capabilities);
+  const [tab, setTab] = useState("active");
   const [employees, setEmployees] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [records, setRecords] = useState([]);
   const [fieldRepLinkage, setFieldRepLinkage] = useState(null);
-  const [fieldOpenSessions, setFieldOpenSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [activeLoading, setActiveLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyFromDate, setHistoryFromDate] = useState(() => daysAgoCalendarDate(7));
+  const [historyToDate, setHistoryToDate] = useState(() => todayCalendarDate());
   const [manualOpen, setManualOpen] = useState(false);
   const [manualForm, setManualForm] = useState(EMPTY_MANUAL);
   const [manualSaving, setManualSaving] = useState(false);
@@ -68,15 +76,10 @@ export default function HrAttendancePage() {
   const [editingRecord, setEditingRecord] = useState(null);
   const [dayHint, setDayHint] = useState(null);
 
-  const load = useCallback(async () => {
+  const loadActive = useCallback(async () => {
+    setActiveLoading(true);
     try {
-      const requestDefs = [
-        { key: "employees", promise: apiRequest("/employees", { searchParams: { per_page: 200 } }) },
-        {
-          key: "attendance",
-          promise: apiRequest("/employee-attendance", { searchParams: { per_page: 100 } }),
-        },
-      ];
+      const requestDefs = [];
 
       if (companyMobileEnabled) {
         requestDefs.push({
@@ -99,12 +102,6 @@ export default function HrAttendancePage() {
           key: "fieldRepLinkage",
           promise: apiRequest("/attendance/field-rep-hr-linkage", { searchParams: { days: 30 } }),
         });
-        requestDefs.push({
-          key: "fieldOpenSessions",
-          promise: apiRequest("/attendance/field-sessions", {
-            searchParams: { per_page: 50, open_only: 1 },
-          }),
-        });
       }
 
       const results = await Promise.allSettled(requestDefs.map((item) => item.promise));
@@ -124,28 +121,49 @@ export default function HrAttendancePage() {
         }
 
         const res = result.value;
-        if (key === "employees") setEmployees(res.data ?? []);
-        if (key === "attendance") setRecords(res.data ?? []);
         if (key === "sessions") setSessions(res.data ?? []);
         if (key === "fieldRepLinkage") setFieldRepLinkage(res ?? null);
-        if (key === "fieldOpenSessions") setFieldOpenSessions(res.data ?? []);
       });
 
       if (failures.length === requestDefs.length) {
-        notifyError(failures[0] ?? "Failed to load attendance");
+        notifyError(failures[0] ?? "Failed to load active attendance");
       } else if (failures.length) {
         notifyError(`Some attendance data could not be loaded (${failures.join("; ")}).`);
       }
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : "Failed to load attendance");
+      notifyError(e instanceof Error ? e.message : "Failed to load active attendance");
     } finally {
-      setLoading(false);
+      setActiveLoading(false);
     }
   }, [companyMobileEnabled, fieldAttendanceEnabled]);
 
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const [employeesRes, attendanceRes] = await Promise.all([
+        apiRequest("/employees", { searchParams: { per_page: 200 } }),
+        apiRequest("/employee-attendance", { searchParams: { per_page: 200 } }),
+      ]);
+      setEmployees(employeesRes.data ?? []);
+      setRecords(attendanceRes.data ?? []);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to load attendance records");
+      setEmployees([]);
+      setRecords([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    load();
-  }, [load]);
+    loadActive();
+  }, [loadActive]);
+
+  useEffect(() => {
+    if (tab === "history") {
+      loadHistory();
+    }
+  }, [tab, loadHistory]);
 
   const openSessions = useMemo(() => {
     if (companyMobileEnabled) {
@@ -155,6 +173,14 @@ export default function HrAttendancePage() {
       (s) => !s.clock_out_at && (!s.source || s.source === "clock_device"),
     );
   }, [companyMobileEnabled, sessions]);
+
+  const filteredRecords = useMemo(() => {
+    return records.filter((record) => {
+      const date = record.attendance_date?.slice?.(0, 10) ?? "";
+      if (!date) return false;
+      return date >= historyFromDate && date <= historyToDate;
+    });
+  }, [historyFromDate, historyToDate, records]);
 
   const timesRequired = !NON_WORK_STATUSES.includes(manualForm.status);
 
@@ -225,7 +251,7 @@ export default function HrAttendancePage() {
     if (!confirm("Delete this attendance record?")) return;
     try {
       await apiRequest(`/employee-attendance/${record.id}`, { method: "DELETE" });
-      await load();
+      await loadHistory();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Delete failed");
     }
@@ -284,7 +310,7 @@ export default function HrAttendancePage() {
       setEditingRecord(null);
       setManualForm(EMPTY_MANUAL);
       setDayHint(null);
-      await load();
+      await loadHistory();
     } catch (err) {
       setManualError(err instanceof ApiError ? err.message : "Save failed");
     } finally {
@@ -297,184 +323,225 @@ export default function HrAttendancePage() {
       title="Attendance"
       subtitle="Premises clock-in, company phone, mobile sales app, and manual records — all in one place for payroll"
       action={
-        <div className="flex flex-wrap items-center gap-2">
-          <CatalogListExport
-            title="Attendance"
-            apiPath="/employee-attendance"
-            columns={ATTENDANCE_EXPORT_COLUMNS}
-            totalCount={records.length}
-            getSearchParams={() => ({ per_page: 200 })}
-            disabled={loading}
-          />
-          <PrimaryButton type="button" onClick={openCreateManual}>
-            Add manual record
-          </PrimaryButton>
-        </div>
+        tab === "history" ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <CatalogListExport
+              title="Attendance"
+              apiPath="/employee-attendance"
+              columns={ATTENDANCE_EXPORT_COLUMNS}
+              totalCount={filteredRecords.length}
+              getSearchParams={() => ({ per_page: 200 })}
+              disabled={historyLoading}
+            />
+            <PrimaryButton type="button" onClick={openCreateManual}>
+              Add manual record
+            </PrimaryButton>
+          </div>
+        ) : null
       }
     >
-      {fieldAttendanceEnabled ? (
-        <FieldRepHrLinkageBanner linkage={fieldRepLinkage} canManage={canManageSettings} />
-      ) : null}
+      <div className="mb-6 inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setTab("active")}
+          className={`rounded-md px-4 py-2 text-sm font-medium transition ${
+            tab === "active" ? "bg-[#185FA5] text-white" : "text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          Active today
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("history")}
+          className={`rounded-md px-4 py-2 text-sm font-medium transition ${
+            tab === "history" ? "bg-[#185FA5] text-white" : "text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          History
+        </button>
+      </div>
 
-      {canManageSettings ? (
-        <p className="mb-4 text-sm text-slate-600">
-          Attendance capture mode and device setup are in{" "}
-          <Link href="/admin/settings" className="font-medium text-[#185FA5] hover:underline">
-            Admin → Settings → HR &amp; Payroll
-          </Link>
-          .
-        </p>
-      ) : null}
+      {tab === "active" ? (
+        <>
+          {fieldAttendanceEnabled ? (
+            <FieldRepHrLinkageBanner linkage={fieldRepLinkage} canManage={canManageSettings} />
+          ) : null}
 
-      <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
-        <h2 className="text-[15px] font-medium text-slate-900">Live on shift now</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Employees currently signed in at premises
-          {fieldAttendanceEnabled ? " or on the mobile sales app" : ""}.
-        </p>
-        {loading ? (
-          <p className="mt-3 text-sm text-slate-500">Loading…</p>
-        ) : openSessions.length === 0 && fieldOpenSessions.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">No one is on shift right now.</p>
-        ) : (
-          <ul className="mt-3 divide-y divide-slate-100">
-            {openSessions.map((s) => (
-              <li key={`premises-${s.id}`} className="py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-medium text-slate-900">
-                    {companyMobileEnabled
-                      ? s.employee_name || `#${s.employee_id}`
-                      : composeEmployeeDisplayName(s.employee) || `#${s.employee_id}`}
-                  </p>
-                  <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800">
-                    Premises
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500">
-                  {companyMobileEnabled ? (
-                    <>
-                      {formatAttendanceSource("company_mobile")} · In {formatShortDate(s.clock_in_at)}{" "}
-                      {String(s.clock_in_at).slice(11, 16)}
-                      {s.clock_in_geofence_distance_metres != null
-                        ? ` · ${s.clock_in_geofence_distance_metres}m from premises`
-                        : ""}
-                    </>
-                  ) : (
-                    <>
-                      {formatAttendanceSource("clock_device")} · Device {s.device_identifier || "—"} · In{" "}
-                      {formatShortDate(s.clock_in_at)} {String(s.clock_in_at).slice(11, 16)}
-                    </>
-                  )}
-                </p>
-              </li>
-            ))}
-            {fieldOpenSessions.map((s) => (
-              <li key={`field-${s.id}`} className="py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-medium text-slate-900">{s.user_name || s.username || "—"}</p>
-                  <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-800">
-                    Mobile sales app
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500">
-                  Signed in {formatShortDate(s.sign_in_at)} {String(s.sign_in_at).slice(11, 16)}
-                  {s.hr_link && !s.hr_link.counts_toward_payroll
-                    ? " · Not linked to employee — will not count in payroll until linked"
-                    : " · Counts in payroll after sign-out"}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          {canManageSettings ? (
+            <p className="mb-4 text-sm text-slate-600">
+              Attendance capture mode and device setup are in{" "}
+              <Link href="/admin/settings" className="font-medium text-[#185FA5] hover:underline">
+                Admin → Settings → HR &amp; Payroll
+              </Link>
+              .
+            </p>
+          ) : null}
 
-      <section className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        <div className="border-b border-slate-200 px-5 py-4">
-          <h2 className="text-[15px] font-medium text-slate-900">Attendance records</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            One row per employee per day. Present, late, and half-day rows count toward payroll when
-            attendance proration is enabled.
-          </p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Employee</th>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">In</th>
-                <th className="px-4 py-3">Out</th>
-                <th className="px-4 py-3">Hours</th>
-                <th className="px-4 py-3">Login channel</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Payroll</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
-                    Loading…
-                  </td>
-                </tr>
-              ) : records.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
-                    No attendance records yet.
-                  </td>
-                </tr>
-              ) : (
-                records.map((r) => (
-                  <tr key={r.id} className="theme-table-body-row">
-                    <td className="px-4 py-3">
-                      {composeEmployeeDisplayName(r.employee) || r.employee_id}
-                    </td>
-                    <td className="px-4 py-3">{formatShortDate(r.attendance_date)}</td>
-                    <td className="px-4 py-3">{r.check_in?.slice?.(0, 5) ?? "—"}</td>
-                    <td className="px-4 py-3">{r.check_out?.slice?.(0, 5) ?? "—"}</td>
-                    <td className="px-4 py-3">{r.hours_worked ?? "—"}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${attendanceLoginChannelBadgeClass(r.source)}`}
-                      >
-                        {formatAttendanceLoginChannel(r.source, r.login_channel_label)}
-                      </span>
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        {formatAttendanceSource(r.source, r.source_label)}
+          <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
+            <h2 className="text-[15px] font-medium text-slate-900">Premises — on shift now</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Employees currently signed in at premises via clock device or company phone.
+            </p>
+            {activeLoading ? (
+              <p className="mt-3 text-sm text-slate-500">Loading…</p>
+            ) : openSessions.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-500">No one is on shift at premises right now.</p>
+            ) : (
+              <ul className="mt-3 divide-y divide-slate-100">
+                {openSessions.map((s) => (
+                  <li key={`premises-${s.id}`} className="py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-slate-900">
+                        {companyMobileEnabled
+                          ? s.employee_name || `#${s.employee_id}`
+                          : composeEmployeeDisplayName(s.employee) || `#${s.employee_id}`}
                       </p>
-                    </td>
-                    <td className="px-4 py-3 capitalize">{r.status}</td>
-                    <td className="px-4 py-3">
-                      {attendanceCountsInPayroll(r.status) ? (
-                        <span className="text-xs font-medium text-emerald-700">Counts</span>
+                      <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800">
+                        Premises
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      {companyMobileEnabled ? (
+                        <>
+                          {formatAttendanceSource("company_mobile")} · In {formatShortDate(s.clock_in_at)}{" "}
+                          {String(s.clock_in_at).slice(11, 16)}
+                          {s.clock_in_geofence_distance_metres != null
+                            ? ` · ${s.clock_in_geofence_distance_metres}m from premises`
+                            : ""}
+                        </>
                       ) : (
-                        <span className="text-xs text-slate-500">—</span>
+                        <>
+                          {formatAttendanceSource("clock_device")} · Device {s.device_identifier || "—"} · In{" "}
+                          {formatShortDate(s.clock_in_at)} {String(s.clock_in_at).slice(11, 16)}
+                        </>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => openEditManual(r)}
-                        className="text-[#185FA5] hover:underline"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteRecord(r)}
-                        className="ml-3 text-red-600 hover:underline"
-                      >
-                        Delete
-                      </button>
-                    </td>
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {fieldAttendanceEnabled ? (
+            <MobileFieldAttendanceScreen variant="hr" embedded embeddedMode="active" />
+          ) : null}
+        </>
+      ) : (
+        <>
+          <div className="mb-4 flex flex-wrap items-end gap-3 theme-panel rounded-xl border p-4 shadow-sm">
+            <Field label="From">
+              <input
+                type="date"
+                value={historyFromDate}
+                onChange={(e) => setHistoryFromDate(e.target.value)}
+                className={inputClassName()}
+              />
+            </Field>
+            <Field label="To">
+              <input
+                type="date"
+                value={historyToDate}
+                onChange={(e) => setHistoryToDate(e.target.value)}
+                className={inputClassName()}
+              />
+            </Field>
+          </div>
+
+          <section className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h2 className="text-[15px] font-medium text-slate-900">Attendance records</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                One row per employee per day in the selected date range. Present, late, and half-day
+                rows count toward payroll when attendance proration is enabled.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Employee</th>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">In</th>
+                    <th className="px-4 py-3">Out</th>
+                    <th className="px-4 py-3">Hours</th>
+                    <th className="px-4 py-3">Login channel</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Payroll</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {historyLoading ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                        Loading…
+                      </td>
+                    </tr>
+                  ) : filteredRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                        No attendance records in this date range.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredRecords.map((r) => (
+                      <tr key={r.id} className="theme-table-body-row">
+                        <td className="px-4 py-3">
+                          {composeEmployeeDisplayName(r.employee) || r.employee_id}
+                        </td>
+                        <td className="px-4 py-3">{formatShortDate(r.attendance_date)}</td>
+                        <td className="px-4 py-3">{r.check_in?.slice?.(0, 5) ?? "—"}</td>
+                        <td className="px-4 py-3">{r.check_out?.slice?.(0, 5) ?? "—"}</td>
+                        <td className="px-4 py-3">{r.hours_worked ?? "—"}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${attendanceLoginChannelBadgeClass(r.source)}`}
+                          >
+                            {formatAttendanceLoginChannel(r.source, r.login_channel_label)}
+                          </span>
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            {formatAttendanceSource(r.source, r.source_label)}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 capitalize">{r.status}</td>
+                        <td className="px-4 py-3">
+                          {attendanceCountsInPayroll(r.status) ? (
+                            <span className="text-xs font-medium text-emerald-700">Counts</span>
+                          ) : (
+                            <span className="text-xs text-slate-500">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => openEditManual(r)}
+                            className="text-[#185FA5] hover:underline"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteRecord(r)}
+                            className="ml-3 text-red-600 hover:underline"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {fieldAttendanceEnabled ? (
+            <div className="mt-8">
+              <MobileFieldAttendanceScreen variant="hr" embedded embeddedMode="history" />
+            </div>
+          ) : null}
+        </>
+      )}
 
       <FormDrawer
         title={editingRecord ? "Edit attendance" : "Manual attendance"}
@@ -515,7 +582,7 @@ export default function HrAttendancePage() {
             {dayHint.existing_attendance?.source
               ? `, ${formatAttendanceSource(dayHint.existing_attendance.source, dayHint.existing_attendance.source_label).toLowerCase()}`
               : ""}
-            ). You cannot add a second record — edit the existing one in the table below.
+            ). You cannot add a second record — edit the existing one in the History tab.
           </p>
         ) : null}
         {dayHint && !dayHint.has_existing_attendance ? (
@@ -585,8 +652,6 @@ export default function HrAttendancePage() {
           />
         </Field>
       </FormDrawer>
-
-      {fieldAttendanceEnabled ? <MobileFieldAttendanceScreen variant="hr" embedded /> : null}
     </CatalogPageShell>
   );
 }

@@ -87,8 +87,13 @@ function AttendanceLocationBlock({ latitude, longitude, address, photoFileUrl, l
   );
 }
 
-export default function MobileFieldAttendanceScreen({ variant = "sales", embedded = false }) {
+export default function MobileFieldAttendanceScreen({
+  variant = "sales",
+  embedded = false,
+  embeddedMode = "history",
+}) {
   const isHr = variant === "hr";
+  const isActiveEmbedded = embedded && embeddedMode === "active";
   const apiBase = isHr ? "/attendance/field-sessions" : "/sales/mobile-field-attendance";
   const { capabilities, hasPermission } = useAuth();
   const allowed = shouldShowMobileFieldAttendance(capabilities);
@@ -96,10 +101,11 @@ export default function MobileFieldAttendanceScreen({ variant = "sales", embedde
     ? hasPermission?.(P.hr.manage)
     : hasPermission?.("sales.manage");
 
-  const [fromDate, setFromDate] = useState(daysAgoCalendarDate(7));
-  const [toDate, setToDate] = useState(todayCalendarDate());
+  const today = todayCalendarDate();
+  const [fromDate, setFromDate] = useState(isActiveEmbedded ? today : daysAgoCalendarDate(7));
+  const [toDate, setToDate] = useState(today);
   const [search, setSearch] = useState("");
-  const [openOnly, setOpenOnly] = useState(false);
+  const [openOnly, setOpenOnly] = useState(isActiveEmbedded);
   const [rows, setRows] = useState([]);
   const [hrLinkage, setHrLinkage] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -243,45 +249,65 @@ export default function MobileFieldAttendanceScreen({ variant = "sales", embedde
   const panelBody = (
     <>
       {error ? <DashboardErrorBanner message={error} /> : null}
-      {isHr ? <FieldRepHrLinkageBanner linkage={hrLinkage} canManage={canEdit} /> : null}
+      {isHr && !isActiveEmbedded ? (
+        <FieldRepHrLinkageBanner linkage={hrLinkage} canManage={canEdit} />
+      ) : null}
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-4">
-        <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Sessions</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900">{totals.sessions}</p>
+      {!isActiveEmbedded ? (
+        <div className="mb-4 grid gap-3 sm:grid-cols-4">
+          <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Sessions</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{totals.sessions}</p>
+          </div>
+          <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Active now</p>
+            <p className="mt-1 text-2xl font-semibold text-emerald-700">{totals.open}</p>
+          </div>
+          <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Worked hours</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{totals.hoursLabel}</p>
+          </div>
+          <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Suspended / offline</p>
+            <p className="mt-1 text-2xl font-semibold text-amber-700">{totals.suspendedLabel}</p>
+          </div>
         </div>
-        <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Active now</p>
+      ) : (
+        <div className="mb-4 theme-panel rounded-xl border px-4 py-3 shadow-sm">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Active mobile sessions today</p>
           <p className="mt-1 text-2xl font-semibold text-emerald-700">{totals.open}</p>
         </div>
-        <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Worked hours</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900">{totals.hoursLabel}</p>
-        </div>
-        <div className="theme-panel rounded-xl border px-4 py-3 shadow-sm">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Suspended / offline</p>
-          <p className="mt-1 text-2xl font-semibold text-amber-700">{totals.suspendedLabel}</p>
-        </div>
-      </div>
+      )}
 
-      <div className="mb-4 flex flex-wrap items-end gap-3 theme-panel rounded-xl border p-4 shadow-sm">
-        <Field label="From">
-          <input type="date" className={inputClassName()} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-        </Field>
-        <Field label="To">
-          <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
-        </Field>
-        <Field label="Search rep">
-          <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or username" />
-        </Field>
-        <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
-          <input type="checkbox" checked={openOnly} onChange={(e) => setOpenOnly(e.target.checked)} />
-          Active sessions only
-        </label>
-        <PrimaryButton type="button" showIcon={false} onClick={loadRows} disabled={loading}>
-          {loading ? "Loading…" : "Refresh"}
-        </PrimaryButton>
-      </div>
+      {!isActiveEmbedded ? (
+        <div className="mb-4 flex flex-wrap items-end gap-3 theme-panel rounded-xl border p-4 shadow-sm">
+          <Field label="From">
+            <input type="date" className={inputClassName()} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          </Field>
+          <Field label="To">
+            <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          </Field>
+          <Field label="Search rep">
+            <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or username" />
+          </Field>
+          <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
+            <input type="checkbox" checked={openOnly} onChange={(e) => setOpenOnly(e.target.checked)} />
+            Active sessions only
+          </label>
+          <PrimaryButton type="button" showIcon={false} onClick={loadRows} disabled={loading}>
+            {loading ? "Loading…" : "Refresh"}
+          </PrimaryButton>
+        </div>
+      ) : (
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <Field label="Search rep">
+            <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or username" />
+          </Field>
+          <PrimaryButton type="button" showIcon={false} onClick={loadRows} disabled={loading}>
+            {loading ? "Loading…" : "Refresh"}
+          </PrimaryButton>
+        </div>
+      )}
 
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -307,7 +333,9 @@ export default function MobileFieldAttendanceScreen({ variant = "sales", embedde
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
-                  No attendance sessions in this date range.
+                  {isActiveEmbedded
+                    ? "No reps are signed in on the mobile app right now."
+                    : "No attendance sessions in this date range."}
                 </td>
               </tr>
             ) : (
@@ -484,12 +512,15 @@ export default function MobileFieldAttendanceScreen({ variant = "sales", embedde
 
   if (embedded) {
     return (
-      <section id="field-sessions" className="mt-10">
+      <section id="field-sessions" className={isActiveEmbedded ? "" : "mt-0"}>
         <div className="mb-4">
-          <h2 className="text-[15px] font-medium text-slate-900">Mobile sales sessions</h2>
+          <h2 className="text-[15px] font-medium text-slate-900">
+            {isActiveEmbedded ? "Mobile sales — active today" : "Mobile sales sessions"}
+          </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Field reps sign in on the mobile sales app. Closed sessions sync to the attendance
-            records above and count in payroll when the rep is linked to an employee profile.
+            {isActiveEmbedded
+              ? "Field reps currently signed in on the mobile sales app. Open a session to view photos and GPS."
+              : "Field rep sign-in history with photos, GPS, and worked hours. Closed sessions sync to payroll when linked to an employee profile."}
           </p>
         </div>
         {panelBody}

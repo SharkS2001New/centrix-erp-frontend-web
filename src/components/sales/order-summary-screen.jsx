@@ -51,6 +51,7 @@ import {
   FulfillmentAssignmentDialog,
   PodCaptureDialog,
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
+import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
 import { getSaleDriverId, getSaleVehicleId } from "@/components/fulfillment/fulfillment-shared";
 
 const ORDER_TABS = [
@@ -486,6 +487,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const [routes, setRoutes] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
+  const [editOrderOpen, setEditOrderOpen] = useState(false);
 
   useEffect(() => {
     refreshCapabilities().catch(() => {});
@@ -772,6 +774,15 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {sale.can_edit_lines ? (
+                <button
+                  type="button"
+                  onClick={() => setEditOrderOpen(true)}
+                  className="theme-secondary-btn inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+                >
+                  Edit Order
+                </button>
+              ) : null}
               {createReturnHref ? (
                 <Link
                   href={createReturnHref}
@@ -936,6 +947,21 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         balanceDue={balanceDue}
         floatSessionId={floatSessionId}
         onSaved={loadSale}
+      />
+
+      <BackofficeOrderEditModal
+        open={editOrderOpen}
+        sale={sale}
+        uomById={uomById}
+        onClose={() => setEditOrderOpen(false)}
+        onSaved={(updated) => {
+          setEditOrderOpen(false);
+          if (updated?.id) {
+            setSale((prev) => ({ ...prev, ...updated }));
+          }
+          void loadSale();
+          notifySuccess("Order updated.");
+        }}
       />
 
       <FulfillmentAssignmentDialog

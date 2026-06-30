@@ -305,6 +305,20 @@ const NAV_SECTION_DEFINITIONS = [
     ],
   },
   {
+    id: "expenses",
+    label: "Expenses",
+    icon: "🏷️",
+    collapsible: true,
+    items: [
+      {
+        href: "/expenses",
+        label: "Expenses",
+        moduleAny: ["accounting", "customers_suppliers"],
+        permission: P.accounting.expenses.view,
+      },
+    ],
+  },
+  {
     id: "inventory",
     label: "Inventory",
     icon: "📦",
@@ -480,13 +494,6 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.accounting.bank_reconciliation.view,
         group: "General ledger",
         requireNativeAccounting: true,
-      },
-      {
-        href: "/expenses",
-        label: "Expenses",
-        module: "accounting",
-        permission: P.accounting.expenses.view,
-        group: "Expenses",
       },
       {
         href: "/accounting/trial-balance",

@@ -22,6 +22,7 @@ import {
   FormDrawer,
   IconButton,
   inputClassName,
+  PaginationBar,
   PencilIcon,
   PrimaryButton,
   SearchInput,
@@ -30,6 +31,7 @@ import {
   TABLE_SHELL_CLASS,
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { CatalogDataImportButton, filterNonEmptyImportRows } from "@/components/catalog/catalog-data-import";
 import { UOM_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
@@ -40,7 +42,7 @@ import {
   BatchDeleteButton,
   TableRowSelectCell,
   TableSelectAllHeader,
-  batchDeleteWithConfirm,
+  runSequentialDeletes,
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 
@@ -145,6 +147,8 @@ export default function UomsPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [packFilter, setPackFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(15);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState("create");
@@ -208,10 +212,22 @@ export default function UomsPage() {
     });
   }, [uoms, search, typeFilter, packFilter]);
 
-  const pageRowIds = useMemo(() => filtered.map((u) => u.id), [filtered]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, typeFilter, packFilter, pageSize]);
+
+  const pageRowIds = useMemo(() => pageSlice.map((u) => u.id), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
-  const uomById = useMemo(() => new Map(filtered.map((u) => [String(u.id), u])), [filtered]);
+  const uomById = useMemo(() => new Map(uoms.map((u) => [String(u.id), u])), [uoms]);
 
   const formTitle = drawerMode === "create" ? "Add UOM" : "Edit UOM";
   const formFactor = uomConversionFactor(form.conversion_factor);
@@ -319,24 +335,78 @@ export default function UomsPage() {
   }
 
   async function deleteSelectedUoms() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+
+    const blocked = ids
+      .map((id) => {
+        const uom = uomById.get(String(id));
+        const count = uom ? (productCountByUom.get(uom.id) ?? 0) : 0;
+        return count > 0 ? { id, name: uom?.full_name ?? id, count } : null;
+      })
+      .filter(Boolean);
+
+    if (blocked.length === ids.length) {
+      notifyError(
+        blocked.length === 1
+          ? `"${blocked[0].name}" is used by ${blocked[0].count} product(s) and cannot be deleted.`
+          : "All selected units are linked to products and cannot be deleted.",
+      );
+      return;
+    }
+
+    const deletableIds = ids.filter(
+      (id) => !blocked.some((row) => String(row.id) === String(id)),
+    );
+
+    const confirmMessage =
+      blocked.length > 0
+        ? `Delete ${deletableIds.length} unit${deletableIds.length === 1 ? "" : "s"}? ` +
+          `${blocked.length} linked to products will be skipped. This cannot be undone.`
+        : `Delete ${deletableIds.length} unit${deletableIds.length === 1 ? "" : "s"}? This cannot be undone.`;
+
+    const ok = await confirm({
+      title: "Delete selected units",
+      message: confirmMessage,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+
     setBatchDeleting(true);
     try {
-      await batchDeleteWithConfirm({
-        confirm,
-        selectedIds,
-        entityName: "unit",
+      const { succeeded, failed } = await runSequentialDeletes({
+        ids: deletableIds,
         deleteItem: async (id) => {
           await apiRequest(`/uoms/${id}`, { method: "DELETE" });
         },
-        clearSelection,
-        reload: loadData,
-        notifySuccess,
-        notifyError,
-        labelForId: (id) => uomById.get(String(id))?.full_name ?? id,
       });
+      clearSelection();
+      await loadData();
+
+      if (failed.length === 0) {
+        const skippedNote =
+          blocked.length > 0 ? ` (${blocked.length} skipped — linked to products)` : "";
+        notifySuccess(`Deleted ${succeeded.length} unit${succeeded.length === 1 ? "" : "s"}${skippedNote}`);
+        return;
+      }
+      if (succeeded.length === 0) {
+        notifyError(failed[0]?.message ?? "Delete failed");
+        return;
+      }
+      const names = failed
+        .slice(0, 3)
+        .map((f) => uomById.get(String(f.id))?.full_name ?? f.id)
+        .join(", ");
+      notifyError(`Deleted ${succeeded.length}; ${failed.length} failed${names ? ` (${names})` : ""}`);
     } finally {
       setBatchDeleting(false);
     }
+  }
+
+  function handlePageSizeChange(nextSize) {
+    setPageSize(nextSize);
+    setPage(1);
   }
 
   return (
@@ -417,14 +487,14 @@ export default function UomsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
+                {pageSlice.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
                       No units match your filters.
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((uom) => {
+                  pageSlice.map((uom) => {
                     const count = productCountByUom.get(uom.id) ?? 0;
                     return (
                       <tr
@@ -479,6 +549,16 @@ export default function UomsPage() {
             </table>
           </div>
         )}
+        {!loading && filtered.length > 0 ? (
+          <PaginationBar
+            page={safePage}
+            totalPages={totalPages}
+            total={filtered.length}
+            pageSize={pageSize}
+            onChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+          />
+        ) : null}
       </div>
 
       <FormDrawer

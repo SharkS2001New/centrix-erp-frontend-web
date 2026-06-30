@@ -65,19 +65,48 @@ export function usePageRowSelection() {
   };
 }
 
-export async function runSequentialDeletes({ ids, deleteItem }) {
+export const BATCH_DELETE_CHUNK_SIZE = 20;
+
+function chunkIds(ids, size) {
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += size) {
+    chunks.push(ids.slice(i, i + size));
+  }
+  return chunks;
+}
+
+/** Delete ids in waves (default 20 at a time) to avoid overwhelming the API. */
+export async function runSequentialDeletes({
+  ids,
+  deleteItem,
+  batchSize = BATCH_DELETE_CHUNK_SIZE,
+}) {
   const succeeded = [];
   const failed = [];
+  const chunkSize = Math.max(1, Number(batchSize) || BATCH_DELETE_CHUNK_SIZE);
 
-  for (const id of ids) {
-    try {
-      await deleteItem(id);
-      succeeded.push(id);
-    } catch (e) {
-      failed.push({
-        id,
-        message: e instanceof Error ? e.message : "Delete failed",
-      });
+  for (const batch of chunkIds(ids, chunkSize)) {
+    const results = await Promise.all(
+      batch.map(async (id) => {
+        try {
+          await deleteItem(id);
+          return { id, ok: true };
+        } catch (e) {
+          return {
+            id,
+            ok: false,
+            message: e instanceof Error ? e.message : "Delete failed",
+          };
+        }
+      }),
+    );
+
+    for (const result of results) {
+      if (result.ok) {
+        succeeded.push(result.id);
+      } else {
+        failed.push({ id: result.id, message: result.message });
+      }
     }
   }
 

@@ -54,6 +54,7 @@ import {
   FulfillmentAssignmentDialog,
   PodCaptureDialog,
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
+import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
 
 
 function indexPaymentRefs(payments) {
@@ -117,6 +118,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   const [routeById, setRouteById] = useState(() => new Map());
   const [paymentRefsBySaleId, setPaymentRefsBySaleId] = useState(() => new Map());
   const [contextMenu, setContextMenu] = useState(null);
+  const [editSale, setEditSale] = useState(null);
 
   const effectiveStatusFilter = queueConfig?.lockStatusFilter
     ? queueConfig.fixedStatusFilter
@@ -347,6 +349,25 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
     router.push(`/sales/orders/${sale.id}?from=${encodeURIComponent(from)}`);
   }
 
+  function openEditOrder(sale) {
+    if (!sale?.id || !sale.can_edit_lines) return;
+    setContextMenu(null);
+    setEditSale(sale);
+  }
+
+  function handleEditSaved(updated) {
+    if (updated?.id) {
+      patchSaleInState(updated);
+    }
+    setActionMessage(
+      updated?.order_num != null
+        ? `Order ${formatOrderNumber(updated)} updated.`
+        : "Order updated.",
+    );
+    setEditSale(null);
+    void loadOrders();
+  }
+
   async function printOrder(sale, documentType = null) {
     if (!sale?.id) return;
 
@@ -487,13 +508,15 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       workflow,
       busy: transitionBusyId === sale.id || fulfillment.busy,
       includePrint: contextMenu.includePrint !== false,
+      canEdit: Boolean(sale.can_edit_lines),
       onView: () => viewOrder(sale),
+      onEdit: () => openEditOrder(sale),
       onPrintThermal: () => void printOrder(sale, "receipt"),
       onPrintA4: () => void printOrder(sale, "invoice"),
       onAdvance: (status) => void handleAdvance(sale, status),
       onCancel: () => void handleAdvance(sale, "cancelled"),
     });
-  }, [contextMenu, capabilities, transitionBusyId]);
+  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy]);
 
   useEffect(() => {
     setPage(1);
@@ -748,6 +771,13 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
           const { sale, targetStatus } = fulfillment.podDialog ?? {};
           if (sale) void fulfillment.runTransition(sale, targetStatus, meta);
         }}
+      />
+      <BackofficeOrderEditModal
+        open={Boolean(editSale)}
+        sale={editSale}
+        uomById={uomById}
+        onClose={() => setEditSale(null)}
+        onSaved={handleEditSaved}
       />
     </CatalogPageShell>
   );

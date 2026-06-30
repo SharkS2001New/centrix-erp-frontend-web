@@ -8,6 +8,7 @@ export default function GeneralLedgerPage() {
       title="General Ledger"
       apiPath="/reports/general-ledger"
       showAccountFilter
+      enableSearch
       emptyLabel="No posted journal lines for this filter."
     />
   );
