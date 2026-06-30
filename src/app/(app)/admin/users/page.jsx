@@ -11,7 +11,7 @@ import { UserPermissionMatrix, toggleUserPermissionOverride } from "@/components
 import { permissionIdSet } from "@/lib/permission-ids";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
-import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import {
@@ -96,8 +96,7 @@ export default function AdminUsersPage() {
   const [permissionApplications, setPermissionApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search);
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewUser, setViewUser] = useState(null);
   const [editing, setEditing] = useState(null);

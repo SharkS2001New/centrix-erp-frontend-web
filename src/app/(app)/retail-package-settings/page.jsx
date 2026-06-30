@@ -30,6 +30,7 @@ import {
   uomMeasureLevels,
 } from "@/lib/uom-packaging";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { CatalogDataImportButton, filterNonEmptyImportRows } from "@/components/catalog/catalog-data-import";
 import { RETAIL_PACKAGE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
@@ -310,6 +311,24 @@ export default function RetailPackageSettingsPage() {
       subtitle="Tiered retail markups per product — measurements come from the product UOM"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <CatalogDataImportButton
+            title="Import retail packages"
+            description="Upload CSV or Excel with product_code and retail pricing fields. Products must already exist in the catalogue."
+            sampleHeaders={[
+              "product_code",
+              "max_qty_measure",
+              "markup_price",
+              "min_uom_measure",
+              "max_uom_measure",
+              "wholesale_qty_measure",
+              "wholesale_markup_price",
+            ]}
+            sampleRow={["SKU001", "11", "2.5", "pcs", "carton", "12", "0"]}
+            apiPath="/retail-package-settings/import-batch"
+            normalizeRows={(rows) => filterNonEmptyImportRows(rows, ["product_code"])}
+            onImported={loadData}
+            importPage="retail_packages"
+          />
           <CatalogListExport
             title="Retail package settings"
             filename="retail-package-settings"

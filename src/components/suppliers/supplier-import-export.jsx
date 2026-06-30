@@ -264,6 +264,7 @@ export function SupplierImportExport({ totalCount, exportSearchParams, onImporte
     organization,
     capabilities,
     permission: "purchasing.manage",
+    page: "suppliers",
   });
 
   return (

@@ -29,7 +29,7 @@ export function CentrixLogo({ collapsed = false, className = "", orgSubtitle = "
   }
 
   return (
-    <span className={`inline-flex flex-col gap-0.5 ${className}`}>
+    <span className={`inline-flex flex-col gap-3 ${className}`}>
       <span className="inline-flex items-center gap-2.5">
         <CentrixLogoMark size={28} />
         <span className="flex items-baseline gap-0.5 leading-none">

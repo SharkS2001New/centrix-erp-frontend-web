@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
-import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import {
   CatalogPageShell,
@@ -26,8 +26,7 @@ export default function JournalEntriesPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search);
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
 

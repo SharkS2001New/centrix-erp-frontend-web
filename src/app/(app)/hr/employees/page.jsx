@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
-import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import {
   CatalogPageShell,
@@ -49,8 +49,7 @@ export default function HrEmployeesPage() {
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search);
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [deptFilter, setDeptFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);

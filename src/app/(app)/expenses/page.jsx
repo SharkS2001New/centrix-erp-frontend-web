@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
-import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
@@ -120,8 +120,7 @@ export default function ExpensesPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search);
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [groupFilter, setGroupFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("active");

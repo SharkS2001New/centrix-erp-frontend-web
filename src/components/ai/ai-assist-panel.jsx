@@ -15,6 +15,7 @@ import {
 import { aiStartersForWorkspace, aiWorkspaceLabel } from "@/lib/ai-workspace";
 import { AI_ASSISTANT_TITLE } from "@/lib/branding";
 import { defaultWorkspaceId } from "@/lib/workspaces";
+import { subscribeAiAssistRequests } from "@/lib/ai-assist-bridge";
 import { AiActionForm } from "@/components/ai/ai-action-form";
 
 function closePanel(setOpen, setExpanded) {
@@ -65,6 +66,7 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const [formSpec, setFormSpec] = useState(null);
   const [formValues, setFormValues] = useState({});
   const [actionResult, setActionResult] = useState(null);
+  const [assistRequest, setAssistRequest] = useState(null);
   const bottomRef = useRef(null);
 
   const canUse = canShowAiAssistant(hasPermission) && isAiPlatformEnabled(capabilities);
@@ -156,6 +158,30 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     },
     [loading, messages, pendingAction, formValues, applyChatResponse, workspaceId, pathname],
   );
+
+  useEffect(() => {
+    if (!canUse) return undefined;
+    return subscribeAiAssistRequests((request) => {
+      setExpanded(false);
+      setOpen(true);
+      setAssistRequest(request);
+    });
+  }, [canUse]);
+
+  useEffect(() => {
+    if (!open || !canUse || !assistRequest) return;
+
+    const message = assistRequest.message?.trim() ?? "";
+    setAssistRequest(null);
+    if (!message) return;
+
+    if (assistRequest.autoSend !== false) {
+      void send(message);
+      return;
+    }
+
+    setInput(message);
+  }, [assistRequest, canUse, open, send]);
 
   const submitForm = useCallback(() => {
     if (!pendingAction) return;

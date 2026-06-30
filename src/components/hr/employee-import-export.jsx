@@ -227,6 +227,7 @@ export function EmployeeImportExport({ totalCount, exportSearchParams, onImporte
     organization,
     capabilities,
     permission: "hr.manage",
+    page: "employees",
   });
 
   return (

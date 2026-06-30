@@ -395,6 +395,7 @@ export function ProductImportExport({ totalCount, exportSearchParams, onImported
     organization,
     capabilities,
     permission: "products.manage",
+    page: "products",
   });
 
   return (

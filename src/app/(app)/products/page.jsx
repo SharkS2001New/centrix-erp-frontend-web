@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAppRouter } from "@/lib/use-app-router";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
-import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { DeleteProductDialog } from "@/components/products/delete-product-dialog";
 import { ProductImportExport } from "@/components/products/product-import-export";
 import {
@@ -44,7 +44,6 @@ import {
   BatchDeleteButton,
   TableRowSelectCell,
   TableSelectAllHeader,
-  TableTreeCornerIcon,
   runSequentialDeletes,
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
@@ -57,8 +56,8 @@ const SORT_STORAGE_KEY = "centrix-erp-products-sort";
 
 const PRODUCT_COLUMNS = [
   { id: "product", label: "Product name", defaultVisible: true, required: true, sortKey: "product_name" },
-  { id: "unit_price", label: "Unit price", defaultVisible: true, align: "right", sortKey: "unit_price" },
-  { id: "cost_price", label: "Cost price", defaultVisible: true, align: "right", sortKey: "last_cost_price" },
+  { id: "unit_price", label: "Unit price (KES)", defaultVisible: true, align: "right", sortKey: "unit_price" },
+  { id: "cost_price", label: "Cost price (KES)", defaultVisible: true, align: "right", sortKey: "last_cost_price" },
   { id: "discount", label: "Discount", defaultVisible: true },
   { id: "weight", label: "Weight", defaultVisible: false, align: "right", sortKey: "product_weight" },
   { id: "shop", label: "Shop", defaultVisible: true, align: "center" },
@@ -105,9 +104,9 @@ function alignClass(align) {
   return "text-left";
 }
 
-function formatKes(value) {
+function formatMoneyAmount(value) {
   if (value == null || value === "") return "—";
-  return `KES ${Number(value).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return Number(value).toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatQty(value) {
@@ -121,7 +120,7 @@ function formatDiscount(product) {
   const val = Number(product.discount_value ?? 0);
   if (type === "fixed") {
     if (val === 0) return "—";
-    return formatKes(val);
+    return formatMoneyAmount(val);
   }
   if (pct === 0) return "—";
   return `${pct}%`;
@@ -268,8 +267,7 @@ export default function ProductsPage() {
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
 
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search);
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subCategoryFilter, setSubCategoryFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
@@ -1103,7 +1101,6 @@ function SubCategoryGroup({
             checked={selected.has(String(p.product_code))}
             onToggle={() => onToggle(p.product_code)}
             visibleColumns={visibleColumns}
-            nestedIndent={showCategoryHeader ? "pl-10" : "pl-6"}
             onView={onView}
             onEdit={onEdit}
             onDelete={onDelete}
@@ -1120,7 +1117,6 @@ function ProductRow({
   checked,
   onToggle,
   visibleColumns,
-  nestedIndent = "pl-6",
   onView,
   onEdit,
   onDelete,
@@ -1162,7 +1158,7 @@ function ProductRow({
               </ActionButton>
             </div>
           ) : (
-            renderProductCell(product, col.id, onPriceSaved, nestedIndent)
+            renderProductCell(product, col.id, onPriceSaved)
           )}
         </td>
       ))}
@@ -1170,24 +1166,21 @@ function ProductRow({
   );
 }
 
-function renderProductCell(product, columnId, onPriceSaved, nestedIndent = "") {
+function renderProductCell(product, columnId, onPriceSaved) {
   switch (columnId) {
     case "product":
       return (
-        <div className={`flex items-start gap-1.5 ${nestedIndent}`}>
-          <TableTreeCornerIcon />
-          <div className="min-w-0">
-            <Link
-              href={`/products/${encodeURIComponent(product.product_code)}`}
-              className="theme-link font-medium"
-            >
-              {product.product_name}
-            </Link>
-            <p className="theme-subtext mt-0.5 font-mono text-xs">{product.product_code}</p>
-            {product.catalog_scope === "branch" || product.branch_id ? (
-              <p className="mt-1 text-xs font-medium text-amber-700">{productScopeLabel(product)}</p>
-            ) : null}
-          </div>
+        <div className="min-w-0">
+          <Link
+            href={`/products/${encodeURIComponent(product.product_code)}`}
+            className="theme-link font-medium"
+          >
+            {product.product_name}
+          </Link>
+          <p className="theme-subtext mt-0.5 font-mono text-xs">{product.product_code}</p>
+          {product.catalog_scope === "branch" || product.branch_id ? (
+            <p className="mt-1 text-xs font-medium text-amber-700">{productScopeLabel(product)}</p>
+          ) : null}
         </div>
       );
     case "unit_price":
@@ -1199,7 +1192,7 @@ function renderProductCell(product, columnId, onPriceSaved, nestedIndent = "") {
         />
       );
     case "cost_price":
-      return <span className="theme-text-muted">{formatKes(product.last_cost_price)}</span>;
+      return <span className="theme-text-muted">{formatMoneyAmount(product.last_cost_price)}</span>;
     case "discount":
       return <span className="theme-text-muted">{formatDiscount(product)}</span>;
     case "weight":
@@ -1390,7 +1383,7 @@ function InlineUnitPriceCell({ productCode, unitPrice, onSaved }) {
         className="theme-text-muted rounded px-1 hover:bg-[var(--theme-hover)] hover:text-[var(--theme-link)]"
         title="Click to update price"
       >
-        {formatKes(unitPrice)}
+        {formatMoneyAmount(unitPrice)}
       </button>
     );
   }
@@ -1455,11 +1448,12 @@ function StockCell({ qty, uom, unit, factor, status }) {
     },
   };
   const s = styles[status] ?? styles.in_stock;
+  const showStatusLabel = status === "low_stock";
 
   return (
-    <div className="text-center">
+    <div className="text-center" title={s.label} aria-label={`${stockText}, ${s.label}`}>
       <p className={`text-sm font-semibold leading-tight ${s.number}`}>{stockText}</p>
-      <p className={`text-xs ${s.text}`}>{s.label}</p>
+      {showStatusLabel ? <p className={`text-xs ${s.text}`}>{s.label}</p> : null}
     </div>
   );
 }

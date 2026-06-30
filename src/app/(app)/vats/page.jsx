@@ -219,6 +219,7 @@ export default function VatsPage() {
               filterNonEmptyImportRows(rows, ["vat_code", "vat_name", "vat_percentage"])
             }
             onImported={loadData}
+            importPage="vats"
           />
           <CatalogListExport
             title="VAT rates"

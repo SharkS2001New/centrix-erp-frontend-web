@@ -51,6 +51,7 @@ const NAV_SECTION_DEFINITIONS = [
       { href: "/platform/active-users", label: "Active users", superAdminOnly: true },
       { href: "/platform/system-issues", label: "System errors & reports", superAdminOnly: true },
       { href: "/platform/database-backups", label: "Database backups", superAdminOnly: true },
+      { href: "/platform/legacy-import-converter", label: "Legacy data converter", superAdminOnly: true },
       { href: "/platform/organizations/new", label: "Register organization", superAdminOnly: true },
     ],
   },

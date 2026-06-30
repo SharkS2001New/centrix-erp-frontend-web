@@ -108,7 +108,7 @@ export function searchNavEntries(entries, query, { limit = 12 } = {}) {
   const scored = [];
 
   for (const entry of entries) {
-    if (!entry.href && entry.kind === "section") continue;
+    if (!entry.href || entry.kind !== "link") continue;
 
     const label = entry.label.toLowerCase();
     const keywords = entry.keywords.toLowerCase();

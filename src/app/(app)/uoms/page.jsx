@@ -362,6 +362,7 @@ export default function UomsPage() {
             apiPath="/uoms/import-batch"
             normalizeRows={(rows) => filterNonEmptyImportRows(rows, ["measure_name"])}
             onImported={loadData}
+            importPage="uoms"
           />
           <CatalogListExport
             title="Units of measure"

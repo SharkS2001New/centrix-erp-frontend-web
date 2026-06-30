@@ -358,6 +358,39 @@ export async function uploadOrganizationLogo(organizationId, file, options = {})
   return apiUpload(path, file);
 }
 
+/** Multipart upload of multiple files; returns a Blob (e.g. ZIP download). */
+export async function apiUploadFilesForBlob(path, files, fieldName = "files") {
+  const url = new URL(path.startsWith("http") ? path : `${baseUrl()}${path}`);
+  const token = getToken();
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append(`${fieldName}[]`, file);
+  }
+
+  const headers = { Accept: "application/zip, application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers,
+    credentials: apiFetchCredentials(),
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+    throw new ApiError(formatApiErrorMessage(data, res.statusText), res.status, data);
+  }
+
+  return res.blob();
+}
+
 export function organizationLogoFileUrl(organizationId, options = {}) {
   const relative = options.filePath ?? `/organizations/${organizationId}/logo/file`;
   return `${apiBaseOrigin()}/api/v1${relative}`;

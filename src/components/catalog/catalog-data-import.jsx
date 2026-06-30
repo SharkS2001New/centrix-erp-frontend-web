@@ -157,13 +157,14 @@ export function CatalogDataImportButton({
   normalizeRows,
   onImported,
   permission = "products.manage",
+  importPage,
   className = "",
 }) {
   const { user, organization, capabilities } = useAuth();
   const [open, setOpen] = useState(false);
   const { ImportIcon } = ImportExportIcons;
 
-  if (!canUseAdvancedDataImport({ user, organization, capabilities, permission })) {
+  if (!canUseAdvancedDataImport({ user, organization, capabilities, permission, page: importPage })) {
     return null;
   }
 

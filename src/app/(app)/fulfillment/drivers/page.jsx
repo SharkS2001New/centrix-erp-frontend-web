@@ -32,7 +32,7 @@ import {
   todayDeliveryStats,
 } from "@/components/fulfillment/fulfillment-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { useConfirm } from "@/lib/use-confirm";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 import {
   BatchActionBar,
   BatchDeleteButton,
@@ -56,7 +56,7 @@ export default function DriversPage() {
   const [users, setUsers] = useState([]);
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const { search, setSearch } = useListUrlSearch();
   const [statusFilter, setStatusFilter] = useState("all");
   const [routeFilter, setRouteFilter] = useState("all");
   const [page, setPage] = useState(1);

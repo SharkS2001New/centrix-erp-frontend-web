@@ -52,6 +52,11 @@ export default function PlatformOverviewPage() {
               Database backups
             </PrimaryButton>
           </Link>
+          <Link href="/platform/legacy-import-converter">
+            <PrimaryButton type="button" showIcon={false} className="!bg-emerald-700 hover:!bg-emerald-800">
+              Legacy data converter
+            </PrimaryButton>
+          </Link>
           <Link href="/platform/organizations/new">
             <PrimaryButton type="button">Register organization</PrimaryButton>
           </Link>

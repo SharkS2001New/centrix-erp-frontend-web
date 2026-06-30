@@ -26,6 +26,15 @@ export function canShowAiAssistant(hasPermission) {
   return hasPermission("ai.assist.create") || hasPermission("ai.assist");
 }
 
+/** Search → Ask AI fallback when org AI is enabled and the user may use the assistant. */
+export function canAskAiFromSearch({ capabilities, hasPermission }) {
+  return (
+    canShowAiAssistant(hasPermission) &&
+    isAiPlatformEnabled(capabilities) &&
+    isAiAssistantEnabledForOrg(capabilities)
+  );
+}
+
 export function aiFormFromApi(res) {
   const settings = res?.settings ?? res?.ai ?? {};
   return {

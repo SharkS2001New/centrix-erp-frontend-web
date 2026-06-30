@@ -23,6 +23,11 @@ import {
 } from "@/lib/workspace-modules";
 import { OrganizationCachePanel } from "@/components/admin/organization-cache-panel";
 import { useConfirm } from "@/lib/use-confirm";
+import {
+  ADVANCED_DATA_IMPORT_PAGE_OPTIONS,
+  advancedDataImportPagesFromApi,
+  defaultAdvancedDataImportPages,
+} from "@/lib/advanced-data-import-pages";
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]";
@@ -216,6 +221,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_kra_integration: true,
     enable_ai: true,
     enable_advanced_data_import: false,
+    advanced_data_import_pages: defaultAdvancedDataImportPages(),
     stock_deduct_on: "order_created",
     require_pos_till_float: false,
     enable_pos_order_edit: false,
@@ -232,6 +238,7 @@ export function salesPlatformFromApi(apiPayload) {
     enable_kra_integration: apiPayload.enable_kra_integration !== false,
     enable_ai: apiPayload.enable_ai !== false,
     enable_advanced_data_import: Boolean(apiPayload.enable_advanced_data_import ?? false),
+    advanced_data_import_pages: advancedDataImportPagesFromApi(apiPayload.advanced_data_import_pages),
     stock_deduct_on: apiPayload.stock_deduct_on ?? "order_created",
     require_pos_till_float: Boolean(apiPayload.require_pos_till_float ?? false),
     enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
@@ -307,10 +314,40 @@ export function OrganizationPlatformSalesSettings({
           />
           <Toggle
             label="Advanced data import"
-            description="When on, users with the relevant manage permissions (and organization administrators) can import master data (UOMs, categories, VAT rates, routes, products, customers, and more) from CSV or Excel."
+            description="When on, users with the relevant manage permissions (and organization administrators) can import master data from CSV or Excel. Choose which screens show import below."
             checked={Boolean(salesPlatform?.enable_advanced_data_import)}
-            onChange={(v) => patch({ enable_advanced_data_import: v })}
+            onChange={(v) =>
+              patch({
+                enable_advanced_data_import: v,
+                advanced_data_import_pages:
+                  v && !salesPlatform?.advanced_data_import_pages
+                    ? defaultAdvancedDataImportPages()
+                    : salesPlatform?.advanced_data_import_pages ?? defaultAdvancedDataImportPages(),
+              })
+            }
           />
+          {salesPlatform?.enable_advanced_data_import ? (
+            <div className="ml-6 space-y-2 border-l border-slate-200 pl-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Import screens for this organization
+              </p>
+              {ADVANCED_DATA_IMPORT_PAGE_OPTIONS.map(({ key, label }) => (
+                <Toggle
+                  key={key}
+                  label={label}
+                  checked={Boolean(salesPlatform?.advanced_data_import_pages?.[key])}
+                  onChange={(enabled) =>
+                    patch({
+                      advanced_data_import_pages: {
+                        ...(salesPlatform?.advanced_data_import_pages ?? defaultAdvancedDataImportPages()),
+                        [key]: enabled,
+                      },
+                    })
+                  }
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
       )}
     </PlatformFormSection>

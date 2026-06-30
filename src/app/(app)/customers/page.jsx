@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
-import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import { CustomerImportExport } from "@/components/customers/customer-import-export";
 import {
@@ -302,8 +302,7 @@ export default function CustomersPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search);
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [deletedFilter, setDeletedFilter] = useState("active");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);

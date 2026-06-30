@@ -28,7 +28,7 @@ import {
   vehicleToForm,
 } from "@/components/fulfillment/fulfillment-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { useConfirm } from "@/lib/use-confirm";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 import {
   BatchActionBar,
   BatchDeleteButton,
@@ -43,7 +43,7 @@ export default function VehiclesPage() {
 
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const { search, setSearch } = useListUrlSearch();
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [drawerOpen, setDrawerOpen] = useState(false);

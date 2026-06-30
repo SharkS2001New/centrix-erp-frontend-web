@@ -299,6 +299,7 @@ export function CustomerImportExport({ totalCount, exportSearchParams, onImporte
     organization,
     capabilities,
     permission: "customers.manage",
+    page: "customers",
   });
 
   return (

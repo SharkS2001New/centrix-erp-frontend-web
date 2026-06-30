@@ -29,7 +29,7 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { CatalogDataImportButton, filterNonEmptyImportRows, mapImportHeaders } from "@/components/catalog/catalog-data-import";
 import { CATEGORY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { toast } from "@/lib/toast";
-import { useConfirm } from "@/lib/use-confirm";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 import {
   BatchActionBar,
   BatchDeleteButton,
@@ -93,7 +93,7 @@ export default function CategoriesPage() {
   const [products, setProducts] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const { search, setSearch } = useListUrlSearch();
   const [typeFilter, setTypeFilter] = useState("all");
   const [collapsed, setCollapsed] = useState(new Set());
   const [page, setPage] = useState(1);
@@ -372,6 +372,7 @@ export default function CategoriesPage() {
             apiPath="/categories/import-batch"
             normalizeRows={(rows) => filterNonEmptyImportRows(rows, ["category_name"])}
             onImported={loadData}
+            importPage="categories"
           />
           <CatalogDataImportButton
             label="Import sub-categories"
@@ -384,6 +385,7 @@ export default function CategoriesPage() {
               filterNonEmptyImportRows(mapImportHeaders(rows, SUBCATEGORY_IMPORT_COLUMNS), ["subcategory_name"])
             }
             onImported={loadData}
+            importPage="categories"
           />
           <CatalogListExport
             title="Categories"
@@ -532,10 +534,7 @@ export default function CategoriesPage() {
                             label={`Select ${sub.subcategory_name}`}
                           />
                           <td className="px-4 py-3 font-medium text-slate-900">
-                            <span className="inline-flex items-center pl-8">
-                              <CornerIcon />
-                              {sub.subcategory_name}
-                            </span>
+                            <span className="pl-8">{sub.subcategory_name}</span>
                           </td>
                           <td className="px-4 py-3">
                             <ParentChip label={row.category.category_name} />
@@ -657,23 +656,6 @@ function ChevronRightIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <polyline points="9 18 15 12 9 6" />
-    </svg>
-  );
-}
-
-function CornerIcon() {
-  return (
-    <svg
-      className="mr-1 text-slate-400"
-      width="13"
-      height="13"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-    >
-      <polyline points="15 10 15 15 10 15" />
-      <path d="M20 4H9a2 2 0 0 0-2 2v11" />
     </svg>
   );
 }

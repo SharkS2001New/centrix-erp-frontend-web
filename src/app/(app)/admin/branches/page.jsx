@@ -23,7 +23,7 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { BRANCH_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { useConfirm } from "@/lib/use-confirm";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 import {
   BatchActionBar,
   BatchDeleteButton,
@@ -56,7 +56,7 @@ export default function AdminBranchesPage() {
   const [users, setUsers] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const { search, setSearch } = useListUrlSearch();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewBranch, setViewBranch] = useState(null);
   const [editing, setEditing] = useState(null);

@@ -35,7 +35,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { useConfirm } from "@/lib/use-confirm";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 import {
   BatchActionBar,
   BatchDeleteButton,
@@ -56,7 +56,7 @@ export default function RoutesPage() {
   const [customers, setCustomers] = useState([]);
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const { search, setSearch } = useListUrlSearch();
   const [salesPeriod, setSalesPeriod] = useState("day");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
@@ -303,9 +303,8 @@ export default function RoutesPage() {
               filterNonEmptyImportRows(mapImportHeaders(rows, ROUTE_EXPORT_COLUMNS), ["route_name"])
             }
             onImported={loadData}
+            importPage="routes"
           />
-          <CatalogListExport
-            title="Routes"
             apiPath="/routes"
             columns={ROUTE_EXPORT_COLUMNS}
             totalCount={filtered.length}
