@@ -25,12 +25,18 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
-import { CatalogDataImportButton, filterNonEmptyImportRows } from "@/components/catalog/catalog-data-import";
+import { CatalogDataImportButton, filterNonEmptyImportRows, mapImportHeaders } from "@/components/catalog/catalog-data-import";
 import { CATEGORY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { toast } from "@/lib/toast";
 import { useConfirm } from "@/lib/use-confirm";
 
 const PAGE_SIZE = 15;
+
+const SUBCATEGORY_IMPORT_COLUMNS = [
+  { key: "subcategory_name", label: "Subcategory" },
+  { key: "category_name", label: "Category" },
+  { key: "category_id", label: "Category ID" },
+];
 
 function rowKey(type, id) {
   return `${type}-${id}`;
@@ -301,7 +307,9 @@ export default function CategoriesPage() {
             sampleHeaders={["category_name", "subcategory_name"]}
             sampleRow={["Beverages", "Soft drinks"]}
             apiPath="/sub-categories/import-batch"
-            normalizeRows={(rows) => filterNonEmptyImportRows(rows, ["subcategory_name"])}
+            normalizeRows={(rows) =>
+              filterNonEmptyImportRows(mapImportHeaders(rows, SUBCATEGORY_IMPORT_COLUMNS), ["subcategory_name"])
+            }
             onImported={loadData}
           />
           <CatalogListExport

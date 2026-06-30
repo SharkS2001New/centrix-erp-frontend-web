@@ -1,18 +1,48 @@
 import { readExcelFile } from "@/lib/spreadsheet";
 
+function splitCsvLine(line) {
+  const values = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          current += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      values.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+
+  values.push(current);
+  return values;
+}
+
 function parseCsv(text) {
   const lines = text.split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, "").replace(/^\ufeff/, ""));
+  const headers = splitCsvLine(lines[0]).map((h) => h.trim().replace(/^\ufeff/, ""));
   return lines.slice(1).map((line) => {
-    const values = line.match(/("([^"]|"")*"|[^,]*)/g) ?? [];
+    const values = splitCsvLine(line);
     const row = {};
     headers.forEach((header, i) => {
-      let val = (values[i] ?? "").trim();
-      if (val.startsWith('"') && val.endsWith('"')) {
-        val = val.slice(1, -1).replace(/""/g, '"');
-      }
-      row[header] = val;
+      row[header] = (values[i] ?? "").trim();
     });
     return row;
   });
