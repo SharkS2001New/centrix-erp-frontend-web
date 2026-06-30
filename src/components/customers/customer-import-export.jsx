@@ -23,7 +23,7 @@ const SAMPLE_HEADERS = [
   "phone_number",
   "additional_phone",
   "town",
-  "route_id",
+  "route_name",
   "branch_id",
   "kra_pin",
   "terms_of_payment",
