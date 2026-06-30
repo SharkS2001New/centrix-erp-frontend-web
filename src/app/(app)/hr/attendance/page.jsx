@@ -13,6 +13,7 @@ import {
   Field,
   FormDrawer,
   PrimaryButton,
+  SearchInput,
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
@@ -31,6 +32,7 @@ import {
   isCompanyMobileAttendanceEnabled,
 } from "@/lib/hr-settings";
 import { shouldShowMobileFieldAttendance } from "@/lib/sales-settings";
+import { calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
 import MobileFieldAttendanceScreen from "@/components/sales/mobile-field-attendance-screen";
 
 function daysAgoCalendarDate(days) {
@@ -55,6 +57,28 @@ function attendanceCountsInPayroll(status) {
   return ["present", "late", "half_day"].includes(status);
 }
 
+function attendanceRecordMatchesSearch(record, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+
+  const employee = record.employee;
+  const haystack = [
+    composeEmployeeDisplayName(employee),
+    employee?.employee_code,
+    employee?.employee_num != null ? String(employee.employee_num) : "",
+    record.employee_id != null ? String(record.employee_id) : "",
+    record.status,
+    record.notes,
+    formatAttendanceSource(record.source, record.source_label),
+    formatAttendanceLoginChannel(record.source, record.login_channel_label),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(q);
+}
+
 export default function HrAttendancePage() {
   const { capabilities, hasPermission } = useAuth();
   const canManageSettings = hasPermission(P.hr.manage);
@@ -69,6 +93,7 @@ export default function HrAttendancePage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyFromDate, setHistoryFromDate] = useState(() => daysAgoCalendarDate(7));
   const [historyToDate, setHistoryToDate] = useState(() => todayCalendarDate());
+  const [recordSearch, setRecordSearch] = useState("");
   const [manualOpen, setManualOpen] = useState(false);
   const [manualForm, setManualForm] = useState(EMPTY_MANUAL);
   const [manualSaving, setManualSaving] = useState(false);
@@ -160,7 +185,7 @@ export default function HrAttendancePage() {
   }, [loadActive]);
 
   useEffect(() => {
-    if (tab === "history") {
+    if (tab === "records") {
       loadHistory();
     }
   }, [tab, loadHistory]);
@@ -178,9 +203,10 @@ export default function HrAttendancePage() {
     return records.filter((record) => {
       const date = record.attendance_date?.slice?.(0, 10) ?? "";
       if (!date) return false;
-      return date >= historyFromDate && date <= historyToDate;
+      if (date < historyFromDate || date > historyToDate) return false;
+      return attendanceRecordMatchesSearch(record, recordSearch);
     });
-  }, [historyFromDate, historyToDate, records]);
+  }, [historyFromDate, historyToDate, recordSearch, records]);
 
   const timesRequired = !NON_WORK_STATUSES.includes(manualForm.status);
 
@@ -323,7 +349,7 @@ export default function HrAttendancePage() {
       title="Attendance"
       subtitle="Premises clock-in, company phone, mobile sales app, and manual records — all in one place for payroll"
       action={
-        tab === "history" ? (
+        tab === "records" ? (
           <div className="flex flex-wrap items-center gap-2">
             <CatalogListExport
               title="Attendance"
@@ -352,12 +378,12 @@ export default function HrAttendancePage() {
         </button>
         <button
           type="button"
-          onClick={() => setTab("history")}
+          onClick={() => setTab("records")}
           className={`rounded-md px-4 py-2 text-sm font-medium transition ${
-            tab === "history" ? "bg-[#185FA5] text-white" : "text-slate-600 hover:bg-slate-50"
+            tab === "records" ? "bg-[#185FA5] text-white" : "text-slate-600 hover:bg-slate-50"
           }`}
         >
-          History
+          Records
         </button>
       </div>
 
@@ -445,6 +471,14 @@ export default function HrAttendancePage() {
                 className={inputClassName()}
               />
             </Field>
+            <Field label="Search employee">
+              <SearchInput
+                value={recordSearch}
+                onChange={(e) => setRecordSearch(e.target.value)}
+                placeholder="Name, code, or status"
+                className="min-w-[14rem]"
+              />
+            </Field>
           </div>
 
           <section className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
@@ -480,7 +514,9 @@ export default function HrAttendancePage() {
                   ) : filteredRecords.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
-                        No attendance records in this date range.
+                        {recordSearch.trim()
+                          ? "No attendance records match your search in this date range."
+                          : "No attendance records in this date range."}
                       </td>
                     </tr>
                   ) : (
@@ -582,7 +618,7 @@ export default function HrAttendancePage() {
             {dayHint.existing_attendance?.source
               ? `, ${formatAttendanceSource(dayHint.existing_attendance.source, dayHint.existing_attendance.source_label).toLowerCase()}`
               : ""}
-            ). You cannot add a second record — edit the existing one in the History tab.
+            ). You cannot add a second record — edit the existing one in the Records tab.
           </p>
         ) : null}
         {dayHint && !dayHint.has_existing_attendance ? (

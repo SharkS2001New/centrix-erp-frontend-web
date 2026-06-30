@@ -746,21 +746,6 @@ const NAV_SECTION_DEFINITIONS = [
     ],
   },
   {
-    id: "org_preferences",
-    label: "Organization",
-    icon: "⚙️",
-    collapsible: true,
-    items: [
-      {
-        href: "/admin/settings",
-        label: "Organization settings",
-        requireOperationalModule: true,
-        permission: "admin.manage",
-        requireAdmin: true,
-      },
-    ],
-  },
-  {
     id: "reports",
     label: "Reports",
     icon: "📈",

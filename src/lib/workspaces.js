@@ -57,27 +57,26 @@ export const WORKSPACE_SECTION_IDS = {
     "inventory",
     "stock_movements",
     "suppliers",
-    "org_preferences",
     "reports",
   ],
-  admin: ["admin_dashboard", "admin_organization", "admin_users", "admin_finance_tax", "admin_settings"],
-  accounting: ["accounting", "expenses", "org_preferences", "reports"],
-  hr: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "org_preferences", "reports"],
-  distribution: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "org_preferences", "reports"],
+  admin: ["admin_dashboard", "admin_organization", "admin_users", "admin_finance_tax"],
+  accounting: ["accounting", "expenses", "reports"],
+  hr: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"],
+  distribution: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "reports"],
 };
 
 /** Sidebar zone headers for workspaces that still use grouped sections. */
 export const WORKSPACE_NAV_ZONES = {
   accounting: [
-    { label: null, sectionIds: ["accounting", "expenses", "org_preferences", "reports"] },
+    { label: null, sectionIds: ["accounting", "expenses", "reports"] },
   ],
   hr: [
-    { label: null, sectionIds: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "org_preferences", "reports"] },
+    { label: null, sectionIds: ["hr_people", "hr_time_attendance", "hr_payroll", "hr_performance", "reports"] },
   ],
   distribution: [
     {
       label: null,
-      sectionIds: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "org_preferences", "reports"],
+      sectionIds: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "reports"],
     },
   ],
   admin: [
@@ -88,7 +87,6 @@ export const WORKSPACE_NAV_ZONES = {
         "admin_organization",
         "admin_users",
         "admin_finance_tax",
-        "admin_settings",
       ],
     },
   ],
@@ -153,7 +151,7 @@ export const WORKSPACE_PATH_PREFIXES = {
   distribution: ["/fulfillment"],
 };
 
-export const SHARED_WORKSPACE_PATHS = ["/profile", "/choose-workspace", "/admin/settings"];
+export const SHARED_WORKSPACE_PATHS = ["/profile", "/choose-workspace"];
 
 export function workspaceIcon(iconKey) {
   return WORKSPACE_ICONS[iconKey] ?? WORKSPACE_ICONS.app;
@@ -183,6 +181,10 @@ export function workspaceHomePath(workspaceId, capabilities) {
 export function navItemBelongsToWorkspace(item, workspaceId) {
   if (workspaceId === "pos") {
     return false;
+  }
+
+  if (item.href === "/admin/settings" || item.href?.startsWith("/admin/settings/")) {
+    return workspaceId === "admin";
   }
 
   if (
