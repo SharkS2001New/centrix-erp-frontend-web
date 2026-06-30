@@ -18,7 +18,7 @@ export async function readExcelFile(file) {
   /** @type {string[]} */
   const headers = [];
   headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-    headers[colNumber - 1] = String(cell.value ?? "").trim();
+    headers[colNumber - 1] = String(cell.value ?? "").trim().replace(/^\ufeff/, "");
   });
 
   /** @type {Record<string, string>[]} */

@@ -21,6 +21,7 @@ function ImportModal({
   description,
   sampleHeaders,
   sampleRow,
+  sampleRows,
   apiPath,
   normalizeRows,
   onImported,
@@ -35,13 +36,15 @@ function ImportModal({
   if (!open) return null;
 
   function downloadSample(format) {
-    const rows = [sampleHeaders, sampleRow];
+    const dataRows = sampleRows?.length ? sampleRows : sampleRow ? [sampleRow] : [];
+    const rows = [sampleHeaders, ...dataRows];
+    const filenameBase = `${title.toLowerCase().replace(/\s+/g, "-")}-sample`;
     if (format === "xlsx") {
-      downloadExcelFromRows(rows, `${title.toLowerCase().replace(/\s+/g, "-")}-sample.xlsx`);
+      void downloadExcelFromRows(`${filenameBase}.xlsx`, "Import", rows);
       return;
     }
     const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
-    downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), `${title.toLowerCase().replace(/\s+/g, "-")}-sample.csv`);
+    downloadBlob(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }), `${filenameBase}.csv`);
   }
 
   async function handleFile(e) {
@@ -150,6 +153,7 @@ export function CatalogDataImportButton({
   description,
   sampleHeaders,
   sampleRow,
+  sampleRows,
   apiPath,
   normalizeRows,
   onImported,
@@ -181,12 +185,45 @@ export function CatalogDataImportButton({
         description={description}
         sampleHeaders={sampleHeaders}
         sampleRow={sampleRow}
+        sampleRows={sampleRows}
         apiPath={apiPath}
         normalizeRows={normalizeRows}
         onImported={onImported}
       />
     </>
   );
+}
+
+function normalizeImportHeader(header) {
+  return String(header ?? "")
+    .trim()
+    .replace(/^\ufeff/, "")
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+}
+
+/** Map spreadsheet headers (labels or aliases) to API field keys. */
+export function mapImportHeaders(rows, columnDefs = []) {
+  const aliasToKey = new Map();
+  for (const col of columnDefs) {
+    const { key, label } = col;
+    aliasToKey.set(normalizeImportHeader(key), key);
+    if (label) {
+      aliasToKey.set(normalizeImportHeader(label), key);
+    }
+    aliasToKey.set(normalizeImportHeader(key.replace(/_/g, " ")), key);
+  }
+
+  return (rows ?? []).map((row) => {
+    const mapped = {};
+    for (const [header, value] of Object.entries(row ?? {})) {
+      const targetKey =
+        aliasToKey.get(normalizeImportHeader(header))
+        ?? String(header ?? "").trim().replace(/^\ufeff/, "");
+      mapped[targetKey] = value;
+    }
+    return mapped;
+  });
 }
 
 export function filterNonEmptyImportRows(rows, requiredKeys = []) {

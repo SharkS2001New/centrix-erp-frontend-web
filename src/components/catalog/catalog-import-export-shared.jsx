@@ -3,7 +3,7 @@ import { readExcelFile } from "@/lib/spreadsheet";
 function parseCsv(text) {
   const lines = text.split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return [];
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, "").replace(/^\ufeff/, ""));
   return lines.slice(1).map((line) => {
     const values = line.match(/("([^"]|"")*"|[^,]*)/g) ?? [];
     const row = {};

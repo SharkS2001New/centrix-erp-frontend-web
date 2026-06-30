@@ -16,7 +16,11 @@ import {
   updateRouteFormField,
 } from "@/components/routes/route-form";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
-import { CatalogDataImportButton, filterNonEmptyImportRows } from "@/components/catalog/catalog-data-import";
+import {
+  CatalogDataImportButton,
+  filterNonEmptyImportRows,
+  mapImportHeaders,
+} from "@/components/catalog/catalog-data-import";
 import { ROUTE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import {
   CatalogPageShell,
@@ -237,12 +241,18 @@ export default function RoutesPage() {
         <div className="flex flex-wrap items-center gap-2">
           <CatalogDataImportButton
             title="Import routes"
-            description="Upload CSV or Excel with route_name and optional direction, route_markup_price, is_active."
+            description="Upload CSV or Excel. Required column: route_name (or Route). Optional: direction, route_markup_price, is_active."
             sampleHeaders={["route_name", "direction", "route_markup_price", "is_active"]}
-            sampleRow={["Westlands", "Outbound", "0", "true"]}
+            sampleRows={[
+              ["Westlands", "Outbound", "0", "true"],
+              ["Karen", "Inbound", "50", "true"],
+              ["Industrial Area", "", "0", "true"],
+            ]}
             apiPath="/routes/import-batch"
             permission="fulfillment.manage"
-            normalizeRows={(rows) => filterNonEmptyImportRows(rows, ["route_name"])}
+            normalizeRows={(rows) =>
+              filterNonEmptyImportRows(mapImportHeaders(rows, ROUTE_EXPORT_COLUMNS), ["route_name"])
+            }
             onImported={loadData}
           />
           <CatalogListExport
