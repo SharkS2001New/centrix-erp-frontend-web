@@ -292,7 +292,7 @@ export function buildModuleSearchRows(navResults, entityGroups, query) {
     for (const entry of navResults) {
       rows.push({
         kind: "nav",
-        id: entry.id,
+        id: `nav:${entry.href}`,
         label: entry.label,
         subtitle: [entry.section, entry.group].filter(Boolean).join(" · "),
         href: entry.href,

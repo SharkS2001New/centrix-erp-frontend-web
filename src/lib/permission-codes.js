@@ -94,6 +94,10 @@ export const P = {
     accounts_receivable: { view: "accounting.accounts_receivable.view" },
     accounts_payable: { view: "accounting.accounts_payable.view" },
     expenses: { view: "accounting.expenses.view" },
+    bank_reconciliation: {
+      view: "accounting.bank_reconciliation.view",
+      manage: "accounting.bank_reconciliation.manage",
+    },
   },
   reports: {
     hub: { view: "reports.hub.view" },

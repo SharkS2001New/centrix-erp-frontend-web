@@ -474,6 +474,14 @@ const NAV_SECTION_DEFINITIONS = [
         requireNativeAccounting: true,
       },
       {
+        href: "/accounting/bank-reconciliation",
+        label: "Bank reconciliation",
+        module: "accounting",
+        permission: P.accounting.bank_reconciliation.view,
+        group: "General ledger",
+        requireNativeAccounting: true,
+      },
+      {
         href: "/expenses",
         label: "Expenses",
         module: "accounting",

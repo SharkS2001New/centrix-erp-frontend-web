@@ -37,6 +37,7 @@ const DETAIL_PATTERNS = [
   /^\/inventory\/stock-take\/\d+/,
   /^\/inventory\/receipts\/[^/]+$/,
   /^\/accounting\/journal-entries\/\d+/,
+  /^\/accounting\/bank-reconciliation\/\d+/,
   /^\/accounting\/customer-invoices\/\d+/,
   /^\/platform\/organizations\/\d+/,
   /^\/reports\/custom\/\d+/,

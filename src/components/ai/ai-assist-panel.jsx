@@ -66,8 +66,8 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
   const [formSpec, setFormSpec] = useState(null);
   const [formValues, setFormValues] = useState({});
   const [actionResult, setActionResult] = useState(null);
-  const [assistRequest, setAssistRequest] = useState(null);
   const bottomRef = useRef(null);
+  const sendRef = useRef(null);
 
   const canUse = canShowAiAssistant(hasPermission) && isAiPlatformEnabled(capabilities);
   const orgAvailable = isAiAssistantAvailable(capabilities);
@@ -159,29 +159,25 @@ export function AiAssistPanel({ title = AI_ASSISTANT_TITLE }) {
     [loading, messages, pendingAction, formValues, applyChatResponse, workspaceId, pathname],
   );
 
+  sendRef.current = send;
+
   useEffect(() => {
     if (!canUse) return undefined;
     return subscribeAiAssistRequests((request) => {
       setExpanded(false);
       setOpen(true);
-      setAssistRequest(request);
+
+      const message = request.message?.trim() ?? "";
+      if (!message) return;
+
+      if (request.autoSend !== false) {
+        void sendRef.current?.(message);
+        return;
+      }
+
+      setInput(message);
     });
   }, [canUse]);
-
-  useEffect(() => {
-    if (!open || !canUse || !assistRequest) return;
-
-    const message = assistRequest.message?.trim() ?? "";
-    setAssistRequest(null);
-    if (!message) return;
-
-    if (assistRequest.autoSend !== false) {
-      void send(message);
-      return;
-    }
-
-    setInput(message);
-  }, [assistRequest, canUse, open, send]);
 
   const submitForm = useCallback(() => {
     if (!pendingAction) return;

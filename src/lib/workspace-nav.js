@@ -124,8 +124,17 @@ export function searchNavEntries(entries, query, { limit = 12 } = {}) {
     scored.push({ entry, score });
   }
 
-  return scored
-    .sort((a, b) => b.score - a.score || a.entry.label.localeCompare(b.entry.label))
-    .slice(0, limit)
-    .map(({ entry }) => entry);
+  const results = [];
+  const seenHrefs = new Set();
+
+  for (const { entry } of scored.sort(
+    (a, b) => b.score - a.score || a.entry.label.localeCompare(b.entry.label),
+  )) {
+    if (seenHrefs.has(entry.href)) continue;
+    seenHrefs.add(entry.href);
+    results.push(entry);
+    if (results.length >= limit) break;
+  }
+
+  return results;
 }
