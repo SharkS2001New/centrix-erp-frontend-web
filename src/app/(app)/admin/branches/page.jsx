@@ -24,6 +24,14 @@ import { BRANCH_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  batchDeleteWithConfirm,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 
 const EMPTY_FORM = {
   branch_name: "",
@@ -55,6 +63,16 @@ export default function AdminBranchesPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   const load = useCallback(async () => {
     if (!organizationId) {
@@ -112,6 +130,11 @@ export default function AdminBranchesPage() {
     );
   }, [branches, search]);
 
+  const pageRowIds = useMemo(() => filtered.map((b) => b.id), [filtered]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const branchById = useMemo(() => new Map(filtered.map((b) => [String(b.id), b])), [filtered]);
+
   function managerName(branch) {
     const id = branch.settings?.manager_employee_id;
     if (!id) return "—";
@@ -166,6 +189,32 @@ export default function AdminBranchesPage() {
       notifySuccess(`"${branch.branch_name}" deleted`);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to delete branch");
+    }
+  }
+
+  async function deleteSelectedBranches() {
+    setBatchDeleting(true);
+    try {
+      await batchDeleteWithConfirm({
+        confirm,
+        selectedIds,
+        entityName: "branch",
+        deleteItem: async (id) => {
+          const userCount = userCountByBranch.get(Number(id)) ?? 0;
+          if (userCount > 0) {
+            const name = branchById.get(String(id))?.branch_name ?? "Branch";
+            throw new Error(`Cannot delete ${name} — ${userCount} user(s) still assigned`);
+          }
+          await apiRequest(adminPath(`/branches/${id}`), { method: "DELETE" });
+        },
+        clearSelection,
+        reload: load,
+        notifySuccess,
+        notifyError,
+        labelForId: (id) => branchById.get(String(id))?.branch_name ?? id,
+      });
+    } finally {
+      setBatchDeleting(false);
     }
   }
 
@@ -239,6 +288,11 @@ export default function AdminBranchesPage() {
         <table className="min-w-full text-sm">
           <thead className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide text-slate-500">
             <tr>
+              <TableSelectAllHeader
+                checked={allOnPageSelected}
+                indeterminate={someOnPageSelected}
+                onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+              />
               <th className="px-4 py-3">Branch</th>
               <th className="px-4 py-3">Manager</th>
               <th className="px-4 py-3">Employees</th>
@@ -250,19 +304,24 @@ export default function AdminBranchesPage() {
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                   Loading…
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                   No branches found.
                 </td>
               </tr>
             ) : (
               filtered.map((branch) => (
                 <tr key={branch.id} className="theme-table-body-row">
+                  <TableRowSelectCell
+                    checked={selectedIds.has(String(branch.id))}
+                    onChange={() => toggleOne(branch.id)}
+                    label={`Select ${branch.branch_name}`}
+                  />
                   <td className="px-4 py-3 font-medium text-slate-900">{branch.branch_name}</td>
                   <td className="px-4 py-3 text-slate-600">{managerName(branch)}</td>
                   <td className="px-4 py-3 text-slate-600">{userCountByBranch.get(branch.id) ?? 0}</td>
@@ -418,6 +477,14 @@ export default function AdminBranchesPage() {
           </dl>
         ) : null}
       </DetailDrawer>
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <BatchDeleteButton
+          count={selectedCount}
+          busy={batchDeleting}
+          onClick={() => void deleteSelectedBranches()}
+        />
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

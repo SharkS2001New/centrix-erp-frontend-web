@@ -23,6 +23,14 @@ import { CatalogDataImportButton, filterNonEmptyImportRows } from "@/components/
 import { VAT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { toast } from "@/lib/toast";
 import { useConfirm } from "@/lib/use-confirm";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  batchDeleteWithConfirm,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 
 const EMPTY_FORM = {
   vat_code: "",
@@ -45,6 +53,16 @@ export default function VatsPage() {
   const [drawerMode, setDrawerMode] = useState("create");
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   const loadData = useCallback(async () => {
     try {
@@ -78,6 +96,11 @@ export default function VatsPage() {
     }
     return map;
   }, [products]);
+
+  const pageRowIds = useMemo(() => vats.map((v) => v.id), [vats]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const vatById = useMemo(() => new Map(vats.map((v) => [String(v.id), v])), [vats]);
 
   const drawerTitle = drawerMode === "create" ? "Add VAT rate" : "Edit VAT rate";
 
@@ -159,6 +182,27 @@ export default function VatsPage() {
     }
   }
 
+  async function deleteSelectedVats() {
+    setBatchDeleting(true);
+    try {
+      await batchDeleteWithConfirm({
+        confirm,
+        selectedIds,
+        entityName: "VAT rate",
+        deleteItem: async (id) => {
+          await apiRequest(adminPath(`/vats/${id}`), { method: "DELETE" });
+        },
+        clearSelection,
+        reload: loadData,
+        notifySuccess: (msg) => toast.success(msg),
+        notifyError: (msg) => toast.error(msg),
+        labelForId: (id) => vatById.get(String(id))?.vat_name ?? id,
+      });
+    } finally {
+      setBatchDeleting(false);
+    }
+  }
+
   return (
     <CatalogPageShell
       title="VAT rates"
@@ -201,6 +245,11 @@ export default function VatsPage() {
             <table className="w-full min-w-[640px] border-collapse text-sm">
               <thead>
                 <tr className={TABLE_HEAD_ROW_CLASS}>
+                  <TableSelectAllHeader
+                    checked={allOnPageSelected}
+                    indeterminate={someOnPageSelected}
+                    onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                  />
                   <th className="px-4 py-2.5">Code</th>
                   <th className="px-4 py-2.5">Name</th>
                   <th className="px-4 py-2.5">Rate</th>
@@ -213,7 +262,7 @@ export default function VatsPage() {
               <tbody>
                 {vats.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                    <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
                       No VAT rates yet. Add one to get started.
                     </td>
                   </tr>
@@ -227,6 +276,11 @@ export default function VatsPage() {
                         key={vat.id}
                         className={TABLE_BODY_ROW_CLASS}
                       >
+                        <TableRowSelectCell
+                          checked={selectedIds.has(String(vat.id))}
+                          onChange={() => toggleOne(vat.id)}
+                          label={`Select ${vat.vat_name}`}
+                        />
                         <td className="px-4 py-3.5">
                           <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-sm font-medium text-slate-800">
                             {vat.vat_code}
@@ -324,6 +378,14 @@ export default function VatsPage() {
           </button>
         </div>
       </FormDrawer>
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <BatchDeleteButton
+          count={selectedCount}
+          busy={batchDeleting}
+          onClick={() => void deleteSelectedVats()}
+        />
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

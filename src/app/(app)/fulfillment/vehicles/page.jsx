@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -29,6 +29,13 @@ import {
 } from "@/components/fulfillment/fulfillment-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TABLE_ROW_CHECKBOX_CLASS,
+  batchDeleteWithConfirm,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 
 export default function VehiclesPage() {
   const confirm = useConfirm();
@@ -45,6 +52,16 @@ export default function VehiclesPage() {
   const [form, setForm] = useState(EMPTY_VEHICLE_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   const loadData = useCallback(async () => {
     try {
@@ -84,6 +101,18 @@ export default function VehiclesPage() {
       return hay.includes(q);
     });
   }, [vehicles, search, statusFilter]);
+
+  const pageRowIds = useMemo(() => filtered.map((v) => v.id), [filtered]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const vehicleById = useMemo(() => new Map(filtered.map((v) => [String(v.id), v])), [filtered]);
+  const selectAllRef = useRef(null);
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someOnPageSelected;
+    }
+  }, [someOnPageSelected]);
 
   function openCreateDrawer() {
     setDrawerMode("create");
@@ -158,6 +187,27 @@ export default function VehiclesPage() {
     }
   }
 
+  async function deleteSelectedVehicles() {
+    setBatchDeleting(true);
+    try {
+      await batchDeleteWithConfirm({
+        confirm,
+        selectedIds,
+        entityName: "vehicle",
+        deleteItem: async (id) => {
+          await apiRequest(`/vehicles/${id}`, { method: "DELETE" });
+        },
+        clearSelection,
+        reload: loadData,
+        notifySuccess,
+        notifyError,
+        labelForId: (id) => vehicleById.get(String(id))?.vehicle_name ?? id,
+      });
+    } finally {
+      setBatchDeleting(false);
+    }
+  }
+
   return (
     <CatalogPageShell
       title="Vehicles"
@@ -211,13 +261,37 @@ export default function VehiclesPage() {
           No vehicles found.
         </p>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <>
+          <div className="mb-4 flex items-center gap-2">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              className={TABLE_ROW_CHECKBOX_CLASS}
+              checked={allOnPageSelected}
+              onChange={(e) => toggleAllOnPage(e.target.checked, pageRowIds)}
+              aria-label="Select all vehicles on this page"
+            />
+            <span className="text-sm text-slate-600">Select all on this page</span>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map((vehicle) => (
             <article
               key={vehicle.id}
-              className="group relative theme-panel rounded-xl border p-5 shadow-sm transition hover:border-[#B5D4F4] hover:shadow-md"
+              className={`group relative theme-panel rounded-xl border p-5 shadow-sm transition hover:border-[#B5D4F4] hover:shadow-md ${
+                selectedIds.has(String(vehicle.id)) ? "border-[#185FA5] ring-1 ring-[#185FA5]/30" : ""
+              }`}
             >
-              <Link href={`/fulfillment/vehicles/${vehicle.id}`} className="block">
+              <div className="absolute left-3 top-3 z-10">
+                <input
+                  type="checkbox"
+                  className={TABLE_ROW_CHECKBOX_CLASS}
+                  checked={selectedIds.has(String(vehicle.id))}
+                  onChange={() => toggleOne(vehicle.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label={`Select ${vehicle.vehicle_name}`}
+                />
+              </div>
+              <Link href={`/fulfillment/vehicles/${vehicle.id}`} className="block pl-6">
                 <div className="text-3xl">{vehicleEmoji(vehicle.vehicle_name)}</div>
                 <p className="mt-3 font-mono text-base font-semibold text-slate-900">
                   {vehicle.plate_number || vehicle.vehicle_code}
@@ -237,7 +311,8 @@ export default function VehiclesPage() {
               </div>
             </article>
           ))}
-        </div>
+          </div>
+        </>
       )}
 
       <FormDrawer
@@ -324,6 +399,14 @@ export default function VehiclesPage() {
           </div>
         </div>
       </FormDrawer>
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <BatchDeleteButton
+          count={selectedCount}
+          busy={batchDeleting}
+          onClick={() => void deleteSelectedVehicles()}
+        />
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

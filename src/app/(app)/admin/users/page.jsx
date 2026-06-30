@@ -43,6 +43,14 @@ import { isOrgMobileSalesEnabled } from "@/lib/sales-settings";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  batchDeleteWithConfirm,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 
 const EMPTY_FORM = {
   full_name: "",
@@ -95,6 +103,16 @@ export default function AdminUsersPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
   const [permLoading, setPermLoading] = useState(false);
   const [permSaving, setPermSaving] = useState(false);
   const [permError, setPermError] = useState(null);
@@ -371,6 +389,32 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function deleteSelectedUsers() {
+    const userByIdOnPage = new Map(users.map((row) => [String(row.id), row]));
+    setBatchDeleting(true);
+    try {
+      await batchDeleteWithConfirm({
+        confirm,
+        selectedIds,
+        entityName: "user",
+        deleteItem: async (id) => {
+          const row = userByIdOnPage.get(String(id));
+          if (row && isProtectedUserAccount(row, user?.id)) {
+            throw new Error(`Cannot delete ${row.full_name}`);
+          }
+          await apiRequest(adminPath(`/users/${id}`), { method: "DELETE" });
+        },
+        clearSelection,
+        reload: reloadAll,
+        notifySuccess,
+        notifyError,
+        labelForId: (id) => userByIdOnPage.get(String(id))?.full_name ?? id,
+      });
+    } finally {
+      setBatchDeleting(false);
+    }
+  }
+
   function togglePermission(permissionId) {
     const next = toggleUserPermissionOverride(
       permissionId,
@@ -485,6 +529,9 @@ export default function AdminUsersPage() {
   }
 
   const viewRoleName = viewUser ? roleById.get(viewUser.role_id)?.role_name : null;
+  const pageRowIds = useMemo(() => users.map((row) => row.id), [users]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
 
   const pageContent = (
     <CatalogPageShell
@@ -523,6 +570,11 @@ export default function AdminUsersPage() {
           <table className="min-w-full text-sm">
             <thead className={TABLE_HEAD_ROW_CLASS}>
               <tr>
+                <TableSelectAllHeader
+                  checked={allOnPageSelected}
+                  indeterminate={someOnPageSelected}
+                  onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                />
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Branch</th>
@@ -535,19 +587,24 @@ export default function AdminUsersPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                     Loading…
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                     No users found.
                   </td>
                 </tr>
               ) : (
                 users.map((row) => (
                   <tr key={row.id} className="theme-table-body-row">
+                    <TableRowSelectCell
+                      checked={selectedIds.has(String(row.id))}
+                      onChange={() => toggleOne(row.id)}
+                      label={`Select ${row.full_name}`}
+                    />
                     <td className="px-4 py-3 font-medium text-slate-900">{row.full_name}</td>
                     <td className="px-4 py-3 text-slate-600">{row.email ?? "—"}</td>
                     <td className="px-4 py-3 text-slate-600">
@@ -802,6 +859,14 @@ export default function AdminUsersPage() {
             </div>
           ) : null}
         </FormDrawer>
+
+        <BatchActionBar count={selectedCount} onClear={clearSelection}>
+          <BatchDeleteButton
+            count={selectedCount}
+            busy={batchDeleting}
+            onClick={() => void deleteSelectedUsers()}
+          />
+        </BatchActionBar>
       </CatalogPageShell>
   );
 

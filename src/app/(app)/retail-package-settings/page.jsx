@@ -32,6 +32,14 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { RETAIL_PACKAGE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  batchDeleteWithConfirm,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 
 const PAGE_SIZE = 10;
 
@@ -72,6 +80,16 @@ export default function RetailPackageSettingsPage() {
   const [pickedProduct, setPickedProduct] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   const loadData = useCallback(async () => {
     try {
@@ -152,6 +170,10 @@ export default function RetailPackageSettingsPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageRowIds = useMemo(() => pageSlice.map((r) => r.id), [pageSlice]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const rowById = useMemo(() => new Map(pageSlice.map((r) => [String(r.id), r])), [pageSlice]);
 
   useEffect(() => {
     setPage(1);
@@ -255,6 +277,27 @@ export default function RetailPackageSettingsPage() {
     }
   }
 
+  async function deleteSelectedSettings() {
+    setBatchDeleting(true);
+    try {
+      await batchDeleteWithConfirm({
+        confirm,
+        selectedIds,
+        entityName: "package setting",
+        deleteItem: async (id) => {
+          await apiRequest(`/retail-package-settings/${id}`, { method: "DELETE" });
+        },
+        clearSelection,
+        reload: loadData,
+        notifySuccess,
+        notifyError,
+        labelForId: (id) => rowById.get(String(id))?.product_code ?? id,
+      });
+    } finally {
+      setBatchDeleting(false);
+    }
+  }
+
   return (
     <CatalogPageShell
       title="Retail package settings"
@@ -333,6 +376,11 @@ export default function RetailPackageSettingsPage() {
               <table className="w-full min-w-[800px] border-collapse text-sm">
                 <thead>
                   <tr className={TABLE_HEAD_ROW_CLASS}>
+                    <TableSelectAllHeader
+                      checked={allOnPageSelected}
+                      indeterminate={someOnPageSelected}
+                      onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                    />
                     <th className="px-3.5 py-2.5">Product</th>
                     <th className="px-3.5 py-2.5">UOM</th>
                     <th className="px-3.5 py-2.5">Retail tiers</th>
@@ -342,7 +390,7 @@ export default function RetailPackageSettingsPage() {
                 <tbody>
                   {pageSlice.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
                         {settings.length === 0
                           ? "No retail package settings yet. Click Add package setting to configure a product."
                           : "No package settings match your filters."}
@@ -354,6 +402,11 @@ export default function RetailPackageSettingsPage() {
                         key={row.id}
                         className={TABLE_BODY_ROW_CLASS}
                       >
+                        <TableRowSelectCell
+                          checked={selectedIds.has(String(row.id))}
+                          onChange={() => toggleOne(row.id)}
+                          label={`Select ${row.product_name}`}
+                        />
                         <td className="px-3.5 py-3">
                           <div className="font-medium text-slate-900">{row.product_name}</div>
                           <span className="font-mono text-xs text-slate-500">{row.product_code}</span>
@@ -448,6 +501,14 @@ export default function RetailPackageSettingsPage() {
           unitPrice={pickedProduct?.unit_price ?? ""}
         />
       </FormDrawer>
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <BatchDeleteButton
+          count={selectedCount}
+          busy={batchDeleting}
+          onClick={() => void deleteSelectedSettings()}
+        />
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

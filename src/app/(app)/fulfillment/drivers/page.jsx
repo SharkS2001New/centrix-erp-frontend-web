@@ -32,6 +32,14 @@ import {
 } from "@/components/fulfillment/fulfillment-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  batchDeleteWithConfirm,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 
 const PAGE_SIZE = 10;
 
@@ -59,6 +67,16 @@ export default function DriversPage() {
   const [form, setForm] = useState(EMPTY_DRIVER_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   const loadData = useCallback(async () => {
     try {
@@ -119,6 +137,10 @@ export default function DriversPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageRowIds = useMemo(() => pageSlice.map((d) => d.id), [pageSlice]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const driverById = useMemo(() => new Map(pageSlice.map((d) => [String(d.id), d])), [pageSlice]);
 
   useEffect(() => {
     setPage(1);
@@ -221,6 +243,27 @@ export default function DriversPage() {
     }
   }
 
+  async function deleteSelectedDrivers() {
+    setBatchDeleting(true);
+    try {
+      await batchDeleteWithConfirm({
+        confirm,
+        selectedIds,
+        entityName: "driver",
+        deleteItem: async (id) => {
+          await apiRequest(`/drivers/${id}`, { method: "DELETE" });
+        },
+        clearSelection,
+        reload: loadData,
+        notifySuccess,
+        notifyError,
+        labelForId: (id) => driverById.get(String(id))?.full_name ?? id,
+      });
+    } finally {
+      setBatchDeleting(false);
+    }
+  }
+
   return (
     <CatalogPageShell
       title="Drivers"
@@ -287,6 +330,11 @@ export default function DriversPage() {
               <table className="w-full min-w-[760px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
+                    <TableSelectAllHeader
+                      checked={allOnPageSelected}
+                      indeterminate={someOnPageSelected}
+                      onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                    />
                     <th className="px-4 py-2.5">Driver</th>
                     <th className="px-4 py-2.5">Phone</th>
                     <th className="px-4 py-2.5">Code</th>
@@ -299,7 +347,7 @@ export default function DriversPage() {
                 <tbody>
                   {pageSlice.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
                         No drivers found.
                       </td>
                     </tr>
@@ -309,6 +357,11 @@ export default function DriversPage() {
                         key={driver.id}
                         className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
                       >
+                        <TableRowSelectCell
+                          checked={selectedIds.has(String(driver.id))}
+                          onChange={() => toggleOne(driver.id)}
+                          label={`Select ${driver.full_name}`}
+                        />
                         <td className="px-4 py-3">
                           <Link
                             href={`/fulfillment/drivers/${driver.id}`}
@@ -469,6 +522,14 @@ export default function DriversPage() {
           </div>
         </div>
       </FormDrawer>
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <BatchDeleteButton
+          count={selectedCount}
+          busy={batchDeleting}
+          onClick={() => void deleteSelectedDrivers()}
+        />
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

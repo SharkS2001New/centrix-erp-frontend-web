@@ -35,6 +35,14 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  batchDeleteWithConfirm,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 
 const PAGE_SIZE = 10;
 
@@ -58,6 +66,16 @@ export default function RoutesPage() {
   const [form, setForm] = useState(EMPTY_ROUTE_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   const loadData = useCallback(async () => {
     try {
@@ -126,6 +144,10 @@ export default function RoutesPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pageSlice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const pageRowIds = useMemo(() => pageSlice.map((r) => r.id), [pageSlice]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const routeById = useMemo(() => new Map(pageSlice.map((r) => [String(r.id), r])), [pageSlice]);
 
   useEffect(() => {
     setPage(1);
@@ -233,6 +255,27 @@ export default function RoutesPage() {
     }
   }
 
+  async function deleteSelectedRoutes() {
+    setBatchDeleting(true);
+    try {
+      await batchDeleteWithConfirm({
+        confirm,
+        selectedIds,
+        entityName: "route",
+        deleteItem: async (id) => {
+          await apiRequest(`/routes/${id}`, { method: "DELETE" });
+        },
+        clearSelection,
+        reload: loadData,
+        notifySuccess,
+        notifyError,
+        labelForId: (id) => routeById.get(String(id))?.route_name ?? id,
+      });
+    } finally {
+      setBatchDeleting(false);
+    }
+  }
+
   return (
     <CatalogPageShell
       title="Routes"
@@ -313,6 +356,11 @@ export default function RoutesPage() {
               <table className="w-full min-w-[820px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
+                    <TableSelectAllHeader
+                      checked={allOnPageSelected}
+                      indeterminate={someOnPageSelected}
+                      onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                    />
                     <th className="w-[70px] px-4 py-2.5">ID</th>
                     <th className="px-4 py-2.5">Route name</th>
                     <th className="px-4 py-2.5">Region</th>
@@ -328,7 +376,7 @@ export default function RoutesPage() {
                 <tbody>
                   {pageSlice.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
                         No routes found.
                       </td>
                     </tr>
@@ -340,6 +388,11 @@ export default function RoutesPage() {
                           key={route.id}
                           className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
                         >
+                          <TableRowSelectCell
+                            checked={selectedIds.has(String(route.id))}
+                            onChange={() => toggleOne(route.id)}
+                            label={`Select ${route.route_name}`}
+                          />
                           <td className="px-4 py-3 font-mono text-slate-600">{route.id}</td>
                           <td className="px-4 py-3">
                             <Link
@@ -450,6 +503,14 @@ export default function RoutesPage() {
           </aside>
         </>
       )}
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <BatchDeleteButton
+          count={selectedCount}
+          busy={batchDeleting}
+          onClick={() => void deleteSelectedRoutes()}
+        />
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

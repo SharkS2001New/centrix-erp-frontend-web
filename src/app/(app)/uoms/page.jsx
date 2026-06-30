@@ -601,6 +601,14 @@ export default function UomsPage() {
 
         <Toggle label="Active" checked={form.is_active} onChange={(v) => updateField("is_active", v)} />
       </FormDrawer>
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <BatchDeleteButton
+          count={selectedCount}
+          busy={batchDeleting}
+          onClick={() => void deleteSelectedUoms()}
+        />
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

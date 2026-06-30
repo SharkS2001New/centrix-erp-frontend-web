@@ -29,6 +29,12 @@ import {
   stockSellingValue,
 } from "@/lib/retail-pricing";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
+import {
+  BatchActionBar,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 
 const PAGE_SIZE = 15;
 const COLUMN_STORAGE_KEY = "centrix-erp-inventory-stock-columns";
@@ -85,6 +91,15 @@ export default function CurrentStockPage() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [page, setPage] = useState(1);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   useEffect(() => {
     setVisibleColumnIds(readStoredColumnIds());
@@ -209,6 +224,9 @@ export default function CurrentStockPage() {
   const safePage = Math.min(page, totalPages);
   const pageSlice = enriched;
   const visibleColumns = STOCK_COLUMNS.filter((c) => visibleColumnIds.includes(c.id));
+  const pageRowIds = useMemo(() => pageSlice.map((row) => row.product_code), [pageSlice]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
 
   function toggleColumn(id) {
     const col = STOCK_COLUMNS.find((c) => c.id === id);
@@ -272,10 +290,14 @@ export default function CurrentStockPage() {
     }
   }
 
-  function generatePriceList() {
-    const inStock = pageSlice.filter(
+  function generatePriceList(rows = pageSlice) {
+    const inStock = rows.filter(
       (row) => Number(row.shop_quantity ?? 0) > 0 || Number(row.store_quantity ?? 0) > 0,
     );
+    if (inStock.length === 0) {
+      notifyError("No in-stock items in the selection.");
+      return;
+    }
     const rows = inStock.map((row) =>
       priceListRowsForProduct({
         product: row.product,
@@ -293,6 +315,12 @@ export default function CurrentStockPage() {
     link.download = `price-list-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function generateSelectedPriceList() {
+    const selected = pageSlice.filter((row) => selectedIds.has(String(row.product_code)));
+    if (selected.length === 0) return;
+    generatePriceList(selected);
   }
 
   const totals = useMemo(() => {
@@ -400,6 +428,11 @@ export default function CurrentStockPage() {
               <table className="w-full min-w-[760px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
+                    <TableSelectAllHeader
+                      checked={allOnPageSelected}
+                      indeterminate={someOnPageSelected}
+                      onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                    />
                     {visibleColumns.map((col) => (
                       <th
                         key={col.id}
@@ -413,13 +446,18 @@ export default function CurrentStockPage() {
                 <tbody>
                   {pageSlice.length === 0 ? (
                     <tr>
-                      <td colSpan={visibleColumns.length} className="px-4 py-8 text-center text-slate-500">
+                      <td colSpan={visibleColumns.length + 1} className="px-4 py-8 text-center text-slate-500">
                         No stock records found.
                       </td>
                     </tr>
                   ) : (
                     pageSlice.map((row) => (
                       <tr key={row.product_code} className="border-b border-slate-100">
+                        <TableRowSelectCell
+                          checked={selectedIds.has(String(row.product_code))}
+                          onChange={() => toggleOne(row.product_code)}
+                          label={`Select ${row.product_name}`}
+                        />
                         {visibleColumns.map((col) => (
                           <td
                             key={col.id}
@@ -444,6 +482,17 @@ export default function CurrentStockPage() {
           </>
         )}
       </InventoryTableShell>
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <button
+          type="button"
+          disabled={selectedCount === 0}
+          onClick={generateSelectedPriceList}
+          className="rounded-lg bg-[#185FA5] px-4 py-1.5 text-sm font-medium text-white hover:bg-[#0C447C] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Price list (selected)
+        </button>
+      </BatchActionBar>
     </InventoryPageShell>
   );
 }
