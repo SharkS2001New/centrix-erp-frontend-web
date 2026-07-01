@@ -8,6 +8,7 @@ import {
   accountingSettingsFromApi,
   accountingSettingsPayload,
 } from "@/lib/accounting-settings";
+import { isProductionApp } from "@/lib/app-environment";
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
 
 function Toggle({ checked, onChange, label, description }) {
@@ -131,7 +132,7 @@ export function AccountingAutoPostPanel({
         ))}
       </div>
 
-      {!form.chart_seeded ? (
+      {!form.chart_seeded && !isProductionApp() ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           Standard GL accounts are not fully seeded.{" "}
           {canManage ? (
@@ -141,6 +142,11 @@ export function AccountingAutoPostPanel({
           ) : (
             "Ask an administrator to seed the chart of accounts."
           )}
+        </p>
+      ) : !form.chart_seeded && isProductionApp() ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          Standard GL accounts are not fully configured. Contact your administrator or support to
+          complete chart setup.
         </p>
       ) : null}
 

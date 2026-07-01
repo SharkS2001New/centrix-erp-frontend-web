@@ -15,11 +15,26 @@ export const NETWORK_PING_TIMEOUT_MS = 12_000;
 /** Minimum outage length before auto-reporting after reconnect. */
 export const NETWORK_OUTAGE_REPORT_MIN_MS = 10_000;
 
+/** @type {Promise<{ ok: boolean, latencyMs: number }> | null} */
+let healthPingInFlight = null;
+
 /**
  * Lightweight reachability check — uses public /health (no auth required).
  * @returns {Promise<{ ok: boolean, latencyMs: number }>}
  */
 export async function pingApiHealth() {
+  if (healthPingInFlight) {
+    return healthPingInFlight;
+  }
+
+  healthPingInFlight = pingApiHealthRequest().finally(() => {
+    healthPingInFlight = null;
+  });
+
+  return healthPingInFlight;
+}
+
+async function pingApiHealthRequest() {
   const started = typeof performance !== "undefined" ? performance.now() : Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), NETWORK_PING_TIMEOUT_MS);

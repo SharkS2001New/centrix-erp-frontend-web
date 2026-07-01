@@ -15,6 +15,7 @@ import {
   setStoredActiveSession,
   resolveTillReportBundle,
 } from "@/lib/pos-till";
+import { isTillFloatWorkflowEnabled } from "@/lib/sales-settings";
 import { useAuth } from "@/contexts/auth-context";
 
 const PosSessionContext = createContext(null);
@@ -37,8 +38,13 @@ export function PosSessionProvider({ children }) {
     );
   }, [capabilities]);
 
+  const tillFloatEnabled = useMemo(
+    () => isTillFloatWorkflowEnabled(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
+
   const verifySession = useCallback(async (session) => {
-    if (!session?.id) return null;
+    if (!tillFloatEnabled || !session?.id) return null;
     try {
       const res = await apiRequest(`/till-float-sessions/${session.id}`);
       if (String(res.status).toLowerCase() !== "open") {
@@ -51,10 +57,10 @@ export function PosSessionProvider({ children }) {
       clearStoredActiveSession();
       return null;
     }
-  }, []);
+  }, [tillFloatEnabled]);
 
   const findOpenSessionForUser = useCallback(async (userId) => {
-    if (!userId) return null;
+    if (!tillFloatEnabled || !userId) return null;
     try {
       const res = await apiRequest("/till-float-sessions", {
         searchParams: {
@@ -67,10 +73,10 @@ export function PosSessionProvider({ children }) {
     } catch {
       return null;
     }
-  }, []);
+  }, [tillFloatEnabled]);
 
   const findSuspendedSessionForUser = useCallback(async (userId) => {
-    if (!userId) return null;
+    if (!tillFloatEnabled || !userId) return null;
     try {
       const res = await apiRequest("/till-float-sessions", {
         searchParams: {
@@ -83,9 +89,13 @@ export function PosSessionProvider({ children }) {
     } catch {
       return null;
     }
-  }, []);
+  }, [tillFloatEnabled]);
 
   const refreshReport = useCallback(async (sessionId) => {
+    if (!tillFloatEnabled) {
+      setSessionReport(null);
+      return null;
+    }
     const id = sessionId ?? activeSession?.id;
     if (!id) {
       setSessionReport(null);
@@ -99,10 +109,20 @@ export function PosSessionProvider({ children }) {
       setSessionReport(null);
       return null;
     }
-  }, [activeSession?.id]);
+  }, [activeSession?.id, tillFloatEnabled]);
 
   useEffect(() => {
     let cancelled = false;
+
+    if (!tillFloatEnabled) {
+      clearStoredActiveSession();
+      setActiveSession(null);
+      setSuspendedSession(null);
+      setSessionReport(null);
+      setLoading(false);
+      return undefined;
+    }
+
     async function init() {
       setLoading(true);
       const stored = getStoredActiveSession();
@@ -127,10 +147,20 @@ export function PosSessionProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [verifySession, refreshReport, findOpenSessionForUser, findSuspendedSessionForUser, user?.id]);
+  }, [
+    tillFloatEnabled,
+    verifySession,
+    refreshReport,
+    findOpenSessionForUser,
+    findSuspendedSessionForUser,
+    user?.id,
+  ]);
 
   const openSession = useCallback(
     async ({ till_id, branch_id, working_amount, payment_type }) => {
+      if (!tillFloatEnabled) {
+        throw new Error("Till sessions are not enabled for this organization.");
+      }
       setBusy(true);
       setError(null);
       try {
@@ -155,12 +185,12 @@ export function PosSessionProvider({ children }) {
         setBusy(false);
       }
     },
-    [refreshReport],
+    [refreshReport, tillFloatEnabled],
   );
 
   const addFloat = useCallback(
     async ({ new_float, payment_type }) => {
-      if (!activeSession?.id) return null;
+      if (!tillFloatEnabled || !activeSession?.id) return null;
       setBusy(true);
       setError(null);
       try {
@@ -183,12 +213,12 @@ export function PosSessionProvider({ children }) {
         setBusy(false);
       }
     },
-    [activeSession, refreshReport],
+    [activeSession, refreshReport, tillFloatEnabled],
   );
 
   const recordCashMovement = useCallback(
     async ({ type, amount, reason }) => {
-      if (!activeSession?.id) return null;
+      if (!tillFloatEnabled || !activeSession?.id) return null;
       setBusy(true);
       setError(null);
       try {
@@ -212,12 +242,12 @@ export function PosSessionProvider({ children }) {
         setBusy(false);
       }
     },
-    [activeSession, refreshReport],
+    [activeSession, refreshReport, tillFloatEnabled],
   );
 
   const recordSessionExpense = useCallback(
     async ({ expense_group_id, expense_amount, description, payment_method_id }) => {
-      if (!activeSession?.id) return null;
+      if (!tillFloatEnabled || !activeSession?.id) return null;
       setBusy(true);
       setError(null);
       try {
@@ -245,19 +275,19 @@ export function PosSessionProvider({ children }) {
         setBusy(false);
       }
     },
-    [activeSession, refreshReport, verifySession],
+    [activeSession, refreshReport, verifySession, tillFloatEnabled],
   );
 
   const refreshActiveSession = useCallback(async () => {
-    if (!activeSession?.id) return null;
+    if (!tillFloatEnabled || !activeSession?.id) return null;
     const verified = await verifySession(activeSession);
     setActiveSession(verified);
     if (verified?.id) await refreshReport(verified.id);
     return verified;
-  }, [activeSession, verifySession, refreshReport]);
+  }, [activeSession, verifySession, refreshReport, tillFloatEnabled]);
 
   const suspendSession = useCallback(async () => {
-    if (!activeSession?.id) return null;
+    if (!tillFloatEnabled || !activeSession?.id) return null;
     setBusy(true);
     setError(null);
     try {
@@ -276,10 +306,11 @@ export function PosSessionProvider({ children }) {
     } finally {
       setBusy(false);
     }
-  }, [activeSession]);
+  }, [activeSession, tillFloatEnabled]);
 
   const resumeSession = useCallback(
     async (sessionId) => {
+      if (!tillFloatEnabled) return null;
       const id = sessionId ?? suspendedSession?.id ?? activeSession?.id;
       if (!id) return null;
       setBusy(true);
@@ -301,12 +332,12 @@ export function PosSessionProvider({ children }) {
         setBusy(false);
       }
     },
-    [activeSession, refreshReport, suspendedSession],
+    [activeSession, refreshReport, suspendedSession, tillFloatEnabled],
   );
 
   const closeSession = useCallback(
     async ({ closing_amount, expected_amount, notes, closing_denominations }) => {
-      if (!activeSession?.id) return null;
+      if (!tillFloatEnabled || !activeSession?.id) return null;
       setBusy(true);
       setError(null);
       try {
@@ -335,7 +366,7 @@ export function PosSessionProvider({ children }) {
         setBusy(false);
       }
     },
-    [activeSession, sessionReport],
+    [activeSession, sessionReport, tillFloatEnabled],
   );
 
   const clearSession = useCallback(() => {
@@ -350,6 +381,7 @@ export function PosSessionProvider({ children }) {
       user,
       capabilities,
       hasPosTill,
+      tillFloatEnabled,
       activeSession,
       suspendedSession,
       sessionReport,
@@ -375,6 +407,7 @@ export function PosSessionProvider({ children }) {
       user,
       capabilities,
       hasPosTill,
+      tillFloatEnabled,
       activeSession,
       suspendedSession,
       sessionReport,

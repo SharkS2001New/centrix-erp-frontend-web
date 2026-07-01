@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { isProductionApp } from "@/lib/app-environment";
 import { CatalogPageShell, formatShortDate } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { FISCAL_PERIOD_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
@@ -30,6 +31,8 @@ export default function FiscalPeriodsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const showSeedActions = !isProductionApp();
 
   async function seedYear() {
     try {
@@ -135,13 +138,15 @@ export default function FiscalPeriodsPage() {
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
         </label>
-        <button
-          type="button"
-          onClick={seedYear}
-          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Seed monthly periods
-        </button>
+        {showSeedActions ? (
+          <button
+            type="button"
+            onClick={seedYear}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Seed monthly periods
+          </button>
+        ) : null}
       </div>
 
       <div className={`theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm ${loading ? "opacity-60" : ""}`}>
@@ -159,7 +164,10 @@ export default function FiscalPeriodsPage() {
             {periods.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
-                  No periods for {year}. Use &quot;Seed monthly periods&quot; to create them.
+                  No periods for {year}.
+                  {showSeedActions
+                    ? ' Use "Seed monthly periods" to create them in development.'
+                    : " Contact your administrator if periods should exist for this year."}
                 </td>
               </tr>
             ) : (

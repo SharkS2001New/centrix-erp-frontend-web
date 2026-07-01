@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { fetchReportBuilderTemplates } from "@/lib/report-builder-templates";
 import { useAuth } from "@/contexts/auth-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { defaultWorkspaceId } from "@/lib/workspaces";
@@ -96,9 +97,7 @@ export function ReportsHub() {
 
   useEffect(() => {
     if (!hasPermission(P.reports.builder.view)) return;
-    apiRequest("/reports/builder/templates", { searchParams: { workspace_id: workspaceId } })
-      .then((res) => setCustomTemplates(res.data ?? []))
-      .catch(() => setCustomTemplates([]));
+    fetchReportBuilderTemplates(workspaceId).then(setCustomTemplates);
   }, [hasPermission, workspaceId]);
 
   const categories = useMemo(() => {

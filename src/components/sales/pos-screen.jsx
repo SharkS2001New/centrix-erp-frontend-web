@@ -272,7 +272,7 @@ export function PosScreen({ standalone = false }) {
   const [posTillMetaLoading, setPosTillMetaLoading] = useState(false);
 
   const loadPosTillMeta = useCallback(async () => {
-    if (!organizationId) return;
+    if (!organizationId || !requireTillFloat) return;
     setPosTillMetaLoading(true);
     try {
       const [tillRes, branchRes, sessionRes] = await Promise.all([
@@ -315,7 +315,7 @@ export function PosScreen({ standalone = false }) {
     } finally {
       setPosTillMetaLoading(false);
     }
-  }, [organizationId, user?.branch_id, user?.id]);
+  }, [organizationId, requireTillFloat, user?.branch_id, user?.id]);
 
   const openByTill = useMemo(
     () => indexOpenSessionsByTill(posOpenSessions),

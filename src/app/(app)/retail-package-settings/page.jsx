@@ -133,13 +133,15 @@ export default function RetailPackageSettingsPage() {
     () =>
       settings.map((row) => {
         const product = productByCode.get(row.product_code);
-        const uom = product ? uomById.get(product.unit_id) : null;
-        const sub = product ? subById.get(product.subcategory_id) : null;
+        const unitId = product?.unit_id ?? row.product_unit_id;
+        const subcategoryId = product?.subcategory_id ?? row.product_subcategory_id;
+        const uom = unitId ? uomById.get(unitId) : null;
+        const sub = subcategoryId ? subById.get(subcategoryId) : null;
         return {
           ...row,
-          product_name: product?.product_name ?? "—",
+          product_name: row.product_name ?? product?.product_name ?? "—",
           category_id: sub?.category_id ?? null,
-          subcategory_id: product?.subcategory_id ?? null,
+          subcategory_id: subcategoryId ?? null,
           product_uom: uom,
         };
       }),
@@ -193,13 +195,30 @@ export default function RetailPackageSettingsPage() {
 
   const lockedEditProduct = useMemo(() => {
     if (!editingId || !form.product_code) return null;
-    return productByCode.get(form.product_code) ?? { product_code: form.product_code, product_name: form.product_code };
-  }, [editingId, form.product_code, productByCode]);
+    const fromCatalog = productByCode.get(form.product_code);
+    if (fromCatalog) return fromCatalog;
+    if (pickedProduct && String(pickedProduct.product_code) === String(form.product_code)) {
+      return pickedProduct;
+    }
+    const fromRow = enriched.find((row) => String(row.product_code) === String(form.product_code));
+    if (fromRow?.product_name && fromRow.product_name !== "—") {
+      return {
+        product_code: fromRow.product_code,
+        product_name: fromRow.product_name,
+        unit_id: fromRow.product_unit_id,
+      };
+    }
+    return { product_code: form.product_code, product_name: form.product_code };
+  }, [editingId, enriched, form.product_code, pickedProduct, productByCode]);
 
   const selectedProductUom = useMemo(() => {
     const product = pickedProduct ?? productByCode.get(form.product_code);
-    return product ? uomById.get(product.unit_id) : null;
-  }, [form.product_code, pickedProduct, productByCode, uomById]);
+    let unitId = product?.unit_id;
+    if (!unitId && form.product_code) {
+      unitId = enriched.find((row) => String(row.product_code) === String(form.product_code))?.product_unit_id;
+    }
+    return unitId ? uomById.get(unitId) : null;
+  }, [enriched, form.product_code, pickedProduct, productByCode, uomById]);
 
   function openCreate() {
     setEditingId(null);
@@ -211,7 +230,14 @@ export default function RetailPackageSettingsPage() {
 
   function openEdit(row) {
     setEditingId(row.id);
-    setPickedProduct(productByCode.get(row.product_code) ?? null);
+    const fromCatalog = productByCode.get(row.product_code);
+    setPickedProduct(
+      fromCatalog ?? {
+        product_code: row.product_code,
+        product_name: row.product_name && row.product_name !== "—" ? row.product_name : row.product_code,
+        unit_id: row.product_unit_id,
+      },
+    );
     const tiers = coercePricingTiersInput(row.pricing_tiers).length
       ? normalizePricingTiers(row.pricing_tiers)
       : normalizePricingTiers([

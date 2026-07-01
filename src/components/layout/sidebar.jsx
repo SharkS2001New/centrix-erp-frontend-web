@@ -12,7 +12,7 @@ import { isTillFloatWorkflowEnabled } from "@/lib/sales-settings";
 import { CentrixLogo } from "@/components/branding/centrix-logo";
 import { PRODUCT_NAME } from "@/lib/branding";
 import { NavItemIcon, NavSectionIcon } from "@/lib/nav-icons";
-import { apiRequest } from "@/lib/api";
+import { fetchReportBuilderTemplates } from "@/lib/report-builder-templates";
 import { P } from "@/lib/permission-codes";
 import {
   buildCustomReportNavItems,
@@ -328,9 +328,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
       return;
     }
 
-    apiRequest("/reports/builder/templates", { searchParams: { workspace_id: workspaceId } })
-      .then((res) => setCustomReportTemplates(res.data ?? []))
-      .catch(() => setCustomReportTemplates([]));
+    fetchReportBuilderTemplates(workspaceId).then(setCustomReportTemplates);
   }, [hasPermission, workspaceId]);
 
   const customReportNavItems = useMemo(

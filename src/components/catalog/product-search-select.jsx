@@ -41,7 +41,14 @@ export function ProductSearchSelect({
     return results.find((p) => String(p.product_code) === String(value)) ?? null;
   }, [value, results, lockedProduct]);
 
-  const displayLabel = (p) => `${p.product_name} (${p.product_code})`;
+  const displayLabel = (p) => {
+    const name = p?.product_name?.trim();
+    const code = p?.product_code ?? "";
+    if (name && name !== code) {
+      return `${name} (${code})`;
+    }
+    return code || name || "";
+  };
 
   const searchProducts = useCallback(async (q) => {
     const trimmed = q.trim();
@@ -69,6 +76,43 @@ export function ProductSearchSelect({
     const t = setTimeout(() => searchProducts(query), 280);
     return () => clearTimeout(t);
   }, [query, searchProducts]);
+
+  useEffect(() => {
+    const code = value ? String(value).trim() : "";
+    if (!code || disabled) return undefined;
+
+    const hasName = (product) => {
+      const name = product?.product_name?.trim();
+      return Boolean(name && name !== String(product?.product_code ?? ""));
+    };
+
+    if (lockedProduct && String(lockedProduct.product_code) === code && hasName(lockedProduct)) {
+      return undefined;
+    }
+
+    const fromResults = results.find((p) => String(p.product_code) === code);
+    if (fromResults && hasName(fromResults)) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const product = await apiRequest(`/products/${encodeURIComponent(code)}`);
+        if (cancelled || !product?.product_code || !hasName(product)) return;
+        onProductSelect?.(product);
+        if (!open) {
+          setQuery(displayLabel(product));
+        }
+      } catch {
+        // Product may have been removed — keep code-only display.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [value, disabled, lockedProduct?.product_code, lockedProduct?.product_name, onProductSelect, open, results]);
 
   useEffect(() => {
     if (!open && selected) {
