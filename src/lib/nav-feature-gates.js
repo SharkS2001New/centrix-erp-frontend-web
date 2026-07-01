@@ -1,4 +1,4 @@
-import { isKraDeviceConfigured, usesNativeAccounting } from "@/lib/finance-settings";
+import { isKraDeviceConfigured } from "@/lib/finance-settings";
 import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
 import { isOrgMobileSalesEnabled } from "@/lib/sales-settings";
 
@@ -19,17 +19,6 @@ export const DISTRIBUTION_REPORT_KEYS = new Set([
   "trip-cash-settlement",
   "pod-compliance",
   "driver-deliveries",
-]);
-
-/** Report slugs that require native (in-app) general ledger. */
-const NATIVE_ACCOUNTING_REPORT_KEYS = new Set([
-  "trial-balance",
-  "balance-sheet",
-  "cash-flow",
-  "general-ledger",
-  "profit-loss-gl",
-  "journal-register",
-  "subledger-reconciliation",
 ]);
 
 export function isExternalPosEnabled(capabilities) {
@@ -71,10 +60,6 @@ export function isReportNavEnabled(reportKey, capabilities) {
 
   if (reportKey === "mobile-route-sales" && !isOrgMobileSalesEnabled(capabilities)) {
     return false;
-  }
-
-  if (NATIVE_ACCOUNTING_REPORT_KEYS.has(reportKey)) {
-    return usesNativeAccounting(capabilities?.module_settings);
   }
 
   return true;

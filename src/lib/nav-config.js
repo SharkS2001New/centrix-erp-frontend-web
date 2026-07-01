@@ -5,7 +5,7 @@ import { anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-reg
 import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled, isVouchersEnabled, isRedeemablePointsEnabled } from "@/lib/sales-settings";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
-import { usesExternalAccounting, usesNativeAccounting, isKraDeviceConfigured } from "@/lib/finance-settings";
+import { isKraDeviceConfigured } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
 import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
 import { isReportNavEnabled } from "@/lib/nav-feature-gates";
@@ -477,7 +477,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.chart_of_accounts.view,
         group: "General ledger",
-        requireNativeAccounting: true,
       },
       {
         href: "/accounting/journal-entries",
@@ -485,7 +484,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.journal_entries.view,
         group: "General ledger",
-        requireNativeAccounting: true,
       },
       {
         href: "/accounting/general-ledger",
@@ -493,13 +491,16 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.general_ledger.view,
         group: "General ledger",
-        requireNativeAccounting: true,
       },
       {
         href: "/accounting/bank-reconciliation",
         label: "Bank reconciliation",
         module: "accounting",
-        permission: P.accounting.bank_reconciliation.view,
+        permissionAny: [
+          P.accounting.bank_reconciliation.view,
+          P.accounting.general_ledger.view,
+          P.accounting.journal_entries.view,
+        ],
         group: "General ledger",
       },
       {
@@ -508,7 +509,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.trial_balance.view,
         group: "Financial statements",
-        requireNativeAccounting: true,
       },
       {
         href: "/accounting/balance-sheet",
@@ -516,7 +516,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.balance_sheet.view,
         group: "Financial statements",
-        requireNativeAccounting: true,
       },
       {
         href: "/accounting/profit-loss",
@@ -524,7 +523,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.profit_loss.view,
         group: "Financial statements",
-        requireNativeAccounting: true,
       },
       {
         href: "/accounting/cash-flow",
@@ -532,7 +530,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.cash_flow.view,
         group: "Financial statements",
-        requireNativeAccounting: true,
       },
       {
         href: "/accounting/fiscal-periods",
@@ -540,7 +537,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.fiscal_periods.view,
         group: "Setup",
-        requireNativeAccounting: true,
       },
       {
         href: "/accounting/account-mappings",
@@ -548,7 +544,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.account_mappings.view,
         group: "Setup",
-        requireExternalAccounting: true,
       },
       {
         href: "/accounting/export-queue",
@@ -556,7 +551,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.export_queue.view,
         group: "Setup",
-        requireExternalAccounting: true,
       },
       {
         href: "/accounting/settings",
@@ -564,7 +558,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.settings.view,
         group: "Setup",
-        requireNativeAccounting: true,
       },
     ],
   },
@@ -923,8 +916,6 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   if (item.requireOrgMobileSales && !isOrgMobileSalesEnabled(capabilities)) return false;
   if (item.requireLegacyArchive && !isLegacyArchiveEnabled(capabilities)) return false;
   if (item.requireAdmin && !user?.is_admin && !capabilities?.is_admin) return false;
-  if (item.requireNativeAccounting && !usesNativeAccounting(capabilities?.module_settings)) return false;
-  if (item.requireExternalAccounting && !usesExternalAccounting(capabilities?.module_settings)) return false;
   if (item.requireHrCashAdvances && !isCashAdvanceDeductionsEnabled(capabilities?.module_settings)) return false;
   if (item.requireSalesVouchers && !isVouchersEnabled(capabilities?.module_settings)) return false;
   if (item.requireRedeemablePoints && !isRedeemablePointsEnabled(capabilities?.module_settings)) return false;

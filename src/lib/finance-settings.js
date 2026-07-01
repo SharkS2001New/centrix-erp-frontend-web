@@ -143,13 +143,7 @@ export function matchesAccountingRoutePrefix(pathname, prefixes) {
   return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
-export function canAccessAccountingRoute(pathname, moduleSettings) {
-  if (matchesAccountingRoutePrefix(pathname, NATIVE_ACCOUNTING_ROUTE_PREFIXES)) {
-    return usesNativeAccounting(moduleSettings);
-  }
-  if (matchesAccountingRoutePrefix(pathname, EXTERNAL_ACCOUNTING_ROUTE_PREFIXES)) {
-    return usesExternalAccounting(moduleSettings);
-  }
+export function canAccessAccountingRoute() {
   return true;
 }
 

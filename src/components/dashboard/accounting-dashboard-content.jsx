@@ -20,6 +20,7 @@ import { DonutChart, CHART_COLORS } from "@/components/reports/report-charts";
 const ACCOUNTING_LINKS = [
   { href: "/accounting/journal-entries", title: "Journal entries", desc: "Create and post entries" },
   { href: "/accounting/general-ledger", title: "General ledger", desc: "Posted journal activity" },
+  { href: "/accounting/bank-reconciliation", title: "Bank reconciliation", desc: "Match bank statements to ledger" },
   { href: "/accounting/trial-balance", title: "Trial balance", desc: "Debit and credit balances" },
   { href: "/accounting/profit-loss", title: "Profit & loss", desc: "Revenue and expenses" },
   { href: "/accounting/balance-sheet", title: "Balance sheet", desc: "Assets, liabilities, equity" },
