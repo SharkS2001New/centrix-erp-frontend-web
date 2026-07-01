@@ -35,7 +35,7 @@ import {
   saleDeliveryDateCell,
   saleVatCell,
   salePaymentReferenceLabel,
-  saleCreatedByLabel,
+  SaleCreatedByCell,
 } from "@/components/sales/sales-orders-columns";
 import {
   OrderSourceBadge,
@@ -743,7 +743,9 @@ export function OrderListTableRow({
             <OrderSourceBadge source={sale.order_source} channel={sale.channel} />
           </td>
         ) : null}
-        <td className="px-4 py-3 text-slate-700">{saleCreatedByLabel(sale)}</td>
+        <td className="px-4 py-3 text-slate-700">
+          <SaleCreatedByCell sale={sale} />
+        </td>
         <td className="px-4 py-3">
           <OrderRowActions
             busy={actionBusy}

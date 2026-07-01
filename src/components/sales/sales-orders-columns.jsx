@@ -43,8 +43,26 @@ export function saleVatCell(sale) {
 }
 
 export function saleCreatedByLabel(sale) {
-  const cashier = sale?.cashier;
-  if (cashier?.full_name) return cashier.full_name;
-  if (cashier?.username) return cashier.username;
-  return "—";
+  return (
+    sale?.created_by_name ??
+    sale?.cashier_name ??
+    sale?.cashier?.full_name ??
+    sale?.cashier?.username ??
+    sale?.user?.full_name ??
+    sale?.user?.username ??
+    "—"
+  );
+}
+
+export function saleCreatedOnValue(sale) {
+  return sale?.created_at ?? null;
+}
+
+export function SaleCreatedByCell({ sale }) {
+  return (
+    <div>
+      <p className="font-medium text-slate-800">{saleCreatedByLabel(sale)}</p>
+      <p className="text-xs text-slate-500">Created on {formatShortDate(saleCreatedOnValue(sale))}</p>
+    </div>
+  );
 }
