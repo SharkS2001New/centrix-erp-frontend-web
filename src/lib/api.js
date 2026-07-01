@@ -200,7 +200,7 @@ export function apiModuleLabel(path) {
  */
 export function resolveSubmitErrorMessage(error, options = {}) {
   const { isSuperAdmin = false, moduleName, apiPath } = options;
-  const module = moduleName || (apiPath ? apiModuleLabel(apiPath) : "this module");
+  const moduleLabel = moduleName || (apiPath ? apiModuleLabel(apiPath) : "this module");
 
   if (error instanceof ApiError) {
     const body = error.body && typeof error.body === "object" ? error.body : null;
@@ -222,7 +222,7 @@ export function resolveSubmitErrorMessage(error, options = {}) {
     return error.message.trim();
   }
 
-  return `An error occurred in ${module}. Please report this to your system administrator.`;
+  return `An error occurred in ${moduleLabel}. Please report this to your system administrator.`;
 }
 
 function shouldTrackNavigationFetch(options, method) {
