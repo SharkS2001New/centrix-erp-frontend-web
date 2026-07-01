@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { DOCUMENT_HEADER_DISPLAY_OPTIONS } from "@/lib/general-settings";
 import {
+  ORG_PRINT_FONT_FAMILIES,
+  ORG_PRINT_FONT_SCALES,
+} from "@/lib/print-typography";
+import {
   PRINT_FOOTER_FORM_KEYS,
   PRINT_FOOTER_LABELS,
   RECEIPT_POWERED_BY_LINE,
@@ -205,6 +209,39 @@ export function PrintoutsSettingsPanel({
                         ))}
                       </select>
                     </Field>
+                    <Field label="Print font">
+                      <select
+                        className={inputClassName()}
+                        value={form.print_font_family ?? "times"}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, print_font_family: e.target.value }))
+                        }
+                      >
+                        {ORG_PRINT_FONT_FAMILIES.map((font) => (
+                          <option key={font.id} value={font.id}>
+                            {font.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Print text size">
+                      <select
+                        className={inputClassName()}
+                        value={form.print_font_scale ?? "standard"}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, print_font_scale: e.target.value }))
+                        }
+                      >
+                        {ORG_PRINT_FONT_SCALES.map((scale) => (
+                          <option key={scale.id} value={scale.id}>
+                            {scale.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <p className="text-xs text-slate-500">
+                      Font and size apply to receipts, invoices, LPOs, loading sheets, and reports.
+                    </p>
                   </div>
                 </div>
 

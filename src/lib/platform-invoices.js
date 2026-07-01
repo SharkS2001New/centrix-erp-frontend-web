@@ -18,6 +18,39 @@ export const PLATFORM_INVOICE_STATUSES = [
   { id: "void", label: "Void" },
 ];
 
+/** Print font presets — super admin can override template typography. */
+export const PLATFORM_INVOICE_FONT_FAMILIES = [
+  { id: "template", label: "Match design template" },
+  { id: "system", label: "System sans-serif", css: "system-ui, -apple-system, 'Segoe UI', sans-serif" },
+  { id: "arial", label: "Arial", css: "Arial, Helvetica, sans-serif" },
+  { id: "helvetica", label: "Helvetica", css: "Helvetica, Arial, sans-serif" },
+  { id: "verdana", label: "Verdana", css: "Verdana, Geneva, sans-serif" },
+  { id: "georgia", label: "Georgia", css: "Georgia, 'Times New Roman', serif" },
+  { id: "times", label: "Times New Roman", css: "'Times New Roman', Times, serif" },
+];
+
+/** Body text scale for screen preview and A4 print. */
+export const PLATFORM_INVOICE_FONT_SCALES = [
+  { id: "compact", label: "Compact", screenPx: 13, printPx: 14 },
+  { id: "standard", label: "Standard (recommended)", screenPx: 14, printPx: 16 },
+  { id: "large", label: "Large", screenPx: 16, printPx: 18 },
+  { id: "extra_large", label: "Extra large", screenPx: 18, printPx: 20 },
+];
+
+export function invoiceFontFamilyCss(fontId, templateFont) {
+  if (!fontId || fontId === "template") {
+    return templateFont;
+  }
+  return PLATFORM_INVOICE_FONT_FAMILIES.find((row) => row.id === fontId)?.css ?? templateFont;
+}
+
+export function invoiceFontScale(scaleId) {
+  return (
+    PLATFORM_INVOICE_FONT_SCALES.find((row) => row.id === scaleId)
+    ?? PLATFORM_INVOICE_FONT_SCALES.find((row) => row.id === "standard")
+  );
+}
+
 export function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -35,6 +68,8 @@ export const DEFAULT_INVOICE_OPTIONS = {
   brand_mode: "name",
   brand_name: "CentrixERP",
   brand_logo_url: "",
+  print_font_family: "template",
+  print_font_scale: "standard",
 };
 
 export const DEFAULT_PLATFORM_SELLER = {

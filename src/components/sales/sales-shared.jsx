@@ -111,7 +111,16 @@ export function HourlySalesChart({ points }) {
   );
 }
 
-export function OrderWorkflowPipeline({ status, onAdvance, busyStatus, workflow, orderSource, channel }) {
+export function OrderWorkflowPipeline({
+  status,
+  onAdvance,
+  onCollectPayment,
+  balanceDue = 0,
+  busyStatus,
+  workflow,
+  orderSource,
+  channel,
+}) {
   const steps = workflowPipelineSteps(workflow);
   const currentIdx = pipelineStatusIndex(status, workflow);
   const displayIdx = currentIdx >= 0 ? currentIdx : pipelineStepIndex(status, workflow);
@@ -119,6 +128,13 @@ export function OrderWorkflowPipeline({ status, onAdvance, busyStatus, workflow,
   const prevStep = currentIdx > 0 ? steps[currentIdx - 1] : null;
   const nextStep = currentIdx >= 0 && currentIdx < steps.length - 1 ? steps[currentIdx + 1] : null;
   const firstStep = steps[0] ?? null;
+  const paymentDue = balanceDue > 0.01;
+  const paymentBlockedNext =
+    paymentDue && nextStep && (nextStep.key === "paid" || nextStep.key === "pending_payment");
+  const showCollectPayment =
+    Boolean(onCollectPayment)
+    && paymentDue
+    && (status === "unpaid" || status === "pending_payment" || paymentBlockedNext);
 
   return (
     <div className="theme-panel rounded-xl border p-5 shadow-sm">
@@ -178,13 +194,34 @@ export function OrderWorkflowPipeline({ status, onAdvance, busyStatus, workflow,
                 </button>
               ) : null}
               {nextStep ? (
+                paymentBlockedNext && onCollectPayment ? (
+                  <button
+                    type="button"
+                    disabled={!!busyStatus}
+                    onClick={onCollectPayment}
+                    className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
+                  >
+                    {busyStatus ? "Updating…" : "Collect payment"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!!busyStatus}
+                    onClick={() => onAdvance(nextStep.key)}
+                    className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
+                  >
+                    {busyStatus ? "Updating…" : `${nextStep.label} →`}
+                  </button>
+                )
+              ) : null}
+              {showCollectPayment && !paymentBlockedNext ? (
                 <button
                   type="button"
                   disabled={!!busyStatus}
-                  onClick={() => onAdvance(nextStep.key)}
-                  className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
+                  onClick={onCollectPayment}
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
                 >
-                  {busyStatus ? "Updating…" : `${nextStep.label} →`}
+                  Collect payment
                 </button>
               ) : null}
               {(status === "held" || status === "draft") && firstStep ? (

@@ -28,23 +28,38 @@ export function shouldShowPrintDiscountColumn({ allowDiscounts = false } = {}) {
   return Boolean(allowDiscounts);
 }
 
-export function resolveSaleDocumentBranding({ organization = null, generalSettings = null } = {}) {
-  return resolveReportBranding({ organization, generalSettings });
+export function resolveSaleDocumentBranding({
+  organization = null,
+  generalSettings = null,
+  organizationNameFallback = "",
+} = {}) {
+  return resolveReportBranding({ organization, generalSettings, organizationNameFallback });
 }
 
-export function buildSaleDocumentOrgHeaderHtml(branding, { layout = "thermal" } = {}) {
+export function buildSaleDocumentOrgHeaderHtml(
+  branding,
+  { layout = "thermal", fallbackName = "" } = {},
+) {
   if (!branding?.showHeader) return "";
 
   const header = buildReportOrgHeaderHtml(branding);
-  if (!header) return "";
-
-  if (layout === "thermal") {
-    return `<div class="org-brand" style="text-align:center;margin-bottom:8px;">
+  if (header?.trim()) {
+    if (layout === "thermal") {
+      return `<div class="org-brand" style="text-align:center;margin-bottom:8px;">
       ${header.replace('class="org-name"', 'class="org-name" style="font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;"')}
     </div>`;
+    }
+    return `<div class="org-brand" style="text-align:center;margin-bottom:10px;">${header}</div>`;
   }
 
-  return `<div class="org-brand" style="text-align:center;margin-bottom:10px;">${header}</div>`;
+  const name = String(branding.organizationName ?? fallbackName ?? "").trim();
+  if (!name) return "";
+
+  if (layout === "thermal") {
+    return `<div class="org-brand" style="text-align:center;margin-bottom:8px;"><div class="company-name" style="font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">${escapeHtml(name)}</div></div>`;
+  }
+
+  return `<div class="org-brand" style="text-align:center;margin-bottom:10px;"><div class="brand-name">${escapeHtml(name)}</div></div>`;
 }
 
 export function buildSaleDocumentTableHead({ showDiscountColumn = false, layout = "thermal" } = {}) {

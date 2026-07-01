@@ -374,6 +374,29 @@ export function OrderWorkflowSettingsEditor({
       </div>
 
       <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] p-3">
+        <p className="theme-accent-label text-xs font-semibold uppercase tracking-wide">Stock reservation</p>
+        <p className="theme-subtext mt-1 text-xs">
+          Reserve stock at this order status to prevent overselling while payment or fulfillment is pending.
+          Cart reservations (inventory settings) still apply while building an order.
+        </p>
+        <div className="mt-3">
+          <Field label="Reserve stock at order status">
+            <select
+              className={inputClassName()}
+              value={wf.reserve_stock_on ?? "unpaid"}
+              onChange={(e) => patch({ reserve_stock_on: e.target.value })}
+            >
+              {CONFIGURABLE_STATUS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {stepLabel(wf, o.value)}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] p-3">
         <p className="theme-accent-label text-xs font-semibold uppercase tracking-wide">Stock deduction</p>
         <p className="theme-subtext mt-1 text-xs">
           Controls when inventory is reduced for POS checkout and order workflow transitions. Trip

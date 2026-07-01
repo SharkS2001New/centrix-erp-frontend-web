@@ -18,6 +18,8 @@ export const EMPTY_PRINTOUTS_FORM = {
   document_footer_text: "",
   show_organization_on_documents: true,
   document_header_display: "auto",
+  print_font_family: "times",
+  print_font_scale: "standard",
   print_footer_receipt: "",
   print_footer_a4_invoice: "",
   print_footer_lpo: "",
@@ -92,6 +94,8 @@ export function printoutsGeneralFormFromApi(res) {
     document_footer_text: general.document_footer_text,
     show_organization_on_documents: general.show_organization_on_documents,
     document_header_display: general.document_header_display,
+    print_font_family: general.print_font_family ?? "times",
+    print_font_scale: general.print_font_scale ?? "standard",
     ...printFooterFormFromGeneral(general),
   };
 }
@@ -135,6 +139,8 @@ export function printoutsGeneralPayloadFromForm(form) {
     show_organization_on_documents: Boolean(form.show_organization_on_documents),
     document_header_display: form.document_header_display || "auto",
     document_footer_text: String(form.document_footer_text ?? "").trim(),
+    print_font_family: form.print_font_family || "times",
+    print_font_scale: form.print_font_scale || "standard",
     ...printFooterPayloadFromForm(form),
   };
 }

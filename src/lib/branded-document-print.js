@@ -5,6 +5,10 @@ import {
   DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN,
 } from "@/lib/document-print-edge-footer";
 import {
+  orgPrintFontFamilyFromSettings,
+  orgPrintPx,
+} from "@/lib/print-typography";
+import {
   buildReportOrgHeaderHtml,
   buildReportWatermarkHtml,
   resolveReportBranding,
@@ -58,16 +62,18 @@ export function buildOrgContactLines(organization) {
   };
 }
 
-export function brandedDocumentStyles() {
+export function brandedDocumentStyles(generalSettings = null) {
+  const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant: "a4", print });
+  const font = orgPrintFontFamilyFromSettings(generalSettings);
   return `
   @page { size: A4; margin: 8mm 10mm ${DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN} 10mm; }
   html { height: 100%; }
   body {
-    font-family: "Times New Roman", Times, serif;
+    font-family: ${font};
     margin: 0;
     padding: 12px 16px;
     color: #000;
-    font-size: 10px;
+    font-size: ${px(10)};
     line-height: 1.3;
     position: relative;
     min-height: 100%;
@@ -82,15 +88,15 @@ export function brandedDocumentStyles() {
   .page-body { }
   .org-header { text-align: center; margin-bottom: 6px; padding-bottom: 0; border-bottom: none; }
   .org-logo { display: block; margin: 0 auto 4px; max-height: 56px; max-width: 220px; object-fit: contain; }
-  .org-name { font-size: 18px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-  .org-meta { text-align: center; font-size: 9px; margin-top: 2px; }
-  .doc-title { text-align: center; font-size: 13px; font-weight: 700; margin: 8px 0; letter-spacing: 0.06em; }
+  .org-name { font-size: ${px(18)}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+  .org-meta { text-align: center; font-size: ${px(9)}; margin-top: 2px; }
+  .doc-title { text-align: center; font-size: ${px(13)}; font-weight: 700; margin: 8px 0; letter-spacing: 0.06em; }
   .meta-block { margin-bottom: 8px; }
   .meta-block p { margin: 1px 0; }
   .meta-label { font-weight: 700; }
   .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; margin-bottom: 8px; }
-  .party-name { font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 3px; }
-  table.doc-items { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 9px; position: relative; z-index: 1; }
+  .party-name { font-size: ${px(11)}; font-weight: 700; text-transform: uppercase; margin-bottom: 3px; }
+  table.doc-items { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: ${px(9)}; position: relative; z-index: 1; }
   table.doc-items th, table.doc-items td {
     border-top: 1px dotted #000;
     border-bottom: 1px dotted #000;
@@ -99,15 +105,15 @@ export function brandedDocumentStyles() {
   }
   table.doc-items th { font-weight: 700; text-align: left; }
   table.doc-items th.num, table.doc-items td.num { text-align: right; white-space: nowrap; }
-  .totals-row { display: flex; justify-content: flex-end; margin: 4px 0 8px; font-size: 10px; }
+  .totals-row { display: flex; justify-content: flex-end; margin: 4px 0 8px; font-size: ${px(10)}; }
   .totals-box { min-width: 220px; text-align: right; }
   .totals-box p { margin: 2px 0; }
-  .reason-row { display: flex; justify-content: space-between; gap: 12px; margin: 8px 0; font-size: 10px; }
+  .reason-row { display: flex; justify-content: space-between; gap: 12px; margin: 8px 0; font-size: ${px(10)}; }
   .reason-row .meta-label { flex-shrink: 0; }
-  .signatures { margin: 10px 0 6px; font-size: 10px; }
+  .signatures { margin: 10px 0 6px; font-size: ${px(10)}; }
   .signatures p { margin: 0 0 10px; }
   .sig-line { display: inline-block; min-width: 180px; border-bottom: 1px dotted #000; }
-  .doc-footer-text { margin-top: 8px; text-align: center; font-size: 8px; color: #64748b; }
+  .doc-footer-text { margin-top: 8px; text-align: center; font-size: ${px(8)}; color: #64748b; }
   ${documentPrintEdgeFooterStyles()}
   .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
   .watermark-text {
@@ -115,7 +121,7 @@ export function brandedDocumentStyles() {
     top: 48%;
     left: 50%;
     transform: translate(-50%, -50%) rotate(-32deg);
-    font-size: 64px;
+    font-size: ${px(64)};
     font-weight: 700;
     letter-spacing: 0.04em;
     color: rgba(15, 23, 42, 0.06);
@@ -131,10 +137,20 @@ export function brandedDocumentStyles() {
     opacity: 0.05;
     object-fit: contain;
   }
-  .extra-block { margin: 8px 0; font-size: 9px; }
+  .extra-block { margin: 8px 0; font-size: ${px(9)}; }
   @media print {
-    body { padding: 0; }
-    .watermark-text { color: rgba(15, 23, 42, 0.08); }
+    body { padding: 0; font-size: ${px(10, true)}; }
+    .org-name { font-size: ${px(18, true)}; }
+    .org-meta { font-size: ${px(9, true)}; }
+    .doc-title { font-size: ${px(13, true)}; }
+    .party-name { font-size: ${px(11, true)}; }
+    table.doc-items { font-size: ${px(9, true)}; }
+    .totals-row { font-size: ${px(10, true)}; }
+    .reason-row { font-size: ${px(10, true)}; }
+    .signatures { font-size: ${px(10, true)}; }
+    .doc-footer-text { font-size: ${px(8, true)}; }
+    .extra-block { font-size: ${px(9, true)}; }
+    .watermark-text { color: rgba(15, 23, 42, 0.08); font-size: ${px(64, true)}; }
   }
 `;
 }
@@ -146,12 +162,13 @@ export function buildBrandedA4DocumentHtml({
   title,
   branding = null,
   organization = null,
+  generalSettings = null,
   bodyHtml = "",
   documentFooterText = "",
   printedBy = null,
   pageLabel = "Page 1 of 1",
 }) {
-  const resolvedBranding = branding ?? resolveDocumentBranding({ organization });
+  const resolvedBranding = branding ?? resolveDocumentBranding({ organization, generalSettings });
   const orgContact = buildOrgContactLines(organization);
   const orgHeaderHtml = resolvedBranding.showHeader
     ? buildReportOrgHeaderHtml(resolvedBranding)
@@ -167,7 +184,7 @@ export function buildBrandedA4DocumentHtml({
 <head>
   <meta charset="utf-8">
   <title>${escapeHtml(title)}</title>
-  <style>${brandedDocumentStyles()}</style>
+  <style>${brandedDocumentStyles(generalSettings ?? branding?.generalSettings)}</style>
 </head>
 <body class="has-doc-print-edge-footer">
   ${watermarkHtml}

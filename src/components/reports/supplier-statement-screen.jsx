@@ -151,6 +151,7 @@ export function SupplierStatementScreen() {
       columns: normalizeExportColumns(exportColumns),
       rows: exportRows,
       branding,
+      generalSettings: generalSettings(),
     });
   }, [branding, exportColumns, exportRows, stats, supplier]);
 

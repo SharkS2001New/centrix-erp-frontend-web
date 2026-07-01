@@ -12,6 +12,7 @@ import {
   saleLineQtyLabel,
 } from "@/lib/sale-line-items";
 import {
+  isPaymentGatedWorkflowTransition,
   pipelineStatusIndex,
   primaryWorkflowAdvanceStatus,
   workflowPipelineSteps,
@@ -325,6 +326,7 @@ export function buildOrderContextMenuItems({
   onPrintA4,
   onAdvance,
   onCancel,
+  onCollectPayment,
   includePrint = true,
 }) {
   const items = [
@@ -337,6 +339,15 @@ export function buildOrderContextMenuItems({
       icon: "edit",
       disabled: busy,
       onClick: onEdit,
+    });
+  }
+  if (onCollectPayment) {
+    items.push({
+      key: "collect-payment",
+      label: "Collect payment",
+      icon: "advance",
+      disabled: busy,
+      onClick: onCollectPayment,
     });
   }
   if (includePrint) {
@@ -360,17 +371,28 @@ export function buildOrderContextMenuItems({
 
   const forward = primaryWorkflowAdvanceStatus(sale.status, workflow);
   const canCancel = nextTransitionOptions(sale.status, workflow).includes("cancelled");
+  const paymentGatedForward = forward && isPaymentGatedWorkflowTransition(sale, forward);
 
   if (forward || canCancel) {
     items.push({ type: "separator" });
     if (forward) {
-      items.push({
-        key: "advance",
-        label: busy ? "Updating…" : `Confirm → ${workflowStatusLabel(workflow, forward)}`,
-        icon: "advance",
-        disabled: busy,
-        onClick: () => onAdvance?.(forward),
-      });
+      if (paymentGatedForward && onCollectPayment) {
+        items.push({
+          key: "advance",
+          label: busy ? "Updating…" : "Collect payment",
+          icon: "advance",
+          disabled: busy,
+          onClick: onCollectPayment,
+        });
+      } else {
+        items.push({
+          key: "advance",
+          label: busy ? "Updating…" : `Confirm → ${workflowStatusLabel(workflow, forward)}`,
+          icon: "advance",
+          disabled: busy,
+          onClick: () => onAdvance?.(forward),
+        });
+      }
     }
     if (canCancel) {
       items.push({

@@ -1,5 +1,7 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, organizationLogoFileUrl } from "@/lib/api";
+import { getToken } from "@/lib/auth-storage";
+import { apiFetchCredentials } from "@/lib/auth-config";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import {
   ensureSaleForPrint,
@@ -12,6 +14,7 @@ import {
   resolveKraReceiptDataForSale,
 } from "@/lib/kra-receipt-qr";
 import { resolveSaleDocumentBranding } from "@/lib/sale-document-print-shared";
+import { organizationHasLogo } from "@/lib/reports/report-branding";
 import { requestOrderPrintType } from "@/lib/order-print-type-picker";
 import {
   mergeSalesSettings,
@@ -32,13 +35,45 @@ import {
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
 
-async function fetchOrganization(organizationId) {
+async function fetchOrganizationForPrint(organizationId) {
+  if (!organizationId) return null;
   try {
-    const res = await apiRequest(`/organizations/${organizationId}`, {
+    const res = await apiRequest("/erp/organization/profile", {
       loading: false,
       reportIssues: false,
     });
     return res?.organization ?? res;
+  } catch {
+    try {
+      const res = await apiRequest(`/organizations/${organizationId}`, {
+        loading: false,
+        reportIssues: false,
+      });
+      return res?.organization ?? res;
+    } catch {
+      return null;
+    }
+  }
+}
+
+async function fetchOrganizationLogoDataUrl(organization) {
+  if (!organization?.id || !organizationHasLogo(organization)) return null;
+  const url = organizationLogoFileUrl(organization.id, {
+    filePath: organization.logo_file_path ?? undefined,
+  });
+  const headers = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  try {
+    const res = await fetch(url, { headers, credentials: apiFetchCredentials() });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
   } catch {
     return null;
   }
@@ -170,12 +205,14 @@ export async function printSaleOrder(sale, options = {}) {
 
     const copies = Math.max(1, Number(options.copies ?? sales.receipt_copies ?? 1) || 1);
 
-    const [organization, branch, customer, route] = await Promise.all([
-      options.organization?.org_name || options.organization?.name
-        ? Promise.resolve(options.organization)
-        : organizationId
-          ? fetchOrganization(organizationId)
-          : Promise.resolve(null),
+    const fetchedOrganization = organizationId
+      ? await fetchOrganizationForPrint(organizationId)
+      : null;
+    const organization = fetchedOrganization
+      ? { ...(options.organization ?? {}), ...fetchedOrganization }
+      : options.organization ?? null;
+
+    const [branch, customer, route] = await Promise.all([
       options.branch ? Promise.resolve(options.branch) : fetchBranch(saleForPrint.branch_id),
       options.customer ? Promise.resolve(options.customer) : fetchCustomer(saleForPrint.customer_num),
       options.route ? Promise.resolve(options.route) : fetchRoute(saleForPrint.route_id),
@@ -187,10 +224,15 @@ export async function printSaleOrder(sale, options = {}) {
       (options.organizationName ? { name: options.organizationName } : null) ??
       { name: DEFAULT_PRINT_ORG_NAME };
 
-    const branding = resolveSaleDocumentBranding({
+    let branding = resolveSaleDocumentBranding({
       organization,
       generalSettings: general,
+      organizationNameFallback: seller.name ?? options.organizationName ?? "",
     });
+    const logoDataUrl = await fetchOrganizationLogoDataUrl(organization);
+    if (logoDataUrl) {
+      branding = { ...branding, logoUrl: logoDataUrl };
+    }
 
     const kraData = await resolveKraReceiptDataForSale(saleForPrint, options.kraReceipt);
     const kraQrDataUrl =
@@ -218,6 +260,7 @@ export async function printSaleOrder(sale, options = {}) {
       branding,
       organization,
       printedBy,
+      generalSettings: general,
       productDiscountsEnabled: Boolean(sales.allow_discounts),
       orderDiscountEnabled: Boolean(sales.enable_order_discount),
       customerNameEnabled: Boolean(sales.enable_checkout_customer_name),

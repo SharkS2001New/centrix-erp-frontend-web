@@ -155,6 +155,8 @@ function buildPreviewGeneralFromForm(form, moduleSettings) {
     ...mergeGeneralSettings(moduleSettings),
     show_organization_on_documents: form.show_organization_on_documents,
     document_header_display: form.document_header_display,
+    print_font_family: form.print_font_family ?? "times",
+    print_font_scale: form.print_font_scale ?? "standard",
     print_footer_receipt: form.print_footer_receipt,
     print_footer_a4_invoice: form.print_footer_a4_invoice,
     print_footer_lpo: form.print_footer_lpo,
@@ -188,6 +190,7 @@ export function previewSaleInvoicePrint({
     paymentInstructions,
     showPaymentInstructions: shouldShowReceiptPaymentDetails({ sales }, "invoice"),
     preparedBy: "Preview cashier",
+    generalSettings: general,
   });
 }
 
@@ -254,5 +257,6 @@ export function previewReceiptPaymentDetails({
     showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
     documentFooterText: resolvePrintFooter(general, "receipt"),
     paymentInstructions: payload,
+    generalSettings: general,
   });
 }

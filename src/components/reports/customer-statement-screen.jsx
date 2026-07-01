@@ -135,6 +135,7 @@ export function CustomerStatementScreen() {
         columns: normalizeExportColumns(columns),
         rows: lines,
         branding,
+        generalSettings: generalSettings(),
       });
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Print failed");

@@ -59,7 +59,14 @@ export function normalizeExportColumns(columns) {
 }
 
 /** @param {object} meta @param {ReturnType<normalizeExportColumns>} columns @param {object[]} rows @param {object} [options] */
-export function buildReportPrintHtml({ meta, columns, rows, footerRow = null, branding = null }) {
+export function buildReportPrintHtml({
+  meta,
+  columns,
+  rows,
+  footerRow = null,
+  branding = null,
+  generalSettings = null,
+}) {
   const headers = columns.map((col) => col.label);
   const period =
     meta.fromDate || meta.toDate
@@ -79,7 +86,7 @@ export function buildReportPrintHtml({ meta, columns, rows, footerRow = null, br
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(meta.title)}</title>
 <style>
-${reportDocumentStyles()}
+${reportDocumentStyles(generalSettings)}
 </style></head><body>
 ${watermarkHtml}
 ${orgHeaderHtml}

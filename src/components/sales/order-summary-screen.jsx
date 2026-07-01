@@ -12,7 +12,10 @@ import { formatCustomerKes } from "@/components/customers/customer-form";
 import {
   buildOrderWorkflowTimeline,
   getOrderWorkflow,
+  isPaymentGatedWorkflowTransition,
   PAYMENT_STEP_KEYS,
+  saleBalanceDue,
+  saleNeedsPaymentCollection,
 } from "@/lib/order-workflow";
 import {
   PAYMENT_STATUS_LABELS,
@@ -25,7 +28,7 @@ import {
   saleStatusLabel,
 } from "@/lib/sales";
 import { isLegacySale, saleLineProductLabel } from "@/lib/sale-line-items";
-import { RecordSalePaymentModal } from "@/components/sales/record-sale-payment-modal";
+import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { getOrderDocumentType, orderDocumentPrintLabel } from "@/lib/sales-settings";
 import {
@@ -582,8 +585,8 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     () => payments.reduce((sum, p) => sum + Number(p.amount ?? 0), 0),
     [payments],
   );
-  const balanceDue = Math.max(0, Number(sale?.order_total ?? 0) - totalPaid);
-  const canRecordPayment = balanceDue > 0 && sale?.status !== "cancelled";
+  const balanceDue = saleBalanceDue(sale, totalPaid);
+  const canRecordPayment = saleNeedsPaymentCollection(sale, totalPaid);
 
   const methodNameById = useMemo(() => {
     const map = {};
@@ -693,6 +696,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       void transitionOrder(targetStatus);
       return;
     }
+    if (isPaymentGatedWorkflowTransition(sale, targetStatus, totalPaid)) {
+      setPaymentModalOpen(true);
+      return;
+    }
     if (!sale) return;
     fulfillment.requestTransition(sale, targetStatus);
   }
@@ -764,6 +771,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                   workflow={saleWorkflow}
                   orderSource={sale.order_source}
                   channel={sale.channel}
+                  balanceDue={balanceDue}
+                  onCollectPayment={
+                    canRecordPayment ? () => setPaymentModalOpen(true) : null
+                  }
                   onAdvance={
                     sale.status !== "cancelled" && sale.status !== "completed"
                       ? (status) => handleAdvance(status)
@@ -774,6 +785,15 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {canRecordPayment ? (
+                <button
+                  type="button"
+                  onClick={() => setPaymentModalOpen(true)}
+                  className="theme-primary-btn inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+                >
+                  Collect payment
+                </button>
+              ) : null}
               {sale.can_edit_lines ? (
                 <button
                   type="button"
@@ -940,13 +960,18 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         </>
       ) : null}
 
-      <RecordSalePaymentModal
+      <SalePosPaymentPanel
         open={paymentModalOpen}
         onClose={() => setPaymentModalOpen(false)}
-        saleId={saleId}
+        sale={sale}
         balanceDue={balanceDue}
+        capabilities={capabilities}
         floatSessionId={floatSessionId}
-        onSaved={loadSale}
+        onPaid={async () => {
+          setPaymentModalOpen(false);
+          await loadSale();
+          notifySuccess("Payment recorded.");
+        }}
       />
 
       <BackofficeOrderEditModal

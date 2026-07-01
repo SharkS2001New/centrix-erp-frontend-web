@@ -14,7 +14,10 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   getOrderWorkflow,
   getSalesOrderQueueWorkflow,
+  isPaymentGatedWorkflowTransition,
   resolveSalesOrderQueue,
+  saleBalanceDue,
+  saleNeedsPaymentCollection,
   workflowStatusFilterOptions,
 } from "@/lib/order-workflow";
 import {
@@ -55,6 +58,8 @@ import {
   PodCaptureDialog,
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
 import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
+import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
+import { usePosSession } from "@/contexts/pos-session-context";
 
 
 function indexPaymentRefs(payments) {
@@ -74,6 +79,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   const router = useRouter();
   const confirm = useConfirm();
   const { user, capabilities, refreshCapabilities, organization } = useAuth();
+  const { floatSessionId } = usePosSession();
   const orgWorkflow = useMemo(
     () => getSalesOrderQueueWorkflow(capabilities, "backend"),
     [capabilities],
@@ -119,6 +125,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   const [paymentRefsBySaleId, setPaymentRefsBySaleId] = useState(() => new Map());
   const [contextMenu, setContextMenu] = useState(null);
   const [editSale, setEditSale] = useState(null);
+  const [paySale, setPaySale] = useState(null);
 
   const effectiveStatusFilter = queueConfig?.lockStatusFilter
     ? queueConfig.fixedStatusFilter
@@ -466,7 +473,18 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       void transitionOrder(sale, targetStatus);
       return;
     }
+    if (isPaymentGatedWorkflowTransition(sale, targetStatus)) {
+      setContextMenu(null);
+      setPaySale(sale);
+      return;
+    }
     fulfillment.requestTransition(sale, targetStatus);
+  }
+
+  function openCollectPayment(sale) {
+    if (!sale?.id || !saleNeedsPaymentCollection(sale)) return;
+    setContextMenu(null);
+    setPaySale(sale);
   }
 
   function applyDateFilter() {
@@ -509,8 +527,10 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       busy: transitionBusyId === sale.id || fulfillment.busy,
       includePrint: contextMenu.includePrint !== false,
       canEdit: Boolean(sale.can_edit_lines),
+      balanceDue: saleBalanceDue(sale),
       onView: () => viewOrder(sale),
       onEdit: () => openEditOrder(sale),
+      onCollectPayment: saleNeedsPaymentCollection(sale) ? () => openCollectPayment(sale) : null,
       onPrintThermal: () => void printOrder(sale, "receipt"),
       onPrintA4: () => void printOrder(sale, "invoice"),
       onAdvance: (status) => void handleAdvance(sale, status),
@@ -778,6 +798,24 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
         uomById={uomById}
         onClose={() => setEditSale(null)}
         onSaved={handleEditSaved}
+      />
+      <SalePosPaymentPanel
+        open={Boolean(paySale)}
+        sale={paySale}
+        balanceDue={paySale ? saleBalanceDue(paySale) : 0}
+        capabilities={capabilities}
+        floatSessionId={floatSessionId}
+        onClose={() => setPaySale(null)}
+        onPaid={async (updated) => {
+          if (updated?.id) patchSaleInState(updated);
+          setPaySale(null);
+          setActionMessage(
+            updated?.order_num != null
+              ? `Payment recorded for order ${formatOrderNumber(updated)}.`
+              : "Payment recorded.",
+          );
+          void loadOrders();
+        }}
       />
     </CatalogPageShell>
   );

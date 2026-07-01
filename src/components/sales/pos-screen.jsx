@@ -41,7 +41,7 @@ import {
 } from "@/lib/product-discount";
 import { lineProductVat } from "@/lib/sales-vat";
 import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
-import { getChannelWorkflow, workflowPipelineSteps, checkoutCompleteStatuses, isCheckoutCompleteStatus } from "@/lib/order-workflow";
+import { getChannelWorkflow, workflowPipelineSteps, checkoutCompleteStatuses, isCheckoutCompleteStatus, saleNeedsPaymentCollection } from "@/lib/order-workflow";
 import {
   getPosSalesConfig,
   isWorkspaceTillFloatRequired,
@@ -2334,10 +2334,6 @@ export function PosScreen({ standalone = false }) {
   function openSaveOrderDialog(mode) {
     setSaveOrderError(null);
     setOrderDialogMode(mode);
-    if (!posSalesConfig.enableCheckoutCustomerName) {
-      void handleSaveOrder({ hold: mode === "hold" });
-      return;
-    }
     setSaveOrderOpen(true);
   }
 
@@ -2462,6 +2458,9 @@ export function PosScreen({ standalone = false }) {
       }
       const label = restoredCart?.held_order_num ?? saleId;
       setStatusMessage(`Order #${label} loaded for editing — update lines and complete checkout.`);
+      if (saleSnapshot && saleNeedsPaymentCollection(saleSnapshot)) {
+        setPaymentOpen(true);
+      }
     } catch (e) {
       const message = dedupeErrorMessage(e instanceof ApiError ? e.message : "Could not load order for editing");
       if (!replace && message.toLowerCase().includes("already has items")) {

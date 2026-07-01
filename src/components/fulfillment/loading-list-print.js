@@ -10,6 +10,10 @@ import {
   documentPrintEdgeFooterStyles,
   DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN,
 } from "@/lib/document-print-edge-footer";
+import {
+  orgPrintFontFamilyFromSettings,
+  orgPrintPx,
+} from "@/lib/print-typography";
 
 function formatKes(amount) {
   const n = Number(amount) || 0;
@@ -184,6 +188,171 @@ function buildLoadingListLineRows(lines) {
     .join("");
 }
 
+function loadingSheetPrintStyles(generalSettings = null) {
+  const px = (base, print = false) =>
+    orgPrintPx(base, generalSettings, { variant: "loading_sheet", print });
+  const font = orgPrintFontFamilyFromSettings(generalSettings);
+  return `
+    @page { size: A4; margin: 12mm 12mm ${DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN} 12mm; }
+    * { box-sizing: border-box; }
+    html { height: 100%; }
+    body {
+      font-family: ${font};
+      color: #111;
+      margin: 20px 28px;
+      font-size: ${px(12)};
+      line-height: 1.35;
+      position: relative;
+      min-height: 100%;
+    }
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+    .page-body { }
+    .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+    .watermark-text {
+      position: absolute;
+      top: 48%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-32deg);
+      font-size: ${px(64)};
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: rgba(15, 23, 42, 0.06);
+      white-space: nowrap;
+    }
+    .watermark-logo {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: 70%;
+      max-height: 70%;
+      opacity: 0.05;
+      object-fit: contain;
+    }
+    .sheet { position: relative; z-index: 1; }
+    .org-header { text-align: center; margin-bottom: 16px; }
+    .org-logo { display: block; margin: 0 auto 10px; max-height: 56px; max-width: 220px; object-fit: contain; }
+    .org-name {
+      margin: 0;
+      font-size: ${px(22)};
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      line-height: 1.2;
+    }
+    .title-block { text-align: center; margin-bottom: 20px; }
+    .title-block .doc-title {
+      margin: 0;
+      font-size: ${px(14)};
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      line-height: 1.35;
+    }
+    .title-block .route-name {
+      margin: 10px 0 0;
+      font-size: ${px(13)};
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      line-height: 1.35;
+    }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    thead th {
+      background: #ececec;
+      font-size: ${px(11)};
+      font-weight: 700;
+      text-transform: none;
+      text-align: left;
+      padding: 10px 8px;
+      border-top: 1px solid #c9c9c9;
+      border-bottom: 1px solid #c9c9c9;
+      vertical-align: bottom;
+      line-height: 1.25;
+    }
+    thead th.col-total { text-align: right; }
+    tbody td {
+      padding: 12px 8px 0;
+      border: none;
+      vertical-align: top;
+      line-height: 1.3;
+    }
+    tbody tr:first-child td { padding-top: 14px; }
+    tbody tr + tr td { padding-top: 16px; }
+    .col-no { width: 40px; text-align: left; }
+    .col-product {
+      width: 34%;
+      text-align: left;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding-right: 12px;
+      word-break: break-word;
+    }
+    .col-qty, .col-price { text-align: left; white-space: nowrap; }
+    .col-total { text-align: right; white-space: nowrap; font-weight: 400; }
+    .main { font-weight: 700; }
+    .ghost { color: #8a8a8a; font-size: ${px(10)}; font-weight: 400; margin-top: 3px; line-height: 1.2; }
+    .empty { text-align: center; padding: 24px; color: #666; }
+    tfoot td {
+      padding: 14px 8px 0;
+      border: none;
+      font-weight: 700;
+      font-size: ${px(13)};
+    }
+    tfoot .col-total { text-align: right; }
+    .signatures {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      margin-top: 36px;
+    }
+    .signatures h3 {
+      margin: 0 0 48px;
+      font-size: ${px(12)};
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .signatures .line {
+      border-top: 1px solid #333;
+      padding-top: 6px;
+      margin-top: 40px;
+      font-size: ${px(11)};
+    }
+    .doc-footer {
+      margin-top: 12px;
+      text-align: center;
+      font-size: ${px(10)};
+      color: #64748b;
+    }
+    .doc-footer-line {
+      margin-top: 8px;
+      text-align: center;
+      font-size: ${px(10)};
+      font-weight: 700;
+      color: #334155;
+    }
+    ${documentPrintEdgeFooterStyles()}
+    @media print {
+      body { margin: 0; font-size: ${px(12, true)}; }
+      .org-name { font-size: ${px(22, true)}; }
+      .title-block .doc-title { font-size: ${px(14, true)}; }
+      .title-block .route-name { font-size: ${px(13, true)}; }
+      thead th { font-size: ${px(11, true)}; }
+      .ghost { font-size: ${px(10, true)}; }
+      tfoot td { font-size: ${px(13, true)}; }
+      .signatures h3 { font-size: ${px(12, true)}; }
+      .signatures .line { font-size: ${px(11, true)}; }
+      .doc-footer, .doc-footer-line { font-size: ${px(10, true)}; }
+      .watermark-text { color: rgba(15, 23, 42, 0.08); font-size: ${px(64, true)}; }
+    }
+  `;
+}
+
 export function buildLoadingListHtml({
   organization = null,
   generalSettings = null,
@@ -256,156 +425,7 @@ export function buildLoadingListHtml({
 <head>
   <meta charset="utf-8" />
   <title>Loading List — ${escapeHtml(routeName)}</title>
-  <style>
-    @page { size: A4; margin: 12mm 12mm ${DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN} 12mm; }
-    * { box-sizing: border-box; }
-    html { height: 100%; }
-    body {
-      font-family: Arial, Helvetica, sans-serif;
-      color: #111;
-      margin: 20px 28px;
-      font-size: 12px;
-      line-height: 1.35;
-      position: relative;
-      min-height: 100%;
-    }
-    .page {
-      max-width: 900px;
-      margin: 0 auto;
-      position: relative;
-      z-index: 1;
-    }
-    .page-body { }
-    .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-    .watermark-text {
-      position: absolute;
-      top: 48%;
-      left: 50%;
-      transform: translate(-50%, -50%) rotate(-32deg);
-      font-size: 64px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      color: rgba(15, 23, 42, 0.06);
-      white-space: nowrap;
-    }
-    .watermark-logo {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      max-width: 70%;
-      max-height: 70%;
-      opacity: 0.05;
-      object-fit: contain;
-    }
-    .sheet { position: relative; z-index: 1; }
-    .org-header { text-align: center; margin-bottom: 16px; }
-    .org-logo { display: block; margin: 0 auto 10px; max-height: 56px; max-width: 220px; object-fit: contain; }
-    .org-name {
-      margin: 0;
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      text-transform: uppercase;
-      line-height: 1.2;
-    }
-    .title-block { text-align: center; margin-bottom: 20px; }
-    .title-block .doc-title {
-      margin: 0;
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      line-height: 1.35;
-    }
-    .title-block .route-name {
-      margin: 10px 0 0;
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      line-height: 1.35;
-    }
-    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    thead th {
-      background: #ececec;
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: none;
-      text-align: left;
-      padding: 10px 8px;
-      border-top: 1px solid #c9c9c9;
-      border-bottom: 1px solid #c9c9c9;
-      vertical-align: bottom;
-      line-height: 1.25;
-    }
-    thead th.col-total { text-align: right; }
-    tbody td {
-      padding: 12px 8px 0;
-      border: none;
-      vertical-align: top;
-      line-height: 1.3;
-    }
-    tbody tr:first-child td { padding-top: 14px; }
-    tbody tr + tr td { padding-top: 16px; }
-    .col-no { width: 40px; text-align: left; }
-    .col-product {
-      width: 34%;
-      text-align: left;
-      font-weight: 700;
-      text-transform: uppercase;
-      padding-right: 12px;
-      word-break: break-word;
-    }
-    .col-qty, .col-price { text-align: left; white-space: nowrap; }
-    .col-total { text-align: right; white-space: nowrap; font-weight: 400; }
-    .main { font-weight: 700; }
-    .ghost { color: #8a8a8a; font-size: 10px; font-weight: 400; margin-top: 3px; line-height: 1.2; }
-    .empty { text-align: center; padding: 24px; color: #666; }
-    tfoot td {
-      padding: 14px 8px 0;
-      border: none;
-      font-weight: 700;
-      font-size: 13px;
-    }
-    tfoot .col-total { text-align: right; }
-    .signatures {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 32px;
-      margin-top: 36px;
-    }
-    .signatures h3 {
-      margin: 0 0 48px;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-    }
-    .signatures .line {
-      border-top: 1px solid #333;
-      padding-top: 6px;
-      margin-top: 40px;
-      font-size: 11px;
-    }
-    .doc-footer {
-      margin-top: 12px;
-      text-align: center;
-      font-size: 10px;
-      color: #64748b;
-    }
-    .doc-footer-line {
-      margin-top: 8px;
-      text-align: center;
-      font-size: 10px;
-      font-weight: 700;
-      color: #334155;
-    }
-    ${documentPrintEdgeFooterStyles()}
-    @media print {
-      body { margin: 0; }
-      .watermark-text { color: rgba(15, 23, 42, 0.08); }
-    }
-  </style>
+  <style>${loadingSheetPrintStyles(generalSettings)}</style>
 </head>
 <body class="has-doc-print-edge-footer">
   ${watermark}

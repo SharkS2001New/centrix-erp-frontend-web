@@ -32,6 +32,7 @@ export const DEFAULT_ORDER_WORKFLOW = {
     unpaid: { pos: "unpaid", mobile: "unpaid", backend: "unpaid" },
   },
   deduct_stock_on: "completed",
+  reserve_stock_on: "unpaid",
 };
 
 export const ORDER_STATUS_OPTIONS = [
@@ -79,6 +80,7 @@ export function sanitizeWorkflowReferences(workflow) {
     save_status,
     checkout,
     deduct_stock_on: pickRef(wf.deduct_stock_on ?? DEFAULT_ORDER_WORKFLOW.deduct_stock_on),
+    reserve_stock_on: pickRef(wf.reserve_stock_on ?? DEFAULT_ORDER_WORKFLOW.reserve_stock_on),
   };
 }
 
@@ -104,6 +106,7 @@ function deepMergeWorkflow(base, custom) {
     }
   }
   if (custom.deduct_stock_on) out.deduct_stock_on = custom.deduct_stock_on;
+  if (custom.reserve_stock_on) out.reserve_stock_on = custom.reserve_stock_on;
   return out;
 }
 
@@ -606,6 +609,37 @@ export function workflowStatusFilterOptionsFromConfig(config) {
 }
 
 const PAYMENT_STEP_KEYS = new Set(["unpaid", "pending_payment", "paid"]);
+
+export function saleBalanceDue(sale, totalPaid = null) {
+  const paid = totalPaid ?? Number(sale?.amount_paid ?? 0);
+  return Math.max(0, Number(sale?.order_total ?? 0) - paid);
+}
+
+export function saleNeedsPaymentCollection(sale, totalPaid = null) {
+  if (!sale || sale.status === "cancelled") return false;
+  const balance = saleBalanceDue(sale, totalPaid);
+  if (balance <= 0.01) return false;
+  const paymentStatus = String(sale.payment_status ?? "unpaid").toLowerCase();
+  const workflowStatus = String(sale.status ?? "").toLowerCase();
+  return (
+    paymentStatus === "unpaid"
+    || paymentStatus === "partial"
+    || workflowStatus === "unpaid"
+    || workflowStatus === "pending_payment"
+  );
+}
+
+/** Block manual workflow moves that skip recording payment. */
+export function isPaymentGatedWorkflowTransition(sale, targetStatus, totalPaid = null) {
+  if (!sale || sale.status === "cancelled") return false;
+  const target = String(targetStatus ?? "").toLowerCase();
+  const balance = saleBalanceDue(sale, totalPaid);
+  const paid = totalPaid ?? Number(sale.amount_paid ?? 0);
+  if (balance <= 0.01) return false;
+  if (target === "paid") return true;
+  if (target === "pending_payment" && paid <= 0.01) return true;
+  return false;
+}
 
 /** Timeline events from the org workflow pipeline (backend labels + step order). */
 export function buildOrderWorkflowTimeline(sale, workflow, options = {}) {

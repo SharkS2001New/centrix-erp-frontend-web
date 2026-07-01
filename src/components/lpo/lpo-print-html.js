@@ -19,6 +19,10 @@ import {
   documentPrintEdgeFooterStyles,
   DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN,
 } from "@/lib/document-print-edge-footer";
+import {
+  orgPrintFontFamilyFromSettings,
+  orgPrintPx,
+} from "@/lib/print-typography";
 
 function formatPrintDate(value) {
   if (!value) return "—";
@@ -111,15 +115,17 @@ function lpoDocumentTitle(variant) {
   return variant === "delivery_note" ? "DELIVERY NOTE" : "LOCAL PURCHASE ORDER";
 }
 
-function lpoPrintStyles() {
+function lpoPrintStyles(generalSettings = null) {
+  const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant: "lpo", print });
+  const font = orgPrintFontFamilyFromSettings(generalSettings);
   return `
     @page { size: A4; margin: 12mm 12mm ${DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN} 12mm; }
     html { height: 100%; }
     body {
-      font-family: "Times New Roman", Times, serif;
+      font-family: ${font};
       margin: 0;
       padding: 16px;
-      font-size: 11px;
+      font-size: ${px(11)};
       line-height: 1.35;
       color: #000;
       min-height: 100%;
@@ -132,38 +138,48 @@ function lpoPrintStyles() {
     .page-body { }
     .org-header { text-align: center; margin-bottom: 8px; }
     .org-logo { display: block; margin: 0 auto 8px; max-height: 72px; max-width: 280px; object-fit: contain; }
-    .org-name { font-size: 22px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-    .org-meta { text-align: center; font-size: 10px; margin-top: 4px; line-height: 1.45; }
-    .doc-title { text-align: center; font-size: 14px; font-weight: 700; margin: 10px 0 12px; letter-spacing: 0.08em; text-transform: uppercase; }
-    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; margin-bottom: 12px; font-size: 10px; }
+    .org-name { font-size: ${px(22)}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+    .org-meta { text-align: center; font-size: ${px(10)}; margin-top: 4px; line-height: 1.45; }
+    .doc-title { text-align: center; font-size: ${px(14)}; font-weight: 700; margin: 10px 0 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; margin-bottom: 12px; font-size: ${px(10)}; }
     .meta p { margin: 2px 0; }
     .meta-right { text-align: right; }
-    .supplier-name { font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }
+    .supplier-name { font-size: ${px(11)}; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }
     .meta-label { font-weight: 700; }
-    table.items { width: 100%; border-collapse: collapse; margin: 8px 0 10px; font-size: 10px; }
+    table.items { width: 100%; border-collapse: collapse; margin: 8px 0 10px; font-size: ${px(10)}; }
     table.items th, table.items td { border-top: 1px dotted #000; border-bottom: 1px dotted #000; padding: 5px 6px; vertical-align: top; }
-    table.items th { font-weight: 700; text-align: left; text-transform: uppercase; font-size: 9px; }
+    table.items th { font-weight: 700; text-align: left; text-transform: uppercase; font-size: ${px(9)}; }
     table.items th.num, table.items td.num { text-align: right; white-space: nowrap; }
-    .table-totals { display: flex; justify-content: flex-end; margin: 0 0 12px; font-size: 10px; }
+    .table-totals { display: flex; justify-content: flex-end; margin: 0 0 12px; font-size: ${px(10)}; }
     .table-totals-box { min-width: 220px; text-align: right; }
     .table-totals-box p { margin: 2px 0; }
     .bottom-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; margin-top: 8px; align-items: start; }
-    .instructions-title { font-weight: 700; text-transform: uppercase; font-size: 9px; margin: 0 0 4px; }
-    .notes { margin: 0; padding: 0; list-style: none; font-size: 9px; }
+    .instructions-title { font-weight: 700; text-transform: uppercase; font-size: ${px(9)}; margin: 0 0 4px; }
+    .notes { margin: 0; padding: 0; list-style: none; font-size: ${px(9)}; }
     .notes li { margin-bottom: 3px; }
     .notes .n { font-weight: 700; margin-right: 4px; }
-    .signatures { font-size: 10px; text-align: right; }
+    .signatures { font-size: ${px(10)}; text-align: right; }
     .signatures p { margin: 0 0 16px; }
     .sig-label { font-weight: 700; }
     .sig-line { display: inline-block; min-width: 140px; border-bottom: 1px dotted #000; padding-bottom: 2px; }
-    .footer-notes { margin-top: 12px; text-align: center; font-size: 9px; }
+    .footer-notes { margin-top: 12px; text-align: center; font-size: ${px(9)}; }
     .footer-notes p { margin: 4px 0; }
     .footer-line { font-weight: 700; }
     .warn { font-weight: 700; text-decoration: underline; text-transform: uppercase; }
     .note-line { margin-top: 4px; }
     ${documentPrintEdgeFooterStyles()}
     @media print {
-      body { padding: 0; }
+      body { padding: 0; font-size: ${px(11, true)}; }
+      .org-name { font-size: ${px(22, true)}; }
+      .org-meta { font-size: ${px(10, true)}; }
+      .doc-title { font-size: ${px(14, true)}; }
+      .meta { font-size: ${px(10, true)}; }
+      table.items { font-size: ${px(10, true)}; }
+      table.items th { font-size: ${px(9, true)}; }
+      .table-totals { font-size: ${px(10, true)}; }
+      .instructions-title, .notes { font-size: ${px(9, true)}; }
+      .signatures { font-size: ${px(10, true)}; }
+      .footer-notes { font-size: ${px(9, true)}; }
     }
   `;
 }
@@ -327,7 +343,7 @@ export function buildLpoPrintHtml({
 <html>
 <head>
   <title>${escapeHtml(docTitle)} ${escapeHtml(lpoDisplayNumber(lpo))}</title>
-  <style>${lpoPrintStyles()}</style>
+  <style>${lpoPrintStyles(generalSettings)}</style>
 </head>
 <body class="has-doc-print-edge-footer">
   <div class="page">
