@@ -6,6 +6,7 @@ import { workflowPipelineSteps } from "@/lib/order-workflow";
 import {
   isPlatformCheckoutOnCreateEnabled,
   isPlatformMobileOrdersEnabled,
+  isOrderCancellationEnabled,
 } from "@/lib/platform-org-features";
 import {
   getOrdersListSort,
@@ -69,6 +70,18 @@ export function PlatformConfiguredSalesSummary({ capabilities: capabilitiesProp 
         <li>
           <span className="font-medium">Orders list:</span> Last {ordersListDays} days · {ordersListSortLabel}
         </li>
+        {capabilities?.modules?.distribution && sales.order_expiry_enabled !== false ? (
+          <li>
+            <span className="font-medium">Stale order expiry:</span> On · after {sales.order_expiry_days ?? 5} days
+            · Expired orders link in Distribution sidebar
+          </li>
+        ) : null}
+        {capabilities?.modules?.distribution && isOrderCancellationEnabled(capabilities) ? (
+          <li>
+            <span className="font-medium">Order cancellation:</span> Enabled for booked, pending, and unpaid
+            orders · Cancelled orders link in Distribution sidebar
+          </li>
+        ) : null}
       </ul>
     </div>
   );

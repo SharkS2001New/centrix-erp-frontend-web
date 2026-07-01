@@ -10,6 +10,7 @@ import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
 import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
 import { isReportNavEnabled } from "@/lib/nav-feature-gates";
 import { withNavItemIcons } from "@/lib/nav-item-icons";
+import { isOrderCancellationNavEnabled, isOrderExpiryNavEnabled } from "@/lib/platform-org-features";
 
 function buildReportNavItems() {
   return [
@@ -748,12 +749,14 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Cancelled orders",
         module: "distribution",
         permission: P.sales.orders.view,
+        requireOrderCancellationNav: true,
       },
       {
         href: "/fulfillment/orders/expired",
         label: "Expired orders",
         module: "distribution",
         permission: P.sales.orders.view,
+        requireOrderExpiryNav: true,
       },
     ],
   },
@@ -930,6 +933,8 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   if (item.requireHrCashAdvances && !isCashAdvanceDeductionsEnabled(capabilities?.module_settings)) return false;
   if (item.requireSalesVouchers && !isVouchersEnabled(capabilities?.module_settings)) return false;
   if (item.requireRedeemablePoints && !isRedeemablePointsEnabled(capabilities?.module_settings)) return false;
+  if (item.requireOrderExpiryNav && !isOrderExpiryNavEnabled(capabilities)) return false;
+  if (item.requireOrderCancellationNav && !isOrderCancellationNavEnabled(capabilities)) return false;
   if (item.requireKraDevice && !isKraDeviceConfigured(capabilities?.module_settings, capabilities)) return false;
   if (item.reportKey && !isReportNavEnabled(item.reportKey, capabilities)) return false;
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;

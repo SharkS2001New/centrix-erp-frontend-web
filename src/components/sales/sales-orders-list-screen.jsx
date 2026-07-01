@@ -563,6 +563,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
     return buildOrderContextMenuItems({
       sale,
       workflow,
+      capabilities,
       busy: transitionBusyId === sale.id || fulfillment.busy,
       includePrint: contextMenu.includePrint !== false,
       hasExternalPos,

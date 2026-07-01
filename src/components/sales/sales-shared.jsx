@@ -129,6 +129,7 @@ export function OrderWorkflowPipeline({
   workflow,
   orderSource,
   channel,
+  canCancel = false,
 }) {
   const steps = workflowPipelineSteps(workflow);
   const currentIdx = pipelineStatusIndex(status, workflow);
@@ -237,7 +238,7 @@ export function OrderWorkflowPipeline({
                   {busyStatus ? "Updating…" : `${firstStep.label} →`}
                 </button>
               ) : null}
-              {status !== "cancelled" ? (
+              {canCancel ? (
                 <button
                   type="button"
                   disabled={!!busyStatus}

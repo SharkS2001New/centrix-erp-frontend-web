@@ -11,6 +11,7 @@ import { formatShortDate, getSaleTimestamp } from "@/components/catalog/catalog-
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import {
   buildOrderWorkflowTimeline,
+  canCancelOrder,
   getOrderWorkflow,
   isPaymentGatedWorkflowTransition,
   PAYMENT_STEP_KEYS,
@@ -601,6 +602,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   );
   const balanceDue = saleBalanceDue(sale, totalPaid);
   const canRecordPayment = saleNeedsPaymentCollection(sale, totalPaid);
+  const cancellationAllowed = useMemo(
+    () => canCancelOrder(sale, saleWorkflow, capabilities),
+    [sale, saleWorkflow, capabilities],
+  );
 
   const methodNameById = useMemo(() => {
     const map = {};
@@ -710,6 +715,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
 
   function handleAdvance(targetStatus) {
     if (targetStatus === "cancelled") {
+      if (!cancellationAllowed) return;
       void transitionOrder(targetStatus);
       return;
     }
@@ -800,6 +806,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                       ? (status) => handleAdvance(status)
                       : null
                   }
+                  canCancel={cancellationAllowed}
                   busyStatus={transitionBusy || fulfillment.busy ? sale.status : null}
                 />
               </div>

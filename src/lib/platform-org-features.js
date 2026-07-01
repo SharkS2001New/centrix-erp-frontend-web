@@ -1,5 +1,7 @@
 /** Platform-controlled sales behaviour flags exposed on erp/capabilities. */
 
+export const ORDER_CANCELLABLE_STATUSES = new Set(["booked", "pending", "unpaid"]);
+
 export function isPlatformCheckoutOnCreateEnabled(capabilities) {
   return capabilities?.module_settings?.sales?.show_checkout_on_create_order !== false;
 }
@@ -26,4 +28,18 @@ export function isPlatformAiEnabled(capabilities) {
 
 export function isPlatformAdvancedDataImportEnabled(capabilities) {
   return capabilities?.platform_advanced_data_import_enabled === true;
+}
+
+export function isOrderExpiryNavEnabled(capabilities) {
+  if (!capabilities?.modules?.distribution) return false;
+  return capabilities?.module_settings?.sales?.order_expiry_enabled !== false;
+}
+
+export function isOrderCancellationEnabled(capabilities) {
+  return capabilities?.module_settings?.sales?.order_cancellation_enabled !== false;
+}
+
+export function isOrderCancellationNavEnabled(capabilities) {
+  if (!capabilities?.modules?.distribution) return false;
+  return isOrderCancellationEnabled(capabilities);
 }

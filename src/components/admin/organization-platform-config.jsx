@@ -240,6 +240,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     order_expiry_enabled: true,
     order_expiry_days: "5",
     order_expiry_before_status: "processed",
+    order_cancellation_enabled: true,
   };
 }
 
@@ -273,6 +274,7 @@ export function salesPlatformFromApi(apiPayload) {
       Math.min(90, Math.max(1, Number(apiPayload.order_expiry_days) || 5)),
     ),
     order_expiry_before_status: String(apiPayload.order_expiry_before_status ?? "processed"),
+    order_cancellation_enabled: apiPayload.order_cancellation_enabled !== false,
   };
 }
 
@@ -482,7 +484,8 @@ export function OrganizationOrderWorkflowSettings({
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stale order expiry</p>
             <p className="mt-1 text-xs text-slate-500">
               Unprocessed orders are moved to Expired automatically after the configured number of days.
-              Expired and cancelled orders are excluded from active order counts and revenue totals.
+              Expired and cancelled orders are excluded from active order counts and revenue totals. When
+              Distribution is enabled, an Expired orders link appears in the Distribution workspace sidebar.
             </p>
             <div className="mt-3 space-y-3">
               <Toggle
@@ -529,6 +532,21 @@ export function OrganizationOrderWorkflowSettings({
                   </OrgRegisterField>
                 </>
               ) : null}
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order cancellation</p>
+            <p className="mt-1 text-xs text-slate-500">
+              When enabled, staff can cancel orders that are still booked, pending, or unpaid. Partially paid
+              and later stages cannot be cancelled. A Cancelled orders link appears in the Distribution
+              workspace sidebar.
+            </p>
+            <div className="mt-3 space-y-3">
+              <Toggle
+                label="Allow order cancellation"
+                checked={salesPlatform?.order_cancellation_enabled !== false}
+                onChange={(v) => patch({ order_cancellation_enabled: v })}
+              />
             </div>
           </div>
           <OrderWorkflowSettingsEditor

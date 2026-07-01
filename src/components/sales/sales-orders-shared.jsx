@@ -14,6 +14,7 @@ import {
 import {
   pipelineStatusIndex,
   resolveOrderWorkflowActions,
+  canCancelOrder,
   saleNeedsPaymentCollection,
   workflowPipelineSteps,
   workflowStatusLabel,
@@ -23,7 +24,6 @@ import {
   formatReceiptNumber,
   formatOrderNumber,
   formatSaleKes,
-  nextTransitionOptions,
   orderSourceLabel,
   saleCustomerLabel,
   salePaymentMethodDisplay,
@@ -331,6 +331,7 @@ export function OrderInlineItems({ items, loading, uomById, legacyPrint = false 
 export function buildOrderContextMenuItems({
   sale,
   workflow,
+  capabilities,
   busy,
   onView,
   onEdit,
@@ -398,7 +399,7 @@ export function buildOrderContextMenuItems({
   }
 
   const forward = workflowActions.advanceStatus;
-  const canCancel = nextTransitionOptions(sale.status, workflow).includes("cancelled");
+  const canCancel = canCancelOrder(sale, workflow, capabilities);
 
   if (forward || canCancel) {
     items.push({ type: "separator" });

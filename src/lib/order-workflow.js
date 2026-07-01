@@ -1,4 +1,9 @@
 /** Default workflow mirrors config/erp.php default_order_workflow. */
+import {
+  isOrderCancellationEnabled,
+  ORDER_CANCELLABLE_STATUSES,
+} from "@/lib/platform-org-features";
+
 export const DEFAULT_ORDER_WORKFLOW = {
   steps: [
     { status: "booked", label: "Booked", enabled: true },
@@ -361,6 +366,23 @@ export function alignStatusToWorkflow(status, workflow) {
   return pickEnabledStatus(key, workflow);
 }
 
+/** Whether this pipeline status may be cancelled (booked, pending, unpaid only). */
+export function canCancelOrderStatus(status, workflow) {
+  const key = String(status ?? "").toLowerCase();
+  if (!key || key === "cancelled" || key === "expired" || key === "held" || key === "draft") {
+    return false;
+  }
+  const aligned = alignStatusToWorkflow(key, workflow);
+  return ORDER_CANCELLABLE_STATUSES.has(aligned);
+}
+
+/** Whether staff should be offered cancel for this order (settings + status). */
+export function canCancelOrder(saleOrStatus, workflow, capabilities) {
+  if (capabilities && !isOrderCancellationEnabled(capabilities)) return false;
+  const status = typeof saleOrStatus === "object" ? saleOrStatus?.status : saleOrStatus;
+  return canCancelOrderStatus(status, workflow);
+}
+
 export function workflowTransitions(workflow) {
   return workflow?.transitions ?? DEFAULT_ORDER_WORKFLOW.transitions;
 }
@@ -390,7 +412,9 @@ export function pipelineAdjacentTransitions(status, workflow) {
     if (keys.length) options.push(keys[0]);
   }
 
-  if (status !== "cancelled") options.push("cancelled");
+  if (canCancelOrderStatus(status, workflow)) {
+    options.push("cancelled");
+  }
   return [...new Set(options)];
 }
 
