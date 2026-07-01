@@ -584,6 +584,12 @@ export function posChannelFromStockSource(sellFromShop, config) {
   return sellFromShop ? "pos" : "backend";
 }
 
+/** Sales cart channel for the active workspace — backoffice create order always uses backend. */
+export function salesCartChannelForWorkspace({ standalone, sellFromShop, config }) {
+  if (!standalone) return "backend";
+  return posChannelFromStockSource(sellFromShop, config);
+}
+
 export {
   getChannelWorkflow,
   getOrderWorkflow,

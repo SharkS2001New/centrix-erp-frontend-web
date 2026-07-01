@@ -45,7 +45,7 @@ import { getChannelWorkflow, workflowPipelineSteps, checkoutCompleteStatuses, is
 import {
   getPosSalesConfig,
   isWorkspaceTillFloatRequired,
-  posChannelFromStockSource,
+  salesCartChannelForWorkspace,
   resolveCheckoutStatus,
   resolveSaveOrderStatus,
   resolveSaveOrderStatusLabel,
@@ -474,7 +474,11 @@ export function PosScreen({ standalone = false }) {
 
   const organizationName = capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME;
   const posCashierName = user?.full_name ?? user?.username ?? null;
-  const channel = posChannelFromStockSource(sellFromShop, posSalesConfig);
+  const channel = salesCartChannelForWorkspace({
+    standalone,
+    sellFromShop,
+    config: posSalesConfig,
+  });
   const channelWorkflow = useMemo(
     () => getChannelWorkflow(capabilities, channel),
     [capabilities, channel],
