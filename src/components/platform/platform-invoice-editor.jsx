@@ -13,6 +13,8 @@ import {
   invoiceFormToPayload,
   invoiceRecordToForm,
   lineItemFromModuleSummary,
+  normalizeInvoiceOptions,
+  normalizeSeller,
   recalcLineItemAmount,
 } from "@/lib/platform-invoices";
 import { buildPlatformInvoiceHtml, printPlatformInvoice } from "@/lib/platform-invoice-print";
@@ -28,6 +30,15 @@ function Field({ label, children, className = "" }) {
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
+
+async function imageFileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("Could not read image file."));
+    reader.readAsDataURL(file);
+  });
+}
 
 export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   const isEdit = Boolean(invoiceId);
@@ -81,7 +92,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
           bill_to_address: res.bill_to.address ?? prev.bill_to_address,
           bill_to_tax_pin: res.bill_to.tax_pin ?? prev.bill_to_tax_pin,
           bill_to_company_code: res.bill_to.company_code ?? prev.bill_to_company_code,
-          seller: res.seller ?? prev.seller,
+          seller: normalizeSeller(res.seller ?? prev.seller),
         }));
       }
       return summaries;
@@ -118,6 +129,37 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
 
   function updateForm(patch) {
     setForm((prev) => ({ ...prev, ...patch }));
+  }
+
+  function updateSeller(patch) {
+    setForm((prev) => ({
+      ...prev,
+      seller: normalizeSeller({ ...prev.seller, ...patch }),
+    }));
+  }
+
+  function updateInvoiceOptions(patch) {
+    setForm((prev) => ({
+      ...prev,
+      invoice_options: normalizeInvoiceOptions({ ...prev.invoice_options, ...patch }),
+    }));
+  }
+
+  async function handleLogoUpload(event, targetKey) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      notifyError("Please choose an image file.");
+      return;
+    }
+    try {
+      const dataUrl = await imageFileToDataUrl(file);
+      updateInvoiceOptions({ [targetKey]: dataUrl });
+      notifySuccess("Logo uploaded.");
+    } catch {
+      notifyError("Could not upload logo.");
+    }
   }
 
   async function handleOrganizationChange(organizationId) {
@@ -201,6 +243,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
           name: templateName.trim(),
           description: templateDescription.trim() || null,
           template_id: form.template_id,
+          invoice_options: form.invoice_options,
           line_items: form.line_items,
           selected_modules: form.selected_modules,
           notes: form.notes,
@@ -224,6 +267,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
     setForm((prev) => ({
       ...prev,
       template_id: template.template_id ?? prev.template_id,
+      invoice_options: normalizeInvoiceOptions(template.invoice_options ?? prev.invoice_options),
       line_items: (template.line_items ?? []).map((row) => ({ ...row })),
       selected_modules: template.selected_modules ?? [],
       notes: template.notes ?? prev.notes,
@@ -238,6 +282,8 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   }
 
   const activeLines = (form.line_items ?? []).filter((row) => row.included !== false);
+  const seller = normalizeSeller(form.seller);
+  const invoiceOptions = normalizeInvoiceOptions(form.invoice_options);
 
   return (
     <div className="space-y-4">
@@ -376,6 +422,28 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
           </section>
 
           <section className="theme-panel rounded-xl border p-5 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-900">Bill from</h2>
+            <p className="mt-1 text-xs text-slate-500">Your company details on the invoice (defaults to CentrixERP).</p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <Field label="Organization name" className="sm:col-span-2">
+                <input className={inputClass} value={seller.name} onChange={(e) => updateSeller({ name: e.target.value })} />
+              </Field>
+              <Field label="Email">
+                <input className={inputClass} value={seller.email} onChange={(e) => updateSeller({ email: e.target.value })} />
+              </Field>
+              <Field label="Phone">
+                <input className={inputClass} value={seller.phone} onChange={(e) => updateSeller({ phone: e.target.value })} />
+              </Field>
+              <Field label="Tax PIN">
+                <input className={inputClass} value={seller.tax_pin} onChange={(e) => updateSeller({ tax_pin: e.target.value })} />
+              </Field>
+              <Field label="Address" className="sm:col-span-2">
+                <textarea className={inputClass} rows={3} value={seller.address} onChange={(e) => updateSeller({ address: e.target.value })} />
+              </Field>
+            </div>
+          </section>
+
+          <section className="theme-panel rounded-xl border p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">Bill to</h2>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <Field label="Organization name" className="sm:col-span-2">
@@ -396,6 +464,147 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
               <Field label="Address" className="sm:col-span-2">
                 <textarea className={inputClass} rows={3} value={form.bill_to_address} onChange={(e) => updateForm({ bill_to_address: e.target.value })} />
               </Field>
+            </div>
+          </section>
+
+          <section className="theme-panel rounded-xl border p-5 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-900">Branding &amp; display</h2>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <Field label="Header branding">
+                <select
+                  className={inputClass}
+                  value={invoiceOptions.brand_mode}
+                  onChange={(e) => updateInvoiceOptions({ brand_mode: e.target.value })}
+                >
+                  <option value="name">Name only</option>
+                  <option value="logo">Logo only</option>
+                  <option value="both">Logo and name</option>
+                </select>
+              </Field>
+              <Field label="Brand name">
+                <input
+                  className={inputClass}
+                  value={invoiceOptions.brand_name}
+                  onChange={(e) => updateInvoiceOptions({ brand_name: e.target.value })}
+                />
+              </Field>
+              <Field label="Brand logo" className="sm:col-span-2">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="block w-full text-sm text-slate-600"
+                  onChange={(e) => void handleLogoUpload(e, "brand_logo_url")}
+                />
+                {invoiceOptions.brand_logo_url ? (
+                  <button
+                    type="button"
+                    className="mt-2 text-xs font-medium text-red-600 hover:text-red-800"
+                    onClick={() => updateInvoiceOptions({ brand_logo_url: "" })}
+                  >
+                    Remove brand logo
+                  </button>
+                ) : null}
+              </Field>
+              <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300"
+                  checked={invoiceOptions.show_quantity !== false}
+                  onChange={(e) => updateInvoiceOptions({ show_quantity: e.target.checked })}
+                />
+                Show quantity column on invoice
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300"
+                  checked={Boolean(invoiceOptions.show_payment_details)}
+                  onChange={(e) => updateInvoiceOptions({ show_payment_details: e.target.checked })}
+                />
+                Show payment details
+              </label>
+              {invoiceOptions.show_payment_details ? (
+                <Field label="Payment details" className="sm:col-span-2">
+                  <textarea
+                    className={inputClass}
+                    rows={3}
+                    value={invoiceOptions.payment_details}
+                    onChange={(e) => updateInvoiceOptions({ payment_details: e.target.value })}
+                    placeholder="Bank name, account number, paybill, etc."
+                  />
+                </Field>
+              ) : null}
+              <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300"
+                  checked={Boolean(invoiceOptions.show_etims_invoice_no)}
+                  onChange={(e) => updateInvoiceOptions({ show_etims_invoice_no: e.target.checked })}
+                />
+                Show eTIMS KRA invoice number
+              </label>
+              {invoiceOptions.show_etims_invoice_no ? (
+                <Field label="eTIMS KRA invoice no." className="sm:col-span-2">
+                  <input
+                    className={inputClass}
+                    value={invoiceOptions.etims_invoice_no}
+                    onChange={(e) => updateInvoiceOptions({ etims_invoice_no: e.target.value })}
+                    placeholder="KRA-approved invoice reference"
+                  />
+                </Field>
+              ) : null}
+              <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300"
+                  checked={invoiceOptions.watermark_enabled !== false}
+                  onChange={(e) => updateInvoiceOptions({ watermark_enabled: e.target.checked })}
+                />
+                Show anti-fraud watermark
+              </label>
+              {invoiceOptions.watermark_enabled !== false ? (
+                <>
+                  <Field label="Watermark style">
+                    <select
+                      className={inputClass}
+                      value={invoiceOptions.watermark_mode}
+                      onChange={(e) => updateInvoiceOptions({ watermark_mode: e.target.value })}
+                    >
+                      <option value="name">CentrixERP name</option>
+                      <option value="text">Custom text</option>
+                      <option value="logo">Logo image</option>
+                    </select>
+                  </Field>
+                  {invoiceOptions.watermark_mode === "text" ? (
+                    <Field label="Watermark text">
+                      <input
+                        className={inputClass}
+                        value={invoiceOptions.watermark_text}
+                        onChange={(e) => updateInvoiceOptions({ watermark_text: e.target.value })}
+                      />
+                    </Field>
+                  ) : null}
+                  {invoiceOptions.watermark_mode === "logo" ? (
+                    <Field label="Watermark logo" className="sm:col-span-2">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="block w-full text-sm text-slate-600"
+                        onChange={(e) => void handleLogoUpload(e, "watermark_logo_url")}
+                      />
+                      {invoiceOptions.watermark_logo_url ? (
+                        <button
+                          type="button"
+                          className="mt-2 text-xs font-medium text-red-600 hover:text-red-800"
+                          onClick={() => updateInvoiceOptions({ watermark_logo_url: "" })}
+                        >
+                          Remove watermark logo
+                        </button>
+                      ) : null}
+                    </Field>
+                  ) : null}
+                </>
+              ) : null}
             </div>
           </section>
 
@@ -451,13 +660,14 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                         onChange={(e) => updateLineItem(index, { description: e.target.value })}
                       />
                     </Field>
-                    <Field label="Qty" className="sm:col-span-2">
+                    <Field label="Qty" className={`sm:col-span-2 ${invoiceOptions.show_quantity === false ? "opacity-50" : ""}`}>
                       <input
                         type="number"
                         min="0"
                         step="1"
                         className={inputClass}
                         value={row.quantity ?? 1}
+                        disabled={invoiceOptions.show_quantity === false}
                         onChange={(e) => updateLineItem(index, { quantity: e.target.value })}
                       />
                     </Field>

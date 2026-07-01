@@ -22,6 +22,37 @@ export function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
+export const DEFAULT_INVOICE_OPTIONS = {
+  show_quantity: true,
+  show_payment_details: false,
+  payment_details: "",
+  show_etims_invoice_no: false,
+  etims_invoice_no: "",
+  watermark_enabled: true,
+  watermark_mode: "name",
+  watermark_text: "CentrixERP",
+  watermark_logo_url: "",
+  brand_mode: "name",
+  brand_name: "CentrixERP",
+  brand_logo_url: "",
+};
+
+export const DEFAULT_PLATFORM_SELLER = {
+  name: "CentrixERP",
+  email: "",
+  phone: "",
+  address: "",
+  tax_pin: "",
+};
+
+export function normalizeInvoiceOptions(options) {
+  return { ...DEFAULT_INVOICE_OPTIONS, ...(options ?? {}) };
+}
+
+export function normalizeSeller(seller) {
+  return { ...DEFAULT_PLATFORM_SELLER, ...(seller ?? {}) };
+}
+
 export function addDaysIsoDate(isoDate, days) {
   const d = new Date(`${isoDate}T12:00:00`);
   d.setDate(d.getDate() + days);
@@ -44,7 +75,8 @@ export function emptyPlatformInvoiceForm(overrides = {}) {
     bill_to_address: "",
     bill_to_tax_pin: "",
     bill_to_company_code: "",
-    seller: null,
+    seller: { ...DEFAULT_PLATFORM_SELLER },
+    invoice_options: { ...DEFAULT_INVOICE_OPTIONS },
     line_items: [],
     selected_modules: [],
     tax_rate: 16,
@@ -94,6 +126,8 @@ export function invoiceFormToPayload(form) {
   const payload = {
     ...form,
     organization_id: form.organization_id ? Number(form.organization_id) : null,
+    seller: normalizeSeller(form.seller),
+    invoice_options: normalizeInvoiceOptions(form.invoice_options),
     line_items: lineItems,
     selected_modules: form.selected_modules ?? [],
     tax_rate: Number(form.tax_rate ?? 0),
@@ -120,7 +154,8 @@ export function invoiceRecordToForm(record) {
     bill_to_address: record.bill_to_address ?? "",
     bill_to_tax_pin: record.bill_to_tax_pin ?? "",
     bill_to_company_code: record.bill_to_company_code ?? "",
-    seller: record.seller ?? null,
+    seller: normalizeSeller(record.seller),
+    invoice_options: normalizeInvoiceOptions(record.invoice_options),
     line_items: Array.isArray(record.line_items) ? record.line_items.map((row) => ({ ...row })) : [],
     selected_modules: record.selected_modules ?? [],
     tax_rate: Number(record.tax_rate ?? 0),

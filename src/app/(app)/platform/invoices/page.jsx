@@ -8,6 +8,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { useConfirm } from "@/lib/use-confirm";
+import { printPlatformInvoice } from "@/lib/platform-invoice-print";
 
 const STATUS_STYLES = {
   draft: "bg-slate-100 text-slate-700",
@@ -107,20 +108,29 @@ export default function PlatformInvoicesPage() {
                       {invoice.currency} {Number(invoice.total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-5 py-3 text-right">
-                      <button
-                        type="button"
-                        className="mr-3 text-indigo-600 hover:text-indigo-800"
-                        onClick={() => router.push(`/platform/invoices/${invoice.id}`)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="text-red-600 hover:text-red-800"
-                        onClick={() => void handleDelete(invoice)}
-                      >
-                        Delete
-                      </button>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                          onClick={() => printPlatformInvoice(invoice)}
+                        >
+                          Print
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+                          onClick={() => router.push(`/platform/invoices/${invoice.id}`)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100"
+                          onClick={() => void handleDelete(invoice)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

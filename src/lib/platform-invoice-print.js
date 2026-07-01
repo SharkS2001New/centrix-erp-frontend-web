@@ -1,5 +1,5 @@
 import { escapeHtml } from "@/lib/sale-document-print-shared";
-import { calculateInvoiceTotals } from "@/lib/platform-invoices";
+import { calculateInvoiceTotals, normalizeInvoiceOptions, normalizeSeller } from "@/lib/platform-invoices";
 
 function formatMoney(amount, currency = "KES") {
   const n = Number(amount);
@@ -18,20 +18,24 @@ function activeLines(lineItems) {
   return (lineItems ?? []).filter((row) => row.included !== false);
 }
 
-function lineRowsHtml(lineItems, currency, { compact = false } = {}) {
+function lineRowsHtml(lineItems, currency, { compact = false, showQuantity = true } = {}) {
   const rows = activeLines(lineItems);
   if (!rows.length) {
-    return `<tr><td colspan="4" class="empty">No line items</td></tr>`;
+    const colspan = showQuantity ? 4 : 3;
+    return `<tr><td colspan="${colspan}" class="empty">No line items</td></tr>`;
   }
   return rows
     .map((row, index) => {
       const qty = Number(row.quantity ?? 1);
       const unit = Number(row.unit_price ?? 0);
       const amount = row.amount != null ? Number(row.amount) : qty * unit;
+      const qtyCell = showQuantity
+        ? `<td class="qty">${escapeHtml(String(qty))}</td>`
+        : "";
       return `<tr>
         <td class="num">${index + 1}</td>
         <td class="desc">${escapeHtml(row.description ?? "")}</td>
-        <td class="qty">${escapeHtml(String(qty))}</td>
+        ${qtyCell}
         <td class="amt">${escapeHtml(formatMoney(amount, currency))}</td>
       </tr>`;
     })
@@ -62,6 +66,37 @@ function totalsBlock(totals, currency, taxRate) {
   </div>`;
 }
 
+function brandHeaderHtml(options) {
+  const brandName = options.brand_name || "CentrixERP";
+  const showLogo = options.brand_mode === "logo" || options.brand_mode === "both";
+  const showName = options.brand_mode === "name" || options.brand_mode === "both" || !showLogo;
+  const logoUrl = options.brand_logo_url?.trim();
+
+  const logo = showLogo && logoUrl
+    ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(brandName)}" class="brand-logo" />`
+    : "";
+  const name = showName
+    ? `<p class="brand-name">${escapeHtml(brandName)}</p>`
+    : "";
+
+  return `<div class="brand">${logo}${name}</div>`;
+}
+
+function watermarkHtml(options) {
+  if (!options.watermark_enabled) return "";
+
+  const mode = options.watermark_mode || "name";
+  const text = options.watermark_text || options.brand_name || "CentrixERP";
+  const logoUrl = options.watermark_logo_url?.trim() || options.brand_logo_url?.trim();
+
+  if (mode === "logo" && logoUrl) {
+    return `<div class="watermark watermark-logo" style="background-image:url('${escapeHtml(logoUrl)}')"></div>`;
+  }
+
+  const label = mode === "text" ? text : text;
+  return `<div class="watermark watermark-text" aria-hidden="true">${escapeHtml(label)}</div>`;
+}
+
 function baseStyles(templateId) {
   const themes = {
     modern: { accent: "#2563eb", bg: "#f8fafc", font: "system-ui, sans-serif" },
@@ -78,8 +113,15 @@ function baseStyles(templateId) {
   return `
     * { box-sizing: border-box; }
     body { margin: 0; padding: 32px; font-family: ${t.font}; color: #0f172a; background: ${t.bg}; font-size: ${compact ? "11px" : "13px"}; line-height: 1.45; }
-    .sheet { max-width: 800px; margin: 0 auto; background: #fff; border-radius: ${templateId === "minimal" ? "0" : "8px"}; overflow: hidden; box-shadow: ${templateId === "minimal" ? "none" : "0 1px 3px rgba(0,0,0,.08)"}; border: ${templateId === "classic" ? "1px solid #cbd5e1" : "none"}; }
+    .sheet { position: relative; max-width: 800px; margin: 0 auto; background: #fff; border-radius: ${templateId === "minimal" ? "0" : "8px"}; overflow: hidden; box-shadow: ${templateId === "minimal" ? "none" : "0 1px 3px rgba(0,0,0,.08)"}; border: ${templateId === "classic" ? "1px solid #cbd5e1" : "none"}; }
+    .sheet-body { position: relative; z-index: 1; }
+    .watermark { position: absolute; inset: 0; z-index: 0; pointer-events: none; user-select: none; }
+    .watermark-text { display: flex; align-items: center; justify-content: center; font-size: 72px; font-weight: 800; letter-spacing: 0.08em; color: rgba(15, 23, 42, 0.06); transform: rotate(-28deg); text-transform: uppercase; white-space: nowrap; }
+    .watermark-logo { background-repeat: no-repeat; background-position: center; background-size: 45%; opacity: 0.07; }
     .header { padding: ${compact ? "16px 20px" : "24px 28px"}; background: ${templateId === "corporate" || templateId === "bold" ? t.accent : templateId === "stripe" ? "#f6f9fc" : "#fff"}; color: ${templateId === "corporate" || templateId === "bold" ? "#fff" : "#0f172a"}; ${templateId === "modern" ? `border-top: 4px solid ${t.accent};` : ""} ${templateId === "stripe" ? `border-left: 6px solid ${t.accent};` : ""} }
+    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .brand-logo { max-height: 42px; max-width: 180px; object-fit: contain; }
+    .brand-name { margin: 0; font-size: ${compact ? "14px" : "16px"}; font-weight: 700; letter-spacing: 0.02em; }
     .header h1 { margin: 0; font-size: ${templateId === "bold" ? "32px" : templateId === "elegant" ? "28px" : "22px"}; font-weight: 700; letter-spacing: ${templateId === "elegant" ? "0.02em" : "0"}; }
     .header .meta { margin-top: 8px; opacity: ${templateId === "corporate" || templateId === "bold" ? "0.9" : "1"}; font-size: ${compact ? "10px" : "12px"}; }
     .body { padding: ${compact ? "16px 20px 20px" : "24px 28px 28px"}; }
@@ -99,6 +141,7 @@ function baseStyles(templateId) {
     .footer { margin-top: 28px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: ${compact ? "10px" : "12px"}; color: #475569; }
     .footer h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; }
     .footer p { margin: 0 0 12px; white-space: pre-wrap; }
+    .etims { margin-top: 16px; padding: 10px 12px; border-radius: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; font-size: 12px; }
     .status { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: rgba(255,255,255,.2); }
     @media print { body { padding: 0; background: #fff; } .sheet { box-shadow: none; border: none; } }
   `;
@@ -113,13 +156,8 @@ export function buildPlatformInvoiceHtml(invoice) {
   const currency = invoice.currency ?? "KES";
   const taxRate = Number(invoice.tax_rate ?? 0);
   const totals = calculateInvoiceTotals(invoice.line_items, taxRate);
-  const seller = invoice.seller ?? {
-    name: "Centrix ERP",
-    address: "",
-    email: "",
-    phone: "",
-    tax_pin: "",
-  };
+  const options = normalizeInvoiceOptions(invoice.invoice_options);
+  const seller = normalizeSeller(invoice.seller);
   const billTo = {
     name: invoice.bill_to_name,
     email: invoice.bill_to_email,
@@ -130,6 +168,18 @@ export function buildPlatformInvoiceHtml(invoice) {
   };
   const invoiceNo = invoice.invoice_number || "DRAFT";
   const status = (invoice.status ?? "draft").toUpperCase();
+  const showQuantity = options.show_quantity !== false;
+  const qtyHeader = showQuantity
+    ? `<th style="text-align:right">Qty</th>`
+    : "";
+
+  const etimsBlock = options.show_etims_invoice_no && options.etims_invoice_no
+    ? `<div class="etims"><strong>eTIMS KRA invoice no.</strong> ${escapeHtml(options.etims_invoice_no)}</div>`
+    : "";
+
+  const paymentBlock = options.show_payment_details && options.payment_details
+    ? `<div><h3>Payment details</h3><p>${escapeHtml(options.payment_details)}</p></div>`
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -140,38 +190,43 @@ export function buildPlatformInvoiceHtml(invoice) {
 </head>
 <body>
   <div class="sheet">
-    <div class="header">
-      <h1>INVOICE</h1>
-      <div class="meta">
-        <strong>${escapeHtml(seller.name ?? "Centrix ERP")}</strong>
-        · #${escapeHtml(invoiceNo)}
-        · ${escapeHtml(formatDate(invoice.issue_date))}
-        ${invoice.due_date ? ` · Due ${escapeHtml(formatDate(invoice.due_date))}` : ""}
-        · <span class="status">${escapeHtml(status)}</span>
+    ${watermarkHtml(options)}
+    <div class="sheet-body">
+      <div class="header">
+        ${brandHeaderHtml(options)}
+        <h1>INVOICE</h1>
+        <div class="meta">
+          Invoice No: <strong>#${escapeHtml(invoiceNo)}</strong>
+          · ${escapeHtml(formatDate(invoice.issue_date))}
+          ${invoice.due_date ? ` · Due ${escapeHtml(formatDate(invoice.due_date))}` : ""}
+          · <span class="status">${escapeHtml(status)}</span>
+        </div>
       </div>
-    </div>
-    <div class="body">
-      <div class="parties">
-        ${partyBlock("Bill from", seller)}
-        ${partyBlock("Bill to", billTo)}
-      </div>
-      <table class="lines">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Description</th>
-            <th style="text-align:right">Qty</th>
-            <th style="text-align:right">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${lineRowsHtml(invoice.line_items, currency, { compact: templateId === "compact" })}
-        </tbody>
-      </table>
-      ${totalsBlock(totals, currency, taxRate)}
-      <div class="footer">
-        ${invoice.notes ? `<div><h3>Notes</h3><p>${escapeHtml(invoice.notes)}</p></div>` : ""}
-        ${invoice.terms ? `<div><h3>Terms</h3><p>${escapeHtml(invoice.terms)}</p></div>` : ""}
+      <div class="body">
+        <div class="parties">
+          ${partyBlock("Bill from", seller)}
+          ${partyBlock("Bill to", billTo)}
+        </div>
+        ${etimsBlock}
+        <table class="lines">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Description</th>
+              ${qtyHeader}
+              <th style="text-align:right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${lineRowsHtml(invoice.line_items, currency, { compact: templateId === "compact", showQuantity })}
+          </tbody>
+        </table>
+        ${totalsBlock(totals, currency, taxRate)}
+        <div class="footer">
+          ${paymentBlock}
+          ${invoice.notes ? `<div><h3>Notes</h3><p>${escapeHtml(invoice.notes)}</p></div>` : ""}
+          ${invoice.terms ? `<div><h3>Terms</h3><p>${escapeHtml(invoice.terms)}</p></div>` : ""}
+        </div>
       </div>
     </div>
   </div>
