@@ -57,6 +57,11 @@ export default function PlatformOverviewPage() {
               Legacy data converter
             </PrimaryButton>
           </Link>
+          <Link href="/platform/invoices">
+            <PrimaryButton type="button" showIcon={false} className="!bg-violet-600 hover:!bg-violet-700">
+              Invoices
+            </PrimaryButton>
+          </Link>
           <Link href="/platform/organizations/new">
             <PrimaryButton type="button">Register organization</PrimaryButton>
           </Link>

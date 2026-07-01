@@ -1,4 +1,4 @@
-import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
+import { isReportNavEnabled } from "@/lib/nav-feature-gates";
 
 /** Reports only listed when the organization has more than one branch. */
 export const MULTI_BRANCH_REPORT_KEYS = new Set(["branch-stock-transfers"]);
@@ -9,11 +9,13 @@ export function isMultiBranchReportKey(key) {
 
 /** @param {import("@/lib/catalog-scope").catalogMetaFromCapabilities} catalogMeta */
 export function reportVisibleForCatalog(key, capabilities) {
-  if (key === "legacy-archive" && !isLegacyArchiveEnabled(capabilities)) {
+  if (!isReportNavEnabled(key, capabilities)) {
     return false;
   }
-  if (!isMultiBranchReportKey(key)) return true;
-  return Boolean(capabilities?.catalog?.multi_branch);
+  if (isMultiBranchReportKey(key) && !capabilities?.catalog?.multi_branch) {
+    return false;
+  }
+  return true;
 }
 
 export const REPORT_UI_ROUTES = {

@@ -14,6 +14,7 @@ import { defaultWorkspaceId, pathBelongsToWorkspace } from "@/lib/workspaces";
 import { canAccessAccountingRoute } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
 import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
+import { reportVisibleForCatalog } from "@/lib/reports/catalog-ui";
 
 const LEGACY_ARCHIVE_ROUTE_PREFIXES = [
   "/sales/legacy-orders",
@@ -163,6 +164,9 @@ export function canAccessRoute(pathname, ctx) {
   if (reportMatch) {
     const slug = reportMatch[1];
     if (slug === "legacy-archive" && !isLegacyArchiveEnabled(ctx.capabilities)) {
+      return false;
+    }
+    if (!reportVisibleForCatalog(slug, ctx.capabilities)) {
       return false;
     }
     if (!isReportModuleEnabled(slug, ctx.isModuleEnabled)) {

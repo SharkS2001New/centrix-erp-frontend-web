@@ -5,9 +5,10 @@ import { anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-reg
 import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled, isVouchersEnabled, isRedeemablePointsEnabled } from "@/lib/sales-settings";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
-import { usesExternalAccounting, usesNativeAccounting } from "@/lib/finance-settings";
+import { usesExternalAccounting, usesNativeAccounting, isKraDeviceConfigured } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
 import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
+import { isReportNavEnabled } from "@/lib/nav-feature-gates";
 import { withNavItemIcons } from "@/lib/nav-item-icons";
 
 function buildReportNavItems() {
@@ -33,7 +34,7 @@ function buildReportNavItems() {
   ];
 }
 
-/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, group?: string, reportKey?: string }} NavItem */
+/** @typedef {{ href: string, label: string, icon?: string, module?: string | null, moduleAny?: string[], permission?: string, permissionAny?: string[], exact?: boolean, ordersNav?: boolean, mobileOrdersNav?: boolean, requireTillFloat?: boolean, requireAdmin?: boolean, requireOperationalModule?: boolean, superAdminOnly?: boolean, orgAdminOnly?: boolean, requireNativeAccounting?: boolean, requireExternalAccounting?: boolean, requireHrCashAdvances?: boolean, requireSalesVouchers?: boolean, requireRedeemablePoints?: boolean, requireKraDevice?: boolean, group?: string, reportKey?: string }} NavItem */
 
 /** @typedef {{ id: string, label?: string, icon?: string, module?: string | null, collapsible?: boolean, superAdminOnly?: boolean, variant?: "link", requireUserMobileChannel?: boolean, requireOrgMobileSales?: boolean, items: NavItem[] }} NavSection */
 
@@ -52,6 +53,7 @@ const NAV_SECTION_DEFINITIONS = [
       { href: "/platform/system-issues", label: "System errors & reports", superAdminOnly: true },
       { href: "/platform/database-backups", label: "Database backups", superAdminOnly: true },
       { href: "/platform/legacy-import-converter", label: "Legacy data converter", superAdminOnly: true },
+      { href: "/platform/invoices", label: "Invoices", superAdminOnly: true },
       { href: "/platform/organizations/new", label: "Register organization", superAdminOnly: true },
     ],
   },
@@ -214,6 +216,12 @@ const NAV_SECTION_DEFINITIONS = [
         module: "sales.backend",
         permission: P.sales.orders.view,
         requireMobileFieldAttendance: true,
+      },
+      {
+        href: "/fulfillment/routes",
+        label: "Routes",
+        module: "customers_suppliers",
+        permission: P.fulfillment.routes.view,
       },
     ],
   },
@@ -862,6 +870,7 @@ const NAV_SECTION_DEFINITIONS = [
         module: "admin",
         permission: P.admin.audit.view,
         orgAdminOnly: true,
+        requireKraDevice: true,
       },
     ],
   },
@@ -920,6 +929,8 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   if (item.requireHrCashAdvances && !isCashAdvanceDeductionsEnabled(capabilities?.module_settings)) return false;
   if (item.requireSalesVouchers && !isVouchersEnabled(capabilities?.module_settings)) return false;
   if (item.requireRedeemablePoints && !isRedeemablePointsEnabled(capabilities?.module_settings)) return false;
+  if (item.requireKraDevice && !isKraDeviceConfigured(capabilities?.module_settings, capabilities)) return false;
+  if (item.reportKey && !isReportNavEnabled(item.reportKey, capabilities)) return false;
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;
   if (item.requireOperationalModule && !hasOperationalModule(capabilities)) return false;
   if (item.moduleAny?.length) {
