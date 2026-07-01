@@ -8,6 +8,11 @@ import { lpoPrintFormFromApi, lpoPrintPayloadFromForm } from "@/lib/lpo-print-se
 import { loadingSheetPrintFormFromApi, loadingSheetPrintPayloadFromForm } from "@/lib/loading-sheet-print-settings";
 import { printFooterFormFromGeneral, printFooterPayloadFromForm } from "@/lib/print-footer-settings";
 import {
+  printFontFormDefaults,
+  printFontFormFromGeneral,
+  printFontPayloadFromForm,
+} from "@/lib/print-font-settings";
+import {
   receiptPaymentDetailsFromApi,
   receiptPaymentDetailsToPayload,
   DEFAULT_POS_RECEIPT_PAYMENT_LINES,
@@ -18,8 +23,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   document_footer_text: "",
   show_organization_on_documents: true,
   document_header_display: "auto",
-  print_font_family: "times",
-  print_font_scale: "standard",
+  ...printFontFormDefaults(),
   print_footer_receipt: "",
   print_footer_a4_invoice: "",
   print_footer_lpo: "",
@@ -54,6 +58,31 @@ export const EMPTY_PRINTOUTS_FORM = {
   loading_sheet_show_signatures: true,
   loading_sheet_default_checked_by: "",
 };
+
+/** Which document footer keys apply for the configured order print format. */
+export function footerKeysForOrderPrintFormat(footerKeys, orderDocumentType) {
+  const type = ["receipt", "invoice", "both"].includes(orderDocumentType)
+    ? orderDocumentType
+    : "receipt";
+
+  return (footerKeys ?? []).filter((key) => {
+    if (key === "receipt") return type === "receipt" || type === "both";
+    if (key === "invoice") return type === "invoice" || type === "both";
+    return true;
+  });
+}
+
+/** Whether thermal receipt / A4 invoice printout tabs should appear. */
+export function orderPrintFormatSections(orderDocumentType) {
+  const type = ["receipt", "invoice", "both"].includes(orderDocumentType)
+    ? orderDocumentType
+    : "receipt";
+
+  return {
+    showThermal: type === "receipt" || type === "both",
+    showA4: type === "invoice" || type === "both",
+  };
+}
 
 /** Which printout sections apply for this organization's enabled modules. */
 export function resolvePrintoutSections(capabilities) {
@@ -94,8 +123,7 @@ export function printoutsGeneralFormFromApi(res) {
     document_footer_text: general.document_footer_text,
     show_organization_on_documents: general.show_organization_on_documents,
     document_header_display: general.document_header_display,
-    print_font_family: general.print_font_family ?? "times",
-    print_font_scale: general.print_font_scale ?? "standard",
+    ...printFontFormFromGeneral(general),
     ...printFooterFormFromGeneral(general),
   };
 }
@@ -139,8 +167,7 @@ export function printoutsGeneralPayloadFromForm(form) {
     show_organization_on_documents: Boolean(form.show_organization_on_documents),
     document_header_display: form.document_header_display || "auto",
     document_footer_text: String(form.document_footer_text ?? "").trim(),
-    print_font_family: form.print_font_family || "times",
-    print_font_scale: form.print_font_scale || "standard",
+    ...printFontPayloadFromForm(form),
     ...printFooterPayloadFromForm(form),
   };
 }

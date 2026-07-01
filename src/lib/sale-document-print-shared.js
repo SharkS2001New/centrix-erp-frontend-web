@@ -36,6 +36,28 @@ export function resolveSaleDocumentBranding({
   return resolveReportBranding({ organization, generalSettings, organizationNameFallback });
 }
 
+/**
+ * Store contact lines for thermal receipts and A4 sales invoices.
+ * When branch details are enabled, prefers the order branch; missing branch fields fall back to organization.
+ */
+export function resolveSaleDocumentStoreContact({ showBranchOnReceipt, branch, seller }) {
+  if (!showBranchOnReceipt) {
+    return {
+      branchName: null,
+      storeAddress: seller?.address ?? "",
+      storePhones: [seller?.phone, seller?.secondary_phone].filter(Boolean).join(" / "),
+    };
+  }
+
+  return {
+    branchName: branch?.name ?? null,
+    storeAddress: branch?.address ?? seller?.address ?? "",
+    storePhones: branch?.phone
+      ? String(branch.phone)
+      : [seller?.phone, seller?.secondary_phone].filter(Boolean).join(" / "),
+  };
+}
+
 export function buildSaleDocumentOrgHeaderHtml(
   branding,
   { layout = "thermal", fallbackName = "" } = {},

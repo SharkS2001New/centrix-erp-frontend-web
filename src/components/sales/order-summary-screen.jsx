@@ -14,6 +14,7 @@ import {
   getOrderWorkflow,
   isPaymentGatedWorkflowTransition,
   PAYMENT_STEP_KEYS,
+  resolveOrderWorkflowActions,
   saleBalanceDue,
   saleNeedsPaymentCollection,
 } from "@/lib/order-workflow";
@@ -30,7 +31,7 @@ import {
 import { isLegacySale, saleLineProductLabel } from "@/lib/sale-line-items";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
-import { getOrderDocumentType, orderDocumentPrintLabel } from "@/lib/sales-settings";
+import { orderDocumentPrintLabel, defaultOrderListPrintDocumentType } from "@/lib/sales-settings";
 import {
   disposePrintWindow,
   openBlankPrintWindow,
@@ -620,7 +621,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const handlePrint = useCallback(async () => {
     if (!sale) return;
 
-    const cachedType = getOrderDocumentType(capabilities?.module_settings);
+    const cachedType = defaultOrderListPrintDocumentType(
+      capabilities?.module_settings,
+      capabilities,
+    );
     const printWindow =
       cachedType !== "both"
         ? openBlankPrintWindow(printWindowFeatures(cachedType))
@@ -642,6 +646,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         user,
         uomById,
         printWindow,
+        documentType: cachedType,
       });
       if (!printed) {
         disposePrintWindow(printWindow);
@@ -704,7 +709,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     fulfillment.requestTransition(sale, targetStatus);
   }
 
-  const printLabel = orderDocumentPrintLabel(capabilities?.module_settings);
+  const printLabel = orderDocumentPrintLabel(capabilities?.module_settings, capabilities);
   const createReturnHref =
     sale?.id && sale?.status === "completed" ? `/sales/returns/new?sale_id=${sale.id}` : null;
   const totalReturned = useMemo(
@@ -756,7 +761,8 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                   Order #{formatOrderNumber(sale)}
                 </h1>
                 <SaleStatusBadge status={sale.status} workflow={saleWorkflow} />
-                {sale.payment_status && sale.payment_status !== sale.status ? (
+                {sale.payment_status &&
+                (sale.payment_status !== sale.status || balanceDue > 0.01) ? (
                   <PaymentStatusBadge status={sale.payment_status} />
                 ) : null}
               </div>
@@ -767,10 +773,12 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               </p>
               <div className="mt-4 max-w-3xl">
                 <OrderWorkflowPipeline
+                  sale={sale}
                   status={sale.status}
                   workflow={saleWorkflow}
                   orderSource={sale.order_source}
                   channel={sale.channel}
+                  totalPaid={totalPaid}
                   balanceDue={balanceDue}
                   onCollectPayment={
                     canRecordPayment ? () => setPaymentModalOpen(true) : null
@@ -785,15 +793,6 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {canRecordPayment ? (
-                <button
-                  type="button"
-                  onClick={() => setPaymentModalOpen(true)}
-                  className="theme-primary-btn inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
-                >
-                  Collect payment
-                </button>
-              ) : null}
               {sale.can_edit_lines ? (
                 <button
                   type="button"

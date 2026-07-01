@@ -5,17 +5,26 @@ import { Field, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   DEFAULT_ORDER_WORKFLOW,
   ORDER_STATUS_OPTIONS,
+  normalizeChannelStatusMap,
   sanitizeWorkflowReferences,
   workflowPipelineSteps,
 } from "@/lib/order-workflow";
-import { STOCK_DEDUCT_TIMING_OPTIONS } from "@/lib/sales-settings";
+import { STOCK_DEDUCT_TIMING_OPTIONS, normalizeStockDeductOn } from "@/lib/sales-settings";
 import { useConfirm } from "@/lib/use-confirm";
 
 const CHANNELS = [
   { id: "pos", label: "POS" },
   { id: "mobile", label: "Mobile" },
-  { id: "backend", label: "Backend" },
+  { id: "backend", label: "Backoffice" },
 ];
+
+function stockChannels(hasPosSales) {
+  return hasPosSales ? CHANNELS : CHANNELS.filter((ch) => ch.id !== "pos");
+}
+
+function channelLabel(channels, id) {
+  return channels.find((ch) => ch.id === id)?.label ?? id;
+}
 
 const PIPELINE_STATUS_OPTIONS = ORDER_STATUS_OPTIONS.filter(
   (o) => !["draft", "held", "cancelled"].includes(o.value),
@@ -80,6 +89,14 @@ export function orderWorkflowFromApi(sales) {
         ...(raw.checkout?.unpaid ?? {}),
       },
     },
+    reserve_stock_on: normalizeChannelStatusMap(
+      raw.reserve_stock_on,
+      DEFAULT_ORDER_WORKFLOW.reserve_stock_on,
+    ),
+    deduct_stock_on: normalizeChannelStatusMap(
+      raw.deduct_stock_on,
+      DEFAULT_ORDER_WORKFLOW.deduct_stock_on,
+    ),
     transitions: { ...DEFAULT_ORDER_WORKFLOW.transitions, ...(raw.transitions ?? {}) },
   });
 }
@@ -88,14 +105,29 @@ export function OrderWorkflowSettingsEditor({
   workflow,
   onChange,
   showCheckoutOnCreate = true,
-  stockDeductOn = "order_completed",
+  stockDeductOn,
   onStockDeductOnChange,
   distributionOpsEnabled = false,
+  hasPosSales = false,
   embedded = false,
 }) {
   const confirm = useConfirm();
   const wf = workflow ?? DEFAULT_ORDER_WORKFLOW;
   const saveOrderMode = !showCheckoutOnCreate;
+  const posCheckoutMode = hasPosSales && showCheckoutOnCreate;
+  const channels = stockChannels(hasPosSales);
+  const stockTiming = normalizeStockDeductOn(stockDeductOn, {
+    hasPosSales,
+    showCheckoutOnCreate,
+  });
+  const reserveStockOn = normalizeChannelStatusMap(
+    wf.reserve_stock_on,
+    DEFAULT_ORDER_WORKFLOW.reserve_stock_on,
+  );
+  const deductStockOn = normalizeChannelStatusMap(
+    wf.deduct_stock_on,
+    DEFAULT_ORDER_WORKFLOW.deduct_stock_on,
+  );
   const [stepToAdd, setStepToAdd] = useState("");
   const availableToAdd = PIPELINE_STATUS_OPTIONS.filter(
     (o) => !wf.steps.some((s) => s.status === o.value),
@@ -103,6 +135,35 @@ export function OrderWorkflowSettingsEditor({
 
   function patch(partial) {
     onChange?.(sanitizeWorkflowReferences({ ...wf, ...partial }));
+  }
+
+  function patchStockTiming(channel, value) {
+    onStockDeductOnChange?.({
+      ...stockTiming,
+      [channel]: value,
+    });
+  }
+
+  function patchChannelStockStatus(key, channel, value) {
+    const current = normalizeChannelStatusMap(wf[key], DEFAULT_ORDER_WORKFLOW[key]);
+    patch({
+      [key]: {
+        ...current,
+        [channel]: value,
+      },
+    });
+  }
+
+  function timingOptionsForChannel(channel) {
+    if (channel === "pos" && posCheckoutMode) {
+      return STOCK_DEDUCT_TIMING_OPTIONS.filter((opt) => opt.value === "order_created");
+    }
+    return STOCK_DEDUCT_TIMING_OPTIONS.filter(
+      (opt) =>
+        opt.value === "order_created" ||
+        opt.value === "order_completed" ||
+        (distributionOpsEnabled && (opt.value === "trip_load" || opt.value === "trip_depart")),
+    );
   }
 
   function patchStep(index, partial) {
@@ -256,10 +317,10 @@ export function OrderWorkflowSettingsEditor({
           <p className="theme-subtext mt-1 text-xs">
             <strong className="theme-heading font-semibold">Show checkout on create order</strong> is off, so the POS shows{" "}
             <strong className="theme-heading font-semibold">Save order</strong> instead of checkout. New orders are created at this status.
-            Stock is deducted immediately when the order is saved.
+            Stock reservation and deduction follow the settings below for each channel.
           </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            {CHANNELS.map((ch) => (
+          <div className={`mt-3 grid gap-3 ${channels.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+            {channels.map((ch) => (
               <Field key={ch.id} label={ch.label}>
                 <select
                   className={inputClassName()}
@@ -376,63 +437,25 @@ export function OrderWorkflowSettingsEditor({
       <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] p-3">
         <p className="theme-accent-label text-xs font-semibold uppercase tracking-wide">Stock reservation</p>
         <p className="theme-subtext mt-1 text-xs">
-          Reserve stock at this order status to prevent overselling while payment or fulfillment is pending.
-          Cart reservations (inventory settings) still apply while building an order.
+          When an order reaches this status, quantity is held in reservation so live available stock
+          drops and overselling is avoided. Cancelled orders release reservations back to live stock.
+          Cart reservations still apply while building an order before checkout.
+          {posCheckoutMode ? (
+            <>
+              {" "}
+              External POS with checkout deducts stock immediately on placement — reservation does not
+              apply to POS.
+            </>
+          ) : null}
         </p>
-        <div className="mt-3">
-          <Field label="Reserve stock at order status">
-            <select
-              className={inputClassName()}
-              value={wf.reserve_stock_on ?? "unpaid"}
-              onChange={(e) => patch({ reserve_stock_on: e.target.value })}
-            >
-              {CONFIGURABLE_STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {stepLabel(wf, o.value)}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] p-3">
-        <p className="theme-accent-label text-xs font-semibold uppercase tracking-wide">Stock deduction</p>
-        <p className="theme-subtext mt-1 text-xs">
-          Controls when inventory is reduced for POS checkout and order workflow transitions. Trip
-          options apply when distribution operations are enabled.
-        </p>
-        <div className="mt-3 space-y-3">
-          <Field label="Deduct stock when">
-            <select
-              className={inputClassName()}
-              value={stockDeductOn}
-              onChange={(e) => onStockDeductOnChange?.(e.target.value)}
-            >
-              {STOCK_DEDUCT_TIMING_OPTIONS.filter(
-                (opt) =>
-                  opt.value === "order_created" ||
-                  opt.value === "order_completed" ||
-                  (distributionOpsEnabled &&
-                    (opt.value === "trip_load" || opt.value === "trip_depart")),
-              ).map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {stockDeductOn === "order_created" ? (
-            <p className="theme-subtext text-xs">
-              Stock is reduced when the order is placed at checkout (POS, mobile, or backoffice).
-              Customer returns and POS order edits reverse stock when processed.
-            </p>
-          ) : stockDeductOn === "order_completed" ? (
-            <Field label="Deduct at order status">
+        <div className={`mt-3 grid gap-3 ${channels.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+          {channels.map((ch) => (
+            <Field key={ch.id} label={channelLabel(channels, ch.id)}>
               <select
                 className={inputClassName()}
-                value={wf.deduct_stock_on ?? "completed"}
-                onChange={(e) => patch({ deduct_stock_on: e.target.value })}
+                value={reserveStockOn[ch.id] ?? "unpaid"}
+                disabled={ch.id === "pos" && posCheckoutMode}
+                onChange={(e) => patchChannelStockStatus("reserve_stock_on", ch.id, e.target.value)}
               >
                 {CONFIGURABLE_STATUS_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -440,17 +463,83 @@ export function OrderWorkflowSettingsEditor({
                   </option>
                 ))}
               </select>
-              <p className="theme-subtext mt-1 text-xs">
-                Inventory is reduced when the order reaches this status (at checkout if already
-                there, otherwise on workflow transition).
-              </p>
             </Field>
-          ) : (
-            <p className="theme-subtext text-xs">
-              Stock is held until the loading list is locked or the trip departs. Order workflow
-              status transitions will not reduce inventory.
-            </p>
-          )}
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] p-3">
+        <p className="theme-accent-label text-xs font-semibold uppercase tracking-wide">Stock deduction</p>
+        <p className="theme-subtext mt-1 text-xs">
+          Controls when inventory is fully deducted and reservations are cleared. Settings are per
+          channel — POS, mobile field sales, and backoffice can use different timings. Trip options
+          apply when distribution operations are enabled.
+        </p>
+        <div className="mt-3 space-y-4">
+          {channels.map((ch) => {
+            const timing = stockTiming[ch.id] ?? "order_completed";
+            const timingOptions = timingOptionsForChannel(ch.id);
+            const posLocked = ch.id === "pos" && posCheckoutMode;
+
+            return (
+              <div
+                key={ch.id}
+                className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3"
+              >
+                <p className="theme-accent-label text-xs font-semibold uppercase tracking-wide">
+                  {channelLabel(channels, ch.id)}
+                </p>
+                <div className="mt-3 space-y-3">
+                  <Field label="Deduct stock when">
+                    <select
+                      className={inputClassName()}
+                      value={posLocked ? "order_created" : timing}
+                      disabled={posLocked}
+                      onChange={(e) => patchStockTiming(ch.id, e.target.value)}
+                    >
+                      {timingOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {posLocked ? (
+                    <p className="theme-subtext text-xs">
+                      External POS with checkout always deducts stock when the order is placed.
+                    </p>
+                  ) : timing === "order_created" ? (
+                    <p className="theme-subtext text-xs">
+                      Stock is reduced when the order is placed. Cancellations and order edits restore
+                      stock when processed.
+                    </p>
+                  ) : timing === "order_completed" ? (
+                    <Field label="Deduct at order status">
+                      <select
+                        className={inputClassName()}
+                        value={deductStockOn[ch.id] ?? "completed"}
+                        onChange={(e) => patchChannelStockStatus("deduct_stock_on", ch.id, e.target.value)}
+                      >
+                        {CONFIGURABLE_STATUS_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {stepLabel(wf, o.value)}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="theme-subtext mt-1 text-xs">
+                        Inventory is reduced when the order reaches this status (at checkout if already
+                        there, otherwise on workflow transition).
+                      </p>
+                    </Field>
+                  ) : (
+                    <p className="theme-subtext text-xs">
+                      Stock stays reserved until the loading list is locked or the trip departs.
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </>

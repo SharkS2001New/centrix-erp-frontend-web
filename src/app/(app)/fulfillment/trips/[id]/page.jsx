@@ -119,6 +119,11 @@ export default function TripDetailPage() {
         trip,
         stopNumber,
         printedBy: user?.full_name ?? user?.username ?? null,
+        generalSettings: generalSettings(),
+        documentFooterText: resolvePrintFooter(
+          mergeGeneralSettings(capabilities?.module_settings),
+          "loading_sheet",
+        ),
       });
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not load order for delivery note");

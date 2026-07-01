@@ -12,8 +12,8 @@ const AdminApiContext = createContext({
   organizationProfile: null,
   adminPath: (path) => path,
   organizationPath: (suffix = "") => "/organizations",
-  logoUploadPath: (organizationId) => `/organizations/${organizationId}/logo`,
-  logoFileUrl: (organizationId) => `/api/v1/organizations/${organizationId}/logo/file`,
+  logoUploadPath: (organizationId) => `/erp/organization/logo`,
+  logoFileUrl: (organizationId) => `/api/v1/erp/organization/logo/file`,
 });
 
 /** @param {{ apiPrefix?: string, organizationId?: number|string|null, orgPayload?: object|null, children: import("react").ReactNode }} props */
@@ -34,11 +34,11 @@ export function AdminApiProvider({ apiPrefix = "", organizationId = null, orgPay
       organizationPath: (suffix = "") =>
         apiPrefix ? `${apiPrefix}${suffix}` : `/organizations${suffix}`,
       logoUploadPath: (orgId) =>
-        apiPrefix ? `${apiPrefix}/logo` : `/organizations/${orgId}/logo`,
+        apiPrefix ? `${apiPrefix}/logo` : `/erp/organization/logo`,
       logoFileUrl: (orgId) =>
         apiPrefix
           ? `${apiBaseOrigin()}/api/v1${apiPrefix}/logo/file`
-          : `${apiBaseOrigin()}/api/v1/organizations/${orgId}/logo/file`,
+          : `${apiBaseOrigin()}/api/v1/erp/organization/logo/file`,
     }),
     [apiPrefix, organizationId, tenantCapabilities],
   );

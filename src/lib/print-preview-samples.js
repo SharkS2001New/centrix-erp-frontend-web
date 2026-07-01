@@ -61,11 +61,20 @@ export const SAMPLE_PREVIEW_SELLER = {
   tax_pin: "P051234567X",
 };
 
+/** Example branch for thermal receipt previews when branch details are enabled. */
+export const SAMPLE_PREVIEW_BRANCH = {
+  id: 2,
+  name: "Westlands Branch",
+  address: "Ring Road, Westlands, Nairobi",
+  phone: "0712 111 222",
+};
+
 /** Static sale payload for receipt and invoice print previews. */
-export function sampleReceiptPreviewSale({ channel = "pos", routeId = null } = {}) {
+export function sampleReceiptPreviewSale({ channel = "pos", routeId = null, branchId = 2 } = {}) {
   return {
     ...SAMPLE_RECEIPT_SALE,
     channel,
     route_id: routeId,
+    branch_id: branchId,
   };
 }

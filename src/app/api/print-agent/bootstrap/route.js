@@ -36,7 +36,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo Done. Open Centrix ERP ^> Administration ^> Till printing
+echo Done. Open Centrix ERP ^> Administration ^> Local printing
 echo Enable the print agent and click "Test print receipt".
 echo.
 pause
@@ -76,7 +76,7 @@ echo "Running install (Node.js if needed, npm, Playwright, auto-start)..."
 ./install.sh --autostart
 
 echo ""
-echo "Done. Open Centrix ERP → Administration → Till printing"
+echo "Done. Open Centrix ERP → Administration → Local printing"
 echo "Enable the print agent and click Test print receipt."
 `;
 }

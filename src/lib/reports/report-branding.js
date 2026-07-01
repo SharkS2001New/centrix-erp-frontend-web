@@ -99,7 +99,7 @@ export function buildReportWatermarkHtml(branding) {
 
 export function reportDocumentStyles(generalSettings = null) {
   const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant: "report", print });
-  const font = orgPrintFontFamilyFromSettings(generalSettings);
+  const font = orgPrintFontFamilyFromSettings(generalSettings, "report");
   return `
   body { font-family: ${font}; padding: 24px; color: #111; font-size: ${px(11)}; position: relative; }
   .org-header { text-align: center; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0; }

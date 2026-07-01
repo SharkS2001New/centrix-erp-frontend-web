@@ -8,6 +8,7 @@ import {
   buildSaleDocumentTableHead,
   escapeHtml,
   formatPrintAmount,
+  resolveSaleDocumentStoreContact,
   saleDocumentDiscountTotals,
   shouldShowPrintDiscountColumn,
 } from "@/lib/sale-document-print-shared";
@@ -16,6 +17,7 @@ import { formatOrderNumber, saleCustomerLabel } from "@/lib/sales";
 import { isLegacySale } from "@/lib/sale-line-items";
 import {
   orgPrintFontFamilyFromSettings,
+  orgPrintInkStyles,
   orgPrintPx,
 } from "@/lib/print-typography";
 
@@ -118,7 +120,7 @@ export function buildSaleReceiptHtml(
 
   const px = (base, print = false) =>
     orgPrintPx(base, generalSettings, { variant: "thermal", print });
-  const font = orgPrintFontFamilyFromSettings(generalSettings);
+  const font = orgPrintFontFamilyFromSettings(generalSettings, "thermal");
 
   const items = sale.items ?? [];
   const orderNo = formatOrderNumber(sale);
@@ -129,13 +131,11 @@ export function buildSaleReceiptHtml(
   const dateTime = formatReceiptDateTime(rawDate);
 
   const orgName = seller?.name ?? organizationName;
-  const branchName = showBranchOnReceipt && branch?.name ? branch.name : null;
-  const storeAddress =
-    showBranchOnReceipt && branch?.address ? branch.address : (seller?.address ?? "");
-  const storePhones =
-    showBranchOnReceipt && branch?.phone
-      ? String(branch.phone)
-      : [seller?.phone, seller?.secondary_phone].filter(Boolean).join(" / ");
+  const { branchName, storeAddress, storePhones } = resolveSaleDocumentStoreContact({
+    showBranchOnReceipt,
+    branch,
+    seller,
+  });
   const tillNo = sale.pos_terminal_id ?? sale.branch_id ?? branch?.id ?? "1";
   const cashierName = sale.cashier_name ?? sale.user?.full_name ?? "—";
 
@@ -211,24 +211,24 @@ export function buildSaleReceiptHtml(
 <head>
   <title>Receipt ${escapeHtml(orderNo)}</title>
   <style>
-    body { font-family: ${font}; margin: 0; padding: 12px; color: #111827; background: #fff; font-size: ${px(10)}; }
+    body { font-family: ${font}; margin: 0; padding: 12px; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles()} }
     .receipt { width: 320px; margin: 0 auto; }
     .company-name { text-align: center; font-size: ${px(14)}; font-weight: 700; letter-spacing: .04em; margin-bottom: 4px; text-transform: uppercase; }
-    .company-meta { text-align: center; font-size: ${px(9)}; color: #334155; line-height: 1.45; }
+    .company-meta { text-align: center; font-size: ${px(9)}; color: #000; line-height: 1.45; font-weight: 500; }
     .doc-title { text-align: center; font-size: ${px(11)}; font-weight: 700; letter-spacing: .12em; margin: 10px 0 8px; text-transform: uppercase; }
-    .divider { border-top: 1px dashed #64748b; margin: 8px 0; }
+    .divider { border-top: 1px dashed #000; margin: 8px 0; }
     .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; font-size: ${px(9)}; line-height: 1.4; }
     .meta-label { font-weight: 700; text-transform: uppercase; }
     .meta-value { text-align: right; }
     .meta-full { grid-column: 1 / -1; }
     .table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: ${px(9)}; }
-    .table thead th { padding: 4px 0; border-bottom: 1px solid #111827; font-weight: 700; text-align: left; text-transform: uppercase; font-size: ${px(8)}; }
+    .table thead th { padding: 4px 0; border-bottom: 1px solid #000; font-weight: 700; text-align: left; text-transform: uppercase; font-size: ${px(8)}; }
     .table thead th.qty,
     .table thead th.pkg,
     .table thead th.price,
     .table thead th.disc,
     .table thead th.amount { text-align: right; }
-    .table tbody tr { border-top: 1px dashed #cbd5e1; }
+    .table tbody tr { border-top: 1px dashed #000; }
     .table td { padding: 4px 0; vertical-align: top; }
     .table td.desc { padding-right: 6px; }
     .table td.qty,
@@ -248,20 +248,20 @@ export function buildSaleReceiptHtml(
     }
     .amount-label { font-weight: 700; text-align: left; }
     .amount-value { font-weight: 400; text-align: right; white-space: nowrap; }
-    .amount-line-grand { font-size: ${px(11)}; font-weight: 700; margin-top: 6px; padding-top: 4px; border-top: 1px solid #111827; }
+    .amount-line-grand { font-size: ${px(11)}; font-weight: 700; margin-top: 6px; padding-top: 4px; border-top: 1px solid #000; }
     .amount-line-grand .amount-value { font-weight: 700; }
     .payment-title { text-align: left; font-weight: 700; letter-spacing: .08em; margin: 0 0 6px; font-size: ${px(9)}; text-transform: uppercase; }
-    .pay-instructions { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #64748b; font-size: ${px(9)}; text-align: left; }
+    .pay-instructions { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #000; font-size: ${px(9)}; text-align: left; }
     .pay-instructions .pay-lines { margin: 0; }
     .pay-instructions .pay-line { margin: 3px 0; line-height: 1.45; text-align: left; }
     .pay-instructions .pay-label { font-weight: 700; }
     .pay-instructions .pay-value { font-weight: 400; }
-    .pay-instructions .pay-note { margin-top: 6px; text-align: left; color: #475569; font-size: ${px(8)}; line-height: 1.35; }
-    .footer-text { text-align: center; font-size: ${px(8)}; color: #334155; margin-top: 6px; text-transform: uppercase; letter-spacing: .04em; line-height: 1.45; }
-    .footer-powered-by { text-align: center; font-size: ${px(7)}; font-weight: 400; color: #64748b; margin-top: 4px; letter-spacing: normal; line-height: 1.35; }
+    .pay-instructions .pay-note { margin-top: 6px; text-align: left; color: #000; font-size: ${px(8)}; line-height: 1.35; font-weight: 500; }
+    .footer-text { text-align: center; font-size: ${px(8)}; color: #000; margin-top: 6px; text-transform: uppercase; letter-spacing: .04em; line-height: 1.45; font-weight: 600; }
+    .footer-powered-by { text-align: center; font-size: ${px(7)}; font-weight: 500; color: #000; margin-top: 4px; letter-spacing: normal; line-height: 1.35; }
     .center { text-align: center; }
     @media print {
-      body { padding: 0; font-size: ${px(10, true)}; }
+      body { font-size: ${px(10, true)}; }
       .company-name { font-size: ${px(14, true)}; }
       .company-meta { font-size: ${px(9, true)}; }
       .doc-title { font-size: ${px(11, true)}; }
@@ -278,7 +278,7 @@ export function buildSaleReceiptHtml(
     }
   </style>
 </head>
-<body>
+<body class="centrix-print-thermal">
   <div class="receipt">
     ${orgHeader}
     ${branchName ? `<div class="company-meta">${escapeHtml(branchName)}</div>` : ""}

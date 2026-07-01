@@ -58,6 +58,7 @@ import {
 import { useBlockingWait } from "@/lib/use-blocking-wait";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
+import { LOCAL_PRINTING_ADMIN_LABEL } from "@/lib/local-printing";
 import {
   canAdjustCartLineQuantity,
   cartLineEntryQtyForBaseQty,
@@ -2092,7 +2093,7 @@ export function PosScreen({ standalone = false }) {
           setReceiptPrintStatus("failed");
           const label = sale.order_num ? `#${sale.order_num}` : "";
           notifyError(
-            `Order ${label} saved. Receipt did not print — use Reprint on the confirmation screen or Administration → Till printing.`,
+            `Order ${label} saved. Receipt did not print — use Reprint on the confirmation screen or Administration → ${LOCAL_PRINTING_ADMIN_LABEL}.`,
           );
         });
     },

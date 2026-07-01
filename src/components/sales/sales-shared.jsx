@@ -1,6 +1,12 @@
 "use client";
 
-import { pipelineStatusIndex, workflowPipelineSteps, workflowStatusLabel, alignStatusToWorkflow } from "@/lib/order-workflow";
+import {
+  pipelineStatusIndex,
+  resolveOrderWorkflowActions,
+  workflowPipelineSteps,
+  workflowStatusLabel,
+  alignStatusToWorkflow,
+} from "@/lib/order-workflow";
 import {
   PAYMENT_STATUS_LABELS,
   SALE_STATUS_LABELS,
@@ -112,9 +118,11 @@ export function HourlySalesChart({ points }) {
 }
 
 export function OrderWorkflowPipeline({
+  sale,
   status,
   onAdvance,
   onCollectPayment,
+  totalPaid = null,
   balanceDue = 0,
   busyStatus,
   workflow,
@@ -126,15 +134,20 @@ export function OrderWorkflowPipeline({
   const displayIdx = currentIdx >= 0 ? currentIdx : pipelineStepIndex(status, workflow);
   const isCancelled = status === "cancelled";
   const prevStep = currentIdx > 0 ? steps[currentIdx - 1] : null;
-  const nextStep = currentIdx >= 0 && currentIdx < steps.length - 1 ? steps[currentIdx + 1] : null;
   const firstStep = steps[0] ?? null;
-  const paymentDue = balanceDue > 0.01;
-  const paymentBlockedNext =
-    paymentDue && nextStep && (nextStep.key === "paid" || nextStep.key === "pending_payment");
-  const showCollectPayment =
-    Boolean(onCollectPayment)
-    && paymentDue
-    && (status === "unpaid" || status === "pending_payment" || paymentBlockedNext);
+  const paidTotal =
+    totalPaid != null ? Number(totalPaid) : Math.max(0, Number(sale?.order_total ?? 0) - balanceDue);
+  const actions = sale
+    ? resolveOrderWorkflowActions(sale, workflow, paidTotal)
+    : { showCollectPayment: false, advanceStatus: null };
+  const showCollectPayment = Boolean(onCollectPayment) && actions.showCollectPayment;
+  const advanceTarget = actions.advanceStatus;
+  const advanceStep = advanceTarget
+    ? steps.find((s) => s.key === advanceTarget) ?? {
+        key: advanceTarget,
+        label: workflowStatusLabel(workflow, advanceTarget),
+      }
+    : null;
 
   return (
     <div className="theme-panel rounded-xl border p-5 shadow-sm">
@@ -193,35 +206,24 @@ export function OrderWorkflowPipeline({
                   {busyStatus ? "Updating…" : `← ${prevStep.label}`}
                 </button>
               ) : null}
-              {nextStep ? (
-                paymentBlockedNext && onCollectPayment ? (
-                  <button
-                    type="button"
-                    disabled={!!busyStatus}
-                    onClick={onCollectPayment}
-                    className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
-                  >
-                    {busyStatus ? "Updating…" : "Collect payment"}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={!!busyStatus}
-                    onClick={() => onAdvance(nextStep.key)}
-                    className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
-                  >
-                    {busyStatus ? "Updating…" : `${nextStep.label} →`}
-                  </button>
-                )
+              {advanceStep ? (
+                <button
+                  type="button"
+                  disabled={!!busyStatus}
+                  onClick={() => onAdvance(advanceStep.key)}
+                  className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
+                >
+                  {busyStatus ? "Updating…" : `${advanceStep.label} →`}
+                </button>
               ) : null}
-              {showCollectPayment && !paymentBlockedNext ? (
+              {showCollectPayment ? (
                 <button
                   type="button"
                   disabled={!!busyStatus}
                   onClick={onCollectPayment}
                   className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
                 >
-                  Collect payment
+                  {busyStatus ? "Updating…" : "Collect payment"}
                 </button>
               ) : null}
               {(status === "held" || status === "draft") && firstStep ? (

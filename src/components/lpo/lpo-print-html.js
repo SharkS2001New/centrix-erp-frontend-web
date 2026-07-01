@@ -1,5 +1,6 @@
 import { organizationLogoFileUrl } from "@/lib/api";
 import { openPrintWindow, printWindowFeatures } from "@/lib/open-print-window";
+import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import {
   buildReportOrgHeaderHtml,
   organizationHasLogo,
@@ -17,10 +18,10 @@ import { computeLpoLineTotals, formatLpoAmount, lpoDisplayNumber } from "./lpo-s
 import {
   buildDocumentPrintEdgeFooterHtml,
   documentPrintEdgeFooterStyles,
-  DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN,
 } from "@/lib/document-print-edge-footer";
 import {
   orgPrintFontFamilyFromSettings,
+  orgPrintInkStyles,
   orgPrintPx,
 } from "@/lib/print-typography";
 
@@ -117,9 +118,9 @@ function lpoDocumentTitle(variant) {
 
 function lpoPrintStyles(generalSettings = null) {
   const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant: "lpo", print });
-  const font = orgPrintFontFamilyFromSettings(generalSettings);
+  const font = orgPrintFontFamilyFromSettings(generalSettings, "lpo");
   return `
-    @page { size: A4; margin: 12mm 12mm ${DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN} 12mm; }
+    @page { size: A4; margin: 0; }
     html { height: 100%; }
     body {
       font-family: ${font};
@@ -130,6 +131,7 @@ function lpoPrintStyles(generalSettings = null) {
       color: #000;
       min-height: 100%;
       box-sizing: border-box;
+      ${orgPrintInkStyles()}
     }
     .page {
       max-width: 820px;
@@ -167,9 +169,9 @@ function lpoPrintStyles(generalSettings = null) {
     .footer-line { font-weight: 700; }
     .warn { font-weight: 700; text-decoration: underline; text-transform: uppercase; }
     .note-line { margin-top: 4px; }
-    ${documentPrintEdgeFooterStyles()}
+    ${documentPrintEdgeFooterStyles(generalSettings, { variant: "lpo" })}
     @media print {
-      body { padding: 0; font-size: ${px(11, true)}; }
+      body { font-size: ${px(11, true)}; }
       .org-name { font-size: ${px(22, true)}; }
       .org-meta { font-size: ${px(10, true)}; }
       .doc-title { font-size: ${px(14, true)}; }
@@ -230,11 +232,12 @@ export function buildLpoPrintHtml({
     validDays: validityDays,
   });
   const signatures = resolveLpoSignatures(lpo, printSettings ?? {});
+  const printedByName = resolvePrintedByUser(printedBy) ?? "—";
   if (!signatures.terms && paymentTerms && paymentTerms !== "—") {
     signatures.terms = paymentTerms;
   }
-  if (!signatures.preparedBy && printedBy) {
-    signatures.preparedBy = String(printedBy);
+  if (!signatures.preparedBy && printedByName !== "—") {
+    signatures.preparedBy = printedByName;
   }
   if (!signatures.preparedBy && lpo?.created_by_name) {
     signatures.preparedBy = String(lpo.created_by_name);
@@ -269,7 +272,6 @@ export function buildLpoPrintHtml({
     second: "2-digit",
     hour12: true,
   });
-  const printedByName = printedBy ?? "—";
 
   const orgHeaderHtml = branding.showHeader
     ? buildReportOrgHeaderHtml({

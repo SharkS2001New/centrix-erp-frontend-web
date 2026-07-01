@@ -28,7 +28,10 @@ export function SalePosPaymentPanel({
   const workflow = useMemo(() => getOrderWorkflow(capabilities, sale), [capabilities, sale]);
   const channel = sale?.channel ?? "backend";
   const paymentConfig = useMemo(() => {
-    const base = getCheckoutPaymentConfig(capabilities?.module_settings);
+    const base = getCheckoutPaymentConfig(capabilities?.module_settings, {
+      checkoutContext: "order_payment",
+      capabilities,
+    });
     if (!isPlatformMpesaStkEnabled(capabilities)) {
       return { ...base, enableMpesaAmount: false, enableMpesaCode: false };
     }

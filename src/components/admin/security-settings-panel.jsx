@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   securityFormFromApi,
@@ -8,6 +8,7 @@ import {
   validateSecurityForm,
 } from "@/lib/security-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useAuth } from "@/contexts/auth-context";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 
@@ -29,6 +30,17 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage,
   const afterSave = onAfterSave ?? refreshCapabilities;
   const [form, setForm] = useState(securityFormFromApi({}));
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("sessions");
+
+  const visibleTabs = useMemo(
+    () => [
+      { id: "sessions", label: "Sign-in & screen lock" },
+      { id: "passwords", label: "Password rules" },
+    ],
+    [],
+  );
+
+  useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
     setLoading(true);
@@ -75,7 +87,16 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage,
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">Loading…</p>
         ) : (
-          <div className="mt-5 space-y-4">
+          <div className="mt-5 space-y-5">
+            <SettingsSubTabBar
+              tabs={visibleTabs}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              ariaLabel="Security settings"
+            />
+
+            {activeTab === "sessions" ? (
+          <div className="space-y-4">
             <Field label="Screen lock after inactivity (minutes)">
               <input
                 type="number"
@@ -103,6 +124,11 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage,
                 screen lock time.
               </p>
             </Field>
+          </div>
+            ) : null}
+
+            {activeTab === "passwords" ? (
+          <div className="space-y-4">
             <Toggle
               label="Require strong passwords"
               description="Enforces mixed case, numbers, and symbols when users set or reset passwords."
@@ -153,6 +179,8 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage,
                   </p>
                 </Field>
               </>
+            ) : null}
+          </div>
             ) : null}
           </div>
         )}

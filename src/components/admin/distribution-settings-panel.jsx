@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -10,6 +10,7 @@ import {
   distributionPayloadFromForm,
 } from "@/lib/distribution-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
@@ -40,6 +41,18 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
   const afterSave = onAfterSave ?? refreshCapabilities;
   const [form, setForm] = useState(distributionFormFromApi({}));
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("routes");
+
+  const visibleTabs = useMemo(
+    () => [
+      { id: "routes", label: "Drivers & routes" },
+      { id: "trips", label: "Trips & loading" },
+      { id: "delivery", label: "Delivery & cash" },
+    ],
+    [],
+  );
+
+  useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
     setLoading(true);
@@ -79,7 +92,13 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
         {loading ? (
           <p className="theme-subtext mt-4 text-sm">Loading…</p>
         ) : (
-          <div className="mt-5 space-y-3">
+          <div className="mt-5 space-y-5">
+            <SettingsSubTabBar
+              tabs={visibleTabs}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              ariaLabel="Distribution settings"
+            />
             <Toggle
               label="Enable distribution operations"
               description="On by default when the platform administrator enables Distribution for this organization. Operational routing rules below apply when distribution is enabled."
@@ -87,6 +106,9 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
               onChange={() => {}}
               disabled
             />
+
+            {activeTab === "routes" ? (
+          <div className="space-y-3">
             <Toggle
               label="Inherit customer route at checkout"
               description="When a sale has a customer with a route but no explicit route on the cart, copy the customer route to the order."
@@ -107,57 +129,6 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
               checked={form.auto_assign_truck}
               onChange={(v) => setForm((f) => ({ ...f, auto_assign_truck: v }))}
               disabled={!form.enable_distribution_ops}
-            />
-            <Toggle
-              label="Auto-create dispatch trips"
-              description="When an order reaches the assignment status, add it to today's draft trip for its route (creating the trip if needed)."
-              checked={form.auto_create_trips}
-              onChange={(v) => setForm((f) => ({ ...f, auto_create_trips: v }))}
-              disabled={!form.enable_distribution_ops}
-            />
-            <Toggle
-              label="Require load weight"
-              description="Block assignment until products have weights and total load weight is greater than zero."
-              checked={form.require_weight_on_load}
-              onChange={(v) => setForm((f) => ({ ...f, require_weight_on_load: v }))}
-              disabled={!form.enable_distribution_ops}
-            />
-            <Toggle
-              label="Require proof of delivery"
-              description="Prompt for receiver name before marking an order as delivered."
-              checked={form.require_pod_on_delivered}
-              onChange={(v) => setForm((f) => ({ ...f, require_pod_on_delivered: v }))}
-              disabled={!form.enable_distribution_ops}
-            />
-            <Toggle
-              label="Enforce vehicle capacity"
-              description="Block locking the loading list or starting a trip when load weight or volume exceeds the assigned vehicle limits."
-              checked={form.enforce_vehicle_capacity}
-              onChange={(v) => setForm((f) => ({ ...f, enforce_vehicle_capacity: v }))}
-              disabled={!form.enable_distribution_ops}
-            />
-            <p className="theme-subtext pt-2 text-xs font-semibold uppercase tracking-wide">Loading lists</p>
-            <Toggle
-              label="Include normal backoffice orders"
-              description="By default, loading lists and dispatch trips only aggregate mobile and POS route orders. Enable this to also include backoffice orders assigned to a route."
-              checked={form.include_normal_orders_in_loading_list}
-              onChange={(v) => setForm((f) => ({ ...f, include_normal_orders_in_loading_list: v }))}
-              disabled={!form.enable_distribution_ops}
-            />
-            <p className="theme-subtext pt-2 text-xs font-semibold uppercase tracking-wide">Cash / COD</p>
-            <Toggle
-              label="Enable route cash reconciliation"
-              description="Track expected COD per trip and record cash collected by the driver at trip close."
-              checked={form.enable_cod_reconciliation}
-              onChange={(v) => setForm((f) => ({ ...f, enable_cod_reconciliation: v }))}
-              disabled={!form.enable_distribution_ops}
-            />
-            <Toggle
-              label="Require cash settlement before trip complete"
-              description="Trip cannot be marked complete until collected cash is recorded."
-              checked={form.require_trip_cash_settlement}
-              onChange={(v) => setForm((f) => ({ ...f, require_trip_cash_settlement: v }))}
-              disabled={!form.enable_distribution_ops || !form.enable_cod_reconciliation}
             />
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Assign driver on status">
@@ -189,6 +160,67 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
                 </select>
               </Field>
             </div>
+          </div>
+            ) : null}
+
+            {activeTab === "trips" ? (
+          <div className="space-y-3">
+            <Toggle
+              label="Auto-create dispatch trips"
+              description="When an order reaches the assignment status, add it to today's draft trip for its route (creating the trip if needed)."
+              checked={form.auto_create_trips}
+              onChange={(v) => setForm((f) => ({ ...f, auto_create_trips: v }))}
+              disabled={!form.enable_distribution_ops}
+            />
+            <Toggle
+              label="Require load weight"
+              description="Block assignment until products have weights and total load weight is greater than zero."
+              checked={form.require_weight_on_load}
+              onChange={(v) => setForm((f) => ({ ...f, require_weight_on_load: v }))}
+              disabled={!form.enable_distribution_ops}
+            />
+            <Toggle
+              label="Enforce vehicle capacity"
+              description="Block locking the loading list or starting a trip when load weight or volume exceeds the assigned vehicle limits."
+              checked={form.enforce_vehicle_capacity}
+              onChange={(v) => setForm((f) => ({ ...f, enforce_vehicle_capacity: v }))}
+              disabled={!form.enable_distribution_ops}
+            />
+            <Toggle
+              label="Include normal backoffice orders"
+              description="By default, loading lists and dispatch trips only aggregate mobile and POS route orders. Enable this to also include backoffice orders assigned to a route."
+              checked={form.include_normal_orders_in_loading_list}
+              onChange={(v) => setForm((f) => ({ ...f, include_normal_orders_in_loading_list: v }))}
+              disabled={!form.enable_distribution_ops}
+            />
+          </div>
+            ) : null}
+
+            {activeTab === "delivery" ? (
+          <div className="space-y-3">
+            <Toggle
+              label="Require proof of delivery"
+              description="Prompt for receiver name before marking an order as delivered."
+              checked={form.require_pod_on_delivered}
+              onChange={(v) => setForm((f) => ({ ...f, require_pod_on_delivered: v }))}
+              disabled={!form.enable_distribution_ops}
+            />
+            <Toggle
+              label="Enable route cash reconciliation"
+              description="Track expected COD per trip and record cash collected by the driver at trip close."
+              checked={form.enable_cod_reconciliation}
+              onChange={(v) => setForm((f) => ({ ...f, enable_cod_reconciliation: v }))}
+              disabled={!form.enable_distribution_ops}
+            />
+            <Toggle
+              label="Require cash settlement before trip complete"
+              description="Trip cannot be marked complete until collected cash is recorded."
+              checked={form.require_trip_cash_settlement}
+              onChange={(v) => setForm((f) => ({ ...f, require_trip_cash_settlement: v }))}
+              disabled={!form.enable_distribution_ops || !form.enable_cod_reconciliation}
+            />
+          </div>
+            ) : null}
           </div>
         )}
         <div className="mt-6">

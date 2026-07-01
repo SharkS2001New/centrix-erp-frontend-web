@@ -158,4 +158,4 @@ else
   echo "  cd \"$DIR\" && \"$NODE_EXE\" server.js"
 fi
 echo ""
-echo "Then in Centrix ERP: Administration → Till printing → enable agent → Test print receipt."
+echo "Then in Centrix ERP: Administration → Local printing → enable agent → Test print receipt."

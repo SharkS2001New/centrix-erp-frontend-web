@@ -12,9 +12,9 @@ import {
   saleLineQtyLabel,
 } from "@/lib/sale-line-items";
 import {
-  isPaymentGatedWorkflowTransition,
   pipelineStatusIndex,
-  primaryWorkflowAdvanceStatus,
+  resolveOrderWorkflowActions,
+  saleNeedsPaymentCollection,
   workflowPipelineSteps,
   workflowStatusLabel,
 } from "@/lib/order-workflow";
@@ -328,9 +328,10 @@ export function buildOrderContextMenuItems({
   onCancel,
   onCollectPayment,
   includePrint = true,
+  hasExternalPos = false,
 }) {
   const items = [
-    { key: "view", label: "View Full Order Summary", icon: "view", onClick: onView },
+    { key: "view", label: "View Order Summary", icon: "view", onClick: onView },
   ];
   if (canEdit && onEdit && sale?.status !== "cancelled") {
     items.push({
@@ -341,7 +342,12 @@ export function buildOrderContextMenuItems({
       onClick: onEdit,
     });
   }
-  if (onCollectPayment) {
+
+  const canCollect = sale && onCollectPayment && saleNeedsPaymentCollection(sale);
+  const workflowActions =
+    sale && workflow ? resolveOrderWorkflowActions(sale, workflow) : { showCollectPayment: false, advanceStatus: null };
+
+  if (canCollect && workflowActions.showCollectPayment) {
     items.push({
       key: "collect-payment",
       label: "Collect payment",
@@ -351,48 +357,46 @@ export function buildOrderContextMenuItems({
     });
   }
   if (includePrint) {
-    items.push({
-      key: "print-thermal",
-      label: "Print (Thermal)",
-      icon: "print",
-      onClick: onPrintThermal,
-    });
-    items.push({
-      key: "print-a4",
-      label: "Print (A4)",
-      icon: "print",
-      onClick: onPrintA4,
-    });
+    if (hasExternalPos) {
+      items.push({
+        key: "print-thermal",
+        label: "Print (Thermal)",
+        icon: "print",
+        onClick: onPrintThermal,
+      });
+      items.push({
+        key: "print-a4",
+        label: "Print (A4)",
+        icon: "print",
+        onClick: onPrintA4,
+      });
+    } else {
+      items.push({
+        key: "print",
+        label: "Print",
+        icon: "print",
+        onClick: onPrintA4,
+      });
+    }
   }
 
   if (!sale || sale.status === "cancelled" || sale.status === "completed") {
     return items;
   }
 
-  const forward = primaryWorkflowAdvanceStatus(sale.status, workflow);
+  const forward = workflowActions.advanceStatus;
   const canCancel = nextTransitionOptions(sale.status, workflow).includes("cancelled");
-  const paymentGatedForward = forward && isPaymentGatedWorkflowTransition(sale, forward);
 
   if (forward || canCancel) {
     items.push({ type: "separator" });
     if (forward) {
-      if (paymentGatedForward && onCollectPayment) {
-        items.push({
-          key: "advance",
-          label: busy ? "Updating…" : "Collect payment",
-          icon: "advance",
-          disabled: busy,
-          onClick: onCollectPayment,
-        });
-      } else {
-        items.push({
-          key: "advance",
-          label: busy ? "Updating…" : `Confirm → ${workflowStatusLabel(workflow, forward)}`,
-          icon: "advance",
-          disabled: busy,
-          onClick: () => onAdvance?.(forward),
-        });
-      }
+      items.push({
+        key: "advance",
+        label: busy ? "Updating…" : `Confirm → ${workflowStatusLabel(workflow, forward)}`,
+        icon: "advance",
+        disabled: busy,
+        onClick: () => onAdvance?.(forward),
+      });
     }
     if (canCancel) {
       items.push({
@@ -584,7 +588,7 @@ function MoreIcon() {
   );
 }
 
-export function OrderRowActions({ onView, onPrint, onOpenMenu, busy = false, printAriaLabel = "Print receipt" }) {
+export function OrderRowActions({ onView, onPrint, onOpenMenu, busy = false, printAriaLabel = "Print" }) {
   return (
     <div className="flex items-center justify-end gap-0.5">
       <button
@@ -594,7 +598,7 @@ export function OrderRowActions({ onView, onPrint, onOpenMenu, busy = false, pri
           onView?.();
         }}
         className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-        aria-label="View order"
+        aria-label="View order summary"
       >
         <ViewIcon />
       </button>
@@ -663,6 +667,7 @@ export function OrderListTableRow({
   onView,
   onOpenActionsMenu,
   actionBusy = false,
+  printAriaLabel = "Print",
   showBranchColumn = false,
   branchName = "—",
   showRouteColumn = false,
@@ -732,6 +737,7 @@ export function OrderListTableRow({
             onView={onView}
             onPrint={onPrint}
             onOpenMenu={onOpenActionsMenu}
+            printAriaLabel={printAriaLabel}
           />
         </td>
       </tr>

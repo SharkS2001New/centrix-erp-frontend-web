@@ -126,6 +126,14 @@ export function formatApiErrorMessage(data, fallback = "Request failed") {
         }
       }
     }
+    if (data.expose_detail === true) {
+      if (typeof data.detail === "string" && data.detail.trim()) {
+        return data.detail.trim();
+      }
+      if (typeof data.message === "string" && data.message.trim()) {
+        return data.message.trim();
+      }
+    }
     if (typeof data.message === "string" && data.message.trim()) {
       const detail = typeof data.detail === "string" && data.detail.trim() ? data.detail.trim() : "";
       const message = data.message.trim();
@@ -150,6 +158,71 @@ export function formatApiErrorMessage(data, fallback = "Request failed") {
     }
   }
   return fallback || "Request failed";
+}
+
+/** Map an API path to a user-facing module label. */
+export function apiModuleLabel(path) {
+  const normalized = String(path ?? "")
+    .replace(/^https?:\/\/[^/]+/i, "")
+    .replace(/^\/api\/v1\//i, "")
+    .replace(/^\/api\//i, "")
+    .replace(/^\/+/, "");
+  const first = normalized.split("/").filter(Boolean)[0] ?? "application";
+
+  const labels = {
+    organizations: "Platform",
+    sales: "Sales",
+    inventory: "Inventory",
+    fulfillment: "Distribution",
+    dispatch: "Distribution",
+    trips: "Distribution",
+    hr: "Human resources",
+    employees: "Human resources",
+    payroll: "Human resources",
+    accounting: "Accounting",
+    admin: "Administration",
+    products: "Products",
+    customers: "Customers",
+    suppliers: "Suppliers",
+    "lpo-mst": "Purchasing",
+    lpo: "Purchasing",
+    expenses: "Expenses",
+    reports: "Reports",
+    erp: "Settings",
+  };
+
+  return labels[first] ?? first.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * User-facing message for form submit / save failures.
+ * Super admins see backend detail; everyone else gets a module-scoped generic message.
+ */
+export function resolveSubmitErrorMessage(error, options = {}) {
+  const { isSuperAdmin = false, moduleName, apiPath } = options;
+  const module = moduleName || (apiPath ? apiModuleLabel(apiPath) : "this module");
+
+  if (error instanceof ApiError) {
+    const body = error.body && typeof error.body === "object" ? error.body : null;
+    if (body?.expose_detail === true || isSuperAdmin) {
+      const detail = typeof body?.detail === "string" && body.detail.trim()
+        ? body.detail.trim()
+        : formatApiErrorMessage(body, "");
+      if (detail) return detail;
+    }
+    if (body?.message && String(body.message).trim()) {
+      return String(body.message).trim();
+    }
+    if (error.message && !/^server error$/i.test(error.message)) {
+      return error.message;
+    }
+  }
+
+  if (isSuperAdmin && error instanceof Error && error.message?.trim()) {
+    return error.message.trim();
+  }
+
+  return `An error occurred in ${module}. Please report this to your system administrator.`;
 }
 
 function shouldTrackNavigationFetch(options, method) {
@@ -331,14 +404,7 @@ export async function apiUpload(path, file, fieldName = "image") {
   }
 
   if (!res.ok) {
-    const msg =
-      typeof data === "object" &&
-      data !== null &&
-      "message" in data &&
-      typeof data.message === "string"
-        ? data.message
-        : res.statusText || "Upload failed";
-    throw new ApiError(msg, res.status, data);
+    throw new ApiError(formatApiErrorMessage(data, res.statusText || "Upload failed"), res.status, data);
   }
 
   return data;

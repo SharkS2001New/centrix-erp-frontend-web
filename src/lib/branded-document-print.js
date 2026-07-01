@@ -2,10 +2,10 @@ import { openPrintWindow } from "@/lib/open-print-window";
 import {
   buildDocumentPrintEdgeFooterHtml,
   documentPrintEdgeFooterStyles,
-  DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN,
 } from "@/lib/document-print-edge-footer";
 import {
   orgPrintFontFamilyFromSettings,
+  orgPrintInkStyles,
   orgPrintPx,
 } from "@/lib/print-typography";
 import {
@@ -64,9 +64,9 @@ export function buildOrgContactLines(organization) {
 
 export function brandedDocumentStyles(generalSettings = null) {
   const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant: "a4", print });
-  const font = orgPrintFontFamilyFromSettings(generalSettings);
+  const font = orgPrintFontFamilyFromSettings(generalSettings, "sale_invoice");
   return `
-  @page { size: A4; margin: 8mm 10mm ${DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN} 10mm; }
+  @page { size: A4; margin: 0; }
   html { height: 100%; }
   body {
     font-family: ${font};
@@ -78,6 +78,7 @@ export function brandedDocumentStyles(generalSettings = null) {
     position: relative;
     min-height: 100%;
     box-sizing: border-box;
+    ${orgPrintInkStyles()}
   }
   .page {
     max-width: 820px;
@@ -114,7 +115,7 @@ export function brandedDocumentStyles(generalSettings = null) {
   .signatures p { margin: 0 0 10px; }
   .sig-line { display: inline-block; min-width: 180px; border-bottom: 1px dotted #000; }
   .doc-footer-text { margin-top: 8px; text-align: center; font-size: ${px(8)}; color: #64748b; }
-  ${documentPrintEdgeFooterStyles()}
+  ${documentPrintEdgeFooterStyles(generalSettings, { variant: "sale_invoice" })}
   .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
   .watermark-text {
     position: absolute;
@@ -139,7 +140,7 @@ export function brandedDocumentStyles(generalSettings = null) {
   }
   .extra-block { margin: 8px 0; font-size: ${px(9)}; }
   @media print {
-    body { padding: 0; font-size: ${px(10, true)}; }
+    body { font-size: ${px(10, true)}; }
     .org-name { font-size: ${px(18, true)}; }
     .org-meta { font-size: ${px(9, true)}; }
     .doc-title { font-size: ${px(13, true)}; }

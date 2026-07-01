@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { financeFormFromApi, financePayloadFromForm, isPlatformKraIntegrationEnabled, isPlatformMpesaStkEnabled, kraDeviceOpsPayloadFromForm } from "@/lib/finance-settings";
@@ -8,6 +8,7 @@ import { accountingSettingsFromApi, accountingSettingsPayload } from "@/lib/acco
 import { Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
 import { ExternalAccountingIntegrationPanel } from "@/components/admin/external-accounting-integration-panel";
 import { AccountingAutoPostPanel } from "@/components/admin/accounting-auto-post-panel";
+import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
@@ -50,6 +51,7 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
   const [kraInitTesting, setKraInitTesting] = useState(false);
   const [kraRestartTesting, setKraRestartTesting] = useState(false);
   const [kraHealthResult, setKraHealthResult] = useState(null);
+  const [activeTab, setActiveTab] = useState("kra");
 
   useEffect(() => {
     setLoading(true);
@@ -67,6 +69,16 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
   const kraAllowed = isPlatformKraIntegrationEnabled({ finance: form }, capabilities);
   const mpesaAllowed = isPlatformMpesaStkEnabled({ finance: form }, capabilities);
   const hasFinanceContent = hasAccounting || kraAllowed || mpesaAllowed;
+
+  const visibleTabs = useMemo(() => {
+    const tabs = [];
+    if (kraAllowed) tabs.push({ id: "kra", label: "Tax receipts (KRA)" });
+    if (hasAccounting) tabs.push({ id: "accounting", label: "Books & accounting" });
+    if (mpesaAllowed) tabs.push({ id: "mpesa", label: "M-Pesa payments" });
+    return tabs;
+  }, [hasAccounting, kraAllowed, mpesaAllowed]);
+
+  useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
 
   async function runKraDeviceAction(path, setLoading) {
     setLoading(true);
@@ -151,14 +163,18 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
       ) : !hasFinanceContent ? (
         <p className="mt-4 text-sm text-slate-500">No finance settings are available for this organization.</p>
       ) : (
-        <div className="mt-5 space-y-6">
-          {kraAllowed ? (
+        <div className="mt-5 space-y-5">
+          <SettingsSubTabBar
+            tabs={visibleTabs}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            ariaLabel="Finance settings"
+          />
+
+          {activeTab === "kra" && kraAllowed ? (
           <div>
-            <h3 className="text-sm font-medium text-slate-900">KRA fiscal device</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Configure your on-prem KRA device connection, then control whether sales are fiscalized through it.
-              When fiscalization is off, the device stays configured but POS and other modules complete sales without
-              calling the device.
+            <p className="theme-subtext text-sm">
+              Connect your on-prem KRA fiscal device and choose when completed sales are signed through it.
             </p>
             <div className="mt-3 space-y-3">
               <Toggle
@@ -304,12 +320,10 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
           </div>
           ) : null}
 
-          {hasAccounting ? (
-          <div className="border-t border-[var(--theme-border)] pt-6">
-            <h3 className="theme-heading text-sm font-medium">Accounting system</h3>
-            <p className="theme-subtext mt-1 text-sm">
-              Use the built-in general ledger, or connect an external system such as QuickBooks. When external mode is
-              selected, POS continues to record sales and inventory; journals are exported for your accountant&apos;s books.
+          {activeTab === "accounting" && hasAccounting ? (
+          <div>
+            <p className="theme-subtext text-sm">
+              Use the built-in general ledger, or connect an external system such as QuickBooks.
             </p>
             <div className="mt-3 space-y-3">
               <Field label="Accounting source">
@@ -470,12 +484,10 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
           </div>
           ) : null}
 
-          {mpesaAllowed ? (
-          <div className="border-t border-slate-200 pt-6">
-            <h3 className="text-sm font-medium text-slate-900">M-Pesa (paybill / till)</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Configure Daraja credentials and callback URLs for this organization. Register the same URLs on the
-              Safaricom Daraja portal — the system receives payments at these endpoints for POS check payment.
+          {activeTab === "mpesa" && mpesaAllowed ? (
+          <div>
+            <p className="theme-subtext text-sm">
+              Set up Safaricom Daraja for paybill, till, and STK push at checkout.
             </p>
 
             {mpesaStatus ? (

@@ -10,6 +10,7 @@ import {
   orderWorkflowFromApi,
 } from "@/components/admin/order-workflow-settings";
 import { DEFAULT_ORDER_WORKFLOW } from "@/lib/order-workflow";
+import { normalizeStockDeductOn } from "@/lib/sales-settings";
 import {
   DOMAIN_MODULE_ORDER,
   buildDomainChildrenMap,
@@ -222,11 +223,17 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_ai: true,
     enable_advanced_data_import: false,
     advanced_data_import_pages: defaultAdvancedDataImportPages(),
-    stock_deduct_on: "order_created",
+    stock_deduct_on: {
+      pos: "order_created",
+      mobile: "order_completed",
+      backend: "order_completed",
+    },
     require_pos_till_float: false,
     enable_pos_order_edit: false,
     enable_backoffice_order_edit: true,
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
+    reserve_stock_on_cart: true,
+    cart_reservation_ttl_minutes: "15",
   };
 }
 
@@ -240,11 +247,19 @@ export function salesPlatformFromApi(apiPayload) {
     enable_ai: apiPayload.enable_ai !== false,
     enable_advanced_data_import: Boolean(apiPayload.enable_advanced_data_import ?? false),
     advanced_data_import_pages: advancedDataImportPagesFromApi(apiPayload.advanced_data_import_pages),
-    stock_deduct_on: apiPayload.stock_deduct_on ?? "order_created",
+    stock_deduct_on: normalizeStockDeductOn(apiPayload.stock_deduct_on, {
+      hasPosSales: Boolean(apiPayload?.enabled_modules?.["sales.pos"]),
+      showCheckoutOnCreate: apiPayload.show_checkout_on_create_order !== false,
+    }),
     require_pos_till_float: Boolean(apiPayload.require_pos_till_float ?? false),
     enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
     enable_backoffice_order_edit: apiPayload.enable_backoffice_order_edit !== false,
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
+    reserve_stock_on_cart: apiPayload.reserve_stock_on_cart !== false,
+    cart_reservation_ttl_minutes:
+      apiPayload.cart_reservation_ttl_minutes != null && apiPayload.cart_reservation_ttl_minutes !== ""
+        ? String(Math.min(15, Math.max(0, Number(apiPayload.cart_reservation_ttl_minutes) || 0)))
+        : "15",
   };
 }
 
@@ -370,7 +385,13 @@ export function OrganizationOrderWorkflowSettings({
   const wf = salesPlatform?.order_workflow ?? DEFAULT_ORDER_WORKFLOW;
   const salesEnabled = Boolean(enabledModules.sales);
   const distributionEnabled = Boolean(enabledModules.distribution);
+  const hasPosSales = Boolean(enabledModules["sales.pos"]);
   const showCheckout = salesPlatform?.show_checkout_on_create_order !== false;
+  const stockDeductOn = normalizeStockDeductOn(salesPlatform?.stock_deduct_on, {
+    hasPosSales,
+    showCheckoutOnCreate: showCheckout,
+  });
+  const reserveStockOnCart = salesPlatform?.reserve_stock_on_cart !== false;
 
   function patch(partial) {
     onChange?.({ ...salesPlatform, ...partial });
@@ -379,22 +400,64 @@ export function OrganizationOrderWorkflowSettings({
   return (
     <PlatformFormSection
       title="Order workflow"
-      description="Order pipeline stages, save and checkout rules, and stock deduction timing."
+      description="Order pipeline stages, save and checkout rules, stock deduction timing, and cart reservations."
     >
       {!salesEnabled ? (
         <p className="theme-subtext rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-sm">
           Enable the <strong className="theme-heading font-semibold">Sales</strong> module to configure order workflow for this organization.
         </p>
       ) : (
-        <OrderWorkflowSettingsEditor
-          embedded
-          workflow={wf}
-          onChange={(next) => patch({ order_workflow: next })}
-          showCheckoutOnCreate={showCheckout}
-          stockDeductOn={salesPlatform?.stock_deduct_on ?? "order_created"}
-          onStockDeductOnChange={(value) => patch({ stock_deduct_on: value })}
-          distributionOpsEnabled={distributionEnabled}
-        />
+        <div className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cart reservations</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Hold stock while a cart is open so other tills cannot oversell the same quantity before checkout.
+              Order-level stock reservation below applies after an order is saved.
+            </p>
+            <div className="mt-3 space-y-3">
+              <Toggle
+                label="Reserve stock when added to cart"
+                checked={reserveStockOnCart}
+                onChange={(v) => patch({ reserve_stock_on_cart: v })}
+              />
+              {reserveStockOnCart ? (
+                <OrgRegisterField label="Cart reservation time (minutes)">
+                  <input
+                    type="number"
+                    min={0}
+                    max={15}
+                    step={1}
+                    className={inputClass}
+                    value={salesPlatform?.cart_reservation_ttl_minutes ?? "15"}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === "") {
+                        patch({ cart_reservation_ttl_minutes: "" });
+                        return;
+                      }
+                      const parsed = Math.min(15, Math.max(0, Number(raw) || 0));
+                      patch({ cart_reservation_ttl_minutes: String(parsed) });
+                    }}
+                    placeholder="15"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    How long stock stays held on an open cart (max 15 minutes). Use 0 for no expiry.
+                  </p>
+                </OrgRegisterField>
+              ) : null}
+            </div>
+          </div>
+          <OrderWorkflowSettingsEditor
+            embedded
+            workflow={wf}
+            onChange={(next) => patch({ order_workflow: next })}
+            showCheckoutOnCreate={showCheckout}
+            stockDeductOn={stockDeductOn}
+            onStockDeductOnChange={(value) => patch({ stock_deduct_on: value })}
+            distributionOpsEnabled={distributionEnabled}
+            hasPosSales={hasPosSales}
+          />
+        </div>
       )}
     </PlatformFormSection>
   );

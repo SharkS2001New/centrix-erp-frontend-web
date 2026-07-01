@@ -15,6 +15,7 @@ import {
   searchCreditCustomers,
 } from "@/lib/credit-customer-search";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
+import { LOCAL_PRINTING_ADMIN_LABEL } from "@/lib/local-printing";
 
 function PosField({ label, children }) {
   return (
@@ -401,10 +402,14 @@ export function PosPaymentPanel({
       return null;
     }
     if (amountPaid <= 0 && checkoutTotal > 0) {
-      return "Enter payment amounts, select a credit customer, or enable partial payment in admin settings.";
+      return cfg.enableCreditPayment
+        ? "Enter payment amounts or select a credit customer."
+        : "Enter payment amounts to cover the full total.";
     }
     if (amountPaid + 0.01 < checkoutTotal) {
-      return "Full payment required. Enable Allow pay-now on credit in admin settings, or select a credit customer.";
+      return cfg.enableCreditPayment
+        ? "Full payment required, or select a credit customer to bill the balance on account."
+        : "Full payment required — enter amounts that cover the total.";
     }
     return null;
   }
@@ -925,7 +930,7 @@ export function PosPaymentPanel({
         {receiptPrintStatus === "failed" ? (
           <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
             Receipt did not print. The sale is saved — use <strong>Reprint receipt</strong> or check{" "}
-            <strong>Administration → Till printing</strong>.
+            <strong>Administration → {LOCAL_PRINTING_ADMIN_LABEL}</strong>.
           </p>
         ) : null}
         <p className="mt-2 text-sm">Press Enter or OK to continue to the next order.</p>

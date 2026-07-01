@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   NOTIFICATION_SCOPE_OPTIONS,
@@ -10,6 +10,7 @@ import {
   notificationsPayloadFromForm,
 } from "@/lib/notifications-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
@@ -65,6 +66,18 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
   const { settingsPath } = useSettingsApi();
   const [form, setForm] = useState(notificationsFormFromApi({}));
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("sms");
+
+  const visibleTabs = useMemo(
+    () => [
+      { id: "sms", label: "Text messages (SMS)" },
+      { id: "email", label: "Email setup" },
+      { id: "alerts", label: "Customer alerts" },
+    ],
+    [],
+  );
+
+  useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
     setLoading(true);
@@ -108,9 +121,16 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">Loading…</p>
         ) : (
-          <div className="mt-5 space-y-6">
+          <div className="mt-5 space-y-5">
+            <SettingsSubTabBar
+              tabs={visibleTabs}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              ariaLabel="Notification settings"
+            />
+
+            {activeTab === "sms" ? (
             <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">SMS (Africa&apos;s Talking)</p>
               <Toggle
                 label="Enable SMS channel"
                 checked={form.sms_enabled}
@@ -153,9 +173,10 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
                 </>
               ) : null}
             </div>
+            ) : null}
 
+            {activeTab === "email" ? (
             <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email (this organization)</p>
               <Toggle
                 label="Enable email channel"
                 description="Configure SMTP below or leave disabled to use server default mail transport."
@@ -268,9 +289,12 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
                 </>
               ) : null}
             </div>
+            ) : null}
 
+            {activeTab === "alerts" ? (
+            <div className="space-y-6">
             <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order placement</p>
+              <p className="text-sm font-medium text-slate-800">Order placement</p>
               <p className="text-xs text-slate-500">{autoHint}</p>
               <Toggle
                 label="Notify customer when order is placed"
@@ -306,7 +330,7 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
             </div>
 
             <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Debtor payments</p>
+              <p className="text-sm font-medium text-slate-800">Debtor payments</p>
               <p className="text-xs text-slate-500">{autoHint}</p>
               <Toggle
                 label="Notify customer when payment is received"
@@ -342,7 +366,7 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
             </div>
 
             <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Fulfillment events</p>
+              <p className="text-sm font-medium text-slate-800">Delivery updates</p>
               <p className="text-xs text-slate-500">{autoHint}</p>
               <Toggle
                 label="Notify customers when trip departs"
@@ -377,6 +401,8 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
                 />
               ) : null}
             </div>
+            </div>
+            ) : null}
           </div>
         )}
         <div className="mt-6">

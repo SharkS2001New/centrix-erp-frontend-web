@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { mergePreviewGeneralWithPrintFonts } from "@/lib/print-font-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { printLpoDocument, sampleLpoPreviewData } from "@/components/lpo/lpo-print-html";
 import {
@@ -17,6 +18,7 @@ import {
   shouldShowReceiptPaymentDetails,
 } from "@/lib/receipt-payment-details";
 import {
+  SAMPLE_PREVIEW_BRANCH,
   SAMPLE_PREVIEW_CUSTOMER,
   SAMPLE_PREVIEW_SELLER,
 } from "@/lib/print-preview-samples";
@@ -136,7 +138,7 @@ export function previewLoadingListPrint({
   printoutsForm = null,
 }) {
   const general = printoutsForm
-    ? buildPreviewGeneralFromForm(printoutsForm, moduleSettings)
+    ? buildPreviewGeneralFromForm(printoutsForm, moduleSettings, "loading_sheet")
     : generalSettings ?? mergeGeneralSettings(moduleSettings);
 
   const sample = sampleLoadingListPreviewData();
@@ -150,18 +152,8 @@ export function previewLoadingListPrint({
   });
 }
 
-function buildPreviewGeneralFromForm(form, moduleSettings) {
-  return {
-    ...mergeGeneralSettings(moduleSettings),
-    show_organization_on_documents: form.show_organization_on_documents,
-    document_header_display: form.document_header_display,
-    print_font_family: form.print_font_family ?? "times",
-    print_font_scale: form.print_font_scale ?? "standard",
-    print_footer_receipt: form.print_footer_receipt,
-    print_footer_a4_invoice: form.print_footer_a4_invoice,
-    print_footer_lpo: form.print_footer_lpo,
-    print_footer_loading_sheet: form.print_footer_loading_sheet,
-  };
+function buildPreviewGeneralFromForm(form, moduleSettings, typographyVariant = "sale_invoice") {
+  return mergePreviewGeneralWithPrintFonts(form, moduleSettings, typographyVariant);
 }
 
 export function previewSaleInvoicePrint({
@@ -173,14 +165,19 @@ export function previewSaleInvoicePrint({
   const sales = salesForm
     ? { ...mergeSalesSettings(moduleSettings), ...salesForm, ...invoicePrintFieldsFromSalesForm(salesForm) }
     : mergeSalesSettings(moduleSettings);
-  const general = generalSettings ?? mergeGeneralSettings(moduleSettings);
+  const general = salesForm
+    ? buildPreviewGeneralFromForm(salesForm, moduleSettings, "sale_invoice")
+    : generalSettings ?? mergeGeneralSettings(moduleSettings);
   const branding = resolveSaleDocumentBranding({ organization, generalSettings: general });
   const seller = resolvePreviewSeller(organization);
   const sale = sampleReceiptPreviewSale();
   const paymentInstructions = receiptPaymentDetailsToPayload(sales.pos_receipt_payment_details);
 
+  const showBranchOnReceipt = Boolean(sales.show_branch_on_receipt);
+
   printSaleInvoice(sale, {
     seller,
+    branch: showBranchOnReceipt ? SAMPLE_PREVIEW_BRANCH : null,
     branding,
     customer: SAMPLE_PREVIEW_CUSTOMER,
     productDiscountsEnabled: Boolean(sales.allow_discounts),
@@ -189,6 +186,7 @@ export function previewSaleInvoicePrint({
     documentFooterText: resolvePrintFooter(general, "invoice"),
     paymentInstructions,
     showPaymentInstructions: shouldShowReceiptPaymentDetails({ sales }, "invoice"),
+    showBranchOnReceipt,
     preparedBy: "Preview cashier",
     generalSettings: general,
   });
@@ -223,7 +221,9 @@ export function previewReceiptPaymentDetails({
       }
     : mergeSalesSettings(moduleSettings);
 
-  const general = generalSettings ?? mergeGeneralSettings(moduleSettings);
+  const general = salesForm
+    ? buildPreviewGeneralFromForm(salesForm, moduleSettings, "thermal")
+    : generalSettings ?? mergeGeneralSettings(moduleSettings);
   const branding = resolveSaleDocumentBranding({ organization, generalSettings: general });
   const seller = organization ? resolvePreviewSeller(organization) : null;
 
@@ -247,14 +247,17 @@ export function previewReceiptPaymentDetails({
     routeId: route?.id ?? (isRoutePreview ? 1 : null),
   });
 
+  const showBranchOnReceipt = Boolean(sales.show_branch_on_receipt);
+
   printSaleReceipt(sale, {
     seller,
+    branch: showBranchOnReceipt ? SAMPLE_PREVIEW_BRANCH : null,
     branding,
     organization,
     productDiscountsEnabled: Boolean(sales.allow_discounts),
     orderDiscountEnabled: Boolean(sales.enable_order_discount),
     customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
-    showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
+    showBranchOnReceipt,
     documentFooterText: resolvePrintFooter(general, "receipt"),
     paymentInstructions: payload,
     generalSettings: general,

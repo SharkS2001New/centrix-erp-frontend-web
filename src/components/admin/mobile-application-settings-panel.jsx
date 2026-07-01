@@ -56,7 +56,14 @@ function PlatformMobileSummary({ capabilities: capabilitiesProp }) {
   );
 }
 
-export function MobileApplicationSettingsPanel({ saving, setSaving, setError, setMessage, capabilities: capabilitiesProp, onAfterSave }) {
+export function MobileApplicationSettingsPanel({
+  saving,
+  setSaving,
+  setError,
+  setMessage,
+  capabilities: capabilitiesProp,
+  onAfterSave,
+}) {
   const { refreshCapabilities, capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
   const { settingsPath } = useSettingsApi();
@@ -108,57 +115,63 @@ export function MobileApplicationSettingsPanel({ saving, setSaving, setError, se
           <p className="mt-4 text-sm text-slate-500">Loading…</p>
         ) : (
           <>
-            <div className="mt-5 space-y-3">
+            <div className="mt-5 space-y-8">
               <PlatformMobileSummary capabilities={capabilities} />
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Checkout
-              </p>
-              <Toggle
-                label="Require customer location at checkout"
-                description="When enabled, reps must be within the configured radius of the customer's saved coordinates to place an order."
-                checked={form.mobile_enable_checkout_location_verification}
-                onChange={(v) =>
-                  setForm((f) => ({
-                    ...f,
-                    mobile_enable_checkout_location_verification: v,
-                    mobile_allow_offline_orders: v ? f.mobile_allow_offline_orders : false,
-                  }))
-                }
-              />
-              {form.mobile_enable_checkout_location_verification ? (
-                <>
-                  <Field label="Checkout location radius (metres)">
-                    <input
-                      type="number"
-                      min={1}
-                      max={500}
-                      className={inputClassName()}
-                      value={form.mobile_checkout_location_radius_metres}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          mobile_checkout_location_radius_metres: e.target.value,
-                        }))
-                      }
-                    />
-                  </Field>
+
+              <div>
+                <h3 className="text-sm font-medium text-slate-900">Orders at customers</h3>
+                <div className="mt-3 space-y-3">
                   <Toggle
-                    label="Allow checkout without location check"
-                    description="Lets reps place the order without GPS radius verification (e.g. customer has no coordinates or rep is outside radius). The order still saves online through the normal cart and checkout — pricing, stock, and payments are unchanged. The sale is flagged as location-not-verified."
-                    checked={form.mobile_allow_offline_orders}
-                    onChange={(v) => setForm((f) => ({ ...f, mobile_allow_offline_orders: v }))}
+                    label="Require customer location at checkout"
+                    description="When enabled, reps must be within the configured radius of the customer's saved coordinates to place an order."
+                    checked={form.mobile_enable_checkout_location_verification}
+                    onChange={(v) =>
+                      setForm((f) => ({
+                        ...f,
+                        mobile_enable_checkout_location_verification: v,
+                        mobile_allow_offline_orders: v ? f.mobile_allow_offline_orders : false,
+                      }))
+                    }
                   />
-                </>
-              ) : null}
-              <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Field attendance
-              </p>
-              <Toggle
-                label="Require sign-in photo and location"
-                description="When enabled, sales reps must take a photo and capture GPS when signing in and signing out on the mobile app. Sessions appear under HR → Time & attendance → Field attendance and Sales → Field sales → Field attendance."
-                checked={form.mobile_enable_field_attendance}
-                onChange={(v) => setForm((f) => ({ ...f, mobile_enable_field_attendance: v }))}
-              />
+                  {form.mobile_enable_checkout_location_verification ? (
+                    <>
+                      <Field label="Checkout location radius (metres)">
+                        <input
+                          type="number"
+                          min={1}
+                          max={500}
+                          className={inputClassName()}
+                          value={form.mobile_checkout_location_radius_metres}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              mobile_checkout_location_radius_metres: e.target.value,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Toggle
+                        label="Allow checkout without location check"
+                        description="Lets reps place the order without GPS radius verification (e.g. customer has no coordinates or rep is outside radius). The order still saves online through the normal cart and checkout — pricing, stock, and payments are unchanged. The sale is flagged as location-not-verified."
+                        checked={form.mobile_allow_offline_orders}
+                        onChange={(v) => setForm((f) => ({ ...f, mobile_allow_offline_orders: v }))}
+                      />
+                    </>
+                  ) : null}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-medium text-slate-900">Rep check-in</h3>
+                <div className="mt-3 space-y-3">
+                  <Toggle
+                    label="Require sign-in photo and location"
+                    description="When enabled, sales reps must take a photo and capture GPS when signing in and signing out on the mobile app. Sessions appear under HR → Time & attendance → Field attendance and Sales → Field sales → Field attendance."
+                    checked={form.mobile_enable_field_attendance}
+                    onChange={(v) => setForm((f) => ({ ...f, mobile_enable_field_attendance: v }))}
+                  />
+                </div>
+              </div>
             </div>
             <div className="mt-6">
               <PrimaryButton type="submit" disabled={loading || saving} showIcon={false}>

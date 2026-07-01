@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -10,6 +10,7 @@ import {
   inventoryPayloadFromForm,
 } from "@/lib/inventory-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
@@ -40,6 +41,17 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
   const afterSave = onAfterSave ?? refreshCapabilities;
   const [form, setForm] = useState(inventoryFormFromApi({}));
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("selling");
+
+  const visibleTabs = useMemo(
+    () => [
+      { id: "selling", label: "How you sell" },
+      { id: "locations", label: "Stock locations" },
+    ],
+    [],
+  );
+
+  useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
 
   useEffect(() => {
     setLoading(true);
@@ -87,12 +99,20 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
     <form onSubmit={handleSave}>
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Inventory settings</h2>
-        <p className="mt-1 text-sm text-slate-500">Stock sources, locations, alerts, and POS scanning.</p>
+        <p className="mt-1 text-sm text-slate-500">Stock sources, locations, and low-stock alerts.</p>
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">Loading…</p>
         ) : (
-          <div className="mt-5 space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stock source</p>
+          <div className="mt-5 space-y-5">
+            <SettingsSubTabBar
+              tabs={visibleTabs}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              ariaLabel="Inventory settings"
+            />
+
+            {activeTab === "selling" ? (
+          <div className="space-y-3">
             <Toggle
               label="Sell from shop stock"
               description="Sell from branch shop (POS) stock. Cannot be enabled together with store stock."
@@ -155,50 +175,39 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
               checked={form.allow_negative_stock}
               onChange={(v) => setForm((f) => ({ ...f, allow_negative_stock: v }))}
             />
-            <Toggle
-              label="Reserve stock when added to cart"
-              description="Hold stock while a cart is open so other tills cannot oversell the same quantity."
-              checked={form.reserve_stock_on_cart}
-              onChange={(v) => setForm((f) => ({ ...f, reserve_stock_on_cart: v }))}
-            />
-            {form.reserve_stock_on_cart ? (
-              <Field label="Cart reservation time (minutes)">
+            <Field label="Alert mode">
+              <select
+                className={inputClassName()}
+                value={form.stock_alert_mode}
+                onChange={(e) => setForm((f) => ({ ...f, stock_alert_mode: e.target.value }))}
+              >
+                {STOCK_ALERT_MODE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {form.stock_alert_mode !== "per_product" ? (
+              <Field label="Global low stock threshold">
                 <input
                   type="number"
                   min="0"
-                  max="15"
-                  step="1"
+                  step="any"
                   className={`${inputClassName()} w-32`}
-                  value={form.cart_reservation_ttl_minutes}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    if (raw === "") {
-                      setForm((f) => ({ ...f, cart_reservation_ttl_minutes: "" }));
-                      return;
-                    }
-                    const parsed = Math.min(15, Math.max(0, Number(raw) || 0));
-                    setForm((f) => ({
-                      ...f,
-                      cart_reservation_ttl_minutes: String(parsed),
-                    }));
-                  }}
-                  placeholder="15"
+                  value={form.global_low_stock_threshold}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, global_low_stock_threshold: e.target.value }))
+                  }
+                  placeholder="e.g. 5"
                 />
-                <p className="mt-1 text-xs text-slate-500">
-                  How long stock stays held on an open cart (max 15 minutes). Use 0 to disable expiry.
-                </p>
               </Field>
             ) : null}
-            <Toggle
-              label="Enable barcode scanner"
-              description="Scan SKU/barcode to add qty 1 directly to the cart on POS."
-              checked={form.enable_barcode_scanner}
-              onChange={(v) => setForm((f) => ({ ...f, enable_barcode_scanner: v }))}
-            />
+          </div>
+            ) : null}
 
-            <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Default locations
-            </p>
+            {activeTab === "locations" ? (
+          <div className="space-y-3">
             <Field label="Default receive location">
               <select
                 className={inputClassName()}
@@ -240,37 +249,7 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
                 ))}
               </select>
             </Field>
-
-            <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Low stock alerts
-            </p>
-            <Field label="Alert mode">
-              <select
-                className={inputClassName()}
-                value={form.stock_alert_mode}
-                onChange={(e) => setForm((f) => ({ ...f, stock_alert_mode: e.target.value }))}
-              >
-                {STOCK_ALERT_MODE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {form.stock_alert_mode !== "per_product" ? (
-              <Field label="Global low stock threshold">
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  className={`${inputClassName()} w-32`}
-                  value={form.global_low_stock_threshold}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, global_low_stock_threshold: e.target.value }))
-                  }
-                  placeholder="e.g. 5"
-                />
-              </Field>
+          </div>
             ) : null}
           </div>
         )}

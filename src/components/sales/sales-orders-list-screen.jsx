@@ -43,7 +43,12 @@ import {
   summarizeOrders,
 } from "@/components/sales/sales-orders-shared";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
-import { getOrderDocumentType, isOrgMobileSalesEnabled } from "@/lib/sales-settings";
+import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
+import {
+  defaultOrderListPrintDocumentType,
+  isOrgMobileSalesEnabled,
+  orderListPrintAriaLabel,
+} from "@/lib/sales-settings";
 import {
   disposePrintWindow,
   openBlankPrintWindow,
@@ -378,7 +383,8 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   async function printOrder(sale, documentType = null) {
     if (!sale?.id) return;
 
-    const cachedType = documentType ?? getOrderDocumentType(capabilities?.module_settings);
+    const cachedType =
+      documentType ?? defaultOrderListPrintDocumentType(capabilities?.module_settings, capabilities);
     const printWindow =
       cachedType !== "both"
         ? openBlankPrintWindow(printWindowFeatures(cachedType))
@@ -517,6 +523,9 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
     void expandAllOnPage(pageSlice);
   }
 
+  const hasExternalPos = useMemo(() => isExternalPosEnabled(capabilities), [capabilities]);
+  const orderPrintAriaLabel = useMemo(() => orderListPrintAriaLabel(capabilities), [capabilities]);
+
   const contextMenuItems = useMemo(() => {
     if (!contextMenu?.sale) return [];
     const sale = contextMenu.sale;
@@ -526,6 +535,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       workflow,
       busy: transitionBusyId === sale.id || fulfillment.busy,
       includePrint: contextMenu.includePrint !== false,
+      hasExternalPos,
       canEdit: Boolean(sale.can_edit_lines),
       balanceDue: saleBalanceDue(sale),
       onView: () => viewOrder(sale),
@@ -536,7 +546,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       onAdvance: (status) => void handleAdvance(sale, status),
       onCancel: () => void handleAdvance(sale, "cancelled"),
     });
-  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy]);
+  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos]);
 
   useEffect(() => {
     setPage(1);
@@ -732,6 +742,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
                           onContextMenu={(event) => openOrderContextMenu(event, sale)}
                           onView={() => viewOrder(sale)}
                           onPrint={() => void printOrder(sale)}
+                          printAriaLabel={orderPrintAriaLabel}
                           onOpenActionsMenu={(event) => openActionsMenuFromButton(event, sale)}
                           actionBusy={transitionBusyId === sale.id}
                           showBranchColumn={showBranchColumn}

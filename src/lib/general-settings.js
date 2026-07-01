@@ -1,3 +1,5 @@
+import { printFontFormDefaults } from "@/lib/print-font-settings";
+
 export const GENERAL_DEFAULTS = {
   currency: "KES",
   timezone: "Africa/Nairobi",
@@ -12,8 +14,7 @@ export const GENERAL_DEFAULTS = {
   document_footer_text: "",
   show_organization_on_documents: true,
   document_header_display: "auto",
-  print_font_family: "times",
-  print_font_scale: "standard",
+  ...printFontFormDefaults(),
 };
 
 export const CURRENCY_OPTIONS = [{ value: "KES", label: "KES — Kenyan Shilling" }];
@@ -62,6 +63,8 @@ export function mergeGeneralSettings(moduleSettings) {
   return { ...GENERAL_DEFAULTS, ...(moduleSettings?.general ?? {}) };
 }
 
+import { printFontFormFromGeneral } from "@/lib/print-font-settings";
+
 export function generalFormFromApi(res) {
   const general = mergeGeneralSettings({ general: res?.general ?? res });
   return {
@@ -78,8 +81,7 @@ export function generalFormFromApi(res) {
     document_footer_text: general.document_footer_text || "",
     show_organization_on_documents: Boolean(general.show_organization_on_documents),
     document_header_display: general.document_header_display || "auto",
-    print_font_family: general.print_font_family || "times",
-    print_font_scale: general.print_font_scale || "standard",
+    ...printFontFormFromGeneral(general),
   };
 }
 

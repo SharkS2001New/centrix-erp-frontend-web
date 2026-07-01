@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-/** Till printing moved to Administration. */
+/** Local printing (print agent) moved to Administration. */
 export default function SalesTillPrintingRedirectPage() {
   redirect("/admin/till-printing");
 }

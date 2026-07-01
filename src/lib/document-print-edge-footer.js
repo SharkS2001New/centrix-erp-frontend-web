@@ -1,62 +1,83 @@
 import { PRINT_POWERED_BY } from "@/lib/branding";
 import { escapeHtml } from "@/lib/branded-document-print";
+import { resolvePrintedByUser } from "@/lib/printed-by-user";
+import { orgPrintInkStyles, orgPrintPx } from "@/lib/print-typography";
 
-/** Extra bottom @page margin so content clears the fixed print footer. */
-export const DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN = "18mm";
+/** Body padding (not @page) — keeps content clear of the fixed print footer. */
+export const DOCUMENT_PRINT_EDGE_BODY_TOP = "10mm";
+export const DOCUMENT_PRINT_EDGE_BODY_SIDES = "12mm";
+export const DOCUMENT_PRINT_EDGE_BODY_BOTTOM = "30mm";
 
-export function documentPrintEdgeFooterStyles() {
+/** @deprecated Use zero @page margin + body padding above. Kept for imports that set @page size only. */
+export const DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN = "0";
+
+export function documentPrintEdgeFooterStyles(generalSettings = null, { variant = "a4" } = {}) {
+  const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant, print });
   return `
-  body.has-doc-print-edge-footer { padding-bottom: 52px; }
+  body.has-doc-print-edge-footer { padding-bottom: 72px; }
   .doc-print-edge-footer {
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
     z-index: 10;
-    padding: 6px 16px 4px;
-    border-top: 1px dotted #999;
+    padding: 8px 16px 4px;
+    border-top: 1px dotted #000;
     background: #fff;
-    font-size: 8px;
-    color: #333;
-    line-height: 1.35;
+    font-size: ${px(9)};
+    color: #000;
+    font-weight: 500;
+    line-height: 1.4;
     box-sizing: border-box;
+    ${orgPrintInkStyles()}
   }
-  .doc-print-edge-footer .designed-by {
-    margin: 0 0 4px;
-    text-align: center;
-    font-size: 8px;
-  }
-  .doc-print-edge-footer .print-footer {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 6px 12px;
-    padding: 0;
-    border: none;
-    margin: 0;
-  }
-  .doc-print-edge-footer .print-footer span { min-width: 0; word-break: break-word; }
   .doc-print-edge-footer .footer-notes {
     text-align: center;
-    margin: 0 0 4px;
-    font-size: 8px;
+    margin: 0 0 6px;
+    font-size: ${px(9)};
+    font-weight: 600;
   }
   .doc-print-edge-footer .footer-notes p { margin: 2px 0; }
+  .doc-print-edge-footer .print-footer-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr);
+    align-items: end;
+    gap: 8px 12px;
+  }
+  .doc-print-edge-footer .print-footer-left {
+    text-align: left;
+    font-weight: 600;
+  }
+  .doc-print-edge-footer .print-footer-center {
+    text-align: center;
+    font-weight: 600;
+  }
+  .doc-print-edge-footer .print-footer-center .designed-by {
+    margin: 0 0 2px;
+    font-weight: 700;
+  }
+  .doc-print-edge-footer .print-footer-center .printed-by {
+    margin: 0;
+    font-weight: 600;
+  }
+  .doc-print-edge-footer .print-footer-right {
+    text-align: right;
+    font-weight: 600;
+    white-space: nowrap;
+  }
   @media print {
-    body.has-doc-print-edge-footer { padding-bottom: 0; }
     .doc-print-edge-footer {
-      left: 0;
-      right: 0;
-      bottom: 0;
-      padding: 4px 12mm 2mm;
+      font-size: ${px(9, true)};
+    }
+    .doc-print-edge-footer .footer-notes {
+      font-size: ${px(9, true)};
     }
   }
 `;
 }
 
 export function buildDocumentPrintEdgeFooterHtml({
-  printedBy = "—",
+  printedBy = null,
   printedAt = null,
   pageLabel = "Page 1 of 1",
   poweredBy = PRINT_POWERED_BY,
@@ -64,7 +85,16 @@ export function buildDocumentPrintEdgeFooterHtml({
   documentFooterText = "",
   designedByLabel = "Designed & Developed By",
 } = {}) {
-  const at = printedAt ?? new Date().toLocaleString("en-GB");
+  const printedByName = resolvePrintedByUser(printedBy) ?? "—";
+  const at = printedAt ?? new Date().toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
 
   return `
   <footer class="doc-print-edge-footer">
@@ -73,15 +103,17 @@ export function buildDocumentPrintEdgeFooterHtml({
         ? `<div class="footer-notes"><p>${escapeHtml(documentFooterText)}</p></div>`
         : ""
     }
-    ${
-      showDesignedBy
-        ? `<p class="designed-by">${escapeHtml(designedByLabel)} ${escapeHtml(poweredBy)}</p>`
-        : ""
-    }
-    <div class="print-footer">
-      <span>Printed On: ${escapeHtml(at)}</span>
-      <span>Printed By: ${escapeHtml(printedBy ?? "—")}</span>
-      <span>${escapeHtml(pageLabel)}</span>
+    <div class="print-footer-row">
+      <span class="print-footer-left">Printed On: ${escapeHtml(at)}</span>
+      <div class="print-footer-center">
+        ${
+          showDesignedBy
+            ? `<p class="designed-by">${escapeHtml(designedByLabel)} ${escapeHtml(poweredBy)}</p>`
+            : ""
+        }
+        <p class="printed-by">By: ${escapeHtml(printedByName)}</p>
+      </div>
+      <span class="print-footer-right">${escapeHtml(pageLabel)}</span>
     </div>
   </footer>`;
 }

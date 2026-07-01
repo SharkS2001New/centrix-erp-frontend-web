@@ -1,4 +1,5 @@
 import { openPrintWindow } from "@/lib/open-print-window";
+import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import {
   buildReportWatermarkHtml,
   resolveReportBranding,
@@ -8,10 +9,10 @@ import { resolveLoadingSheetFooterLines } from "@/lib/loading-sheet-print-settin
 import {
   buildDocumentPrintEdgeFooterHtml,
   documentPrintEdgeFooterStyles,
-  DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN,
 } from "@/lib/document-print-edge-footer";
 import {
   orgPrintFontFamilyFromSettings,
+  orgPrintInkStyles,
   orgPrintPx,
 } from "@/lib/print-typography";
 
@@ -191,19 +192,20 @@ function buildLoadingListLineRows(lines) {
 function loadingSheetPrintStyles(generalSettings = null) {
   const px = (base, print = false) =>
     orgPrintPx(base, generalSettings, { variant: "loading_sheet", print });
-  const font = orgPrintFontFamilyFromSettings(generalSettings);
+  const font = orgPrintFontFamilyFromSettings(generalSettings, "loading_sheet");
   return `
-    @page { size: A4; margin: 12mm 12mm ${DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN} 12mm; }
+    @page { size: A4; margin: 0; }
     * { box-sizing: border-box; }
     html { height: 100%; }
     body {
       font-family: ${font};
-      color: #111;
+      color: #000;
       margin: 20px 28px;
       font-size: ${px(12)};
       line-height: 1.35;
       position: relative;
       min-height: 100%;
+      ${orgPrintInkStyles()}
     }
     .page {
       max-width: 900px;
@@ -336,7 +338,7 @@ function loadingSheetPrintStyles(generalSettings = null) {
       font-weight: 700;
       color: #334155;
     }
-    ${documentPrintEdgeFooterStyles()}
+    ${documentPrintEdgeFooterStyles(generalSettings, { variant: "loading_sheet" })}
     @media print {
       body { margin: 0; font-size: ${px(12, true)}; }
       .org-name { font-size: ${px(22, true)}; }
@@ -418,7 +420,7 @@ export function buildLoadingListHtml({
     ? `<div class="doc-footer">${escapeHtml(footerText)}</div>`
     : "";
   const printedAt = new Date().toLocaleString("en-GB");
-  const printedByName = printedBy ?? "—";
+  const printedByName = resolvePrintedByUser(printedBy) ?? "—";
 
   return `<!DOCTYPE html>
 <html>

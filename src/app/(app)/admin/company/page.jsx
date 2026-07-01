@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiRequest, ApiError, uploadOrganizationLogo } from "@/lib/api";
+import { apiRequest, ApiError, uploadOrganizationLogo, apiBaseOrigin } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
@@ -11,7 +11,7 @@ import {
   PrimaryButton,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
-import { EntityPhotoDisplay, organizationLogoFileUrl } from "@/components/media/entity-photo-display";
+import { EntityPhotoDisplay } from "@/components/media/entity-photo-display";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
 const EMPTY_FORM = {
@@ -129,11 +129,16 @@ export default function AdminCompanyPage() {
 
   async function handleLogoPick(e) {
     const file = e.target.files?.[0];
-    if (!file || !orgId) return;
+    if (!file) return;
+    if (!orgId) {
+      notifyError("Company profile is still loading. Please try again in a moment.");
+      return;
+    }
     setUploadingLogo(true);
     try {
-      await uploadOrganizationLogo(orgId, file, { uploadPath: logoUploadPath(orgId) });
-      setHasLogo(true);
+      const res = await uploadOrganizationLogo(orgId, file, { uploadPath: logoUploadPath(orgId) });
+      const uploaded = organizationFromResponse(res);
+      setHasLogo(Boolean(uploaded?.has_logo ?? true));
       notifySuccess("Logo uploaded.");
       await load();
     } catch (err) {
@@ -259,7 +264,11 @@ export default function AdminCompanyPage() {
             <div className="mt-4 flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 bg-slate-50">
               {hasLogo && orgId ? (
                 <EntityPhotoDisplay
-                  fileUrl={platformOrgId ? logoFileUrl(orgId) : organizationLogoFileUrl(orgId)}
+                  fileUrl={
+                    platformOrgId
+                      ? logoFileUrl(orgId)
+                      : `${apiBaseOrigin()}/api/v1/erp/organization/logo/file`
+                  }
                   alt="Company logo"
                   className="h-full w-full object-contain p-2"
                   placeholderClassName="px-2 text-center text-xs text-slate-400"

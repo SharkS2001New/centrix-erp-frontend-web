@@ -1,9 +1,22 @@
-/** Display name for "Printed By" on document footers. */
+import { getStoredUser } from "@/lib/auth-storage";
+
+function nameFromUserRecord(user) {
+  if (!user || typeof user !== "object") return null;
+  const name = user.full_name ?? user.name ?? user.username ?? null;
+  if (typeof name !== "string") return null;
+  const trimmed = name.trim();
+  return trimmed || null;
+}
+
+/** Display name for "Printed By" on document footers. Falls back to the logged-in user. */
 export function resolvePrintedByUser(userOrName) {
-  if (userOrName == null) return null;
   if (typeof userOrName === "string") {
     const trimmed = userOrName.trim();
-    return trimmed || null;
+    if (trimmed) return trimmed;
+  } else if (userOrName != null) {
+    const fromUser = nameFromUserRecord(userOrName);
+    if (fromUser) return fromUser;
   }
-  return userOrName.full_name ?? userOrName.username ?? null;
+
+  return nameFromUserRecord(getStoredUser());
 }

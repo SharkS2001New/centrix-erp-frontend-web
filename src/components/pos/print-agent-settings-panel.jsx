@@ -20,6 +20,7 @@ import {
   downloadPrintAgentMsi,
   printAgentInstallerHelp,
 } from "@/lib/print-agent-installer-download";
+import { LOCAL_PRINTING_ADMIN_LABEL } from "@/lib/local-printing";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
 function Toggle({ checked, onChange, label, description }) {
@@ -87,7 +88,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
     const next = savePrintAgentConfig(form);
     setForm(next);
     setSaved(true);
-    notifySuccess("Till print settings saved on this device.");
+    notifySuccess("Local print settings saved on this device.");
     if (next.enabled) {
       await refreshHealth(next);
     }
@@ -184,7 +185,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
   if (!ready) {
     return (
       <div className={shellClass} aria-busy="true">
-        <p className="theme-subtext text-sm">Loading till printing settings…</p>
+        <p className="theme-subtext text-sm">Loading local printing settings…</p>
       </div>
     );
   }
@@ -201,13 +202,13 @@ export function PrintAgentSettingsPanel({ compact = false }) {
     <form onSubmit={handleSave} className={shellClass}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="theme-heading text-lg font-medium">Till printing</h2>
+          <h2 className="theme-heading text-lg font-medium">{LOCAL_PRINTING_ADMIN_LABEL}</h2>
           <p className="theme-subtext mt-1 text-sm">
-            Silent receipt printing via Centrix Print Agent on this computer. Settings apply to this browser only.
+            Silent printing via Centrix Print Agent on this computer. Settings apply to this browser only.
           </p>
           <p className="theme-subtext mt-2 text-xs">
-            Install the agent <strong>once per till PC</strong> — not on every user laptop. Backoffice staff only need
-            the web app or installed ERP app; POS tills need the print agent for silent receipts.
+            Use this on any PC connected to a receipt or thermal printer — POS tills, backoffice counters, or
+            packing stations. Laptops that only use the normal print dialog do not need the agent.
           </p>
         </div>
         <span
@@ -228,7 +229,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
           checked={form.enabled}
           onChange={(v) => updateField("enabled", v)}
           label="Use Centrix Print Agent"
-          description="Send POS receipts to the local agent for silent printing on the till thermal printer."
+          description="Send receipts and thermal printouts to the local agent for silent printing."
         />
 
         {form.enabled ? (
@@ -278,9 +279,9 @@ export function PrintAgentSettingsPanel({ compact = false }) {
       </div>
 
       <div className="mt-5 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-sm">
-        <p className="theme-heading font-medium">Install on till PCs (admin / IT)</p>
+        <p className="theme-heading font-medium">Install on printer workstations (admin / IT)</p>
         <p className="theme-subtext mt-1 text-xs">
-          Only physical tills need the print agent — not every user laptop. Windows tills: use the MSI (recommended).
+          Install once on each PC that should print silently to a local USB or network receipt printer.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
@@ -301,19 +302,19 @@ export function PrintAgentSettingsPanel({ compact = false }) {
           </button>
         </div>
         <p className="theme-subtext mt-2 text-xs">
-          <strong>MSI:</strong> copy to till PC (or USB), double-click, Next → Install. Includes Node.js, Chromium,
-          and auto-start. <strong>Script:</strong> {installerHelp}
+          <strong>MSI:</strong> copy to the workstation (or USB), double-click, Next → Install. Includes Node.js,
+          Chromium, and auto-start. <strong>Script:</strong> {installerHelp}
         </p>
         <ol className="theme-subtext mt-3 list-decimal space-y-1 pl-4 text-xs">
-          <li>Install SumatraPDF on Windows tills for reliable silent printing (recommended).</li>
-          <li>On each till: enable agent below → <strong>Test print receipt</strong> → Save.</li>
+          <li>Install SumatraPDF on Windows for reliable silent printing (recommended).</li>
+          <li>On each printer PC: enable agent below → <strong>Test print receipt</strong> → Save.</li>
         </ol>
       </div>
 
       <div className="mt-4 rounded-lg border border-dashed border-[var(--theme-border)] px-4 py-3 text-xs">
         <p className="theme-heading font-medium">Offline / USB install</p>
         <p className="theme-subtext mt-1">
-          Copy the <code className="rounded bg-white/80 px-1">print-agent</code> folder to the till PC and run{" "}
+          Copy the <code className="rounded bg-white/80 px-1">print-agent</code> folder to the printer PC and run{" "}
           <code className="rounded bg-white/80 px-1">install-windows.bat</code> or{" "}
           <code className="rounded bg-white/80 px-1">./install.sh --autostart</code>.
         </p>
@@ -321,7 +322,7 @@ export function PrintAgentSettingsPanel({ compact = false }) {
 
       <div className="mt-5 flex flex-wrap gap-2">
         <PrimaryButton type="submit" showIcon={false}>
-          Save till settings
+          Save settings
         </PrimaryButton>
         <button
           type="button"

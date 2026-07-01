@@ -1,6 +1,4 @@
-/**
- * Print HTML via a hidden iframe (no visible new tab) or an optional popup window.
- */
+import { injectPrintDocumentBaseline } from "@/lib/print-document-baseline";
 
 export const PRINT_BLOCKED_MESSAGE =
   "Printing was blocked by your browser. Allow pop-ups for this site and try again.";
@@ -121,7 +119,8 @@ function loadHtmlIntoPrintTarget(win, htmlContent, onReady) {
 export function fillPrintWindow(win, htmlContent, { autoPrint = true } = {}) {
   if (!win || win.closed) return false;
 
-  const htmlWithoutScript = String(htmlContent).replace(/<script[\s\S]*?<\/script>/gi, "");
+  const preparedHtml = injectPrintDocumentBaseline(htmlContent);
+  const htmlWithoutScript = String(preparedHtml).replace(/<script[\s\S]*?<\/script>/gi, "");
 
   let printed = false;
   const triggerPrint = () => {
@@ -147,18 +146,8 @@ export function showPrintPreparing(win, message = "Preparing document…") {
   );
 }
 
-/** Print HTML: hidden iframe (receipts) or popup (reports/invoices). */
+/** Print HTML via a hidden iframe (no visible new tab). Avoids browser URL/date headers on popups. */
 export function openPrintWindow(htmlContent, windowFeatures = printWindowFeatures("receipt")) {
-  const parsed = parseWindowFeatures(windowFeatures);
-
-  // Wide documents need a real window — hidden zero-width iframes print blank.
-  if (parsed.width >= 600) {
-    const win = window.open("", "_blank", parsed.features || undefined);
-    if (!win) return null;
-    fillPrintWindow(win, htmlContent);
-    return win;
-  }
-
   const win = openBlankPrintWindow(windowFeatures);
   if (!win) return null;
   fillPrintWindow(win, htmlContent);

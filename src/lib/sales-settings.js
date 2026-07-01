@@ -71,7 +71,11 @@ const SALES_DEFAULTS = {
   },
   invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
   invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
-  stock_deduct_on: "order_created",
+  stock_deduct_on: {
+    pos: "order_created",
+    mobile: "order_completed",
+    backend: "order_completed",
+  },
 };
 
 export const STOCK_DEDUCT_TIMING_OPTIONS = [
@@ -150,6 +154,7 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   points_earn_per_kes: "1000",
   allow_edit_unit_price: true,
   allow_pos_edit_unit_price: false,
+  enable_barcode_scanner: false,
   default_tax_rate: "16",
   enable_mpesa_amount: true,
   enable_mpesa_code: false,
@@ -205,6 +210,7 @@ export function salesOrganizationFormFromApi(res) {
     points_earn_per_kes: String(sales.points_earn_per_kes ?? 1000),
     allow_edit_unit_price: Boolean(sales.allow_edit_unit_price),
     allow_pos_edit_unit_price: Boolean(sales.allow_pos_edit_unit_price),
+    enable_barcode_scanner: Boolean(sales.enable_barcode_scanner),
     default_tax_rate: String(sales.default_tax_rate ?? 16),
     enable_mpesa_amount: Boolean(sales.enable_mpesa_amount),
     enable_mpesa_code: Boolean(sales.enable_mpesa_code),
@@ -254,7 +260,38 @@ export function salesOrganizationFormFromApi(res) {
   };
 }
 
-export function salesOrganizationPayloadFromForm(form) {
+/** Clear sales form keys that do not apply to the organization's enabled modules. */
+export function sanitizeSalesOrganizationFormForModules(form, capabilities) {
+  const modules = capabilities?.modules ?? {};
+  const hasPosSales = Boolean(modules["sales.pos"]);
+  const hasCustomers = Boolean(modules.customers_suppliers);
+  const next = { ...form };
+
+  if (!hasPosSales) {
+    next.enable_credit_payment = false;
+    next.enable_checkout_customer_name = false;
+    next.allow_edit_line_discount = false;
+    next.allow_pos_edit_unit_price = false;
+    next.enable_barcode_scanner = false;
+    next.blind_till_close = false;
+    next.pos_order_type_mode = "normal";
+  }
+
+  if (!hasCustomers) {
+    next.enable_credit_payment = false;
+    next.add_route_markup_prices = false;
+    next.enable_redeemable_points = false;
+  }
+
+  if (next.allow_credit_pay_now && next.enable_credit_payment) {
+    next.enable_credit_payment = false;
+  }
+
+  return next;
+}
+
+export function salesOrganizationPayloadFromForm(form, capabilities = null) {
+  const sanitized = capabilities ? sanitizeSalesOrganizationFormForModules(form, capabilities) : form;
   const {
     order_document_type: _orderDocumentType,
     receipt_copies: _receiptCopies,
@@ -268,13 +305,13 @@ export function salesOrganizationPayloadFromForm(form) {
     invoice_print_delivery_terms: _invoicePrintDeliveryTerms,
     invoice_print_footer_lines: _invoicePrintFooterLines,
     ...checkoutForm
-  } = form;
+  } = sanitized;
 
   return {
     ...checkoutForm,
-    default_tax_rate: Number(form.default_tax_rate) || 0,
-    point_cash_value: Number(form.point_cash_value) || 0,
-    points_earn_per_kes: Number(form.points_earn_per_kes) || 0,
+    default_tax_rate: Number(sanitized.default_tax_rate) || 0,
+    point_cash_value: Number(sanitized.point_cash_value) || 0,
+    points_earn_per_kes: Number(sanitized.points_earn_per_kes) || 0,
   };
 }
 
@@ -378,11 +415,27 @@ export function resolveOrderPrintDocumentType(moduleSettings, explicitType) {
   return configured;
 }
 
-export function orderDocumentPrintLabel(moduleSettings) {
+export function orderDocumentPrintLabel(moduleSettings, capabilities = null) {
+  const hasExternalPos = Boolean(capabilities?.modules?.["sales.pos"]);
+  if (!hasExternalPos) {
+    return "Print";
+  }
   const type = getOrderDocumentType(moduleSettings);
   if (type === "both") return "Print";
   if (type === "invoice") return "Print invoice";
   return "Print receipt";
+}
+
+/** Orders list / row print — A4 invoice unless External POS is enabled. */
+export function defaultOrderListPrintDocumentType(moduleSettings, capabilities) {
+  if (!capabilities?.modules?.["sales.pos"]) {
+    return "invoice";
+  }
+  return resolveOrderPrintDocumentType(moduleSettings) ?? "receipt";
+}
+
+export function orderListPrintAriaLabel(capabilities) {
+  return capabilities?.modules?.["sales.pos"] ? "Print receipt" : "Print";
 }
 
 export function orderDocumentTitle(moduleSettings, documentType = null) {
@@ -467,11 +520,39 @@ export function mergeSalesSettings(moduleSettings) {
   return sales;
 }
 
-/** Stock deduction timing — lives on sales settings; legacy distribution key is fallback. */
-export function resolveStockDeductTiming(moduleSettings) {
+/** Stock deduction timing — per channel on sales settings; legacy string applies to all channels. */
+export function normalizeStockDeductOn(value, { hasPosSales = false, showCheckoutOnCreate = true } = {}) {
+  const allowed = new Set(STOCK_DEDUCT_TIMING_OPTIONS.map((o) => o.value));
+  const defaults = { ...SALES_DEFAULTS.stock_deduct_on };
+
+  let map;
+  if (typeof value === "string" && allowed.has(value)) {
+    map = { pos: value, mobile: value, backend: value };
+  } else if (value && typeof value === "object") {
+    map = { ...defaults, ...value };
+  } else {
+    map = { ...defaults };
+  }
+
+  for (const ch of ["pos", "mobile", "backend"]) {
+    if (!allowed.has(map[ch])) {
+      map[ch] = defaults[ch];
+    }
+  }
+
+  if (hasPosSales && showCheckoutOnCreate) {
+    map.pos = "order_created";
+  }
+
+  return map;
+}
+
+export function resolveStockDeductTiming(moduleSettings, channel = "backend") {
   const sales = mergeSalesSettings(moduleSettings);
-  if (sales.stock_deduct_on) {
-    return sales.stock_deduct_on;
+  const normalized = normalizeStockDeductOn(sales.stock_deduct_on);
+  const key = channel === "backoffice" ? "backend" : channel;
+  if (normalized[key]) {
+    return normalized[key];
   }
   const legacy = moduleSettings?.distribution?.deduct_stock_on;
   return legacy || "order_created";
@@ -530,12 +611,19 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     blindTillClose: Boolean(sales.blind_till_close),
     receiptCopies: Number(sales.receipt_copies ?? 1),
     showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
-    payment: getCheckoutPaymentConfig(moduleSettings),
+    payment: getCheckoutPaymentConfig(moduleSettings, {
+      checkoutContext: "pos",
+      capabilities: options.capabilities ?? null,
+    }),
   };
 }
 
-export function getCheckoutPaymentConfig(moduleSettings) {
+export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
   const sales = mergeSalesSettings(moduleSettings);
+  const modules = options.modules ?? options.capabilities?.modules ?? {};
+  const hasPosSales = Boolean(modules["sales.pos"]);
+  const hasCustomers = Boolean(modules.customers_suppliers);
+  const checkoutContext = options.checkoutContext ?? "pos";
   const useBankSelect = Boolean(sales.enable_bank_select);
   const individualBanks = !useBankSelect && (
     sales.enable_equity_bank || sales.enable_kcb_bank || sales.enable_other_bank
@@ -564,9 +652,19 @@ export function getCheckoutPaymentConfig(moduleSettings) {
     showCheque: Boolean(sales.enable_cheque),
     showChequeNumber: Boolean(sales.enable_cheque_number),
     enablePaymentDate: Boolean(sales.enable_payment_date),
-    enableCreditPayment: Boolean(sales.enable_credit_payment),
-    allowPartialPayment: Boolean(sales.allow_credit_pay_now),
-    enableCheckoutCustomerName: Boolean(sales.enable_checkout_customer_name),
+    enableCreditPayment:
+      checkoutContext === "pos" &&
+      hasPosSales &&
+      hasCustomers &&
+      Boolean(sales.enable_credit_payment),
+    allowPartialPayment:
+      checkoutContext === "order_payment" &&
+      Boolean(modules.sales) &&
+      Boolean(sales.allow_credit_pay_now),
+    enableCheckoutCustomerName:
+      checkoutContext === "pos" &&
+      hasPosSales &&
+      Boolean(sales.enable_checkout_customer_name),
     otherBankLabel,
     bankOptions,
     hasBankPayments: useBankSelect

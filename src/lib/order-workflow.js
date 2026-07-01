@@ -31,8 +31,16 @@ export const DEFAULT_ORDER_WORKFLOW = {
     partial: "pending_payment",
     unpaid: { pos: "unpaid", mobile: "unpaid", backend: "unpaid" },
   },
-  deduct_stock_on: "completed",
-  reserve_stock_on: "unpaid",
+  deduct_stock_on: {
+    pos: "completed",
+    mobile: "completed",
+    backend: "completed",
+  },
+  reserve_stock_on: {
+    pos: "unpaid",
+    mobile: "unpaid",
+    backend: "unpaid",
+  },
 };
 
 export const ORDER_STATUS_OPTIONS = [
@@ -48,6 +56,23 @@ export const ORDER_STATUS_OPTIONS = [
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
 ];
+
+const STOCK_CHANNELS = ["pos", "mobile", "backend"];
+
+/** Normalize legacy string or partial map to per-channel status map. */
+export function normalizeChannelStatusMap(value, fallback = "unpaid") {
+  const defaults = {};
+  for (const ch of STOCK_CHANNELS) {
+    defaults[ch] = typeof fallback === "object" ? (fallback[ch] ?? fallback.backend ?? "unpaid") : fallback;
+  }
+  if (typeof value === "string" && value) {
+    return { pos: value, mobile: value, backend: value };
+  }
+  if (value && typeof value === "object") {
+    return { ...defaults, ...value };
+  }
+  return defaults;
+}
 
 /** Drop transitions and status references that no longer exist in the pipeline. */
 export function sanitizeWorkflowReferences(workflow) {
@@ -75,12 +100,25 @@ export function sanitizeWorkflowReferences(workflow) {
     if (checkout.unpaid?.[ch]) checkout.unpaid[ch] = pickRef(checkout.unpaid[ch]);
   }
 
+  const reserve_stock_on = normalizeChannelStatusMap(
+    wf.reserve_stock_on,
+    DEFAULT_ORDER_WORKFLOW.reserve_stock_on,
+  );
+  const deduct_stock_on = normalizeChannelStatusMap(
+    wf.deduct_stock_on,
+    DEFAULT_ORDER_WORKFLOW.deduct_stock_on,
+  );
+  for (const ch of STOCK_CHANNELS) {
+    reserve_stock_on[ch] = pickRef(reserve_stock_on[ch]);
+    deduct_stock_on[ch] = pickRef(deduct_stock_on[ch]);
+  }
+
   return {
     ...wf,
     save_status,
     checkout,
-    deduct_stock_on: pickRef(wf.deduct_stock_on ?? DEFAULT_ORDER_WORKFLOW.deduct_stock_on),
-    reserve_stock_on: pickRef(wf.reserve_stock_on ?? DEFAULT_ORDER_WORKFLOW.reserve_stock_on),
+    reserve_stock_on,
+    deduct_stock_on,
   };
 }
 
@@ -105,8 +143,18 @@ function deepMergeWorkflow(base, custom) {
       out.checkout.unpaid = { ...out.checkout.unpaid, ...custom.checkout.unpaid };
     }
   }
-  if (custom.deduct_stock_on) out.deduct_stock_on = custom.deduct_stock_on;
-  if (custom.reserve_stock_on) out.reserve_stock_on = custom.reserve_stock_on;
+  if (custom.deduct_stock_on) {
+    out.deduct_stock_on = normalizeChannelStatusMap(
+      custom.deduct_stock_on,
+      out.deduct_stock_on,
+    );
+  }
+  if (custom.reserve_stock_on) {
+    out.reserve_stock_on = normalizeChannelStatusMap(
+      custom.reserve_stock_on,
+      out.reserve_stock_on,
+    );
+  }
   return out;
 }
 
@@ -610,23 +658,39 @@ export function workflowStatusFilterOptionsFromConfig(config) {
 
 const PAYMENT_STEP_KEYS = new Set(["unpaid", "pending_payment", "paid"]);
 
+/** Workflow steps where payment collection is the primary action (Unpaid / Partially paid). */
+export const PAYMENT_COLLECT_WORKFLOW_STATUSES = new Set(["unpaid", "pending_payment"]);
+
+export function isPaymentCollectWorkflowStatus(status) {
+  return PAYMENT_COLLECT_WORKFLOW_STATUSES.has(String(status ?? "").toLowerCase());
+}
+
 export function saleBalanceDue(sale, totalPaid = null) {
   const paid = totalPaid ?? Number(sale?.amount_paid ?? 0);
   return Math.max(0, Number(sale?.order_total ?? 0) - paid);
 }
 
+/**
+ * Whether staff should be offered "Collect payment" for this order.
+ * - Standard orders: only on Unpaid / Partially paid workflow steps with balance due.
+ * - Credit sales: also after fulfillment advances (e.g. dispatched) while balance remains.
+ */
 export function saleNeedsPaymentCollection(sale, totalPaid = null) {
-  if (!sale || sale.status === "cancelled") return false;
+  if (!sale || sale.status === "cancelled" || sale.status === "completed") return false;
   const balance = saleBalanceDue(sale, totalPaid);
   if (balance <= 0.01) return false;
-  const paymentStatus = String(sale.payment_status ?? "unpaid").toLowerCase();
+
   const workflowStatus = String(sale.status ?? "").toLowerCase();
-  return (
-    paymentStatus === "unpaid"
-    || paymentStatus === "partial"
-    || workflowStatus === "unpaid"
-    || workflowStatus === "pending_payment"
-  );
+  if (isPaymentCollectWorkflowStatus(workflowStatus)) {
+    return true;
+  }
+
+  if (Boolean(sale.is_credit_sale)) {
+    const paymentStatus = String(sale.payment_status ?? "unpaid").toLowerCase();
+    return paymentStatus === "unpaid" || paymentStatus === "partial";
+  }
+
+  return false;
 }
 
 /** Block manual workflow moves that skip recording payment. */
@@ -639,6 +703,56 @@ export function isPaymentGatedWorkflowTransition(sale, targetStatus, totalPaid =
   if (target === "paid") return true;
   if (target === "pending_payment" && paid <= 0.01) return true;
   return false;
+}
+
+/**
+ * Decide whether to show Collect payment vs advance workflow — never both at once.
+ */
+export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null) {
+  const status = String(sale?.status ?? "").toLowerCase();
+  if (!sale || status === "cancelled" || status === "completed") {
+    return { showCollectPayment: false, advanceStatus: null, balanceDue: 0 };
+  }
+
+  const balanceDue = saleBalanceDue(sale, totalPaid);
+  const canCollect = saleNeedsPaymentCollection(sale, totalPaid);
+  const advanceStatus = primaryWorkflowAdvanceStatus(status, workflow);
+  const onPaymentStep = isPaymentCollectWorkflowStatus(status);
+  const isCredit = Boolean(sale.is_credit_sale);
+  const advanceBlocked =
+    advanceStatus && isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid);
+  const advanceIsPaymentStep =
+    advanceStatus && PAYMENT_STEP_KEYS.has(String(advanceStatus).toLowerCase());
+
+  let showCollectPayment = false;
+
+  if (canCollect) {
+    if (advanceBlocked) {
+      showCollectPayment = true;
+    } else if (onPaymentStep && advanceIsPaymentStep) {
+      showCollectPayment = true;
+    } else if (onPaymentStep && !advanceStatus) {
+      showCollectPayment = true;
+    } else if (isCredit && !onPaymentStep) {
+      showCollectPayment = true;
+    }
+  }
+
+  let resolvedAdvance = null;
+  if (advanceStatus && !advanceBlocked) {
+    if (isCredit && onPaymentStep && !advanceIsPaymentStep) {
+      resolvedAdvance = advanceStatus;
+      showCollectPayment = false;
+    } else if (!showCollectPayment) {
+      resolvedAdvance = advanceStatus;
+    }
+  }
+
+  return {
+    showCollectPayment,
+    advanceStatus: resolvedAdvance,
+    balanceDue,
+  };
 }
 
 /** Timeline events from the org workflow pipeline (backend labels + step order). */
