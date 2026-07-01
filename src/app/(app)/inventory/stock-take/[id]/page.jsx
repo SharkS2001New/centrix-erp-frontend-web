@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { useQueuedTask } from "@/lib/use-queued-task";
+import { useAuth } from "@/contexts/auth-context";
 import {
   FormModal,
   PrimaryButton,
@@ -31,6 +32,10 @@ import {
   formatMixedStockDisplay,
   stockTakeCountsToBase,
 } from "@/lib/stock-uom";
+import {
+  printStockTakeSheet,
+  stockTakePrintRowsFromLines,
+} from "@/components/inventory/stock-take-print";
 
 function varianceClass(value) {
   if (value > 0) return "text-emerald-700";
@@ -41,6 +46,7 @@ function varianceClass(value) {
 export default function StockTakeSessionPage() {
   const params = useParams();
   const router = useRouter();
+  const { organization } = useAuth();
   const sessionId = params.id;
 
   const [session, setSession] = useState(null);
@@ -57,12 +63,12 @@ export default function StockTakeSessionPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [sess, loadedLines, prodRes, uomRes] = await Promise.all([
+      const [sess, loadedLines, productRows, uomRes] = await Promise.all([
         apiRequest(`/stock-take-sessions/${sessionId}`),
         fetchAllPaginatedRowsSmart("/stock-take-lines", {
           "filter[session_id]": sessionId,
         }),
-        apiRequest("/products", { searchParams: { per_page: 500 } }),
+        fetchAllPaginatedRowsSmart("/products"),
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
       ]);
       setSession(sess);
@@ -76,10 +82,10 @@ export default function StockTakeSessionPage() {
         allowedLocations.includes(line.stock_location),
       );
       setLines(filteredLines);
-      setProducts(prodRes.data ?? []);
+      setProducts(productRows);
       setUoms(uomRes.data ?? []);
 
-      const prodMap = new Map((prodRes.data ?? []).map((p) => [p.product_code, p]));
+      const prodMap = new Map(productRows.map((p) => [p.product_code, p]));
       const uomMap = new Map((uomRes.data ?? []).map((u) => [u.id, u]));
       const initial = {};
       for (const line of filteredLines) {
@@ -139,7 +145,7 @@ export default function StockTakeSessionPage() {
         const meta = productMeta(line.product_code);
         row = {
           product_code: line.product_code,
-          product_name: product?.product_name ?? line.product_code,
+          product_name: line.product_name ?? product?.product_name ?? line.product_code,
           ...meta,
           shop: null,
           store: null,
@@ -245,6 +251,15 @@ export default function StockTakeSessionPage() {
 
   const readOnly = session?.status === "completed";
 
+  function handlePrint() {
+    printStockTakeSheet({
+      session,
+      rows: stockTakePrintRowsFromLines(lines, productByCode, uomById),
+      organization,
+      blankCounted: true,
+    });
+  }
+
   function locationCells(line, uom) {
     if (!line) {
       return (
@@ -306,21 +321,31 @@ export default function StockTakeSessionPage() {
           : "Count products and reconcile variances"
       }
       action={
-        !readOnly ? (
-          <div className="flex flex-wrap gap-2">
-            <PrimaryButton type="button" showIcon={false} onClick={saveCounts} disabled={saving || !dirty}>
-              {saving ? "Saving…" : "Save counts"}
-            </PrimaryButton>
-            <button
-              type="button"
-              onClick={() => setCompleteOpen(true)}
-              disabled={!lines.length || dirty || saving}
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
-            >
-              Close stock take
-            </button>
-          </div>
-        ) : null
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handlePrint}
+            disabled={loading || !lines.length}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Print count sheet
+          </button>
+          {!readOnly ? (
+            <>
+              <PrimaryButton type="button" showIcon={false} onClick={saveCounts} disabled={saving || !dirty}>
+                {saving ? "Saving…" : "Save counts"}
+              </PrimaryButton>
+              <button
+                type="button"
+                onClick={() => setCompleteOpen(true)}
+                disabled={!lines.length || dirty || saving}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Close stock take
+              </button>
+            </>
+          ) : null}
+        </div>
       }
     >
       <div className="mb-4 space-y-1">
@@ -432,7 +457,7 @@ export default function StockTakeSessionPage() {
               return (
                 <li key={item.line.id} className="flex justify-between px-3 py-2">
                   <span>
-                    {product?.product_name ?? item.line.product_code}{" "}
+                    {item.line.product_name ?? product?.product_name ?? item.line.product_code}{" "}
                     <span className="text-slate-400 capitalize">({item.location})</span>
                   </span>
                   <span className={varianceClass(item.varianceBase)}>

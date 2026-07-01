@@ -501,7 +501,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "accounting",
         permission: P.accounting.bank_reconciliation.view,
         group: "General ledger",
-        requireNativeAccounting: true,
       },
       {
         href: "/accounting/trial-balance",

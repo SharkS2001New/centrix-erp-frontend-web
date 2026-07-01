@@ -124,7 +124,6 @@ export const NATIVE_ACCOUNTING_ROUTE_PREFIXES = [
   "/accounting/chart-of-accounts",
   "/accounting/journal-entries",
   "/accounting/general-ledger",
-  "/accounting/bank-reconciliation",
   "/accounting/trial-balance",
   "/accounting/balance-sheet",
   "/accounting/profit-loss",
