@@ -74,6 +74,7 @@ export function OrganizationSettingsContent({
     setMessage,
     onAfterSave,
     capabilities,
+    platformManaged,
   };
 
   const body = (

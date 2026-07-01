@@ -9,6 +9,7 @@ import {
   sanitizeSalesOrganizationFormForModules,
 } from "@/lib/sales-settings";
 import { PlatformConfiguredSalesSummary } from "@/components/admin/platform-configured-summary";
+import { OrdersListDefaultsFields } from "@/components/admin/orders-list-defaults-fields";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import {
   isPlatformCheckoutOnCreateEnabled,
@@ -523,6 +524,7 @@ export function SalesSettingsPanel({
   setError,
   setMessage,
   onAfterSave,
+  platformManaged = false,
 }) {
   const { settingsPath } = useSettingsApi();
   const [salesForm, setSalesForm] = useState(EMPTY_SALES_ORGANIZATION_FORM);
@@ -595,6 +597,22 @@ export function SalesSettingsPanel({
         ) : (
           <div className="mt-5 space-y-5">
             <PlatformConfiguredSalesSummary capabilities={capabilities} />
+            {platformManaged ? (
+              <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <h3 className="text-sm font-semibold text-slate-900">Orders list defaults</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Platform-only: initial date range and sort when staff open Sales → Orders and workflow
+                  queues.
+                </p>
+                <div className="mt-4">
+                  <OrdersListDefaultsFields
+                    value={salesForm}
+                    onChange={setSalesForm}
+                    idPrefix="settings-orders-list"
+                  />
+                </div>
+              </section>
+            ) : null}
             <SalesSettingsTabBar tabs={visibleTabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
             {activeTab === "checkout" ? (

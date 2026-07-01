@@ -9,8 +9,9 @@ import {
   OrderWorkflowSettingsEditor,
   orderWorkflowFromApi,
 } from "@/components/admin/order-workflow-settings";
-import { DEFAULT_ORDER_WORKFLOW } from "@/lib/order-workflow";
-import { normalizeStockDeductOn } from "@/lib/sales-settings";
+import { DEFAULT_ORDER_WORKFLOW, workflowPipelineSteps } from "@/lib/order-workflow";
+import { normalizeStockDeductOn, normalizeOrdersListDefaultDays, normalizeOrdersListSort } from "@/lib/sales-settings";
+import { OrdersListDefaultsFields } from "@/components/admin/orders-list-defaults-fields";
 import {
   DOMAIN_MODULE_ORDER,
   buildDomainChildrenMap,
@@ -234,6 +235,11 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
     reserve_stock_on_cart: true,
     cart_reservation_ttl_minutes: "15",
+    orders_list_default_days: "5",
+    orders_list_sort: "-created_at",
+    order_expiry_enabled: true,
+    order_expiry_days: "5",
+    order_expiry_before_status: "processed",
   };
 }
 
@@ -260,6 +266,13 @@ export function salesPlatformFromApi(apiPayload) {
       apiPayload.cart_reservation_ttl_minutes != null && apiPayload.cart_reservation_ttl_minutes !== ""
         ? String(Math.min(15, Math.max(0, Number(apiPayload.cart_reservation_ttl_minutes) || 0)))
         : "15",
+    orders_list_default_days: String(normalizeOrdersListDefaultDays(apiPayload.orders_list_default_days)),
+    orders_list_sort: normalizeOrdersListSort(apiPayload.orders_list_sort),
+    order_expiry_enabled: apiPayload.order_expiry_enabled !== false,
+    order_expiry_days: String(
+      Math.min(90, Math.max(1, Number(apiPayload.order_expiry_days) || 5)),
+    ),
+    order_expiry_before_status: String(apiPayload.order_expiry_before_status ?? "processed"),
   };
 }
 
@@ -280,6 +293,7 @@ export function OrganizationPlatformSalesSettings({
   const showCheckout = salesPlatform?.show_checkout_on_create_order !== false;
 
   return (
+    <>
     <PlatformFormSection title="Sales behaviour" description={description}>
       {!salesEnabled ? (
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -374,6 +388,19 @@ export function OrganizationPlatformSalesSettings({
         </div>
       )}
     </PlatformFormSection>
+    {salesEnabled ? (
+      <PlatformFormSection
+        title="Orders list"
+        description="Default date range and sort order when staff open Sales → Orders and workflow order queues."
+      >
+        <OrdersListDefaultsFields
+          value={salesPlatform}
+          onChange={onChange}
+          idPrefix="platform-orders-list"
+        />
+      </PlatformFormSection>
+    ) : null}
+  </>
   );
 }
 
@@ -392,6 +419,10 @@ export function OrganizationOrderWorkflowSettings({
     showCheckoutOnCreate: showCheckout,
   });
   const reserveStockOnCart = salesPlatform?.reserve_stock_on_cart !== false;
+  const expiryPipelineSteps = useMemo(
+    () => workflowPipelineSteps(wf).filter((step) => step.key !== "cancelled" && step.key !== "expired"),
+    [wf],
+  );
 
   function patch(partial) {
     onChange?.({ ...salesPlatform, ...partial });
@@ -444,6 +475,59 @@ export function OrganizationOrderWorkflowSettings({
                     How long stock stays held on an open cart (max 15 minutes). Use 0 for no expiry.
                   </p>
                 </OrgRegisterField>
+              ) : null}
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stale order expiry</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Unprocessed orders are moved to Expired automatically after the configured number of days.
+              Expired and cancelled orders are excluded from active order counts and revenue totals.
+            </p>
+            <div className="mt-3 space-y-3">
+              <Toggle
+                label="Auto-expire stale orders"
+                checked={salesPlatform?.order_expiry_enabled !== false}
+                onChange={(v) => patch({ order_expiry_enabled: v })}
+              />
+              {salesPlatform?.order_expiry_enabled !== false ? (
+                <>
+                  <OrgRegisterField label="Expire after (days without processing)">
+                    <input
+                      type="number"
+                      min={1}
+                      max={90}
+                      step={1}
+                      className={inputClass}
+                      value={salesPlatform?.order_expiry_days ?? "5"}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === "") {
+                          patch({ order_expiry_days: "" });
+                          return;
+                        }
+                        const parsed = Math.min(90, Math.max(1, Number(raw) || 5));
+                        patch({ order_expiry_days: String(parsed) });
+                      }}
+                    />
+                  </OrgRegisterField>
+                  <OrgRegisterField label="Still in pipeline before">
+                    <select
+                      className={inputClass}
+                      value={salesPlatform?.order_expiry_before_status ?? "processed"}
+                      onChange={(e) => patch({ order_expiry_before_status: e.target.value })}
+                    >
+                      {expiryPipelineSteps.map((step) => (
+                        <option key={step.key} value={step.key}>
+                          {step.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Orders in earlier stages (e.g. booked, pending) are expired once the day limit passes.
+                    </p>
+                  </OrgRegisterField>
+                </>
               ) : null}
             </div>
           </div>

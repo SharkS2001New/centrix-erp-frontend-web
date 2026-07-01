@@ -19,6 +19,12 @@ export function receiveBaseForLine(lineId, uom, counts) {
   return stockTakeCountsToBase(byKey, uom);
 }
 
+/** UOM for manual receipt lines — prefer snapshot from add time (search results). */
+export function uomForManualReceiveLine(line, uomById) {
+  if (line?.unit_uom) return line.unit_uom;
+  return line?.unit_id ? uomById.get(line.unit_id) ?? null : null;
+}
+
 /** Open qty on PO line in base units: ordered − already received − returns. */
 export function lpoLineOpenRemainingBase(line, uom) {
   const orderedBase = displayToBaseQty(Number(line.ordered_qty ?? 0), uom);

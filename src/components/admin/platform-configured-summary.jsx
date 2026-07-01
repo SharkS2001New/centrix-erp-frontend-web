@@ -7,12 +7,22 @@ import {
   isPlatformCheckoutOnCreateEnabled,
   isPlatformMobileOrdersEnabled,
 } from "@/lib/platform-org-features";
+import {
+  getOrdersListSort,
+  normalizeOrdersListDefaultDays,
+  ORDERS_LIST_SORT_OPTIONS,
+} from "@/lib/sales-settings";
 
 export function PlatformConfiguredSalesSummary({ capabilities: capabilitiesProp }) {
   const { capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
   const sales = capabilities?.module_settings?.sales ?? {};
   const workflow = sales.order_workflow;
+  const ordersListDays = normalizeOrdersListDefaultDays(sales.orders_list_default_days);
+  const ordersListSortLabel = useMemo(() => {
+    const sort = getOrdersListSort(capabilities?.module_settings);
+    return ORDERS_LIST_SORT_OPTIONS.find((option) => option.value === sort)?.label ?? sort;
+  }, [capabilities?.module_settings]);
   const pipeline = useMemo(
     () =>
       workflowPipelineSteps({
@@ -56,6 +66,9 @@ export function PlatformConfiguredSalesSummary({ capabilities: capabilitiesProp 
             {pipeline.map((s) => s.label).join(" → ")}
           </li>
         ) : null}
+        <li>
+          <span className="font-medium">Orders list:</span> Last {ordersListDays} days · {ordersListSortLabel}
+        </li>
       </ul>
     </div>
   );

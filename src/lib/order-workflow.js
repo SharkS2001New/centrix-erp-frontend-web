@@ -55,6 +55,7 @@ export const ORDER_STATUS_OPTIONS = [
   { value: "delivered", label: "Delivered" },
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
+  { value: "expired", label: "Expired" },
 ];
 
 const STOCK_CHANNELS = ["pos", "mobile", "backend"];
@@ -537,6 +538,7 @@ export function workflowListableStatusKeys(workflow) {
     }
   }
   keys.add("cancelled");
+  keys.add("expired");
   return keys;
 }
 
@@ -548,7 +550,10 @@ export function matchesWorkflowStatusFilter(sale, statusFilter, workflow) {
   return workflowListableStatusKeys(workflow).has(status);
 }
 
-const QUEUE_EXCLUDED_STATUSES = new Set(["draft", "held", "cancelled"]);
+/** Orders excluded from pipeline queues and active-order metrics. */
+export const ORDER_METRICS_EXCLUDED_STATUSES = new Set(["cancelled", "expired"]);
+
+const QUEUE_EXCLUDED_STATUSES = new Set(["draft", "held", "cancelled", "expired"]);
 
 export function salesOrderQueueTitle(pageName) {
   const trimmed = String(pageName ?? "").trim();
@@ -595,6 +600,15 @@ export function salesOrderQueueNavItems(workflow, { includeMobile = false } = {}
   return items;
 }
 
+/** Distribution workspace — route orders plus terminal queues. */
+export function distributionOrderQueueNavItems() {
+  return [
+    { slug: "all", label: "Route orders", href: "/fulfillment/orders" },
+    { slug: "cancelled", label: "Cancelled orders", href: "/fulfillment/orders/cancelled" },
+    { slug: "expired", label: "Expired orders", href: "/fulfillment/orders/expired" },
+  ];
+}
+
 export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true } = {}) {
   if (!slug || slug === "all") {
     return {
@@ -621,6 +635,36 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true } 
       showDeliveryDateColumn: true,
       lockStatusFilter: false,
       lockSourceFilter: true,
+    };
+  }
+  if (slug === "cancelled") {
+    return {
+      slug: "cancelled",
+      title: salesOrderQueueTitle("Cancelled"),
+      subtitle: "Orders cancelled manually or voided before completion",
+      fixedStatusFilter: "cancelled",
+      fixedSourceFilter: null,
+      showRouteColumn: true,
+      showDeliveryDateColumn: true,
+      lockStatusFilter: true,
+      lockSourceFilter: false,
+      dateRangeDays: 30,
+      excludeFromMetrics: true,
+    };
+  }
+  if (slug === "expired") {
+    return {
+      slug: "expired",
+      title: salesOrderQueueTitle("Expired"),
+      subtitle: "Orders auto-closed after sitting too long without being processed",
+      fixedStatusFilter: "expired",
+      fixedSourceFilter: null,
+      showRouteColumn: true,
+      showDeliveryDateColumn: true,
+      lockStatusFilter: true,
+      lockSourceFilter: false,
+      dateRangeDays: 30,
+      excludeFromMetrics: true,
     };
   }
   const step = workflowPipelineSteps(workflow).find((s) => s.key === slug);
@@ -653,6 +697,9 @@ export function workflowStatusFilterOptionsFromConfig(config) {
   if (!seen.has("cancelled")) {
     options.push({ value: "cancelled", label: "Cancelled" });
   }
+  if (!seen.has("expired")) {
+    options.push({ value: "expired", label: "Expired" });
+  }
   return options;
 }
 
@@ -676,7 +723,7 @@ export function saleBalanceDue(sale, totalPaid = null) {
  * - Credit sales: also after fulfillment advances (e.g. dispatched) while balance remains.
  */
 export function saleNeedsPaymentCollection(sale, totalPaid = null) {
-  if (!sale || sale.status === "cancelled" || sale.status === "completed") return false;
+  if (!sale || sale.status === "cancelled" || sale.status === "expired" || sale.status === "completed") return false;
   const balance = saleBalanceDue(sale, totalPaid);
   if (balance <= 0.01) return false;
 
@@ -695,7 +742,7 @@ export function saleNeedsPaymentCollection(sale, totalPaid = null) {
 
 /** Block manual workflow moves that skip recording payment. */
 export function isPaymentGatedWorkflowTransition(sale, targetStatus, totalPaid = null) {
-  if (!sale || sale.status === "cancelled") return false;
+  if (!sale || sale.status === "cancelled" || sale.status === "expired") return false;
   const target = String(targetStatus ?? "").toLowerCase();
   const balance = saleBalanceDue(sale, totalPaid);
   const paid = totalPaid ?? Number(sale.amount_paid ?? 0);
@@ -710,7 +757,7 @@ export function isPaymentGatedWorkflowTransition(sale, targetStatus, totalPaid =
  */
 export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null) {
   const status = String(sale?.status ?? "").toLowerCase();
-  if (!sale || status === "cancelled" || status === "completed") {
+  if (!sale || status === "cancelled" || status === "expired" || status === "completed") {
     return { showCollectPayment: false, advanceStatus: null, balanceDue: 0 };
   }
 
@@ -823,6 +870,18 @@ export function buildOrderWorkflowTimeline(sale, workflow, options = {}) {
       title: workflowStatusLabel(workflow, "cancelled"),
       detail: "This order was cancelled.",
       at: sale.cancelled_at ?? sale.updated_at ?? sale.created_at,
+      actor,
+      complete: false,
+      cancelled: true,
+    });
+  }
+
+  if (currentStatus === "expired") {
+    events.push({
+      key: "expired",
+      title: workflowStatusLabel(workflow, "expired"),
+      detail: "This order expired automatically after sitting too long without being processed.",
+      at: sale.expired_at ?? sale.updated_at ?? sale.created_at,
       actor,
       complete: false,
       cancelled: true,

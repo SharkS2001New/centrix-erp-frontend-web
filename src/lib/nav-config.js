@@ -743,6 +743,18 @@ const NAV_SECTION_DEFINITIONS = [
         module: "distribution",
         permission: P.sales.orders.view,
       },
+      {
+        href: "/fulfillment/orders/cancelled",
+        label: "Cancelled orders",
+        module: "distribution",
+        permission: P.sales.orders.view,
+      },
+      {
+        href: "/fulfillment/orders/expired",
+        label: "Expired orders",
+        module: "distribution",
+        permission: P.sales.orders.view,
+      },
     ],
   },
   {

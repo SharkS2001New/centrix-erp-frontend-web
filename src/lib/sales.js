@@ -16,6 +16,7 @@ export const SALE_STATUS_LABELS = Object.fromEntries(
 SALE_STATUS_LABELS.draft = "Draft";
 SALE_STATUS_LABELS.held = "Held";
 SALE_STATUS_LABELS.cancelled = "Cancelled";
+SALE_STATUS_LABELS.expired = "Expired";
 
 export const PAYMENT_STATUS_LABELS = {
   unpaid: "Unpaid",

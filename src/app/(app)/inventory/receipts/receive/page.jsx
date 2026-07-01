@@ -26,6 +26,7 @@ import {
   lpoLineOpenRemainingBase,
   packQtyFromReceiveBase,
   receiveBaseForLine,
+  uomForManualReceiveLine,
 } from "@/components/inventory/lpo-receive-stock";
 import { formatQty, InventoryPageShell } from "@/components/inventory/inventory-shared";
 import { uomStockTakeLevels } from "@/lib/uom-packaging";
@@ -102,8 +103,11 @@ export default function ReceiveStockPage() {
 
   function addManualProduct(product) {
     if (manualLines.some((l) => l.product_code === product.product_code)) return;
-    setManualLines((prev) => [...prev, lineFromEnrichedProduct(product)]);
     const uom = product.uom ?? uomById.get(product.unit_id);
+    setManualLines((prev) => [
+      ...prev,
+      { ...lineFromEnrichedProduct(product), unit_uom: uom ?? null },
+    ]);
     const levels = uomStockTakeLevels(uom);
     setReceiveCounts((prev) => ({
       ...prev,
@@ -201,8 +205,7 @@ export default function ReceiveStockPage() {
   async function submitManual(e) {
     e.preventDefault();
     const toPost = manualLines.filter((line) => {
-      const product = productByCode.get(line.product_code);
-      const uom = product ? uomById.get(product.unit_id) : null;
+      const uom = uomForManualReceiveLine(line, uomById);
       return receiveBaseForLine(line.product_code, uom, receiveCounts) > 0;
     });
     if (toPost.length === 0) {
@@ -214,8 +217,8 @@ export default function ReceiveStockPage() {
     setSaving(true);
     try {
       for (const line of toPost) {
+        const uom = uomForManualReceiveLine(line, uomById);
         const product = productByCode.get(line.product_code);
-        const uom = product ? uomById.get(product.unit_id) : null;
         const receiveBase = receiveBaseForLine(line.product_code, uom, receiveCounts);
         await apiRequest("/inventory/receive", {
           method: "POST",
@@ -223,6 +226,7 @@ export default function ReceiveStockPage() {
             product_code: line.product_code,
             branch_id: branchId,
             units_received: receiveBase,
+            pack_qty: packQtyFromReceiveBase(receiveBase, uom),
             stock_location: form.stock_location,
             cost_price: line.cost_price
               ? Number(line.cost_price)
@@ -485,7 +489,7 @@ export default function ReceiveStockPage() {
               ]}
               emptyMessage="Search and add products received."
               renderCells={(line, index) => {
-                const uom = uomById.get(line.unit_id);
+                const uom = uomForManualReceiveLine(line, uomById);
                 return (
                   <>
                     <td className="px-3 py-2">

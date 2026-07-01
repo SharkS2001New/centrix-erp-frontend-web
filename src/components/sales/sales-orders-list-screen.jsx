@@ -28,7 +28,7 @@ import {
   PaginationBar,
   SearchInput,
 } from "@/components/catalog/catalog-shared";
-import { isoDate } from "@/components/inventory/inventory-shared";
+import { defaultDateRange, isoDate } from "@/components/inventory/inventory-shared";
 import { orderTableColumnCount } from "@/components/sales/sales-orders-columns";
 import {
   orderSourceFilterOptions,
@@ -46,8 +46,11 @@ import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import {
   defaultOrderListPrintDocumentType,
+  getOrdersListDefaultDateRange,
+  getOrdersListSort,
   isOrgMobileSalesEnabled,
   orderListPrintAriaLabel,
+  sortOrdersForList,
 } from "@/lib/sales-settings";
 import {
   disposePrintWindow,
@@ -65,7 +68,6 @@ import {
 import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { usePosSession } from "@/contexts/pos-session-context";
-
 
 function indexPaymentRefs(payments) {
   const map = new Map();
@@ -113,10 +115,11 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [minTotalFilter, setMinTotalFilter] = useState("");
-  const [fromDate, setFromDate] = useState(() => isoDate());
-  const [toDate, setToDate] = useState(() => isoDate());
-  const [appliedFromDate, setAppliedFromDate] = useState(() => isoDate());
-  const [appliedToDate, setAppliedToDate] = useState(() => isoDate());
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [appliedFromDate, setAppliedFromDate] = useState("");
+  const [appliedToDate, setAppliedToDate] = useState("");
+  const [listFiltersInitialized, setListFiltersInitialized] = useState(false);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(15);
   const [detailsById, setDetailsById] = useState({});
@@ -138,6 +141,22 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   const effectiveSourceFilter = queueConfig?.lockSourceFilter
     ? queueConfig.fixedSourceFilter
     : sourceFilter;
+
+  const ordersListSort = useMemo(
+    () => getOrdersListSort(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
+
+  useEffect(() => {
+    const range = queueConfig?.dateRangeDays
+      ? defaultDateRange(queueConfig.dateRangeDays)
+      : getOrdersListDefaultDateRange(capabilities?.module_settings);
+    setFromDate(range.from);
+    setToDate(range.to);
+    setAppliedFromDate(range.from);
+    setAppliedToDate(range.to);
+    setListFiltersInitialized(true);
+  }, [capabilities?.module_settings, queueConfig?.dateRangeDays, queueSlug]);
 
   useEffect(() => {
     if (!includeMobileOrders && sourceFilter === "mobile") {
@@ -214,6 +233,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   });
 
   const loadOrders = useCallback(async () => {
+    if (!listFiltersInitialized) return;
     setListLoading(true);
     try {
       const filters = {};
@@ -227,8 +247,14 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       const extra = {
         exclude_status: "held",
         with_items: 1,
+        sort: ordersListSort,
       };
-      if (routeOrdersOnly) extra.route_orders = 1;
+      if (routeOrdersOnly) {
+        extra.route_orders = 1;
+        if (!queueConfig?.lockStatusFilter) {
+          extra.exclude_statuses = "cancelled,expired";
+        }
+      }
       if (appliedFromDate) extra.from_date = appliedFromDate;
       if (appliedToDate) extra.to_date = appliedToDate;
       if (minTotalFilter) extra.min_order_total = minTotalFilter;
@@ -245,7 +271,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       });
       const res = await apiRequest("/sales", { searchParams });
       const parsed = parsePaginator(res);
-      const list = parsed.items;
+      const list = sortOrdersForList(parsed.items, ordersListSort);
 
       setRows(list);
       setTotalOrders(parsed.total);
@@ -284,6 +310,8 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
     queueConfig,
     routeOrdersOnly,
     minTotalFilter,
+    listFiltersInitialized,
+    ordersListSort,
   ]);
 
   useEffect(() => {
@@ -354,7 +382,9 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   function viewOrder(sale) {
     if (!sale?.id) return;
     const from = routeOrdersOnly
-      ? "/fulfillment/orders"
+      ? queueSlug
+        ? `/fulfillment/orders/${queueSlug}`
+        : "/fulfillment/orders"
       : queueSlug
         ? `/sales/orders/queues/${queueSlug}`
         : "/sales/orders";
@@ -587,12 +617,13 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       navigationReady={!loading}
       title={
         routeOrdersOnly
-          ? "Route orders"
+          ? (queueConfig?.title ?? "Route orders")
           : queueConfig?.title ?? "View All Orders"
       }
       subtitle={
         routeOrdersOnly
-          ? "Mobile field sales and POS route orders awaiting dispatch and delivery"
+          ? (queueConfig?.subtitle
+            ?? "Mobile field sales and POS route orders awaiting dispatch and delivery")
           : queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"
       }
       action={

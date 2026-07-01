@@ -540,13 +540,26 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         setBranchName(null);
       }
 
-      if (saleData.cashier_id != null) {
-        try {
-          const user = await apiRequest(`/users/${saleData.cashier_id}`);
-          setCashierName(user.name ?? user.full_name ?? user.username ?? null);
-        } catch {
-          setCashierName(null);
+      const inlineActorName = saleData.created_by_name ?? saleData.cashier_name ?? null;
+      if (inlineActorName) {
+        setCashierName(inlineActorName);
+      } else if (saleData.created_by != null || saleData.cashier_id != null) {
+        const actorIds = [
+          ...new Set(
+            [saleData.created_by, saleData.cashier_id].filter((id) => id != null && id !== ""),
+          ),
+        ];
+        let resolvedName = null;
+        for (const actorId of actorIds) {
+          try {
+            const actor = await apiRequest(`/users/${actorId}`);
+            resolvedName = actor.full_name ?? actor.name ?? actor.username ?? null;
+            if (resolvedName) break;
+          } catch {
+            // try next id
+          }
         }
+        setCashierName(resolvedName);
       } else {
         setCashierName(null);
       }
@@ -642,7 +655,6 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         capabilities,
         customer,
         branch: branchName ? { name: branchName } : null,
-        preparedBy: cashierName,
         user,
         uomById,
         printWindow,

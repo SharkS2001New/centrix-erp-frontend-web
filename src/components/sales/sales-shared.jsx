@@ -31,6 +31,7 @@ const SALE_STATUS_TONES = {
   delivered: "bg-teal-50 text-teal-800 ring-teal-600/20",
   completed: "bg-emerald-50 text-emerald-800 ring-emerald-600/20",
   cancelled: "bg-red-50 text-red-700 ring-red-600/20",
+  expired: "bg-orange-50 text-orange-800 ring-orange-600/20",
 };
 
 const PAYMENT_STATUS_TONES = {

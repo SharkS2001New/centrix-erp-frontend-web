@@ -41,8 +41,61 @@ function EyeOffIcon({ className = "h-4 w-4" }) {
   );
 }
 
-export function PasswordInput({ className = "", ...props }) {
+/** Remove trailing newlines/spaces often included when copying from chat or email. */
+export function normalizePasswordClipboardText(value) {
+  if (typeof value !== "string") return value;
+  return value
+    .replace(/\uFEFF/g, "")
+    .replace(/^[\s\u0000-\u001F\u007F]+|[\s\u0000-\u001F\u007F]+$/g, "");
+}
+
+function dispatchValueChange(input, value, onChange) {
+  if (!onChange) return;
+  onChange({
+    ...({ target: input }),
+    target: {
+      ...input,
+      value,
+      name: input.name,
+      type: input.type,
+    },
+  });
+}
+
+export function PasswordInput({
+  className = "",
+  onChange,
+  onPaste,
+  onInput,
+  ...props
+}) {
   const [visible, setVisible] = useState(false);
+
+  function handlePaste(e) {
+    onPaste?.(e);
+    if (e.defaultPrevented || !onChange) return;
+
+    const raw = e.clipboardData?.getData("text/plain");
+    if (raw == null) return;
+
+    const cleaned = normalizePasswordClipboardText(raw);
+    if (cleaned === raw) return;
+
+    e.preventDefault();
+    const input = e.currentTarget;
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    const next = `${input.value.slice(0, start)}${cleaned}${input.value.slice(end)}`;
+    dispatchValueChange(input, next, onChange);
+  }
+
+  function handleChange(e) {
+    onChange?.(e);
+  }
+
+  function handleInput(e) {
+    onInput?.(e);
+  }
 
   return (
     <div className="relative">
@@ -50,10 +103,14 @@ export function PasswordInput({ className = "", ...props }) {
         {...props}
         type={visible ? "text" : "password"}
         className={`${className} pr-10`.trim()}
+        onChange={handleChange}
+        onInput={handleInput}
+        onPaste={handlePaste}
       />
       <button
         type="button"
         onClick={() => setVisible((v) => !v)}
+        onMouseDown={(e) => e.preventDefault()}
         className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
         aria-label={visible ? "Hide password" : "Show password"}
         tabIndex={-1}

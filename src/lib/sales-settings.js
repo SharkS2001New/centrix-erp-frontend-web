@@ -3,6 +3,7 @@ import {
   DEFAULT_INVOICE_FOOTER_LINES,
   invoicePrintFormFromApi,
 } from "@/lib/invoice-print-settings";
+import { defaultDateRange } from "@/components/inventory/inventory-shared";
 import {
   DEFAULT_POS_RECEIPT_PAYMENT_LINES,
   receiptPaymentDetailsFromApi,
@@ -76,7 +77,71 @@ const SALES_DEFAULTS = {
     mobile: "order_completed",
     backend: "order_completed",
   },
+  orders_list_default_days: 5,
+  orders_list_sort: "-created_at",
 };
+
+export const ORDERS_LIST_SORT_OPTIONS = [
+  { value: "-created_at", label: "Newest first (order date)" },
+  { value: "created_at", label: "Oldest first (order date)" },
+  { value: "-order_num", label: "Highest order number first" },
+  { value: "order_num", label: "Lowest order number first" },
+];
+
+const ORDERS_LIST_SORT_VALUES = new Set(ORDERS_LIST_SORT_OPTIONS.map((option) => option.value));
+
+export function normalizeOrdersListDefaultDays(value) {
+  const days = Number(value);
+  if (!Number.isFinite(days)) return SALES_DEFAULTS.orders_list_default_days;
+  return Math.min(90, Math.max(1, Math.round(days)));
+}
+
+export function normalizeOrdersListSort(value) {
+  const sort = String(value ?? "").trim();
+  return ORDERS_LIST_SORT_VALUES.has(sort) ? sort : SALES_DEFAULTS.orders_list_sort;
+}
+
+export function getOrdersListDefaultDateRange(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  return defaultDateRange(normalizeOrdersListDefaultDays(sales.orders_list_default_days));
+}
+
+export function getOrdersListSort(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  return normalizeOrdersListSort(sales.orders_list_sort);
+}
+
+export function sortOrdersForList(orders, sortKey = "-created_at") {
+  const sort = normalizeOrdersListSort(sortKey);
+  const items = [...(orders ?? [])];
+
+  if (sort === "created_at") {
+    return items.sort(
+      (a, b) =>
+        new Date(a.completed_at ?? a.created_at ?? 0).getTime() -
+        new Date(b.completed_at ?? b.created_at ?? 0).getTime(),
+    );
+  }
+
+  if (sort === "-order_num") {
+    return items.sort(
+      (a, b) => Number(b.order_num ?? b.id ?? 0) - Number(a.order_num ?? a.id ?? 0),
+    );
+  }
+
+  if (sort === "order_num") {
+    return items.sort(
+      (a, b) => Number(a.order_num ?? a.id ?? 0) - Number(b.order_num ?? b.id ?? 0),
+    );
+  }
+
+  return items.sort((a, b) => {
+    const aTime = new Date(a.completed_at ?? a.created_at ?? 0).getTime();
+    const bTime = new Date(b.completed_at ?? b.created_at ?? 0).getTime();
+    if (bTime !== aTime) return bTime - aTime;
+    return Number(b.order_num ?? b.id ?? 0) - Number(a.order_num ?? a.id ?? 0);
+  });
+}
 
 export const STOCK_DEDUCT_TIMING_OPTIONS = [
   { value: "order_created", label: "When order is placed (checkout)" },
@@ -196,6 +261,8 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
   invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
   stock_deduct_on: "order_created",
+  orders_list_default_days: "5",
+  orders_list_sort: "-created_at",
 };
 
 export function salesOrganizationFormFromApi(res) {
@@ -257,6 +324,8 @@ export function salesOrganizationFormFromApi(res) {
     ),
     ...invoicePrintFormFromApi(sales),
     stock_deduct_on: sales.stock_deduct_on || "order_created",
+    orders_list_default_days: String(normalizeOrdersListDefaultDays(sales.orders_list_default_days)),
+    orders_list_sort: normalizeOrdersListSort(sales.orders_list_sort),
   };
 }
 
@@ -312,6 +381,8 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
     default_tax_rate: Number(sanitized.default_tax_rate) || 0,
     point_cash_value: Number(sanitized.point_cash_value) || 0,
     points_earn_per_kes: Number(sanitized.points_earn_per_kes) || 0,
+    orders_list_default_days: normalizeOrdersListDefaultDays(sanitized.orders_list_default_days),
+    orders_list_sort: normalizeOrdersListSort(sanitized.orders_list_sort),
   };
 }
 

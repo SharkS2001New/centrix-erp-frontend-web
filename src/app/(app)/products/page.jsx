@@ -578,6 +578,7 @@ export default function ProductsPage() {
   const pageRowIds = useMemo(() => pageSlice.map((p) => p.product_code), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const tableLoading = loading || (listLoading && products.length === 0);
 
   const subCategoryOptions = useMemo(() => {
     if (categoryFilter === "all") return subCategories;
@@ -865,14 +866,16 @@ export default function ProductsPage() {
         </p>
       ) : null}
 
-      {loading && <p className="theme-subtext mt-8 text-sm">Loading products…</p>}
+      {tableLoading && !error ? (
+        <p className="theme-subtext mt-8 text-sm">Loading products…</p>
+      ) : null}
       {error && (
         <p className="mt-8 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </p>
       )}
 
-      {!loading && !error && (
+      {!tableLoading && !error && (
         <div className={`mt-6 ${TABLE_SHELL_CLASS}`}>
           {sortActive ? (
             <div className="px-4 pt-3">

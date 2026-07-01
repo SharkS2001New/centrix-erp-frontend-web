@@ -91,24 +91,37 @@ export function summarizeOrders(rows) {
   let partial = 0;
   let paid = 0;
   let cancelled = 0;
+  let expired = 0;
   let revenue = 0;
+  let activeCount = 0;
 
   for (const sale of list) {
+    const status = String(sale.status ?? "").toLowerCase();
+    if (status === "cancelled") {
+      cancelled += 1;
+      continue;
+    }
+    if (status === "expired") {
+      expired += 1;
+      continue;
+    }
+
+    activeCount += 1;
     revenue += Number(sale.order_total ?? 0);
     const ps = String(sale.payment_status ?? "").toLowerCase();
     if (ps === "paid") paid += 1;
     else if (ps === "partial") partial += 1;
     else unpaid += 1;
-    if (sale.status === "cancelled") cancelled += 1;
   }
 
   return {
-    total: list.length,
+    total: activeCount,
     revenue,
     unpaid,
     partial,
     paid,
     cancelled,
+    expired,
   };
 }
 
@@ -143,7 +156,7 @@ export function OrderSummaryStats({ summary, hint = "Today" }) {
         value={String(summary.unpaid + summary.partial)}
         hint={`${summary.unpaid} unpaid · ${summary.partial} partial`}
       />
-      <StatCard label="Paid" value={String(summary.paid)} hint={`${summary.cancelled} cancelled`} />
+      <StatCard label="Paid" value={String(summary.paid)} hint={`${summary.cancelled} cancelled · ${summary.expired} expired`} />
     </div>
   );
 }
@@ -333,7 +346,7 @@ export function buildOrderContextMenuItems({
   const items = [
     { key: "view", label: "View Order Summary", icon: "view", onClick: onView },
   ];
-  if (canEdit && onEdit && sale?.status !== "cancelled") {
+  if (canEdit && onEdit && sale?.status !== "cancelled" && sale?.status !== "expired") {
     items.push({
       key: "edit",
       label: "Edit Order",
@@ -380,7 +393,7 @@ export function buildOrderContextMenuItems({
     }
   }
 
-  if (!sale || sale.status === "cancelled" || sale.status === "completed") {
+  if (!sale || sale.status === "cancelled" || sale.status === "expired" || sale.status === "completed") {
     return items;
   }
 
@@ -771,6 +784,7 @@ export function OrderDetailHeader({ sale, workflow }) {
   if (!sale) return null;
   const isCredit = Boolean(sale.is_credit_sale);
   const isCancelled = sale.status === "cancelled";
+  const isExpired = sale.status === "expired";
 
   return (
     <div className="theme-panel rounded-xl border p-5 shadow-sm">
@@ -796,6 +810,11 @@ export function OrderDetailHeader({ sale, workflow }) {
           {isCancelled ? (
             <span className="inline-flex rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700 ring-1 ring-red-600/20">
               Cancelled
+            </span>
+          ) : null}
+          {isExpired ? (
+            <span className="inline-flex rounded-full bg-orange-50 px-2.5 py-0.5 text-xs font-medium text-orange-800 ring-1 ring-orange-600/20">
+              Expired
             </span>
           ) : null}
         </div>
@@ -1025,6 +1044,9 @@ export function OrderMetaPanel({ sale, workflow, routeById, driverById, vehicleB
         ) : null}
         {sale.cancelled_at ? (
           <SummaryRow label="Cancelled" value={formatShortDate(sale.cancelled_at)} />
+        ) : null}
+        {sale.expired_at ? (
+          <SummaryRow label="Expired" value={formatShortDate(sale.expired_at)} />
         ) : null}
         <SummaryRow
           label="Stock deducted"

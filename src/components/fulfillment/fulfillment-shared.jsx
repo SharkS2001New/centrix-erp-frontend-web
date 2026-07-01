@@ -138,7 +138,7 @@ export function countDeliveriesByDriver(sales, period = "day") {
   const map = new Map();
   const ref = new Date();
   for (const sale of sales) {
-    if (sale.deleted_at || sale.status === "cancelled") continue;
+    if (sale.deleted_at || sale.status === "cancelled" || sale.status === "expired") continue;
     const ts = getSaleTimestamp(sale);
     if (!ts) continue;
     if (period === "day" && !isSameCalendarDay(ts, ref)) continue;

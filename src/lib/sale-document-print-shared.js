@@ -58,6 +58,37 @@ export function resolveSaleDocumentStoreContact({ showBranchOnReceipt, branch, s
   };
 }
 
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function nameFromSaleUserRecord(user) {
+  if (!user || typeof user !== "object") return null;
+  return firstNonEmptyString(user.full_name, user.name, user.username);
+}
+
+/** User who created/placed the order — used for A4 "You were served by" and similar. */
+export function resolveSaleOrderCreatorName(sale, preparedBy = null) {
+  const explicit = typeof preparedBy === "string" ? preparedBy.trim() : "";
+  if (explicit) return explicit;
+  if (!sale) return "—";
+
+  return (
+    firstNonEmptyString(
+      sale.created_by_name,
+      sale.cashier_name,
+      sale.placed_by_name,
+      nameFromSaleUserRecord(sale.created_by_user),
+      nameFromSaleUserRecord(sale.cashier_user),
+      nameFromSaleUserRecord(sale.cashier),
+      nameFromSaleUserRecord(sale.user),
+    ) ?? "—"
+  );
+}
+
 export function buildSaleDocumentOrgHeaderHtml(
   branding,
   { layout = "thermal", fallbackName = "" } = {},

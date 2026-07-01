@@ -8,6 +8,7 @@ import {
   escapeHtml,
   formatPrintAmount,
   resolveSaleDocumentStoreContact,
+  resolveSaleOrderCreatorName,
   saleDocumentDiscountTotals,
   shouldShowPrintDiscountColumn,
 } from "@/lib/sale-document-print-shared";
@@ -64,17 +65,6 @@ function metaRow(label, value, { emphasize = false } = {}) {
     <span class="meta-label">${escapeHtml(label)}</span>
     <span class="meta-value${emphasize ? " meta-value-em" : ""}">${escapeHtml(display)}</span>
   </div>`;
-}
-
-function resolveOrderCreatorName(sale, preparedBy = null) {
-  return (
-    preparedBy ??
-    sale.created_by_name ??
-    sale.cashier_name ??
-    sale.user?.full_name ??
-    sale.user?.username ??
-    "—"
-  );
 }
 
 /**
@@ -169,7 +159,7 @@ export function buildSaleInvoiceHtml(
     second: "2-digit",
     hour12: false,
   });
-  const servedByName = resolveOrderCreatorName(sale, preparedBy);
+  const servedByName = resolveSaleOrderCreatorName(sale, preparedBy);
   const printedByName = resolvePrintedByUser(printedBy) ?? "—";
 
   const orgHeader = buildSaleDocumentOrgHeaderHtml(branding, {

@@ -13,7 +13,7 @@ import {
   kraReceiptQrDataUrl,
   resolveKraReceiptDataForSale,
 } from "@/lib/kra-receipt-qr";
-import { resolveSaleDocumentBranding } from "@/lib/sale-document-print-shared";
+import { resolveSaleDocumentBranding, resolveSaleOrderCreatorName } from "@/lib/sale-document-print-shared";
 import { organizationHasLogo } from "@/lib/reports/report-branding";
 import { requestOrderPrintType } from "@/lib/order-print-type-picker";
 import {
@@ -123,6 +123,29 @@ async function fetchRoute(routeId) {
   } catch {
     return null;
   }
+}
+
+async function fetchUserDisplayName(userId) {
+  if (userId == null || userId === "") return null;
+  try {
+    const user = await apiRequest(`/users/${userId}`, { loading: false, reportIssues: false });
+    return user.full_name ?? user.name ?? user.username ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveSaleOrderCreatorNameForPrint(sale, options = {}) {
+  const fromSale = resolveSaleOrderCreatorName(sale, options.preparedBy);
+  if (fromSale !== "—") return fromSale;
+
+  const createdByName = await fetchUserDisplayName(sale?.created_by);
+  if (createdByName) return createdByName;
+
+  const cashierName = await fetchUserDisplayName(sale?.cashier_id);
+  if (cashierName) return cashierName;
+
+  return "—";
 }
 
 /**
@@ -250,6 +273,7 @@ export async function printSaleOrder(sale, options = {}) {
     });
 
     const printedBy = resolvePrintedByUser(options.printedBy ?? options.user);
+    const orderCreatorName = await resolveSaleOrderCreatorNameForPrint(saleForPrint, options);
 
     const printOptions = {
       ...options,
@@ -284,8 +308,7 @@ export async function printSaleOrder(sale, options = {}) {
         printSaleInvoice(saleForPrint, {
           ...printOptions,
           invoiceValidDays: Number(sales.invoice_valid_days ?? 7),
-          preparedBy:
-            options.preparedBy ?? saleForPrint.cashier_name ?? saleForPrint.user?.full_name ?? null,
+          preparedBy: orderCreatorName,
           uomById: options.uomById ?? null,
         });
       }
