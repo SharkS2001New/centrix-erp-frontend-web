@@ -44,11 +44,22 @@ function toLocalInputValue(value) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function fromLocalInputValue(value) {
-  if (!value) return null;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
+function formatFieldSessionCloseReason(row) {
+  if (row.is_open) {
+    if (row.is_suspended) return "Suspended — not signed out";
+    return "Still active";
+  }
+
+  return row.close_reason_label || "—";
+}
+
+function fieldSessionCloseReasonBadgeClass(label) {
+  if (label === "User Logged Out") return "bg-emerald-100 text-emerald-800";
+  if (label === "System Signed out at Midnight") return "bg-amber-100 text-amber-900";
+  if (label === "Adjusted by admin") return "bg-slate-100 text-slate-700";
+  if (label === "Still active") return "bg-emerald-50 text-emerald-700";
+  if (label?.startsWith("Suspended")) return "bg-amber-50 text-amber-800";
+  return "bg-slate-100 text-slate-600";
 }
 
 function AttendanceLocationBlock({ latitude, longitude, address, photoFileUrl, label, sessionId, photoKind, variant }) {
@@ -317,6 +328,7 @@ export default function MobileFieldAttendanceScreen({
               <th className="px-4 py-3">Rep</th>
               <th className="px-4 py-3">Sign in</th>
               <th className="px-4 py-3">Sign out</th>
+              <th className="px-4 py-3">Sign out type</th>
               <th className="px-4 py-3">Hours</th>
               <th className="px-4 py-3">Login channel</th>
               <th className="px-4 py-3">Suspended</th>
@@ -327,13 +339,13 @@ export default function MobileFieldAttendanceScreen({
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                   Loading sessions…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                   {isActiveEmbedded
                     ? "No reps are signed in on the mobile app right now."
                     : "No attendance sessions in this date range."}
@@ -360,6 +372,18 @@ export default function MobileFieldAttendanceScreen({
                   </td>
                   <td className="px-4 py-3">{formatDateTime(row.sign_in_at)}</td>
                   <td className="px-4 py-3">{formatDateTime(row.sign_out_at)}</td>
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const closeLabel = formatFieldSessionCloseReason(row);
+                      return (
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${fieldSessionCloseReasonBadgeClass(closeLabel)}`}
+                        >
+                          {closeLabel}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td className="px-4 py-3 font-medium">{row.work_label || "0:00"}</td>
                   <td className="px-4 py-3">
                     <span
@@ -407,6 +431,14 @@ export default function MobileFieldAttendanceScreen({
                   {Number(selected.suspended_seconds ?? 0) > 0
                     ? ` · Suspended/offline ${selected.suspended_label}`
                     : ""}
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  <span className="font-medium text-slate-700">Sign out type: </span>
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${fieldSessionCloseReasonBadgeClass(formatFieldSessionCloseReason(selected))}`}
+                  >
+                    {formatFieldSessionCloseReason(selected)}
+                  </span>
                 </p>
                 {selected.reopened_at ? (
                   <p className="mt-1 text-xs text-emerald-700">
