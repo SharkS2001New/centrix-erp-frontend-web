@@ -91,6 +91,15 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
+  const updateProfile = useCallback((userUpdates) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...userUpdates };
+      patchStoredUser(userUpdates);
+      return next;
+    });
+  }, []);
+
   const applyPasswordExpiry = useCallback((status) => {
     if (!status) return;
     setCapabilities((prev) => ({ ...(prev ?? {}), password_expiry: status }));
@@ -369,6 +378,7 @@ export function AuthProvider({ children }) {
       logout,
       refreshCapabilities,
       clearMustChangePassword,
+      updateProfile,
       applyPasswordExpiry,
       completePasswordChange,
       skipPasswordExpiry,
@@ -402,6 +412,7 @@ export function AuthProvider({ children }) {
       logout,
       refreshCapabilities,
       clearMustChangePassword,
+      updateProfile,
       applyPasswordExpiry,
       completePasswordChange,
       skipPasswordExpiry,

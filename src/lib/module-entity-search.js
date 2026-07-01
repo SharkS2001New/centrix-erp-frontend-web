@@ -46,7 +46,7 @@ export const WORKSPACE_ENTITY_SEARCH = {
         id: `customer:${row.id}`,
         label: String(row.customer_name ?? `Customer #${row.customer_num ?? row.id}`),
         subtitle: row.phone_number ? String(row.phone_number) : undefined,
-        href: `/customers/${row.id}`,
+        href: `/customers/${encodeURIComponent(String(row.customer_num ?? row.id))}`,
       }),
     },
     {

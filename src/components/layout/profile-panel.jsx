@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -34,13 +34,49 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
     organization,
     capabilities,
     completePasswordChange,
+    updateProfile,
     switchWorkspace,
   } = useAuth();
+  const [fullName, setFullName] = useState(user?.full_name ?? "");
+  const [username, setUsername] = useState(user?.username ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
   const [saving, setSaving] = useState(false);
   const requiredPasswordChange = Boolean(user?.must_change_password);
+
+  useEffect(() => {
+    setFullName(user?.full_name ?? "");
+    setUsername(user?.username ?? "");
+    setEmail(user?.email ?? "");
+  }, [user?.email, user?.full_name, user?.username]);
+
+  async function onSaveProfile(e) {
+    e.preventDefault();
+    setSavingProfile(true);
+    try {
+      const res = await apiRequest("/auth/me", {
+        method: "PATCH",
+        body: {
+          full_name: fullName.trim(),
+          username: username.trim(),
+          email: email.trim() || null,
+        },
+      });
+      updateProfile({
+        full_name: res.full_name,
+        username: res.username,
+        email: res.email,
+      });
+      notifySuccess("Profile updated.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not update profile.");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -96,35 +132,60 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
     <div className={gridClass}>
       <section className="theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Account</h2>
-        <dl className="mt-4 space-y-3 text-sm">
-          <div>
-            <dt className="text-slate-500">Full name</dt>
-            <dd className="font-medium text-slate-900">{user?.full_name ?? "—"}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Username</dt>
-            <dd className="font-mono text-slate-900">{user?.username ?? "—"}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Email</dt>
-            <dd className="text-slate-900">{user?.email ?? "—"}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Organization</dt>
-            <dd className="text-slate-900">
-              {organization?.org_name ?? "—"}
-              {organization?.company_code ? (
-                <span className="ml-2 font-mono text-xs text-slate-500">
-                  ({organization.company_code})
-                </span>
-              ) : null}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Access</dt>
-            <dd className="text-slate-900">{accessLabel(user, capabilities)}</dd>
-          </div>
-        </dl>
+        <form onSubmit={onSaveProfile} className="mt-4 space-y-4">
+          <Field label="Full name">
+            <input
+              type="text"
+              className={inputClassName()}
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+              maxLength={200}
+              autoComplete="name"
+            />
+          </Field>
+          <Field label="Username">
+            <input
+              type="text"
+              className={`${inputClassName()} font-mono`}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              maxLength={50}
+              autoComplete="username"
+            />
+          </Field>
+          <Field label="Email">
+            <input
+              type="email"
+              className={inputClassName()}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              maxLength={255}
+              autoComplete="email"
+            />
+          </Field>
+          <dl className="space-y-3 border-t border-slate-100 pt-4 text-sm">
+            <div>
+              <dt className="text-slate-500">Organization</dt>
+              <dd className="text-slate-900">
+                {organization?.org_name ?? "—"}
+                {organization?.company_code ? (
+                  <span className="ml-2 font-mono text-xs text-slate-500">
+                    ({organization.company_code})
+                  </span>
+                ) : null}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Access</dt>
+              <dd className="text-slate-900">{accessLabel(user, capabilities)}</dd>
+            </div>
+          </dl>
+          <PrimaryButton type="submit" disabled={savingProfile}>
+            {savingProfile ? "Saving…" : "Save profile"}
+          </PrimaryButton>
+        </form>
       </section>
 
       <section className="theme-panel rounded-xl border p-5 shadow-sm">
