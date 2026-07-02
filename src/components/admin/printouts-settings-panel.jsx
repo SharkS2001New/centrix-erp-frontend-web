@@ -22,6 +22,7 @@ import {
 import { PrintFontSettingsFields } from "@/components/admin/print-font-settings-fields";
 import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
 import { MultilinePrintNotesField } from "@/components/admin/multiline-print-notes-field";
+import { LoadingListPrintSettingsFields } from "@/components/admin/loading-list-print-settings-fields";
 import { PrintoutsLivePreview } from "@/components/admin/printouts-live-preview";
 import { useDocumentPrintPreviewContext } from "@/components/admin/document-print-preview";
 import { useAuth } from "@/contexts/auth-context";
@@ -404,7 +405,7 @@ function LoadingSheetsTab({ form, setForm }) {
     <div className="space-y-3">
       <SectionHeading
         title="Loading sheets"
-        description="Route pick lists. Price (R/W) shows wholesale (W) and retail (R) prices on separate rows when both are sold."
+        description="Route pick lists. Column visibility can also be configured under Distribution → Trips & loading."
       />
       <PrintFontSettingsFields
         form={form}
@@ -412,37 +413,7 @@ function LoadingSheetsTab({ form, setForm }) {
         variantKey="loading_sheet"
         description="Font for route loading sheets and delivery notes."
       />
-      <Toggle
-        label="Show price and line total columns"
-        description="Turn off for pick lists that only need product names and quantities."
-        checked={form.loading_sheet_show_price_columns}
-        onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_price_columns: v }))}
-      />
-      <Toggle
-        label="Show prepared / checked signature blocks"
-        checked={form.loading_sheet_show_signatures}
-        onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_signatures: v }))}
-      />
-      <Field label="Default checked by">
-        <input
-          type="text"
-          className={inputClassName()}
-          value={form.loading_sheet_default_checked_by}
-          onChange={(e) =>
-            setForm((f) => ({
-              ...f,
-              loading_sheet_default_checked_by: e.target.value,
-            }))
-          }
-        />
-      </Field>
-      <MultilinePrintNotesField
-        label="Loading sheet footer lines"
-        hint="One line per row below the table."
-        value={form.loading_sheet_footer_lines}
-        onChange={(value) => setForm((f) => ({ ...f, loading_sheet_footer_lines: value }))}
-        rows={4}
-      />
+      <LoadingListPrintSettingsFields form={form} setForm={setForm} />
     </div>
   );
 }

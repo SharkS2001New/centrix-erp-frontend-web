@@ -1,3 +1,5 @@
+import { loadingSheetPrintFormFromApi, loadingSheetPrintPayloadFromForm } from "@/lib/loading-sheet-print-settings";
+
 export const DISTRIBUTION_DEFAULTS = {
   enable_distribution_ops: true,
   inherit_customer_route: true,
@@ -95,6 +97,7 @@ export function distributionFormFromApi(res) {
     enable_cod_reconciliation: Boolean(distribution.enable_cod_reconciliation),
     require_trip_cash_settlement: Boolean(distribution.require_trip_cash_settlement),
     include_normal_orders_in_loading_list: distribution.include_normal_orders_in_loading_list !== false,
+    ...loadingSheetPrintFormFromApi({ distribution }),
   };
 }
 
@@ -113,6 +116,7 @@ export function distributionPayloadFromForm(form) {
     enable_cod_reconciliation: Boolean(form.enable_cod_reconciliation),
     require_trip_cash_settlement: Boolean(form.require_trip_cash_settlement),
     include_normal_orders_in_loading_list: Boolean(form.include_normal_orders_in_loading_list),
+    ...loadingSheetPrintPayloadFromForm(form),
   };
 }
 

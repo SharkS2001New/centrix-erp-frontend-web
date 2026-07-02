@@ -19,6 +19,7 @@ import { formatTripRoutesLabel } from "@/lib/trip-routes";
 import { printDeliveryNote } from "@/components/fulfillment/delivery-note-print";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
+import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
 import { formatOrderNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 
@@ -236,7 +237,7 @@ export default function TripDetailPage() {
                 organizationName: organization?.organization_name ?? organization?.company_name ?? "Loading List",
                 loadingList: freshList,
                 trip,
-                printSettings: capabilities?.module_settings?.distribution ?? {},
+                printSettings: resolveLoadingSheetPrintSettings(capabilities?.module_settings?.distribution),
                 documentFooterText: resolvePrintFooter(
                   mergeGeneralSettings(capabilities?.module_settings),
                   "loading_sheet",

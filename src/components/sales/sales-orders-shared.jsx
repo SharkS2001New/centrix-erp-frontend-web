@@ -184,6 +184,16 @@ export function matchesPaymentFilter(sale, paymentFilter) {
   return String(sale.payment_status ?? "unpaid").toLowerCase() === paymentFilter;
 }
 
+/** Show payment badge alongside workflow when balance is outstanding or statuses diverge. */
+export function shouldShowPaymentStatusBadge(sale) {
+  if (!sale?.payment_status) return false;
+  const paymentStatus = String(sale.payment_status).toLowerCase();
+  const workflowStatus = String(sale.status ?? "").toLowerCase();
+  if (paymentStatus === "paid") return false;
+  if (paymentStatus !== workflowStatus) return true;
+  return paymentStatus === "unpaid" || paymentStatus === "partial";
+}
+
 /** Compact pipeline position for list rows. */
 export function OrderMiniPipeline({ status, workflow, workflowStatus = null, showLabel = true }) {
   const steps = workflowPipelineSteps(workflow);
@@ -739,6 +749,11 @@ export function OrderListTableRow({
         <td className="px-4 py-3 text-right text-slate-700">{saleVatCell(sale)}</td>
         <td className="px-4 py-3">
           <SaleStatusBadge status={sale.status} workflow={workflow} workflowStatus={sale.workflow_status} />
+          {shouldShowPaymentStatusBadge(sale) ? (
+            <div className="mt-1.5">
+              <PaymentStatusBadge status={sale.payment_status} />
+            </div>
+          ) : null}
           <div className="mt-1.5">
             <OrderMiniPipeline status={sale.status} workflow={workflow} workflowStatus={sale.workflow_status} showLabel={false} />
           </div>

@@ -19,6 +19,7 @@ import { formatSaleKes } from "@/lib/sales";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
+import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -50,7 +51,9 @@ export function DistributionLoadingListsScreen() {
   const allowed = isDistributionOpsEnabled(capabilities);
   const organizationName = organization?.organization_name ?? organization?.company_name ?? organization?.name ?? capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME;
   const general = generalSettings();
-  const distributionSettings = capabilities?.module_settings?.distribution ?? {};
+  const loadingListPrintSettings = resolveLoadingSheetPrintSettings(
+    capabilities?.module_settings?.distribution,
+  );
 
   const [fromDate, setFromDate] = useState(daysAgoIso(14));
   const [toDate, setToDate] = useState(todayIso());
@@ -147,7 +150,7 @@ export function DistributionLoadingListsScreen() {
         organizationName,
         loadingList: freshList,
         trip,
-        printSettings: distributionSettings,
+        printSettings: loadingListPrintSettings,
         documentFooterText: resolvePrintFooter(
           mergeGeneralSettings(capabilities?.module_settings),
           "loading_sheet",
@@ -305,7 +308,7 @@ export function DistributionLoadingListsScreen() {
                 organization={organization}
                 generalSettings={general}
                 organizationName={organizationName}
-                printSettings={distributionSettings}
+                printSettings={loadingListPrintSettings}
                 documentFooterText={documentFooterText}
               />
             </>

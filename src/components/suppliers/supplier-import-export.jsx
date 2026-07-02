@@ -29,6 +29,7 @@ const SAMPLE_HEADERS = [
   "email",
   "town",
   "tax_pin",
+  "terms_of_payment",
   "address",
   "is_active",
 ];
@@ -42,6 +43,7 @@ const SAMPLE_ROW = [
   "buyer@example.com",
   "Nairobi",
   "",
+  "Net 30",
   "Industrial Area",
   "true",
 ];

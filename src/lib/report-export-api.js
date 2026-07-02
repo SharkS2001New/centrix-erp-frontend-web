@@ -162,6 +162,7 @@ export const SUPPLIER_CATALOG_EXPORT_COLUMNS = [
   { key: "email", label: "Email" },
   { key: "town", label: "Town" },
   { key: "tax_pin", label: "KRA PIN" },
+  { key: "terms_of_payment", label: "Payment terms" },
   { key: "address", label: "Address" },
   { key: "current_balance", label: "Amount owing", align: "right" },
   { key: "other_contacts", label: "Other contacts" },

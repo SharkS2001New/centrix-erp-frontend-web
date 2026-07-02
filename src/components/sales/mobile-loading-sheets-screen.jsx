@@ -20,6 +20,7 @@ import { shouldShowMobileLoadingSheets } from "@/lib/sales-settings";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
+import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -42,7 +43,9 @@ export default function MobileLoadingSheetsScreen() {
   const allowed = shouldShowMobileLoadingSheets(capabilities);
   const organizationName = organization?.name ?? capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME;
   const general = generalSettings();
-  const distributionSettings = capabilities?.module_settings?.distribution ?? {};
+  const loadingListPrintSettings = resolveLoadingSheetPrintSettings(
+    capabilities?.module_settings?.distribution,
+  );
 
   const [fromDate, setFromDate] = useState(daysAgoIso(7));
   const [toDate, setToDate] = useState(todayIso());
@@ -122,7 +125,7 @@ export default function MobileLoadingSheetsScreen() {
         generalSettings: general,
         organizationName,
         loadingList: res.loading_list,
-        printSettings: distributionSettings,
+        printSettings: loadingListPrintSettings,
         documentFooterText: resolvePrintFooter(mergeGeneralSettings(capabilities?.module_settings), "loading_sheet"),
         printedBy: user?.full_name ?? user?.username ?? null,
       });
@@ -259,7 +262,7 @@ export default function MobileLoadingSheetsScreen() {
                 organization={organization}
                 generalSettings={general}
                 organizationName={organizationName}
-                printSettings={distributionSettings}
+                printSettings={loadingListPrintSettings}
                 documentFooterText={documentFooterText}
               />
 

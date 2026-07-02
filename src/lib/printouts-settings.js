@@ -56,6 +56,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   lpo_print_authorised_by: "",
   loading_sheet_footer_lines: "",
   loading_sheet_show_signatures: true,
+  loading_sheet_show_qty_column: true,
   loading_sheet_show_price_columns: true,
   loading_sheet_default_checked_by: "",
 };

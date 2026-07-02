@@ -82,7 +82,11 @@ export async function printSupplierReturn(
   if (fetches.length) await Promise.all(fetches);
 
   const costByCode = buildCostMap(lpo);
-  const paymentTerms = lpo?.lpo?.terms?.trim() || supplierRecord?.payment_terms?.trim() || "—";
+  const paymentTerms =
+    lpo?.lpo?.terms?.trim() ||
+    supplierRecord?.terms_of_payment?.trim() ||
+    supplierRecord?.payment_terms?.trim() ||
+    "—";
   const returnRef = formatSupplierReturnRef(document);
   const returnDate = formatDocDate(document.created_at?.slice?.(0, 10) ?? document.created_at);
   const supplierName = document.supplier_name ?? supplierRecord?.supplier_name ?? "—";

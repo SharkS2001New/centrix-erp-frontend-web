@@ -736,6 +736,27 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true } 
   }
   const step = workflowPipelineSteps(workflow).find((s) => s.key === slug);
   if (!step) return null;
+
+  const paymentStatusFilter = paymentStatusForCollectionQueue(step.key);
+  if (paymentStatusFilter) {
+    return {
+      slug: step.key,
+      title: salesOrderQueueTitle(step.label),
+      subtitle:
+        step.key === "unpaid"
+          ? "Orders with an outstanding balance (any workflow step)"
+          : "Orders with a partial payment recorded (any workflow step)",
+      fixedStatusFilter: null,
+      fixedPaymentStatusFilter: paymentStatusFilter,
+      fixedSourceFilter: null,
+      showRouteColumn: true,
+      showDeliveryDateColumn: true,
+      lockStatusFilter: true,
+      lockSourceFilter: false,
+      excludeTerminalStatuses: true,
+    };
+  }
+
   return {
     slug: step.key,
     title: salesOrderQueueTitle(step.label),
@@ -786,14 +807,26 @@ export function saleBalanceDue(sale, totalPaid = null) {
 
 /**
  * Whether staff should be offered "Collect payment" for this order.
- * - Standard orders: only on Unpaid / Partially paid workflow steps with balance due.
- * - Credit sales: also after fulfillment advances (e.g. dispatched) while balance remains.
+ * Only on Unpaid / Partially paid workflow steps while balance remains.
  */
 export function saleNeedsPaymentCollection(sale, totalPaid = null) {
-  if (!sale || sale.status === "cancelled" || sale.status === "expired" || sale.status === "completed") return false;
+  if (!sale || sale.status === "cancelled" || sale.status === "expired" || sale.status === "completed") {
+    return false;
+  }
+  if (!isPaymentCollectWorkflowStatus(sale.status)) return false;
+
   const balance = saleBalanceDue(sale, totalPaid);
   if (balance <= 0.01) return false;
 
+  const paymentStatus = String(sale.payment_status ?? "unpaid").toLowerCase();
+  return paymentStatus === "unpaid" || paymentStatus === "partial";
+}
+
+/** Whether payment can be recorded from order summary / AR (any active workflow step). */
+export function canRecordOrderPayment(sale, totalPaid = null) {
+  if (!sale || sale.status === "cancelled" || sale.status === "expired") return false;
+  const balance = saleBalanceDue(sale, totalPaid);
+  if (balance <= 0.01) return false;
   const paymentStatus = String(sale.payment_status ?? "unpaid").toLowerCase();
   return paymentStatus === "unpaid" || paymentStatus === "partial";
 }
@@ -832,6 +865,20 @@ function primaryFulfillmentAdvanceStatus(status, workflow, sale, totalPaid) {
   return null;
 }
 
+/** Map payment-collection queue slugs to sales.payment_status values. */
+export const PAYMENT_COLLECTION_QUEUE_FILTERS = {
+  unpaid: "unpaid",
+  pending_payment: "partial",
+};
+
+export function isPaymentCollectionQueueSlug(slug) {
+  return Object.prototype.hasOwnProperty.call(PAYMENT_COLLECTION_QUEUE_FILTERS, String(slug ?? ""));
+}
+
+export function paymentStatusForCollectionQueue(slug) {
+  return PAYMENT_COLLECTION_QUEUE_FILTERS[String(slug ?? "")] ?? null;
+}
+
 /**
  * Decide whether to show Collect payment vs advance workflow — never both at once.
  */
@@ -842,55 +889,30 @@ export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null) {
   }
 
   const balanceDue = saleBalanceDue(sale, totalPaid);
-  const canCollect = saleNeedsPaymentCollection(sale, totalPaid);
-  const advanceStatus = primaryWorkflowAdvanceStatus(status, workflow);
   const onPaymentStep = isPaymentCollectWorkflowStatus(status);
   const isCredit = Boolean(sale.is_credit_sale);
-  const advanceBlocked =
-    advanceStatus && isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid);
+  let advanceStatus = primaryWorkflowAdvanceStatus(status, workflow);
+
+  if (advanceStatus && isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {
+    const fulfillmentAdvance = primaryFulfillmentAdvanceStatus(status, workflow, sale, totalPaid);
+    advanceStatus = fulfillmentAdvance ?? null;
+  }
+
   const advanceIsPaymentStep =
     advanceStatus && PAYMENT_STEP_KEYS.has(String(advanceStatus).toLowerCase());
+  const canFulfillWithoutPayment =
+    isCredit && onPaymentStep && advanceStatus && !advanceIsPaymentStep;
 
-  let showCollectPayment = false;
-
-  if (canCollect) {
-    if (advanceBlocked) {
-      showCollectPayment = true;
-    } else if (onPaymentStep && advanceIsPaymentStep) {
-      showCollectPayment = true;
-    } else if (onPaymentStep && !advanceStatus) {
-      showCollectPayment = true;
-    } else if (isCredit && !onPaymentStep) {
-      showCollectPayment = true;
-    }
+  let showCollectPayment = saleNeedsPaymentCollection(sale, totalPaid);
+  if (canFulfillWithoutPayment) {
+    showCollectPayment = false;
   }
 
   let resolvedAdvance = null;
-  if (advanceStatus && !advanceBlocked) {
-    if (isCredit && onPaymentStep && !advanceIsPaymentStep) {
-      resolvedAdvance = advanceStatus;
-      showCollectPayment = false;
-    } else if (!showCollectPayment) {
+  if (advanceStatus && !isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {
+    if (canFulfillWithoutPayment || !showCollectPayment) {
       resolvedAdvance = advanceStatus;
     }
-  } else if (advanceBlocked && onPaymentStep) {
-    const fulfillmentAdvance = primaryFulfillmentAdvanceStatus(status, workflow, sale, totalPaid);
-    if (fulfillmentAdvance) {
-      resolvedAdvance = fulfillmentAdvance;
-      if (!isCredit) {
-        showCollectPayment = false;
-      }
-    }
-  }
-
-  const paymentStatus = String(sale.payment_status ?? "unpaid").toLowerCase();
-  if (
-    canCollect &&
-    balanceDue > 0.01 &&
-    !onPaymentStep &&
-    (paymentStatus === "unpaid" || paymentStatus === "partial")
-  ) {
-    showCollectPayment = true;
   }
 
   return {

@@ -224,8 +224,12 @@ export function SupplierStatementScreen() {
           <div className="mb-4 theme-panel rounded-xl border p-4 text-sm">
             <p className="font-semibold text-slate-900">{supplier.supplier_name}</p>
             <p className="mt-1 text-slate-500">
-              {supplier.phone_number ? `Phone: ${supplier.phone_number}` : null}
+              {supplier.phone ? `Phone: ${supplier.phone}` : null}
               {supplier.email ? ` · ${supplier.email}` : null}
+            </p>
+            <p className="mt-2 text-sm text-slate-700">
+              <span className="font-medium text-slate-600">Payment terms:</span>{" "}
+              {supplier.terms_of_payment ?? "—"}
             </p>
             <Link href={`/suppliers/${supplier.id}`} className="mt-2 inline-block text-[#185FA5] hover:underline">
               Open supplier profile

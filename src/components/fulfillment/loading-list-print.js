@@ -5,7 +5,7 @@ import {
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
 
-import { resolveLoadingSheetFooterLines } from "@/lib/loading-sheet-print-settings";
+import { resolveLoadingSheetFooterLines, resolveLoadingSheetColumnFlags } from "@/lib/loading-sheet-print-settings";
 import {
   buildDocumentPrintEdgeFooterHtml,
   documentPrintEdgeFooterStyles,
@@ -163,11 +163,19 @@ function normalizeLoadingListLines(lines) {
   });
 }
 
-function buildLoadingListLineRows(lines, { showPriceColumns = true } = {}) {
+function buildLoadingListLineRows(lines, { showQtyColumn = true, showPriceColumns = true } = {}) {
   return normalizeLoadingListLines(lines)
     .map((line) => {
       const qtyMain = escapeHtml(line.quantity_label || line.quantity);
       const qtyGhost = escapeHtml(quantityGhostText(line));
+
+      const qtyCell = showQtyColumn
+        ? `
+        <td class="col-qty">
+          <div class="main">${qtyMain}</div>
+          ${qtyGhost ? `<div class="ghost">${qtyGhost}</div>` : ""}
+        </td>`
+        : "";
 
       const priceCells = showPriceColumns
         ? `
@@ -181,14 +189,35 @@ function buildLoadingListLineRows(lines, { showPriceColumns = true } = {}) {
       return `
       <tr>
         <td class="col-no">${line.line_no}</td>
-        <td class="col-product">${escapeHtml(String(line.product_name ?? "").toUpperCase())}</td>
-        <td class="col-qty">
-          <div class="main">${qtyMain}</div>
-          ${qtyGhost ? `<div class="ghost">${qtyGhost}</div>` : ""}
-        </td>${priceCells}
+        <td class="col-product">${escapeHtml(String(line.product_name ?? "").toUpperCase())}</td>${qtyCell}${priceCells}
       </tr>`;
     })
     .join("");
+}
+
+function buildLoadingListTableHead({ showQtyColumn, showPriceColumns }) {
+  const headers = [
+    '<th class="col-no">No.</th>',
+    '<th class="col-product">Product Name</th>',
+  ];
+  if (showQtyColumn) {
+    headers.push(
+      showPriceColumns
+        ? '<th class="col-qty">Total Items<br/>(Breakdown in Packages)</th>'
+        : '<th class="col-qty">Total Qty</th>',
+    );
+  }
+  if (showPriceColumns) {
+    headers.push('<th class="col-price">Price (R/W)</th>', '<th class="col-total">Line Total</th>');
+  }
+  return `<tr>${headers.join("")}</tr>`;
+}
+
+function loadingListColumnCount({ showQtyColumn, showPriceColumns }) {
+  let count = 2;
+  if (showQtyColumn) count += 1;
+  if (showPriceColumns) count += 2;
+  return count;
 }
 
 function loadingSheetPrintStyles(generalSettings = null) {
@@ -375,8 +404,8 @@ export function buildLoadingListHtml({
   });
   const watermark = buildReportWatermarkHtml(branding);
   const companyName = resolveOrganizationName({ organization, organizationName, branding });
-  const showSignatures = printSettings?.loading_sheet_show_signatures !== false;
-  const showPriceColumns = printSettings?.loading_sheet_show_price_columns !== false;
+  const columnFlags = resolveLoadingSheetColumnFlags(printSettings ?? {});
+  const { showQtyColumn, showPriceColumns, showSignatures } = columnFlags;
 
   const lines = normalizeLoadingListLines(loadingList?.lines ?? []);
   const routeName =
@@ -397,32 +426,18 @@ export function buildLoadingListHtml({
   const total =
     loadingList?.total_amount ?? lines.reduce((sum, line) => sum + Number(line.line_total || 0), 0);
   const dateLabel = formatDisplayDate(listDate);
-  const columnCount = showPriceColumns ? 5 : 3;
+  const columnCount = loadingListColumnCount({ showQtyColumn, showPriceColumns });
   const rowHtml =
-    buildLoadingListLineRows(lines, { showPriceColumns }) ||
+    buildLoadingListLineRows(lines, { showQtyColumn, showPriceColumns }) ||
     `<tr><td colspan="${columnCount}" class="empty">No line items</td></tr>`;
 
-  const tableHead = showPriceColumns
-    ? `
-        <tr>
-          <th class="col-no">No.</th>
-          <th class="col-product">Product Name</th>
-          <th class="col-qty">Total Items<br/>(Breakdown in Packages)</th>
-          <th class="col-price">Price (R/W)</th>
-          <th class="col-total">Line Total</th>
-        </tr>`
-    : `
-        <tr>
-          <th class="col-no">No.</th>
-          <th class="col-product">Product Name</th>
-          <th class="col-qty">Total Qty</th>
-        </tr>`;
+  const tableHead = buildLoadingListTableHead({ showQtyColumn, showPriceColumns });
 
   const tableFoot = showPriceColumns
     ? `
       <tfoot>
         <tr>
-          <td colspan="4" style="text-align:right;">TOTAL</td>
+          <td colspan="${columnCount - 1}" style="text-align:right;">TOTAL</td>
           <td class="col-total">${formatKes(total)}</td>
         </tr>
       </tfoot>`

@@ -247,12 +247,18 @@ export default function SalesOrdersListScreen({
           ? effectiveStatusFilter
           : null;
       if (statusParam) filters.status = statusParam;
+      if (queueConfig?.fixedPaymentStatusFilter) {
+        filters.payment_status = queueConfig.fixedPaymentStatusFilter;
+      }
 
       const extra = {
         exclude_status: "held",
         with_items: 1,
         sort: ordersListSort,
       };
+      if (queueConfig?.excludeTerminalStatuses) {
+        extra.exclude_statuses = "cancelled,expired";
+      }
       if (routeOrdersOnly) {
         extra.route_orders = 1;
         if (!queueConfig?.lockStatusFilter) {
@@ -489,6 +495,12 @@ export default function SalesOrdersListScreen({
       if (queueConfig?.lockStatusFilter && updated.status !== queueConfig.fixedStatusFilter) {
         setRows((prev) => prev.filter((s) => s.id !== updated.id));
       }
+      if (
+        queueConfig?.fixedPaymentStatusFilter &&
+        String(updated.payment_status ?? "").toLowerCase() !== queueConfig.fixedPaymentStatusFilter
+      ) {
+        setRows((prev) => prev.filter((s) => s.id !== updated.id));
+      }
     } catch (e) {
       setActionMessage(e instanceof ApiError ? e.message : "Could not update order.");
     } finally {
@@ -502,6 +514,12 @@ export default function SalesOrdersListScreen({
       patchSaleInState(updated);
       setActionMessage(`Order ${formatOrderNumber(updated)} updated.`);
       if (queueConfig?.lockStatusFilter && updated.status !== queueConfig.fixedStatusFilter) {
+        setRows((prev) => prev.filter((s) => s.id !== updated.id));
+      }
+      if (
+        queueConfig?.fixedPaymentStatusFilter &&
+        String(updated.payment_status ?? "").toLowerCase() !== queueConfig.fixedPaymentStatusFilter
+      ) {
         setRows((prev) => prev.filter((s) => s.id !== updated.id));
       }
     },

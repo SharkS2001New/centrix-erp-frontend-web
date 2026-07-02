@@ -10,6 +10,7 @@ import {
   distributionPayloadFromForm,
 } from "@/lib/distribution-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { LoadingListPrintSettingsFields } from "@/components/admin/loading-list-print-settings-fields";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 
@@ -193,6 +194,19 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
               onChange={(v) => setForm((f) => ({ ...f, include_normal_orders_in_loading_list: v }))}
               disabled={!form.enable_distribution_ops}
             />
+            <div className="mt-4 space-y-3 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-4">
+              <div>
+                <h3 className="theme-heading text-sm font-medium">Loading list layout</h3>
+                <p className="theme-subtext mt-1 text-xs">
+                  Control which columns appear when printing or previewing loading lists from dispatch trips.
+                </p>
+              </div>
+              <LoadingListPrintSettingsFields
+                form={form}
+                setForm={setForm}
+                showFontNote
+              />
+            </div>
           </div>
             ) : null}
 

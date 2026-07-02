@@ -18,6 +18,7 @@ import {
   resolveOrderWorkflowActions,
   saleBalanceDue,
   saleNeedsPaymentCollection,
+  canRecordOrderPayment,
 } from "@/lib/order-workflow";
 import {
   PAYMENT_STATUS_LABELS,
@@ -601,7 +602,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     [payments],
   );
   const balanceDue = saleBalanceDue(sale, totalPaid);
-  const canRecordPayment = saleNeedsPaymentCollection(sale, totalPaid);
+  const canRecordPayment = canRecordOrderPayment(sale, totalPaid);
   const cancellationAllowed = useMemo(
     () => canCancelOrder(sale, saleWorkflow, capabilities),
     [sale, saleWorkflow, capabilities],

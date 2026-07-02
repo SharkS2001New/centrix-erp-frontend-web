@@ -17,6 +17,7 @@ export const EMPTY_SUPPLIER_FORM = {
   email: "",
   town: "",
   tax_pin: "",
+  terms_of_payment: "",
   address: "",
   contacts: [],
   is_active: true,
@@ -44,6 +45,7 @@ export function supplierToForm(supplier) {
     email: supplier.email ?? "",
     town: supplier.town ?? "",
     tax_pin: supplier.tax_pin ?? "",
+    terms_of_payment: supplier.terms_of_payment ?? "",
     address: supplier.address ?? "",
     contacts:
       Array.isArray(supplier.contacts) && supplier.contacts.length
@@ -66,6 +68,7 @@ export function buildSupplierBody(form) {
     email: form.email.trim() || null,
     town: form.town.trim() || null,
     tax_pin: form.tax_pin.trim() || null,
+    terms_of_payment: form.terms_of_payment.trim() || null,
     address: form.address.trim() || null,
     contacts: normalizeContacts(form.contacts),
     is_active: Boolean(form.is_active),
@@ -240,6 +243,16 @@ export function SupplierFormFields({ form, onChange, supplierCode = null }) {
           value={form.tax_pin}
           onChange={(e) => onChange("tax_pin", e.target.value)}
           className={inputClassName()}
+        />
+      </Field>
+
+      <Field label="Terms of payment">
+        <input
+          type="text"
+          value={form.terms_of_payment}
+          onChange={(e) => onChange("terms_of_payment", e.target.value)}
+          className={inputClassName()}
+          placeholder="Net 30, COD, 7 days"
         />
       </Field>
 

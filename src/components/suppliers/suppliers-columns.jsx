@@ -24,6 +24,7 @@ export const SUPPLIER_COLUMNS = [
   { id: "address", label: "Address", defaultVisible: false },
   { id: "town", label: "Town", defaultVisible: false },
   { id: "tax_pin", label: "KRA PIN", defaultVisible: false },
+  { id: "terms_of_payment", label: "Payment terms", defaultVisible: false },
   {
     id: "current_balance",
     label: "Amount owing",
@@ -135,6 +136,8 @@ export function renderSupplierCell(colId, row, handlers) {
       return row.town || "—";
     case "tax_pin":
       return row.tax_pin || "—";
+    case "terms_of_payment":
+      return row.terms_of_payment || "—";
     case "current_balance":
       return (
         <span

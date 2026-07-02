@@ -132,6 +132,7 @@ export default function SupplierProfilePage() {
                 <DetailRow label="Alt. phone" value={supplier.alternate_phone} />
                 <DetailRow label="Email" value={supplier.email} />
                 <DetailRow label="KRA PIN" value={supplier.tax_pin} />
+                <DetailRow label="Terms of payment" value={supplier.terms_of_payment} />
                 <DetailRow
                   label="Amount owing"
                   value={formatSupplierKes(supplier.current_balance)}
