@@ -31,7 +31,8 @@ export default function CustomerInvoicesPage() {
   const presetCustomer = searchParams.get("customer");
   const { hasPermission } = useAuth();
   const { currency, date } = useOrgFormat();
-  const canManage = hasPermission(P.payments.customer_invoices.manage);
+  const canManage = hasPermission(P.payments.customer_invoices.manage)
+    || hasPermission(P.accounting.accounts_receivable.view);
 
   const [invoices, setInvoices] = useState([]);
   const [totalInvoices, setTotalInvoices] = useState(0);

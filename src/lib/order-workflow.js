@@ -19,7 +19,7 @@ export const DEFAULT_ORDER_WORKFLOW = {
     booked: ["pending", "unpaid", "processed", "cancelled"],
     pending: ["unpaid", "pending_payment", "processed", "cancelled"],
     unpaid: ["pending_payment", "paid", "processed", "cancelled"],
-    pending_payment: ["paid", "cancelled"],
+    pending_payment: ["paid", "processed", "cancelled"],
     paid: ["processed", "delivered", "completed"],
     processed: ["delivered", "completed"],
     delivered: ["completed"],
@@ -879,8 +879,45 @@ export function paymentStatusForCollectionQueue(slug) {
   return PAYMENT_COLLECTION_QUEUE_FILTERS[String(slug ?? "")] ?? null;
 }
 
+/** Workflow statuses that should never show a second payment badge. */
+const WORKFLOW_ONLY_BADGE_STATUSES = new Set(["cancelled", "expired", "draft", "held", "completed"]);
+
+/**
+ * Whether payment_status aligns with the current workflow step (same meaning, different field).
+ */
+export function paymentStatusAlignsWithWorkflowStep(sale) {
+  const workflowStatus = String(sale?.status ?? "").toLowerCase();
+  const paymentStatus = String(sale?.payment_status ?? "").toLowerCase();
+  if (workflowStatus === "unpaid" && paymentStatus === "unpaid") return true;
+  if (workflowStatus === "pending_payment" && paymentStatus === "partial") return true;
+  if (workflowStatus === "paid" && paymentStatus === "paid") return true;
+
+  return workflowStatus === paymentStatus;
+}
+
+/**
+ * Show a payment badge only when fulfillment advanced past payment steps while balance remains
+ * (e.g. Processed + Unpaid). Not for cancelled orders or when workflow already conveys payment.
+ */
+export function shouldShowPaymentStatusBadge(sale, totalPaid = null) {
+  if (!sale?.payment_status) return false;
+
+  const workflowStatus = String(sale.status ?? "").toLowerCase();
+  const paymentStatus = String(sale.payment_status).toLowerCase();
+
+  if (WORKFLOW_ONLY_BADGE_STATUSES.has(workflowStatus)) return false;
+  if (paymentStatus === "paid") return false;
+  if (isPaymentCollectWorkflowStatus(workflowStatus)) return false;
+  if (paymentStatusAlignsWithWorkflowStep(sale)) return false;
+
+  if (paymentStatus !== "unpaid" && paymentStatus !== "partial") return false;
+
+  return saleBalanceDue(sale, totalPaid) > 0.01;
+}
+
 /**
  * Decide whether to show Collect payment vs advance workflow — never both at once.
+ * Unpaid / partially paid orders may advance through fulfillment without collecting payment first.
  */
 export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null) {
   const status = String(sale?.status ?? "").toLowerCase();
@@ -890,7 +927,6 @@ export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null) {
 
   const balanceDue = saleBalanceDue(sale, totalPaid);
   const onPaymentStep = isPaymentCollectWorkflowStatus(status);
-  const isCredit = Boolean(sale.is_credit_sale);
   let advanceStatus = primaryWorkflowAdvanceStatus(status, workflow);
 
   if (advanceStatus && isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {
@@ -900,17 +936,17 @@ export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null) {
 
   const advanceIsPaymentStep =
     advanceStatus && PAYMENT_STEP_KEYS.has(String(advanceStatus).toLowerCase());
-  const canFulfillWithoutPayment =
-    isCredit && onPaymentStep && advanceStatus && !advanceIsPaymentStep;
+  const canAdvanceWithoutPayment =
+    onPaymentStep && advanceStatus && !advanceIsPaymentStep;
 
   let showCollectPayment = saleNeedsPaymentCollection(sale, totalPaid);
-  if (canFulfillWithoutPayment) {
+  if (canAdvanceWithoutPayment) {
     showCollectPayment = false;
   }
 
   let resolvedAdvance = null;
   if (advanceStatus && !isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {
-    if (canFulfillWithoutPayment || !showCollectPayment) {
+    if (canAdvanceWithoutPayment || !showCollectPayment) {
       resolvedAdvance = advanceStatus;
     }
   }

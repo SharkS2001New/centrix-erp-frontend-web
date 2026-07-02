@@ -189,6 +189,7 @@ export function previewSaleInvoicePrint({
     showBranchOnReceipt,
     preparedBy: "Preview cashier",
     generalSettings: general,
+    salesSettings: sales,
   });
 }
 
@@ -261,5 +262,6 @@ export function previewReceiptPaymentDetails({
     documentFooterText: resolvePrintFooter(general, "receipt"),
     paymentInstructions: payload,
     generalSettings: general,
+    salesSettings: sales,
   });
 }

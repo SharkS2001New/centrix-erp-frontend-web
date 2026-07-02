@@ -18,6 +18,11 @@ import {
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
 import {
+  buildSalesDocumentBodyFooterHtml,
+  resolveSalesDocumentBodyFooterLines,
+  salesDocumentFooterSettings,
+} from "@/lib/sales-document-footer";
+import {
   createOrgPrintPx,
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
@@ -90,6 +95,7 @@ export function buildSaleInvoiceHtml(
     showPaymentInstructions = true,
     showBranchOnReceipt = true,
     generalSettings = null,
+    salesSettings = null,
   } = {},
 ) {
   if (!sale) return "";
@@ -164,6 +170,21 @@ export function buildSaleInvoiceHtml(
   const servedByName = resolveSaleOrderCreatorName(sale, preparedBy);
   const printedByName = resolvePrintedByUser(printedBy) ?? "—";
 
+  const bodyFooterLines = resolveSalesDocumentBodyFooterLines(
+    salesDocumentFooterSettings(
+      documentFooterText ? { print_footer_a4_invoice: documentFooterText } : {},
+      salesSettings ?? {},
+      "invoice",
+    ),
+    "invoice",
+    {
+      username: servedByName,
+      organizationName: sellerName,
+      validDays: invoiceValidDays,
+    },
+  );
+  const bodyFooterHtml = buildSalesDocumentBodyFooterHtml(bodyFooterLines, { layout: "a4" });
+
   const orgHeader = buildSaleDocumentOrgHeaderHtml(branding, {
     layout: "a4",
     fallbackName: sellerName,
@@ -223,6 +244,8 @@ export function buildSaleInvoiceHtml(
     .totals-box p { margin: 3px 0; }
     .totals-box .grand { font-weight: 700; font-size: ${px(13)}; margin-top: 6px; padding-top: 4px; border-top: 1px solid #000; }
     .served-by { margin: 10px 0 8px; font-size: ${px(11)}; font-weight: 700; text-transform: uppercase; }
+    .body-footer-block { margin: 10px 0 8px; font-size: ${px(11)}; }
+    .body-footer-line { margin: 6px 0; font-weight: 700; }
     .goods-note { margin: 8px 0 4px; font-size: ${px(11)}; font-weight: 700; text-transform: uppercase; }
     .goods-note-sub { margin: 0 0 0; font-weight: 700; }
     .receive-signatures { margin: 14px 0 0; font-size: ${px(11)}; max-width: 420px; }
@@ -300,13 +323,7 @@ export function buildSaleInvoiceHtml(
 
       ${paymentInstructionsHtml}
 
-      <div class="served-by">You were served by: ${escapeHtml(servedByName)}</div>
-      <p class="goods-note center">Please Confirm Your Goods</p>
-      <p class="goods-note goods-note-sub center">(Goods once sold are not refundable)</p>
-      <div class="receive-signatures">
-        <p class="sig-row"><span class="sig-label">Received By:</span><span class="sig-line">&nbsp;</span></p>
-        <p class="sig-row"><span class="sig-label">Signature:</span><span class="sig-line">&nbsp;</span></p>
-      </div>
+      ${bodyFooterHtml}
 
       ${
         kraQrHtml
@@ -319,7 +336,6 @@ export function buildSaleInvoiceHtml(
   ${buildDocumentPrintEdgeFooterHtml({
     printedBy: printedByName,
     printedAt,
-    documentFooterText,
   })}
 </body>
 </html>`;

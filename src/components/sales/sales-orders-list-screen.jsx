@@ -29,6 +29,7 @@ import {
   PaginationBar,
   SearchInput,
 } from "@/components/catalog/catalog-shared";
+import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { defaultDateRange, isoDate } from "@/components/inventory/inventory-shared";
 import { orderTableColumnCount } from "@/components/sales/sales-orders-columns";
 import {
@@ -119,6 +120,7 @@ export default function SalesOrdersListScreen({
   const debouncedSearch = useDebouncedValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [routeFilter, setRouteFilter] = useState("all");
   const [minTotalFilter, setMinTotalFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -146,6 +148,20 @@ export default function SalesOrdersListScreen({
   const effectiveSourceFilter = queueConfig?.lockSourceFilter
     ? queueConfig.fixedSourceFilter
     : sourceFilter;
+  const showRouteFilter = routeOrdersOnly || queueConfig?.slug === "mobile";
+
+  const routeFilterOptions = useMemo(() => {
+    const routes = [...routeById.values()].sort((a, b) =>
+      String(a.route_name ?? "").localeCompare(String(b.route_name ?? "")),
+    );
+    return [
+      { value: "all", label: "All routes" },
+      ...routes.map((route) => ({
+        value: String(route.id),
+        label: route.route_name || `Route #${route.id}`,
+      })),
+    ];
+  }, [routeById]);
 
   const ordersListSort = useMemo(
     () => getOrdersListSort(capabilities?.module_settings),
@@ -268,6 +284,9 @@ export default function SalesOrdersListScreen({
       if (appliedFromDate) extra.from_date = appliedFromDate;
       if (appliedToDate) extra.to_date = appliedToDate;
       if (minTotalFilter) extra.min_order_total = minTotalFilter;
+      if (routeFilter && routeFilter !== "all") {
+        extra.route_id = routeFilter;
+      }
       if (!routeOrdersOnly && effectiveSourceFilter && effectiveSourceFilter !== "all") {
         extra.order_source = effectiveSourceFilter;
       }
@@ -320,6 +339,7 @@ export default function SalesOrdersListScreen({
     queueConfig,
     routeOrdersOnly,
     minTotalFilter,
+    routeFilter,
     listFiltersInitialized,
     ordersListSort,
   ]);
@@ -551,6 +571,11 @@ export default function SalesOrdersListScreen({
     setPage(1);
   }
 
+  function handleRouteFilterChange(value) {
+    setRouteFilter(value || "all");
+    setPage(1);
+  }
+
   const summary = useMemo(() => summarizeOrders(rows), [rows]);
   const pageSlice = rows;
 
@@ -704,6 +729,19 @@ export default function SalesOrdersListScreen({
           >
             Filter
           </button>
+          {showRouteFilter ? (
+            <Field label="Route">
+              <div className="min-w-[11rem]">
+                <HrSearchableSelect
+                  value={routeFilter}
+                  onChange={handleRouteFilterChange}
+                  options={routeFilterOptions}
+                  placeholder="Search routes…"
+                  emptyLabel="No routes found"
+                />
+              </div>
+            </Field>
+          ) : null}
           <Field label="Status">
             <select
               value={effectiveStatusFilter ?? "all"}

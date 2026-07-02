@@ -40,6 +40,7 @@ export const REPORT_CATEGORY_DEFS = [
     icon: "sales",
     keys: [
       "sales-by-product",
+      "sales-by-supplier",
       "sales-by-user",
       "sales-by-customer",
       "sales-by-channel",

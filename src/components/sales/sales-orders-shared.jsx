@@ -12,10 +12,12 @@ import {
   saleLineQtyLabel,
 } from "@/lib/sale-line-items";
 import {
+  alignStatusToWorkflow,
   pipelineStatusIndex,
   resolveOrderWorkflowActions,
   canCancelOrder,
   saleNeedsPaymentCollection,
+  shouldShowPaymentStatusBadge,
   workflowPipelineSteps,
   workflowStatusLabel,
 } from "@/lib/order-workflow";
@@ -184,15 +186,7 @@ export function matchesPaymentFilter(sale, paymentFilter) {
   return String(sale.payment_status ?? "unpaid").toLowerCase() === paymentFilter;
 }
 
-/** Show payment badge alongside workflow when balance is outstanding or statuses diverge. */
-export function shouldShowPaymentStatusBadge(sale) {
-  if (!sale?.payment_status) return false;
-  const paymentStatus = String(sale.payment_status).toLowerCase();
-  const workflowStatus = String(sale.status ?? "").toLowerCase();
-  if (paymentStatus === "paid") return false;
-  if (paymentStatus !== workflowStatus) return true;
-  return paymentStatus === "unpaid" || paymentStatus === "partial";
-}
+export { shouldShowPaymentStatusBadge };
 
 /** Compact pipeline position for list rows. */
 export function OrderMiniPipeline({ status, workflow, workflowStatus = null, showLabel = true }) {
@@ -825,7 +819,9 @@ export function OrderDetailHeader({ sale, workflow }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <SaleStatusBadge status={sale.status} workflow={workflow} />
-          <PaymentStatusBadge status={sale.payment_status} />
+          {shouldShowPaymentStatusBadge(sale) ? (
+            <PaymentStatusBadge status={sale.payment_status} />
+          ) : null}
           <OrderSourceBadge source={sale.order_source} channel={sale.channel} />
           {isCredit ? (
             <span className="inline-flex rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-800 ring-1 ring-purple-600/20">

@@ -83,6 +83,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings }) {
       paymentInstructions,
       showPaymentInstructions: shouldShowReceiptPaymentDetails({ sales }, "receipt"),
       generalSettings: general,
+      salesSettings: sales,
     });
   }
 
@@ -103,6 +104,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings }) {
       showBranchOnReceipt,
       preparedBy: "Preview cashier",
       generalSettings: general,
+      salesSettings: sales,
     });
   }
 

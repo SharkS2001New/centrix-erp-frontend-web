@@ -1,4 +1,10 @@
 import { PRINT_POWERED_BY } from "@/lib/branding";
+import {
+  DEFAULT_RECEIPT_BODY_FOOTER_LINES,
+  defaultInvoiceBodyFooterForAdmin,
+  defaultReceiptBodyFooterForAdmin,
+  receiptBodyFooterForAdmin,
+} from "@/lib/sales-document-footer";
 
 export const PRINT_FOOTER_TYPES = {
   receipt: "print_footer_receipt",
@@ -24,15 +30,12 @@ export const PRINT_FOOTER_LABELS = {
 export const RECEIPT_POWERED_BY_LINE = `Powered By: ${PRINT_POWERED_BY}`;
 
 const DEFAULT_RECEIPT_FOOTER_LINES = [
-  "Thank you for your business!",
-  "Goods once sold are not returnable.",
+  ...DEFAULT_RECEIPT_BODY_FOOTER_LINES,
   RECEIPT_POWERED_BY_LINE,
 ];
 
 /** Editable receipt footer lines shown when nothing is configured (excludes vendor credit). */
-const DEFAULT_RECEIPT_FOOTER_EDITABLE_LINES = DEFAULT_RECEIPT_FOOTER_LINES.filter(
-  (line) => !isPoweredByFooterLine(line),
-);
+const DEFAULT_RECEIPT_FOOTER_EDITABLE_LINES = DEFAULT_RECEIPT_BODY_FOOTER_LINES;
 
 export function isPoweredByFooterLine(line) {
   return /^Powered\s+By\s*:/i.test(String(line ?? "").trim());
@@ -52,7 +55,9 @@ export function stripPoweredByFooterLines(lines) {
 
 /** Receipt footer text for admin forms — vendor credit line is never editable. */
 export function receiptFooterForAdmin(text) {
-  return stripPoweredByFooterLines(receiptFooterLinesFromText(text)).join("\n");
+  const normalized = receiptBodyFooterForAdmin(text);
+  if (normalized) return normalized;
+  return defaultReceiptBodyFooterForAdmin();
 }
 
 export function resolveReceiptFooterLines(settings = {}, organizationName = "") {
@@ -91,7 +96,11 @@ export function resolvePrintFooter(settings = {}, documentType = "receipt") {
   }
 
   if (documentType === "receipt") {
-    return DEFAULT_RECEIPT_FOOTER_EDITABLE_LINES.join("\n");
+    return defaultReceiptBodyFooterForAdmin();
+  }
+
+  if (documentType === "invoice") {
+    return defaultInvoiceBodyFooterForAdmin();
   }
 
   return "";

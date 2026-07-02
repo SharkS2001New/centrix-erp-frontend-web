@@ -2,6 +2,7 @@
 export const REPORT_MODULE_BY_SLUG = {
   "daily-sales": "sales.reports",
   "sales-by-product": "sales.reports",
+  "sales-by-supplier": "sales.reports",
   "sales-by-user": "sales.reports",
   "sales-by-customer": "sales.reports",
   "sales-by-channel": "sales.reports",

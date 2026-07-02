@@ -1,7 +1,12 @@
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { buildKraThermalQrHtml } from "@/lib/kra-receipt-qr";
 import { dispatchPrintJob } from "@/lib/print-dispatch";
-import { isPoweredByFooterLine, resolveReceiptFooterLines } from "@/lib/print-footer-settings";
+import { RECEIPT_POWERED_BY_LINE } from "@/lib/print-footer-settings";
+import {
+  buildSalesDocumentBodyFooterHtml,
+  resolveSalesDocumentBodyFooterLines,
+  salesDocumentFooterSettings,
+} from "@/lib/sales-document-footer";
 import {
   buildSaleDocumentLineRows,
   buildSaleDocumentOrgHeaderHtml,
@@ -9,6 +14,7 @@ import {
   escapeHtml,
   formatPrintAmount,
   resolveSaleDocumentStoreContact,
+  resolveSaleOrderCreatorName,
   saleDocumentDiscountTotals,
   shouldShowPrintDiscountColumn,
 } from "@/lib/sale-document-print-shared";
@@ -81,18 +87,19 @@ function totalsLineRow(label, value, { grand = false } = {}) {
   return `<div class="amount-line${grand ? " amount-line-grand" : ""}"><span class="amount-label">${escapeHtml(label)}</span><span class="amount-value">${escapeHtml(value)}</span></div>`;
 }
 
-function buildReceiptFooterHtml(documentFooterText, organizationName) {
-  const lines = resolveReceiptFooterLines(
+function buildReceiptFooterHtml(documentFooterText, organizationName, context = {}, salesSettings = null) {
+  const footerSettings = salesDocumentFooterSettings(
     documentFooterText ? { print_footer_receipt: documentFooterText } : {},
-    organizationName,
+    salesSettings ?? {},
+    "receipt",
   );
-  return lines
-    .map((line) => {
-      const poweredBy = isPoweredByFooterLine(line);
-      const className = poweredBy ? "footer-powered-by" : "footer-text";
-      return `<div class="${className}">${escapeHtml(line)}</div>`;
-    })
-    .join("");
+  const bodyLines = resolveSalesDocumentBodyFooterLines(footerSettings, "receipt", {
+    username: context.username ?? "—",
+    organizationName,
+  });
+  const bodyHtml = buildSalesDocumentBodyFooterHtml(bodyLines, { layout: "thermal" });
+  const poweredBy = `<div class="footer-powered-by">${escapeHtml(RECEIPT_POWERED_BY_LINE)}</div>`;
+  return `${bodyHtml}${poweredBy}`;
 }
 
 export function buildSaleReceiptHtml(
@@ -114,6 +121,7 @@ export function buildSaleReceiptHtml(
     paymentInstructions = null,
     showPaymentInstructions = true,
     generalSettings = null,
+    salesSettings = null,
   } = {},
 ) {
   if (!sale) return "";
@@ -206,7 +214,9 @@ export function buildSaleReceiptHtml(
     totalsLineRow("Amount", formatPrintAmount(orderTotal), { grand: true }),
   ].join("");
 
-  const footerHtml = buildReceiptFooterHtml(documentFooterText, orgName);
+  const footerHtml = buildReceiptFooterHtml(documentFooterText, orgName, {
+    username: resolveSaleOrderCreatorName(sale),
+  }, salesSettings);
 
   const html = `<!DOCTYPE html>
 <html>

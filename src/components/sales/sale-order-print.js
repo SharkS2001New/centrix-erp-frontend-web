@@ -301,6 +301,7 @@ export async function printSaleOrder(sale, options = {}) {
       kraData,
       kraQrDataUrl,
       printWindow,
+      salesSettings: sales,
     };
 
     if (documentType === "invoice") {

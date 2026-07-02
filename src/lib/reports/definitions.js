@@ -119,6 +119,37 @@ export const REPORT_DEFINITIONS = {
     footerTotals: ["qty_sold", "total_vat", "total_revenue", "total_discount"],
   },
 
+  "sales-by-supplier": {
+    title: "Sales by Supplier",
+    subtitle: "Revenue and VAT grouped by product supplier",
+    section: "Sales",
+    apiPath: "/reports/sales-by-supplier",
+    dateColumn: "sale_date",
+    showDateRange: true,
+    columns: [
+      { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
+      { key: "supplier_code", label: "Supplier Code", accessor: (r) => r.supplier_code || "—" },
+      { key: "supplier_name", label: "Supplier", accessor: (r) => r.supplier_name },
+      { key: "channel", label: "Channel", accessor: (r) => r.channel },
+      { key: "order_count", label: "Orders", accessor: (r) => r.order_count, align: "right", total: true },
+      { key: "products_sold", label: "Products", accessor: (r) => r.products_sold, align: "right", total: true },
+      { key: "qty_sold", label: "Qty Sold", accessor: (r) => r.qty_sold, align: "right", total: true },
+      {
+        key: "net_ex_vat",
+        label: "Net (ex VAT)",
+        accessor: (r) => netExVatAmount(r, "total_revenue", "total_vat"),
+        align: "right",
+        total: true,
+      },
+      { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
+      { key: "total_revenue", label: "Gross (incl VAT)", accessor: (r) => r.total_revenue, align: "right", total: true },
+      { key: "total_discount", label: "Discount", accessor: (r) => r.total_discount, align: "right", total: true },
+    ],
+    kpis: vatReportKpis("total_revenue", "total_vat"),
+    footerTotals: ["order_count", "products_sold", "qty_sold", "total_vat", "total_revenue", "total_discount"],
+    charts: [{ type: "bar", title: "Revenue by supplier", labelKey: "supplier_name", valueKey: "total_revenue" }],
+  },
+
   "sales-by-channel": {
     title: "Sales by Channel",
     subtitle: "Gross sales, VAT, and collections by channel",

@@ -453,8 +453,8 @@ const NAV_SECTION_DEFINITIONS = [
       {
         href: "/accounting/customer-invoices",
         label: "Customer invoices",
-        module: "payments",
-        permission: P.payments.customer_invoices.view,
+        moduleAny: ["payments", "accounting"],
+        permissionAny: [P.payments.customer_invoices.view, P.accounting.accounts_receivable.view],
         group: "Accounts receivable",
       },
       {

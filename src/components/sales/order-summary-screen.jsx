@@ -16,6 +16,7 @@ import {
   isPaymentGatedWorkflowTransition,
   PAYMENT_STEP_KEYS,
   resolveOrderWorkflowActions,
+  shouldShowPaymentStatusBadge,
   saleBalanceDue,
   saleNeedsPaymentCollection,
   canRecordOrderPayment,
@@ -813,8 +814,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                   Order #{formatOrderNumber(sale)}
                 </h1>
                 <SaleStatusBadge status={sale.status} workflow={saleWorkflow} />
-                {sale.payment_status &&
-                (sale.payment_status !== sale.status || balanceDue > 0.01) ? (
+                {shouldShowPaymentStatusBadge(sale, totalPaid) ? (
                   <PaymentStatusBadge status={sale.payment_status} />
                 ) : null}
               </div>

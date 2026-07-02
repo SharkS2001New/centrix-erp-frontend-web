@@ -9,6 +9,7 @@ import {
   RECEIPT_POWERED_BY_LINE,
   receiptFooterForAdmin,
 } from "@/lib/print-footer-settings";
+import { SALES_FOOTER_PLACEHOLDER_HINT, defaultInvoiceBodyFooterForAdmin } from "@/lib/sales-document-footer";
 import {
   footerKeysForOrderPrintFormat,
   orderPrintFormatSections,
@@ -178,7 +179,7 @@ function GeneralPrintoutsTab({ form, setForm, footerKeys, hasSales }) {
       <div>
         <SectionHeading
           title="Document footers"
-          description="Each enabled printout type has its own footer. Thermal receipt: one centered line per row (use {organization} for company name). Vendor credit on receipts is fixed and always printed."
+          description="Editable closing text on thermal receipts and A4 invoices (one line per row). Use placeholders below. Designed & Developed By, Printed By, and Printed On are always fixed on A4."
         />
         <div className="mt-4 space-y-3">
           {visibleFooterKeys.length === 0 ? (
@@ -192,7 +193,7 @@ function GeneralPrintoutsTab({ form, setForm, footerKeys, hasSales }) {
               <Field key={key} label={label}>
                 <textarea
                   className={inputClassName()}
-                  rows={key === "receipt" ? 4 : 2}
+                  rows={key === "receipt" ? 4 : key === "invoice" ? 6 : 2}
                   value={form[PRINT_FOOTER_FORM_KEYS[key]] ?? ""}
                   onChange={(e) => {
                     const fieldKey = PRINT_FOOTER_FORM_KEYS[key];
@@ -205,14 +206,27 @@ function GeneralPrintoutsTab({ form, setForm, footerKeys, hasSales }) {
                   }}
                   placeholder={
                     key === "receipt"
-                      ? "Thank you for your business!\nGoods once sold are not returnable."
-                      : "Optional footer text for this document only"
+                      ? "You were served by: {username}\nThank you for your business!\nGoods once sold are not returnable."
+                      : key === "invoice"
+                        ? defaultInvoiceBodyFooterForAdmin()
+                        : "Optional footer text for this document only"
                   }
                 />
                 {key === "receipt" ? (
                   <p className="mt-2 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
                     Always printed (not editable):{" "}
                     <span className="font-medium text-slate-800">{RECEIPT_POWERED_BY_LINE}</span>
+                  </p>
+                ) : null}
+                {key === "receipt" || key === "invoice" ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Placeholders: {SALES_FOOTER_PLACEHOLDER_HINT}
+                  </p>
+                ) : null}
+                {key === "invoice" ? (
+                  <p className="mt-2 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                    Always printed on A4 (not editable): Designed &amp; Developed By, Printed By, and
+                    Printed On.
                   </p>
                 ) : null}
               </Field>
@@ -307,7 +321,7 @@ function A4InvoicesTab({ form, setForm, hasMobileSales }) {
     <div className="space-y-3">
       <SectionHeading
         title="A4 invoice receipts"
-        description="Valid-until date on the invoice header. Delivery instructions and the old footer block are no longer printed."
+        description="Valid-until date on the invoice header. Closing text (served by, goods confirmation, signatures) is configured under General → Document footers → A4 sales invoice footer."
       />
       <PrintFontSettingsFields
         form={form}

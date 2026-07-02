@@ -220,6 +220,14 @@ function loadingListColumnCount({ showQtyColumn, showPriceColumns }) {
   return count;
 }
 
+/** CSS layout class for table column sizing based on visible columns. */
+export function loadingListTableLayoutClass({ showQtyColumn, showPriceColumns }) {
+  if (showQtyColumn && showPriceColumns) return "layout-full";
+  if (showQtyColumn && !showPriceColumns) return "layout-qty-only";
+  if (!showQtyColumn && showPriceColumns) return "layout-price-only";
+  return "layout-product-only";
+}
+
 function loadingSheetPrintStyles(generalSettings = null) {
   const px = (base, print = false) =>
     orgPrintPx(base, generalSettings, { variant: "loading_sheet", print });
@@ -308,7 +316,6 @@ function loadingSheetPrintStyles(generalSettings = null) {
       vertical-align: bottom;
       line-height: 1.25;
     }
-    thead th.col-total { text-align: right; }
     tbody td {
       padding: 12px 8px 0;
       border: none;
@@ -319,17 +326,47 @@ function loadingSheetPrintStyles(generalSettings = null) {
     tbody tr + tr td { padding-top: 16px; }
     .col-no { width: 40px; text-align: left; }
     .col-product {
-      width: 34%;
       text-align: left;
       font-weight: 700;
       text-transform: uppercase;
       padding-right: 12px;
       word-break: break-word;
     }
-    .col-qty, .col-price { text-align: left; white-space: nowrap; }
-    .col-total { text-align: right; white-space: nowrap; font-weight: 400; }
+    .col-qty, .col-price { white-space: nowrap; }
+    .col-total { white-space: nowrap; font-weight: 400; }
     .main { font-weight: 700; }
     .ghost { color: #8a8a8a; font-size: ${px(10)}; font-weight: 400; margin-top: 3px; line-height: 1.2; }
+
+    /* All columns visible */
+    table.layout-full .col-product { width: 34%; }
+    table.layout-full .col-qty,
+    table.layout-full .col-price { text-align: left; }
+    table.layout-full thead th.col-total,
+    table.layout-full tbody td.col-total,
+    table.layout-full tfoot td.col-total { text-align: right; }
+
+    /* Quantity only — qty column pinned to the right */
+    table.layout-qty-only .col-product { width: auto; }
+    table.layout-qty-only .col-qty {
+      width: 120px;
+      text-align: right;
+    }
+    table.layout-qty-only thead th.col-qty,
+    table.layout-qty-only tbody td.col-qty { text-align: right; }
+    table.layout-qty-only .col-qty .main,
+    table.layout-qty-only .col-qty .ghost { text-align: right; }
+
+    /* Price columns without quantity */
+    table.layout-price-only .col-product { width: auto; }
+    table.layout-price-only .col-price { width: 110px; text-align: left; }
+    table.layout-price-only .col-total { width: 110px; }
+    table.layout-price-only thead th.col-total,
+    table.layout-price-only tbody td.col-total,
+    table.layout-price-only tfoot td.col-total { text-align: right; }
+
+    /* Product names only */
+    table.layout-product-only .col-product { width: auto; }
+
     .empty { text-align: center; padding: 24px; color: #666; }
     tfoot td {
       padding: 14px 8px 0;
@@ -427,6 +464,7 @@ export function buildLoadingListHtml({
     loadingList?.total_amount ?? lines.reduce((sum, line) => sum + Number(line.line_total || 0), 0);
   const dateLabel = formatDisplayDate(listDate);
   const columnCount = loadingListColumnCount({ showQtyColumn, showPriceColumns });
+  const tableLayoutClass = loadingListTableLayoutClass({ showQtyColumn, showPriceColumns });
   const rowHtml =
     buildLoadingListLineRows(lines, { showQtyColumn, showPriceColumns }) ||
     `<tr><td colspan="${columnCount}" class="empty">No line items</td></tr>`;
@@ -494,7 +532,7 @@ export function buildLoadingListHtml({
       <p class="doc-title">Loading List, Date: ${escapeHtml(dateLabel)}</p>
       <p class="route-name">Route Name: ${escapeHtml(routeName)}</p>
     </div>
-    <table>
+    <table class="${tableLayoutClass}">
       <thead>${tableHead}</thead>
       <tbody>${rowHtml}</tbody>
       ${tableFoot}

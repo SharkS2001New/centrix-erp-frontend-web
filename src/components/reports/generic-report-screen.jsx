@@ -22,6 +22,7 @@ import {
 
 const DATE_COLUMNS = {
   "sales-by-product": "sale_date",
+  "sales-by-supplier": "sale_date",
   "sales-by-user": "sale_date",
   "sales-by-channel": "sale_date",
   "daily-sales": "sale_day",

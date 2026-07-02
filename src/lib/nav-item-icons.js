@@ -132,6 +132,7 @@ export const NAV_HREF_ICONS = {
   "/reports/subledger-reconciliation": "link",
   "/reports/daily-sales": "chart",
   "/reports/sales-by-product": "box",
+  "/reports/sales-by-supplier": "truck",
   "/reports/sales-by-customer": "hr",
   "/reports/till-sessions": "wallet",
   "/reports/stock-on-hand": "inventory",
