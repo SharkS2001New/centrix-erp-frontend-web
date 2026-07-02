@@ -22,6 +22,8 @@ import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 import { CreateDispatchTripDialog } from "@/components/fulfillment/create-dispatch-trip-dialog";
 import { MergeDispatchTripsDialog } from "@/components/fulfillment/merge-dispatch-trips-dialog";
 import { formatTripRoutesLabel } from "@/lib/trip-routes";
+import { formatTripProfitMargin, tripStatusLabel } from "@/lib/trip-status";
+import { formatSaleKes } from "@/lib/sales";
 import {
   BatchActionBar,
   TableRowSelectCell,
@@ -38,7 +40,7 @@ const STATUS_OPTIONS = [
 ];
 
 function statusLabel(status) {
-  return STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status;
+  return tripStatusLabel(status);
 }
 
 function isoDate(d = new Date()) {
@@ -236,6 +238,9 @@ export default function TripsPage() {
                 <th className="px-4 py-3">Driver</th>
                 <th className="px-4 py-3">Vehicle</th>
                 <th className="px-4 py-3">Orders</th>
+                <th className="px-4 py-3 text-right">Amount</th>
+                <th className="px-4 py-3 text-right">Profit</th>
+                <th className="px-4 py-3 text-right">Margin</th>
                 <th className="px-4 py-3">Cash</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3" />
@@ -253,7 +258,16 @@ export default function TripsPage() {
                   <td className="px-4 py-3">{formatTripRoutesLabel(trip, routeById)}</td>
                   <td className="px-4 py-3">{trip.driver?.full_name ?? "—"}</td>
                   <td className="px-4 py-3">{trip.vehicle?.plate_number ?? trip.vehicle?.vehicle_name ?? "—"}</td>
-                  <td className="px-4 py-3">{trip.sales_count ?? 0}</td>
+                  <td className="px-4 py-3">{trip.financial_summary?.order_count ?? trip.sales_count ?? 0}</td>
+                  <td className="px-4 py-3 text-right font-medium text-slate-800">
+                    {formatSaleKes(trip.financial_summary?.total_amount ?? 0)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-slate-700">
+                    {formatSaleKes(trip.financial_summary?.total_profit ?? 0)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-slate-700">
+                    {formatTripProfitMargin(trip.financial_summary?.profit_margin_percent)}
+                  </td>
                   <td className="px-4 py-3 text-slate-600">
                     {trip.settled_at
                       ? "Settled"
@@ -261,7 +275,7 @@ export default function TripsPage() {
                         ? formatTripCash(trip)
                         : "—"}
                   </td>
-                  <td className="px-4 py-3 capitalize">{statusLabel(trip.status)}</td>
+                  <td className="px-4 py-3">{statusLabel(trip.status)}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-3">
                       {trip.status === "in_transit" ? (
@@ -288,7 +302,7 @@ export default function TripsPage() {
         <button
           type="button"
           disabled={mergeableTrips.length < 2}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-[var(--theme-primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           onClick={() => setMergeTripOpen(true)}
         >
           Merge trip charts

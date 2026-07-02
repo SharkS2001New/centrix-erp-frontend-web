@@ -814,7 +814,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                   Order #{formatOrderNumber(sale)}
                 </h1>
                 <SaleStatusBadge status={sale.status} workflow={saleWorkflow} />
-                {shouldShowPaymentStatusBadge(sale, totalPaid) ? (
+                {shouldShowPaymentStatusBadge(sale, totalPaid, capabilities) ? (
                   <PaymentStatusBadge status={sale.payment_status} />
                 ) : null}
               </div>
@@ -842,6 +842,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                   }
                   canCancel={cancellationAllowed}
                   busyStatus={transitionBusy || fulfillment.busy ? sale.status : null}
+                  capabilities={capabilities}
                 />
               </div>
             </div>

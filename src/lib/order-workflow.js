@@ -2,6 +2,7 @@
 import {
   isOrderCancellationEnabled,
   ORDER_CANCELLABLE_STATUSES,
+  orgDefersPaymentToFulfillment,
 } from "@/lib/platform-org-features";
 
 export const DEFAULT_ORDER_WORKFLOW = {
@@ -675,7 +676,7 @@ export function distributionOrderQueueNavItems() {
   ];
 }
 
-export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true } = {}) {
+export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, capabilities = null } = {}) {
   if (!slug || slug === "all") {
     return {
       slug: "all",
@@ -737,7 +738,8 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true } 
   const step = workflowPipelineSteps(workflow).find((s) => s.key === slug);
   if (!step) return null;
 
-  const paymentStatusFilter = paymentStatusForCollectionQueue(step.key);
+  const deferPayment = orgDefersPaymentToFulfillment(capabilities);
+  const paymentStatusFilter = deferPayment ? paymentStatusForCollectionQueue(step.key) : null;
   if (paymentStatusFilter) {
     return {
       slug: step.key,
@@ -899,7 +901,8 @@ export function paymentStatusAlignsWithWorkflowStep(sale) {
  * Show a payment badge only when fulfillment advanced past payment steps while balance remains
  * (e.g. Processed + Unpaid). Not for cancelled orders or when workflow already conveys payment.
  */
-export function shouldShowPaymentStatusBadge(sale, totalPaid = null) {
+export function shouldShowPaymentStatusBadge(sale, totalPaid = null, capabilities = null) {
+  if (capabilities && !orgDefersPaymentToFulfillment(capabilities)) return false;
   if (!sale?.payment_status) return false;
 
   const workflowStatus = String(sale.status ?? "").toLowerCase();
@@ -919,7 +922,7 @@ export function shouldShowPaymentStatusBadge(sale, totalPaid = null) {
  * Decide whether to show Collect payment vs advance workflow — never both at once.
  * Unpaid / partially paid orders may advance through fulfillment without collecting payment first.
  */
-export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null) {
+export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null, capabilities = null) {
   const status = String(sale?.status ?? "").toLowerCase();
   if (!sale || status === "cancelled" || status === "expired" || status === "completed") {
     return { showCollectPayment: false, advanceStatus: null, balanceDue: 0 };
@@ -927,6 +930,8 @@ export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null) {
 
   const balanceDue = saleBalanceDue(sale, totalPaid);
   const onPaymentStep = isPaymentCollectWorkflowStatus(status);
+  const deferPayment = orgDefersPaymentToFulfillment(capabilities);
+  const isCredit = Boolean(sale.is_credit_sale);
   let advanceStatus = primaryWorkflowAdvanceStatus(status, workflow);
 
   if (advanceStatus && isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {
@@ -937,7 +942,10 @@ export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null) {
   const advanceIsPaymentStep =
     advanceStatus && PAYMENT_STEP_KEYS.has(String(advanceStatus).toLowerCase());
   const canAdvanceWithoutPayment =
-    onPaymentStep && advanceStatus && !advanceIsPaymentStep;
+    onPaymentStep
+    && advanceStatus
+    && !advanceIsPaymentStep
+    && (deferPayment || isCredit);
 
   let showCollectPayment = saleNeedsPaymentCollection(sale, totalPaid);
   if (canAdvanceWithoutPayment) {

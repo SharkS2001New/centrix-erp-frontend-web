@@ -99,8 +99,8 @@ export default function SalesOrdersListScreen({
   );
   const includeMobileOrders = isOrgMobileSalesEnabled(capabilities);
   const queueConfig = useMemo(
-    () => resolveSalesOrderQueue(queueSlug, orgWorkflow, { includeMobile: includeMobileOrders }),
-    [queueSlug, orgWorkflow, includeMobileOrders],
+    () => resolveSalesOrderQueue(queueSlug, orgWorkflow, { includeMobile: includeMobileOrders, capabilities }),
+    [queueSlug, orgWorkflow, includeMobileOrders, capabilities],
   );
   const statusOptions = useMemo(
     () => workflowStatusFilterOptions(orgWorkflow),
@@ -862,6 +862,7 @@ export default function SalesOrdersListScreen({
                           routeById={routeById}
                           paymentRefsBySaleId={paymentRefsBySaleId}
                           columnCount={columnCount}
+                          capabilities={capabilities}
                         />
                       );
                     })}

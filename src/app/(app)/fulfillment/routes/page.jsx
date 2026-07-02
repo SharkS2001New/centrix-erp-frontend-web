@@ -536,13 +536,17 @@ export default function RoutesPage() {
         }}
         routes={routes}
         defaultRouteIds={createTripRouteIds}
-        description="Select routes going the same direction, then assign the driver and vehicle for this trip chart."
+        description={
+          createTripRouteIds.length
+            ? "Routes from your selection are already included. Select more routes if needed, then assign the driver and vehicle."
+            : "Select routes going the same direction, then assign the driver and vehicle for this trip chart."
+        }
       />
 
       <BatchActionBar count={selectedCount} onClear={clearSelection}>
         <button
           type="button"
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-[var(--theme-primary-hover)]"
           onClick={() => {
             setCreateTripRouteIds([...selectedIds].map((id) => Number(id)).filter((id) => id > 0));
             setCreateTripOpen(true);

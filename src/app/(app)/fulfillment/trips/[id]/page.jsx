@@ -22,6 +22,8 @@ import { mergeGeneralSettings } from "@/lib/general-settings";
 import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
 import { formatOrderNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
+import { TripWorkflowBanner } from "@/components/fulfillment/trip-workflow-banner";
+import { formatTripProfitMargin, tripStatusLabel } from "@/lib/trip-status";
 
 function PrintIcon() {
   return (
@@ -30,10 +32,6 @@ function PrintIcon() {
       <path d="M6 14h12v8H6z" />
     </svg>
   );
-}
-
-function statusLabel(status) {
-  return String(status ?? "").replace(/_/g, " ");
 }
 
 export default function TripDetailPage() {
@@ -196,10 +194,12 @@ export default function TripDetailPage() {
         ]}
       />
 
-      <div className="mb-6 grid gap-4 theme-panel rounded-xl border p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
+      <TripWorkflowBanner status={trip.status} />
+
+      <div className="mb-6 grid gap-4 theme-panel rounded-xl border p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         <div>
           <p className="text-xs uppercase text-slate-500">Status</p>
-          <p className="mt-1 font-medium capitalize text-slate-900">{statusLabel(trip.status)}</p>
+          <p className="mt-1 font-medium text-slate-900">{tripStatusLabel(trip.status)}</p>
         </div>
         <div>
           <p className="text-xs uppercase text-slate-500">Driver</p>
@@ -216,7 +216,35 @@ export default function TripDetailPage() {
         </div>
         <div>
           <p className="text-xs uppercase text-slate-500">Orders</p>
-          <p className="mt-1 font-medium text-slate-900">{trip.sales?.length ?? 0}</p>
+          <p className="mt-1 font-medium text-slate-900">
+            {trip.financial_summary?.order_count ?? trip.sales?.length ?? 0}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs uppercase text-slate-500">Total amount</p>
+          <p className="mt-1 font-medium text-slate-900">
+            {formatSaleKes(trip.financial_summary?.total_amount ?? 0)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs uppercase text-slate-500">Total profit</p>
+          <p className="mt-1 font-medium text-slate-900">
+            {formatSaleKes(trip.financial_summary?.total_profit ?? 0)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs uppercase text-slate-500">Profit margin</p>
+          <p className="mt-1 font-medium text-slate-900">
+            {formatTripProfitMargin(trip.financial_summary?.profit_margin_percent)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs uppercase text-slate-500">Expected COD</p>
+          <p className="mt-1 font-medium text-slate-900">
+            {trip.expected_cash != null && Number(trip.expected_cash) > 0
+              ? formatSaleKes(trip.expected_cash)
+              : "—"}
+          </p>
         </div>
       </div>
 
@@ -277,15 +305,15 @@ export default function TripDetailPage() {
           </>
         ) : null}
         {canStart ? (
-          <button
+          <PrimaryButton
             type="button"
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+            showIcon={false}
             disabled={busy || (lines.length > 0 && !loadingLocked)}
             title={lines.length > 0 && !loadingLocked ? "Lock the loading list first" : undefined}
             onClick={() => runAction(`/dispatch-trips/${id}/start`)}
           >
-            Start trip
-          </button>
+            Dispatch trip
+          </PrimaryButton>
         ) : null}
         {canComplete ? (
           <Link

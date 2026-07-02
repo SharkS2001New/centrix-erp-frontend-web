@@ -7,6 +7,8 @@ import { fetchRoutesCached } from "@/lib/reference-data-cache";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { notifyError } from "@/lib/notify";
 
+const EMPTY_LIST = [];
+
 function isoDate(d = new Date()) {
   return d.toISOString().slice(0, 10);
 }
@@ -32,15 +34,24 @@ function sortByName(rows, key = "full_name") {
 export function CreateDispatchTripDialog({
   open,
   onClose,
-  routes: routesProp = [],
-  drivers: driversProp = [],
-  vehicles: vehiclesProp = [],
+  routes: routesProp,
+  drivers: driversProp,
+  vehicles: vehiclesProp,
   defaultDate = null,
-  defaultRouteIds = [],
-  defaultSaleIds = [],
+  defaultRouteIds,
+  defaultSaleIds,
   title = "Create trip chart",
   description = "Combine one or more routes on the same delivery run. Driver and vehicle are required.",
 }) {
+  const routesFromProps = routesProp ?? EMPTY_LIST;
+  const driversFromProps = driversProp ?? EMPTY_LIST;
+  const vehiclesFromProps = vehiclesProp ?? EMPTY_LIST;
+  const initialRouteIds = defaultRouteIds ?? EMPTY_LIST;
+  const saleIds = defaultSaleIds ?? EMPTY_LIST;
+  const initialRouteIdsKey = useMemo(
+    () => initialRouteIds.map((id) => String(id)).sort().join(","),
+    [initialRouteIds],
+  );
   const router = useRouter();
   const [scheduledDate, setScheduledDate] = useState(() => defaultDate ?? isoDate());
   const [selectedRouteIds, setSelectedRouteIds] = useState(() => new Set());
@@ -56,11 +67,12 @@ export function CreateDispatchTripDialog({
   useEffect(() => {
     if (!open) return;
     setScheduledDate(defaultDate ?? isoDate());
-    setSelectedRouteIds(new Set((defaultRouteIds ?? []).map((id) => String(id))));
+    const ids = initialRouteIdsKey ? initialRouteIdsKey.split(",") : [];
+    setSelectedRouteIds(new Set(ids));
     setDriverId("");
     setVehicleId("");
     setNotes("");
-  }, [open, defaultDate, defaultRouteIds]);
+  }, [open, defaultDate, initialRouteIdsKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -68,11 +80,14 @@ export function CreateDispatchTripDialog({
     let cancelled = false;
     setRefsLoading(true);
 
-    Promise.all([
-      fetchRoutesCached(),
-      driversProp.length ? Promise.resolve(driversProp) : apiRequest("/drivers", { searchParams: { per_page: 200 } }).then((r) => r.data ?? []),
-      vehiclesProp.length ? Promise.resolve(vehiclesProp) : apiRequest("/vehicles", { searchParams: { per_page: 200 } }).then((r) => r.data ?? []),
-    ])
+    const loadDrivers = driversFromProps.length
+      ? Promise.resolve(driversFromProps)
+      : apiRequest("/drivers", { searchParams: { per_page: 200 } }).then((r) => r.data ?? []);
+    const loadVehicles = vehiclesFromProps.length
+      ? Promise.resolve(vehiclesFromProps)
+      : apiRequest("/vehicles", { searchParams: { per_page: 200 } }).then((r) => r.data ?? []);
+
+    Promise.all([fetchRoutesCached(), loadDrivers, loadVehicles])
       .then(([routes, drivers, vehicles]) => {
         if (cancelled) return;
         setRoutesLoaded(routes ?? []);
@@ -93,18 +108,29 @@ export function CreateDispatchTripDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, driversProp, vehiclesProp]);
+  }, [open, driversFromProps.length, vehiclesFromProps.length]);
 
   const routes = useMemo(() => {
     const byId = new Map();
-    for (const route of [...routesProp, ...routesLoaded]) {
+    for (const route of [...routesFromProps, ...routesLoaded]) {
       if (route?.id != null) byId.set(route.id, route);
     }
     return sortRoutes([...byId.values()]);
-  }, [routesProp, routesLoaded]);
+  }, [routesFromProps, routesLoaded]);
 
-  const drivers = useMemo(() => sortByName([...driversProp, ...driversLoaded]), [driversProp, driversLoaded]);
-  const vehicles = useMemo(() => sortByName([...vehiclesProp, ...vehiclesLoaded], "plate_number"), [vehiclesProp, vehiclesLoaded]);
+  const drivers = useMemo(
+    () => sortByName([...driversFromProps, ...driversLoaded]),
+    [driversFromProps, driversLoaded],
+  );
+  const vehicles = useMemo(
+    () => sortByName([...vehiclesFromProps, ...vehiclesLoaded], "plate_number"),
+    [vehiclesFromProps, vehiclesLoaded],
+  );
+
+  const routesHint =
+    initialRouteIds.length > 0
+      ? "Some routes are already selected. Select more routes if any should share this trip chart."
+      : "Select every route this vehicle will cover on the same run.";
 
   function toggleRoute(id) {
     const key = String(id);
@@ -123,7 +149,7 @@ export function CreateDispatchTripDialog({
     }
 
     const routeIds = [...selectedRouteIds].map((id) => Number(id)).filter((id) => id > 0);
-    if (!routeIds.length && !defaultSaleIds.length) {
+    if (!routeIds.length && !saleIds.length) {
       notifyError("Select at least one route.");
       return;
     }
@@ -138,7 +164,7 @@ export function CreateDispatchTripDialog({
           driver_id: Number(driverId),
           vehicle_id: Number(vehicleId),
           notes: notes.trim() || null,
-          ...(defaultSaleIds.length ? { sale_ids: defaultSaleIds } : {}),
+          ...(saleIds.length ? { sale_ids: saleIds } : {}),
         },
       });
       onClose?.();
@@ -148,7 +174,7 @@ export function CreateDispatchTripDialog({
     } finally {
       setSaving(false);
     }
-  }, [scheduledDate, selectedRouteIds, driverId, vehicleId, notes, defaultSaleIds, onClose, router]);
+  }, [scheduledDate, selectedRouteIds, driverId, vehicleId, notes, saleIds, onClose, router]);
 
   if (!open) return null;
 
@@ -173,7 +199,7 @@ export function CreateDispatchTripDialog({
             />
           </Field>
           <Field label="Routes">
-            <p className="mb-2 text-xs text-slate-500">Select every route this vehicle will cover on the same run.</p>
+            <p className="mb-2 text-xs text-slate-500">{routesHint}</p>
             <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
               {refsLoading && !routes.length ? (
                 <p className="text-sm text-slate-500">Loading routes…</p>

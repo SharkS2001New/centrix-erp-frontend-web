@@ -1,9 +1,23 @@
 /** Platform-controlled sales behaviour flags exposed on erp/capabilities. */
 
+import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+
 export const ORDER_CANCELLABLE_STATUSES = new Set(["booked", "pending", "unpaid"]);
 
 export function isPlatformCheckoutOnCreateEnabled(capabilities) {
   return capabilities?.module_settings?.sales?.show_checkout_on_create_order !== false;
+}
+
+/**
+ * Distribution orgs on Save order (no checkout on create) defer payment until fulfillment.
+ * Orders may advance through processing while unpaid; Unpaid queues filter by payment status.
+ * Does not apply when checkout on create is enabled (typical retail / wholesale POS).
+ */
+export function orgDefersPaymentToFulfillment(capabilities) {
+  if (!capabilities?.modules?.distribution) return false;
+  if (!isDistributionOpsEnabled(capabilities)) return false;
+  if (isPlatformCheckoutOnCreateEnabled(capabilities)) return false;
+  return true;
 }
 
 export function isPlatformMobileOrdersEnabled(capabilities) {

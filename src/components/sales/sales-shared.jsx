@@ -130,6 +130,7 @@ export function OrderWorkflowPipeline({
   orderSource,
   channel,
   canCancel = false,
+  capabilities = null,
 }) {
   const steps = workflowPipelineSteps(workflow);
   const currentIdx = pipelineStatusIndex(status, workflow);
@@ -140,7 +141,7 @@ export function OrderWorkflowPipeline({
   const paidTotal =
     totalPaid != null ? Number(totalPaid) : Math.max(0, Number(sale?.order_total ?? 0) - balanceDue);
   const actions = sale
-    ? resolveOrderWorkflowActions(sale, workflow, paidTotal)
+    ? resolveOrderWorkflowActions(sale, workflow, paidTotal, capabilities)
     : { showCollectPayment: false, advanceStatus: null };
   const showCollectPayment = Boolean(onCollectPayment) && actions.showCollectPayment;
   const advanceTarget = actions.advanceStatus;

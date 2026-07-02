@@ -364,7 +364,9 @@ export function buildOrderContextMenuItems({
 
   const canCollect = sale && onCollectPayment && saleNeedsPaymentCollection(sale);
   const workflowActions =
-    sale && workflow ? resolveOrderWorkflowActions(sale, workflow) : { showCollectPayment: false, advanceStatus: null };
+    sale && workflow
+      ? resolveOrderWorkflowActions(sale, workflow, null, capabilities)
+      : { showCollectPayment: false, advanceStatus: null };
 
   if (canCollect && workflowActions.showCollectPayment) {
     items.push({
@@ -698,6 +700,7 @@ export function OrderListTableRow({
   routeById,
   paymentRefsBySaleId,
   columnCount = 10,
+  capabilities = null,
 }) {
   const href = `/sales/orders/${sale.id}`;
   const items = detail?.items ?? sale.items ?? [];
@@ -743,7 +746,7 @@ export function OrderListTableRow({
         <td className="px-4 py-3 text-right text-slate-700">{saleVatCell(sale)}</td>
         <td className="px-4 py-3">
           <SaleStatusBadge status={sale.status} workflow={workflow} workflowStatus={sale.workflow_status} />
-          {shouldShowPaymentStatusBadge(sale) ? (
+          {shouldShowPaymentStatusBadge(sale, null, capabilities) ? (
             <div className="mt-1.5">
               <PaymentStatusBadge status={sale.payment_status} />
             </div>
@@ -799,7 +802,7 @@ export function indexSalesWithItems(list) {
   return map;
 }
 
-export function OrderDetailHeader({ sale, workflow }) {
+export function OrderDetailHeader({ sale, workflow, capabilities = null }) {
   if (!sale) return null;
   const isCredit = Boolean(sale.is_credit_sale);
   const isCancelled = sale.status === "cancelled";
@@ -819,7 +822,7 @@ export function OrderDetailHeader({ sale, workflow }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <SaleStatusBadge status={sale.status} workflow={workflow} />
-          {shouldShowPaymentStatusBadge(sale) ? (
+          {shouldShowPaymentStatusBadge(sale, null, capabilities) ? (
             <PaymentStatusBadge status={sale.payment_status} />
           ) : null}
           <OrderSourceBadge source={sale.order_source} channel={sale.channel} />

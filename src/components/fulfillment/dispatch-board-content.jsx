@@ -26,6 +26,8 @@ function isoDate(d = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
+const EMPTY_LIST = [];
+
 
 export function DispatchBoardContent() {
   const router = useRouter();
@@ -221,7 +223,7 @@ export function DispatchBoardContent() {
             ? createTripDefaults.routeIds
             : routeFilter !== "all"
               ? [Number(routeFilter)]
-              : []
+              : EMPTY_LIST
         }
         defaultSaleIds={createTripDefaults.saleIds}
       />

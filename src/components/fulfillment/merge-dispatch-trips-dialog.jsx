@@ -7,6 +7,8 @@ import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catal
 import { formatTripRoutesLabel } from "@/lib/trip-routes";
 import { notifyError } from "@/lib/notify";
 
+const EMPTY_LIST = [];
+
 function sortByName(rows, key = "full_name") {
   return [...rows].sort((a, b) =>
     String(a[key] ?? a.vehicle_name ?? a.plate_number ?? "").localeCompare(
@@ -20,10 +22,12 @@ function sortByName(rows, key = "full_name") {
 export function MergeDispatchTripsDialog({
   open,
   onClose,
-  trips = [],
-  drivers: driversProp = [],
-  vehicles: vehiclesProp = [],
+  trips = EMPTY_LIST,
+  drivers: driversProp,
+  vehicles: vehiclesProp,
 }) {
+  const driversFromProps = driversProp ?? EMPTY_LIST;
+  const vehiclesFromProps = vehiclesProp ?? EMPTY_LIST;
   const router = useRouter();
   const [targetTripId, setTargetTripId] = useState("");
   const [driverId, setDriverId] = useState("");
@@ -51,14 +55,24 @@ export function MergeDispatchTripsDialog({
     if (!open) return;
     let cancelled = false;
     setRefsLoading(true);
-    Promise.all([
-      driversProp.length ? Promise.resolve(driversProp) : apiRequest("/drivers", { searchParams: { per_page: 200 } }).then((r) => r.data ?? []),
-      vehiclesProp.length ? Promise.resolve(vehiclesProp) : apiRequest("/vehicles", { searchParams: { per_page: 200 } }).then((r) => r.data ?? []),
-    ])
+    const loadDrivers = driversFromProps.length
+      ? Promise.resolve(driversFromProps)
+      : apiRequest("/drivers", { searchParams: { per_page: 200 } }).then((r) => r.data ?? []);
+    const loadVehicles = vehiclesFromProps.length
+      ? Promise.resolve(vehiclesFromProps)
+      : apiRequest("/vehicles", { searchParams: { per_page: 200 } }).then((r) => r.data ?? []);
+
+    Promise.all([loadDrivers, loadVehicles])
       .then(([drivers, vehicles]) => {
         if (cancelled) return;
         setDriversLoaded(drivers ?? []);
         setVehiclesLoaded(vehicles ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDriversLoaded([]);
+          setVehiclesLoaded([]);
+        }
       })
       .finally(() => {
         if (!cancelled) setRefsLoading(false);
@@ -66,10 +80,16 @@ export function MergeDispatchTripsDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, driversProp, vehiclesProp]);
+  }, [open, driversFromProps.length, vehiclesFromProps.length]);
 
-  const drivers = useMemo(() => sortByName([...driversProp, ...driversLoaded]), [driversProp, driversLoaded]);
-  const vehicles = useMemo(() => sortByName([...vehiclesProp, ...vehiclesLoaded], "plate_number"), [vehiclesProp, vehiclesLoaded]);
+  const drivers = useMemo(
+    () => sortByName([...driversFromProps, ...driversLoaded]),
+    [driversFromProps, driversLoaded],
+  );
+  const vehicles = useMemo(
+    () => sortByName([...vehiclesFromProps, ...vehiclesLoaded], "plate_number"),
+    [vehiclesFromProps, vehiclesLoaded],
+  );
 
   const submit = useCallback(async () => {
     if (draftTrips.length < 2) {

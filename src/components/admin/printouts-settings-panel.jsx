@@ -11,7 +11,6 @@ import {
 } from "@/lib/print-footer-settings";
 import { SALES_FOOTER_PLACEHOLDER_HINT, defaultInvoiceBodyFooterForAdmin } from "@/lib/sales-document-footer";
 import {
-  footerKeysForOrderPrintFormat,
   orderPrintFormatSections,
   printoutsDistributionPayloadFromForm,
   printoutsFormFromApis,
@@ -103,10 +102,53 @@ function PrintoutsTabBar({ tabs, activeTab, onTabChange }) {
   );
 }
 
-function GeneralPrintoutsTab({ form, setForm, footerKeys, hasSales }) {
+function DocumentFooterField({ footerKey, form, setForm }) {
+  const fieldKey = PRINT_FOOTER_FORM_KEYS[footerKey];
+  const label = PRINT_FOOTER_LABELS[footerKey];
+
+  return (
+    <Field label={label}>
+      <textarea
+        className={inputClassName()}
+        rows={footerKey === "receipt" ? 4 : footerKey === "invoice" ? 6 : 3}
+        value={form[fieldKey] ?? ""}
+        onChange={(e) => {
+          const nextValue =
+            footerKey === "receipt" ? receiptFooterForAdmin(e.target.value) : e.target.value;
+          setForm((f) => ({
+            ...f,
+            [fieldKey]: nextValue,
+          }));
+        }}
+        placeholder={
+          footerKey === "receipt"
+            ? "You were served by: {username}\nThank you for your business!\nGoods once sold are not returnable."
+            : footerKey === "invoice"
+              ? defaultInvoiceBodyFooterForAdmin()
+              : "Optional footer text for this document only"
+        }
+      />
+      {footerKey === "receipt" ? (
+        <p className="mt-2 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          Always printed (not editable):{" "}
+          <span className="font-medium text-slate-800">{RECEIPT_POWERED_BY_LINE}</span>
+        </p>
+      ) : null}
+      {footerKey === "receipt" || footerKey === "invoice" ? (
+        <p className="mt-2 text-xs text-slate-500">Placeholders: {SALES_FOOTER_PLACEHOLDER_HINT}</p>
+      ) : null}
+      {footerKey === "invoice" ? (
+        <p className="mt-2 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          Always printed on A4 (not editable): Designed &amp; Developed By, Printed By, and Printed On.
+        </p>
+      ) : null}
+    </Field>
+  );
+}
+
+function GeneralPrintoutsTab({ form, setForm, hasSales }) {
   const orderFormat = form.order_document_type ?? "receipt";
   const { showThermal, showA4 } = orderPrintFormatSections(orderFormat);
-  const visibleFooterKeys = footerKeysForOrderPrintFormat(footerKeys, orderFormat);
   const showBranchSetting = showThermal || showA4;
 
   return (
@@ -173,65 +215,6 @@ function GeneralPrintoutsTab({ form, setForm, footerKeys, hasSales }) {
               ))}
             </select>
           </Field>
-        </div>
-      </div>
-
-      <div>
-        <SectionHeading
-          title="Document footers"
-          description="Editable closing text on thermal receipts and A4 invoices (one line per row). Use placeholders below. Designed & Developed By, Printed By, and Printed On are always fixed on A4."
-        />
-        <div className="mt-4 space-y-3">
-          {visibleFooterKeys.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              Enable Sales, Procurement, or Distribution to configure document footers for those printouts.
-            </p>
-          ) : null}
-          {visibleFooterKeys.map((key) => {
-            const label = PRINT_FOOTER_LABELS[key];
-            return (
-              <Field key={key} label={label}>
-                <textarea
-                  className={inputClassName()}
-                  rows={key === "receipt" ? 4 : key === "invoice" ? 6 : 2}
-                  value={form[PRINT_FOOTER_FORM_KEYS[key]] ?? ""}
-                  onChange={(e) => {
-                    const fieldKey = PRINT_FOOTER_FORM_KEYS[key];
-                    const nextValue =
-                      key === "receipt" ? receiptFooterForAdmin(e.target.value) : e.target.value;
-                    setForm((f) => ({
-                      ...f,
-                      [fieldKey]: nextValue,
-                    }));
-                  }}
-                  placeholder={
-                    key === "receipt"
-                      ? "You were served by: {username}\nThank you for your business!\nGoods once sold are not returnable."
-                      : key === "invoice"
-                        ? defaultInvoiceBodyFooterForAdmin()
-                        : "Optional footer text for this document only"
-                  }
-                />
-                {key === "receipt" ? (
-                  <p className="mt-2 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                    Always printed (not editable):{" "}
-                    <span className="font-medium text-slate-800">{RECEIPT_POWERED_BY_LINE}</span>
-                  </p>
-                ) : null}
-                {key === "receipt" || key === "invoice" ? (
-                  <p className="mt-2 text-xs text-slate-500">
-                    Placeholders: {SALES_FOOTER_PLACEHOLDER_HINT}
-                  </p>
-                ) : null}
-                {key === "invoice" ? (
-                  <p className="mt-2 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                    Always printed on A4 (not editable): Designed &amp; Developed By, Printed By, and
-                    Printed On.
-                  </p>
-                ) : null}
-              </Field>
-            );
-          })}
         </div>
       </div>
     </div>
@@ -312,6 +295,15 @@ function ThermalReceiptsTab({ form, setForm, hasMobileSales }) {
         hasMobileSales={hasMobileSales}
         idPrefix="printouts-thermal"
       />
+      <div className="border-t border-slate-200 pt-4">
+        <SectionHeading
+          title="Document footer"
+          description="Editable closing text on thermal receipts (one line per row)."
+        />
+        <div className="mt-3">
+          <DocumentFooterField footerKey="receipt" form={form} setForm={setForm} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -321,7 +313,7 @@ function A4InvoicesTab({ form, setForm, hasMobileSales }) {
     <div className="space-y-3">
       <SectionHeading
         title="A4 invoice receipts"
-        description="Valid-until date on the invoice header. Closing text (served by, goods confirmation, signatures) is configured under General → Document footers → A4 sales invoice footer."
+        description="Valid-until date, payment instructions, and closing footer text for A4 sales invoices."
       />
       <PrintFontSettingsFields
         form={form}
@@ -350,6 +342,15 @@ function A4InvoicesTab({ form, setForm, hasMobileSales }) {
         hasMobileSales={hasMobileSales}
         idPrefix="printouts-invoice"
       />
+      <div className="border-t border-slate-200 pt-4">
+        <SectionHeading
+          title="Document footer"
+          description="Closing text on A4 invoices — served by, goods confirmation, and signature lines (one line per row)."
+        />
+        <div className="mt-3">
+          <DocumentFooterField footerKey="invoice" form={form} setForm={setForm} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -410,6 +411,15 @@ function LpoPrintoutsTab({ form, setForm }) {
         onChange={(value) => setForm((f) => ({ ...f, lpo_print_footer_lines: value }))}
         rows={5}
       />
+      <div className="border-t border-slate-200 pt-4">
+        <SectionHeading
+          title="Document footer"
+          description="Optional closing text printed at the bottom of LPO documents."
+        />
+        <div className="mt-3">
+          <DocumentFooterField footerKey="lpo" form={form} setForm={setForm} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -428,6 +438,15 @@ function LoadingSheetsTab({ form, setForm }) {
         description="Font for route loading sheets and delivery notes."
       />
       <LoadingListPrintSettingsFields form={form} setForm={setForm} />
+      <div className="border-t border-slate-200 pt-4">
+        <SectionHeading
+          title="Document footer"
+          description="Optional closing text on loading sheet printouts (separate from loading list footer lines above)."
+        />
+        <div className="mt-3">
+          <DocumentFooterField footerKey="loading_sheet" form={form} setForm={setForm} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -456,7 +475,7 @@ export function PrintoutsSettingsPanel({
   const [activeTab, setActiveTab] = useState("general");
 
   const sections = resolvePrintoutSections(capabilities);
-  const { hasSales, hasProcurement, hasDistribution, hasMobileSales, footerKeys } = sections;
+  const { hasSales, hasProcurement, hasDistribution, hasMobileSales } = sections;
   const orderFormat = form?.order_document_type ?? "receipt";
   const { showThermal, showA4 } = orderPrintFormatSections(orderFormat);
 
@@ -597,7 +616,6 @@ export function PrintoutsSettingsPanel({
         <GeneralPrintoutsTab
           form={form}
           setForm={setForm}
-          footerKeys={footerKeys}
           hasSales={hasSales}
         />
       );
