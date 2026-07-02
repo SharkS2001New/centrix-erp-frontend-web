@@ -15,7 +15,6 @@ import { HrSettingsPanel } from "@/components/admin/hr-settings-panel";
 import { SecuritySettingsPanel } from "@/components/admin/security-settings-panel";
 import { LegacyArchiveSettingsPanel } from "@/components/admin/legacy-archive-settings-panel";
 import { SalesSettingsPanel } from "@/components/admin/sales-settings-panel";
-import { ApprovalsSettingsPanel } from "@/components/admin/approvals-settings-panel";
 import { visibleOrgSettingsTabs } from "@/lib/org-settings-tabs";
 import { ORG_SETTINGS_PLATFORM_MESSAGE, TENANT_ORG_SETTINGS_SUBTITLE } from "@/lib/org-settings-access";
 import { toastErrorSetter, toastMessageSetter } from "@/lib/notify";
@@ -29,7 +28,6 @@ const TABS = [
   { id: "sales", label: "Sales" },
   { id: "mobile", label: "Mobile application" },
   { id: "distribution", label: "Distribution" },
-  { id: "approvals", label: "Manager approvals" },
   { id: "inventory", label: "Inventory" },
   { id: "procurement", label: "Procurement" },
   { id: "finance", label: "Finance" },
@@ -127,7 +125,6 @@ export function OrganizationSettingsContent({
 
           {tab === "mobile" ? <MobileApplicationSettingsPanel {...panelProps} /> : null}
           {tab === "distribution" ? <DistributionSettingsPanel {...panelProps} /> : null}
-          {tab === "approvals" ? <ApprovalsSettingsPanel {...panelProps} /> : null}
           {tab === "inventory" ? <InventorySettingsPanel {...panelProps} /> : null}
           {tab === "procurement" ? <ProcurementSettingsPanel {...panelProps} /> : null}
           {tab === "finance" ? <FinanceSettingsPanel {...panelProps} /> : null}

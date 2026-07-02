@@ -31,7 +31,7 @@ export function ApprovalAlertsFields({ form, setForm }) {
     <div className="space-y-3">
       {!form.email_enabled ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Enable email under Organization settings → Notifications → Email setup to send approval alert emails.
+          Enable email under the Email setup tab to send manager approval alert emails.
         </p>
       ) : null}
       <Toggle
