@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { ApprovalNotificationDetails } from "@/components/notifications/approval-notification-details";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 
 const BUCKETS = [
@@ -54,6 +55,9 @@ function NotificationCard({ item, busy, onApprove, onReject, onOpen }) {
           </div>
         </div>
       </button>
+      <div className="pl-5">
+        <ApprovalNotificationDetails item={item} />
+      </div>
 
       {canApprove ? (
         <div className="mt-3 flex flex-wrap gap-2 pl-5">

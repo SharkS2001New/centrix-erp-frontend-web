@@ -18,7 +18,7 @@ export function HrSearchableSelect({
   const listId = useId();
   const rootRef = useRef(null);
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
 
   const selected = useMemo(
     () => options.find((o) => String(o.value) === String(value)),
@@ -26,16 +26,16 @@ export function HrSearchableSelect({
   );
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = search.trim().toLowerCase();
     if (!q) return options;
     return options.filter((o) => o.label.toLowerCase().includes(q));
-  }, [options, query]);
+  }, [options, search]);
 
   useEffect(() => {
     if (!open) {
-      setQuery(selected?.label ?? "");
+      setSearch("");
     }
-  }, [open, selected]);
+  }, [open]);
 
   useEffect(() => {
     function onDocClick(e) {
@@ -49,15 +49,17 @@ export function HrSearchableSelect({
 
   function pick(option) {
     onChange(String(option.value));
-    setQuery(option.label);
+    setSearch("");
     setOpen(false);
   }
 
   function clearSelection() {
     onChange("");
-    setQuery("");
+    setSearch("");
     setOpen(false);
   }
+
+  const inputValue = open ? search : (selected?.label ?? "");
 
   return (
     <div ref={rootRef} className="relative">
@@ -68,16 +70,19 @@ export function HrSearchableSelect({
           aria-expanded={open}
           aria-controls={listId}
           aria-autocomplete="list"
-          value={query}
+          value={inputValue}
           placeholder={placeholder}
           disabled={disabled}
           required={required && !value}
           onChange={(e) => {
-            setQuery(e.target.value);
+            setSearch(e.target.value);
             setOpen(true);
             if (!e.target.value.trim()) onChange("");
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            setOpen(true);
+            setSearch("");
+          }}
           className={inputClassName()}
         />
         {value ? (

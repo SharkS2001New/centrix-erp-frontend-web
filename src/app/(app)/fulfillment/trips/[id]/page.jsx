@@ -20,7 +20,7 @@ import { formatTripRoutesLabel } from "@/lib/trip-routes";
 import { printDeliveryNote } from "@/components/fulfillment/delivery-note-print";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
-import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
+import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import { formatOrderNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 import { TripWorkflowBanner } from "@/components/fulfillment/trip-workflow-banner";
@@ -384,6 +384,7 @@ export default function TripDetailPage() {
                     "loading_sheet",
                   ),
                   printedBy: user?.full_name ?? user?.username ?? null,
+                  distributionEnabled: isDistributionOpsEnabled(capabilities),
                 });
               } catch (e) {
                 notifyError(e instanceof ApiError ? e.message : "Could not refresh loading list for print");

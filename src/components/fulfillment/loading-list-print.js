@@ -6,6 +6,7 @@ import {
 } from "@/lib/reports/report-branding";
 
 import { resolveLoadingSheetFooterLines, resolveLoadingSheetColumnFlags } from "@/lib/loading-sheet-print-settings";
+import { formatPrintDisplayDate } from "@/lib/print-dates";
 import {
   buildDocumentPrintEdgeFooterHtml,
   documentPrintEdgeFooterStyles,
@@ -27,15 +28,28 @@ function formatProfitMargin(percent) {
   return ` (${Number(percent).toFixed(1)}%)`;
 }
 
-function formatDisplayDate(dateStr) {
-  if (!dateStr) return "";
-  const d = new Date(`${dateStr}T12:00:00`);
-  return d.toLocaleDateString("en-KE", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+function resolveLoadingSheetRouteHeader({ loadingList, trip, distributionEnabled }) {
+  const routeNames =
+    (Array.isArray(loadingList?.trip?.route_names) && loadingList.trip.route_names.length
+      ? loadingList.trip.route_names.join(" · ")
+      : null) ??
+    loadingList?.route?.route_name ??
+    trip?.route?.route_name ??
+    (Array.isArray(trip?.route_names) && trip.route_names.length ? trip.route_names.join(" · ") : null) ??
+    "—";
+
+  const tripCode =
+    trip?.trip_code ?? loadingList?.trip?.trip_code ?? loadingList?.trip_code ?? null;
+
+  if (distributionEnabled && tripCode) {
+    const routes = routeNames && routeNames !== "—" ? routeNames : null;
+    return {
+      label: "Trip Chart No",
+      value: routes ? `${tripCode} (${routes})` : tripCode,
+    };
+  }
+
+  return { label: "Route Name", value: routeNames };
 }
 
 function escapeHtml(value) {
@@ -128,6 +142,7 @@ export function sampleLoadingListPreviewData() {
     loadingList: {
       list_date: "2026-01-30",
       route: { route_name: "C" },
+      trip: { trip_code: "TRIP-20260130-001", route_names: ["C"] },
       prepared_by_name: "Preview",
       checked_by_name: "",
       total_amount: lines.reduce((sum, line) => sum + Number(line.line_total || 0), 0),
@@ -242,29 +257,39 @@ function loadingListColumnCount({ showQtyColumn, showPriceColumns }) {
 function buildLoadingSheetTotalsHtml({
   loadingListTotal,
   financialSummary = null,
+  showListTotal = true,
+  showExpenses = true,
+  showProfit = true,
 }) {
+  if (!showListTotal && !showExpenses && !showProfit) return "";
+
   const summary = financialSummary ?? {};
   const expenseRows = Array.isArray(summary.expenses) ? summary.expenses : [];
-  const expenseLines = expenseRows.length
-    ? expenseRows
-        .map(
-          (row) =>
-            `<div class="sheet-totals-row"><span>${escapeHtml(row.label ?? "Expense")}</span><span>KES ${formatKes(row.amount)}</span></div>`,
-        )
-        .join("")
-    : `<div class="sheet-totals-row sheet-totals-muted"><span>No trip expenses recorded</span><span>—</span></div>`;
-
   const profitAmount = summary.total_profit;
   const netProfitAmount = summary.net_profit ?? profitAmount;
-  const showProfit = profitAmount != null && !Number.isNaN(Number(profitAmount));
+  const hasProfitData = profitAmount != null && !Number.isNaN(Number(profitAmount));
 
-  return `
-    <div class="sheet-totals">
-      <h3 class="sheet-totals-title">Totals</h3>
+  const parts = [`<div class="sheet-totals"><h3 class="sheet-totals-title">Totals</h3>`];
+
+  if (showListTotal) {
+    parts.push(`
       <div class="sheet-totals-row sheet-totals-strong">
         <span>Loading sheet total</span>
         <span>KES ${formatKes(loadingListTotal)}</span>
-      </div>
+      </div>`);
+  }
+
+  if (showExpenses) {
+    const expenseLines = expenseRows.length
+      ? expenseRows
+          .map(
+            (row) =>
+              `<div class="sheet-totals-row"><span>${escapeHtml(row.label ?? "Expense")}</span><span>KES ${formatKes(row.amount)}</span></div>`,
+          )
+          .join("")
+      : `<div class="sheet-totals-row sheet-totals-muted"><span>No trip expenses recorded</span><span>—</span></div>`;
+
+    parts.push(`
       <div class="sheet-totals-section">
         <div class="sheet-totals-subtitle">Expenses</div>
         ${expenseLines}
@@ -273,10 +298,11 @@ function buildLoadingSheetTotalsHtml({
             ? `<div class="sheet-totals-row sheet-totals-strong"><span>Total expenses</span><span>KES ${formatKes(summary.total_expenses)}</span></div>`
             : ""
         }
-      </div>
-      ${
-        showProfit
-          ? `
+      </div>`);
+  }
+
+  if (showProfit && hasProfitData) {
+    parts.push(`
       <div class="sheet-totals-row sheet-totals-strong">
         <span>Profit made</span>
         <span>KES ${formatKes(profitAmount)}${formatProfitMargin(summary.profit_margin_percent)}</span>
@@ -284,10 +310,11 @@ function buildLoadingSheetTotalsHtml({
       <div class="sheet-totals-row sheet-totals-emphasis">
         <span>Profit minus expenses</span>
         <span>KES ${formatKes(netProfitAmount)}${formatProfitMargin(summary.net_profit_margin_percent ?? summary.profit_margin_percent)}</span>
-      </div>`
-          : ""
-      }
-    </div>`;
+      </div>`);
+  }
+
+  parts.push("</div>");
+  return parts.join("");
 }
 
 /** CSS layout class for table column sizing based on visible columns. */
@@ -547,6 +574,7 @@ export function buildLoadingListHtml({
   documentFooterText = null,
   footerLines = null,
   printedBy = null,
+  distributionEnabled = false,
 } = {}) {
   const branding = resolveReportBranding({ organization, generalSettings });
   const orgHeader = buildLoadingListHeaderHtml({
@@ -556,17 +584,18 @@ export function buildLoadingListHtml({
   const watermark = buildReportWatermarkHtml(branding);
   const companyName = resolveOrganizationName({ organization, organizationName, branding });
   const columnFlags = resolveLoadingSheetColumnFlags(printSettings ?? {});
-  const { showQtyColumn, showPriceColumns, showSignatures, showTotal } = columnFlags;
+  const {
+    showQtyColumn,
+    showPriceColumns,
+    showSignatures,
+    showTotal,
+    showTripExpenses,
+    showTripProfit,
+  } = columnFlags;
 
   const lines = normalizeLoadingListLines(loadingList?.lines ?? []);
-  const routeName =
-    (Array.isArray(loadingList?.trip?.route_names) && loadingList.trip.route_names.length
-      ? loadingList.trip.route_names.join(" · ")
-      : null) ??
-    loadingList?.route?.route_name ??
-    trip?.route?.route_name ??
-    (Array.isArray(trip?.route_names) && trip.route_names.length ? trip.route_names.join(" · ") : null) ??
-    "—";
+  const routeHeader = resolveLoadingSheetRouteHeader({ loadingList, trip, distributionEnabled });
+  const routeName = routeHeader.value;
   const listDate = loadingList?.list_date ?? trip?.scheduled_date;
   const preparedBy = loadingList?.prepared_by_name ?? trip?.prepared_by_name ?? "";
   const checkedBy =
@@ -578,7 +607,7 @@ export function buildLoadingListHtml({
     loadingList?.total_amount ?? lines.reduce((sum, line) => sum + Number(line.line_total || 0), 0);
   const resolvedFinancialSummary =
     financialSummary ?? loadingList?.financial_summary ?? trip?.financial_summary ?? null;
-  const dateLabel = formatDisplayDate(listDate);
+  const dateLabel = formatPrintDisplayDate(listDate, { emptyLabel: "—" });
   const columnCount = loadingListColumnCount({ showQtyColumn, showPriceColumns });
   const tableLayoutClass = loadingListTableLayoutClass({ showQtyColumn, showPriceColumns });
   const rowHtml =
@@ -597,12 +626,13 @@ export function buildLoadingListHtml({
       </tfoot>`
     : "";
 
-  const totalsHtml = showTotal
-    ? buildLoadingSheetTotalsHtml({
-        loadingListTotal: total,
-        financialSummary: resolvedFinancialSummary,
-      })
-    : "";
+  const totalsHtml = buildLoadingSheetTotalsHtml({
+    loadingListTotal: total,
+    financialSummary: resolvedFinancialSummary,
+    showListTotal: showTotal,
+    showExpenses: showTripExpenses,
+    showProfit: showTripProfit,
+  });
 
   const signaturesHtml = showSignatures
     ? `
@@ -653,7 +683,7 @@ export function buildLoadingListHtml({
     }
     <div class="title-block">
       <p class="doc-title">Loading List, Date: ${escapeHtml(dateLabel)}</p>
-      <p class="route-name">Route Name: ${escapeHtml(routeName)}</p>
+      <p class="route-name">${escapeHtml(routeHeader.label)}: ${escapeHtml(routeName)}</p>
     </div>
     <table class="${tableLayoutClass}">
       <thead>${tableHead}</thead>
@@ -698,6 +728,7 @@ export function printLoadingList({
   printSettings = null,
   documentFooterText = null,
   printedBy = null,
+  distributionEnabled = false,
 } = {}) {
   const html = buildLoadingListHtml({
     organization,
@@ -709,6 +740,7 @@ export function printLoadingList({
     printSettings,
     documentFooterText,
     printedBy,
+    distributionEnabled,
   });
   openPrintWindow(html, "width=900,height=800");
 }

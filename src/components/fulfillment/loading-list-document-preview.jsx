@@ -17,6 +17,7 @@ export function LoadingListDocumentPreview({
   trip = null,
   financialSummary = null,
   printedBy = "Preview",
+  distributionEnabled = false,
   className = "h-[34rem] w-full rounded-lg border border-[var(--theme-border)] bg-white shadow-inner",
 }) {
   const html = useMemo(
@@ -32,8 +33,10 @@ export function LoadingListDocumentPreview({
         documentFooterText,
         footerLines: resolveLoadingSheetFooterLines(printSettings ?? {}),
         printedBy,
+        distributionEnabled,
       }),
     [
+      distributionEnabled,
       documentFooterText,
       financialSummary,
       generalSettings,

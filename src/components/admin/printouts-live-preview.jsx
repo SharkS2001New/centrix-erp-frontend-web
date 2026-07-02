@@ -58,7 +58,7 @@ function buildPreviewGeneral(form, moduleSettings, previewType) {
   return mergePreviewGeneralWithPrintFonts(form, moduleSettings, typographyVariant);
 }
 
-function buildPreviewHtml(previewType, { form, organization, moduleSettings }) {
+function buildPreviewHtml(previewType, { form, organization, moduleSettings, capabilities }) {
   if (!form) return "";
 
   const general = buildPreviewGeneral(form, moduleSettings, previewType);
@@ -138,6 +138,8 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings }) {
       ? loadingSettings.loading_sheet_footer_lines.split(/\n+/).filter(Boolean)
       : [],
     printedBy: "Preview",
+    distributionEnabled: Boolean(capabilities?.modules?.distribution),
+    trip: { trip_code: "TRIP-20260130-001", route_names: ["C"] },
   });
 }
 
@@ -169,15 +171,19 @@ export function PrintoutsLivePreview({
     return () => window.clearTimeout(timer);
   }, [form]);
 
-  const html = useMemo(
-    () =>
-      buildPreviewHtml(previewType, {
+  const html = useMemo(() => {
+    try {
+      return buildPreviewHtml(previewType, {
         form: debouncedForm,
         organization,
         moduleSettings,
-      }),
-    [debouncedForm, moduleSettings, organization, previewType],
-  );
+        capabilities,
+      });
+    } catch (previewError) {
+      console.error("Printout preview failed", previewError);
+      return "";
+    }
+  }, [capabilities, debouncedForm, moduleSettings, organization, previewType]);
 
   const handlePrintPreview = useCallback(() => {
     if (!html || printing) return;

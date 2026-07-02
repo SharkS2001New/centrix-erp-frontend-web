@@ -24,12 +24,12 @@ import {
 import {
   CatalogPageShell,
   Field,
+  FilterSelect,
   FilterToolbar,
   FILTER_CONTROL_CLASS,
   PaginationBar,
   SearchInput,
 } from "@/components/catalog/catalog-shared";
-import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { defaultDateRange, isoDate } from "@/components/inventory/inventory-shared";
 import { orderTableColumnCount } from "@/components/sales/sales-orders-columns";
 import {
@@ -731,15 +731,11 @@ export default function SalesOrdersListScreen({
           </button>
           {showRouteFilter ? (
             <Field label="Route">
-              <div className="min-w-[11rem]">
-                <HrSearchableSelect
-                  value={routeFilter}
-                  onChange={handleRouteFilterChange}
-                  options={routeFilterOptions}
-                  placeholder="Search routes…"
-                  emptyLabel="No routes found"
-                />
-              </div>
+              <FilterSelect
+                value={routeFilter}
+                onChange={(e) => handleRouteFilterChange(e.target.value)}
+                options={routeFilterOptions}
+              />
             </Field>
           ) : null}
           <Field label="Status">

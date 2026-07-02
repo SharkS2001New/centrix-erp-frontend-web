@@ -160,6 +160,7 @@ export function DistributionLoadingListsScreen() {
           "loading_sheet",
         ),
         printedBy: user?.full_name ?? user?.username ?? null,
+        distributionEnabled: allowed,
       });
     } catch (e) {
       setDetailError(e instanceof ApiError ? e.message : "Could not refresh loading list for print");

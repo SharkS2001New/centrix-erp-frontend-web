@@ -150,6 +150,7 @@ export function previewLoadingListPrint({
     printSettings: printoutsForm ? loadingSheetPrintPayloadFromForm(printoutsForm) : null,
     documentFooterText: resolvePrintFooter(general, "loading_sheet"),
     printedBy: "Preview",
+    distributionEnabled: true,
   });
 }
 

@@ -128,6 +128,7 @@ export default function MobileLoadingSheetsScreen() {
         printSettings: loadingListPrintSettings,
         documentFooterText: resolvePrintFooter(mergeGeneralSettings(capabilities?.module_settings), "loading_sheet"),
         printedBy: user?.full_name ?? user?.username ?? null,
+        distributionEnabled: false,
       });
     } catch (e) {
       setDetailError(e instanceof ApiError ? e.message : "Could not refresh loading list for print");

@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, apiRequestMultipart, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, inputClassName, formatShortDate, RequiredMark } from "@/components/catalog/catalog-shared";
+import { ReturnProofField } from "@/components/returns/return-proof-field";
 import { LpoProductSearchPanel } from "@/components/lpo/lpo-product-search-panel";
 import { formatPackagingLabel, packageNameFromUom } from "@/components/lpo/lpo-product-utils";
 import {
@@ -89,6 +90,8 @@ export function RecordSupplierReturnForm({
   const [formError, setFormError] = useState(null);
   const [addError, setAddError] = useState(null);
   const [returnReasonError, setReturnReasonError] = useState(null);
+  const [proofFile, setProofFile] = useState(null);
+  const [existingProof, setExistingProof] = useState(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [loadingDocument, setLoadingDocument] = useState(Boolean(editDocumentId));
   const [editStatus, setEditStatus] = useState(null);
@@ -181,6 +184,7 @@ export function RecordSupplierReturnForm({
         const docReason = (doc.return_reason ?? doc.notes ?? "").trim();
         setReturnReason(docReason);
         setNotes(doc.notes ?? "");
+        setExistingProof(doc.proof ?? null);
         setLines(
           (doc.lines ?? []).map((line) => ({
             key: newLineKey(),
@@ -669,10 +673,20 @@ export function RecordSupplierReturnForm({
       };
 
       if (editDocumentId) {
-        await apiRequest(`/supplier-return-documents/${editDocumentId}`, {
-          method: "PUT",
-          body: payload,
-        });
+        if (proofFile) {
+          await apiRequestMultipart(
+            `/supplier-return-documents/${editDocumentId}`,
+            { ...payload, proof: proofFile },
+            { method: "PUT" },
+          );
+        } else {
+          await apiRequest(`/supplier-return-documents/${editDocumentId}`, {
+            method: "PUT",
+            body: payload,
+          });
+        }
+      } else if (proofFile) {
+        await apiRequestMultipart("/supplier-return-documents", { ...payload, proof: proofFile });
       } else {
         await apiRequest("/supplier-return-documents", {
           method: "POST",
@@ -1260,6 +1274,12 @@ export function RecordSupplierReturnForm({
                       />
                     </Field>
                   ) : null}
+                  <ReturnProofField
+                    file={proofFile}
+                    onChange={setProofFile}
+                    existingProof={existingProof}
+                    disabled={saving || reasonScopeLocked}
+                  />
                 </div>
 
                 <div className="mt-auto space-y-3 border-t border-[var(--theme-border)] pt-4">

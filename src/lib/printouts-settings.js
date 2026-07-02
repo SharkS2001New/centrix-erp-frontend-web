@@ -1,5 +1,5 @@
 import { PRINT_FOOTER_LABELS } from "@/lib/print-footer-settings";
-import { generalFormFromApi } from "@/lib/general-settings";
+import { generalFormFromApi, mergeGeneralSettings } from "@/lib/general-settings";
 import {
   invoicePrintFormFromApi,
   invoicePrintPayloadFromForm,
@@ -59,6 +59,8 @@ export const EMPTY_PRINTOUTS_FORM = {
   loading_sheet_show_qty_column: true,
   loading_sheet_show_price_columns: true,
   loading_sheet_show_total: true,
+  loading_sheet_show_trip_expenses: true,
+  loading_sheet_show_trip_profit: true,
   loading_sheet_default_checked_by: "",
 };
 
@@ -121,13 +123,14 @@ export function resolvePrintoutSections(capabilities) {
 }
 
 export function printoutsGeneralFormFromApi(res) {
+  const merged = mergeGeneralSettings({ general: res?.general ?? res });
   const general = generalFormFromApi(res);
   return {
     document_footer_text: general.document_footer_text,
     show_organization_on_documents: general.show_organization_on_documents,
     document_header_display: general.document_header_display,
-    ...printFontFormFromGeneral(general),
-    ...printFooterFormFromGeneral(general),
+    ...printFontFormFromGeneral(merged),
+    ...printFooterFormFromGeneral(merged),
   };
 }
 

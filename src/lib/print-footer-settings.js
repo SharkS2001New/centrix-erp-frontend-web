@@ -4,7 +4,6 @@ import {
   DEFAULT_RECEIPT_BODY_FOOTER_LINES,
   defaultInvoiceBodyFooterForAdmin,
   defaultReceiptBodyFooterForAdmin,
-  receiptBodyFooterForAdmin,
 } from "@/lib/sales-document-footer";
 
 export const PRINT_FOOTER_TYPES = {
@@ -49,15 +48,55 @@ export function stripPoweredByFooterLines(lines) {
   return normalized.filter((line) => !isPoweredByFooterLine(line));
 }
 
-/** Preserve styled footer JSON and empty editor rows when saving. */
+/** Coerce API/stored footer values into an editor string. */
+export function coerceFooterField(value) {
+  if (value == null) return "";
+  if (Array.isArray(value)) {
+    return serializeFooterLines(value, { forEditor: true });
+  }
+  if (typeof value === "object") return "";
+  return String(value);
+}
+
+/** Normalize footer text for admin editor state. */
+export function footerEditorValueFromApi(value, { fallback = "" } = {}) {
+  const raw = coerceFooterField(value);
+  if (!raw.trim()) return fallback;
+  if (raw.trim().startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return serializeFooterLines(parsed, { forEditor: true });
+      }
+    } catch {
+      /* legacy plain text */
+    }
+  }
+  return serializeFooterLines(parseFooterLines(raw, { includeEmpty: true }), { forEditor: true });
+}
+
+/** Compact footer value for API storage (drops empty rows). */
+export function footerStorageValueFromForm(text) {
+  return serializeFooterLines(parseFooterLines(text, { includeEmpty: true }), { forEditor: false });
+}
+
+/** Preserve styled footer JSON and empty editor rows while editing. */
 export function footerContentForAdmin(text) {
-  return serializeFooterLines(parseFooterLines(text, { includeEmpty: true }), { forEditor: true });
+  const raw = coerceFooterField(text);
+  if (!raw.trim()) return "";
+  return footerEditorValueFromApi(raw);
 }
 
 /** Receipt footer text for admin forms — vendor credit line is never editable. */
 export function receiptFooterForAdmin(text) {
-  const normalized = receiptBodyFooterForAdmin(text);
-  if (normalized) return normalized;
+  const raw = coerceFooterField(text);
+  if (!raw.trim()) return defaultReceiptBodyFooterForAdmin();
+
+  const lines = parseFooterLines(raw, { includeEmpty: true }).filter(
+    (line) => !isPoweredByFooterLine(line.text),
+  );
+  const stored = footerStorageValueFromForm(lines);
+  if (stored) return stored;
   return defaultReceiptBodyFooterForAdmin();
 }
 
@@ -110,18 +149,25 @@ export function resolvePrintFooter(settings = {}, documentType = "receipt") {
 
 export function printFooterFormFromGeneral(general = {}) {
   return {
-    print_footer_receipt: receiptFooterForAdmin(general?.print_footer_receipt ?? ""),
-    print_footer_a4_invoice: String(general?.print_footer_a4_invoice ?? ""),
-    print_footer_lpo: String(general?.print_footer_lpo ?? ""),
-    print_footer_loading_sheet: String(general?.print_footer_loading_sheet ?? ""),
+    print_footer_receipt: footerEditorValueFromApi(general?.print_footer_receipt, {
+      fallback: defaultReceiptBodyFooterForAdmin(),
+    }),
+    print_footer_a4_invoice: footerEditorValueFromApi(general?.print_footer_a4_invoice),
+    print_footer_lpo: footerEditorValueFromApi(general?.print_footer_lpo),
+    print_footer_loading_sheet: footerEditorValueFromApi(general?.print_footer_loading_sheet),
   };
 }
 
 export function printFooterPayloadFromForm(form = {}) {
+  const receiptLines = parseFooterLines(form?.print_footer_receipt ?? "", { includeEmpty: true }).filter(
+    (line) => !isPoweredByFooterLine(line.text),
+  );
+  const receiptStored = footerStorageValueFromForm(receiptLines);
+
   return {
-    print_footer_receipt: receiptFooterForAdmin(form?.print_footer_receipt ?? ""),
-    print_footer_a4_invoice: footerContentForAdmin(form?.print_footer_a4_invoice ?? ""),
-    print_footer_lpo: footerContentForAdmin(form?.print_footer_lpo ?? ""),
-    print_footer_loading_sheet: footerContentForAdmin(form?.print_footer_loading_sheet ?? ""),
+    print_footer_receipt: receiptStored || defaultReceiptBodyFooterForAdmin(),
+    print_footer_a4_invoice: footerStorageValueFromForm(form?.print_footer_a4_invoice ?? ""),
+    print_footer_lpo: footerStorageValueFromForm(form?.print_footer_lpo ?? ""),
+    print_footer_loading_sheet: footerStorageValueFromForm(form?.print_footer_loading_sheet ?? ""),
   };
 }

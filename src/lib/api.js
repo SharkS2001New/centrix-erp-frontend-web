@@ -586,3 +586,55 @@ export async function apiUploadForm(path, fields, fileField = "file") {
   }
   return data;
 }
+
+/** Multipart JSON + optional file (e.g. returns with proof). */
+export async function apiRequestMultipart(path, fields, options = {}) {
+  const url = new URL(path.startsWith("http") ? path : `${baseUrl()}${path}`);
+  const token = getToken();
+  const formData = new FormData();
+
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined || value === null) continue;
+    if (value instanceof File) {
+      formData.append(key, value);
+    } else if (typeof value === "object") {
+      formData.append(key, JSON.stringify(value));
+    } else {
+      formData.append(key, String(value));
+    }
+  }
+
+  const headers = { Accept: "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(url.toString(), {
+    method: options.method ?? "POST",
+    headers,
+    credentials: apiFetchCredentials(),
+    body: formData,
+  });
+
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+
+  if (!res.ok) {
+    throw new ApiError(formatApiErrorMessage(data, res.statusText || "Request failed"), res.status, data);
+  }
+
+  return data;
+}
+
+export function customerReturnProofFilePath(returnId) {
+  return `/customer-returns/${returnId}/proof/file`;
+}
+
+export function supplierReturnProofFilePath(documentId) {
+  return `/supplier-return-documents/${documentId}/proof/file`;
+}

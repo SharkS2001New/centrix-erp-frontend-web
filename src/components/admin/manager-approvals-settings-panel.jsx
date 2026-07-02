@@ -89,7 +89,10 @@ export function ManagerApprovalsSettingsPanel({
     try {
       const entries = await Promise.all(
         loadSections.map(async (section) => {
-          const res = await apiRequest(settingsPath(section));
+          const res =
+            section === "accounting"
+              ? await apiRequest("/accounting/settings")
+              : await apiRequest(settingsPath(section));
           return [section, res];
         }),
       );
@@ -143,7 +146,7 @@ export function ManagerApprovalsSettingsPanel({
       }
       if (showAccounting) {
         saves.push(
-          apiRequest(settingsPath("accounting"), {
+          apiRequest("/accounting/settings", {
             method: "PATCH",
             body: accountingManagerApprovalsPayload(form),
           }),

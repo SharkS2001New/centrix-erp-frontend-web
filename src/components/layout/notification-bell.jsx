@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { ApprovalNotificationDetails } from "@/components/notifications/approval-notification-details";
 
 const POLL_MS = 60_000;
 
@@ -52,6 +53,9 @@ function NotificationRow({ item, busy, onApprove, onReject, onOpen }) {
           </div>
         </div>
       </button>
+      <div className="pl-4">
+        <ApprovalNotificationDetails item={item} />
+      </div>
 
       {canApprove ? (
         <div className="mt-2 flex flex-wrap gap-2 pl-4">

@@ -1,14 +1,15 @@
 import { openPrintWindow } from "@/lib/open-print-window";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
-import { saleCustomerLabel } from "@/lib/sales";
+import { formatOrderNumber, saleCustomerLabel } from "@/lib/sales";
 import {
   buildReportOrgHeaderHtml,
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
 import {
-  resolveSaleLinePrintColumns,
+  saleLinePrintQtyPackage,
   saleLineProductLabel,
 } from "@/lib/sale-line-items";
+import { formatPrintDisplayDate } from "@/lib/print-dates";
 import {
   buildDocumentPrintEdgeFooterHtml,
   documentPrintEdgeFooterStyles,
@@ -19,30 +20,8 @@ import {
   orgPrintPx,
 } from "@/lib/print-typography";
 
-function parsePrintDate(value) {
-  if (value == null || value === "") return null;
-  const raw = String(value).trim();
-  if (!raw) return null;
-
-  const datePart = raw.slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
-    const d = new Date(`${datePart}T12:00:00`);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  const d = new Date(raw);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
 function formatDisplayDate(value) {
-  const d = parsePrintDate(value);
-  if (!d) return "—";
-  return d.toLocaleDateString("en-KE", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  return formatPrintDisplayDate(value, { emptyLabel: "—" });
 }
 
 function escapeHtml(value) {
@@ -86,7 +65,9 @@ function deliveryNotePrintStyles(generalSettings = null) {
     table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: ${px(11)}; }
     th, td { border: 1px solid #000; padding: 8px 10px; vertical-align: top; }
     th { background: #f3f4f6; text-align: left; font-size: ${px(10)}; font-weight: 700; text-transform: uppercase; }
-    td.qty { text-align: right; white-space: nowrap; width: 100px; }
+    th.qty, td.qty { text-align: center; white-space: nowrap; width: 100px; }
+    .qty-main { font-weight: 700; }
+    .qty-pack { color: #666; font-size: ${px(10)}; margin-top: 2px; }
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 36px; }
     .signatures h3 { margin: 0 0 48px; font-size: ${px(12)}; font-weight: 700; text-transform: uppercase; }
     .signatures .line { border-top: 1px solid #000; padding-top: 6px; margin-top: 40px; font-size: ${px(11)}; }
@@ -107,13 +88,16 @@ function deliveryNotePrintStyles(generalSettings = null) {
 function buildDeliveryNoteLineRows(items) {
   return (items ?? [])
     .map((item) => {
-      const cols = resolveSaleLinePrintColumns(item, { uom: item?.product?.unit ?? null });
       const productName = saleLineProductLabel(item);
+      const { quantity, package: packageLabel } = saleLinePrintQtyPackage(item, null);
 
       return `
       <tr>
         <td>${escapeHtml(productName)}</td>
-        <td class="qty">${escapeHtml(cols.qty)}</td>
+        <td class="qty">
+          <div class="qty-main">${escapeHtml(quantity)}</div>
+          ${packageLabel ? `<div class="qty-pack">${escapeHtml(packageLabel)}</div>` : ""}
+        </td>
       </tr>`;
     })
     .join("");
@@ -143,7 +127,7 @@ export function printDeliveryNote({
 
   const routeName = trip?.route?.route_name ?? sale?.route?.route_name ?? "—";
   const customer = saleCustomerLabel(sale);
-  const orderNum = sale?.order_num ?? sale?.id ?? "—";
+  const orderNum = formatOrderNumber(sale);
   const dateValue =
     trip?.scheduled_date ??
     sale?.required_date ??
@@ -186,7 +170,7 @@ export function printDeliveryNote({
     <thead>
       <tr>
         <th>Product</th>
-        <th>Qty</th>
+        <th class="qty">Qty</th>
       </tr>
     </thead>
     <tbody>

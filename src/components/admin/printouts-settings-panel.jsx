@@ -7,8 +7,6 @@ import {
   PRINT_FOOTER_FORM_KEYS,
   PRINT_FOOTER_LABELS,
   RECEIPT_POWERED_BY_LINE,
-  footerContentForAdmin,
-  receiptFooterForAdmin,
 } from "@/lib/print-footer-settings";
 import { SALES_FOOTER_PLACEHOLDER_HINT } from "@/lib/sales-document-footer";
 import {
@@ -121,13 +119,9 @@ function DocumentFooterField({ footerKey, form, setForm }) {
       <FooterLineEditor
         value={form[fieldKey] ?? ""}
         onChange={(nextValue) => {
-          const normalized =
-            footerKey === "receipt"
-              ? receiptFooterForAdmin(nextValue)
-              : footerContentForAdmin(nextValue);
           setForm((f) => ({
             ...f,
-            [fieldKey]: normalized,
+            [fieldKey]: nextValue,
           }));
         }}
         minRows={minRows}
@@ -541,18 +535,48 @@ export function PrintoutsSettingsPanel({
 
       const valueFrom = (result) => (result.status === "fulfilled" ? result.value : null);
 
-      setForm(
-        printoutsFormFromApis({
+      let nextForm;
+      try {
+        nextForm = printoutsFormFromApis({
           generalRes: valueFrom(generalResult),
           salesRes: valueFrom(salesResult),
           procurementRes: valueFrom(procurementResult),
           distributionRes: valueFrom(distributionResult),
-        }),
-      );
+        });
+      } catch (formError) {
+        console.error("Failed to build printout settings form", formError);
+        setError(
+          formError instanceof Error
+            ? `Failed to read printout settings: ${formError.message}`
+            : "Failed to read printout settings",
+        );
+        nextForm = printoutsFormFromApis({});
+      }
 
-      if (generalResult.status === "rejected") {
-        const e = generalResult.reason;
-        setError(e instanceof ApiError ? e.message : "Failed to load printout settings");
+      setForm(nextForm);
+
+      const failures = [
+        generalResult.status === "rejected" ? "general" : null,
+        salesResult.status === "rejected" ? "sales" : null,
+        procurementResult.status === "rejected" ? "procurement" : null,
+        distributionResult.status === "rejected" ? "distribution" : null,
+      ].filter(Boolean);
+
+      if (failures.length > 0) {
+        const firstError = [generalResult, salesResult, procurementResult, distributionResult].find(
+          (result) => result.status === "rejected",
+        )?.reason;
+        const detail =
+          firstError instanceof ApiError
+            ? firstError.message
+            : firstError instanceof Error
+              ? firstError.message
+              : "Failed to load printout settings";
+        setError(
+          failures.length === 1
+            ? detail
+            : `Some printout settings could not be loaded (${failures.join(", ")}). ${detail}`,
+        );
       }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load printout settings");

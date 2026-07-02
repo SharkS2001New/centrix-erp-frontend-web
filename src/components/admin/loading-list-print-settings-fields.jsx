@@ -50,9 +50,21 @@ export function LoadingListPrintSettingsFields({
       />
       <Toggle
         label="Show loading sheet total"
-        description="Print trip totals below the list: sales amount, trip expenses, profit, and net profit after expenses."
+        description="Print the sales total amount below the loading list table."
         checked={form.loading_sheet_show_total !== false}
         onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_total: v }))}
+      />
+      <Toggle
+        label="Show trip expenses"
+        description="Print fuel, tolls, and other trip costs on the loading list totals block."
+        checked={form.loading_sheet_show_trip_expenses !== false}
+        onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_trip_expenses: v }))}
+      />
+      <Toggle
+        label="Show trip profit"
+        description="Print gross profit and net profit (after expenses) on the loading list."
+        checked={form.loading_sheet_show_trip_profit !== false}
+        onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_trip_profit: v }))}
       />
       {showExtendedFields ? (
         <>

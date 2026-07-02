@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, apiRequestMultipart, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { ReturnProofField } from "@/components/returns/return-proof-field";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import {
   REFUND_METHODS,
@@ -55,6 +56,7 @@ export function CustomerReturnForm({
   const [uoms, setUoms] = useState([]);
   const [returnCounts, setReturnCounts] = useState({});
   const [returnAll, setReturnAll] = useState(false);
+  const [proofFile, setProofFile] = useState(null);
 
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
   const totalRefund = useMemo(() => totalReturnAmount(lines), [lines]);
@@ -286,6 +288,10 @@ export function CustomerReturnForm({
       setError("Set a return quantity for at least one product.");
       return;
     }
+    if (!reason?.trim() || reason.trim().length < 3) {
+      setError("Reason for return is required.");
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -313,7 +319,13 @@ export function CustomerReturnForm({
       };
 
       if (editing?.id) {
-        await apiRequest(`/customer-returns/${editing.id}`, { method: "PUT", body });
+        if (proofFile) {
+          await apiRequestMultipart(`/customer-returns/${editing.id}`, { ...body, proof: proofFile }, { method: "PUT" });
+        } else {
+          await apiRequest(`/customer-returns/${editing.id}`, { method: "PUT", body });
+        }
+      } else if (proofFile) {
+        await apiRequestMultipart("/customer-returns", { ...body, proof: proofFile });
       } else {
         await apiRequest("/customer-returns", { method: "POST", body });
       }
@@ -430,11 +442,12 @@ export function CustomerReturnForm({
             ))}
           </select>
         </Field>
-        <Field label="Reason for return">
+        <Field label="Reason for return" required>
           <select
             className={inputClassName()}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
+            required
           >
             {RETURN_REASONS.map((r) => (
               <option key={r} value={r}>
@@ -553,6 +566,15 @@ export function CustomerReturnForm({
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="mt-4">
+        <ReturnProofField
+          file={proofFile}
+          onChange={setProofFile}
+          existingProof={editing?.proof ?? null}
+          disabled={saving || loadingSale}
+        />
       </div>
 
       <div className="mt-4">

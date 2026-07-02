@@ -166,8 +166,8 @@ export function TripExpensesPanel({
     <section className="theme-panel rounded-xl border p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Trip expenses</h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <h2 className="theme-heading text-sm font-semibold uppercase tracking-wide">Trip expenses</h2>
+          <p className="theme-subtext mt-1 text-sm">
             Record fuel, tolls, and other run costs here. They are deducted from trip profit on the loading sheet and trip summary.
           </p>
         </div>
@@ -175,7 +175,7 @@ export function TripExpensesPanel({
           <button
             type="button"
             onClick={() => setShowForm((open) => !open)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:border-[#185FA5] hover:text-[#185FA5]"
+            className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2 text-sm font-medium theme-heading hover:border-[#185FA5] hover:text-[#185FA5]"
           >
             {showForm ? "Cancel" : "Add expense"}
           </button>
@@ -183,24 +183,24 @@ export function TripExpensesPanel({
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-4 py-3">
-          <p className="text-xs uppercase text-slate-500">Gross profit</p>
-          <p className="mt-1 font-semibold text-slate-900">
+        <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3">
+          <p className="theme-subtext text-xs uppercase">Gross profit</p>
+          <p className="theme-heading mt-1 font-semibold">
             {formatSaleKes(summary.total_profit ?? 0)}
-            <span className="ml-1 text-sm font-normal text-slate-500">
+            <span className="theme-subtext ml-1 text-sm font-normal">
               {formatTripProfitMargin(summary.profit_margin_percent)}
             </span>
           </p>
         </div>
-        <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-4 py-3">
-          <p className="text-xs uppercase text-slate-500">Trip expenses</p>
-          <p className="mt-1 font-semibold text-slate-900">{formatSaleKes(totalExpenses)}</p>
+        <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3">
+          <p className="theme-subtext text-xs uppercase">Trip expenses</p>
+          <p className="theme-heading mt-1 font-semibold">{formatSaleKes(totalExpenses)}</p>
         </div>
-        <div className="rounded-lg border border-emerald-100 bg-emerald-50/70 px-4 py-3">
-          <p className="text-xs uppercase text-emerald-700">Net profit</p>
-          <p className="mt-1 font-semibold text-emerald-900">
+        <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3">
+          <p className="theme-subtext text-xs uppercase">Net profit</p>
+          <p className="theme-heading mt-1 font-semibold">
             {formatSaleKes(summary.net_profit ?? summary.total_profit ?? 0)}
-            <span className="ml-1 text-sm font-normal text-emerald-700">
+            <span className="theme-subtext ml-1 text-sm font-normal">
               {formatTripProfitMargin(summary.net_profit_margin_percent ?? summary.profit_margin_percent)}
             </span>
           </p>
@@ -208,7 +208,7 @@ export function TripExpensesPanel({
       </div>
 
       {showForm && !readOnly ? (
-        <form onSubmit={saveExpense} className="mt-4 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+        <form onSubmit={saveExpense} className="mt-4 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Expense type">
               <select
@@ -277,29 +277,29 @@ export function TripExpensesPanel({
         </form>
       ) : null}
 
-      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
+      <div className="mt-4 overflow-hidden rounded-lg border border-[var(--theme-border)]">
         {loading ? (
-          <p className="px-4 py-6 text-sm text-slate-500">Loading expenses…</p>
+          <p className="theme-subtext px-4 py-6 text-sm">Loading expenses…</p>
         ) : expenses.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-slate-500">
+          <p className="theme-subtext px-4 py-6 text-sm">
             No expenses recorded for this trip yet. Add fuel and other costs to see net profit.
           </p>
         ) : (
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+            <thead className="bg-[var(--theme-surface-muted)] text-left text-xs uppercase tracking-wide">
               <tr>
-                <th className="px-4 py-3 font-medium">Expense</th>
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium text-right">Amount</th>
+                <th className="theme-subtext px-4 py-3 font-medium">Expense</th>
+                <th className="theme-subtext px-4 py-3 font-medium">Date</th>
+                <th className="theme-subtext px-4 py-3 font-medium text-right">Amount</th>
                 {!readOnly ? <th className="px-4 py-3 font-medium text-right"> </th> : null}
               </tr>
             </thead>
             <tbody>
               {expenses.map((expense) => (
-                <tr key={expense.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 text-slate-900">{expenseLabel(expense, groups)}</td>
-                  <td className="px-4 py-3 text-slate-600">{expense.expense_date?.slice?.(0, 10) ?? "—"}</td>
-                  <td className="px-4 py-3 text-right font-medium text-slate-900">
+                <tr key={expense.id} className="border-t border-[var(--theme-border)]">
+                  <td className="theme-heading px-4 py-3">{expenseLabel(expense, groups)}</td>
+                  <td className="theme-subtext px-4 py-3">{expense.expense_date?.slice?.(0, 10) ?? "—"}</td>
+                  <td className="theme-heading px-4 py-3 text-right font-medium">
                     {formatSaleKes(expense.expense_amount)}
                   </td>
                   {!readOnly ? (
