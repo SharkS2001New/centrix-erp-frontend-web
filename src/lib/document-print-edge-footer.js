@@ -1,5 +1,6 @@
 import { PRINT_POWERED_BY } from "@/lib/branding";
 import { escapeHtml } from "@/lib/branded-document-print";
+import { buildStyledFooterLinesHtml, parseFooterLines } from "@/lib/footer-line-format";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { orgPrintInkStyles, orgPrintSectionPx } from "@/lib/print-typography";
 
@@ -99,13 +100,16 @@ export function buildDocumentPrintEdgeFooterHtml({
     hour12: false,
   });
 
+  const footerNotesHtml = (() => {
+    const lines = parseFooterLines(documentFooterText);
+    if (!lines.length) return "";
+    const styled = buildStyledFooterLinesHtml(lines, { layout: "block", tag: "p" });
+    return `<div class="footer-notes">${styled}</div>`;
+  })();
+
   return `
   <footer class="doc-print-edge-footer">
-    ${
-      documentFooterText
-        ? `<div class="footer-notes"><p>${escapeHtml(documentFooterText)}</p></div>`
-        : ""
-    }
+    ${footerNotesHtml}
     <div class="print-footer-row">
       <span class="print-footer-left">Printed On: ${escapeHtml(at)}</span>
       <div class="print-footer-center">

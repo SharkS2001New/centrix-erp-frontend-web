@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   EMPTY_MOBILE_APPLICATION_FORM,
   isOrgMobileSalesEnabled,
+  MOBILE_CHECKOUT_MODES,
   mobileApplicationFormFromApi,
   mobileApplicationPayloadFromForm,
 } from "@/lib/sales-settings";
@@ -117,6 +118,43 @@ export function MobileApplicationSettingsPanel({
           <>
             <div className="mt-5 space-y-8">
               <PlatformMobileSummary capabilities={capabilities} />
+
+              <div>
+                <h3 className="text-sm font-medium text-slate-900">Checkout</h3>
+                <p className="theme-subtext mt-1 text-xs">
+                  Controls whether reps save orders only or collect payment on the mobile app.
+                </p>
+                <div className="mt-3 space-y-3">
+                  {MOBILE_CHECKOUT_MODES.map((option) => (
+                    <label
+                      key={option.value}
+                      className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 ${
+                        form.mobile_checkout_mode === option.value
+                          ? "border-[var(--theme-accent)] bg-[var(--theme-surface-muted)]"
+                          : "border-[var(--theme-border)] bg-[var(--theme-surface-muted)]"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="mobile_checkout_mode"
+                        className="mt-1"
+                        checked={form.mobile_checkout_mode === option.value}
+                        onChange={() =>
+                          setForm((f) => ({ ...f, mobile_checkout_mode: option.value }))
+                        }
+                      />
+                      <span>
+                        <span className="theme-heading block text-sm font-medium">
+                          {option.label}
+                        </span>
+                        <span className="theme-subtext mt-0.5 block text-xs">
+                          {option.description}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
 
               <div>
                 <h3 className="text-sm font-medium text-slate-900">Orders at customers</h3>

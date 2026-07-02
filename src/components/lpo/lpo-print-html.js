@@ -19,6 +19,7 @@ import {
   buildDocumentPrintEdgeFooterHtml,
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
+import { documentFooterHtmlFromText } from "@/lib/footer-line-format";
 import {
   createOrgPrintPx,
   orgPrintFontFamilyFromSettings,
@@ -406,7 +407,10 @@ export function buildLpoPrintHtml({
       <p class="note-line"><strong>Take note:</strong> ${escapeHtml(vatNote)}</p>
       ${
         (documentFooterText ?? branding.documentFooterText)
-          ? `<p>${escapeHtml(documentFooterText ?? branding.documentFooterText)}</p>`
+          ? documentFooterHtmlFromText(documentFooterText ?? branding.documentFooterText, {
+              layout: "block",
+              tag: "p",
+            })
           : ""
       }
     </div>

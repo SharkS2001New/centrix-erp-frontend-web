@@ -1,4 +1,9 @@
 import { escapeHtml } from "@/lib/sale-document-print-shared";
+import {
+  buildStyledFooterLinesHtml,
+  normalizeFooterLine,
+  parseFooterLines,
+} from "@/lib/footer-line-format";
 
 export const SALES_FOOTER_PLACEHOLDER_HINT =
   "{username}, {cashier}, {organization}, {days} (A4 invoice validity)";
@@ -69,23 +74,36 @@ export function resolveSalesDocumentBodyFooterLines(
   context = {},
 ) {
   const key = documentType === "invoice" ? "print_footer_a4_invoice" : "print_footer_receipt";
-  const configured = linesFromMultilineText(footerSettings?.[key]);
+  const raw = footerSettings?.[key];
+  let parsed = parseFooterLines(raw);
   const defaults =
     documentType === "invoice"
       ? DEFAULT_INVOICE_BODY_FOOTER_LINES
       : DEFAULT_RECEIPT_BODY_FOOTER_LINES;
 
-  let lines = configured.length ? configured : defaults;
+  if (!parsed.length) {
+    parsed = defaults.map((text) => ({ text, align: "left", bold: false }));
+  }
   if (documentType === "receipt") {
-    lines = stripPoweredByFooterLines(lines);
+    parsed = parsed.filter((line) => !isPoweredByFooterLine(line.text));
   }
 
-  return lines.map((line) => applySalesFooterPlaceholders(line, context));
+  return parsed.map((line) => ({
+    ...line,
+    text: applySalesFooterPlaceholders(line.text, context),
+  }));
 }
 
 function formatBodyFooterLineHtml(line, layout) {
-  const text = String(line ?? "").trim();
+  const styled = normalizeFooterLine(line);
+  const text = styled.text.trim();
   if (!text) return "";
+
+  const hasExplicitStyle =
+    styled.align !== "left" || styled.bold || styled.italic || styled.size !== "md";
+  if (hasExplicitStyle) {
+    return buildStyledFooterLinesHtml([styled], { layout });
+  }
 
   if (layout === "thermal") {
     return `<div class="footer-text">${escapeHtml(text)}</div>`;
@@ -112,7 +130,7 @@ function formatBodyFooterLineHtml(line, layout) {
 }
 
 export function buildSalesDocumentBodyFooterHtml(lines, { layout = "a4" } = {}) {
-  const list = Array.isArray(lines) ? lines.filter(Boolean) : [];
+  const list = Array.isArray(lines) ? lines.filter((line) => normalizeFooterLine(line).text) : [];
   if (!list.length) return "";
 
   if (layout === "thermal") {
@@ -152,7 +170,16 @@ function stripPoweredByFooterLines(lines) {
 }
 
 export function receiptBodyFooterForAdmin(text) {
-  return stripPoweredByFooterLines(linesFromMultilineText(text)).join("\n");
+  const lines = parseFooterLines(text)
+    .filter((line) => !isPoweredByFooterLine(line.text));
+  if (!lines.length) return "";
+  const allPlain = lines.every(
+    (line) => line.align === "left" && !line.bold && !line.italic && line.size === "md",
+  );
+  if (allPlain) {
+    return lines.map((line) => line.text).join("\n");
+  }
+  return JSON.stringify(lines);
 }
 
 export function defaultReceiptBodyFooterForAdmin() {

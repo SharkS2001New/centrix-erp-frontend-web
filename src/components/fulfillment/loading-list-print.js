@@ -10,6 +10,7 @@ import {
   buildDocumentPrintEdgeFooterHtml,
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
+import { documentFooterHtmlFromText } from "@/lib/footer-line-format";
 import {
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
@@ -507,7 +508,7 @@ export function buildLoadingListHtml({
     .join("");
   const footerText = documentFooterText ?? branding.documentFooterText ?? "";
   const footerHtml = footerText
-    ? `<div class="doc-footer">${escapeHtml(footerText)}</div>`
+    ? `<div class="doc-footer">${documentFooterHtmlFromText(footerText, { layout: "block", tag: "p" })}</div>`
     : "";
   const printedAt = new Date().toLocaleString("en-GB");
   const printedByName = resolvePrintedByUser(printedBy) ?? "—";

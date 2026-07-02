@@ -14,6 +14,7 @@ export const DISTRIBUTION_DEFAULTS = {
   enable_cod_reconciliation: true,
   require_trip_cash_settlement: false,
   include_normal_orders_in_loading_list: true,
+  enable_fulfillment_guidance: false,
 };
 
 export const DISTRIBUTION_ASSIGN_STATUS_OPTIONS = [
@@ -78,6 +79,7 @@ export function mergeDistributionSettings(capabilities) {
     enableCodReconciliation: Boolean(distribution.enable_cod_reconciliation),
     requireTripCashSettlement: Boolean(distribution.require_trip_cash_settlement),
     includeNormalOrdersInLoadingList: distribution.include_normal_orders_in_loading_list !== false,
+    enableFulfillmentGuidance: Boolean(distribution.enable_fulfillment_guidance),
   };
 }
 
@@ -97,6 +99,7 @@ export function distributionFormFromApi(res) {
     enable_cod_reconciliation: Boolean(distribution.enable_cod_reconciliation),
     require_trip_cash_settlement: Boolean(distribution.require_trip_cash_settlement),
     include_normal_orders_in_loading_list: distribution.include_normal_orders_in_loading_list !== false,
+    enable_fulfillment_guidance: Boolean(distribution.enable_fulfillment_guidance),
     ...loadingSheetPrintFormFromApi({ distribution }),
   };
 }
@@ -116,6 +119,9 @@ export function distributionPayloadFromForm(form) {
     enable_cod_reconciliation: Boolean(form.enable_cod_reconciliation),
     require_trip_cash_settlement: Boolean(form.require_trip_cash_settlement),
     include_normal_orders_in_loading_list: Boolean(form.include_normal_orders_in_loading_list),
+    ...(form.enable_fulfillment_guidance != null
+      ? { enable_fulfillment_guidance: Boolean(form.enable_fulfillment_guidance) }
+      : {}),
     ...loadingSheetPrintPayloadFromForm(form),
   };
 }

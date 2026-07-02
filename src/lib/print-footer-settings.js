@@ -1,4 +1,5 @@
 import { PRINT_POWERED_BY } from "@/lib/branding";
+import { parseFooterLines, serializeFooterLines } from "@/lib/footer-line-format";
 import {
   DEFAULT_RECEIPT_BODY_FOOTER_LINES,
   defaultInvoiceBodyFooterForAdmin,
@@ -29,11 +30,6 @@ export const PRINT_FOOTER_LABELS = {
 
 export const RECEIPT_POWERED_BY_LINE = `Powered By: ${PRINT_POWERED_BY}`;
 
-const DEFAULT_RECEIPT_FOOTER_LINES = [
-  ...DEFAULT_RECEIPT_BODY_FOOTER_LINES,
-  RECEIPT_POWERED_BY_LINE,
-];
-
 /** Editable receipt footer lines shown when nothing is configured (excludes vendor credit). */
 const DEFAULT_RECEIPT_FOOTER_EDITABLE_LINES = DEFAULT_RECEIPT_BODY_FOOTER_LINES;
 
@@ -53,6 +49,11 @@ export function stripPoweredByFooterLines(lines) {
   return normalized.filter((line) => !isPoweredByFooterLine(line));
 }
 
+/** Preserve styled footer JSON when saving non-receipt document footers. */
+export function footerContentForAdmin(text) {
+  return serializeFooterLines(parseFooterLines(text));
+}
+
 /** Receipt footer text for admin forms — vendor credit line is never editable. */
 export function receiptFooterForAdmin(text) {
   const normalized = receiptBodyFooterForAdmin(text);
@@ -61,19 +62,20 @@ export function receiptFooterForAdmin(text) {
 }
 
 export function resolveReceiptFooterLines(settings = {}, organizationName = "") {
-  const configured = receiptFooterLinesFromText(
+  const configured = parseFooterLines(
     settings?.print_footer_receipt ?? settings?.document_footer_text ?? "",
   );
   const editable = configured.length
-    ? stripPoweredByFooterLines(configured)
-    : DEFAULT_RECEIPT_FOOTER_EDITABLE_LINES;
+    ? configured.filter((line) => !isPoweredByFooterLine(line.text))
+    : DEFAULT_RECEIPT_BODY_FOOTER_LINES.map((text) => ({ text, align: "left", bold: false }));
 
   const org = String(organizationName ?? "").trim();
-  const resolvedEditable = editable.map((line) =>
-    line.replace(/\{\{organization\}\}/gi, org || "{{organization}}"),
-  );
+  const resolvedEditable = editable.map((line) => ({
+    ...line,
+    text: line.text.replace(/\{\{organization\}\}/gi, org || "{{organization}}"),
+  }));
 
-  return [...resolvedEditable, RECEIPT_POWERED_BY_LINE];
+  return [...resolvedEditable, { text: RECEIPT_POWERED_BY_LINE, align: "center", bold: false }];
 }
 
 export function resolvePrintFooter(settings = {}, documentType = "receipt") {
@@ -118,8 +120,8 @@ export function printFooterFormFromGeneral(general = {}) {
 export function printFooterPayloadFromForm(form = {}) {
   return {
     print_footer_receipt: receiptFooterForAdmin(form?.print_footer_receipt ?? ""),
-    print_footer_a4_invoice: String(form?.print_footer_a4_invoice ?? "").trim(),
-    print_footer_lpo: String(form?.print_footer_lpo ?? "").trim(),
-    print_footer_loading_sheet: String(form?.print_footer_loading_sheet ?? "").trim(),
+    print_footer_a4_invoice: footerContentForAdmin(form?.print_footer_a4_invoice ?? ""),
+    print_footer_lpo: footerContentForAdmin(form?.print_footer_lpo ?? ""),
+    print_footer_loading_sheet: footerContentForAdmin(form?.print_footer_loading_sheet ?? ""),
   };
 }

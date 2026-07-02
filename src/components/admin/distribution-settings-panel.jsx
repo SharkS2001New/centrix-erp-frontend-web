@@ -36,8 +36,8 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
   );
 }
 
-export function DistributionSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
-  const { refreshCapabilities } = useAuth();
+export function DistributionSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave, platformManaged = false }) {
+  const { refreshCapabilities, isSuperAdmin } = useAuth();
   const { settingsPath } = useSettingsApi();
   const afterSave = onAfterSave ?? refreshCapabilities;
   const [form, setForm] = useState(distributionFormFromApi({}));
@@ -166,6 +166,15 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
 
             {activeTab === "trips" ? (
           <div className="space-y-3">
+            {isSuperAdmin?.() ? (
+              <Toggle
+                label="Show fulfillment step guidance"
+                description="Platform-only. When enabled, dispatch staff see interactive next-step hints on trip pages (tooltips and ordered actions). Off by default."
+                checked={form.enable_fulfillment_guidance}
+                onChange={(v) => setForm((f) => ({ ...f, enable_fulfillment_guidance: v }))}
+                disabled={!form.enable_distribution_ops}
+              />
+            ) : null}
             <Toggle
               label="Auto-create dispatch trips"
               description="When an order reaches the assignment status, add it to today's draft trip for its route (creating the trip if needed). Trips can still be created and managed manually on the dispatch board."

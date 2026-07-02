@@ -7,9 +7,10 @@ import {
   PRINT_FOOTER_FORM_KEYS,
   PRINT_FOOTER_LABELS,
   RECEIPT_POWERED_BY_LINE,
+  footerContentForAdmin,
   receiptFooterForAdmin,
 } from "@/lib/print-footer-settings";
-import { SALES_FOOTER_PLACEHOLDER_HINT, defaultInvoiceBodyFooterForAdmin } from "@/lib/sales-document-footer";
+import { SALES_FOOTER_PLACEHOLDER_HINT } from "@/lib/sales-document-footer";
 import {
   orderPrintFormatSections,
   printoutsDistributionPayloadFromForm,
@@ -19,7 +20,7 @@ import {
   printoutsSalesPayloadFromForm,
   resolvePrintoutSections,
 } from "@/lib/printouts-settings";
-import { PrintFontSettingsFields } from "@/components/admin/print-font-settings-fields";
+import { FooterLineEditor } from "@/components/admin/footer-line-editor";
 import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
 import { MultilinePrintNotesField } from "@/components/admin/multiline-print-notes-field";
 import { LoadingListPrintSettingsFields } from "@/components/admin/loading-list-print-settings-fields";
@@ -105,28 +106,34 @@ function PrintoutsTabBar({ tabs, activeTab, onTabChange }) {
 function DocumentFooterField({ footerKey, form, setForm }) {
   const fieldKey = PRINT_FOOTER_FORM_KEYS[footerKey];
   const label = PRINT_FOOTER_LABELS[footerKey];
+  const isSalesFooter = footerKey === "receipt" || footerKey === "invoice";
+  const minRows = footerKey === "receipt" ? 3 : footerKey === "invoice" ? 4 : 2;
+  const placeholder =
+    footerKey === "receipt"
+      ? "You were served by: {username}"
+      : footerKey === "invoice"
+        ? "You were served by: {username}"
+        : "Optional footer text";
 
   return (
     <Field label={label}>
-      <textarea
-        className={inputClassName()}
-        rows={footerKey === "receipt" ? 4 : footerKey === "invoice" ? 6 : 3}
+      <FooterLineEditor
         value={form[fieldKey] ?? ""}
-        onChange={(e) => {
-          const nextValue =
-            footerKey === "receipt" ? receiptFooterForAdmin(e.target.value) : e.target.value;
+        onChange={(nextValue) => {
+          const normalized =
+            footerKey === "receipt"
+              ? receiptFooterForAdmin(nextValue)
+              : footerContentForAdmin(nextValue);
           setForm((f) => ({
             ...f,
-            [fieldKey]: nextValue,
+            [fieldKey]: normalized,
           }));
         }}
-        placeholder={
-          footerKey === "receipt"
-            ? "You were served by: {username}\nThank you for your business!\nGoods once sold are not returnable."
-            : footerKey === "invoice"
-              ? defaultInvoiceBodyFooterForAdmin()
-              : "Optional footer text for this document only"
-        }
+        minRows={minRows}
+        maxRows={footerKey === "invoice" ? 10 : 8}
+        placeholder={placeholder}
+        showPlaceholdersHint={isSalesFooter}
+        placeholdersHint={isSalesFooter ? SALES_FOOTER_PLACEHOLDER_HINT : ""}
       />
       {footerKey === "receipt" ? (
         <p className="mt-2 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
@@ -134,14 +141,15 @@ function DocumentFooterField({ footerKey, form, setForm }) {
           <span className="font-medium text-slate-800">{RECEIPT_POWERED_BY_LINE}</span>
         </p>
       ) : null}
-      {footerKey === "receipt" || footerKey === "invoice" ? (
-        <p className="mt-2 text-xs text-slate-500">Placeholders: {SALES_FOOTER_PLACEHOLDER_HINT}</p>
-      ) : null}
       {footerKey === "invoice" ? (
         <p className="mt-2 rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
           Always printed on A4 (not editable): Designed &amp; Developed By, Printed By, and Printed On.
         </p>
       ) : null}
+      <p className="mt-2 text-xs text-slate-500">
+        Each line has its own alignment (Left / Center / Right), size, bold, and italic. Styling is saved
+        automatically and applied on printed documents.
+      </p>
     </Field>
   );
 }

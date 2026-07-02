@@ -51,6 +51,7 @@ const SALES_DEFAULTS = {
   mobile_enable_checkout_location_verification: false,
   mobile_allow_offline_orders: false,
   mobile_checkout_location_radius_metres: 5,
+  mobile_checkout_mode: 'save_only',
   mobile_enable_field_attendance: false,
   require_pos_till_float: false,
   require_backoffice_till_float: false,
@@ -179,10 +180,37 @@ export function getMobileCheckoutLocationConfig(moduleSettings) {
   };
 }
 
+export const MOBILE_CHECKOUT_MODES = [
+  {
+    value: "save_only",
+    label: "Save order only",
+    description:
+      "Reps save orders without collecting payment on the app. Payment is recorded later in the ERP.",
+  },
+  {
+    value: "payment",
+    label: "Collect payment at checkout",
+    description:
+      "Reps must enter payment details when completing an order on the mobile app.",
+  },
+  {
+    value: "ask",
+    label: "Ask rep each time",
+    description:
+      "Reps choose whether the customer is paying now (payment form) or the order is saved for later payment.",
+  },
+];
+
+export function normalizeMobileCheckoutMode(value) {
+  const mode = String(value ?? "save_only");
+  return MOBILE_CHECKOUT_MODES.some((option) => option.value === mode) ? mode : "save_only";
+}
+
 export const EMPTY_MOBILE_APPLICATION_FORM = {
   mobile_enable_checkout_location_verification: false,
   mobile_allow_offline_orders: false,
   mobile_checkout_location_radius_metres: "5",
+  mobile_checkout_mode: "save_only",
   mobile_enable_field_attendance: false,
 };
 
@@ -196,6 +224,7 @@ export function mobileApplicationFormFromApi(res) {
     mobile_checkout_location_radius_metres: String(
       sales.mobile_checkout_location_radius_metres ?? 5,
     ),
+    mobile_checkout_mode: normalizeMobileCheckoutMode(sales.mobile_checkout_mode),
     mobile_enable_field_attendance: Boolean(sales.mobile_enable_field_attendance),
   };
 }
@@ -208,6 +237,7 @@ export function mobileApplicationPayloadFromForm(form) {
     mobile_allow_offline_orders: Boolean(form.mobile_allow_offline_orders),
     mobile_checkout_location_radius_metres:
       Number(form.mobile_checkout_location_radius_metres) || 5,
+    mobile_checkout_mode: normalizeMobileCheckoutMode(form.mobile_checkout_mode),
     mobile_enable_field_attendance: Boolean(form.mobile_enable_field_attendance),
   };
 }
