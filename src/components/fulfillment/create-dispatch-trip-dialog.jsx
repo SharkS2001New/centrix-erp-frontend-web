@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchRoutesCached } from "@/lib/reference-data-cache";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { notifyError } from "@/lib/notify";
 
@@ -10,12 +11,28 @@ function isoDate(d = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
-export function CreateDispatchTripDialog({ open, onClose, routes = [], defaultDate = null, defaultRouteId = "" }) {
+function sortRoutes(routes) {
+  return [...routes].sort((a, b) =>
+    String(a.route_name ?? "").localeCompare(String(b.route_name ?? ""), undefined, {
+      sensitivity: "base",
+    }),
+  );
+}
+
+export function CreateDispatchTripDialog({
+  open,
+  onClose,
+  routes: routesProp = [],
+  defaultDate = null,
+  defaultRouteId = "",
+}) {
   const router = useRouter();
   const [scheduledDate, setScheduledDate] = useState(() => defaultDate ?? isoDate());
   const [routeId, setRouteId] = useState(defaultRouteId ? String(defaultRouteId) : "");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [routesLoaded, setRoutesLoaded] = useState([]);
+  const [routesLoading, setRoutesLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -23,6 +40,36 @@ export function CreateDispatchTripDialog({ open, onClose, routes = [], defaultDa
     setRouteId(defaultRouteId ? String(defaultRouteId) : "");
     setNotes("");
   }, [open, defaultDate, defaultRouteId]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    setRoutesLoading(true);
+
+    fetchRoutesCached()
+      .then((rows) => {
+        if (!cancelled) setRoutesLoaded(rows ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setRoutesLoaded([]);
+      })
+      .finally(() => {
+        if (!cancelled) setRoutesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const routes = useMemo(() => {
+    const byId = new Map();
+    for (const route of [...routesProp, ...routesLoaded]) {
+      if (route?.id != null) byId.set(route.id, route);
+    }
+    return sortRoutes([...byId.values()]);
+  }, [routesProp, routesLoaded]);
 
   const submit = useCallback(async () => {
     setSaving(true);
@@ -54,9 +101,9 @@ export function CreateDispatchTripDialog({ open, onClose, routes = [], defaultDa
         aria-label="Close dialog"
         onClick={onClose}
       />
-      <div className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
-        <h2 className="text-base font-semibold text-slate-900">Create dispatch trip</h2>
-        <p className="mt-1 text-sm text-slate-500">
+      <div className="theme-panel fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border p-5 shadow-xl">
+        <h2 className="text-base font-semibold theme-heading">Create dispatch trip</h2>
+        <p className="mt-1 text-sm theme-subtext">
           Start an empty trip, then assign route orders from the dispatch board or trip detail page.
         </p>
         <div className="mt-4 space-y-3">
@@ -73,8 +120,15 @@ export function CreateDispatchTripDialog({ open, onClose, routes = [], defaultDa
               className={inputClassName()}
               value={routeId}
               onChange={(e) => setRouteId(e.target.value)}
+              disabled={routesLoading}
             >
-              <option value="">Select route (optional)</option>
+              <option value="">
+                {routesLoading
+                  ? "Loading routes…"
+                  : routes.length
+                    ? "Select route (optional)"
+                    : "No routes found"}
+              </option>
               {routes.map((route) => (
                 <option key={route.id} value={route.id}>
                   {route.route_name}
@@ -95,7 +149,7 @@ export function CreateDispatchTripDialog({ open, onClose, routes = [], defaultDa
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            className="theme-secondary-btn rounded-lg border px-4 py-2 text-sm disabled:opacity-50"
             onClick={onClose}
             disabled={saving}
           >

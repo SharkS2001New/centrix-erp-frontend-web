@@ -1,9 +1,9 @@
 import { organizationLogoFileUrl } from "@/lib/api";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import {
+  createOrgPrintPx,
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
-  orgPrintPx,
 } from "@/lib/print-typography";
 
 function escapeHtml(value) {
@@ -43,6 +43,8 @@ export function resolveReportBranding({
   const showHeader = settings.show_organization_on_documents !== false;
   const preference = settings.document_header_display ?? "auto";
   const organizationName =
+    organization?.organization_name ??
+    organization?.company_name ??
     organization?.org_name ??
     organization?.name ??
     organizationNameFallback ??
@@ -99,17 +101,20 @@ export function buildReportWatermarkHtml(branding) {
 }
 
 export function reportDocumentStyles(generalSettings = null) {
-  const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant: "report", print });
+  const printPx = createOrgPrintPx(generalSettings, "report");
+  const px = printPx.body;
+  const hpx = printPx.header;
+  const fpx = printPx.footer;
   const font = orgPrintFontFamilyFromSettings(generalSettings, "report");
   return `
   body { font-family: ${font}; padding: 24px; color: #000; font-size: ${px(11)}; position: relative; ${orgPrintInkStyles(generalSettings, "report")} }
   .org-header { text-align: center; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #000; }
   .org-logo { display: block; margin: 0 auto 8px; max-height: 64px; max-width: 260px; object-fit: contain; }
-  .org-name { font-size: ${px(18)}; font-weight: var(--print-w-strong, 800); margin: 0; line-height: 1.25; color: #000; }
+  .org-name { font-size: ${hpx(18)}; font-weight: var(--print-w-header, 800); margin: 0; line-height: 1.25; color: #000; }
   .meta { margin-bottom: 20px; text-align: center; }
-  .meta h1 { font-size: ${px(16)}; margin: 0 0 4px; font-weight: var(--print-w-emphasis, 700); color: #000; }
+  .meta h1 { font-size: ${hpx(16)}; margin: 0 0 4px; font-weight: var(--print-w-header, 700); color: #000; }
   .meta p { margin: 2px 0; font-size: ${px(12)}; color: #000; font-weight: var(--print-w-body, 600); }
-  .doc-footer { margin-top: 18px; text-align: center; font-size: ${px(10)}; color: #000; font-weight: var(--print-w-body, 600); }
+  .doc-footer { margin-top: 18px; text-align: center; font-size: ${fpx(10)}; color: #000; font-weight: var(--print-w-footer, 600); }
   table { width: 100%; border-collapse: collapse; position: relative; z-index: 1; font-size: ${px(11)}; color: #000; }
   th, td { border: 1px solid #000; padding: 6px 8px; text-align: left; }
   th { background: #f3f4f6; font-weight: var(--print-w-emphasis, 700); }
@@ -139,10 +144,10 @@ export function reportDocumentStyles(generalSettings = null) {
   }
   @media print {
     body { font-size: ${px(11, true)}; }
-    .org-name { font-size: ${px(18, true)}; }
-    .meta h1 { font-size: ${px(16, true)}; }
+    .org-name { font-size: ${hpx(18, true)}; }
+    .meta h1 { font-size: ${hpx(16, true)}; }
     .meta p { font-size: ${px(12, true)}; }
-    .doc-footer { font-size: ${px(10, true)}; }
+    .doc-footer { font-size: ${fpx(10, true)}; }
     table { font-size: ${px(11, true)}; }
     .watermark-text { color: rgba(15, 23, 42, 0.08); font-size: ${px(64, true)}; }
   }

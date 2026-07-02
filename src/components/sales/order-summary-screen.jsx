@@ -445,6 +445,9 @@ function CustomerOrderDetailsPanel({
             {meta?.pod_signer_name ? (
               <DetailRow label="Received by" value={meta.pod_signer_name} />
             ) : null}
+            {meta?.route_markup?.message ? (
+              <DetailRow label="Pricing note" value={meta.route_markup.message} />
+            ) : null}
           </dl>
         </div>
       </div>

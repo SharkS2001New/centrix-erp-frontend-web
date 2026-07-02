@@ -20,8 +20,6 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { DISPATCH_TRIP_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 import { CreateDispatchTripDialog } from "@/components/fulfillment/create-dispatch-trip-dialog";
-import { DistributionHelpButton } from "@/components/fulfillment/distribution-help";
-
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
   { value: "draft", label: "Draft" },
@@ -129,7 +127,6 @@ export default function TripsPage() {
       subtitle="Plan route runs, build loading lists, and track deliveries"
       action={
         <div className="flex flex-wrap items-center gap-2">
-          <DistributionHelpButton />
           <CatalogListExport
             title="Dispatch trips"
             filename="dispatch-trips"

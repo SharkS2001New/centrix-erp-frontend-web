@@ -15,7 +15,6 @@ import {
   sumRouteSales,
   updateRouteFormField,
 } from "@/components/routes/route-form";
-import { DistributionHelpButton } from "@/components/fulfillment/distribution-help";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import {
   CatalogDataImportButton,
@@ -299,7 +298,6 @@ export default function RoutesPage() {
       subtitle="Manage delivery and sales routes"
       action={
         <div className="flex flex-wrap items-center gap-2">
-          <DistributionHelpButton />
           <CatalogDataImportButton
             title="Import routes"
             description="Upload CSV or Excel. Required column: route_name (or Route). Optional: direction, route_markup_price, is_active."

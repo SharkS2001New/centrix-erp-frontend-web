@@ -66,7 +66,6 @@ import {
   FulfillmentAssignmentDialog,
   PodCaptureDialog,
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
-import { DistributionHelpButton } from "@/components/fulfillment/distribution-help";
 import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { usePosSession } from "@/contexts/pos-session-context";
@@ -633,7 +632,6 @@ export default function SalesOrdersListScreen({
       action={
         routeOrdersOnly ? (
           <div className="flex flex-wrap items-center gap-2">
-            <DistributionHelpButton />
             <Link
               href="/fulfillment/dispatch"
               className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"

@@ -20,9 +20,9 @@ import {
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
 import {
+  createOrgPrintPx,
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
-  orgPrintPx,
 } from "@/lib/print-typography";
 
 function formatPrintDate(value) {
@@ -117,7 +117,10 @@ function lpoDocumentTitle(variant) {
 }
 
 function lpoPrintStyles(generalSettings = null) {
-  const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant: "lpo", print });
+  const printPx = createOrgPrintPx(generalSettings, "lpo");
+  const px = printPx.body;
+  const hpx = printPx.header;
+  const fpx = printPx.footer;
   const font = orgPrintFontFamilyFromSettings(generalSettings, "lpo");
   return `
     @page { size: A4; margin: 0; }
@@ -140,8 +143,8 @@ function lpoPrintStyles(generalSettings = null) {
     .page-body { }
     .org-header { text-align: center; margin-bottom: 8px; }
     .org-logo { display: block; margin: 0 auto 8px; max-height: 72px; max-width: 280px; object-fit: contain; }
-    .org-name { font-size: ${px(22)}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-    .org-meta { text-align: center; font-size: ${px(10)}; margin-top: 4px; line-height: 1.45; }
+    .org-name { font-size: ${hpx(22)}; font-weight: var(--print-w-header, 700); letter-spacing: 0.04em; text-transform: uppercase; }
+    .org-meta { text-align: center; font-size: ${hpx(10)}; margin-top: 4px; line-height: 1.45; font-weight: var(--print-w-header, 600); }
     .doc-title { text-align: center; font-size: ${px(14)}; font-weight: 700; margin: 10px 0 12px; letter-spacing: 0.08em; text-transform: uppercase; }
     .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; margin-bottom: 12px; font-size: ${px(10)}; }
     .meta p { margin: 2px 0; }
@@ -172,8 +175,8 @@ function lpoPrintStyles(generalSettings = null) {
     ${documentPrintEdgeFooterStyles(generalSettings, { variant: "lpo" })}
     @media print {
       body { font-size: ${px(11, true)}; }
-      .org-name { font-size: ${px(22, true)}; }
-      .org-meta { font-size: ${px(10, true)}; }
+      .org-name { font-size: ${hpx(22, true)}; }
+      .org-meta { font-size: ${hpx(10, true)}; }
       .doc-title { font-size: ${px(14, true)}; }
       .meta { font-size: ${px(10, true)}; }
       table.items { font-size: ${px(10, true)}; }

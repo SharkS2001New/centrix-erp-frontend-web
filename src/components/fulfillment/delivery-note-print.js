@@ -2,6 +2,14 @@ import { openPrintWindow } from "@/lib/open-print-window";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 import {
+  buildReportOrgHeaderHtml,
+  resolveReportBranding,
+} from "@/lib/reports/report-branding";
+import {
+  resolveSaleLinePrintColumns,
+  saleLineProductLabel,
+} from "@/lib/sale-line-items";
+import {
   buildDocumentPrintEdgeFooterHtml,
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
@@ -11,10 +19,30 @@ import {
   orgPrintPx,
 } from "@/lib/print-typography";
 
-function formatDisplayDate(dateStr) {
-  if (!dateStr) return "";
-  const d = new Date(`${dateStr}T12:00:00`);
-  return d.toLocaleDateString("en-KE", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+function parsePrintDate(value) {
+  if (value == null || value === "") return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const datePart = raw.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+    const d = new Date(`${datePart}T12:00:00`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatDisplayDate(value) {
+  const d = parsePrintDate(value);
+  if (!d) return "—";
+  return d.toLocaleDateString("en-KE", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 }
 
 function escapeHtml(value) {
@@ -42,9 +70,17 @@ function deliveryNotePrintStyles(generalSettings = null) {
       min-height: 100%;
       ${orgPrintInkStyles(generalSettings, "loading_sheet")}
     }
+    .org-header { text-align: center; margin-bottom: 12px; }
+    .org-logo { display: block; margin: 0 auto 10px; max-height: 56px; max-width: 220px; object-fit: contain; }
+    .org-name {
+      font-size: ${px(20)};
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      line-height: 1.25;
+    }
     .header { text-align: center; margin-bottom: 20px; }
-    .header h1 { margin: 0; font-size: ${px(20)}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-    .header h2 { margin: 6px 0 0; font-size: ${px(16)}; font-weight: 700; }
+    .header .doc-title { margin: 0; font-size: ${px(16)}; font-weight: 700; }
     .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin: 16px 0; font-size: ${px(12)}; }
     .meta strong { display: inline-block; min-width: 110px; font-weight: 700; }
     table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: ${px(11)}; }
@@ -59,8 +95,8 @@ function deliveryNotePrintStyles(generalSettings = null) {
     ${documentPrintEdgeFooterStyles(generalSettings, { variant: "loading_sheet" })}
     @media print {
       body { margin: 0; font-size: ${px(12, true)}; }
-      .header h1 { font-size: ${px(20, true)}; }
-      .header h2 { font-size: ${px(16, true)}; }
+      .org-name { font-size: ${px(20, true)}; }
+      .header .doc-title { font-size: ${px(16, true)}; }
       .meta { font-size: ${px(12, true)}; }
       table { font-size: ${px(11, true)}; }
       th { font-size: ${px(10, true)}; }
@@ -70,12 +106,31 @@ function deliveryNotePrintStyles(generalSettings = null) {
   `;
 }
 
+function buildDeliveryNoteLineRows(items) {
+  return (items ?? [])
+    .map((item, index) => {
+      const cols = resolveSaleLinePrintColumns(item, { uom: item?.product?.unit ?? null });
+      const productName = saleLineProductLabel(item);
+
+      return `
+      <tr>
+        <td class="num">${index + 1}</td>
+        <td>${escapeHtml(productName)}</td>
+        <td class="qty">${escapeHtml(cols.qty)}</td>
+        <td class="price">${formatSaleKes(cols.unitPrice)}</td>
+        <td class="total">${formatSaleKes(cols.amount)}</td>
+      </tr>`;
+    })
+    .join("");
+}
+
 /**
  * Printable delivery note for a single order/stop on a trip.
- * @param {{ organizationName?: string, sale: object, trip?: object, stopNumber?: number, printedBy?: string | null, generalSettings?: object | null, documentFooterText?: string }} options
+ * @param {{ organization?: object, organizationName?: string, sale: object, trip?: object, stopNumber?: number, printedBy?: string | null, generalSettings?: object | null, documentFooterText?: string }} options
  */
 export function printDeliveryNote({
-  organizationName = "Delivery Note",
+  organization = null,
+  organizationName = "",
   sale,
   trip,
   stopNumber,
@@ -84,10 +139,21 @@ export function printDeliveryNote({
   documentFooterText = "",
 }) {
   const items = sale?.items ?? [];
+  const branding = resolveReportBranding({
+    organization,
+    generalSettings,
+    organizationNameFallback: organizationName,
+  });
+  const orgHeader = buildReportOrgHeaderHtml(branding);
+
   const routeName = trip?.route?.route_name ?? sale?.route?.route_name ?? "—";
   const customer = saleCustomerLabel(sale);
   const orderNum = sale?.order_num ?? sale?.id ?? "—";
   const balance = Math.max(0, Number(sale?.order_total || 0) - Number(sale?.amount_paid || 0));
+  const dateValue =
+    trip?.scheduled_date ??
+    sale?.required_date ??
+    sale?.created_at;
   const printedAt = new Date().toLocaleString("en-GB", {
     day: "2-digit",
     month: "2-digit",
@@ -98,19 +164,7 @@ export function printDeliveryNote({
     hour12: false,
   });
   const printedByName = resolvePrintedByUser(printedBy) ?? "—";
-
-  const rows = items
-    .map(
-      (item, index) => `
-      <tr>
-        <td class="num">${index + 1}</td>
-        <td>${escapeHtml(item.product_name ?? item.product_code)}</td>
-        <td class="qty">${escapeHtml(item.quantity)}</td>
-        <td class="price">${formatSaleKes(item.unit_price)}</td>
-        <td class="total">${formatSaleKes(item.line_total ?? item.unit_price * item.quantity)}</td>
-      </tr>`,
-    )
-    .join("");
+  const rows = buildDeliveryNoteLineRows(items);
 
   const html = `<!DOCTYPE html>
 <html>
@@ -121,12 +175,12 @@ export function printDeliveryNote({
 </head>
 <body class="has-doc-print-edge-footer">
   <div class="header">
-    <h1>${escapeHtml(organizationName)}</h1>
-    <h2>Delivery Note</h2>
+    ${orgHeader}
+    <h2 class="doc-title">Delivery Note</h2>
   </div>
   <div class="meta">
     <div><strong>Order #:</strong> ${escapeHtml(orderNum)}</div>
-    <div><strong>Date:</strong> ${escapeHtml(formatDisplayDate(trip?.scheduled_date ?? sale?.created_at?.slice?.(0, 10)))}</div>
+    <div><strong>Date:</strong> ${escapeHtml(formatDisplayDate(dateValue))}</div>
     <div><strong>Customer:</strong> ${escapeHtml(customer)}</div>
     <div><strong>Route:</strong> ${escapeHtml(routeName)}</div>
     <div><strong>Trip:</strong> ${escapeHtml(trip?.trip_code ?? "—")}</div>

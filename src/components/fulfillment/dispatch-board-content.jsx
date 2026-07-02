@@ -10,7 +10,6 @@ import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell, Field, PaginationBar, PrimaryLink, inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { CreateDispatchTripDialog } from "@/components/fulfillment/create-dispatch-trip-dialog";
-import { DistributionHelpButton } from "@/components/fulfillment/distribution-help";
 import { DashboardSection, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
@@ -212,7 +211,6 @@ export function DispatchBoardContent() {
       subtitle="Plan deliveries by route and assign drivers to orders"
       action={
         <div className="flex gap-2">
-          <DistributionHelpButton />
           <PrimaryButton type="button" showIcon={false} onClick={() => setCreateTripOpen(true)}>
             New trip
           </PrimaryButton>

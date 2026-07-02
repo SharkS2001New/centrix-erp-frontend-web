@@ -21,6 +21,15 @@ import { mergeGeneralSettings } from "@/lib/general-settings";
 import { formatOrderNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 
+function PrintIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <path d="M6 14h12v8H6z" />
+    </svg>
+  );
+}
+
 function statusLabel(status) {
   return String(status ?? "").replace(/_/g, " ");
 }
@@ -107,14 +116,13 @@ export default function TripDetailPage() {
     trip.expected_cash != null &&
     Number(trip.expected_cash) > 0 &&
     ["in_transit", "completed"].includes(trip.status);
-  const orgName = organization?.organization_name ?? organization?.company_name ?? "Delivery Note";
-
   async function printStopDeliveryNote(sale, stopNumber) {
     setBusy(true);
     try {
       const fullSale = await apiRequest(`/sales/${sale.id}`);
       printDeliveryNote({
-        organizationName: orgName,
+        organization,
+        organizationName: organization?.organization_name ?? organization?.company_name ?? "",
         sale: fullSale,
         trip,
         stopNumber,
@@ -412,11 +420,12 @@ export default function TripDetailPage() {
                 render: (row) => (
                   <button
                     type="button"
-                    className="rounded border border-slate-200 px-2 py-0.5 text-xs hover:bg-slate-50"
+                    className="theme-primary-btn inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium disabled:opacity-50"
                     disabled={busy}
                     onClick={() => printStopDeliveryNote({ id: row.id }, row.stop)}
                   >
-                    Delivery note
+                    <PrintIcon />
+                    Print
                   </button>
                 ),
               },

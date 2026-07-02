@@ -4,9 +4,9 @@ import {
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
 import {
+  createOrgPrintPx,
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
-  orgPrintPx,
 } from "@/lib/print-typography";
 import {
   buildReportOrgHeaderHtml,
@@ -63,7 +63,10 @@ export function buildOrgContactLines(organization) {
 }
 
 export function brandedDocumentStyles(generalSettings = null) {
-  const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant: "a4", print });
+  const printPx = createOrgPrintPx(generalSettings, "sale_invoice");
+  const px = printPx.body;
+  const hpx = printPx.header;
+  const fpx = printPx.footer;
   const font = orgPrintFontFamilyFromSettings(generalSettings, "sale_invoice");
   return `
   @page { size: A4; margin: 0; }
@@ -87,8 +90,9 @@ export function brandedDocumentStyles(generalSettings = null) {
   .page-body { }
   .org-header { text-align: center; margin-bottom: 6px; padding-bottom: 0; border-bottom: none; }
   .org-logo { display: block; margin: 0 auto 4px; max-height: 56px; max-width: 220px; object-fit: contain; }
-  .org-name { font-size: ${px(18)}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-  .org-meta { text-align: center; font-size: ${px(9)}; margin-top: 2px; }
+  .org-name { font-size: ${hpx(18)}; font-weight: var(--print-w-header, 700); letter-spacing: 0.04em; text-transform: uppercase; }
+  .org-meta { text-align: center; font-size: ${hpx(10)}; margin-top: 2px; font-weight: var(--print-w-header, 600); }
+  .doc-footer-text { margin-top: 8px; text-align: center; font-size: ${fpx(8)}; color: #000; font-weight: var(--print-w-footer, 600); }
   .doc-title { text-align: center; font-size: ${px(13)}; font-weight: 700; margin: 8px 0; letter-spacing: 0.06em; }
   .meta-block { margin-bottom: 8px; }
   .meta-block p { margin: 1px 0; }
@@ -112,7 +116,6 @@ export function brandedDocumentStyles(generalSettings = null) {
   .signatures { margin: 10px 0 6px; font-size: ${px(10)}; }
   .signatures p { margin: 0 0 10px; }
   .sig-line { display: inline-block; min-width: 180px; border-bottom: 1px dotted #000; }
-  .doc-footer-text { margin-top: 8px; text-align: center; font-size: ${px(8)}; color: #000; font-weight: var(--print-w-body, 600); }
   ${documentPrintEdgeFooterStyles(generalSettings, { variant: "sale_invoice" })}
   .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
   .watermark-text {
@@ -140,15 +143,15 @@ export function brandedDocumentStyles(generalSettings = null) {
   @media print {
     html, body { height: auto !important; min-height: 0 !important; }
     body { font-size: ${px(10, true)}; padding: 0; }
-    .org-name { font-size: ${px(18, true)}; }
-    .org-meta { font-size: ${px(9, true)}; }
+    .org-name { font-size: ${hpx(18, true)}; }
+    .org-meta { font-size: ${hpx(10, true)}; }
     .doc-title { font-size: ${px(13, true)}; }
     .party-name { font-size: ${px(11, true)}; }
     table.doc-items { font-size: ${px(9, true)}; }
     .totals-row { font-size: ${px(10, true)}; }
     .reason-row { font-size: ${px(10, true)}; }
     .signatures { font-size: ${px(10, true)}; }
-    .doc-footer-text { font-size: ${px(8, true)}; }
+    .doc-footer-text { font-size: ${fpx(8, true)}; }
     .extra-block { font-size: ${px(9, true)}; }
     .watermark-text { color: rgba(15, 23, 42, 0.08); font-size: ${px(64, true)}; }
   }

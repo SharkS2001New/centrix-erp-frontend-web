@@ -1,4 +1,8 @@
-import { normalizeOrgPrintFontSizePx, normalizeOrgPrintFontWeight, ORG_PRINT_FONT_WEIGHT_DEFAULT } from "@/lib/print-typography";
+import {
+  normalizeOrgPrintFontSizePx,
+  normalizeOrgPrintFontWeight,
+  ORG_PRINT_FONT_WEIGHT_DEFAULT,
+} from "@/lib/print-typography";
 
 /** Admin form / API keys for each printable document type. */
 export const PRINT_FONT_VARIANTS = {
@@ -9,6 +13,10 @@ export const PRINT_FONT_VARIANTS = {
     defaultScale: "standard",
     defaultSizePx: 11,
     defaultWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    defaultHeaderScale: "large",
+    defaultHeaderWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    defaultFooterScale: "standard",
+    defaultFooterWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
   },
   invoice: {
     label: "A4 invoice",
@@ -17,6 +25,10 @@ export const PRINT_FONT_VARIANTS = {
     defaultScale: "standard",
     defaultSizePx: 14,
     defaultWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    defaultHeaderScale: "large",
+    defaultHeaderWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    defaultFooterScale: "standard",
+    defaultFooterWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
   },
   lpo: {
     label: "LPO",
@@ -25,6 +37,10 @@ export const PRINT_FONT_VARIANTS = {
     defaultScale: "standard",
     defaultSizePx: 14,
     defaultWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    defaultHeaderScale: "large",
+    defaultHeaderWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    defaultFooterScale: "standard",
+    defaultFooterWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
   },
   loading_sheet: {
     label: "Loading sheet",
@@ -33,6 +49,10 @@ export const PRINT_FONT_VARIANTS = {
     defaultScale: "standard",
     defaultSizePx: 16,
     defaultWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    defaultHeaderScale: "large",
+    defaultHeaderWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    defaultFooterScale: "standard",
+    defaultFooterWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
   },
   report: {
     label: "Reports",
@@ -41,6 +61,10 @@ export const PRINT_FONT_VARIANTS = {
     defaultScale: "standard",
     defaultSizePx: 14,
     defaultWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    defaultHeaderScale: "large",
+    defaultHeaderWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    defaultFooterScale: "standard",
+    defaultFooterWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
     fallbackVariant: "invoice",
   },
 };
@@ -53,6 +77,12 @@ export function printFontFormKeys(variantKey) {
     scale: `print_font_${variantKey}_scale`,
     sizePx: `print_font_${variantKey}_size_px`,
     weight: `print_font_${variantKey}_weight`,
+    headerScale: `print_font_${variantKey}_header_scale`,
+    headerSizePx: `print_font_${variantKey}_header_size_px`,
+    headerWeight: `print_font_${variantKey}_header_weight`,
+    footerScale: `print_font_${variantKey}_footer_scale`,
+    footerSizePx: `print_font_${variantKey}_footer_size_px`,
+    footerWeight: `print_font_${variantKey}_footer_weight`,
   };
 }
 
@@ -62,6 +92,37 @@ function legacyPrintFont(general = {}) {
     scale: general.print_font_scale,
     size_px: general.print_font_size_px,
     weight: general.print_font_weight,
+  };
+}
+
+function readSectionSettings(general, variantKey, section, bodyResolved) {
+  const config = PRINT_FONT_VARIANTS[variantKey];
+  const keys = printFontFormKeys(variantKey);
+  const prefix = section === "header" ? "header" : section === "footer" ? "footer" : null;
+
+  if (!prefix) {
+    return bodyResolved;
+  }
+
+  const scaleKey = keys[`${prefix}Scale`];
+  const sizeKey = keys[`${prefix}SizePx`];
+  const weightKey = keys[`${prefix}Weight`];
+  const defaultScaleKey = `default${prefix.charAt(0).toUpperCase()}${prefix.slice(1)}Scale`;
+  const defaultWeightKey = `default${prefix.charAt(0).toUpperCase()}${prefix.slice(1)}Weight`;
+
+  const scale = general?.[scaleKey] || config?.[defaultScaleKey] || bodyResolved.scale;
+  const size_px = normalizeOrgPrintFontSizePx(
+    general?.[sizeKey] ?? bodyResolved.size_px ?? config?.defaultSizePx,
+  );
+  const weight = normalizeOrgPrintFontWeight(
+    general?.[weightKey] ?? config?.[defaultWeightKey] ?? bodyResolved.weight,
+  );
+
+  return {
+    family: bodyResolved.family,
+    scale,
+    size_px,
+    weight,
   };
 }
 
@@ -75,14 +136,22 @@ function resolvedVariantFont(general, variantKey, visited = new Set()) {
   const scale = general?.[keys.scale];
   const sizePx = general?.[keys.sizePx];
   const weight = general?.[keys.weight];
+  const hasHeaderFooter =
+    general?.[keys.headerScale] ||
+    general?.[keys.headerSizePx] != null ||
+    general?.[keys.headerWeight] ||
+    general?.[keys.footerScale] ||
+    general?.[keys.footerSizePx] != null ||
+    general?.[keys.footerWeight];
 
-  if (family || scale || sizePx != null || weight) {
-    return {
+  if (family || scale || sizePx != null || weight || hasHeaderFooter) {
+    const body = {
       family: family || config.defaultFamily,
       scale: scale || config.defaultScale,
       size_px: sizePx ?? config.defaultSizePx,
       weight: normalizeOrgPrintFontWeight(weight ?? config.defaultWeight),
     };
+    return body;
   }
 
   if (config.fallbackVariant) {
@@ -119,7 +188,17 @@ export function resolveOrgPrintFontSettings(generalSettings = null, typographyVa
     specific?.weight ?? legacy.weight ?? config.defaultWeight,
   );
 
-  return { family, scale, size_px: size_px, weight, settingKey, typographyVariant };
+  return { family, scale, size_px, weight, settingKey, typographyVariant };
+}
+
+export function resolveOrgPrintSectionSettings(
+  generalSettings = null,
+  typographyVariant = "a4",
+  section = "body",
+) {
+  const body = resolveOrgPrintFontSettings(generalSettings, typographyVariant);
+  const general = generalSettings ?? {};
+  return readSectionSettings(general, body.settingKey, section, body);
 }
 
 export function printFontFormDefaults() {
@@ -136,6 +215,12 @@ export function printFontFormDefaults() {
     defaults[keys.scale] = config.defaultScale;
     defaults[keys.sizePx] = String(config.defaultSizePx);
     defaults[keys.weight] = config.defaultWeight;
+    defaults[keys.headerScale] = config.defaultHeaderScale;
+    defaults[keys.headerSizePx] = String(config.defaultSizePx);
+    defaults[keys.headerWeight] = config.defaultHeaderWeight;
+    defaults[keys.footerScale] = config.defaultFooterScale;
+    defaults[keys.footerSizePx] = String(Math.max(8, config.defaultSizePx - 2));
+    defaults[keys.footerWeight] = config.defaultFooterWeight;
   }
 
   return defaults;
@@ -166,6 +251,24 @@ export function printFontFormFromGeneral(general = {}) {
     result[keys.weight] = normalizeOrgPrintFontWeight(
       resolved?.weight ?? merged.print_font_weight ?? config.defaultWeight,
     );
+    result[keys.headerScale] =
+      merged[keys.headerScale] ?? config.defaultHeaderScale;
+    result[keys.headerSizePx] = String(
+      normalizeOrgPrintFontSizePx(merged[keys.headerSizePx] ?? config.defaultSizePx),
+    );
+    result[keys.headerWeight] = normalizeOrgPrintFontWeight(
+      merged[keys.headerWeight] ?? config.defaultHeaderWeight,
+    );
+    result[keys.footerScale] =
+      merged[keys.footerScale] ?? config.defaultFooterScale;
+    result[keys.footerSizePx] = String(
+      normalizeOrgPrintFontSizePx(
+        merged[keys.footerSizePx] ?? Math.max(8, config.defaultSizePx - 2),
+      ),
+    );
+    result[keys.footerWeight] = normalizeOrgPrintFontWeight(
+      merged[keys.footerWeight] ?? config.defaultFooterWeight,
+    );
   }
 
   return result;
@@ -190,6 +293,20 @@ export function printFontPayloadFromForm(form = {}) {
     payload[keys.scale] = form[keys.scale] || config.defaultScale;
     payload[keys.sizePx] = normalizeOrgPrintFontSizePx(form[keys.sizePx] ?? config.defaultSizePx);
     payload[keys.weight] = normalizeOrgPrintFontWeight(form[keys.weight] ?? config.defaultWeight);
+    payload[keys.headerScale] = form[keys.headerScale] || config.defaultHeaderScale;
+    payload[keys.headerSizePx] = normalizeOrgPrintFontSizePx(
+      form[keys.headerSizePx] ?? config.defaultSizePx,
+    );
+    payload[keys.headerWeight] = normalizeOrgPrintFontWeight(
+      form[keys.headerWeight] ?? config.defaultHeaderWeight,
+    );
+    payload[keys.footerScale] = form[keys.footerScale] || config.defaultFooterScale;
+    payload[keys.footerSizePx] = normalizeOrgPrintFontSizePx(
+      form[keys.footerSizePx] ?? Math.max(8, config.defaultSizePx - 2),
+    );
+    payload[keys.footerWeight] = normalizeOrgPrintFontWeight(
+      form[keys.footerWeight] ?? config.defaultFooterWeight,
+    );
   }
 
   return payload;
@@ -214,5 +331,11 @@ export function mergePreviewGeneralWithPrintFonts(form, moduleSettings, typograp
     [keys.scale]: resolved.scale,
     [keys.sizePx]: resolved.size_px,
     [keys.weight]: resolved.weight,
+    [keys.headerScale]: base[keys.headerScale],
+    [keys.headerSizePx]: base[keys.headerSizePx],
+    [keys.headerWeight]: base[keys.headerWeight],
+    [keys.footerScale]: base[keys.footerScale],
+    [keys.footerSizePx]: base[keys.footerSizePx],
+    [keys.footerWeight]: base[keys.footerWeight],
   };
 }

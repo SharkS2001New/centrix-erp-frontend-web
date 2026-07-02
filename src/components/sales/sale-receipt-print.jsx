@@ -16,9 +16,9 @@ import { buildReceiptPaymentDetailsHtml } from "@/lib/receipt-payment-details";
 import { formatOrderNumber, saleCustomerLabel } from "@/lib/sales";
 import { isLegacySale } from "@/lib/sale-line-items";
 import {
+  createOrgPrintPx,
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
-  orgPrintPx,
 } from "@/lib/print-typography";
 
 function buildUsedPaymentRows(sale, orderTotal) {
@@ -118,8 +118,10 @@ export function buildSaleReceiptHtml(
 ) {
   if (!sale) return "";
 
-  const px = (base, print = false) =>
-    orgPrintPx(base, generalSettings, { variant: "thermal", print });
+  const printPx = createOrgPrintPx(generalSettings, "thermal");
+  const px = printPx.body;
+  const hpx = printPx.header;
+  const fpx = printPx.footer;
   const font = orgPrintFontFamilyFromSettings(generalSettings, "thermal");
 
   const items = sale.items ?? [];
@@ -213,8 +215,8 @@ export function buildSaleReceiptHtml(
   <style>
     body { font-family: ${font}; margin: 0; padding: 12px; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
     .receipt { width: 320px; margin: 0 auto; }
-    .company-name { text-align: center; font-size: ${px(14)}; font-weight: 700; letter-spacing: .04em; margin-bottom: 4px; text-transform: uppercase; }
-    .company-meta { text-align: center; font-size: ${px(9)}; color: #000; line-height: 1.45; font-weight: var(--print-w-body, 600); }
+    .company-name { text-align: center; font-size: ${hpx(14)}; font-weight: var(--print-w-header, 700); letter-spacing: .04em; margin-bottom: 4px; text-transform: uppercase; }
+    .company-meta { text-align: center; font-size: ${hpx(10)}; color: #000; line-height: 1.45; font-weight: var(--print-w-header, 600); }
     .doc-title { text-align: center; font-size: ${px(11)}; font-weight: 700; letter-spacing: .12em; margin: 10px 0 8px; text-transform: uppercase; }
     .divider { border-top: 1px dashed #000; margin: 8px 0; }
     .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; font-size: ${px(9)}; line-height: 1.4; }
@@ -257,13 +259,13 @@ export function buildSaleReceiptHtml(
     .pay-instructions .pay-label { font-weight: 700; }
     .pay-instructions .pay-value { font-weight: var(--print-w-body, 600); }
     .pay-instructions .pay-note { margin-top: 6px; text-align: left; color: #000; font-size: ${px(8)}; line-height: 1.35; font-weight: var(--print-w-body, 600); }
-    .footer-text { text-align: center; font-size: ${px(8)}; color: #000; margin-top: 6px; text-transform: uppercase; letter-spacing: .04em; line-height: 1.45; font-weight: var(--print-w-emphasis, 700); }
-    .footer-powered-by { text-align: center; font-size: ${px(7)}; font-weight: var(--print-w-body, 600); color: #000; margin-top: 4px; letter-spacing: normal; line-height: 1.35; }
+    .footer-text { text-align: center; font-size: ${fpx(8)}; color: #000; margin-top: 6px; text-transform: uppercase; letter-spacing: .04em; line-height: 1.45; font-weight: var(--print-w-footer, 700); }
+    .footer-powered-by { text-align: center; font-size: ${fpx(7)}; font-weight: var(--print-w-footer, 600); color: #000; margin-top: 4px; letter-spacing: normal; line-height: 1.35; }
     .center { text-align: center; }
     @media print {
       body { font-size: ${px(10, true)}; }
-      .company-name { font-size: ${px(14, true)}; }
-      .company-meta { font-size: ${px(9, true)}; }
+      .company-name { font-size: ${hpx(14, true)}; }
+      .company-meta { font-size: ${hpx(10, true)}; }
       .doc-title { font-size: ${px(11, true)}; }
       .meta-grid { font-size: ${px(9, true)}; }
       .table { font-size: ${px(9, true)}; }
@@ -272,8 +274,8 @@ export function buildSaleReceiptHtml(
       .amount-line-grand { font-size: ${px(11, true)}; }
       .payment-title, .pay-instructions { font-size: ${px(9, true)}; }
       .pay-instructions .pay-note { font-size: ${px(8, true)}; }
-      .footer-text { font-size: ${px(8, true)}; }
-      .footer-powered-by { font-size: ${px(7, true)}; }
+      .footer-text { font-size: ${fpx(8, true)}; }
+      .footer-powered-by { font-size: ${fpx(7, true)}; }
       .receipt { margin: 0 auto; }
     }
   </style>

@@ -1,7 +1,7 @@
 import { PRINT_POWERED_BY } from "@/lib/branding";
 import { escapeHtml } from "@/lib/branded-document-print";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
-import { orgPrintInkStyles, orgPrintPx } from "@/lib/print-typography";
+import { orgPrintInkStyles, orgPrintSectionPx } from "@/lib/print-typography";
 
 /** Body padding (not @page) — keeps content clear of the fixed print footer. */
 export const DOCUMENT_PRINT_EDGE_BODY_TOP = "10mm";
@@ -12,7 +12,10 @@ export const DOCUMENT_PRINT_EDGE_BODY_BOTTOM = "30mm";
 export const DOCUMENT_PRINT_EDGE_BOTTOM_MARGIN = "0";
 
 export function documentPrintEdgeFooterStyles(generalSettings = null, { variant = "a4" } = {}) {
-  const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant, print });
+  const bodyPx = (base, print = false) =>
+    orgPrintSectionPx(base, generalSettings, { variant, section: "body", print });
+  const footerPx = (base, print = false) =>
+    orgPrintSectionPx(base, generalSettings, { variant, section: "footer", print });
   return `
   body.has-doc-print-edge-footer { padding-bottom: 72px; }
   .doc-print-edge-footer {
@@ -24,9 +27,9 @@ export function documentPrintEdgeFooterStyles(generalSettings = null, { variant 
     padding: 8px 16px 4px;
     border-top: 1px dotted #000;
     background: #fff;
-    font-size: ${px(9)};
+    font-size: ${footerPx(9)};
     color: #000;
-    font-weight: var(--print-w-body, 600);
+    font-weight: var(--print-w-footer, 600);
     line-height: 1.4;
     box-sizing: border-box;
     ${orgPrintInkStyles(generalSettings, variant)}
@@ -34,8 +37,8 @@ export function documentPrintEdgeFooterStyles(generalSettings = null, { variant 
   .doc-print-edge-footer .footer-notes {
     text-align: center;
     margin: 0 0 6px;
-    font-size: ${px(9)};
-    font-weight: var(--print-w-emphasis, 700);
+    font-size: ${footerPx(9)};
+    font-weight: var(--print-w-footer, 700);
   }
   .doc-print-edge-footer .footer-notes p { margin: 2px 0; }
   .doc-print-edge-footer .print-footer-row {
@@ -46,11 +49,11 @@ export function documentPrintEdgeFooterStyles(generalSettings = null, { variant 
   }
   .doc-print-edge-footer .print-footer-left {
     text-align: left;
-    font-weight: var(--print-w-emphasis, 700);
+    font-weight: var(--print-w-footer, 700);
   }
   .doc-print-edge-footer .print-footer-center {
     text-align: center;
-    font-weight: var(--print-w-emphasis, 700);
+    font-weight: var(--print-w-footer, 700);
   }
   .doc-print-edge-footer .print-footer-center .designed-by {
     margin: 0 0 2px;
@@ -58,19 +61,19 @@ export function documentPrintEdgeFooterStyles(generalSettings = null, { variant 
   }
   .doc-print-edge-footer .print-footer-center .printed-by {
     margin: 0;
-    font-weight: var(--print-w-emphasis, 700);
+    font-weight: var(--print-w-footer, 700);
   }
   .doc-print-edge-footer .print-footer-right {
     text-align: right;
-    font-weight: var(--print-w-emphasis, 700);
+    font-weight: var(--print-w-footer, 700);
     white-space: nowrap;
   }
   @media print {
     .doc-print-edge-footer {
-      font-size: ${px(9, true)};
+      font-size: ${footerPx(9, true)};
     }
     .doc-print-edge-footer .footer-notes {
-      font-size: ${px(9, true)};
+      font-size: ${footerPx(9, true)};
     }
   }
 `;

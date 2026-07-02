@@ -1,17 +1,26 @@
-import { resolveOrgPrintFontSettings } from "@/lib/print-font-settings";
+import { resolveOrgPrintFontSettings, resolveOrgPrintSectionSettings } from "@/lib/print-font-settings";
 
 export const ORG_PRINT_FONT_FAMILIES = [
   { id: "times", label: "Times New Roman", css: "'Times New Roman', Times, serif" },
   { id: "georgia", label: "Georgia", css: "Georgia, 'Times New Roman', serif" },
   { id: "palatino", label: "Palatino Linotype", css: "'Palatino Linotype', Palatino, serif" },
   { id: "garamond", label: "Garamond", css: "Garamond, 'Times New Roman', serif" },
+  { id: "book_antiqua", label: "Book Antiqua", css: "'Book Antiqua', Palatino, serif" },
+  { id: "cambria", label: "Cambria", css: "Cambria, Georgia, serif" },
+  { id: "constantia", label: "Constantia", css: "Constantia, Georgia, serif" },
   { id: "arial", label: "Arial", css: "Arial, Helvetica, sans-serif" },
   { id: "helvetica", label: "Helvetica", css: "Helvetica, Arial, sans-serif" },
   { id: "verdana", label: "Verdana", css: "Verdana, Geneva, sans-serif" },
   { id: "tahoma", label: "Tahoma", css: "Tahoma, Geneva, sans-serif" },
   { id: "trebuchet", label: "Trebuchet MS", css: "'Trebuchet MS', Helvetica, sans-serif" },
   { id: "calibri", label: "Calibri", css: "Calibri, 'Segoe UI', sans-serif" },
+  { id: "segoe_ui", label: "Segoe UI", css: "'Segoe UI', system-ui, sans-serif" },
+  { id: "aptos", label: "Aptos", css: "Aptos, 'Segoe UI', Calibri, sans-serif" },
+  { id: "lucida_sans", label: "Lucida Sans", css: "'Lucida Sans', 'Lucida Grande', sans-serif" },
+  { id: "franklin_gothic", label: "Franklin Gothic", css: "'Franklin Gothic Medium', Arial, sans-serif" },
+  { id: "century_gothic", label: "Century Gothic", css: "'Century Gothic', Arial, sans-serif" },
   { id: "courier", label: "Courier New", css: "'Courier New', Courier, monospace" },
+  { id: "lucida_console", label: "Lucida Console", css: "'Lucida Console', 'Courier New', monospace" },
   { id: "system", label: "System sans-serif", css: "system-ui, -apple-system, 'Segoe UI', sans-serif" },
 ];
 
@@ -34,6 +43,8 @@ export const ORG_PRINT_FONT_WEIGHTS = [
 ];
 
 export const ORG_PRINT_FONT_WEIGHT_DEFAULT = "semibold";
+
+export const ORG_PRINT_SECTIONS = ["header", "body", "footer"];
 
 const VARIANT_BODY_BASE = {
   a4: { screen: 12, print: 15 },
@@ -88,8 +99,12 @@ export function orgPrintFontWeightNumeric(weightId) {
 }
 
 export function orgPrintFontWeightFromSettings(generalSettings, variant = "a4") {
-  const fontSettings = resolveOrgPrintFontSettings(generalSettings, variant);
-  return orgPrintFontWeightNumeric(fontSettings.weight);
+  return orgPrintSectionWeight(generalSettings, variant, "body");
+}
+
+export function orgPrintSectionWeight(generalSettings, variant = "a4", section = "body") {
+  const sectionSettings = resolveOrgPrintSectionSettings(generalSettings, variant, section);
+  return orgPrintFontWeightNumeric(sectionSettings.weight);
 }
 
 /** Heading / label weight relative to configured body weight. */
@@ -97,29 +112,59 @@ export function orgPrintRelativeWeight(baseWeight, delta = 100) {
   return Math.min(800, Math.max(400, baseWeight + delta));
 }
 
-function orgPrintSizeMultiplier(fontSettings, variant = "a4") {
-  if (fontSettings?.scale === "custom") {
-    const customPx = normalizeOrgPrintFontSizePx(fontSettings?.size_px);
+function sectionSizeMultiplier(sectionSettings, variant = "a4") {
+  if (sectionSettings?.scale === "custom") {
+    const customPx = normalizeOrgPrintFontSizePx(sectionSettings?.size_px);
     const standardPx = VARIANT_STANDARD_BODY_PX[variant] ?? VARIANT_STANDARD_BODY_PX.a4;
     return customPx / standardPx;
   }
-  return orgPrintFontScale(fontSettings?.scale).multiplier ?? 1;
+  return orgPrintFontScale(sectionSettings?.scale).multiplier ?? 1;
 }
 
-export function orgPrintBodyPx(generalSettings, { variant = "a4", print = false } = {}) {
+function sectionBodyPx(sectionSettings, variant = "a4", print = false) {
   const bases = VARIANT_BODY_BASE[variant] ?? VARIANT_BODY_BASE.a4;
-  const fontSettings = resolveOrgPrintFontSettings(generalSettings, variant);
-  const multiplier = orgPrintSizeMultiplier(fontSettings, variant);
+  const multiplier = sectionSizeMultiplier(sectionSettings, variant);
   const base = print ? bases.print : bases.screen;
   return Math.round(base * multiplier * 10) / 10;
 }
 
-/** Scale a template px value relative to the variant body size. */
-export function orgPrintPx(basePx, generalSettings, { variant = "a4", print = false } = {}) {
+export function orgPrintBodyPx(generalSettings, { variant = "a4", print = false } = {}) {
+  const sectionSettings = resolveOrgPrintSectionSettings(generalSettings, variant, "body");
+  return sectionBodyPx(sectionSettings, variant, print);
+}
+
+/** Scale a template px value for header, body, or footer section. */
+export function orgPrintSectionPx(
+  basePx,
+  generalSettings,
+  { variant = "a4", section = "body", print = false } = {},
+) {
   const bases = VARIANT_BODY_BASE[variant] ?? VARIANT_BODY_BASE.a4;
   const stdBody = print ? bases.print : bases.screen;
-  const bodyPx = orgPrintBodyPx(generalSettings, { variant, print });
+  const bodyPx = sectionBodyPx(resolveOrgPrintSectionSettings(generalSettings, variant, section), variant, print);
   return `${Math.round(basePx * (bodyPx / stdBody) * 10) / 10}px`;
+}
+
+/** Scale a template px value relative to the body section (legacy helper). */
+export function orgPrintPx(basePx, generalSettings, { variant = "a4", print = false } = {}) {
+  return orgPrintSectionPx(basePx, generalSettings, { variant, section: "body", print });
+}
+
+export function createOrgPrintPx(generalSettings, variant = "a4") {
+  const weights = {
+    body: orgPrintSectionWeight(generalSettings, variant, "body"),
+    header: orgPrintSectionWeight(generalSettings, variant, "header"),
+    footer: orgPrintSectionWeight(generalSettings, variant, "footer"),
+  };
+  return {
+    body: (basePx, print = false) =>
+      orgPrintSectionPx(basePx, generalSettings, { variant, section: "body", print }),
+    header: (basePx, print = false) =>
+      orgPrintSectionPx(basePx, generalSettings, { variant, section: "header", print }),
+    footer: (basePx, print = false) =>
+      orgPrintSectionPx(basePx, generalSettings, { variant, section: "footer", print }),
+    weights,
+  };
 }
 
 export function orgPrintFontFamilyFromSettings(generalSettings, variant = "a4") {
@@ -130,8 +175,14 @@ export function orgPrintFontFamilyFromSettings(generalSettings, variant = "a4") 
 /** Strong black text for physical / PDF prints — avoids faint browser output. */
 export function orgPrintInkStyles(generalSettings = null, variant = "a4") {
   const bodyWeight = generalSettings
-    ? orgPrintFontWeightFromSettings(generalSettings, variant)
+    ? orgPrintSectionWeight(generalSettings, variant, "body")
     : orgPrintFontWeightNumeric(ORG_PRINT_FONT_WEIGHT_DEFAULT);
+  const headerWeight = generalSettings
+    ? orgPrintSectionWeight(generalSettings, variant, "header")
+    : bodyWeight;
+  const footerWeight = generalSettings
+    ? orgPrintSectionWeight(generalSettings, variant, "footer")
+    : bodyWeight;
   return `
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
@@ -139,6 +190,8 @@ export function orgPrintInkStyles(generalSettings = null, variant = "a4") {
     font-weight: ${bodyWeight};
     -webkit-font-smoothing: antialiased;
     --print-w-body: ${bodyWeight};
+    --print-w-header: ${headerWeight};
+    --print-w-footer: ${footerWeight};
     --print-w-emphasis: ${orgPrintRelativeWeight(bodyWeight, 100)};
     --print-w-strong: ${orgPrintRelativeWeight(bodyWeight, 200)};
   `;

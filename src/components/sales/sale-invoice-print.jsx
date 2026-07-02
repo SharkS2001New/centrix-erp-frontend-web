@@ -18,9 +18,9 @@ import {
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
 import {
+  createOrgPrintPx,
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
-  orgPrintPx,
 } from "@/lib/print-typography";
 import { formatOrderNumber, saleCustomerLabel, salePaymentMethodDisplay } from "@/lib/sales";
 import { isLegacySale } from "@/lib/sale-line-items";
@@ -94,8 +94,10 @@ export function buildSaleInvoiceHtml(
 ) {
   if (!sale) return "";
 
-  const px = (base, print = false) =>
-    orgPrintPx(base, generalSettings, { variant: "sale_invoice", print });
+  const printPx = createOrgPrintPx(generalSettings, "sale_invoice");
+  const px = printPx.body;
+  const hpx = printPx.header;
+  const fpx = printPx.footer;
   const font = orgPrintFontFamilyFromSettings(generalSettings, "sale_invoice");
 
   const items = sale.items ?? [];
@@ -200,9 +202,9 @@ export function buildSaleInvoiceHtml(
     .page-body { }
     .invoice-header-block { break-inside: avoid; page-break-inside: avoid; }
     .org-brand .org-logo { display: block; margin: 0 auto 8px; max-height: 80px; max-width: 300px; object-fit: contain; }
-    .org-brand .org-name { font-size: ${px(24)}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-    .brand-name { text-align: center; font-size: ${px(24)}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-    .brand-meta { margin-top: 6px; font-size: ${px(11)}; text-align: center; font-weight: var(--print-w-body, 600); }
+    .org-brand .org-name { font-size: ${hpx(24)}; font-weight: var(--print-w-header, 700); letter-spacing: 0.04em; text-transform: uppercase; }
+    .brand-name { text-align: center; font-size: ${hpx(24)}; font-weight: var(--print-w-header, 700); letter-spacing: 0.04em; text-transform: uppercase; }
+    .brand-meta { margin-top: 6px; font-size: ${hpx(11)}; text-align: center; font-weight: var(--print-w-header, 600); line-height: 1.45; }
     .doc-title { text-align: center; font-size: ${px(15)}; font-weight: 700; margin: 10px 0 12px; letter-spacing: 0.08em; text-transform: uppercase; }
     .meta-sheet { margin-bottom: 12px; font-size: ${px(11)}; }
     .meta-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin: 4px 0; }
@@ -228,7 +230,7 @@ export function buildSaleInvoiceHtml(
     .sig-row:last-child { margin-bottom: 0; }
     .sig-label { white-space: nowrap; min-width: 5.5rem; font-weight: 700; }
     .sig-line { flex: 1; border-bottom: 1px dotted #000; min-height: 1.1em; }
-    .footer-notes { margin: 0 0 8px; text-align: center; font-size: ${px(10)}; font-weight: 600; }
+    .footer-notes { margin: 0 0 8px; text-align: center; font-size: ${fpx(10)}; font-weight: var(--print-w-footer, 600); }
     .footer-notes p { margin: 4px 0; }
     .pay-instructions { margin: 10px 0 12px; padding: 8px 10px; border: 1px dotted #000; font-size: ${px(11)}; font-weight: 600; }
     .pay-instructions .pay-title { font-weight: 700; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -241,8 +243,8 @@ export function buildSaleInvoiceHtml(
     @media print {
       html, body { height: auto !important; min-height: 0 !important; }
       body { font-size: ${px(12, true)}; padding: 0; }
-      .org-brand .org-name, .brand-name { font-size: ${px(24, true)}; }
-      .brand-meta { font-size: ${px(11, true)}; }
+      .org-brand .org-name, .brand-name { font-size: ${hpx(24, true)}; }
+      .brand-meta { font-size: ${hpx(11, true)}; }
       .doc-title { font-size: ${px(15, true)}; }
       .meta-sheet { font-size: ${px(11, true)}; }
       table.items { font-size: ${px(11, true)}; }
@@ -250,7 +252,7 @@ export function buildSaleInvoiceHtml(
       .totals-box { font-size: ${px(12, true)}; }
       .totals-box .grand { font-size: ${px(13, true)}; }
       .served-by, .goods-note, .receive-signatures { font-size: ${px(11, true)}; }
-      .footer-notes { font-size: ${px(10, true)}; }
+      .footer-notes { font-size: ${fpx(10, true)}; }
       .pay-instructions { font-size: ${px(11, true)}; }
       .pay-instructions .pay-note { font-size: ${px(10, true)}; }
       .page { max-width: none; margin: 0; }
