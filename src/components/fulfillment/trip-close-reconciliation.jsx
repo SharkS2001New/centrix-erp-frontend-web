@@ -11,6 +11,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { DashboardKpiGrid, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
+import { TripExpensesPanel } from "@/components/fulfillment/trip-expenses-panel";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
@@ -119,7 +120,7 @@ export function TripCloseReconciliation({ tripId }) {
     );
   }
 
-  const { trip, loading_list: loadingList, delivery, cash, orders, steps, blockers, settings } = data;
+  const { trip, loading_list: loadingList, delivery, cash, orders, steps, blockers, settings, financial_summary: financialSummary } = data;
   const isClosed = trip.status === "completed";
   const showSettlement = settings?.enable_cod_reconciliation && Number(cash?.expected_cash ?? 0) >= 0;
 
@@ -364,6 +365,16 @@ export function TripCloseReconciliation({ tripId }) {
           </p>
         </section>
       ) : null}
+
+      <div className="mt-8">
+        <TripExpensesPanel
+          tripId={Number(tripId)}
+          tripDate={trip.scheduled_date}
+          financialSummary={financialSummary}
+          onChanged={loadReconciliation}
+          readOnly={isClosed}
+        />
+      </div>
     </CatalogPageShell>
   );
 }

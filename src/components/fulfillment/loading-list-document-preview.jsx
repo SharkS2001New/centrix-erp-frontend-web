@@ -14,6 +14,8 @@ export function LoadingListDocumentPreview({
   organizationName,
   printSettings = null,
   documentFooterText = null,
+  trip = null,
+  financialSummary = null,
   printedBy = "Preview",
   className = "h-[34rem] w-full rounded-lg border border-[var(--theme-border)] bg-white shadow-inner",
 }) {
@@ -24,6 +26,8 @@ export function LoadingListDocumentPreview({
         generalSettings,
         organizationName,
         loadingList,
+        trip,
+        financialSummary,
         printSettings,
         documentFooterText,
         footerLines: resolveLoadingSheetFooterLines(printSettings ?? {}),
@@ -31,12 +35,14 @@ export function LoadingListDocumentPreview({
       }),
     [
       documentFooterText,
+      financialSummary,
       generalSettings,
       loadingList,
       organization,
       organizationName,
       printSettings,
       printedBy,
+      trip,
     ],
   );
 

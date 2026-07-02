@@ -241,6 +241,7 @@ export default function TripsPage() {
                 <th className="px-4 py-3">Orders</th>
                 <th className="px-4 py-3 text-right">Amount</th>
                 <th className="px-4 py-3 text-right">Profit</th>
+                <th className="px-4 py-3 text-right">Net profit</th>
                 <th className="px-4 py-3 text-right">Margin</th>
                 <th className="px-4 py-3">Cash</th>
                 <th className="px-4 py-3">Status</th>
@@ -265,6 +266,9 @@ export default function TripsPage() {
                   </td>
                   <td className="px-4 py-3 text-right text-slate-700">
                     {formatSaleKes(trip.financial_summary?.total_profit ?? 0)}
+                  </td>
+                  <td className="px-4 py-3 text-right font-medium text-emerald-800">
+                    {formatSaleKes(trip.financial_summary?.net_profit ?? trip.financial_summary?.total_profit ?? 0)}
                   </td>
                   <td className="px-4 py-3 text-right text-slate-700">
                     {formatTripProfitMargin(trip.financial_summary?.profit_margin_percent)}

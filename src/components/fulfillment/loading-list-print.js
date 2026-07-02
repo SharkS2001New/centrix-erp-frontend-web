@@ -22,6 +22,11 @@ function formatKes(amount) {
   return n.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
+function formatProfitMargin(percent) {
+  if (percent == null || Number.isNaN(Number(percent))) return "";
+  return ` (${Number(percent).toFixed(1)}%)`;
+}
+
 function formatDisplayDate(dateStr) {
   if (!dateStr) return "";
   const d = new Date(`${dateStr}T12:00:00`);
@@ -128,6 +133,19 @@ export function sampleLoadingListPreviewData() {
       total_amount: lines.reduce((sum, line) => sum + Number(line.line_total || 0), 0),
       lines,
     },
+    financialSummary: {
+      order_count: 5,
+      total_amount: 331350,
+      total_profit: 82500,
+      profit_margin_percent: 24.9,
+      expenses: [
+        { label: "Fuel", amount: 12000 },
+        { label: "Tolls", amount: 1500 },
+      ],
+      total_expenses: 13500,
+      net_profit: 69000,
+      net_profit_margin_percent: 20.8,
+    },
   };
 }
 
@@ -219,6 +237,57 @@ function loadingListColumnCount({ showQtyColumn, showPriceColumns }) {
   if (showQtyColumn) count += 1;
   if (showPriceColumns) count += 2;
   return count;
+}
+
+function buildLoadingSheetTotalsHtml({
+  loadingListTotal,
+  financialSummary = null,
+}) {
+  const summary = financialSummary ?? {};
+  const expenseRows = Array.isArray(summary.expenses) ? summary.expenses : [];
+  const expenseLines = expenseRows.length
+    ? expenseRows
+        .map(
+          (row) =>
+            `<div class="sheet-totals-row"><span>${escapeHtml(row.label ?? "Expense")}</span><span>KES ${formatKes(row.amount)}</span></div>`,
+        )
+        .join("")
+    : `<div class="sheet-totals-row sheet-totals-muted"><span>No trip expenses recorded</span><span>—</span></div>`;
+
+  const profitAmount = summary.total_profit;
+  const netProfitAmount = summary.net_profit ?? profitAmount;
+  const showProfit = profitAmount != null && !Number.isNaN(Number(profitAmount));
+
+  return `
+    <div class="sheet-totals">
+      <h3 class="sheet-totals-title">Totals</h3>
+      <div class="sheet-totals-row sheet-totals-strong">
+        <span>Loading sheet total</span>
+        <span>KES ${formatKes(loadingListTotal)}</span>
+      </div>
+      <div class="sheet-totals-section">
+        <div class="sheet-totals-subtitle">Expenses</div>
+        ${expenseLines}
+        ${
+          expenseRows.length
+            ? `<div class="sheet-totals-row sheet-totals-strong"><span>Total expenses</span><span>KES ${formatKes(summary.total_expenses)}</span></div>`
+            : ""
+        }
+      </div>
+      ${
+        showProfit
+          ? `
+      <div class="sheet-totals-row sheet-totals-strong">
+        <span>Profit made</span>
+        <span>KES ${formatKes(profitAmount)}${formatProfitMargin(summary.profit_margin_percent)}</span>
+      </div>
+      <div class="sheet-totals-row sheet-totals-emphasis">
+        <span>Profit minus expenses</span>
+        <span>KES ${formatKes(netProfitAmount)}${formatProfitMargin(summary.net_profit_margin_percent ?? summary.profit_margin_percent)}</span>
+      </div>`
+          : ""
+      }
+    </div>`;
 }
 
 /** CSS layout class for table column sizing based on visible columns. */
@@ -376,6 +445,46 @@ function loadingSheetPrintStyles(generalSettings = null) {
       font-size: ${px(13)};
     }
     tfoot .col-total { text-align: right; }
+    .sheet-totals {
+      margin-top: 28px;
+      max-width: 420px;
+      margin-left: auto;
+      border-top: 1px solid #c9c9c9;
+      padding-top: 14px;
+    }
+    .sheet-totals-title {
+      margin: 0 0 10px;
+      font-size: ${px(12)};
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .sheet-totals-section { margin: 12px 0; }
+    .sheet-totals-subtitle {
+      margin: 0 0 6px;
+      font-size: ${px(11)};
+      font-weight: 700;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .sheet-totals-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 4px 0;
+      font-size: ${px(12)};
+      line-height: 1.35;
+    }
+    .sheet-totals-row span:last-child { white-space: nowrap; text-align: right; }
+    .sheet-totals-strong { font-weight: 700; }
+    .sheet-totals-emphasis {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed #cbd5e1;
+      font-weight: 700;
+    }
+    .sheet-totals-muted { color: #64748b; font-style: italic; }
     .signatures {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -416,6 +525,9 @@ function loadingSheetPrintStyles(generalSettings = null) {
       thead th { font-size: ${px(11, true)}; }
       .ghost { font-size: ${px(10, true)}; }
       tfoot td { font-size: ${px(13, true)}; }
+      .sheet-totals-title { font-size: ${px(12, true)}; }
+      .sheet-totals-subtitle,
+      .sheet-totals-row { font-size: ${px(12, true)}; }
       .signatures h3 { font-size: ${px(12, true)}; }
       .signatures .line { font-size: ${px(11, true)}; }
       .doc-footer, .doc-footer-line { font-size: ${px(10, true)}; }
@@ -430,6 +542,7 @@ export function buildLoadingListHtml({
   organizationName = "Loading List",
   loadingList,
   trip = null,
+  financialSummary = null,
   printSettings = null,
   documentFooterText = null,
   footerLines = null,
@@ -443,7 +556,7 @@ export function buildLoadingListHtml({
   const watermark = buildReportWatermarkHtml(branding);
   const companyName = resolveOrganizationName({ organization, organizationName, branding });
   const columnFlags = resolveLoadingSheetColumnFlags(printSettings ?? {});
-  const { showQtyColumn, showPriceColumns, showSignatures } = columnFlags;
+  const { showQtyColumn, showPriceColumns, showSignatures, showTotal } = columnFlags;
 
   const lines = normalizeLoadingListLines(loadingList?.lines ?? []);
   const routeName =
@@ -463,6 +576,8 @@ export function buildLoadingListHtml({
     "";
   const total =
     loadingList?.total_amount ?? lines.reduce((sum, line) => sum + Number(line.line_total || 0), 0);
+  const resolvedFinancialSummary =
+    financialSummary ?? loadingList?.financial_summary ?? trip?.financial_summary ?? null;
   const dateLabel = formatDisplayDate(listDate);
   const columnCount = loadingListColumnCount({ showQtyColumn, showPriceColumns });
   const tableLayoutClass = loadingListTableLayoutClass({ showQtyColumn, showPriceColumns });
@@ -480,6 +595,13 @@ export function buildLoadingListHtml({
           <td class="col-total">${formatKes(total)}</td>
         </tr>
       </tfoot>`
+    : "";
+
+  const totalsHtml = showTotal
+    ? buildLoadingSheetTotalsHtml({
+        loadingListTotal: total,
+        financialSummary: resolvedFinancialSummary,
+      })
     : "";
 
   const signaturesHtml = showSignatures
@@ -538,6 +660,7 @@ export function buildLoadingListHtml({
       <tbody>${rowHtml}</tbody>
       ${tableFoot}
     </table>
+    ${totalsHtml}
     ${signaturesHtml}
     ${footerLinesHtml}
     ${footerHtml}
@@ -559,6 +682,7 @@ export function buildLoadingListHtml({
  *   organizationName?: string,
  *   loadingList: object,
  *   trip?: object,
+ *   financialSummary?: object,
  *   printSettings?: object,
  *   documentFooterText?: string,
  *   printedBy?: string | null,
@@ -570,6 +694,7 @@ export function printLoadingList({
   organizationName = "Loading List",
   loadingList,
   trip = null,
+  financialSummary = null,
   printSettings = null,
   documentFooterText = null,
   printedBy = null,
@@ -580,6 +705,7 @@ export function printLoadingList({
     organizationName,
     loadingList,
     trip,
+    financialSummary,
     printSettings,
     documentFooterText,
     printedBy,

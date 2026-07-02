@@ -123,6 +123,7 @@ export function DistributionLoadingListsScreen() {
       setDetail({
         trip: tripRes,
         loading_list: listRes.loading_list ?? listRes,
+        financial_summary: listRes.financial_summary ?? tripRes.financial_summary ?? null,
       });
     } catch (e) {
       setDetailError(e instanceof ApiError ? e.message : "Failed to load loading list");
@@ -143,6 +144,7 @@ export function DistributionLoadingListsScreen() {
       setDetail((current) => ({
         ...current,
         loading_list: freshList,
+        financial_summary: listRes.financial_summary ?? current?.financial_summary ?? trip?.financial_summary ?? null,
       }));
       printLoadingList({
         organization,
@@ -150,6 +152,8 @@ export function DistributionLoadingListsScreen() {
         organizationName,
         loadingList: freshList,
         trip,
+        financialSummary:
+          listRes.financial_summary ?? detail?.financial_summary ?? trip?.financial_summary ?? null,
         printSettings: loadingListPrintSettings,
         documentFooterText: resolvePrintFooter(
           mergeGeneralSettings(capabilities?.module_settings),
@@ -305,6 +309,7 @@ export function DistributionLoadingListsScreen() {
               <LoadingListDocumentPreview
                 loadingList={loadingList}
                 trip={selectedTrip}
+                financialSummary={detail?.financial_summary ?? selectedTrip?.financial_summary ?? null}
                 organization={organization}
                 generalSettings={general}
                 organizationName={organizationName}

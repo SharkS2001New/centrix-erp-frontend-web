@@ -48,6 +48,12 @@ export function LoadingListPrintSettingsFields({
         checked={form.loading_sheet_show_price_columns !== false}
         onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_price_columns: v }))}
       />
+      <Toggle
+        label="Show loading sheet total"
+        description="Print trip totals below the list: sales amount, trip expenses, profit, and net profit after expenses."
+        checked={form.loading_sheet_show_total !== false}
+        onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_total: v }))}
+      />
       {showExtendedFields ? (
         <>
           <Toggle

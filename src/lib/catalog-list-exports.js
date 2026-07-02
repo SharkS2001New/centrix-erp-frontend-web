@@ -197,6 +197,7 @@ export const DISPATCH_TRIP_EXPORT_COLUMNS = [
   { key: "financial_summary.order_count", label: "Orders", align: "right" },
   { key: "financial_summary.total_amount", label: "Amount", align: "right" },
   { key: "financial_summary.total_profit", label: "Profit", align: "right" },
+  { key: "financial_summary.net_profit", label: "Net profit", align: "right" },
   { key: "financial_summary.profit_margin_percent", label: "Margin %", align: "right" },
   { key: "expected_cash", label: "Expected cash", align: "right" },
   { key: "collected_cash", label: "Collected", align: "right" },

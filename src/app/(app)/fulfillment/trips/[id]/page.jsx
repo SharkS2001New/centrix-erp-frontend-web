@@ -14,6 +14,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { TripExpensesPanel } from "@/components/fulfillment/trip-expenses-panel";
 import { printLoadingList } from "@/components/fulfillment/loading-list-print";
 import { formatTripRoutesLabel } from "@/lib/trip-routes";
 import { printDeliveryNote } from "@/components/fulfillment/delivery-note-print";
@@ -288,6 +289,15 @@ export default function TripDetailPage() {
           </p>
         </div>
         <div>
+          <p className="text-xs uppercase text-slate-500">Net profit</p>
+          <p className="mt-1 font-medium text-slate-900">
+            {formatSaleKes(trip.financial_summary?.net_profit ?? trip.financial_summary?.total_profit ?? 0)}
+          </p>
+          <p className="text-xs text-slate-500">
+            After expenses · {formatTripProfitMargin(trip.financial_summary?.net_profit_margin_percent)}
+          </p>
+        </div>
+        <div>
           <p className="text-xs uppercase text-slate-500">Expected COD</p>
           <p className="mt-1 font-medium text-slate-900">
             {trip.expected_cash != null && Number(trip.expected_cash) > 0
@@ -359,6 +369,7 @@ export default function TripDetailPage() {
               try {
                 const listRes = await apiRequest(`/dispatch-trips/${id}/loading-list`);
                 const freshList = listRes.loading_list ?? listRes;
+                const freshSummary = listRes.financial_summary ?? trip.financial_summary;
                 setLoadingList(freshList);
                 printLoadingList({
                   organization,
@@ -366,6 +377,7 @@ export default function TripDetailPage() {
                   organizationName: organization?.organization_name ?? organization?.company_name ?? "Loading List",
                   loadingList: freshList,
                   trip,
+                  financialSummary: freshSummary,
                   printSettings: resolveLoadingSheetPrintSettings(capabilities?.module_settings?.distribution),
                   documentFooterText: resolvePrintFooter(
                     mergeGeneralSettings(capabilities?.module_settings),
@@ -450,6 +462,16 @@ export default function TripDetailPage() {
           ) : null}
         </section>
       ) : null}
+
+      <div className="mb-8">
+        <TripExpensesPanel
+          tripId={Number(id)}
+          tripDate={trip.scheduled_date}
+          financialSummary={trip.financial_summary}
+          onChanged={loadTrip}
+          readOnly={trip.status === "cancelled"}
+        />
+      </div>
 
       <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Loading list</h2>

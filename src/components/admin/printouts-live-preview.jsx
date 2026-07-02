@@ -131,6 +131,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings }) {
     organization,
     generalSettings: general,
     loadingList: sample.loadingList,
+    financialSummary: sample.financialSummary,
     printSettings: loadingSettings,
     documentFooterText: resolvePrintFooter(general, "loading_sheet"),
     footerLines: loadingSettings.loading_sheet_footer_lines

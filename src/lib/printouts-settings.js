@@ -58,6 +58,7 @@ export const EMPTY_PRINTOUTS_FORM = {
   loading_sheet_show_signatures: true,
   loading_sheet_show_qty_column: true,
   loading_sheet_show_price_columns: true,
+  loading_sheet_show_total: true,
   loading_sheet_default_checked_by: "",
 };
 
