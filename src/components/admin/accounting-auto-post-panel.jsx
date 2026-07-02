@@ -130,6 +130,12 @@ export function AccountingAutoPostPanel({
             onChange={(v) => updateForm((f) => ({ ...f, [toggle.key]: v }))}
           />
         ))}
+        <Toggle
+          label="Require approval to post manual journal entries"
+          description="Users without accounting manager access must submit drafts for approval before posting."
+          checked={Boolean(form.journal_entry_approval_enabled)}
+          onChange={(v) => updateForm((f) => ({ ...f, journal_entry_approval_enabled: v }))}
+        />
       </div>
 
       {!form.chart_seeded && !isProductionApp() ? (

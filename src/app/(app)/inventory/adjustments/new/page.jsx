@@ -1,11 +1,12 @@
 "use client";
 
-import { notifyError } from "@/lib/notify";
-import { useEffect, useState } from "react";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { isStockAdjustmentApprovalEnabled } from "@/lib/sales-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
 import {
@@ -33,7 +34,7 @@ function lineFromProduct(product) {
 export default function RecordStockAdjustmentPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user } = useAuth();
+  const { user, capabilities, hasPermission } = useAuth();
   const branchId = user?.branch_id ?? 1;
   const presetProductCode = searchParams.get("product")?.trim() ?? "";
 
@@ -91,21 +92,32 @@ export default function RecordStockAdjustmentPage() {
 
     setSaving(true);
     const noteText = notes.trim();
+    const useRequestFlow =
+      isStockAdjustmentApprovalEnabled(capabilities?.module_settings) &&
+      !user?.is_admin &&
+      !hasPermission("inventory.manage");
     try {
       for (const line of toPost) {
         const uom = uomById.get(line.unit_id);
         const baseQty = damageQtyToBase(line.quantity, line.package_type, uom);
         const signedQty = line.direction === "decrease" ? -Math.abs(baseQty) : Math.abs(baseQty);
-        await apiRequest("/inventory/adjust", {
+        const body = {
+          branch_id: branchId,
+          product_code: line.product_code,
+          stock_location: line.stock_location,
+          quantity_change: signedQty,
+          notes: noteText || null,
+        };
+        const res = await apiRequest(useRequestFlow ? "/inventory/adjust/request" : "/inventory/adjust", {
           method: "POST",
-          body: {
-            branch_id: branchId,
-            product_code: line.product_code,
-            stock_location: line.stock_location,
-            quantity_change: signedQty,
-            notes: noteText || null,
-          },
+          body,
         });
+        if (res?.pending_approval) {
+          notifySuccess("Adjustment submitted for manager approval.");
+        }
+      }
+      if (!useRequestFlow) {
+        notifySuccess("Stock adjusted.");
       }
       router.push("/inventory/adjustments");
     } catch (err) {

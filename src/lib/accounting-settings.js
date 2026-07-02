@@ -6,6 +6,7 @@ export const ACCOUNTING_AUTO_POST_DEFAULTS = {
   auto_post_payroll: true,
   auto_post_returns: true,
   post_till_variance: true,
+  journal_entry_approval_enabled: false,
   account_codes: {
     cash: "1000",
     bank: "1100",
@@ -114,6 +115,7 @@ export function accountingSettingsPayload(form) {
   for (const toggle of AUTO_POST_TOGGLES) {
     payload[toggle.key] = Boolean(form[toggle.key]);
   }
+  payload.journal_entry_approval_enabled = Boolean(form.journal_entry_approval_enabled);
   if (form.account_codes) {
     payload.account_codes = { ...form.account_codes };
   }

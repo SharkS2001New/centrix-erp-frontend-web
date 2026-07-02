@@ -44,6 +44,8 @@ import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
 import { getChannelWorkflow, workflowPipelineSteps, checkoutCompleteStatuses, isCheckoutCompleteStatus, saleNeedsPaymentCollection } from "@/lib/order-workflow";
 import {
   getPosSalesConfig,
+  discountApprovalThresholdPercent,
+  isDiscountApprovalEnabled,
   isWorkspaceTillFloatRequired,
   salesCartChannelForWorkspace,
   resolveCheckoutStatus,
@@ -1071,6 +1073,74 @@ export function PosScreen({ standalone = false }) {
       product_vat: lineProductVat(product, finalComputed.lineAmount),
     };
 
+    const discountAmount = Number(lineBody.discount_given ?? 0);
+    const lineGross = Number(finalComputed.lineAmount ?? 0) + discountAmount;
+    const discountThreshold = discountApprovalThresholdPercent(capabilities?.module_settings);
+    const needsLineDiscountApproval =
+      posSalesConfig.allowEditLineDiscount &&
+      isDiscountApprovalEnabled(capabilities?.module_settings) &&
+      discountAmount > 0 &&
+      lineGross > 0 &&
+      (discountAmount / lineGross) * 100 >= discountThreshold;
+
+    if (needsLineDiscountApproval) {
+      const reason = window.prompt("Reason for discount request (required):");
+      if (!reason || reason.trim().length < 3) {
+        if (reason !== null) setStatusMessage("Discount reason must be at least 3 characters.");
+        return false;
+      }
+      try {
+        let lineRef = targetLineRef;
+        let cartState = activeCart;
+        if (!lineRef) {
+          const added = await apiRequest(`/sales/carts/${activeCart.id}/lines`, {
+            method: "POST",
+            body: { ...lineBody, discount_given: 0 },
+            ...POS_CART_REQUEST,
+          });
+          cartState = applyCartMutationResponse(activeCart, added);
+          const newLine = [...(added.lines ?? [])]
+            .reverse()
+            .find((line) => line.product_code === product.product_code);
+          lineRef = newLine ? cartLineRef(newLine) : null;
+        }
+        if (!lineRef) {
+          setStatusMessage("Could not resolve cart line for discount request.");
+          return false;
+        }
+        const res = await apiRequest(`/sales/carts/${cartState.id}/discount-requests`, {
+          method: "POST",
+          body: {
+            scope: "line",
+            line_ref: String(lineRef),
+            discount_amount: discountAmount,
+            reason: reason.trim(),
+          },
+          ...POS_CART_REQUEST,
+        });
+        if (res.cart) setCart(res.cart);
+        setStatusMessage(
+          res.pending_approval ? "Line discount submitted for manager approval." : "Discount applied.",
+        );
+        if (clearEntry) {
+          setLineForm(EMPTY_LINE);
+          setSelectedProductCode(null);
+          setSelectedProduct(null);
+          setSearchQuery("");
+          setSearchResults([]);
+          setUnitPriceTouched(false);
+          setEditingLineId(null);
+          setEditingLineRef(null);
+          setSelectedLineId(null);
+          focusSearchAfterAdd.current = true;
+        }
+        return true;
+      } catch (error) {
+        setStatusMessage(error instanceof ApiError ? error.message : "Discount request failed.");
+        throw error;
+      }
+    }
+
     const previousLineSnapshot =
       targetLineRef != null
         ? {
@@ -1423,6 +1493,39 @@ export function PosScreen({ standalone = false }) {
     }
     setBusy(true);
     try {
+      if (isDiscountApprovalEnabled(capabilities?.module_settings) && next > 0) {
+        let reason = undefined;
+        const threshold = discountApprovalThresholdPercent(capabilities?.module_settings);
+        if (net > 0 && (next / net) * 100 >= threshold) {
+          const entered = window.prompt("Reason for discount request (required):");
+          if (!entered || entered.trim().length < 3) {
+            if (entered !== null) setStatusMessage("Discount reason must be at least 3 characters.");
+            setOrderDiscountDraft(
+              Number(cart.order_discount ?? 0) > 0 ? String(cart.order_discount) : "",
+            );
+            return;
+          }
+          reason = entered.trim();
+        }
+        const res = await apiRequest(`/sales/carts/${cart.id}/discount-requests`, {
+          method: "POST",
+          body: { scope: "order", discount_amount: next, reason },
+          ...POS_CART_REQUEST,
+        });
+        if (res.pending_approval) {
+          setStatusMessage("Discount submitted for manager approval.");
+          setOrderDiscountDraft(
+            Number(cart.order_discount ?? 0) > 0 ? String(cart.order_discount) : "",
+          );
+          return;
+        }
+        if (res.cart) {
+          setCart(res.cart);
+          setOrderDiscountDraft(next > 0 ? String(next) : "");
+        }
+        return;
+      }
+
       const updated = await apiRequest(`/sales/carts/${cart.id}`, {
         method: "PATCH",
         body: { order_discount: next },

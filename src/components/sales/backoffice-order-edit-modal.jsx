@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
-import { saleLineDisplayUnitPrice } from "@/lib/sale-line-items";
+import {
+  saleLineDisplayUnitPrice,
+  saleLineEntryQtyForEdit,
+  saleLineEntryQtyToBase,
+} from "@/lib/sale-line-items";
 import { inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 
@@ -20,8 +24,17 @@ function scaleAmount(value, newQty, oldQty) {
   return Math.round((Number(value) * Number(newQty)) / old * 100) / 100;
 }
 
+function indexRetailPackages(rows) {
+  const map = {};
+  for (const row of rows ?? []) {
+    if (row?.product_code) map[row.product_code] = row;
+  }
+  return map;
+}
+
 export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved }) {
   const [lines, setLines] = useState([]);
+  const [retailByCode, setRetailByCode] = useState({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -31,35 +44,47 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     setLoading(true);
     setError(null);
     try {
-      const detail = sale.items?.length
-        ? sale
-        : await apiRequest(`/sales/${sale.id}`);
-      setLines(
-        (detail.items ?? []).map((line) => ({
-          id: line.id,
-          product_code: line.product_code,
-          product: line.product,
-          quantity: Number(line.quantity ?? 0),
-          draftQty: String(line.quantity ?? ""),
-          selling_price: Number(line.selling_price ?? 0),
-          amount: Number(line.amount ?? 0),
-          product_vat: Number(line.product_vat ?? 0),
-          discount_given: Number(line.discount_given ?? 0),
-          uom: line.uom,
-          on_wholesale_retail: line.on_wholesale_retail,
+      const [detail, retailRes] = await Promise.all([
+        sale.items?.length ? Promise.resolve(sale) : apiRequest(`/sales/${sale.id}`),
+        apiRequest("/retail-package-settings", { searchParams: { per_page: 500 } }).catch(() => ({
+          data: [],
         })),
+      ]);
+      const retailMap = indexRetailPackages(retailRes.data);
+      setRetailByCode(retailMap);
+      setLines(
+        (detail.items ?? []).map((line) => {
+          const editLine = {
+            id: line.id,
+            product_code: line.product_code,
+            product: line.product,
+            quantity: Number(line.quantity ?? 0),
+            selling_price: Number(line.selling_price ?? 0),
+            amount: Number(line.amount ?? 0),
+            product_vat: Number(line.product_vat ?? 0),
+            discount_given: Number(line.discount_given ?? 0),
+            uom: line.uom,
+            on_wholesale_retail: line.on_wholesale_retail,
+          };
+          return {
+            ...editLine,
+            draftQty: saleLineEntryQtyForEdit(editLine, uomById, retailMap),
+          };
+        }),
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load order lines.");
       setLines([]);
+      setRetailByCode({});
     } finally {
       setLoading(false);
     }
-  }, [sale]);
+  }, [sale, uomById]);
 
   useEffect(() => {
     if (!open || !sale?.id) {
       setLines([]);
+      setRetailByCode({});
       setError(null);
       return;
     }
@@ -70,10 +95,12 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     return lines.reduce((sum, line) => {
       const oldQty = Number(line.quantity);
       const draftQty = Number(line.draftQty);
-      const qty = Number.isFinite(draftQty) && draftQty > 0 ? draftQty : oldQty;
+      const entryQty = Number.isFinite(draftQty) && draftQty > 0 ? draftQty : Number(line.draftQty);
+      const baseQty = saleLineEntryQtyToBase(line, entryQty, uomById, retailByCode);
+      const qty = Number.isFinite(baseQty) && baseQty > 0 ? baseQty : oldQty;
       return sum + scaleAmount(line.amount, qty, oldQty || qty);
     }, 0);
-  }, [lines]);
+  }, [lines, retailByCode, uomById]);
 
   function updateQty(lineId, value) {
     setLines((prev) =>
@@ -85,12 +112,17 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     if (!sale?.id) return;
     const payload = [];
     for (const line of lines) {
-      const qty = Number(line.draftQty ?? line.quantity);
-      if (!Number.isFinite(qty) || qty <= 0) {
+      const entryQty = Number(line.draftQty);
+      if (!Number.isFinite(entryQty) || entryQty <= 0) {
         setError("Each line needs a quantity greater than zero.");
         return;
       }
-      payload.push({ id: line.id, quantity: qty });
+      const baseQty = saleLineEntryQtyToBase(line, entryQty, uomById, retailByCode);
+      if (!Number.isFinite(baseQty) || baseQty <= 0) {
+        setError("Each line needs a quantity greater than zero.");
+        return;
+      }
+      payload.push({ id: line.id, quantity: baseQty });
     }
 
     setSaving(true);
@@ -157,9 +189,13 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
               <tbody>
                 {lines.map((line) => {
                   const oldQty = Number(line.quantity);
-                  const draftQty = line.draftQty ?? String(oldQty);
-                  const qtyNum = Number(draftQty);
-                  const displayQty = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : oldQty;
+                  const draftQty = line.draftQty ?? "";
+                  const entryQty = Number(draftQty);
+                  const baseQty =
+                    Number.isFinite(entryQty) && entryQty > 0
+                      ? saleLineEntryQtyToBase(line, entryQty, uomById, retailByCode)
+                      : oldQty;
+                  const displayQty = Number.isFinite(baseQty) && baseQty > 0 ? baseQty : oldQty;
                   const amount = scaleAmount(line.amount, displayQty, oldQty || displayQty);
                   const unitPrice = saleLineDisplayUnitPrice(line, uomById);
 

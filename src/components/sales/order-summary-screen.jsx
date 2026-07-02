@@ -32,7 +32,7 @@ import {
 import { isLegacySale, saleLineProductLabel } from "@/lib/sale-line-items";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
-import { orderDocumentPrintLabel, defaultOrderListPrintDocumentType } from "@/lib/sales-settings";
+import { orderDocumentPrintLabel, defaultOrderListPrintDocumentType, isOrderCancellationApprovalEnabled } from "@/lib/sales-settings";
 import {
   disposePrintWindow,
   openBlankPrintWindow,
@@ -472,7 +472,7 @@ function PrintIcon() {
 
 export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const confirm = useConfirm();
-  const { capabilities, refreshCapabilities, organization, user } = useAuth();
+  const { capabilities, refreshCapabilities, organization, user, hasPermission } = useAuth();
   const { floatSessionId } = usePosSession();
 
   const [sale, setSale] = useState(null);
@@ -606,6 +606,14 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     () => canCancelOrder(sale, saleWorkflow, capabilities),
     [sale, saleWorkflow, capabilities],
   );
+  const canDirectCancel = Boolean(user?.is_admin || hasPermission("sales.manage"));
+  const canRequestCancellation = useMemo(
+    () =>
+      cancellationAllowed &&
+      isOrderCancellationApprovalEnabled(capabilities?.module_settings) &&
+      !canDirectCancel,
+    [cancellationAllowed, capabilities?.module_settings, canDirectCancel],
+  );
 
   const methodNameById = useMemo(() => {
     const map = {};
@@ -674,6 +682,27 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     }
   }, [sale, capabilities, organization, customer, branchName, cashierName, uomById, user]);
 
+  async function requestOrderCancellation() {
+    if (!sale?.id) return;
+    const reason = window.prompt("Reason for cancellation (required):");
+    if (!reason || reason.trim().length < 3) {
+      if (reason !== null) notifyError("Cancellation reason must be at least 3 characters.");
+      return;
+    }
+    setTransitionBusy(true);
+    try {
+      await apiRequest(`/sales/orders/${sale.id}/request-cancellation`, {
+        method: "POST",
+        body: { reason: reason.trim() },
+      });
+      notifySuccess("Cancellation request sent to managers for approval.");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not submit cancellation request.");
+    } finally {
+      setTransitionBusy(false);
+    }
+  }
+
   async function transitionOrder(targetStatus, fulfillmentMeta) {
     if (!sale?.id) return;
     if (targetStatus === "cancelled") {
@@ -716,6 +745,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   function handleAdvance(targetStatus) {
     if (targetStatus === "cancelled") {
       if (!cancellationAllowed) return;
+      if (canRequestCancellation) {
+        void requestOrderCancellation();
+        return;
+      }
       void transitionOrder(targetStatus);
       return;
     }

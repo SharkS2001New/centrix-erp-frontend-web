@@ -4,12 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { JournalEntryForm } from "@/components/accounting/journal-entry-form";
 import { nextJournalEntryNumber } from "@/lib/accounting-shared";
+import { notifySuccess } from "@/lib/notify";
+import { isJournalEntryApprovalEnabled } from "@/lib/sales-settings";
 
 export default function NewJournalEntryPage() {
   const router = useRouter();
+  const { capabilities, hasPermission } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +69,16 @@ export default function NewJournalEntryPage() {
     setError(null);
     try {
       const entry = await createEntry(payload);
-      await apiRequest(`/accounting/journal-entries/${entry.id}/post`, { method: "POST" });
+      const needsApproval =
+        isJournalEntryApprovalEnabled(capabilities?.module_settings) &&
+        !hasPermission("accounting.manage") &&
+        !hasPermission("accounting.journal_entries.approve");
+      if (needsApproval) {
+        await apiRequest(`/accounting/journal-entries/${entry.id}/request-post`, { method: "POST" });
+        notifySuccess("Journal entry submitted for posting approval.");
+      } else {
+        await apiRequest(`/accounting/journal-entries/${entry.id}/post`, { method: "POST" });
+      }
       router.push(`/accounting/journal-entries/${entry.id}`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not post entry");

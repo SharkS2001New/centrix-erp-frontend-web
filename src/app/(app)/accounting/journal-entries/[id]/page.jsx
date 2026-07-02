@@ -19,11 +19,12 @@ import {
 } from "@/lib/accounting-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { isJournalEntryApprovalEnabled } from "@/lib/sales-settings";
 
 export default function JournalEntryDetailPage() {
   const params = useParams();
   const confirm = useConfirm();
-  const { capabilities } = useAuth();
+  const { capabilities, hasPermission } = useAuth();
   const [entry, setEntry] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -51,6 +52,17 @@ export default function JournalEntryDetailPage() {
     if (!ok) return;
     setBusy(true);
     try {
+      const needsApproval =
+        isJournalEntryApprovalEnabled(capabilities?.module_settings) &&
+        !hasPermission("accounting.manage") &&
+        !hasPermission("accounting.journal_entries.approve");
+      if (needsApproval) {
+        await apiRequest(`/accounting/journal-entries/${entry.id}/request-post`, {
+          method: "POST",
+        });
+        notifySuccess("Journal entry submitted for posting approval.");
+        return;
+      }
       const updated = await apiRequest(`/accounting/journal-entries/${entry.id}/post`, {
         method: "POST",
       });

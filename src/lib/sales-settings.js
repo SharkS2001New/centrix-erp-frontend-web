@@ -16,6 +16,9 @@ const SALES_DEFAULTS = {
   allow_discounts: true,
   allow_edit_line_discount: false,
   enable_order_discount: false,
+  discount_approval_enabled: false,
+  discount_approval_threshold_percent: 10,
+  order_cancellation_approval_enabled: false,
   enable_vouchers: false,
   enable_redeemable_points: false,
   point_cash_value: 1,
@@ -213,6 +216,9 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   allow_discounts: true,
   allow_edit_line_discount: false,
   enable_order_discount: false,
+  discount_approval_enabled: false,
+  discount_approval_threshold_percent: "10",
+  order_cancellation_approval_enabled: false,
   enable_vouchers: false,
   enable_redeemable_points: false,
   point_cash_value: "1",
@@ -271,6 +277,9 @@ export function salesOrganizationFormFromApi(res) {
     allow_discounts: Boolean(sales.allow_discounts),
     allow_edit_line_discount: Boolean(sales.allow_edit_line_discount),
     enable_order_discount: Boolean(sales.enable_order_discount),
+    discount_approval_enabled: Boolean(sales.discount_approval_enabled),
+    discount_approval_threshold_percent: String(sales.discount_approval_threshold_percent ?? 10),
+    order_cancellation_approval_enabled: Boolean(sales.order_cancellation_approval_enabled),
     enable_vouchers: Boolean(sales.enable_vouchers),
     enable_redeemable_points: Boolean(sales.enable_redeemable_points),
     point_cash_value: String(sales.point_cash_value ?? 1),
@@ -383,6 +392,8 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
     points_earn_per_kes: Number(sanitized.points_earn_per_kes) || 0,
     orders_list_default_days: normalizeOrdersListDefaultDays(sanitized.orders_list_default_days),
     orders_list_sort: normalizeOrdersListSort(sanitized.orders_list_sort),
+    discount_approval_threshold_percent:
+      Number(sanitized.discount_approval_threshold_percent) || 10,
   };
 }
 
@@ -447,6 +458,28 @@ export function isVouchersEnabled(moduleSettings) {
 
 export function isRedeemablePointsEnabled(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).enable_redeemable_points);
+}
+
+export function isDiscountApprovalEnabled(moduleSettings) {
+  return Boolean(mergeSalesSettings(moduleSettings).discount_approval_enabled);
+}
+
+export function discountApprovalThresholdPercent(moduleSettings) {
+  const value = Number(mergeSalesSettings(moduleSettings).discount_approval_threshold_percent ?? 10);
+  if (!Number.isFinite(value)) return 10;
+  return Math.min(100, Math.max(0, value));
+}
+
+export function isOrderCancellationApprovalEnabled(moduleSettings) {
+  return Boolean(mergeSalesSettings(moduleSettings).order_cancellation_approval_enabled);
+}
+
+export function isJournalEntryApprovalEnabled(moduleSettings) {
+  return Boolean(moduleSettings?.accounting?.journal_entry_approval_enabled);
+}
+
+export function isStockAdjustmentApprovalEnabled(moduleSettings) {
+  return Boolean(moduleSettings?.inventory?.stock_adjustment_approval_enabled);
 }
 
 export const ORDER_DOCUMENT_TYPES = ["receipt", "invoice", "both"];

@@ -253,13 +253,16 @@ export function NotificationBell() {
             </div>
 
             <div className="border-t px-4 py-2.5 dark:border-slate-700">
-              <Link
-                href="/notifications"
-                onClick={() => setOpen(false)}
-                className="block text-center text-sm font-medium text-[#185FA5] hover:underline"
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  router.push("/notifications");
+                }}
+                className="block w-full text-center text-sm font-medium text-[#185FA5] hover:underline"
               >
                 View all
-              </Link>
+              </button>
             </div>
           </div>
         </>

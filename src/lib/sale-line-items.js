@@ -1,4 +1,4 @@
-import { cartLineDisplayUnitPrice } from "@/lib/pos-line";
+import { cartLineDisplayUnitPrice, posEntryQtyFromCartLine, posEntryToBaseQty } from "@/lib/pos-line";
 import {
   tierForQuantity,
   tiersForRetailPackage,
@@ -20,6 +20,32 @@ export function saleLineUom(line, uomById) {
     return uomById.get(line.product.unit_id) ?? null;
   }
   return line?.product?.unit ?? line?.product?.uom ?? null;
+}
+
+/** Product row with resolved UOM for POS-style qty entry. */
+export function saleLineProductForQty(line, uomById) {
+  const uom = saleLineUom(line, uomById);
+  if (!line?.product) return null;
+  return { ...line.product, uom };
+}
+
+/** Display qty for order line edit — respects UOM conversion and retail packages. */
+export function saleLineEntryQtyForEdit(line, uomById, retailByCode = {}) {
+  const product = saleLineProductForQty(line, uomById);
+  const retailPackage = retailByCode[line?.product_code] ?? null;
+  return posEntryQtyFromCartLine(
+    { quantity: line?.quantity, on_wholesale_retail: line?.on_wholesale_retail },
+    product,
+    retailPackage,
+  );
+}
+
+/** Convert edited display qty back to base (stock) units for the API. */
+export function saleLineEntryQtyToBase(line, entryQty, uomById, retailByCode = {}) {
+  const product = saleLineProductForQty(line, uomById);
+  const retailPackage = retailByCode[line?.product_code] ?? null;
+  const isRetailLine = Number(line?.on_wholesale_retail) === 1;
+  return posEntryToBaseQty(entryQty, product, !isRetailLine, retailPackage);
 }
 
 /** Product display name from nested API relation or a code → product map. */

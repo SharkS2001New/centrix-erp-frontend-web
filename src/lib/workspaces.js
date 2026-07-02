@@ -151,7 +151,7 @@ export const WORKSPACE_PATH_PREFIXES = {
   distribution: ["/fulfillment"],
 };
 
-export const SHARED_WORKSPACE_PATHS = ["/profile", "/choose-workspace"];
+export const SHARED_WORKSPACE_PATHS = ["/profile", "/choose-workspace", "/notifications"];
 
 export function workspaceIcon(iconKey) {
   return WORKSPACE_ICONS[iconKey] ?? WORKSPACE_ICONS.app;

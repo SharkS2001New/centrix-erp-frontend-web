@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { posListUnitPrice } from "@/lib/pos-line";
+import { productStockAtLocation } from "@/lib/pos-stock";
 import { isExactProductCodeQuery } from "@/lib/pos-cart-merge";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
@@ -243,12 +244,12 @@ export function PosProductSearch({
                       </td>
                       {showShopStock ? (
                         <td className="px-2 py-1.5 text-right text-slate-600">
-                          {formatStockQty(product.stock_in_shop, product)}
+                          {formatStockQty(productStockAtLocation(product, "shop"), product)}
                         </td>
                       ) : null}
                       {showStoreStock ? (
                         <td className="px-2 py-1.5 text-right text-slate-600">
-                          {formatStockQty(product.stock_in_store, product)}
+                          {formatStockQty(productStockAtLocation(product, "store"), product)}
                         </td>
                       ) : null}
                     </tr>

@@ -28,6 +28,7 @@ export function inventoryFormFromApi(res) {
       inv.global_low_stock_threshold != null && inv.global_low_stock_threshold !== ""
         ? String(inv.global_low_stock_threshold)
         : "",
+    stock_adjustment_approval_enabled: Boolean(inv.stock_adjustment_approval_enabled),
   };
 }
 
@@ -42,6 +43,7 @@ export function inventoryPayloadFromForm(form) {
     retail_shop_wholesale_store_stock: Boolean(form.retail_shop_wholesale_store_stock),
     allow_negative_stock: Boolean(form.allow_negative_stock),
     stock_alert_mode: form.stock_alert_mode,
+    stock_adjustment_approval_enabled: Boolean(form.stock_adjustment_approval_enabled),
   };
   if (form.global_low_stock_threshold !== "") {
     payload.global_low_stock_threshold = Number(form.global_low_stock_threshold) || 0;

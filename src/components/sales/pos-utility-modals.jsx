@@ -6,6 +6,7 @@ import { enrichProductForLpo } from "@/components/lpo/lpo-product-utils";
 import { formatSaleKes } from "@/lib/sales";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { posListUnitPrice } from "@/lib/pos-line";
+import { productStockAtLocation } from "@/lib/pos-stock";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 
 function ModalShell({ title, open, onClose, children, widthClass = "max-w-md", embedded = false }) {
@@ -280,11 +281,21 @@ export function PosPriceCheckerModal({
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600 dark:text-slate-300">Shop stock</span>
-            <span>{formatMixedStockDisplay(product.stock_in_shop, product.uom?.conversion_factor ?? 1).text}</span>
+            <span>
+              {formatMixedStockDisplay(
+                productStockAtLocation(product, "shop"),
+                product.uom?.conversion_factor ?? 1,
+              ).text}
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-600 dark:text-slate-300">Store stock</span>
-            <span>{formatMixedStockDisplay(product.stock_in_store, product.uom?.conversion_factor ?? 1).text}</span>
+            <span>
+              {formatMixedStockDisplay(
+                productStockAtLocation(product, "store"),
+                product.uom?.conversion_factor ?? 1,
+              ).text}
+            </span>
           </div>
         </div>
       ) : null}
