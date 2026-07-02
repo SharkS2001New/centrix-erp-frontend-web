@@ -1,4 +1,5 @@
 import { hasOperationalModule } from "@/lib/admin-scope";
+import { hasManagerApprovalsSettingsTab } from "@/lib/manager-approvals-settings";
 import {
   isPlatformAiEnabled,
   isPlatformKraIntegrationEnabled,
@@ -22,6 +23,7 @@ export const ORG_SETTINGS_TAB_MODULES = {
   sales: ["sales"],
   mobile: ["sales.mobile"],
   distribution: ["distribution"],
+  "manager-approvals": ["sales", "inventory", "customers_suppliers", "hr_payroll", "accounting", "admin"],
   inventory: ["inventory"],
   procurement: ["customers_suppliers"],
   finance: ["accounting", "payments"],
@@ -70,6 +72,9 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
 
     case "distribution":
       return moduleEnabled(capabilities, "distribution");
+
+    case "manager-approvals":
+      return hasManagerApprovalsSettingsTab(capabilities);
 
     case "inventory":
       return moduleEnabled(capabilities, "inventory");

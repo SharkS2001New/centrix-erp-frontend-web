@@ -208,12 +208,6 @@ export function InventorySettingsPanel({ saving, setSaving, setError, setMessage
 
             {activeTab === "locations" ? (
           <div className="space-y-3">
-            <Toggle
-              label="Require manager approval for stock adjustments"
-              description="Staff without inventory manager access submit adjustments for approval; managers resolve from notifications."
-              checked={form.stock_adjustment_approval_enabled}
-              onChange={(v) => setForm((f) => ({ ...f, stock_adjustment_approval_enabled: v }))}
-            />
             <Field label="Default receive location">
               <select
                 className={inputClassName()}

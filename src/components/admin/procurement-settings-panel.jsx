@@ -83,12 +83,6 @@ export function ProcurementSettingsPanel({ saving, setSaving, setError, setMessa
               </select>
             </Field>
             <Toggle
-              label="Require LPO approval"
-              description="Purchase orders must be approved before sending to suppliers."
-              checked={form.require_lpo_approval}
-              onChange={(v) => setForm((f) => ({ ...f, require_lpo_approval: v }))}
-            />
-            <Toggle
               label="Email supplier when LPO is issued"
               description="Automatically notify the supplier contact when an approved LPO is finalized."
               checked={form.auto_email_supplier_on_lpo}

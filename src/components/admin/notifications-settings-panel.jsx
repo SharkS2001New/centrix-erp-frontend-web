@@ -10,7 +10,6 @@ import {
   notificationsPayloadFromForm,
 } from "@/lib/notifications-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
-import { ApprovalAlertsFields } from "@/components/admin/approval-alerts-fields";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 
@@ -73,7 +72,6 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
     () => [
       { id: "sms", label: "Text messages (SMS)" },
       { id: "email", label: "Email setup" },
-      { id: "approvals", label: "Manager approvals" },
       { id: "alerts", label: "Customer alerts" },
     ],
     [],
@@ -290,20 +288,6 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
                   ) : null}
                 </>
               ) : null}
-            </div>
-            ) : null}
-
-            {activeTab === "approvals" ? (
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium text-slate-800">Admin approval notifications</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  When staff submit approval requests (discounts, cancellations, stock adjustments, LPOs,
-                  payroll, journal entries), approvers always receive an in-app bell notification. Use this
-                  section to also send email copies to approvers and requesters.
-                </p>
-              </div>
-              <ApprovalAlertsFields form={form} setForm={setForm} />
             </div>
             ) : null}
 

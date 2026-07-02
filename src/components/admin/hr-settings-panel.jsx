@@ -175,12 +175,6 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
                             setForm((f) => ({ ...f, include_other_deductions_in_payroll: v }))
                           }
                         />
-                        <Toggle
-                          label="Require payroll approval"
-                          description="When enabled, new payroll runs require approval before processing and payment."
-                          checked={form.require_payroll_approval}
-                          onChange={(v) => setForm((f) => ({ ...f, require_payroll_approval: v }))}
-                        />
                       </div>
                     </div>
                   </>
