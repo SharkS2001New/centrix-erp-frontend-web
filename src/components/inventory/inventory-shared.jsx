@@ -229,6 +229,30 @@ export const SESSION_STATUS_LABELS = {
   cancelled: "Cancelled",
 };
 
+/** Human-readable product scope for a stock take session. */
+export function stockTakeProductScopeLabel(
+  session,
+  { categories = [], subCategories = [], suppliers = [] } = {},
+) {
+  if (!session) return "All products";
+
+  const parts = [];
+  if (session.filter_subcategory_id) {
+    const sub = subCategories.find((row) => Number(row.id) === Number(session.filter_subcategory_id));
+    parts.push(sub?.subcategory_name ? `Subcategory: ${sub.subcategory_name}` : "Subcategory filter");
+  } else if (session.filter_category_id) {
+    const category = categories.find((row) => Number(row.id) === Number(session.filter_category_id));
+    parts.push(category?.category_name ? `Category: ${category.category_name}` : "Category filter");
+  }
+
+  if (session.filter_supplier_id) {
+    const supplier = suppliers.find((row) => Number(row.id) === Number(session.filter_supplier_id));
+    parts.push(supplier?.supplier_name ? `Supplier: ${supplier.supplier_name}` : "Supplier filter");
+  }
+
+  return parts.length ? parts.join(" · ") : "All products";
+}
+
 /** Group line-level stock_receipts rows into receipt documents. */
 export function groupStockReceipts(rows) {
   const map = new Map();

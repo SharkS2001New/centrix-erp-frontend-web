@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
-import { FulfillmentPageShell } from "@/components/fulfillment/fulfillment-shared";
-import { PrimaryLink } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import {
   countDeliveriesByDriver,
   todayDeliveryStats,
@@ -115,7 +114,7 @@ export function FulfillmentDashboardContent() {
   ];
 
   return (
-    <FulfillmentPageShell
+    <CatalogPageShell
       title="Distribution dashboard"
       subtitle="Drivers, routes, and today's delivery performance"
       action={<PrimaryLink href="/fulfillment/drivers">Manage drivers</PrimaryLink>}
@@ -169,6 +168,6 @@ export function FulfillmentDashboardContent() {
           </DashboardSection>
         </div>
       )}
-    </FulfillmentPageShell>
+    </CatalogPageShell>
   );
 }

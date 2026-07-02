@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -8,6 +8,7 @@ import { useQueuedTask } from "@/lib/use-queued-task";
 import { useAuth } from "@/contexts/auth-context";
 import {
   Field,
+  FilterSelect,
   FormModal,
   IconButton,
   PencilIcon,
@@ -19,11 +20,24 @@ import {
   InventoryPageShell,
   InventoryTableShell,
   SESSION_STATUS_LABELS,
+  stockTakeProductScopeLabel,
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_TAKE_SESSION_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+
+const EMPTY_FORM = {
+  session_code: "",
+  stock_location: "both",
+  filter_category_id: "all",
+  filter_subcategory_id: "all",
+  filter_supplier_id: "all",
+};
+
+function optionalFilterId(value) {
+  return value && value !== "all" ? Number(value) : null;
+}
 
 export default function StockTakeListPage() {
   const confirm = useConfirm();
@@ -32,20 +46,46 @@ export default function StockTakeListPage() {
   const branchId = user?.branch_id ?? 1;
 
   const [sessions, setSessions] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [subCategories, setSubCategories] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editingSession, setEditingSession] = useState(null);
   const [creating, setCreating] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
-  const [form, setForm] = useState({
-    session_code: "",
-    stock_location: "both",
-  });
+  const [form, setForm] = useState(EMPTY_FORM);
 
   const { runQueuedTask, overlayNode } = useQueuedTask(
     "Please wait while stock take lines are prepared…",
   );
+
+  const subCategoryOptions = useMemo(() => {
+    if (form.filter_category_id === "all") {
+      return subCategories;
+    }
+    return subCategories.filter(
+      (row) => String(row.category_id) === String(form.filter_category_id),
+    );
+  }, [subCategories, form.filter_category_id]);
+
+  const loadReferenceData = useCallback(async () => {
+    try {
+      const [categoryRes, subCategoryRes, supplierRes] = await Promise.all([
+        apiRequest("/categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+        apiRequest("/sub-categories", { searchParams: { per_page: 500 } }).catch(() => ({ data: [] })),
+        apiRequest("/suppliers", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+      ]);
+      setCategories(categoryRes.data ?? []);
+      setSubCategories(subCategoryRes.data ?? []);
+      setSuppliers(supplierRes.data ?? []);
+    } catch {
+      setCategories([]);
+      setSubCategories([]);
+      setSuppliers([]);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,8 +102,9 @@ export default function StockTakeListPage() {
   }, [branchId]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    void loadReferenceData();
+    void load();
+  }, [loadReferenceData, load]);
 
   async function startSession() {
     if (!form.session_code.trim()) return;
@@ -76,6 +117,9 @@ export default function StockTakeListPage() {
           branch_id: branchId,
           session_code: form.session_code.trim(),
           stock_location: form.stock_location,
+          filter_category_id: optionalFilterId(form.filter_category_id),
+          filter_subcategory_id: optionalFilterId(form.filter_subcategory_id),
+          filter_supplier_id: optionalFilterId(form.filter_supplier_id),
           status: "in_progress",
           started_by: user?.id,
         },
@@ -90,7 +134,7 @@ export default function StockTakeListPage() {
       );
 
       setModalOpen(false);
-      setForm({ session_code: "", stock_location: "both" });
+      setForm(EMPTY_FORM);
       router.push(`/inventory/stock-take/${session.id}`);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Failed to start session");
@@ -104,6 +148,9 @@ export default function StockTakeListPage() {
     setForm({
       session_code: session.session_code ?? "",
       stock_location: session.stock_location ?? "both",
+      filter_category_id: "all",
+      filter_subcategory_id: "all",
+      filter_supplier_id: "all",
     });
     setEditOpen(true);
   }
@@ -175,11 +222,12 @@ export default function StockTakeListPage() {
           <p className="p-8 text-center text-sm text-slate-500">No stock take sessions yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] border-collapse text-sm">
+            <table className="w-full min-w-[720px] border-collapse text-sm">
               <thead>
                 <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
                   <th className="px-4 py-3 font-medium">Session</th>
                   <th className="px-4 py-3 font-medium">Location</th>
+                  <th className="px-4 py-3 font-medium">Product scope</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium text-right">Actions</th>
                 </tr>
@@ -197,6 +245,13 @@ export default function StockTakeListPage() {
                     </td>
                     <td className="px-4 py-3 capitalize text-slate-600">
                       {session.stock_location?.replace("_", " ")}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {stockTakeProductScopeLabel(session, {
+                        categories,
+                        subCategories,
+                        suppliers,
+                      })}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -267,6 +322,63 @@ export default function StockTakeListPage() {
             <option value="store">Store / warehouse only</option>
           </select>
         </Field>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+          <p className="text-sm font-medium text-slate-900">Product scope</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Optional. Limit this count to a supplier, category, or subcategory instead of every product.
+          </p>
+          <div className="mt-3 space-y-3">
+            <Field label="Supplier">
+              <FilterSelect
+                value={form.filter_supplier_id}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, filter_supplier_id: e.target.value }))
+                }
+                options={[
+                  { value: "all", label: "All suppliers" },
+                  ...suppliers.map((supplier) => ({
+                    value: String(supplier.id),
+                    label: supplier.supplier_name,
+                  })),
+                ]}
+              />
+            </Field>
+            <Field label="Category">
+              <FilterSelect
+                value={form.filter_category_id}
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    filter_category_id: e.target.value,
+                    filter_subcategory_id: "all",
+                  }))
+                }
+                options={[
+                  { value: "all", label: "All categories" },
+                  ...categories.map((category) => ({
+                    value: String(category.id),
+                    label: category.category_name,
+                  })),
+                ]}
+              />
+            </Field>
+            <Field label="Subcategory">
+              <FilterSelect
+                value={form.filter_subcategory_id}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, filter_subcategory_id: e.target.value }))
+                }
+                options={[
+                  { value: "all", label: "All subcategories" },
+                  ...subCategoryOptions.map((subCategory) => ({
+                    value: String(subCategory.id),
+                    label: subCategory.subcategory_name,
+                  })),
+                ]}
+              />
+            </Field>
+          </div>
+        </div>
       </FormModal>
 
       <FormModal

@@ -17,6 +17,7 @@ import {
   InventoryPageShell,
   InventoryTableShell,
   SESSION_STATUS_LABELS,
+  stockTakeProductScopeLabel,
 } from "@/components/inventory/inventory-shared";
 import {
   initStockTakeCounts,
@@ -53,6 +54,9 @@ export default function StockTakeSessionPage() {
   const [lines, setLines] = useState([]);
   const [products, setProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [subCategories, setSubCategories] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [counts, setCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -63,13 +67,17 @@ export default function StockTakeSessionPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [sess, loadedLines, productRows, uomRes] = await Promise.all([
+      const [sess, loadedLines, productRows, uomRes, categoryRes, subCategoryRes, supplierRes] =
+        await Promise.all([
         apiRequest(`/stock-take-sessions/${sessionId}`),
         fetchAllPaginatedRowsSmart("/stock-take-lines", {
           "filter[session_id]": sessionId,
         }),
         fetchAllPaginatedRowsSmart("/products"),
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
+        apiRequest("/categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+        apiRequest("/sub-categories", { searchParams: { per_page: 500 } }).catch(() => ({ data: [] })),
+        apiRequest("/suppliers", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
       ]);
       setSession(sess);
       const allowedLocations =
@@ -84,6 +92,9 @@ export default function StockTakeSessionPage() {
       setLines(filteredLines);
       setProducts(productRows);
       setUoms(uomRes.data ?? []);
+      setCategories(categoryRes.data ?? []);
+      setSubCategories(subCategoryRes.data ?? []);
+      setSuppliers(supplierRes.data ?? []);
 
       const prodMap = new Map(productRows.map((p) => [p.product_code, p]));
       const uomMap = new Map((uomRes.data ?? []).map((u) => [u.id, u]));
@@ -317,7 +328,11 @@ export default function StockTakeSessionPage() {
       title={session?.session_code ?? "Stock take"}
       subtitle={
         session
-          ? `${SESSION_STATUS_LABELS[session.status] ?? session.status} · ${session.stock_location?.replace("_", " ")}`
+          ? `${SESSION_STATUS_LABELS[session.status] ?? session.status} · ${session.stock_location?.replace("_", " ")} · ${stockTakeProductScopeLabel(session, {
+              categories,
+              subCategories,
+              suppliers,
+            })}`
           : "Count products and reconcile variances"
       }
       action={

@@ -23,8 +23,8 @@ import {
 } from "@/components/catalog/catalog-data-import";
 import { ROUTE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { useConfirm } from "@/lib/use-confirm";
-import { FulfillmentPageShell } from "@/components/fulfillment/fulfillment-shared";
 import {
+  CatalogPageShell,
   FilterSelect,
   IconButton,
   PaginationBar,
@@ -293,7 +293,7 @@ export default function RoutesPage() {
   }
 
   return (
-    <FulfillmentPageShell
+    <CatalogPageShell
       title="Routes"
       subtitle="Manage delivery and sales routes"
       action={
@@ -531,7 +531,7 @@ export default function RoutesPage() {
           onClick={() => void deleteSelectedRoutes()}
         />
       </BatchActionBar>
-    </FulfillmentPageShell>
+    </CatalogPageShell>
   );
 }
 

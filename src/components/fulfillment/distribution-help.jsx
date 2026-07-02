@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 const WORKFLOW_STEPS = [
   {
@@ -103,6 +104,26 @@ export function DistributionHelpButton({ className = "" }) {
       }}
     >
       <HelpIcon />
+    </button>
+  );
+}
+
+/** Single help entry point — app header, only while viewing Distribution. */
+export function DistributionHelpTopbarButton() {
+  const pathname = usePathname();
+  if (!pathname?.startsWith("/fulfillment")) return null;
+
+  return (
+    <button
+      type="button"
+      className="app-topbar-icon-btn"
+      aria-label="Distribution help"
+      title="How distribution works"
+      onClick={() => {
+        window.dispatchEvent(new CustomEvent("distribution-help:open"));
+      }}
+    >
+      <HelpIcon className="h-5 w-5" />
     </button>
   );
 }
@@ -232,12 +253,9 @@ export function DistributionHelpDialog() {
 export function DistributionPageHeader({ title, subtitle, action }) {
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-      <div className="flex items-start gap-3">
-        <DistributionHelpButton className="mt-0.5 shrink-0" />
-        <div>
-          <h1 className="theme-heading text-xl font-medium">{title}</h1>
-          {subtitle ? <p className="theme-subtext mt-0.5 text-sm">{subtitle}</p> : null}
-        </div>
+      <div>
+        <h1 className="theme-heading text-xl font-medium">{title}</h1>
+        {subtitle ? <p className="theme-subtext mt-0.5 text-sm">{subtitle}</p> : null}
       </div>
       {action}
     </div>

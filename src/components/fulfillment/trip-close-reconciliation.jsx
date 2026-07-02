@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { FulfillmentPageShell } from "@/components/fulfillment/fulfillment-shared";
 import {
+  CatalogPageShell,
   Field,
   PrimaryButton,
   inputClassName,
@@ -103,19 +103,19 @@ export function TripCloseReconciliation({ tripId }) {
 
   if (loading) {
     return (
-      <FulfillmentPageShell title="Trip close" subtitle="Loading reconciliation…">
+      <CatalogPageShell title="Trip close" subtitle="Loading reconciliation…">
         <p className="text-sm text-slate-500">Loading…</p>
-      </FulfillmentPageShell>
+      </CatalogPageShell>
     );
   }
 
   if (!data?.trip) {
     return (
-      <FulfillmentPageShell title="Trip not found">
+      <CatalogPageShell title="Trip not found">
         <Link href="/fulfillment/trips" className="text-[#185FA5] hover:underline">
           Back to trips
         </Link>
-      </FulfillmentPageShell>
+      </CatalogPageShell>
     );
   }
 
@@ -151,7 +151,7 @@ export function TripCloseReconciliation({ tripId }) {
   ];
 
   return (
-    <FulfillmentPageShell
+    <CatalogPageShell
       title={`Close trip · ${trip.trip_code}`}
       subtitle={`${trip.route_name ?? "Route TBD"} · ${trip.driver_name ?? "No driver"} · ${trip.scheduled_date}`}
       action={
@@ -364,6 +364,6 @@ export function TripCloseReconciliation({ tripId }) {
           </p>
         </section>
       ) : null}
-    </FulfillmentPageShell>
+    </CatalogPageShell>
   );
 }
