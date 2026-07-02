@@ -1,7 +1,7 @@
 "use client";
 
 import { notifyError } from "@/lib/notify";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -350,6 +350,8 @@ export default function SupplierReturnsPage() {
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(15);
   const [collapsedIds, setCollapsedIds] = useState(() => new Set());
+  const [highlightedReturnId, setHighlightedReturnId] = useState(null);
+  const returnRowRefs = useRef(new Map());
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -416,6 +418,35 @@ export default function SupplierReturnsPage() {
   useEffect(() => {
     setPage(1);
   }, [search, supplierFilter, typeFilter, statusFilter, dateFrom, dateTo]);
+
+  useEffect(() => {
+    const returnId = searchParams.get("return_id");
+    if (!returnId || loading) return;
+
+    const targetId = Number(returnId);
+    if (!Number.isFinite(targetId) || targetId <= 0) return;
+
+    const index = filtered.findIndex((row) => Number(row.id) === targetId);
+    if (index < 0) return;
+
+    setPage(Math.floor(index / pageSize) + 1);
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(targetId);
+      return next;
+    });
+    setHighlightedReturnId(targetId);
+
+    const scrollTimer = window.setTimeout(() => {
+      returnRowRefs.current.get(targetId)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 150);
+    const clearTimer = window.setTimeout(() => setHighlightedReturnId(null), 6000);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [filtered, loading, pageSize, searchParams]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -653,7 +684,17 @@ export default function SupplierReturnsPage() {
 
                     return (
                       <Fragment key={row.id}>
-                        <tr className="border-b border-[var(--theme-border)] theme-table-body-row">
+                        <tr
+                          ref={(node) => {
+                            if (node) returnRowRefs.current.set(row.id, node);
+                            else returnRowRefs.current.delete(row.id);
+                          }}
+                          className={`border-b border-[var(--theme-border)] theme-table-body-row ${
+                            highlightedReturnId && Number(row.id) === Number(highlightedReturnId)
+                              ? "bg-amber-50 ring-1 ring-inset ring-amber-200"
+                              : ""
+                          }`}
+                        >
                           <td className={`${COL.toggle.className} py-3 align-top`}>
                             <button
                               type="button"

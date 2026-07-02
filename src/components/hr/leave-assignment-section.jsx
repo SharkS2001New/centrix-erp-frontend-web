@@ -58,12 +58,14 @@ export function LeaveAssignmentSection({
   employees: employeesProp = [],
   onAssignmentSaved,
   balanceRefreshKey = 0,
+  highlightLeaveDayId = null,
 }) {
   return (
     <EmployeeLeaveHub
       employees={employeesProp}
       refreshKey={balanceRefreshKey}
       onSaved={onAssignmentSaved}
+      highlightLeaveDayId={highlightLeaveDayId}
     />
   );
 }

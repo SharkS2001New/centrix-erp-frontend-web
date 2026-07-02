@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   FormDrawer,
@@ -50,6 +50,7 @@ export function EmployeeLeaveHub({
   employees = [],
   refreshKey = 0,
   onSaved,
+  highlightLeaveDayId = null,
 }) {
   const { user, capabilities, hasPermission } = useAuth();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
@@ -68,6 +69,8 @@ export function EmployeeLeaveHub({
   const [formError, setFormError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [leavePreview, setLeavePreview] = useState(null);
+  const [highlightedLeaveDayId, setHighlightedLeaveDayId] = useState(null);
+  const leaveRowRefs = useRef(new Map());
 
   const extra = useMemo(() => ({ employees }), [employees]);
 
@@ -78,7 +81,7 @@ export function EmployeeLeaveHub({
       const [balanceRes, assignRes] = await Promise.all([
         apiRequest("/employee-leave-balances"),
         apiRequest("/employee-leave-days", {
-          searchParams: { assignment_kind: "off_day", per_page: 200 },
+          searchParams: { per_page: 200 },
         }),
       ]);
       setBalances(balanceRes.data ?? []);
@@ -93,6 +96,34 @@ export function EmployeeLeaveHub({
   useEffect(() => {
     load();
   }, [load, refreshKey]);
+
+  useEffect(() => {
+    if (!highlightLeaveDayId || loading) return;
+
+    const targetId = Number(highlightLeaveDayId);
+    if (!Number.isFinite(targetId) || targetId <= 0) return;
+
+    const record = assignments.find((row) => Number(row.id) === targetId);
+    if (!record?.employee_id) return;
+
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.delete(record.employee_id);
+      return next;
+    });
+    setHighlightedLeaveDayId(targetId);
+
+    const timer = window.setTimeout(() => {
+      leaveRowRefs.current.get(targetId)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 150);
+
+    const clearTimer = window.setTimeout(() => setHighlightedLeaveDayId(null), 6000);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [assignments, highlightLeaveDayId, loading]);
 
   const assignmentsByEmployee = useMemo(() => {
     const map = new Map();
@@ -282,7 +313,18 @@ export function EmployeeLeaveHub({
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {records.map((record) => (
-                              <tr key={record.id} className="theme-table-body-row">
+                              <tr
+                                key={record.id}
+                                ref={(node) => {
+                                  if (node) leaveRowRefs.current.set(record.id, node);
+                                  else leaveRowRefs.current.delete(record.id);
+                                }}
+                                className={`theme-table-body-row ${
+                                  highlightedLeaveDayId && Number(record.id) === Number(highlightedLeaveDayId)
+                                    ? "bg-amber-50 ring-1 ring-inset ring-amber-200"
+                                    : ""
+                                }`}
+                              >
                                 <td className="px-3 py-2 text-slate-800">{formatPeriod(record)}</td>
                                 <td className="px-3 py-2 text-slate-700">
                                   {deductFromLabel(record.deduct_from)}

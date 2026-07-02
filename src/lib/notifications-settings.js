@@ -29,6 +29,12 @@ export const NOTIFICATIONS_DEFAULTS = {
   debtor_payment_sms_template:
     "Payment of KES {amount} received for order {order_num}. Balance due: KES {balance_due}.",
   debtor_payment_email_template: "",
+  notify_on_approval_request: false,
+  notify_on_approval_outcome: false,
+  approval_request_email_subject: "Approval required: {title}",
+  approval_request_email_template: "{message}\n\nOpen in Centrix: {link}",
+  approval_outcome_email_subject: "{title}",
+  approval_outcome_email_template: "{message}\n\nOpen in Centrix: {link}",
 };
 
 export const NOTIFICATION_SCOPE_OPTIONS = [
@@ -83,6 +89,16 @@ export function notificationsFormFromApi(res) {
     debtor_payment_sms_template:
       notifications.debtor_payment_sms_template ?? NOTIFICATIONS_DEFAULTS.debtor_payment_sms_template,
     debtor_payment_email_template: notifications.debtor_payment_email_template ?? "",
+    notify_on_approval_request: Boolean(notifications.notify_on_approval_request),
+    notify_on_approval_outcome: Boolean(notifications.notify_on_approval_outcome),
+    approval_request_email_subject:
+      notifications.approval_request_email_subject ?? NOTIFICATIONS_DEFAULTS.approval_request_email_subject,
+    approval_request_email_template:
+      notifications.approval_request_email_template ?? NOTIFICATIONS_DEFAULTS.approval_request_email_template,
+    approval_outcome_email_subject:
+      notifications.approval_outcome_email_subject ?? NOTIFICATIONS_DEFAULTS.approval_outcome_email_subject,
+    approval_outcome_email_template:
+      notifications.approval_outcome_email_template ?? NOTIFICATIONS_DEFAULTS.approval_outcome_email_template,
     notifications_status: res?.notifications_status ?? null,
     mail_from_preview: res?.mail_from ?? null,
   };
@@ -118,6 +134,12 @@ export function notificationsPayloadFromForm(form) {
     order_placed_email_template: form.order_placed_email_template?.trim() ?? "",
     debtor_payment_sms_template: form.debtor_payment_sms_template?.trim() ?? "",
     debtor_payment_email_template: form.debtor_payment_email_template?.trim() ?? "",
+    notify_on_approval_request: Boolean(form.notify_on_approval_request),
+    notify_on_approval_outcome: Boolean(form.notify_on_approval_outcome),
+    approval_request_email_subject: form.approval_request_email_subject?.trim() ?? "",
+    approval_request_email_template: form.approval_request_email_template?.trim() ?? "",
+    approval_outcome_email_subject: form.approval_outcome_email_subject?.trim() ?? "",
+    approval_outcome_email_template: form.approval_outcome_email_template?.trim() ?? "",
   };
 }
 

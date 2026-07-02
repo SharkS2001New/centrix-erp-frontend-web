@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
@@ -10,6 +11,8 @@ import { isAdminUser } from "@/components/hr/hr-shared";
 import { useAuth } from "@/contexts/auth-context";
 
 export default function HrLeavePage() {
+  const searchParams = useSearchParams();
+  const highlightLeaveDayId = searchParams.get("leave_day_id");
   const { user } = useAuth();
   const isAdmin = isAdminUser(user);
   const [employees, setEmployees] = useState([]);
@@ -55,6 +58,7 @@ export default function HrLeavePage() {
         employees={employees}
         onAssignmentSaved={bumpBalances}
         balanceRefreshKey={balanceRefreshKey}
+        highlightLeaveDayId={highlightLeaveDayId}
       />
     </CatalogPageShell>
   );
