@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -24,6 +24,14 @@ import { formatOrderNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 import { TripWorkflowBanner } from "@/components/fulfillment/trip-workflow-banner";
 import { formatTripProfitMargin, tripStatusLabel } from "@/lib/trip-status";
+import { TripDispatchStatusBadge } from "@/components/fulfillment/trip-dispatch-status-badge";
+import { FulfillmentGuidanceStrip } from "@/components/fulfillment/fulfillment-guidance-strip";
+import {
+  FULFILLMENT_WORKFLOW_SCREENS,
+  isFulfillmentGuidanceEnabled,
+  resolveTripDetailGuidance,
+} from "@/lib/fulfillment-guidance";
+import { mergeDistributionSettings } from "@/lib/distribution-settings";
 
 function PrintIcon() {
   return (
@@ -37,6 +45,8 @@ function PrintIcon() {
 export default function TripDetailPage() {
   const { id } = useParams();
   const { organization, generalSettings, capabilities, user } = useAuth();
+  const distributionSettings = useMemo(() => mergeDistributionSettings(capabilities), [capabilities]);
+  const guidanceEnabled = isFulfillmentGuidanceEnabled(capabilities);
 
   const [trip, setTrip] = useState(null);
   const [loadingList, setLoadingList] = useState(null);
@@ -70,6 +80,24 @@ export default function TripDetailPage() {
   useEffect(() => {
     loadTrip();
   }, [loadTrip]);
+
+  const guidance = useMemo(
+    () =>
+      trip
+        ? resolveTripDetailGuidance({ trip, loadingList, distributionSettings })
+        : { steps: [], nextStep: null },
+    [trip, loadingList, distributionSettings],
+  );
+  const quickLinks = useMemo(() => {
+    if (!trip) return [];
+    const links = FULFILLMENT_WORKFLOW_SCREENS.filter((screen) =>
+      ["orders", "dispatch", "trips"].includes(screen.id),
+    );
+    if (trip.status !== "draft" && (trip.sales?.length ?? 0) > 0) {
+      return links.filter((screen) => screen.id !== "dispatch");
+    }
+    return links;
+  }, [trip]);
 
   async function runAction(path, body) {
     setBusy(true);
@@ -173,7 +201,12 @@ export default function TripDetailPage() {
 
   return (
     <CatalogPageShell
-      title={trip.trip_code}
+      title={
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <span>{trip.trip_code}</span>
+          <TripDispatchStatusBadge status={trip.status} />
+        </span>
+      }
       subtitle={`${formatTripRoutesLabel(trip)} · ${trip.scheduled_date}`}
       action={
         showCloseReconciliation ? (
@@ -194,7 +227,23 @@ export default function TripDetailPage() {
         ]}
       />
 
-      <TripWorkflowBanner status={trip.status} />
+      <div className="mb-4 flex flex-wrap gap-2">
+        {quickLinks.map((link) => (
+          <Link
+            key={link.id}
+            href={link.path}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-[#185FA5] hover:text-[#185FA5]"
+          >
+            {link.step}. {link.screen}
+          </Link>
+        ))}
+      </div>
+
+      {guidanceEnabled ? (
+        <FulfillmentGuidanceStrip steps={guidance.steps} nextStep={guidance.nextStep} />
+      ) : (
+        <TripWorkflowBanner status={trip.status} />
+      )}
 
       <div className="mb-6 grid gap-4 theme-panel rounded-xl border p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         <div>
@@ -248,92 +297,104 @@ export default function TripDetailPage() {
         </div>
       </div>
 
-      <div className="mb-8 flex flex-wrap gap-2">
-        <PrimaryButton
-          type="button"
-          showIcon={false}
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              const listRes = await apiRequest(`/dispatch-trips/${id}/loading-list`);
-              const freshList = listRes.loading_list ?? listRes;
-              setLoadingList(freshList);
-              printLoadingList({
-                organization,
-                generalSettings: generalSettings(),
-                organizationName: organization?.organization_name ?? organization?.company_name ?? "Loading List",
-                loadingList: freshList,
-                trip,
-                printSettings: resolveLoadingSheetPrintSettings(capabilities?.module_settings?.distribution),
-                documentFooterText: resolvePrintFooter(
-                  mergeGeneralSettings(capabilities?.module_settings),
-                  "loading_sheet",
-                ),
-                printedBy: user?.full_name ?? user?.username ?? null,
-              });
-            } catch (e) {
-              notifyError(e instanceof ApiError ? e.message : "Could not refresh loading list for print");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          Print loading list
-        </PrimaryButton>
-        {canLock ? (
-          <>
-            <Field label="Prepared by">
-              <input className={inputClassName()} value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} />
-            </Field>
-            <Field label="Checked by">
-              <input className={inputClassName()} value={checkedBy} onChange={(e) => setCheckedBy(e.target.value)} />
-            </Field>
-            <PrimaryButton
-              type="button"
-              showIcon={false}
-              disabled={busy || !preparedBy.trim() || !checkedBy.trim()}
-              onClick={() =>
-                runAction(`/dispatch-trips/${id}/loading-list/lock`, {
-                  prepared_by_name: preparedBy.trim(),
-                  checked_by_name: checkedBy.trim(),
-                })
-              }
+      <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Trip actions</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Follow this order: lock the loading list when ready, dispatch when the vehicle leaves, then close the run.
+        </p>
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          {canLock ? (
+            <div id="trip-lock-loading" className="flex w-full flex-wrap items-end gap-3 border-b border-slate-100 pb-4">
+              <Field label="Prepared by">
+                <input className={inputClassName()} value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} />
+              </Field>
+              <Field label="Checked by">
+                <input className={inputClassName()} value={checkedBy} onChange={(e) => setCheckedBy(e.target.value)} />
+              </Field>
+              <PrimaryButton
+                type="button"
+                showIcon={false}
+                disabled={busy || !preparedBy.trim() || !checkedBy.trim()}
+                onClick={() =>
+                  runAction(`/dispatch-trips/${id}/loading-list/lock`, {
+                    prepared_by_name: preparedBy.trim(),
+                    checked_by_name: checkedBy.trim(),
+                  })
+                }
+              >
+                1. Lock loading list
+              </PrimaryButton>
+            </div>
+          ) : null}
+
+          {canStart ? (
+            <div id="trip-dispatch">
+              <PrimaryButton
+                type="button"
+                showIcon={false}
+                disabled={busy || (lines.length > 0 && !loadingLocked)}
+                title={lines.length > 0 && !loadingLocked ? "Lock the loading list first" : undefined}
+                onClick={() => runAction(`/dispatch-trips/${id}/start`)}
+              >
+                2. Dispatch trip
+              </PrimaryButton>
+            </div>
+          ) : null}
+
+          {canComplete ? (
+            <Link
+              href={`/fulfillment/trips/${id}/close`}
+              className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
             >
-              Lock loading list
-            </PrimaryButton>
-          </>
-        ) : null}
-        {canStart ? (
+              3. Close trip…
+            </Link>
+          ) : null}
+
           <PrimaryButton
             type="button"
             showIcon={false}
-            disabled={busy || (lines.length > 0 && !loadingLocked)}
-            title={lines.length > 0 && !loadingLocked ? "Lock the loading list first" : undefined}
-            onClick={() => runAction(`/dispatch-trips/${id}/start`)}
-          >
-            Dispatch trip
-          </PrimaryButton>
-        ) : null}
-        {canComplete ? (
-          <Link
-            href={`/fulfillment/trips/${id}/close`}
-            className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 hover:bg-emerald-100"
-          >
-            Close trip…
-          </Link>
-        ) : null}
-        {trip.status !== "completed" && trip.status !== "cancelled" ? (
-          <button
-            type="button"
-            className="rounded-lg border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50"
             disabled={busy}
-            onClick={() => runAction(`/dispatch-trips/${id}/cancel`)}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const listRes = await apiRequest(`/dispatch-trips/${id}/loading-list`);
+                const freshList = listRes.loading_list ?? listRes;
+                setLoadingList(freshList);
+                printLoadingList({
+                  organization,
+                  generalSettings: generalSettings(),
+                  organizationName: organization?.organization_name ?? organization?.company_name ?? "Loading List",
+                  loadingList: freshList,
+                  trip,
+                  printSettings: resolveLoadingSheetPrintSettings(capabilities?.module_settings?.distribution),
+                  documentFooterText: resolvePrintFooter(
+                    mergeGeneralSettings(capabilities?.module_settings),
+                    "loading_sheet",
+                  ),
+                  printedBy: user?.full_name ?? user?.username ?? null,
+                });
+              } catch (e) {
+                notifyError(e instanceof ApiError ? e.message : "Could not refresh loading list for print");
+              } finally {
+                setBusy(false);
+              }
+            }}
           >
-            Cancel trip
-          </button>
-        ) : null}
-      </div>
+            Print loading list
+          </PrimaryButton>
+
+          {trip.status !== "completed" && trip.status !== "cancelled" ? (
+            <button
+              type="button"
+              className="rounded-lg border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50"
+              disabled={busy}
+              onClick={() => runAction(`/dispatch-trips/${id}/cancel`)}
+            >
+              Cancel trip
+            </button>
+          ) : null}
+        </div>
+      </section>
 
       {showCashSettlement ? (
         <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">

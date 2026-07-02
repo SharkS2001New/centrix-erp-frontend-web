@@ -48,7 +48,7 @@ export function TripWorkflowBanner({ status }) {
       <p className="mt-3 text-xs text-slate-500">
         Current status: <span className="font-medium text-slate-700">{tripStatusLabel(status)}</span>
         {status === "draft" || status === "loading"
-          ? " — use Lock loading list, then Start trip to dispatch."
+          ? " — lock the loading list, then dispatch the trip when the vehicle leaves."
           : null}
       </p>
     </div>

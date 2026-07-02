@@ -119,9 +119,10 @@ export function resolveTripDetailGuidance({ trip, loadingList, distributionSetti
   ].filter((step) => !(step.skipWhen && !step.done));
 
   const enriched = steps.map((step, index) => {
+    const firstIncomplete = steps.findIndex((item) => !item.done);
     let state = "upcoming";
     if (step.done) state = "done";
-    else if (steps.slice(0, index).every((s) => s.done)) state = index === steps.findIndex((s) => !s.done) ? "next" : "current";
+    else if (index === firstIncomplete) state = "next";
     return { ...step, state };
   });
 

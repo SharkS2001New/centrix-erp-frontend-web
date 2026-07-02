@@ -682,7 +682,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       disposePrintWindow(printWindow);
       notifyError(e instanceof Error ? e.message : "Print failed");
     }
-  }, [sale, capabilities, organization, customer, branchName, cashierName, uomById, user]);
+  }, [sale, capabilities, organization, customer, branchName, uomById, user]);
 
   async function requestOrderCancellation() {
     if (!sale?.id) return;

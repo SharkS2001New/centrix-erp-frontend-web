@@ -21,6 +21,7 @@ import {
   resolvePrintoutSections,
 } from "@/lib/printouts-settings";
 import { FooterLineEditor } from "@/components/admin/footer-line-editor";
+import { PrintFontSettingsFields } from "@/components/admin/print-font-settings-fields";
 import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
 import { MultilinePrintNotesField } from "@/components/admin/multiline-print-notes-field";
 import { LoadingListPrintSettingsFields } from "@/components/admin/loading-list-print-settings-fields";

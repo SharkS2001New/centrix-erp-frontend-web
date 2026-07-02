@@ -674,43 +674,17 @@ const NAV_SECTION_DEFINITIONS = [
     ],
   },
   {
-    id: "distribution_ops",
-    label: "Operations",
-    icon: "🚚",
-    collapsible: true,
-    items: [
-      {
-        href: "/fulfillment/dispatch",
-        label: "Dispatch",
-        module: "distribution",
-        permission: P.fulfillment.drivers.view,
-      },
-      {
-        href: "/fulfillment/trips",
-        label: "Trips",
-        module: "distribution",
-        permission: P.fulfillment.drivers.view,
-      },
-      {
-        href: "/fulfillment/loading-lists",
-        label: "Loading list",
-        module: "distribution",
-        permission: P.fulfillment.drivers.view,
-      },
-      {
-        href: "/fulfillment/pod-records",
-        label: "Proof of delivery",
-        module: "distribution",
-        permission: P.fulfillment.drivers.view,
-      },
-    ],
-  },
-  {
     id: "distribution_fleet",
     label: "Fleet & routes",
     icon: "🚛",
     collapsible: true,
     items: [
+      {
+        href: "/fulfillment/routes",
+        label: "Routes",
+        module: "distribution",
+        permission: P.fulfillment.routes.view,
+      },
       {
         href: "/fulfillment/drivers",
         label: "Drivers",
@@ -722,12 +696,6 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Vehicles",
         module: "distribution",
         permission: P.fulfillment.vehicles.view,
-      },
-      {
-        href: "/fulfillment/routes",
-        label: "Routes",
-        module: "distribution",
-        permission: P.fulfillment.routes.view,
       },
       {
         href: "/fulfillment/schedules",
@@ -748,6 +716,38 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Route orders",
         module: "distribution",
         permission: P.sales.orders.view,
+      },
+    ],
+  },
+  {
+    id: "distribution_ops",
+    label: "Operations",
+    icon: "🚚",
+    collapsible: true,
+    items: [
+      {
+        href: "/fulfillment/dispatch",
+        label: "Dispatch board",
+        module: "distribution",
+        permission: P.fulfillment.drivers.view,
+      },
+      {
+        href: "/fulfillment/trips",
+        label: "Trips",
+        module: "distribution",
+        permission: P.fulfillment.drivers.view,
+      },
+      {
+        href: "/fulfillment/loading-lists",
+        label: "Loading lists",
+        module: "distribution",
+        permission: P.fulfillment.drivers.view,
+      },
+      {
+        href: "/fulfillment/pod-records",
+        label: "Proof of delivery",
+        module: "distribution",
+        permission: P.fulfillment.drivers.view,
       },
     ],
   },

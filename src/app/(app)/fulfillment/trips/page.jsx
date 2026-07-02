@@ -24,6 +24,7 @@ import { MergeDispatchTripsDialog } from "@/components/fulfillment/merge-dispatc
 import { formatTripRoutesLabel } from "@/lib/trip-routes";
 import { formatTripProfitMargin, tripStatusLabel } from "@/lib/trip-status";
 import { formatSaleKes } from "@/lib/sales";
+import { TripDispatchStatusBadge } from "@/components/fulfillment/trip-dispatch-status-badge";
 import {
   BatchActionBar,
   TableRowSelectCell,
@@ -275,7 +276,12 @@ export default function TripsPage() {
                         ? formatTripCash(trip)
                         : "—"}
                   </td>
-                  <td className="px-4 py-3">{statusLabel(trip.status)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-1">
+                      <span>{statusLabel(trip.status)}</span>
+                      <TripDispatchStatusBadge status={trip.status} className="w-fit" />
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-3">
                       {trip.status === "in_transit" ? (
