@@ -67,7 +67,6 @@ export function brandedDocumentStyles(generalSettings = null) {
   const font = orgPrintFontFamilyFromSettings(generalSettings, "sale_invoice");
   return `
   @page { size: A4; margin: 0; }
-  html { height: 100%; }
   body {
     font-family: ${font};
     margin: 0;
@@ -76,7 +75,6 @@ export function brandedDocumentStyles(generalSettings = null) {
     font-size: ${px(10)};
     line-height: 1.3;
     position: relative;
-    min-height: 100%;
     box-sizing: border-box;
     ${orgPrintInkStyles(generalSettings, "sale_invoice")}
   }
@@ -140,7 +138,8 @@ export function brandedDocumentStyles(generalSettings = null) {
   }
   .extra-block { margin: 8px 0; font-size: ${px(9)}; }
   @media print {
-    body { font-size: ${px(10, true)}; }
+    html, body { height: auto !important; min-height: 0 !important; }
+    body { font-size: ${px(10, true)}; padding: 0; }
     .org-name { font-size: ${px(18, true)}; }
     .org-meta { font-size: ${px(9, true)}; }
     .doc-title { font-size: ${px(13, true)}; }

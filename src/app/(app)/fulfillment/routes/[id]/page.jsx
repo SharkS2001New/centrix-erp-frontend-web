@@ -9,8 +9,11 @@ import { formatOrderNumber } from "@/lib/sales";
 import {
   aggregateSalesByRoute,
   formatRouteKes,
+  isActiveRouteSale,
   isSaleInPeriod,
+  normalizeRouteId,
 } from "@/components/routes/route-form";
+import { DistributionHelpButton } from "@/components/fulfillment/distribution-help";
 import {
   FilterSelect,
   SALES_PERIOD_OPTIONS,
@@ -37,7 +40,12 @@ export default function RouteDetailPage() {
           searchParams: { per_page: 200, "filter[route_id]": routeId },
         }),
         apiRequest("/sales", {
-          searchParams: { per_page: 500, "filter[route_id]": routeId },
+          searchParams: {
+            per_page: 200,
+            route_orders: 1,
+            route_id: routeId,
+            exclude_statuses: "cancelled,expired,held",
+          },
         }),
       ]);
       setRoute(routeData);
@@ -56,13 +64,13 @@ export default function RouteDetailPage() {
 
   const salesStats = useMemo(() => {
     const byRoute = aggregateSalesByRoute(sales, salesPeriod);
-    return byRoute.get(routeId) ?? { total: 0, count: 0 };
+    return byRoute.get(normalizeRouteId(routeId)) ?? { total: 0, count: 0 };
   }, [sales, salesPeriod, routeId]);
 
   const recentSales = useMemo(
     () =>
       sales
-        .filter((s) => isSaleInPeriod(s, salesPeriod) && s.status === "completed" && !s.deleted_at)
+        .filter((s) => isActiveRouteSale(s) && isSaleInPeriod(s, salesPeriod))
         .sort((a, b) => {
           const ta = getSaleTimestamp(a)?.getTime() ?? 0;
           const tb = getSaleTimestamp(b)?.getTime() ?? 0;
@@ -84,7 +92,10 @@ export default function RouteDetailPage() {
           <Link href="/fulfillment/routes" className="text-sm text-[#185FA5] hover:text-[#144f8a]">
             ← Back to routes
           </Link>
-          <h1 className="mt-2 text-xl font-medium text-slate-900">Route details</h1>
+          <div className="mt-2 flex items-center gap-2">
+            <DistributionHelpButton />
+            <h1 className="text-xl font-medium text-slate-900">Route details</h1>
+          </div>
         </div>
         {route && (
           <Link
@@ -133,7 +144,7 @@ export default function RouteDetailPage() {
                   Sales · {periodLabel.toLowerCase()}
                 </h3>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Completed orders on this route
+                  Active route orders in this period (backoffice, mobile, and POS)
                 </p>
               </div>
               {recentSales.length === 0 ? (

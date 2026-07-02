@@ -19,6 +19,8 @@ import {
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { DISPATCH_TRIP_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
+import { CreateDispatchTripDialog } from "@/components/fulfillment/create-dispatch-trip-dialog";
+import { DistributionHelpButton } from "@/components/fulfillment/distribution-help";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
@@ -58,6 +60,7 @@ export default function TripsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState(() => isoDate());
+  const [createTripOpen, setCreateTripOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     setError(null);
@@ -126,6 +129,7 @@ export default function TripsPage() {
       subtitle="Plan route runs, build loading lists, and track deliveries"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <DistributionHelpButton />
           <CatalogListExport
             title="Dispatch trips"
             filename="dispatch-trips"
@@ -141,9 +145,18 @@ export default function TripsPage() {
             disabled={loading}
           />
           <PrimaryLink href="/fulfillment/dispatch">Dispatch board</PrimaryLink>
+          <PrimaryButton type="button" showIcon={false} onClick={() => setCreateTripOpen(true)}>
+            New trip
+          </PrimaryButton>
         </div>
       }
     >
+      <CreateDispatchTripDialog
+        open={createTripOpen}
+        onClose={() => setCreateTripOpen(false)}
+        routes={routes}
+        defaultDate={dateFilter}
+      />
       <DashboardErrorBanner message={error} />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
@@ -172,7 +185,7 @@ export default function TripsPage() {
       {loading ? (
         <p className="text-sm text-slate-500">Loading trips…</p>
       ) : filtered.length === 0 ? (
-        <p className="text-sm text-slate-500">No trips for this date. Create one from the dispatch board.</p>
+        <p className="text-sm text-slate-500">No trips for this date. Create one manually or from the dispatch board.</p>
       ) : (
         <div className="theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm">
           <table className="min-w-full text-sm">

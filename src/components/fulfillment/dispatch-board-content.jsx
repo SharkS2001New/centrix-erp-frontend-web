@@ -8,7 +8,9 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
-import { CatalogPageShell, Field, PaginationBar, PrimaryLink, inputClassName } from "@/components/catalog/catalog-shared";
+import { CatalogPageShell, Field, PaginationBar, PrimaryLink, inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { CreateDispatchTripDialog } from "@/components/fulfillment/create-dispatch-trip-dialog";
+import { DistributionHelpButton } from "@/components/fulfillment/distribution-help";
 import { DashboardSection, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
@@ -48,6 +50,7 @@ export function DispatchBoardContent() {
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [creatingTrip, setCreatingTrip] = useState(false);
+  const [createTripOpen, setCreateTripOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -209,11 +212,22 @@ export function DispatchBoardContent() {
       subtitle="Plan deliveries by route and assign drivers to orders"
       action={
         <div className="flex gap-2">
+          <DistributionHelpButton />
+          <PrimaryButton type="button" showIcon={false} onClick={() => setCreateTripOpen(true)}>
+            New trip
+          </PrimaryButton>
           <PrimaryLink href="/fulfillment/trips">Trips</PrimaryLink>
           <PrimaryLink href="/fulfillment/routes">Manage routes</PrimaryLink>
         </div>
       }
     >
+      <CreateDispatchTripDialog
+        open={createTripOpen}
+        onClose={() => setCreateTripOpen(false)}
+        routes={routes}
+        defaultDate={runDate}
+        defaultRouteId={routeFilter !== "all" ? routeFilter : ""}
+      />
       <div className="mb-6 flex flex-wrap items-end gap-3">
         <Field label="Delivery date">
           <input

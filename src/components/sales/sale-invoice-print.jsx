@@ -195,10 +195,10 @@ export function buildSaleInvoiceHtml(
   <title>Invoice Receipt ${escapeHtml(invoiceNo)}</title>
   <style>
     @page { size: A4; margin: 0; }
-    html { height: 100%; }
-    body { font-family: ${font}; margin: 0; padding: 16px; font-size: ${px(12)}; line-height: 1.4; min-height: 100%; box-sizing: border-box; ${orgPrintInkStyles(generalSettings, "sale_invoice")} }
+    body { font-family: ${font}; margin: 0; padding: 16px; font-size: ${px(12)}; line-height: 1.4; box-sizing: border-box; ${orgPrintInkStyles(generalSettings, "sale_invoice")} }
     .page { max-width: 820px; margin: 0 auto; }
     .page-body { }
+    .invoice-header-block { break-inside: avoid; page-break-inside: avoid; }
     .org-brand .org-logo { display: block; margin: 0 auto 8px; max-height: 80px; max-width: 300px; object-fit: contain; }
     .org-brand .org-name { font-size: ${px(24)}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
     .brand-name { text-align: center; font-size: ${px(24)}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -210,9 +210,12 @@ export function buildSaleInvoiceHtml(
     .meta-value { text-align: right; flex: 1; min-width: 0; word-break: break-word; font-weight: 600; }
     .meta-value-em { font-style: italic; font-weight: 700; }
     table.items { width: 100%; border-collapse: collapse; margin: 8px 0 10px; font-size: ${px(11)}; }
+    table.items thead { display: table-header-group; }
     table.items th, table.items td { border-top: 1px dotted #000; border-bottom: 1px dotted #000; padding: 5px 6px; vertical-align: top; }
     table.items th { font-weight: 700; text-align: left; text-transform: uppercase; font-size: ${px(10)}; }
     table.items td.num, table.items th.num { text-align: right; white-space: nowrap; }
+    table.items tbody tr { break-inside: avoid; page-break-inside: avoid; }
+    .invoice-closing { break-inside: avoid; page-break-inside: avoid; margin-top: 4px; }
     .totals { display: flex; justify-content: flex-end; margin: 6px 0 14px; }
     .totals-box { min-width: 280px; text-align: right; font-size: ${px(12)}; font-weight: 600; }
     .totals-box p { margin: 3px 0; }
@@ -236,7 +239,8 @@ export function buildSaleInvoiceHtml(
     .center { text-align: center; }
     ${documentPrintEdgeFooterStyles(generalSettings, { variant: "sale_invoice" })}
     @media print {
-      body { font-size: ${px(12, true)}; }
+      html, body { height: auto !important; min-height: 0 !important; }
+      body { font-size: ${px(12, true)}; padding: 0; }
       .org-brand .org-name, .brand-name { font-size: ${px(24, true)}; }
       .brand-meta { font-size: ${px(11, true)}; }
       .doc-title { font-size: ${px(15, true)}; }
@@ -256,22 +260,24 @@ export function buildSaleInvoiceHtml(
 <body class="has-doc-print-edge-footer">
   <div class="page">
     <div class="page-body">
-    <div class="brand">
-      ${orgHeader}
-      <div class="brand-meta">
-        ${branchName ? `<div>${escapeHtml(branchName)}</div>` : ""}
-        ${storeAddress ? `<div>${escapeHtml(storeAddress)}</div>` : ""}
-        ${seller.email ? `<div>Email: ${escapeHtml(seller.email)}</div>` : ""}
-        ${storePhones ? `<div>Tel: ${escapeHtml(storePhones)}</div>` : ""}
-        ${seller.tax_pin ? `<div>PIN NO: ${escapeHtml(seller.tax_pin)}</div>` : ""}
-        ${seller.vat_regno ? `<div>VAT Reg: ${escapeHtml(seller.vat_regno)}</div>` : ""}
+    <div class="invoice-header-block">
+      <div class="brand">
+        ${orgHeader}
+        <div class="brand-meta">
+          ${branchName ? `<div>${escapeHtml(branchName)}</div>` : ""}
+          ${storeAddress ? `<div>${escapeHtml(storeAddress)}</div>` : ""}
+          ${seller.email ? `<div>Email: ${escapeHtml(seller.email)}</div>` : ""}
+          ${storePhones ? `<div>Tel: ${escapeHtml(storePhones)}</div>` : ""}
+          ${seller.tax_pin ? `<div>PIN NO: ${escapeHtml(seller.tax_pin)}</div>` : ""}
+          ${seller.vat_regno ? `<div>VAT Reg: ${escapeHtml(seller.vat_regno)}</div>` : ""}
+        </div>
       </div>
-    </div>
 
-    <div class="doc-title">Invoice Receipt</div>
+      <div class="doc-title">Invoice Receipt</div>
 
-    <div class="meta-sheet">
-      ${metaSheetHtml}
+      <div class="meta-sheet">
+        ${metaSheetHtml}
+      </div>
     </div>
 
     <table class="items">
@@ -279,31 +285,33 @@ export function buildSaleInvoiceHtml(
       <tbody>${itemRows}</tbody>
     </table>
 
-    <div class="totals">
-      <div class="totals-box">
-        <p><strong>Total Amount:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
-        ${totalDiscount > 0.0001 ? `<p><strong>Total Discount:</strong> ${escapeHtml(formatPrintAmount(totalDiscount))}</p>` : ""}
-        <p><strong>V.A.T Charged:</strong> ${escapeHtml(formatPrintAmount(totalVat))}</p>
-        <p class="grand"><strong>Grand Total:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
-        <p><strong>Payment:</strong> ${escapeHtml(paymentLine)}</p>
+    <div class="invoice-closing">
+      <div class="totals">
+        <div class="totals-box">
+          <p><strong>Total Amount:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
+          ${totalDiscount > 0.0001 ? `<p><strong>Total Discount:</strong> ${escapeHtml(formatPrintAmount(totalDiscount))}</p>` : ""}
+          <p><strong>V.A.T Charged:</strong> ${escapeHtml(formatPrintAmount(totalVat))}</p>
+          <p class="grand"><strong>Grand Total:</strong> ${escapeHtml(formatPrintAmount(orderTotal))}</p>
+          <p><strong>Payment:</strong> ${escapeHtml(paymentLine)}</p>
+        </div>
       </div>
+
+      ${paymentInstructionsHtml}
+
+      <div class="served-by">You were served by: ${escapeHtml(servedByName)}</div>
+      <p class="goods-note center">Please Confirm Your Goods</p>
+      <p class="goods-note goods-note-sub center">(Goods once sold are not refundable)</p>
+      <div class="receive-signatures">
+        <p class="sig-row"><span class="sig-label">Received By:</span><span class="sig-line">&nbsp;</span></p>
+        <p class="sig-row"><span class="sig-label">Signature:</span><span class="sig-line">&nbsp;</span></p>
+      </div>
+
+      ${
+        kraQrHtml
+          ? `<div class="footer-notes">${kraQrHtml}</div>`
+          : ""
+      }
     </div>
-
-    ${paymentInstructionsHtml}
-
-    <div class="served-by">You were served by: ${escapeHtml(servedByName)}</div>
-    <p class="goods-note center">Please Confirm Your Goods</p>
-    <p class="goods-note goods-note-sub center">(Goods once sold are not refundable)</p>
-    <div class="receive-signatures">
-      <p class="sig-row"><span class="sig-label">Received By:</span><span class="sig-line">&nbsp;</span></p>
-      <p class="sig-row"><span class="sig-label">Signature:</span><span class="sig-line">&nbsp;</span></p>
-    </div>
-
-    ${
-      kraQrHtml
-        ? `<div class="footer-notes">${kraQrHtml}</div>`
-        : ""
-    }
     </div>
   </div>
   ${buildDocumentPrintEdgeFooterHtml({

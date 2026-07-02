@@ -7,14 +7,15 @@ import { apiRequest, ApiError } from "@/lib/api";
 import {
   EMPTY_ROUTE_FORM,
   RouteFormFields,
-  aggregateSalesByRoute,
   buildRouteBody,
   countCustomersByRoute,
   formatRouteKes,
+  normalizeRouteId,
   routeToForm,
   sumRouteSales,
   updateRouteFormField,
 } from "@/components/routes/route-form";
+import { DistributionHelpButton } from "@/components/fulfillment/distribution-help";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import {
   CatalogDataImportButton,
@@ -55,7 +56,6 @@ export default function RoutesPage() {
 
   const [routes, setRoutes] = useState([]);
   const [customers, setCustomers] = useState([]);
-  const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const { search, setSearch } = useListUrlSearch();
   const [salesPeriod, setSalesPeriod] = useState("day");
@@ -81,22 +81,23 @@ export default function RoutesPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [routeRes, custRes, salesRes] = await Promise.all([
-        apiRequest("/routes", { searchParams: { per_page: 200 } }),
-        apiRequest("/customers", { searchParams: { per_page: 200 } }),
-        apiRequest("/sales", { searchParams: { per_page: 500 } }),
+      const [routeRes, custRes] = await Promise.all([
+        apiRequest("/routes", {
+          searchParams: { per_page: 200, include_stats: 1, stats_period: salesPeriod },
+        }),
+        apiRequest("/customers", { searchParams: { per_page: 500 } }),
       ]);
       setRoutes(routeRes.data ?? []);
       setCustomers(custRes.data ?? []);
-      setSales(salesRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load routes");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [salesPeriod]);
 
   useEffect(() => {
+    setLoading(true);
     loadData();
   }, [loadData]);
 
@@ -105,12 +106,21 @@ export default function RoutesPage() {
     [customers],
   );
 
-  const salesByRoute = useMemo(
-    () => aggregateSalesByRoute(sales, salesPeriod),
-    [sales, salesPeriod],
-  );
+  const routeStatsById = useMemo(() => {
+    const map = new Map();
+    for (const route of routes) {
+      const routeId = normalizeRouteId(route.id);
+      if (routeId == null) continue;
+      map.set(routeId, {
+        total: Number(route.sales_total ?? 0),
+        count: Number(route.orders_count ?? 0),
+        customers: Number(route.customer_count ?? customerCountByRoute.get(routeId) ?? 0),
+      });
+    }
+    return map;
+  }, [routes, customerCountByRoute]);
 
-  const periodSales = useMemo(() => sumRouteSales(salesByRoute), [salesByRoute]);
+  const periodSales = useMemo(() => sumRouteSales(routeStatsById), [routeStatsById]);
 
   const stats = useMemo(() => {
     const activeRoutes = routes.filter((r) => r.is_active !== false);
@@ -137,11 +147,11 @@ export default function RoutesPage() {
       );
     }
     return [...list].sort((a, b) => {
-      const salesA = salesByRoute.get(a.id)?.total ?? 0;
-      const salesB = salesByRoute.get(b.id)?.total ?? 0;
+      const salesA = routeStatsById.get(normalizeRouteId(a.id))?.total ?? 0;
+      const salesB = routeStatsById.get(normalizeRouteId(b.id))?.total ?? 0;
       return salesB - salesA;
     });
-  }, [routes, search, salesByRoute]);
+  }, [routes, search, routeStatsById]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -289,6 +299,7 @@ export default function RoutesPage() {
       subtitle="Manage delivery and sales routes"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <DistributionHelpButton />
           <CatalogDataImportButton
             title="Import routes"
             description="Upload CSV or Excel. Required column: route_name (or Route). Optional: direction, route_markup_price, is_active."
@@ -391,7 +402,8 @@ export default function RoutesPage() {
                     </tr>
                   ) : (
                     pageSlice.map((route) => {
-                      const routeSales = salesByRoute.get(route.id);
+                      const routeId = normalizeRouteId(route.id);
+                      const routeSales = routeStatsById.get(routeId);
                       return (
                         <tr
                           key={route.id}
@@ -413,7 +425,7 @@ export default function RoutesPage() {
                           </td>
                           <td className="px-4 py-3 text-slate-700">{route.direction || "—"}</td>
                           <td className="px-4 py-3 text-slate-700">
-                            {customerCountByRoute.get(route.id) ?? 0}
+                            {routeSales?.customers ?? customerCountByRoute.get(routeId) ?? 0}
                           </td>
                           <td className="px-4 py-3 text-right font-medium text-slate-800">
                             {formatRouteKes(routeSales?.total ?? 0)}

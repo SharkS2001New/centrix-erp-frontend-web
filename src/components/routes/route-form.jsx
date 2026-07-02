@@ -199,11 +199,36 @@ export function RouteFormCard({ children, onSubmit, actions }) {
 export function countCustomersByRoute(customers) {
   const map = new Map();
   for (const c of customers) {
-    if (c.route_id != null && !c.deleted_at) {
-      map.set(c.route_id, (map.get(c.route_id) ?? 0) + 1);
+    const routeId = normalizeRouteId(c.route_id);
+    if (routeId != null && !c.deleted_at) {
+      map.set(routeId, (map.get(routeId) ?? 0) + 1);
     }
   }
   return map;
+}
+
+export function normalizeRouteId(routeId) {
+  if (routeId == null || routeId === "") return null;
+  const num = Number(routeId);
+  return Number.isFinite(num) ? num : null;
+}
+
+export function effectiveSaleRouteId(sale) {
+  return normalizeRouteId(sale?.route_id) ?? normalizeRouteId(sale?.customer?.route_id);
+}
+
+const ROUTE_SALE_EXCLUDED_STATUSES = new Set(["cancelled", "expired", "held"]);
+
+export function isActiveRouteSale(sale) {
+  return (
+    effectiveSaleRouteId(sale) != null &&
+    !sale?.deleted_at &&
+    !ROUTE_SALE_EXCLUDED_STATUSES.has(String(sale?.status ?? "").toLowerCase())
+  );
+}
+
+export function isCompletedRouteSale(sale) {
+  return isActiveRouteSale(sale) && sale.status === "completed";
 }
 
 export function isToday(value) {
@@ -218,17 +243,14 @@ export function isToday(value) {
 }
 
 export function countTodayDeliveries(sales, routeId) {
+  const normalizedRouteId = normalizeRouteId(routeId);
   return sales.filter(
     (s) =>
-      s.route_id === routeId &&
+      effectiveSaleRouteId(s) === normalizedRouteId &&
       !s.deleted_at &&
       s.status === "completed" &&
       (isToday(s.delivery_date) || isToday(s.completed_at) || isToday(s.created_at)),
   ).length;
-}
-
-export function isCompletedRouteSale(sale) {
-  return sale?.route_id != null && !sale.deleted_at && sale.status === "completed";
 }
 
 export function isSaleInPeriod(sale, period, reference = new Date()) {
@@ -244,11 +266,12 @@ export function isSaleInPeriod(sale, period, reference = new Date()) {
 export function aggregateSalesByRoute(sales, period = "day") {
   const map = new Map();
   for (const sale of sales) {
-    if (!isCompletedRouteSale(sale) || !isSaleInPeriod(sale, period)) continue;
-    const cur = map.get(sale.route_id) ?? { total: 0, count: 0 };
+    const routeId = effectiveSaleRouteId(sale);
+    if (!isActiveRouteSale(sale) || !isSaleInPeriod(sale, period) || routeId == null) continue;
+    const cur = map.get(routeId) ?? { total: 0, count: 0 };
     cur.total += Number(sale.order_total ?? 0);
     cur.count += 1;
-    map.set(sale.route_id, cur);
+    map.set(routeId, cur);
   }
   return map;
 }

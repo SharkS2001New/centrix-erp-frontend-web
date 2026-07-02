@@ -66,6 +66,7 @@ import {
   FulfillmentAssignmentDialog,
   PodCaptureDialog,
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
+import { DistributionHelpButton } from "@/components/fulfillment/distribution-help";
 import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { usePosSession } from "@/contexts/pos-session-context";
@@ -83,7 +84,11 @@ function indexPaymentRefs(payments) {
   return map;
 }
 
-export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnly = false }) {
+export default function SalesOrdersListScreen({
+  queueSlug = null,
+  routeOrdersOnly = false,
+  routeOrdersDateRangeDays = 30,
+}) {
   const router = useRouter();
   const confirm = useConfirm();
   const { user, capabilities, organization } = useAuth();
@@ -149,15 +154,24 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   );
 
   useEffect(() => {
-    const range = queueConfig?.dateRangeDays
-      ? defaultDateRange(queueConfig.dateRangeDays)
-      : getOrdersListDefaultDateRange(capabilities?.module_settings);
+    const range =
+      routeOrdersOnly && routeOrdersDateRangeDays
+        ? defaultDateRange(routeOrdersDateRangeDays)
+        : queueConfig?.dateRangeDays
+          ? defaultDateRange(queueConfig.dateRangeDays)
+          : getOrdersListDefaultDateRange(capabilities?.module_settings);
     setFromDate(range.from);
     setToDate(range.to);
     setAppliedFromDate(range.from);
     setAppliedToDate(range.to);
     setListFiltersInitialized(true);
-  }, [capabilities?.module_settings, queueConfig?.dateRangeDays, queueSlug]);
+  }, [
+    capabilities?.module_settings,
+    queueConfig?.dateRangeDays,
+    queueSlug,
+    routeOrdersOnly,
+    routeOrdersDateRangeDays,
+  ]);
 
   useEffect(() => {
     if (!includeMobileOrders && sourceFilter === "mobile") {
@@ -617,7 +631,23 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
           : queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"
       }
       action={
-        routeOrdersOnly ? null : (
+        routeOrdersOnly ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <DistributionHelpButton />
+            <Link
+              href="/fulfillment/dispatch"
+              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Dispatch board
+            </Link>
+            <Link
+              href="/fulfillment/routes"
+              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Routes
+            </Link>
+          </div>
+        ) : (
           <Link
             href="/sales/pos"
             className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
