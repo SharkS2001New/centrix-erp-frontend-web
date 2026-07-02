@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { FulfillmentPageShell } from "@/components/fulfillment/fulfillment-shared";
 import {
-  CatalogPageShell,
   Field,
   FilterSelect,
   FormDrawer,
@@ -210,7 +210,7 @@ export default function VehiclesPage() {
   }
 
   return (
-    <CatalogPageShell
+    <FulfillmentPageShell
       title="Vehicles"
       subtitle="Fleet registration and vehicle status"
       action={
@@ -408,6 +408,6 @@ export default function VehiclesPage() {
           onClick={() => void deleteSelectedVehicles()}
         />
       </BatchActionBar>
-    </CatalogPageShell>
+    </FulfillmentPageShell>
   );
 }

@@ -618,6 +618,7 @@ export default function SalesOrdersListScreen({
   return (
     <CatalogPageShell
       navigationReady={!loading}
+      distributionHelp={routeOrdersOnly}
       title={
         routeOrdersOnly
           ? (queueConfig?.title ?? "Route orders")

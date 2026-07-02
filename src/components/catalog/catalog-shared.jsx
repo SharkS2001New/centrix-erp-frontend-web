@@ -5,6 +5,7 @@ import { Children, isValidElement, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useCanAccess } from "@/components/permission-gate";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
+import { DistributionHelpButton } from "@/components/fulfillment/distribution-help";
 import { formatOrgCurrency, formatOrgCurrencyCompact, formatOrgDate, formatOrgNumber } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 import { LIST_PAGE_SIZE_OPTIONS } from "@/lib/use-list-page-controls";
@@ -106,15 +107,19 @@ export function CatalogPageShell({
   toolbar,
   children,
   navigationReady = true,
+  distributionHelp = false,
 }) {
   usePageNavigationReady(navigationReady);
 
   return (
     <div className="theme-workspace min-h-full">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="theme-heading text-xl font-medium">{title}</h1>
-          {subtitle && <p className="theme-subtext mt-0.5 text-sm">{subtitle}</p>}
+        <div className="flex items-start gap-3">
+          {distributionHelp ? <DistributionHelpButton className="mt-0.5 shrink-0" /> : null}
+          <div>
+            <h1 className="theme-heading text-xl font-medium">{title}</h1>
+            {subtitle && <p className="theme-subtext mt-0.5 text-sm">{subtitle}</p>}
+          </div>
         </div>
         {action}
       </div>

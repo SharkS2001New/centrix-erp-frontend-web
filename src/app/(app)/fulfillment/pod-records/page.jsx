@@ -5,8 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetchBlob, apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { FulfillmentPageShell } from "@/components/fulfillment/fulfillment-shared";
 import {
-  CatalogPageShell,
   Field,
   FilterSelect,
   PrimaryButton,
@@ -89,16 +89,16 @@ export default function PodRecordsPage() {
 
   if (!distributionEnabled) {
     return (
-      <CatalogPageShell title="Proof of delivery" subtitle="Delivery confirmations and signatures">
+      <FulfillmentPageShell title="Proof of delivery" subtitle="Delivery confirmations and signatures">
         <p className="text-sm text-slate-500">
           Enable distribution operations in Admin → Settings → Distribution.
         </p>
-      </CatalogPageShell>
+      </FulfillmentPageShell>
     );
   }
 
   return (
-    <CatalogPageShell
+    <FulfillmentPageShell
       title="Proof of delivery"
       subtitle="Review delivery confirmations, photos, and signatures"
       action={
@@ -199,6 +199,6 @@ export default function PodRecordsPage() {
           <img src={previewUrl} alt="POD attachment" className="max-h-[80vh] max-w-full rounded-lg bg-white p-2" />
         </div>
       ) : null}
-    </CatalogPageShell>
+    </FulfillmentPageShell>
   );
 }

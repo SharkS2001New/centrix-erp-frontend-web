@@ -6,8 +6,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { FulfillmentPageShell } from "@/components/fulfillment/fulfillment-shared";
 import {
-  CatalogPageShell,
   Field,
   FormDrawer,
   PrimaryButton,
@@ -130,17 +130,17 @@ export default function RouteSchedulesPage() {
 
   if (!distributionEnabled) {
     return (
-      <CatalogPageShell title="Route schedules" subtitle="Recurring driver and vehicle assignments">
+      <FulfillmentPageShell title="Route schedules" subtitle="Recurring driver and vehicle assignments">
         <p className="text-sm text-slate-500">
           Enable distribution operations in <OrgSettingsPlatformHint area="Organization settings → Distribution" />.
           .
         </p>
-      </CatalogPageShell>
+      </FulfillmentPageShell>
     );
   }
 
   return (
-    <CatalogPageShell
+    <FulfillmentPageShell
       title="Route schedules"
       subtitle="Assign default drivers and vehicles to routes by day of week"
       action={
@@ -284,6 +284,6 @@ export default function RouteSchedulesPage() {
           />
         </Field>
       </FormDrawer>
-    </CatalogPageShell>
+    </FulfillmentPageShell>
   );
 }

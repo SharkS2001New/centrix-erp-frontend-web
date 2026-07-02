@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { FulfillmentPageShell } from "@/components/fulfillment/fulfillment-shared";
 import {
-  CatalogPageShell,
   Field,
   FilterSelect,
   FormDrawer,
@@ -272,7 +272,7 @@ export default function DriversPage() {
   }
 
   return (
-    <CatalogPageShell
+    <FulfillmentPageShell
       title="Drivers"
       subtitle="Manage delivery drivers and assignments"
       action={
@@ -538,7 +538,7 @@ export default function DriversPage() {
           onClick={() => void deleteSelectedDrivers()}
         />
       </BatchActionBar>
-    </CatalogPageShell>
+    </FulfillmentPageShell>
   );
 }
 

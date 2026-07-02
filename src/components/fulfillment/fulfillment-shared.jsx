@@ -1,10 +1,15 @@
 "use client";
 
+import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import {
   getSaleTimestamp,
   isSameCalendarDay,
   isSameCalendarMonth,
 } from "@/components/catalog/catalog-shared";
+
+export function FulfillmentPageShell(props) {
+  return <CatalogPageShell {...props} distributionHelp />;
+}
 
 export const EMPTY_DRIVER_FORM = {
   full_name: "",

@@ -6,8 +6,8 @@ import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { FulfillmentPageShell } from "@/components/fulfillment/fulfillment-shared";
 import {
-  CatalogPageShell,
   Field,
   PrimaryButton,
   inputClassName,
@@ -86,19 +86,19 @@ export default function TripDetailPage() {
 
   if (loading) {
     return (
-      <CatalogPageShell title="Trip" subtitle="Loading…">
+      <FulfillmentPageShell title="Trip" subtitle="Loading…">
         <p className="text-sm text-slate-500">Loading trip…</p>
-      </CatalogPageShell>
+      </FulfillmentPageShell>
     );
   }
 
   if (!trip) {
     return (
-      <CatalogPageShell title="Trip not found">
+      <FulfillmentPageShell title="Trip not found">
         <Link href="/fulfillment/trips" className="text-[#185FA5] hover:underline">
           Back to trips
         </Link>
-      </CatalogPageShell>
+      </FulfillmentPageShell>
     );
   }
 
@@ -172,7 +172,7 @@ export default function TripDetailPage() {
   }
 
   return (
-    <CatalogPageShell
+    <FulfillmentPageShell
       title={trip.trip_code}
       subtitle={`${trip.route?.route_name ?? "Route TBD"} · ${trip.scheduled_date}`}
       action={
@@ -425,7 +425,7 @@ export default function TripDetailPage() {
                     onClick={() => printStopDeliveryNote({ id: row.id }, row.stop)}
                   >
                     <PrintIcon />
-                    Print
+                    Print Delivery Note
                   </button>
                 ),
               },
@@ -469,6 +469,6 @@ export default function TripDetailPage() {
           />
         </div>
       </section>
-    </CatalogPageShell>
+    </FulfillmentPageShell>
   );
 }

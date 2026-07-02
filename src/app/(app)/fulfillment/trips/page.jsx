@@ -7,7 +7,6 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import {
-  CatalogPageShell,
   Field,
   FilterSelect,
   PrimaryButton,
@@ -16,6 +15,7 @@ import {
   StatCard,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { FulfillmentPageShell } from "@/components/fulfillment/fulfillment-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { DISPATCH_TRIP_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
@@ -112,17 +112,17 @@ export default function TripsPage() {
 
   if (!distributionEnabled) {
     return (
-      <CatalogPageShell title="Dispatch trips" subtitle="Route runs and loading lists">
+      <FulfillmentPageShell title="Dispatch trips" subtitle="Route runs and loading lists">
         <p className="text-sm text-slate-500">
           Enable distribution operations in <OrgSettingsPlatformHint area="Organization settings → Distribution" />.
           .
         </p>
-      </CatalogPageShell>
+      </FulfillmentPageShell>
     );
   }
 
   return (
-    <CatalogPageShell
+    <FulfillmentPageShell
       title="Dispatch trips"
       subtitle="Plan route runs, build loading lists, and track deliveries"
       action={
@@ -235,6 +235,6 @@ export default function TripsPage() {
           </table>
         </div>
       )}
-    </CatalogPageShell>
+    </FulfillmentPageShell>
   );
 }

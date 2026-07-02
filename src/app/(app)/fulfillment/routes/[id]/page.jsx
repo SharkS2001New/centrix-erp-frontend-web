@@ -13,6 +13,7 @@ import {
   isSaleInPeriod,
   normalizeRouteId,
 } from "@/components/routes/route-form";
+import { DistributionHelpButton } from "@/components/fulfillment/distribution-help";
 import {
   FilterSelect,
   SALES_PERIOD_OPTIONS,
@@ -91,7 +92,8 @@ export default function RouteDetailPage() {
           <Link href="/fulfillment/routes" className="text-sm text-[#185FA5] hover:text-[#144f8a]">
             ← Back to routes
           </Link>
-          <div className="mt-2">
+          <div className="mt-2 flex items-center gap-2">
+            <DistributionHelpButton />
             <h1 className="text-xl font-medium text-slate-900">Route details</h1>
           </div>
         </div>

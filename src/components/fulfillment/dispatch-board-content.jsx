@@ -8,7 +8,8 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
-import { CatalogPageShell, Field, PaginationBar, PrimaryLink, inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { FulfillmentPageShell } from "@/components/fulfillment/fulfillment-shared";
+import { Field, PaginationBar, PrimaryLink, inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { CreateDispatchTripDialog } from "@/components/fulfillment/create-dispatch-trip-dialog";
 import { DashboardSection, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -195,18 +196,18 @@ export function DispatchBoardContent() {
 
   if (!distributionEnabled) {
     return (
-      <CatalogPageShell title="Dispatch board" subtitle="Route planning and delivery assignment">
+      <FulfillmentPageShell title="Dispatch board" subtitle="Route planning and delivery assignment">
         <p className="text-sm text-slate-500">
           Distribution operations are disabled. Enable them in{" "}
           <OrgSettingsPlatformHint area="Organization settings → Distribution" />.
           .
         </p>
-      </CatalogPageShell>
+      </FulfillmentPageShell>
     );
   }
 
   return (
-    <CatalogPageShell
+    <FulfillmentPageShell
       title="Dispatch board"
       subtitle="Plan deliveries by route and assign drivers to orders"
       action={
@@ -416,6 +417,6 @@ export function DispatchBoardContent() {
           }
         }}
       />
-    </CatalogPageShell>
+    </FulfillmentPageShell>
   );
 }

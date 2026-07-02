@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
 const WORKFLOW_STEPS = [
   {
@@ -108,48 +107,48 @@ export function DistributionHelpButton({ className = "" }) {
   );
 }
 
-export function DistributionHelpTopbarButton() {
-  const pathname = usePathname();
-  const show = pathname?.startsWith("/fulfillment");
-
-  if (!show) return null;
-
-  return (
-    <button
-      type="button"
-      className="app-topbar-icon-btn"
-      aria-label="Distribution help"
-      title="How distribution works"
-      onClick={() => {
-        window.dispatchEvent(new CustomEvent("distribution-help:open"));
-      }}
-    >
-      <HelpIcon className="h-5 w-5" />
-    </button>
-  );
-}
-
 export function DistributionHelpDialog() {
-  const dialogRef = useRef(null);
+  const [open, setOpen] = useState(false);
+
+  const close = useCallback(() => setOpen(false), []);
 
   useEffect(() => {
     function onOpen() {
-      dialogRef.current?.showModal();
+      setOpen(true);
     }
     window.addEventListener("distribution-help:open", onOpen);
     return () => window.removeEventListener("distribution-help:open", onOpen);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+
+    function onKeyDown(event) {
+      if (event.key === "Escape") close();
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, close]);
+
+  if (!open) return null;
+
   return (
-    <dialog
-      ref={dialogRef}
-      className="fixed inset-0 z-[70] m-auto flex h-fit max-h-[min(90vh,52rem)] w-[min(42rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl backdrop:bg-black/50 open:flex"
-      onClick={(e) => {
-        if (e.target === dialogRef.current) dialogRef.current.close();
-      }}
-    >
+    <>
+      <button
+        type="button"
+        className="fixed inset-0 z-[70] bg-black/50"
+        aria-label="Close distribution help"
+        onClick={close}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="distribution-help-title"
+        className="theme-panel fixed left-1/2 top-1/2 z-[71] flex h-fit max-h-[min(90vh,52rem)] w-[min(42rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border p-0 shadow-2xl"
+      >
       <div className="shrink-0 border-b border-slate-200 px-6 py-5">
-        <h2 className="text-lg font-semibold text-slate-900">Distribution guide</h2>
+        <h2 id="distribution-help-title" className="text-lg font-semibold theme-heading">Distribution guide</h2>
         <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
           Move orders from sale to delivery: assign customers to routes, plan dispatch, build loading sheets,
           and close trips with cash reconciliation.
@@ -220,21 +219,25 @@ export function DistributionHelpDialog() {
         <button
           type="button"
           className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#144f8a]"
-          onClick={() => dialogRef.current?.close()}
+          onClick={close}
         >
           Got it
         </button>
       </div>
-    </dialog>
+      </div>
+    </>
   );
 }
 
 export function DistributionPageHeader({ title, subtitle, action }) {
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <h1 className="theme-heading text-xl font-medium">{title}</h1>
-        {subtitle ? <p className="theme-subtext mt-0.5 text-sm">{subtitle}</p> : null}
+      <div className="flex items-start gap-3">
+        <DistributionHelpButton className="mt-0.5 shrink-0" />
+        <div>
+          <h1 className="theme-heading text-xl font-medium">{title}</h1>
+          {subtitle ? <p className="theme-subtext mt-0.5 text-sm">{subtitle}</p> : null}
+        </div>
       </div>
       {action}
     </div>
