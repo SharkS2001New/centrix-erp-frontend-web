@@ -11,7 +11,7 @@ export const DISTRIBUTION_DEFAULTS = {
   enforce_vehicle_capacity: true,
   enable_cod_reconciliation: true,
   require_trip_cash_settlement: false,
-  include_normal_orders_in_loading_list: false,
+  include_normal_orders_in_loading_list: true,
 };
 
 export const DISTRIBUTION_ASSIGN_STATUS_OPTIONS = [
@@ -75,7 +75,7 @@ export function mergeDistributionSettings(capabilities) {
     enforceVehicleCapacity: distribution.enforce_vehicle_capacity !== false,
     enableCodReconciliation: Boolean(distribution.enable_cod_reconciliation),
     requireTripCashSettlement: Boolean(distribution.require_trip_cash_settlement),
-    includeNormalOrdersInLoadingList: Boolean(distribution.include_normal_orders_in_loading_list),
+    includeNormalOrdersInLoadingList: distribution.include_normal_orders_in_loading_list !== false,
   };
 }
 
@@ -94,7 +94,7 @@ export function distributionFormFromApi(res) {
     enforce_vehicle_capacity: distribution.enforce_vehicle_capacity !== false,
     enable_cod_reconciliation: Boolean(distribution.enable_cod_reconciliation),
     require_trip_cash_settlement: Boolean(distribution.require_trip_cash_settlement),
-    include_normal_orders_in_loading_list: Boolean(distribution.include_normal_orders_in_loading_list),
+    include_normal_orders_in_loading_list: distribution.include_normal_orders_in_loading_list !== false,
   };
 }
 

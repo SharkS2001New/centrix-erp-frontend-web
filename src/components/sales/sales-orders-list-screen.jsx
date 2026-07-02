@@ -613,7 +613,7 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
       subtitle={
         routeOrdersOnly
           ? (queueConfig?.subtitle
-            ?? "Mobile field sales and POS route orders awaiting dispatch and delivery")
+            ?? "Route orders for customers on a delivery route — mobile, POS, and backoffice")
           : queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"
       }
       action={

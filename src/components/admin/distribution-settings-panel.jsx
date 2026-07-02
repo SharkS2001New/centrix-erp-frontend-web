@@ -188,7 +188,7 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
             />
             <Toggle
               label="Include normal backoffice orders"
-              description="By default, loading lists and dispatch trips only aggregate mobile and POS route orders. Enable this to also include backoffice orders assigned to a route."
+              description="When enabled, backoffice orders for route customers appear in route orders, dispatch, and loading sheets. Enabled by default."
               checked={form.include_normal_orders_in_loading_list}
               onChange={(v) => setForm((f) => ({ ...f, include_normal_orders_in_loading_list: v }))}
               disabled={!form.enable_distribution_ops}
