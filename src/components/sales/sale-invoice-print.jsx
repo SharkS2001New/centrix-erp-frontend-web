@@ -196,13 +196,13 @@ export function buildSaleInvoiceHtml(
   <style>
     @page { size: A4; margin: 0; }
     html { height: 100%; }
-    body { font-family: ${font}; margin: 0; padding: 16px; font-size: ${px(12)}; line-height: 1.4; min-height: 100%; box-sizing: border-box; ${orgPrintInkStyles()} }
+    body { font-family: ${font}; margin: 0; padding: 16px; font-size: ${px(12)}; line-height: 1.4; min-height: 100%; box-sizing: border-box; ${orgPrintInkStyles(generalSettings, "sale_invoice")} }
     .page { max-width: 820px; margin: 0 auto; }
     .page-body { }
     .org-brand .org-logo { display: block; margin: 0 auto 8px; max-height: 80px; max-width: 300px; object-fit: contain; }
     .org-brand .org-name { font-size: ${px(24)}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
     .brand-name { text-align: center; font-size: ${px(24)}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-    .brand-meta { margin-top: 6px; font-size: ${px(11)}; text-align: center; font-weight: 500; }
+    .brand-meta { margin-top: 6px; font-size: ${px(11)}; text-align: center; font-weight: var(--print-w-body, 600); }
     .doc-title { text-align: center; font-size: ${px(15)}; font-weight: 700; margin: 10px 0 12px; letter-spacing: 0.08em; text-transform: uppercase; }
     .meta-sheet { margin-bottom: 12px; font-size: ${px(11)}; }
     .meta-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin: 4px 0; }

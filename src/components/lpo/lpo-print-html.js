@@ -131,7 +131,7 @@ function lpoPrintStyles(generalSettings = null) {
       color: #000;
       min-height: 100%;
       box-sizing: border-box;
-      ${orgPrintInkStyles()}
+      ${orgPrintInkStyles(generalSettings, "lpo")}
     }
     .page {
       max-width: 820px;

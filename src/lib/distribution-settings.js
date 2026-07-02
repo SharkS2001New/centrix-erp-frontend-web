@@ -128,7 +128,6 @@ export function orderNeedsDriverAssignment(sale) {
 
 export function shouldShowOrderAssignAction(sale, distributionSettings) {
   if (!distributionSettings?.enabled) return false;
-  if (distributionSettings.autoAssignDriver) return false;
 
   const status = String(sale?.status ?? "").toLowerCase();
   if (["cancelled", "completed", "delivered"].includes(status)) return false;

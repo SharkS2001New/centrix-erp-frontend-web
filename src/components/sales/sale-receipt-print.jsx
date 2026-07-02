@@ -211,10 +211,10 @@ export function buildSaleReceiptHtml(
 <head>
   <title>Receipt ${escapeHtml(orderNo)}</title>
   <style>
-    body { font-family: ${font}; margin: 0; padding: 12px; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles()} }
+    body { font-family: ${font}; margin: 0; padding: 12px; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
     .receipt { width: 320px; margin: 0 auto; }
     .company-name { text-align: center; font-size: ${px(14)}; font-weight: 700; letter-spacing: .04em; margin-bottom: 4px; text-transform: uppercase; }
-    .company-meta { text-align: center; font-size: ${px(9)}; color: #000; line-height: 1.45; font-weight: 500; }
+    .company-meta { text-align: center; font-size: ${px(9)}; color: #000; line-height: 1.45; font-weight: var(--print-w-body, 600); }
     .doc-title { text-align: center; font-size: ${px(11)}; font-weight: 700; letter-spacing: .12em; margin: 10px 0 8px; text-transform: uppercase; }
     .divider { border-top: 1px dashed #000; margin: 8px 0; }
     .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; font-size: ${px(9)}; line-height: 1.4; }
@@ -247,7 +247,7 @@ export function buildSaleReceiptHtml(
       text-transform: uppercase;
     }
     .amount-label { font-weight: 700; text-align: left; }
-    .amount-value { font-weight: 400; text-align: right; white-space: nowrap; }
+    .amount-value { font-weight: var(--print-w-body, 600); text-align: right; white-space: nowrap; }
     .amount-line-grand { font-size: ${px(11)}; font-weight: 700; margin-top: 6px; padding-top: 4px; border-top: 1px solid #000; }
     .amount-line-grand .amount-value { font-weight: 700; }
     .payment-title { text-align: left; font-weight: 700; letter-spacing: .08em; margin: 0 0 6px; font-size: ${px(9)}; text-transform: uppercase; }
@@ -255,10 +255,10 @@ export function buildSaleReceiptHtml(
     .pay-instructions .pay-lines { margin: 0; }
     .pay-instructions .pay-line { margin: 3px 0; line-height: 1.45; text-align: left; }
     .pay-instructions .pay-label { font-weight: 700; }
-    .pay-instructions .pay-value { font-weight: 400; }
-    .pay-instructions .pay-note { margin-top: 6px; text-align: left; color: #000; font-size: ${px(8)}; line-height: 1.35; font-weight: 500; }
-    .footer-text { text-align: center; font-size: ${px(8)}; color: #000; margin-top: 6px; text-transform: uppercase; letter-spacing: .04em; line-height: 1.45; font-weight: 600; }
-    .footer-powered-by { text-align: center; font-size: ${px(7)}; font-weight: 500; color: #000; margin-top: 4px; letter-spacing: normal; line-height: 1.35; }
+    .pay-instructions .pay-value { font-weight: var(--print-w-body, 600); }
+    .pay-instructions .pay-note { margin-top: 6px; text-align: left; color: #000; font-size: ${px(8)}; line-height: 1.35; font-weight: var(--print-w-body, 600); }
+    .footer-text { text-align: center; font-size: ${px(8)}; color: #000; margin-top: 6px; text-transform: uppercase; letter-spacing: .04em; line-height: 1.45; font-weight: var(--print-w-emphasis, 700); }
+    .footer-powered-by { text-align: center; font-size: ${px(7)}; font-weight: var(--print-w-body, 600); color: #000; margin-top: 4px; letter-spacing: normal; line-height: 1.35; }
     .center { text-align: center; }
     @media print {
       body { font-size: ${px(10, true)}; }

@@ -1,4 +1,4 @@
-import { normalizeOrgPrintFontSizePx } from "@/lib/print-typography";
+import { normalizeOrgPrintFontSizePx, normalizeOrgPrintFontWeight, ORG_PRINT_FONT_WEIGHT_DEFAULT } from "@/lib/print-typography";
 
 /** Admin form / API keys for each printable document type. */
 export const PRINT_FONT_VARIANTS = {
@@ -8,6 +8,7 @@ export const PRINT_FONT_VARIANTS = {
     defaultFamily: "arial",
     defaultScale: "standard",
     defaultSizePx: 11,
+    defaultWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
   },
   invoice: {
     label: "A4 invoice",
@@ -15,6 +16,7 @@ export const PRINT_FONT_VARIANTS = {
     defaultFamily: "times",
     defaultScale: "standard",
     defaultSizePx: 14,
+    defaultWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
   },
   lpo: {
     label: "LPO",
@@ -22,6 +24,7 @@ export const PRINT_FONT_VARIANTS = {
     defaultFamily: "times",
     defaultScale: "standard",
     defaultSizePx: 14,
+    defaultWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
   },
   loading_sheet: {
     label: "Loading sheet",
@@ -29,6 +32,7 @@ export const PRINT_FONT_VARIANTS = {
     defaultFamily: "arial",
     defaultScale: "standard",
     defaultSizePx: 16,
+    defaultWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
   },
   report: {
     label: "Reports",
@@ -36,6 +40,7 @@ export const PRINT_FONT_VARIANTS = {
     defaultFamily: "times",
     defaultScale: "standard",
     defaultSizePx: 14,
+    defaultWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
     fallbackVariant: "invoice",
   },
 };
@@ -47,6 +52,7 @@ export function printFontFormKeys(variantKey) {
     family: `print_font_${variantKey}_family`,
     scale: `print_font_${variantKey}_scale`,
     sizePx: `print_font_${variantKey}_size_px`,
+    weight: `print_font_${variantKey}_weight`,
   };
 }
 
@@ -55,6 +61,7 @@ function legacyPrintFont(general = {}) {
     family: general.print_font_family,
     scale: general.print_font_scale,
     size_px: general.print_font_size_px,
+    weight: general.print_font_weight,
   };
 }
 
@@ -67,12 +74,14 @@ function resolvedVariantFont(general, variantKey, visited = new Set()) {
   const family = general?.[keys.family];
   const scale = general?.[keys.scale];
   const sizePx = general?.[keys.sizePx];
+  const weight = general?.[keys.weight];
 
-  if (family || scale || sizePx != null) {
+  if (family || scale || sizePx != null || weight) {
     return {
       family: family || config.defaultFamily,
       scale: scale || config.defaultScale,
       size_px: sizePx ?? config.defaultSizePx,
+      weight: normalizeOrgPrintFontWeight(weight ?? config.defaultWeight),
     };
   }
 
@@ -106,8 +115,11 @@ export function resolveOrgPrintFontSettings(generalSettings = null, typographyVa
   const size_px = normalizeOrgPrintFontSizePx(
     specific?.size_px ?? legacy.size_px ?? config.defaultSizePx,
   );
+  const weight = normalizeOrgPrintFontWeight(
+    specific?.weight ?? legacy.weight ?? config.defaultWeight,
+  );
 
-  return { family, scale, size_px: size_px, settingKey, typographyVariant };
+  return { family, scale, size_px: size_px, weight, settingKey, typographyVariant };
 }
 
 export function printFontFormDefaults() {
@@ -115,6 +127,7 @@ export function printFontFormDefaults() {
     print_font_family: "times",
     print_font_scale: "standard",
     print_font_size_px: "14",
+    print_font_weight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
   };
 
   for (const [variantKey, config] of Object.entries(PRINT_FONT_VARIANTS)) {
@@ -122,6 +135,7 @@ export function printFontFormDefaults() {
     defaults[keys.family] = config.defaultFamily;
     defaults[keys.scale] = config.defaultScale;
     defaults[keys.sizePx] = String(config.defaultSizePx);
+    defaults[keys.weight] = config.defaultWeight;
   }
 
   return defaults;
@@ -133,6 +147,7 @@ export function printFontFormFromGeneral(general = {}) {
     print_font_family: merged.print_font_family ?? "times",
     print_font_scale: merged.print_font_scale ?? "standard",
     print_font_size_px: String(merged.print_font_size_px ?? 14),
+    print_font_weight: normalizeOrgPrintFontWeight(merged.print_font_weight),
   };
 
   for (const variantKey of PRINT_FONT_VARIANT_KEYS) {
@@ -148,6 +163,9 @@ export function printFontFormFromGeneral(general = {}) {
         resolved?.size_px ?? merged.print_font_size_px ?? config.defaultSizePx,
       ),
     );
+    result[keys.weight] = normalizeOrgPrintFontWeight(
+      resolved?.weight ?? merged.print_font_weight ?? config.defaultWeight,
+    );
   }
 
   return result;
@@ -160,6 +178,9 @@ export function printFontPayloadFromForm(form = {}) {
     print_font_size_px: normalizeOrgPrintFontSizePx(
       form.print_font_invoice_size_px ?? form.print_font_size_px,
     ),
+    print_font_weight: normalizeOrgPrintFontWeight(
+      form.print_font_invoice_weight ?? form.print_font_weight,
+    ),
   };
 
   for (const variantKey of PRINT_FONT_VARIANT_KEYS) {
@@ -168,6 +189,7 @@ export function printFontPayloadFromForm(form = {}) {
     payload[keys.family] = form[keys.family] || config.defaultFamily;
     payload[keys.scale] = form[keys.scale] || config.defaultScale;
     payload[keys.sizePx] = normalizeOrgPrintFontSizePx(form[keys.sizePx] ?? config.defaultSizePx);
+    payload[keys.weight] = normalizeOrgPrintFontWeight(form[keys.weight] ?? config.defaultWeight);
   }
 
   return payload;
@@ -187,8 +209,10 @@ export function mergePreviewGeneralWithPrintFonts(form, moduleSettings, typograp
     print_font_family: resolved.family,
     print_font_scale: resolved.scale,
     print_font_size_px: resolved.size_px,
+    print_font_weight: resolved.weight,
     [keys.family]: resolved.family,
     [keys.scale]: resolved.scale,
     [keys.sizePx]: resolved.size_px,
+    [keys.weight]: resolved.weight,
   };
 }

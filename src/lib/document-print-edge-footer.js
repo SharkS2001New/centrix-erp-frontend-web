@@ -26,16 +26,16 @@ export function documentPrintEdgeFooterStyles(generalSettings = null, { variant 
     background: #fff;
     font-size: ${px(9)};
     color: #000;
-    font-weight: 500;
+    font-weight: var(--print-w-body, 600);
     line-height: 1.4;
     box-sizing: border-box;
-    ${orgPrintInkStyles()}
+    ${orgPrintInkStyles(generalSettings, variant)}
   }
   .doc-print-edge-footer .footer-notes {
     text-align: center;
     margin: 0 0 6px;
     font-size: ${px(9)};
-    font-weight: 600;
+    font-weight: var(--print-w-emphasis, 700);
   }
   .doc-print-edge-footer .footer-notes p { margin: 2px 0; }
   .doc-print-edge-footer .print-footer-row {
@@ -46,23 +46,23 @@ export function documentPrintEdgeFooterStyles(generalSettings = null, { variant 
   }
   .doc-print-edge-footer .print-footer-left {
     text-align: left;
-    font-weight: 600;
+    font-weight: var(--print-w-emphasis, 700);
   }
   .doc-print-edge-footer .print-footer-center {
     text-align: center;
-    font-weight: 600;
+    font-weight: var(--print-w-emphasis, 700);
   }
   .doc-print-edge-footer .print-footer-center .designed-by {
     margin: 0 0 2px;
-    font-weight: 700;
+    font-weight: var(--print-w-strong, 800);
   }
   .doc-print-edge-footer .print-footer-center .printed-by {
     margin: 0;
-    font-weight: 600;
+    font-weight: var(--print-w-emphasis, 700);
   }
   .doc-print-edge-footer .print-footer-right {
     text-align: right;
-    font-weight: 600;
+    font-weight: var(--print-w-emphasis, 700);
     white-space: nowrap;
   }
   @media print {

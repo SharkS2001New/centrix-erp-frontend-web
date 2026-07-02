@@ -25,6 +25,16 @@ export const ORG_PRINT_FONT_SCALES = [
 
 export const ORG_PRINT_FONT_SIZE_LIMITS = { min: 8, max: 24, default: 14 };
 
+export const ORG_PRINT_FONT_WEIGHTS = [
+  { id: "normal", label: "Normal", value: 400 },
+  { id: "medium", label: "Medium", value: 500 },
+  { id: "semibold", label: "Semibold (recommended)", value: 600 },
+  { id: "bold", label: "Bold", value: 700 },
+  { id: "extra_bold", label: "Extra bold", value: 800 },
+];
+
+export const ORG_PRINT_FONT_WEIGHT_DEFAULT = "semibold";
+
 const VARIANT_BODY_BASE = {
   a4: { screen: 12, print: 15 },
   sale_invoice: { screen: 12, print: 15 },
@@ -64,6 +74,29 @@ export function normalizeOrgPrintFontSizePx(value) {
   return Math.round(Math.min(max, Math.max(min, num)));
 }
 
+export function normalizeOrgPrintFontWeight(weightId) {
+  const id = String(weightId ?? "").trim();
+  if (ORG_PRINT_FONT_WEIGHTS.some((row) => row.id === id)) return id;
+  return ORG_PRINT_FONT_WEIGHT_DEFAULT;
+}
+
+export function orgPrintFontWeightNumeric(weightId) {
+  return (
+    ORG_PRINT_FONT_WEIGHTS.find((row) => row.id === normalizeOrgPrintFontWeight(weightId))?.value
+    ?? 600
+  );
+}
+
+export function orgPrintFontWeightFromSettings(generalSettings, variant = "a4") {
+  const fontSettings = resolveOrgPrintFontSettings(generalSettings, variant);
+  return orgPrintFontWeightNumeric(fontSettings.weight);
+}
+
+/** Heading / label weight relative to configured body weight. */
+export function orgPrintRelativeWeight(baseWeight, delta = 100) {
+  return Math.min(800, Math.max(400, baseWeight + delta));
+}
+
 function orgPrintSizeMultiplier(fontSettings, variant = "a4") {
   if (fontSettings?.scale === "custom") {
     const customPx = normalizeOrgPrintFontSizePx(fontSettings?.size_px);
@@ -95,11 +128,18 @@ export function orgPrintFontFamilyFromSettings(generalSettings, variant = "a4") 
 }
 
 /** Strong black text for physical / PDF prints — avoids faint browser output. */
-export function orgPrintInkStyles() {
+export function orgPrintInkStyles(generalSettings = null, variant = "a4") {
+  const bodyWeight = generalSettings
+    ? orgPrintFontWeightFromSettings(generalSettings, variant)
+    : orgPrintFontWeightNumeric(ORG_PRINT_FONT_WEIGHT_DEFAULT);
   return `
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
     color: #000;
+    font-weight: ${bodyWeight};
     -webkit-font-smoothing: antialiased;
+    --print-w-body: ${bodyWeight};
+    --print-w-emphasis: ${orgPrintRelativeWeight(bodyWeight, 100)};
+    --print-w-strong: ${orgPrintRelativeWeight(bodyWeight, 200)};
   `;
 }

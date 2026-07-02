@@ -205,7 +205,7 @@ function loadingSheetPrintStyles(generalSettings = null) {
       line-height: 1.35;
       position: relative;
       min-height: 100%;
-      ${orgPrintInkStyles()}
+      ${orgPrintInkStyles(generalSettings, "loading_sheet")}
     }
     .page {
       max-width: 900px;

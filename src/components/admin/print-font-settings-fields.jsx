@@ -6,6 +6,7 @@ import {
   ORG_PRINT_FONT_FAMILIES,
   ORG_PRINT_FONT_SCALES,
   ORG_PRINT_FONT_SIZE_LIMITS,
+  ORG_PRINT_FONT_WEIGHTS,
 } from "@/lib/print-typography";
 
 export function PrintFontSettingsFields({
@@ -61,6 +62,27 @@ export function PrintFontSettingsFields({
             </option>
           ))}
         </select>
+      </Field>
+      <Field label="Text boldness">
+        <select
+          className={inputClassName()}
+          value={form?.[keys.weight] ?? config.defaultWeight ?? "semibold"}
+          onChange={(e) =>
+            setForm((current) => ({
+              ...current,
+              [keys.weight]: e.target.value,
+            }))
+          }
+        >
+          {ORG_PRINT_FONT_WEIGHTS.map((row) => (
+            <option key={row.id} value={row.id}>
+              {row.label}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-slate-500">
+          Body text weight on printouts. Semibold or bold is recommended for thermal and PDF output.
+        </p>
       </Field>
       {scale === "custom" ? (
         <Field label="Custom body text size">

@@ -78,7 +78,7 @@ export function brandedDocumentStyles(generalSettings = null) {
     position: relative;
     min-height: 100%;
     box-sizing: border-box;
-    ${orgPrintInkStyles()}
+    ${orgPrintInkStyles(generalSettings, "sale_invoice")}
   }
   .page {
     max-width: 820px;
@@ -114,7 +114,7 @@ export function brandedDocumentStyles(generalSettings = null) {
   .signatures { margin: 10px 0 6px; font-size: ${px(10)}; }
   .signatures p { margin: 0 0 10px; }
   .sig-line { display: inline-block; min-width: 180px; border-bottom: 1px dotted #000; }
-  .doc-footer-text { margin-top: 8px; text-align: center; font-size: ${px(8)}; color: #64748b; }
+  .doc-footer-text { margin-top: 8px; text-align: center; font-size: ${px(8)}; color: #000; font-weight: var(--print-w-body, 600); }
   ${documentPrintEdgeFooterStyles(generalSettings, { variant: "sale_invoice" })}
   .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
   .watermark-text {

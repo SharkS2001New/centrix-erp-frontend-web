@@ -118,7 +118,7 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
             />
             <Toggle
               label="Auto-assign driver"
-              description="Pick the active driver for the order route when advancing to the assignment step."
+              description="Pick the active driver for the order route when advancing to the assignment step. You can still assign or change drivers manually from the dispatch board."
               checked={form.auto_assign_driver}
               onChange={(v) => setForm((f) => ({ ...f, auto_assign_driver: v }))}
               disabled={!form.enable_distribution_ops}
@@ -167,7 +167,7 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
           <div className="space-y-3">
             <Toggle
               label="Auto-create dispatch trips"
-              description="When an order reaches the assignment status, add it to today's draft trip for its route (creating the trip if needed)."
+              description="When an order reaches the assignment status, add it to today's draft trip for its route (creating the trip if needed). Trips can still be created and managed manually on the dispatch board."
               checked={form.auto_create_trips}
               onChange={(v) => setForm((f) => ({ ...f, auto_create_trips: v }))}
               disabled={!form.enable_distribution_ops}

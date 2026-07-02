@@ -40,7 +40,7 @@ function deliveryNotePrintStyles(generalSettings = null) {
       font-size: ${px(12)};
       line-height: 1.35;
       min-height: 100%;
-      ${orgPrintInkStyles()}
+      ${orgPrintInkStyles(generalSettings, "loading_sheet")}
     }
     .header { text-align: center; margin-bottom: 20px; }
     .header h1 { margin: 0; font-size: ${px(20)}; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }

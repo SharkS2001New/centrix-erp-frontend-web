@@ -2,6 +2,7 @@ import { organizationLogoFileUrl } from "@/lib/api";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import {
   orgPrintFontFamilyFromSettings,
+  orgPrintInkStyles,
   orgPrintPx,
 } from "@/lib/print-typography";
 
@@ -101,19 +102,19 @@ export function reportDocumentStyles(generalSettings = null) {
   const px = (base, print = false) => orgPrintPx(base, generalSettings, { variant: "report", print });
   const font = orgPrintFontFamilyFromSettings(generalSettings, "report");
   return `
-  body { font-family: ${font}; padding: 24px; color: #111; font-size: ${px(11)}; position: relative; }
-  .org-header { text-align: center; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #e2e8f0; }
+  body { font-family: ${font}; padding: 24px; color: #000; font-size: ${px(11)}; position: relative; ${orgPrintInkStyles(generalSettings, "report")} }
+  .org-header { text-align: center; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #000; }
   .org-logo { display: block; margin: 0 auto 8px; max-height: 64px; max-width: 260px; object-fit: contain; }
-  .org-name { font-size: ${px(18)}; font-weight: 700; margin: 0; line-height: 1.25; color: #0f172a; }
+  .org-name { font-size: ${px(18)}; font-weight: var(--print-w-strong, 800); margin: 0; line-height: 1.25; color: #000; }
   .meta { margin-bottom: 20px; text-align: center; }
-  .meta h1 { font-size: ${px(16)}; margin: 0 0 4px; font-weight: 600; }
-  .meta p { margin: 2px 0; font-size: ${px(12)}; color: #475569; }
-  .doc-footer { margin-top: 18px; text-align: center; font-size: ${px(10)}; color: #64748b; }
-  table { width: 100%; border-collapse: collapse; position: relative; z-index: 1; font-size: ${px(11)}; }
-  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
-  th { background: #f8fafc; }
+  .meta h1 { font-size: ${px(16)}; margin: 0 0 4px; font-weight: var(--print-w-emphasis, 700); color: #000; }
+  .meta p { margin: 2px 0; font-size: ${px(12)}; color: #000; font-weight: var(--print-w-body, 600); }
+  .doc-footer { margin-top: 18px; text-align: center; font-size: ${px(10)}; color: #000; font-weight: var(--print-w-body, 600); }
+  table { width: 100%; border-collapse: collapse; position: relative; z-index: 1; font-size: ${px(11)}; color: #000; }
+  th, td { border: 1px solid #000; padding: 6px 8px; text-align: left; }
+  th { background: #f3f4f6; font-weight: var(--print-w-emphasis, 700); }
   td.num, th.num { text-align: right; }
-  tfoot td { font-weight: 600; background: #f8fafc; }
+  tfoot td { font-weight: var(--print-w-emphasis, 700); background: #f3f4f6; }
   .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
   .watermark-text {
     position: absolute;
