@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   normalizeFooterLines,
+  normalizeFooterLinesForEditor,
   parseFooterLines,
   serializeFooterLines,
 } from "@/lib/footer-line-format";
@@ -52,6 +53,14 @@ function previewLineClass(line) {
   return classes.join(" ");
 }
 
+function padLinesToMin(lines, minRows) {
+  const next = normalizeFooterLinesForEditor(lines);
+  while (next.length < minRows) {
+    next.push({ ...EMPTY_LINE });
+  }
+  return next;
+}
+
 /**
  * Per-line footer editor — alignment, size, bold, and italic per row.
  * Stores plain multiline text or JSON when styling is applied.
@@ -65,23 +74,25 @@ export function FooterLineEditor({
   showPlaceholdersHint = false,
   placeholdersHint = "",
 }) {
-  const lines = useMemo(() => {
-    const parsed = parseFooterLines(value);
-    if (parsed.length >= minRows) return parsed;
-    const padded = [...parsed];
-    while (padded.length < minRows) {
-      padded.push({ ...EMPTY_LINE });
-    }
-    return padded;
+  const lastEmittedRef = useRef(value);
+  const [lines, setLines] = useState(() => padLinesToMin(parseFooterLines(value, { includeEmpty: true }), minRows));
+
+  useEffect(() => {
+    if (value === lastEmittedRef.current) return;
+    lastEmittedRef.current = value;
+    setLines(padLinesToMin(parseFooterLines(value, { includeEmpty: true }), minRows));
   }, [value, minRows]);
 
   function commit(nextLines) {
-    onChange(serializeFooterLines(nextLines));
+    const padded = padLinesToMin(nextLines, minRows);
+    const serialized = serializeFooterLines(padded, { forEditor: true });
+    lastEmittedRef.current = serialized;
+    setLines(padded);
+    onChange(serialized);
   }
 
   function updateLine(index, patch) {
-    const next = lines.map((line, i) => (i === index ? { ...line, ...patch } : line));
-    commit(next);
+    commit(lines.map((line, i) => (i === index ? { ...line, ...patch } : line)));
   }
 
   function addLine() {
@@ -94,7 +105,8 @@ export function FooterLineEditor({
       commit([{ ...EMPTY_LINE }]);
       return;
     }
-    commit(lines.filter((_, i) => i !== index));
+    const next = lines.filter((_, i) => i !== index);
+    commit(next.length < minRows ? padLinesToMin(next, minRows) : next);
   }
 
   return (
@@ -155,14 +167,15 @@ export function FooterLineEditor({
                 type="button"
                 title="Remove line"
                 onClick={() => removeLine(index)}
-                className="ml-auto rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 hover:bg-red-50 hover:text-red-600"
+                disabled={lines.length <= minRows && !line.text.trim()}
+                className="ml-auto rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Remove
               </button>
             </div>
-            <input
-              type="text"
-              className={inputClassName()}
+            <textarea
+              rows={3}
+              className={`${inputClassName()} min-h-[4.5rem] resize-y`}
               value={line.text}
               placeholder={index === 0 ? placeholder : "Footer line text…"}
               onChange={(e) => updateLine(index, { text: e.target.value })}
@@ -194,7 +207,7 @@ export function FooterLineEditor({
             <p className="text-xs text-slate-400">Styled footer lines appear here as you edit…</p>
           ) : (
             normalizeFooterLines(lines).map((line, index) => (
-              <p key={index} className={previewLineClass(line)}>
+              <p key={index} className={`whitespace-pre-wrap ${previewLineClass(line)}`}>
                 {line.text}
               </p>
             ))

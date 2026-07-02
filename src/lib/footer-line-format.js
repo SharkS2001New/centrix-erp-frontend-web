@@ -18,19 +18,25 @@ const SIZES = new Set(["sm", "md", "lg"]);
 export function linesFromMultilineText(text) {
   return String(text ?? "")
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+    .map((line) => line.replace(/\s+$/u, ""))
+    .filter((line) => line.trim());
 }
+
+function escapeFooterLineHtml(text) {
+  return escapeHtml(String(text ?? "")).replace(/\n/g, "<br>");
+}
+
+export { escapeFooterLineHtml };
 
 /** @param {unknown} line */
 export function normalizeFooterLine(line) {
   if (typeof line === "string") {
-    return { text: line.trim(), align: "left", bold: false, italic: false, size: "md" };
+    return { text: String(line), align: "left", bold: false, italic: false, size: "md" };
   }
   if (!line || typeof line !== "object") {
     return { text: "", align: "left", bold: false, italic: false, size: "md" };
   }
-  const text = String(line.text ?? "").trim();
+  const text = String(line.text ?? "");
   const align = ALIGNMENTS.has(line.align) ? line.align : "left";
   const size = SIZES.has(line.size) ? line.size : "md";
   return {
@@ -42,11 +48,16 @@ export function normalizeFooterLine(line) {
   };
 }
 
-/** @param {unknown[]} lines */
+/** Lines with non-empty text — used for print output. */
 export function normalizeFooterLines(lines) {
   return (Array.isArray(lines) ? lines : [])
     .map(normalizeFooterLine)
-    .filter((line) => line.text);
+    .filter((line) => line.text.trim());
+}
+
+/** All lines including empty placeholders — used by the admin editor. */
+export function normalizeFooterLinesForEditor(lines) {
+  return (Array.isArray(lines) ? lines : []).map(normalizeFooterLine);
 }
 
 function lineIsPlain(line) {
@@ -55,17 +66,20 @@ function lineIsPlain(line) {
 
 /**
  * Parse stored footer — plain multiline text or JSON array of styled lines.
+ * @param {unknown} raw
+ * @param {{ includeEmpty?: boolean }} [options]
  * @returns {FooterLine[]}
  */
-export function parseFooterLines(raw) {
-  const text = String(raw ?? "").trim();
-  if (!text) return [];
+export function parseFooterLines(raw, { includeEmpty = false } = {}) {
+  const text = String(raw ?? "");
+  if (!text.trim()) return [];
 
   if (text.startsWith("[")) {
     try {
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed)) {
-        return normalizeFooterLines(parsed);
+        const normalized = normalizeFooterLinesForEditor(parsed);
+        return includeEmpty ? normalized : normalized.filter((line) => line.text.trim());
       }
     } catch {
       /* legacy plain text */
@@ -81,16 +95,25 @@ export function parseFooterLines(raw) {
   }));
 }
 
-/** @param {FooterLine[]} lines */
-export function serializeFooterLines(lines) {
-  const normalized = normalizeFooterLines(lines);
-  if (!normalized.length) return "";
+/**
+ * @param {FooterLine[]} lines
+ * @param {{ forEditor?: boolean }} [options]
+ */
+export function serializeFooterLines(lines, { forEditor = false } = {}) {
+  const allLines = normalizeFooterLinesForEditor(lines);
+  const withContent = allLines.filter((line) => line.text.trim());
+  const hasEmptySlots = allLines.some((line) => !line.text.trim());
+  const hasStyle = allLines.some((line) => !lineIsPlain(line));
 
-  if (normalized.every(lineIsPlain)) {
-    return normalized.map((line) => line.text).join("\n");
+  if (!withContent.length && !forEditor) return "";
+  if (!allLines.length) return "";
+
+  // JSON preserves empty placeholder rows and per-line styling for the editor.
+  if (forEditor || hasEmptySlots || hasStyle) {
+    return JSON.stringify(allLines);
   }
 
-  return JSON.stringify(normalized);
+  return withContent.map((line) => line.text).join("\n");
 }
 
 function alignStyle(align) {
@@ -129,7 +152,7 @@ export function buildStyledFooterLinesHtml(lines, { layout = "a4", tag } = {}) {
   return normalized
     .map((line) => {
       const style = lineInlineStyle(line);
-      return `<${useTag} class="${className}" style="${style}">${escapeHtml(line.text)}</${useTag}>`;
+      return `<${useTag} class="${className}" style="${style}">${escapeFooterLineHtml(line.text)}</${useTag}>`;
     })
     .join("");
 }

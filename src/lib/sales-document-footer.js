@@ -1,6 +1,7 @@
 import { escapeHtml } from "@/lib/sale-document-print-shared";
 import {
   buildStyledFooterLinesHtml,
+  escapeFooterLineHtml,
   normalizeFooterLine,
   parseFooterLines,
 } from "@/lib/footer-line-format";
@@ -96,8 +97,8 @@ export function resolveSalesDocumentBodyFooterLines(
 
 function formatBodyFooterLineHtml(line, layout) {
   const styled = normalizeFooterLine(line);
-  const text = styled.text.trim();
-  if (!text) return "";
+  const text = styled.text;
+  if (!text.trim()) return "";
 
   const hasExplicitStyle =
     styled.align !== "left" || styled.bold || styled.italic || styled.size !== "md";
@@ -106,31 +107,33 @@ function formatBodyFooterLineHtml(line, layout) {
   }
 
   if (layout === "thermal") {
-    return `<div class="footer-text">${escapeHtml(text)}</div>`;
+    return `<div class="footer-text">${escapeFooterLineHtml(text)}</div>`;
   }
 
   const lower = text.toLowerCase();
   if (lower.startsWith("you were served")) {
-    return `<div class="served-by">${escapeHtml(text)}</div>`;
+    return `<div class="served-by">${escapeFooterLineHtml(text)}</div>`;
   }
 
-  const sigMatch = text.match(/^([^:]+):\s*(.*)$/);
+  const sigMatch = text.match(/^([^:]+):\s*(.*)$/s);
   if (sigMatch && /received by|signature|checked by|authorised by|authorized by/i.test(sigMatch[1])) {
     const label = sigMatch[1].trim();
     const value = sigMatch[2].trim() || "\u00a0";
-    return `<p class="sig-row"><span class="sig-label">${escapeHtml(label)}:</span><span class="sig-line">${escapeHtml(value)}</span></p>`;
+    return `<p class="sig-row"><span class="sig-label">${escapeHtml(label)}:</span><span class="sig-line">${escapeFooterLineHtml(value)}</span></p>`;
   }
 
   if (/confirm your goods|not refundable|not returnable/i.test(lower)) {
-    const goodsSub = /^\(/.test(text);
-    return `<p class="goods-note${goodsSub ? " goods-note-sub" : ""} center">${escapeHtml(text)}</p>`;
+    const goodsSub = /^\(/.test(text.trim());
+    return `<p class="goods-note${goodsSub ? " goods-note-sub" : ""} center">${escapeFooterLineHtml(text)}</p>`;
   }
 
-  return `<p class="body-footer-line">${escapeHtml(text)}</p>`;
+  return `<p class="body-footer-line">${escapeFooterLineHtml(text)}</p>`;
 }
 
 export function buildSalesDocumentBodyFooterHtml(lines, { layout = "a4" } = {}) {
-  const list = Array.isArray(lines) ? lines.filter((line) => normalizeFooterLine(line).text) : [];
+  const list = Array.isArray(lines)
+    ? lines.filter((line) => normalizeFooterLine(line).text.trim())
+    : [];
   if (!list.length) return "";
 
   if (layout === "thermal") {
@@ -170,16 +173,10 @@ function stripPoweredByFooterLines(lines) {
 }
 
 export function receiptBodyFooterForAdmin(text) {
-  const lines = parseFooterLines(text)
-    .filter((line) => !isPoweredByFooterLine(line.text));
-  if (!lines.length) return "";
-  const allPlain = lines.every(
-    (line) => line.align === "left" && !line.bold && !line.italic && line.size === "md",
+  const lines = parseFooterLines(text, { includeEmpty: true }).filter(
+    (line) => !isPoweredByFooterLine(line.text),
   );
-  if (allPlain) {
-    return lines.map((line) => line.text).join("\n");
-  }
-  return JSON.stringify(lines);
+  return serializeFooterLines(lines, { forEditor: true });
 }
 
 export function defaultReceiptBodyFooterForAdmin() {

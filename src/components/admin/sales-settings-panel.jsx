@@ -225,33 +225,6 @@ function CheckoutPricingTab({
         onChange={(v) => setSalesForm((f) => ({ ...f, enable_order_discount: v }))}
       />
       <Toggle
-        label="Require manager approval for large discounts"
-        description="When a line or order discount exceeds the threshold below, cashiers must submit a request. Managers with sales approval permission are notified in the bell icon."
-        checked={salesForm.discount_approval_enabled}
-        onChange={(v) => setSalesForm((f) => ({ ...f, discount_approval_enabled: v }))}
-      />
-      {salesForm.discount_approval_enabled ? (
-        <Field label="Discount approval threshold (%)">
-          <input
-            type="number"
-            min="0"
-            max="100"
-            step="0.1"
-            className={inputClassName}
-            value={salesForm.discount_approval_threshold_percent}
-            onChange={(e) =>
-              setSalesForm((f) => ({ ...f, discount_approval_threshold_percent: e.target.value }))
-            }
-          />
-        </Field>
-      ) : null}
-      <Toggle
-        label="Require manager approval for order cancellations"
-        description="Staff without sales manager access can request cancellation; approvers resolve it from notifications."
-        checked={salesForm.order_cancellation_approval_enabled}
-        onChange={(v) => setSalesForm((f) => ({ ...f, order_cancellation_approval_enabled: v }))}
-      />
-      <Toggle
         label="Enable vouchers"
         description="Allows payment vouchers at POS and voucher management. Create payment vouchers under Sales → Vouchers."
         checked={salesForm.enable_vouchers}

@@ -49,9 +49,9 @@ export function stripPoweredByFooterLines(lines) {
   return normalized.filter((line) => !isPoweredByFooterLine(line));
 }
 
-/** Preserve styled footer JSON when saving non-receipt document footers. */
+/** Preserve styled footer JSON and empty editor rows when saving. */
 export function footerContentForAdmin(text) {
-  return serializeFooterLines(parseFooterLines(text));
+  return serializeFooterLines(parseFooterLines(text, { includeEmpty: true }), { forEditor: true });
 }
 
 /** Receipt footer text for admin forms — vendor credit line is never editable. */
