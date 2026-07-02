@@ -8,6 +8,7 @@ import {
   DEFAULT_POS_RECEIPT_PAYMENT_LINES,
   receiptPaymentDetailsFromApi,
 } from "@/lib/receipt-payment-details";
+import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 
 const SALES_DEFAULTS = {
   allow_sell_from_shop: true,
@@ -399,13 +400,31 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
 
 /**
  * Backoffice loading list for mobile route orders when Distribution is not enabled.
- * When Distribution is on, loading lists live under Distribution → Trips.
+ * When Distribution is on, loading lists live under Distribution → Loading list.
  */
 export function shouldShowMobileLoadingSheets(capabilities) {
   if (!capabilities?.modules?.["sales.mobile"]) return false;
   if (!isOrgMobileSalesEnabled(capabilities)) return false;
   if (capabilities?.modules?.distribution) return false;
   return true;
+}
+
+/** Loading list hub for dispatch trips when Distribution operations are enabled. */
+export function shouldShowDistributionLoadingLists(capabilities) {
+  return isDistributionOpsEnabled(capabilities);
+}
+
+/** Sidebar entry for either mobile loading sheets or distribution trip loading lists. */
+export function shouldShowLoadingListNav(capabilities) {
+  return shouldShowMobileLoadingSheets(capabilities) || shouldShowDistributionLoadingLists(capabilities);
+}
+
+/** Preferred route for the loading list nav item. */
+export function loadingListNavHref(capabilities) {
+  if (shouldShowDistributionLoadingLists(capabilities)) {
+    return "/fulfillment/loading-lists";
+  }
+  return "/sales/loading-sheets";
 }
 
 /** Field attendance sessions for mobile sales reps (sign-in photo + GPS). */

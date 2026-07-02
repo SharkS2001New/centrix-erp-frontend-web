@@ -675,6 +675,7 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true } 
       fixedSourceFilter: "mobile",
       showRouteColumn: true,
       showDeliveryDateColumn: true,
+      showConnectivityColumn: true,
       lockStatusFilter: false,
       lockSourceFilter: true,
     };

@@ -249,6 +249,9 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
     if (item.href === "/fulfillment/routes" || item.href?.startsWith("/fulfillment/routes/")) {
       return true;
     }
+    if (item.href === "/fulfillment/loading-lists" || item.href?.startsWith("/fulfillment/loading-lists/")) {
+      return true;
+    }
     return pathBelongsToWorkspace(item.href, "backoffice");
   }
 
@@ -285,7 +288,10 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
 
   if (
     workspaceId === "backoffice" &&
-    (pathname === "/fulfillment/routes" || pathname.startsWith("/fulfillment/routes/"))
+    (pathname === "/fulfillment/routes" ||
+      pathname.startsWith("/fulfillment/routes/") ||
+      pathname === "/fulfillment/loading-lists" ||
+      pathname.startsWith("/fulfillment/loading-lists/"))
   ) {
     return true;
   }
@@ -313,6 +319,15 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
 export function resolveAvailableWorkspaces(ctx, capabilities) {
   if (ctx?.platformShell) return [];
   return workspacesFromCapabilities(capabilities);
+}
+
+/**
+ * Distribution help belongs in the app header only while the Distribution workspace is active.
+ * Routes live at /fulfillment/routes for both Backoffice and Distribution — use workspace, not path alone.
+ */
+export function shouldShowDistributionHelp(workspaces, storedId, pathname) {
+  const active = resolveActiveWorkspace(workspaces, storedId, pathname);
+  return active?.id === "distribution";
 }
 
 /**

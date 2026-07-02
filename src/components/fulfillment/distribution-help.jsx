@@ -1,7 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/contexts/auth-context";
+import { buildAccessContext } from "@/lib/access-control";
+import { getStoredWorkspace } from "@/lib/auth-storage";
+import {
+  resolveAvailableWorkspaces,
+  shouldShowDistributionHelp,
+} from "@/lib/workspaces";
 
 const WORKFLOW_STEPS = [
   {
@@ -108,10 +115,33 @@ export function DistributionHelpButton({ className = "" }) {
   );
 }
 
-/** Single help entry point — app header, only while viewing Distribution. */
+/** Single help entry point — app header, only while Distribution workspace is active. */
 export function DistributionHelpTopbarButton() {
   const pathname = usePathname();
-  if (!pathname?.startsWith("/fulfillment")) return null;
+  const { user, organization, capabilities, isSuperAdmin } = useAuth();
+
+  const ctx = useMemo(
+    () =>
+      buildAccessContext({
+        user,
+        organization,
+        capabilities,
+        isSuperAdmin,
+      }),
+    [capabilities, isSuperAdmin, organization, user],
+  );
+
+  const workspaces = useMemo(
+    () => resolveAvailableWorkspaces(ctx, capabilities),
+    [capabilities, ctx],
+  );
+
+  const show = useMemo(
+    () => shouldShowDistributionHelp(workspaces, getStoredWorkspace(), pathname),
+    [pathname, workspaces],
+  );
+
+  if (!show) return null;
 
   return (
     <button

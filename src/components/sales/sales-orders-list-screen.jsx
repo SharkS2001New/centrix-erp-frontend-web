@@ -221,6 +221,7 @@ export default function SalesOrdersListScreen({
   const showBranchColumn = branches.length > 1;
   const showRouteColumn = routeOrdersOnly || Boolean(queueConfig?.showRouteColumn);
   const showDeliveryDateColumn = routeOrdersOnly || Boolean(queueConfig?.showDeliveryDateColumn);
+  const showConnectivityColumn = Boolean(queueConfig?.showConnectivityColumn);
   const showSourceColumn = !routeOrdersOnly && sourceOptions.length > 2;
   const showSourceFilter = !routeOrdersOnly && sourceOptions.length > 2;
   const branchById = useMemo(
@@ -231,6 +232,7 @@ export default function SalesOrdersListScreen({
     showBranchColumn,
     showRouteColumn,
     showDeliveryDateColumn,
+    showConnectivityColumn,
     showSourceColumn,
   });
 
@@ -772,6 +774,7 @@ export default function SalesOrdersListScreen({
                       showBranchColumn={showBranchColumn}
                       showRouteColumn={showRouteColumn}
                       showDeliveryDateColumn={showDeliveryDateColumn}
+                      showConnectivityColumn={showConnectivityColumn}
                       showSourceColumn={showSourceColumn}
                     />
                   </thead>
@@ -798,6 +801,7 @@ export default function SalesOrdersListScreen({
                           branchName={saleBranchLabel(sale, branchById)}
                           showRouteColumn={showRouteColumn}
                           showDeliveryDateColumn={showDeliveryDateColumn}
+                          showConnectivityColumn={showConnectivityColumn}
                           showSourceColumn={showSourceColumn}
                           routeById={routeById}
                           paymentRefsBySaleId={paymentRefsBySaleId}

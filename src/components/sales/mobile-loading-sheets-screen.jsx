@@ -143,8 +143,8 @@ export default function MobileLoadingSheetsScreen() {
           {capabilities?.modules?.distribution ? (
             <p>
               Loading lists are managed under{" "}
-              <Link href="/fulfillment/trips" className="theme-link font-medium">
-                Distribution → Trips
+              <Link href="/fulfillment/loading-lists" className="theme-link font-medium">
+                Distribution → Loading list
               </Link>{" "}
               when Distribution is enabled.
             </p>

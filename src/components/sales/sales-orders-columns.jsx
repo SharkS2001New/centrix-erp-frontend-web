@@ -7,12 +7,14 @@ export function orderTableColumnCount({
   showBranchColumn = false,
   showRouteColumn = false,
   showDeliveryDateColumn = false,
+  showConnectivityColumn = false,
   showSourceColumn = true,
 }) {
   let count = showSourceColumn ? 10 : 9;
   if (showBranchColumn) count += 1;
   if (showRouteColumn) count += 1;
   if (showDeliveryDateColumn) count += 1;
+  if (showConnectivityColumn) count += 1;
   return count;
 }
 
@@ -36,6 +38,35 @@ export function saleRouteCell(sale, routeById) {
 
 export function saleDeliveryDateCell(sale) {
   return formatShortDate(sale.delivery_date);
+}
+
+export function saleConnectivityLabel(sale) {
+  const connectivity =
+    sale?.order_connectivity ??
+    (sale?.is_offline_order === true
+      ? "offline"
+      : sale?.is_offline_order === false
+        ? "online"
+        : sale?.fulfillment_meta?.location_check?.offline_order === true
+          ? "offline"
+          : sale?.fulfillment_meta?.location_check?.offline_order === false
+            ? "online"
+            : null);
+
+  if (connectivity === "offline") return "Offline";
+  if (connectivity === "online") return "Online";
+  return "—";
+}
+
+export function saleConnectivityCell(sale) {
+  const label = saleConnectivityLabel(sale);
+  if (label === "Offline") {
+    return <span className="font-medium text-amber-800">Offline</span>;
+  }
+  if (label === "Online") {
+    return <span className="text-slate-700">Online</span>;
+  }
+  return <span className="text-slate-400">—</span>;
 }
 
 export function saleVatCell(sale) {

@@ -4,7 +4,11 @@ import {
   salesTerminalOrderQueueNavItems,
 } from "@/lib/order-workflow";
 import { isOrderCancellationNavEnabled, isOrderExpiryNavEnabled } from "@/lib/platform-org-features";
-import { isOrgMobileSalesEnabled, isTillFloatWorkflowEnabled } from "@/lib/sales-settings";
+import {
+  isOrgMobileSalesEnabled,
+  isTillFloatWorkflowEnabled,
+  loadingListNavHref,
+} from "@/lib/sales-settings";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { isNavItemVisible, isNavSectionVisible, navSections } from "@/lib/nav-config";
 import { withNavItemIcon } from "@/lib/nav-item-icons";
@@ -66,7 +70,11 @@ export function buildWorkspaceNavSections({
         if (item.mobileOrdersNav) {
           return mobileOrderNavItems.filter((navItem) => isNavItemVisible(navItem, navContext));
         }
-        return isNavItemVisible(item, navContext) ? [item] : [];
+        if (!isNavItemVisible(item, navContext)) return [];
+        if (item.requireLoadingListNav) {
+          return [{ ...item, href: loadingListNavHref(capabilities) }];
+        }
+        return [item];
       }),
     }))
     .filter((section) => isNavSectionVisible(section, navContext))

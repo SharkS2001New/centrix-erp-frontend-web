@@ -33,6 +33,7 @@ import { getSaleDriverId, getSaleVehicleId } from "@/components/fulfillment/fulf
 import {
   saleRouteCell,
   saleDeliveryDateCell,
+  saleConnectivityCell,
   saleVatCell,
   salePaymentReferenceLabel,
   SaleCreatedByCell,
@@ -647,6 +648,7 @@ export function OrderListTableHead({
   showBranchColumn,
   showRouteColumn = false,
   showDeliveryDateColumn = false,
+  showConnectivityColumn = false,
   showSourceColumn = true,
 }) {
   return (
@@ -657,6 +659,7 @@ export function OrderListTableHead({
       {showBranchColumn ? <th className="px-4 py-2.5">Branch</th> : null}
       {showRouteColumn ? <th className="px-4 py-2.5">Route</th> : null}
       {showDeliveryDateColumn ? <th className="px-4 py-2.5">Delivery date</th> : null}
+      {showConnectivityColumn ? <th className="px-4 py-2.5">Connectivity</th> : null}
       <th className="px-4 py-2.5 text-right">Amount</th>
       <th className="px-4 py-2.5 text-right">VAT</th>
       <th className="px-4 py-2.5">Status</th>
@@ -686,6 +689,7 @@ export function OrderListTableRow({
   branchName = "—",
   showRouteColumn = false,
   showDeliveryDateColumn = false,
+  showConnectivityColumn = false,
   showSourceColumn = true,
   routeById,
   paymentRefsBySaleId,
@@ -725,6 +729,9 @@ export function OrderListTableRow({
         ) : null}
         {showDeliveryDateColumn ? (
           <td className="px-4 py-3 text-slate-700">{saleDeliveryDateCell(sale)}</td>
+        ) : null}
+        {showConnectivityColumn ? (
+          <td className="px-4 py-3">{saleConnectivityCell(sale)}</td>
         ) : null}
         <td className="px-4 py-3 text-right font-medium text-slate-900">
           {formatSaleKes(sale.order_total)}

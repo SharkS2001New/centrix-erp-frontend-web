@@ -2,7 +2,7 @@ import { buildCatalogReportNavItems } from "@/lib/reports/report-nav";
 import { canViewReport, P } from "@/lib/permission-codes";
 import { hasOperationalModule, shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
 import { anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-registry";
-import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled, isVouchersEnabled, isRedeemablePointsEnabled } from "@/lib/sales-settings";
+import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled, isVouchersEnabled, isRedeemablePointsEnabled, shouldShowLoadingListNav } from "@/lib/sales-settings";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { isKraDeviceConfigured } from "@/lib/finance-settings";
@@ -208,7 +208,7 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Loading list",
         module: "sales.backend",
         permission: P.sales.orders.view,
-        requireMobileLoadingSheets: true,
+        requireLoadingListNav: true,
       },
       {
         href: "/sales/field-attendance",
@@ -692,6 +692,12 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.fulfillment.drivers.view,
       },
       {
+        href: "/fulfillment/loading-lists",
+        label: "Loading list",
+        module: "distribution",
+        permission: P.fulfillment.drivers.view,
+      },
+      {
         href: "/fulfillment/pod-records",
         label: "Proof of delivery",
         module: "distribution",
@@ -909,6 +915,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   }
   if (item.requireTillFloat && !requireTillFloat) return false;
   if (item.requireMobileLoadingSheets && !shouldShowMobileLoadingSheets(capabilities)) return false;
+  if (item.requireLoadingListNav && !shouldShowLoadingListNav(capabilities)) return false;
   if (item.requireMultiBranchCatalog && !isMultiBranchCatalog(capabilities)) return false;
   if (item.requireMobileFieldAttendance && !shouldShowMobileFieldAttendance(capabilities)) return false;
   if (item.requireUserMobileChannel && !userHasMobileChannel(user?.login_channels)) return false;

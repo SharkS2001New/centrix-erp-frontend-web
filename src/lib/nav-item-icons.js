@@ -119,6 +119,7 @@ export const NAV_HREF_ICONS = {
   // Fulfillment
   "/fulfillment/dispatch": "truck",
   "/fulfillment/trips": "logistics",
+  "/fulfillment/loading-lists": "logistics",
   "/fulfillment/pod-records": "check",
   "/fulfillment/drivers": "users",
   "/fulfillment/vehicles": "inventory",
