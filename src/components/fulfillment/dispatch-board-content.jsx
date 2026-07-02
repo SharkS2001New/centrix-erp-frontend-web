@@ -48,8 +48,11 @@ export function DispatchBoardContent() {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const [creatingTrip, setCreatingTrip] = useState(false);
   const [createTripOpen, setCreateTripOpen] = useState(false);
+  const [createTripDefaults, setCreateTripDefaults] = useState({
+    routeIds: [],
+    saleIds: [],
+  });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -151,34 +154,17 @@ export function DispatchBoardContent() {
     });
   }
 
-  async function createTripFromSelection() {
+  function openCreateTripFromSelection() {
     const ids = [...selectedIds];
     const selectedSales = sales.filter((s) => ids.includes(s.id));
     if (!selectedSales.length) return;
 
     const routeIds = [...new Set(selectedSales.map((s) => s.route_id).filter(Boolean))];
-    if (routeIds.length > 1) {
-      notifyError("Selected orders must belong to the same route.");
-      return;
-    }
-
-    setCreatingTrip(true);
-    try {
-      const trip = await apiRequest("/dispatch-trips", {
-        method: "POST",
-        body: {
-          scheduled_date: runDate,
-          route_id: routeIds[0] ?? null,
-          sale_ids: ids,
-        },
-      });
-      setSelectedIds(new Set());
-      router.push(`/fulfillment/trips/${trip.id}`);
-    } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Failed to create trip");
-    } finally {
-      setCreatingTrip(false);
-    }
+    setCreateTripDefaults({
+      routeIds,
+      saleIds: ids,
+    });
+    setCreateTripOpen(true);
   }
 
   async function assignSelected(driverId, vehicleId) {
@@ -221,10 +207,23 @@ export function DispatchBoardContent() {
     >
       <CreateDispatchTripDialog
         open={createTripOpen}
-        onClose={() => setCreateTripOpen(false)}
+        onClose={() => {
+          setCreateTripOpen(false);
+          setCreateTripDefaults({ routeIds: [], saleIds: [] });
+          setSelectedIds(new Set());
+        }}
         routes={routes}
+        drivers={drivers}
+        vehicles={vehicles}
         defaultDate={runDate}
-        defaultRouteId={routeFilter !== "all" ? routeFilter : ""}
+        defaultRouteIds={
+          createTripDefaults.routeIds.length
+            ? createTripDefaults.routeIds
+            : routeFilter !== "all"
+              ? [Number(routeFilter)]
+              : []
+        }
+        defaultSaleIds={createTripDefaults.saleIds}
       />
       <div className="mb-6 flex flex-wrap items-end gap-3">
         <Field label="Delivery date">
@@ -361,10 +360,9 @@ export function DispatchBoardContent() {
           <button
             type="button"
             className="rounded-lg border border-slate-200 px-4 py-1.5 text-sm hover:bg-slate-50"
-            disabled={creatingTrip}
-            onClick={() => void createTripFromSelection()}
+            onClick={() => openCreateTripFromSelection()}
           >
-            {creatingTrip ? "Creating…" : "Create trip"}
+            Create trip chart
           </button>
           {[...selectedIds].some((id) => {
             const sale = sales.find((s) => s.id === id);

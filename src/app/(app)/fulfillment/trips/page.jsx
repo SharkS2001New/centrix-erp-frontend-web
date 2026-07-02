@@ -20,6 +20,14 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { DISPATCH_TRIP_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 import { CreateDispatchTripDialog } from "@/components/fulfillment/create-dispatch-trip-dialog";
+import { MergeDispatchTripsDialog } from "@/components/fulfillment/merge-dispatch-trips-dialog";
+import { formatTripRoutesLabel } from "@/lib/trip-routes";
+import {
+  BatchActionBar,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
   { value: "draft", label: "Draft" },
@@ -59,6 +67,16 @@ export default function TripsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState(() => isoDate());
   const [createTripOpen, setCreateTripOpen] = useState(false);
+  const [mergeTripOpen, setMergeTripOpen] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   const loadData = useCallback(async () => {
     setError(null);
@@ -88,18 +106,29 @@ export default function TripsPage() {
     loadData();
   }, [loadData]);
 
+  const routeById = useMemo(() => new Map(routes.map((r) => [r.id, r])), [routes]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return trips;
     return trips.filter((t) => {
-      const routeName = routes.find((r) => r.id === t.route_id)?.route_name ?? "";
+      const routeName = formatTripRoutesLabel(t, routeById);
       return (
         String(t.trip_code).toLowerCase().includes(q) ||
         routeName.toLowerCase().includes(q) ||
         String(t.driver?.full_name ?? "").toLowerCase().includes(q)
       );
     });
-  }, [trips, routes, search]);
+  }, [trips, routeById, search]);
+
+  const selectedTrips = useMemo(
+    () => filtered.filter((trip) => selectedIds.has(String(trip.id))),
+    [filtered, selectedIds],
+  );
+  const mergeableTrips = selectedTrips.filter((trip) => trip.status === "draft");
+  const pageRowIds = useMemo(() => filtered.map((trip) => trip.id), [filtered]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
 
   const stats = useMemo(() => {
     const active = trips.filter((t) => ["draft", "loading", "in_transit"].includes(t.status));
@@ -154,6 +183,15 @@ export default function TripsPage() {
         routes={routes}
         defaultDate={dateFilter}
       />
+      <MergeDispatchTripsDialog
+        open={mergeTripOpen}
+        onClose={() => {
+          setMergeTripOpen(false);
+          clearSelection();
+          loadData();
+        }}
+        trips={mergeableTrips}
+      />
       <DashboardErrorBanner message={error} />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
@@ -188,8 +226,13 @@ export default function TripsPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
+                <TableSelectAllHeader
+                  checked={allOnPageSelected}
+                  indeterminate={someOnPageSelected}
+                  onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
+                />
                 <th className="px-4 py-3">Trip</th>
-                <th className="px-4 py-3">Route</th>
+                <th className="px-4 py-3">Routes</th>
                 <th className="px-4 py-3">Driver</th>
                 <th className="px-4 py-3">Vehicle</th>
                 <th className="px-4 py-3">Orders</th>
@@ -201,8 +244,13 @@ export default function TripsPage() {
             <tbody>
               {filtered.map((trip) => (
                 <tr key={trip.id} className="border-t border-slate-100">
+                  <TableRowSelectCell
+                    checked={selectedIds.has(String(trip.id))}
+                    onChange={() => toggleOne(trip.id)}
+                    label={`Select ${trip.trip_code}`}
+                  />
                   <td className="px-4 py-3 font-mono">{trip.trip_code}</td>
-                  <td className="px-4 py-3">{trip.route?.route_name ?? "—"}</td>
+                  <td className="px-4 py-3">{formatTripRoutesLabel(trip, routeById)}</td>
                   <td className="px-4 py-3">{trip.driver?.full_name ?? "—"}</td>
                   <td className="px-4 py-3">{trip.vehicle?.plate_number ?? trip.vehicle?.vehicle_name ?? "—"}</td>
                   <td className="px-4 py-3">{trip.sales_count ?? 0}</td>
@@ -235,6 +283,17 @@ export default function TripsPage() {
           </table>
         </div>
       )}
+
+      <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <button
+          type="button"
+          disabled={mergeableTrips.length < 2}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          onClick={() => setMergeTripOpen(true)}
+        >
+          Merge trip charts
+        </button>
+      </BatchActionBar>
     </CatalogPageShell>
   );
 }

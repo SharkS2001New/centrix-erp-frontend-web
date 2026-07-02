@@ -45,6 +45,7 @@ import {
   batchDeleteWithConfirm,
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
+import { CreateDispatchTripDialog } from "@/components/fulfillment/create-dispatch-trip-dialog";
 
 
 export default function RoutesPage() {
@@ -68,6 +69,8 @@ export default function RoutesPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
   const [batchDeleting, setBatchDeleting] = useState(false);
+  const [createTripOpen, setCreateTripOpen] = useState(false);
+  const [createTripRouteIds, setCreateTripRouteIds] = useState([]);
   const {
     selectedIds,
     selectedCount,
@@ -524,7 +527,29 @@ export default function RoutesPage() {
         </>
       )}
 
+      <CreateDispatchTripDialog
+        open={createTripOpen}
+        onClose={() => {
+          setCreateTripOpen(false);
+          setCreateTripRouteIds([]);
+          clearSelection();
+        }}
+        routes={routes}
+        defaultRouteIds={createTripRouteIds}
+        description="Select routes going the same direction, then assign the driver and vehicle for this trip chart."
+      />
+
       <BatchActionBar count={selectedCount} onClear={clearSelection}>
+        <button
+          type="button"
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          onClick={() => {
+            setCreateTripRouteIds([...selectedIds].map((id) => Number(id)).filter((id) => id > 0));
+            setCreateTripOpen(true);
+          }}
+        >
+          Create trip chart
+        </button>
         <BatchDeleteButton
           count={selectedCount}
           busy={batchDeleting}

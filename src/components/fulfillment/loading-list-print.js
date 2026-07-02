@@ -163,13 +163,20 @@ function normalizeLoadingListLines(lines) {
   });
 }
 
-function buildLoadingListLineRows(lines) {
+function buildLoadingListLineRows(lines, { showPriceColumns = true } = {}) {
   return normalizeLoadingListLines(lines)
     .map((line) => {
       const qtyMain = escapeHtml(line.quantity_label || line.quantity);
       const qtyGhost = escapeHtml(quantityGhostText(line));
-      const priceMain = `Ksh ${formatKes(line.unit_price)}`;
-      const priceGhost = escapeHtml(priceGhostText(line));
+
+      const priceCells = showPriceColumns
+        ? `
+        <td class="col-price">
+          <div class="main">Ksh ${formatKes(line.unit_price)}</div>
+          ${priceGhostText(line) ? `<div class="ghost">${escapeHtml(priceGhostText(line))}</div>` : ""}
+        </td>
+        <td class="col-total">${formatKes(line.line_total)}</td>`
+        : "";
 
       return `
       <tr>
@@ -178,12 +185,7 @@ function buildLoadingListLineRows(lines) {
         <td class="col-qty">
           <div class="main">${qtyMain}</div>
           ${qtyGhost ? `<div class="ghost">${qtyGhost}</div>` : ""}
-        </td>
-        <td class="col-price">
-          <div class="main">${priceMain}</div>
-          ${priceGhost ? `<div class="ghost">${priceGhost}</div>` : ""}
-        </td>
-        <td class="col-total">${formatKes(line.line_total)}</td>
+        </td>${priceCells}
       </tr>`;
     })
     .join("");
@@ -374,9 +376,17 @@ export function buildLoadingListHtml({
   const watermark = buildReportWatermarkHtml(branding);
   const companyName = resolveOrganizationName({ organization, organizationName, branding });
   const showSignatures = printSettings?.loading_sheet_show_signatures !== false;
+  const showPriceColumns = printSettings?.loading_sheet_show_price_columns !== false;
 
   const lines = normalizeLoadingListLines(loadingList?.lines ?? []);
-  const routeName = loadingList?.route?.route_name ?? trip?.route?.route_name ?? "—";
+  const routeName =
+    (Array.isArray(loadingList?.trip?.route_names) && loadingList.trip.route_names.length
+      ? loadingList.trip.route_names.join(" · ")
+      : null) ??
+    loadingList?.route?.route_name ??
+    trip?.route?.route_name ??
+    (Array.isArray(trip?.route_names) && trip.route_names.length ? trip.route_names.join(" · ") : null) ??
+    "—";
   const listDate = loadingList?.list_date ?? trip?.scheduled_date;
   const preparedBy = loadingList?.prepared_by_name ?? trip?.prepared_by_name ?? "";
   const checkedBy =
@@ -387,9 +397,36 @@ export function buildLoadingListHtml({
   const total =
     loadingList?.total_amount ?? lines.reduce((sum, line) => sum + Number(line.line_total || 0), 0);
   const dateLabel = formatDisplayDate(listDate);
+  const columnCount = showPriceColumns ? 5 : 3;
   const rowHtml =
-    buildLoadingListLineRows(lines) ||
-    '<tr><td colspan="5" class="empty">No line items</td></tr>';
+    buildLoadingListLineRows(lines, { showPriceColumns }) ||
+    `<tr><td colspan="${columnCount}" class="empty">No line items</td></tr>`;
+
+  const tableHead = showPriceColumns
+    ? `
+        <tr>
+          <th class="col-no">No.</th>
+          <th class="col-product">Product Name</th>
+          <th class="col-qty">Total Items<br/>(Breakdown in Packages)</th>
+          <th class="col-price">Price (R/W)</th>
+          <th class="col-total">Line Total</th>
+        </tr>`
+    : `
+        <tr>
+          <th class="col-no">No.</th>
+          <th class="col-product">Product Name</th>
+          <th class="col-qty">Total Qty</th>
+        </tr>`;
+
+  const tableFoot = showPriceColumns
+    ? `
+      <tfoot>
+        <tr>
+          <td colspan="4" style="text-align:right;">TOTAL</td>
+          <td class="col-total">${formatKes(total)}</td>
+        </tr>
+      </tfoot>`
+    : "";
 
   const signaturesHtml = showSignatures
     ? `
@@ -443,22 +480,9 @@ export function buildLoadingListHtml({
       <p class="route-name">Route Name: ${escapeHtml(routeName)}</p>
     </div>
     <table>
-      <thead>
-        <tr>
-          <th class="col-no">No.</th>
-          <th class="col-product">Product Name</th>
-          <th class="col-qty">Total Items<br/>(Breakdown in Packages)</th>
-          <th class="col-price">Price (R/W)</th>
-          <th class="col-total">Line Total</th>
-        </tr>
-      </thead>
+      <thead>${tableHead}</thead>
       <tbody>${rowHtml}</tbody>
-      <tfoot>
-        <tr>
-          <td colspan="4" style="text-align:right;">TOTAL</td>
-          <td class="col-total">${formatKes(total)}</td>
-        </tr>
-      </tfoot>
+      ${tableFoot}
     </table>
     ${signaturesHtml}
     ${footerLinesHtml}

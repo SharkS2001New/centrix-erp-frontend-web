@@ -15,6 +15,7 @@ import {
 import { DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { printLoadingList } from "@/components/fulfillment/loading-list-print";
+import { formatTripRoutesLabel } from "@/lib/trip-routes";
 import { printDeliveryNote } from "@/components/fulfillment/delivery-note-print";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
@@ -174,7 +175,7 @@ export default function TripDetailPage() {
   return (
     <CatalogPageShell
       title={trip.trip_code}
-      subtitle={`${trip.route?.route_name ?? "Route TBD"} · ${trip.scheduled_date}`}
+      subtitle={`${formatTripRoutesLabel(trip)} · ${trip.scheduled_date}`}
       action={
         showCloseReconciliation ? (
           <Link

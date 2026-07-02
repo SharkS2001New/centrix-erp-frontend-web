@@ -413,6 +413,12 @@ function LoadingSheetsTab({ form, setForm }) {
         description="Font for route loading sheets and delivery notes."
       />
       <Toggle
+        label="Show price and line total columns"
+        description="Turn off for pick lists that only need product names and quantities."
+        checked={form.loading_sheet_show_price_columns}
+        onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_price_columns: v }))}
+      />
+      <Toggle
         label="Show prepared / checked signature blocks"
         checked={form.loading_sheet_show_signatures}
         onChange={(v) => setForm((f) => ({ ...f, loading_sheet_show_signatures: v }))}

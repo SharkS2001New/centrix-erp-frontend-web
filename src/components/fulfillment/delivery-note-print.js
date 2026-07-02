@@ -1,6 +1,6 @@
 import { openPrintWindow } from "@/lib/open-print-window";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
-import { formatSaleKes, saleCustomerLabel } from "@/lib/sales";
+import { saleCustomerLabel } from "@/lib/sales";
 import {
   buildReportOrgHeaderHtml,
   resolveReportBranding,
@@ -86,9 +86,7 @@ function deliveryNotePrintStyles(generalSettings = null) {
     table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: ${px(11)}; }
     th, td { border: 1px solid #000; padding: 8px 10px; vertical-align: top; }
     th { background: #f3f4f6; text-align: left; font-size: ${px(10)}; font-weight: 700; text-transform: uppercase; }
-    td.num { width: 36px; text-align: center; }
-    td.qty, td.price, td.total { text-align: right; white-space: nowrap; }
-    tfoot td { font-weight: 700; }
+    td.qty { text-align: right; white-space: nowrap; width: 100px; }
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 36px; }
     .signatures h3 { margin: 0 0 48px; font-size: ${px(12)}; font-weight: 700; text-transform: uppercase; }
     .signatures .line { border-top: 1px solid #000; padding-top: 6px; margin-top: 40px; font-size: ${px(11)}; }
@@ -108,17 +106,14 @@ function deliveryNotePrintStyles(generalSettings = null) {
 
 function buildDeliveryNoteLineRows(items) {
   return (items ?? [])
-    .map((item, index) => {
+    .map((item) => {
       const cols = resolveSaleLinePrintColumns(item, { uom: item?.product?.unit ?? null });
       const productName = saleLineProductLabel(item);
 
       return `
       <tr>
-        <td class="num">${index + 1}</td>
         <td>${escapeHtml(productName)}</td>
         <td class="qty">${escapeHtml(cols.qty)}</td>
-        <td class="price">${formatSaleKes(cols.unitPrice)}</td>
-        <td class="total">${formatSaleKes(cols.amount)}</td>
       </tr>`;
     })
     .join("");
@@ -149,7 +144,6 @@ export function printDeliveryNote({
   const routeName = trip?.route?.route_name ?? sale?.route?.route_name ?? "—";
   const customer = saleCustomerLabel(sale);
   const orderNum = sale?.order_num ?? sale?.id ?? "—";
-  const balance = Math.max(0, Number(sale?.order_total || 0) - Number(sale?.amount_paid || 0));
   const dateValue =
     trip?.scheduled_date ??
     sale?.required_date ??
@@ -191,30 +185,13 @@ export function printDeliveryNote({
   <table>
     <thead>
       <tr>
-        <th>No.</th>
         <th>Product</th>
         <th>Qty</th>
-        <th>Unit price</th>
-        <th>Line total</th>
       </tr>
     </thead>
     <tbody>
-      ${rows || '<tr><td colspan="5" style="text-align:center;padding:24px;">No line items</td></tr>'}
+      ${rows || '<tr><td colspan="2" style="text-align:center;padding:24px;">No line items</td></tr>'}
     </tbody>
-    <tfoot>
-      <tr>
-        <td colspan="4" style="text-align:right;">Order total</td>
-        <td class="total">${formatSaleKes(sale?.order_total)}</td>
-      </tr>
-      <tr>
-        <td colspan="4" style="text-align:right;">Amount paid</td>
-        <td class="total">${formatSaleKes(sale?.amount_paid)}</td>
-      </tr>
-      <tr>
-        <td colspan="4" style="text-align:right;">Balance due (COD)</td>
-        <td class="total">${formatSaleKes(balance)}</td>
-      </tr>
-    </tfoot>
   </table>
   <div class="signatures">
     <div>

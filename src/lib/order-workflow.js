@@ -16,9 +16,9 @@ export const DEFAULT_ORDER_WORKFLOW = {
     { status: "completed", label: "Completed", enabled: true },
   ],
   transitions: {
-    booked: ["pending", "unpaid", "cancelled"],
-    pending: ["unpaid", "pending_payment", "cancelled"],
-    unpaid: ["pending_payment", "paid", "cancelled"],
+    booked: ["pending", "unpaid", "processed", "cancelled"],
+    pending: ["unpaid", "pending_payment", "processed", "cancelled"],
+    unpaid: ["pending_payment", "paid", "processed", "cancelled"],
     pending_payment: ["paid", "cancelled"],
     paid: ["processed", "delivered", "completed"],
     processed: ["delivered", "completed"],
@@ -250,6 +250,16 @@ function buildPipelineTransitions(pipeline) {
     if (index < keys.length - 1) targets.push(keys[index + 1]);
     transitions[from] = targets;
   });
+
+  const processedIdx = keys.indexOf("processed");
+  if (processedIdx >= 0) {
+    const skipFrom = new Set(["cancelled", "expired", "draft", "held", "processed", "delivered", "completed"]);
+    keys.forEach((from, index) => {
+      if (index >= processedIdx || skipFrom.has(from)) return;
+      transitions[from] = [...new Set([...(transitions[from] ?? []), "processed"])];
+    });
+  }
+
   return transitions;
 }
 
@@ -400,6 +410,15 @@ export function pipelineStepIndex(status, workflow) {
 
 /** Adjacent pipeline steps only — move one stage up or down. */
 export function pipelineAdjacentTransitions(status, workflow) {
+  const explicit = workflow?.transitions?.[status];
+  if (Array.isArray(explicit) && explicit.length > 0) {
+    const options = [...explicit];
+    if (canCancelOrderStatus(status, workflow) && !options.includes("cancelled")) {
+      options.push("cancelled");
+    }
+    return [...new Set(options)];
+  }
+
   const steps = workflowPipelineSteps(workflow);
   const keys = steps.map((s) => s.key);
   const idx = keys.indexOf(status);
@@ -410,6 +429,11 @@ export function pipelineAdjacentTransitions(status, workflow) {
     if (idx < keys.length - 1) options.push(keys[idx + 1]);
   } else if (status === "held" || status === "draft") {
     if (keys.length) options.push(keys[0]);
+  }
+
+  const processedIdx = keys.indexOf("processed");
+  if (processedIdx >= 0 && idx >= 0 && idx < processedIdx) {
+    options.push("processed");
   }
 
   if (canCancelOrderStatus(status, workflow)) {
@@ -770,17 +794,8 @@ export function saleNeedsPaymentCollection(sale, totalPaid = null) {
   const balance = saleBalanceDue(sale, totalPaid);
   if (balance <= 0.01) return false;
 
-  const workflowStatus = String(sale.status ?? "").toLowerCase();
-  if (isPaymentCollectWorkflowStatus(workflowStatus)) {
-    return true;
-  }
-
-  if (Boolean(sale.is_credit_sale)) {
-    const paymentStatus = String(sale.payment_status ?? "unpaid").toLowerCase();
-    return paymentStatus === "unpaid" || paymentStatus === "partial";
-  }
-
-  return false;
+  const paymentStatus = String(sale.payment_status ?? "unpaid").toLowerCase();
+  return paymentStatus === "unpaid" || paymentStatus === "partial";
 }
 
 /** Block manual workflow moves that skip recording payment. */
@@ -793,6 +808,28 @@ export function isPaymentGatedWorkflowTransition(sale, targetStatus, totalPaid =
   if (target === "paid") return true;
   if (target === "pending_payment" && paid <= 0.01) return true;
   return false;
+}
+
+/** Next fulfillment step when payment can be collected later (e.g. unpaid → processed). */
+function primaryFulfillmentAdvanceStatus(status, workflow, sale, totalPaid) {
+  const allowed = new Set(
+    pipelineAdjacentTransitions(status, workflow).filter((s) => s !== status && s !== "cancelled"),
+  );
+  const steps = workflowPipelineSteps(workflow);
+  const processedIdx = steps.findIndex((s) => s.key === "processed");
+  if (processedIdx < 0) return null;
+  const currentIdx = pipelineStatusIndex(status, workflow);
+  if (currentIdx < 0 || currentIdx >= processedIdx) return null;
+
+  for (let i = processedIdx; i < steps.length; i += 1) {
+    const key = steps[i].key;
+    if (!allowed.has(key)) continue;
+    if (PAYMENT_STEP_KEYS.has(key)) continue;
+    if (isPaymentGatedWorkflowTransition(sale, key, totalPaid)) continue;
+    return key;
+  }
+
+  return null;
 }
 
 /**
@@ -836,6 +873,24 @@ export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null) {
     } else if (!showCollectPayment) {
       resolvedAdvance = advanceStatus;
     }
+  } else if (advanceBlocked && onPaymentStep) {
+    const fulfillmentAdvance = primaryFulfillmentAdvanceStatus(status, workflow, sale, totalPaid);
+    if (fulfillmentAdvance) {
+      resolvedAdvance = fulfillmentAdvance;
+      if (!isCredit) {
+        showCollectPayment = false;
+      }
+    }
+  }
+
+  const paymentStatus = String(sale.payment_status ?? "unpaid").toLowerCase();
+  if (
+    canCollect &&
+    balanceDue > 0.01 &&
+    !onPaymentStep &&
+    (paymentStatus === "unpaid" || paymentStatus === "partial")
+  ) {
+    showCollectPayment = true;
   }
 
   return {

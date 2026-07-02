@@ -47,7 +47,7 @@ const DATE_COLUMNS = {
   "balance-sheet": "entry_date",
   "profit-loss-gl": "entry_date",
   "cash-flow": "entry_date",
-  "invoice-payments": "payment_date",
+  "invoice-payments": "date_paid",
   "kra-receipts": "receipt_date",
   "till-sessions": "session_date",
   "audit-trail": "created_at",

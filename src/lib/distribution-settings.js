@@ -117,7 +117,14 @@ export function distributionPayloadFromForm(form) {
 }
 
 /** Statuses that typically mean an order is ready for dispatch planning. */
-export const DISPATCH_READY_STATUSES = ["paid", "processed", "pending_payment"];
+export const DISPATCH_READY_STATUSES = [
+  "booked",
+  "pending",
+  "unpaid",
+  "pending_payment",
+  "paid",
+  "processed",
+];
 
 export function orderNeedsDriverAssignment(sale) {
   const meta = sale?.fulfillment_meta;
