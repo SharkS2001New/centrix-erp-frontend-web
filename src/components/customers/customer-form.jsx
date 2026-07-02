@@ -63,15 +63,16 @@ export function customerToForm(customer) {
   };
 }
 
-export function buildCustomerBody(form, { includeBranch = true, includeLocation = true } = {}) {
+export function buildCustomerBody(form, { includeBranch = true, includeLocation = true, routeCustomersOnly = false } = {}) {
   const routeId = form.route_id ? Number(form.route_id) : null;
+  const customerType = routeCustomersOnly || form.customer_type === "route" ? "route" : form.customer_type;
   const body = {
     customer_name: form.customer_name.trim(),
-    customer_type: form.customer_type,
+    customer_type: customerType,
     phone_number: form.phone_number.trim() || null,
     additional_phone: form.additional_phone.trim() || null,
     town: form.town.trim() || null,
-    route_id: form.customer_type === "route" ? routeId : null,
+    route_id: customerType === "route" ? routeId : null,
     kra_pin: form.kra_pin.trim() || null,
     terms_of_payment: form.terms_of_payment.trim() || null,
     credit_limit: form.credit_limit !== "" ? parseFloat(form.credit_limit) : 0,
@@ -94,8 +95,12 @@ export function validateCustomerLocationFields(form) {
   }
 }
 
-export function updateCustomerFormField(form, key, value) {
+export function updateCustomerFormField(form, key, value, { routeCustomersOnly = false } = {}) {
   const next = { ...form, [key]: value };
+  if (routeCustomersOnly) {
+    next.customer_type = "route";
+    return next;
+  }
   if (key === "customer_type" && (value === "debtor" || value === "regular")) {
     next.route_id = "";
   }
@@ -149,6 +154,7 @@ export function CustomerFormFields({
   branches,
   showBranchSelect,
   onChange,
+  routeCustomersOnly = false,
   customerNum,
   shopImagePreview,
   onShopImageSelect,
@@ -185,7 +191,7 @@ export function CustomerFormFields({
         />
       </Field>
 
-      <Field label="Type">
+      <Field label="Type" className={routeCustomersOnly ? "hidden" : undefined}>
         <select
           value={form.customer_type}
           onChange={(e) => onChange("customer_type", e.target.value)}
@@ -195,10 +201,12 @@ export function CustomerFormFields({
           <option value="route">Route</option>
           <option value="regular">Regular customer</option>
         </select>
-        <p className="mt-1 text-xs text-slate-500">
-          Debtors are on account. Route customers belong to a delivery route. Regular customers are
-          for records that are not on credit.
-        </p>
+        {!routeCustomersOnly ? (
+          <p className="mt-1 text-xs text-slate-500">
+            Debtors are on account. Route customers belong to a delivery route. Regular customers are
+            for records that are not on credit.
+          </p>
+        ) : null}
       </Field>
 
       {showBranchSelect && (
@@ -253,7 +261,7 @@ export function CustomerFormFields({
         />
       </Field>
 
-      {form.customer_type === "route" ? (
+      {routeCustomersOnly || form.customer_type === "route" ? (
         <Field label="Route" required>
           <select
             value={form.route_id}
@@ -270,6 +278,11 @@ export function CustomerFormFields({
               </option>
             ))}
           </select>
+          {routeCustomersOnly ? (
+            <p className="mt-1 text-xs text-slate-500">
+              Every customer in a distribution company is assigned to a sales or delivery route.
+            </p>
+          ) : null}
         </Field>
       ) : (
         <div className="hidden md:block" aria-hidden="true" />

@@ -485,7 +485,7 @@ export function OrganizationOrderWorkflowSettings({
             <p className="mt-1 text-xs text-slate-500">
               Unprocessed orders are moved to Expired automatically after the configured number of days.
               Expired and cancelled orders are excluded from active order counts and revenue totals. When
-              Distribution is enabled, an Expired orders link appears in the Distribution workspace sidebar.
+              enabled, an Expired orders link appears under Backoffice → Sales → Orders.
             </p>
             <div className="mt-3 space-y-3">
               <Toggle
@@ -538,8 +538,8 @@ export function OrganizationOrderWorkflowSettings({
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order cancellation</p>
             <p className="mt-1 text-xs text-slate-500">
               When enabled, staff can cancel orders that are still booked, pending, or unpaid. Partially paid
-              and later stages cannot be cancelled. A Cancelled orders link appears in the Distribution
-              workspace sidebar.
+              and later stages cannot be cancelled. A Cancelled orders link appears under Backoffice → Sales →
+              Orders.
             </p>
             <div className="mt-3 space-y-3">
               <Toggle

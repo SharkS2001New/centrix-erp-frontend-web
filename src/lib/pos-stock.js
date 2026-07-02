@@ -116,9 +116,12 @@ export function posStockLocationLabel(location, posSalesConfig) {
 }
 
 export function productStockAtLocation(product, location) {
-  return Number(
-    location === "store" ? product?.stock_in_store : product?.stock_in_shop ?? 0,
-  );
+  const availableKey = location === "store" ? "stock_available_store" : "stock_available_shop";
+  const onHandKey = location === "store" ? "stock_in_store" : "stock_in_shop";
+  if (product?.[availableKey] != null) {
+    return Number(product[availableKey]);
+  }
+  return Number(product?.[onHandKey] ?? 0);
 }
 
 export function cartLineStockLocation(line, product, sellFromShop, posSalesConfig) {

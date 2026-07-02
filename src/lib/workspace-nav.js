@@ -1,10 +1,26 @@
-import { getSalesOrderQueueWorkflow, salesOrderSidebarNavItems } from "@/lib/order-workflow";
+import {
+  getSalesOrderQueueWorkflow,
+  salesOrderSidebarNavItems,
+  salesTerminalOrderQueueNavItems,
+} from "@/lib/order-workflow";
+import { isOrderCancellationNavEnabled, isOrderExpiryNavEnabled } from "@/lib/platform-org-features";
 import { isOrgMobileSalesEnabled, isTillFloatWorkflowEnabled } from "@/lib/sales-settings";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { isNavItemVisible, isNavSectionVisible, navSections } from "@/lib/nav-config";
 import { withNavItemIcon } from "@/lib/nav-item-icons";
 import { formatNavLabel } from "@/lib/nav-label-format";
 import { filterNavSectionsForWorkspace, defaultWorkspaceId } from "@/lib/workspaces";
+
+function mapSalesOrderNavItem(item) {
+  return withNavItemIcon({
+    href: item.href,
+    label: formatNavLabel(item.label),
+    module: "sales.backend",
+    permission: "sales.orders.view",
+    exact: item.slug === "all",
+    ordersNav: false,
+  });
+}
 
 /**
  * Build sidebar sections visible for the active workspace (shared by sidebar + global search).
@@ -20,16 +36,13 @@ export function buildWorkspaceNavSections({
   const includeMobile =
     isOrgMobileSalesEnabled(capabilities) &&
     userHasMobileChannel(navContext.user?.login_channels);
-  const salesOrderNavItems = salesOrderSidebarNavItems(workflow, { excludeMobile: true }).map((item) =>
-    withNavItemIcon({
-      href: item.href,
-      label: formatNavLabel(item.label),
-      module: "sales.backend",
-      permission: "sales.orders.view",
-      exact: item.slug === "all",
-      ordersNav: false,
+  const salesOrderNavItems = [
+    ...salesOrderSidebarNavItems(workflow, { excludeMobile: true }),
+    ...salesTerminalOrderQueueNavItems({
+      showCancelled: isOrderCancellationNavEnabled(capabilities),
+      showExpired: isOrderExpiryNavEnabled(capabilities),
     }),
-  );
+  ].map(mapSalesOrderNavItem);
   const mobileOrderNavItems = includeMobile
     ? [
         withNavItemIcon({

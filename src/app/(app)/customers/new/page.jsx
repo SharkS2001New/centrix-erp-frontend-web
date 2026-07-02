@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/auth-context";
+import { isRouteOnlyCustomers } from "@/lib/distribution-settings";
 import { apiRequest, ApiError, uploadCustomerShopImage } from "@/lib/api";
 import {
   buildCustomerBody,
@@ -18,10 +20,15 @@ import {
 
 export default function NewCustomerPage() {
   const router = useRouter();
+  const { capabilities } = useAuth();
+  const routeCustomersOnly = isRouteOnlyCustomers(capabilities);
   const { user, routes, branches, loading, showBranchSelect, defaultBranch } =
     useCustomerFormResources();
 
-  const [form, setForm] = useState(EMPTY_CUSTOMER_FORM);
+  const [form, setForm] = useState(() => ({
+    ...EMPTY_CUSTOMER_FORM,
+    customer_type: routeCustomersOnly ? "route" : EMPTY_CUSTOMER_FORM.customer_type,
+  }));
   const [shopImageFile, setShopImageFile] = useState(null);
   const [shopImagePreview, setShopImagePreview] = useState(null);
   const [locationError, setLocationError] = useState(null);
@@ -44,7 +51,7 @@ export default function NewCustomerPage() {
 
   function updateField(key, value) {
     setLocationError(null);
-    setForm((prev) => updateCustomerFormField(prev, key, value));
+    setForm((prev) => updateCustomerFormField(prev, key, value, { routeCustomersOnly }));
   }
 
   function onShopImageSelect(file) {
@@ -81,7 +88,7 @@ export default function NewCustomerPage() {
       const created = await apiRequest("/customers", {
         method: "POST",
         body: {
-          ...buildCustomerBody(form),
+          ...buildCustomerBody(form, { routeCustomersOnly }),
           branch_id: branchId,
           organization_id: user.organization_id,
           created_by: user.id,
@@ -103,7 +110,11 @@ export default function NewCustomerPage() {
       backHref="/customers"
       backLabel="← Back to customers"
       title="Add customer"
-      subtitle="Create a new debtor or route customer"
+      subtitle={
+        routeCustomersOnly
+          ? "Create a route customer assigned to a delivery route"
+          : "Create a new debtor or route customer"
+      }
     >
       {loading ? (
         <p className="text-sm text-slate-500">Loading…</p>
@@ -139,6 +150,7 @@ export default function NewCustomerPage() {
             branches={branches}
             showBranchSelect={showBranchSelect}
             onChange={updateField}
+            routeCustomersOnly={routeCustomersOnly}
             shopImagePreview={shopImagePreview}
             onShopImageSelect={onShopImageSelect}
             locationError={locationError}

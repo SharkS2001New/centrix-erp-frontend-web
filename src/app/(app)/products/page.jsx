@@ -186,8 +186,8 @@ function enrichProduct(
   const uom = uomById.get(String(product.unit_id ?? ""));
   const supplier = supplierById.get(String(product.supplier_id ?? ""));
   const retailPackage = retailByCode.get(product.product_code);
-  const shop = Number(product.stock_in_shop ?? 0);
-  const store = Number(product.stock_in_store ?? 0);
+  const shop = Number(product.stock_available_shop ?? product.stock_in_shop ?? 0);
+  const store = Number(product.stock_available_store ?? product.stock_in_store ?? 0);
   const reorderPoint = effectiveReorderPoint(product, globalThreshold);
   const isActive = !product.deleted_at;
   const uomLabel = uom?.uom_type || uom?.full_name || "—";

@@ -4,6 +4,8 @@ import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/auth-context";
+import { isRouteOnlyCustomers } from "@/lib/distribution-settings";
 import { apiRequest, ApiError, resolveCustomerMediaUrl, uploadCustomerShopImage } from "@/lib/api";
 import { customerLocationPayload } from "@/lib/customer-location";
 import {
@@ -22,6 +24,8 @@ export default function EditCustomerPage() {
   const params = useParams();
   const router = useRouter();
   const customerNum = params.id;
+  const { capabilities } = useAuth();
+  const routeCustomersOnly = isRouteOnlyCustomers(capabilities);
 
   const { user, routes, branches, loading: resourcesLoading, showBranchSelect } =
     useCustomerFormResources();
@@ -64,7 +68,7 @@ export default function EditCustomerPage() {
 
   function updateField(key, value) {
     setLocationError(null);
-    setForm((prev) => updateCustomerFormField(prev, key, value));
+    setForm((prev) => updateCustomerFormField(prev, key, value, { routeCustomersOnly }));
   }
 
   function onShopImageSelect(file) {
@@ -148,7 +152,7 @@ export default function EditCustomerPage() {
       await apiRequest(`/customers/${customerNum}`, {
         method: "PUT",
         body: {
-          ...buildCustomerBody(form),
+          ...buildCustomerBody(form, { routeCustomersOnly }),
           branch_id: branchId,
         },
       });
@@ -211,6 +215,7 @@ export default function EditCustomerPage() {
             branches={branches}
             showBranchSelect={showBranchSelect}
             onChange={updateField}
+            routeCustomersOnly={routeCustomersOnly}
             customerNum={customerNum}
             shopImagePreview={shopImagePreview}
             onShopImageSelect={onShopImageSelect}

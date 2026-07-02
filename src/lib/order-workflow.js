@@ -624,12 +624,30 @@ export function salesOrderQueueNavItems(workflow, { includeMobile = false } = {}
   return items;
 }
 
-/** Distribution workspace — route orders plus terminal queues. */
+/** Backoffice sales sidebar — terminal order queues (cancelled / expired). */
+export function salesTerminalOrderQueueNavItems({ showCancelled = false, showExpired = false } = {}) {
+  const items = [];
+  if (showCancelled) {
+    items.push({
+      slug: "cancelled",
+      label: salesOrderQueueTitle("Cancelled"),
+      href: "/sales/orders/queues/cancelled",
+    });
+  }
+  if (showExpired) {
+    items.push({
+      slug: "expired",
+      label: salesOrderQueueTitle("Expired"),
+      href: "/sales/orders/queues/expired",
+    });
+  }
+  return items;
+}
+
+/** Distribution workspace — route orders only (terminal queues live under backoffice Sales). */
 export function distributionOrderQueueNavItems() {
   return [
     { slug: "all", label: "Route orders", href: "/fulfillment/orders" },
-    { slug: "cancelled", label: "Cancelled orders", href: "/fulfillment/orders/cancelled" },
-    { slug: "expired", label: "Expired orders", href: "/fulfillment/orders/expired" },
   ];
 }
 

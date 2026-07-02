@@ -31,7 +31,6 @@ export function isPlatformAdvancedDataImportEnabled(capabilities) {
 }
 
 export function isOrderExpiryNavEnabled(capabilities) {
-  if (!capabilities?.modules?.distribution) return false;
   return capabilities?.module_settings?.sales?.order_expiry_enabled !== false;
 }
 
@@ -40,6 +39,5 @@ export function isOrderCancellationEnabled(capabilities) {
 }
 
 export function isOrderCancellationNavEnabled(capabilities) {
-  if (!capabilities?.modules?.distribution) return false;
   return isOrderCancellationEnabled(capabilities);
 }

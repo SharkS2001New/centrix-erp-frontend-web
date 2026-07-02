@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/auth-context";
+import { isRouteOnlyCustomers } from "@/lib/distribution-settings";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
@@ -293,6 +295,8 @@ function renderCell(colId, customer, handlers) {
 export default function CustomersPage() {
   const router = useRouter();
   const confirm = useConfirm();
+  const { capabilities } = useAuth();
+  const routeCustomersOnly = isRouteOnlyCustomers(capabilities);
 
   const [customers, setCustomers] = useState([]);
   const [totalCustomers, setTotalCustomers] = useState(0);
@@ -543,7 +547,11 @@ export default function CustomersPage() {
   return (
     <CatalogPageShell
       title="Customers"
-      subtitle="Manage debtors and route customers"
+      subtitle={
+        routeCustomersOnly
+          ? "Manage route customers assigned to delivery routes"
+          : "Manage debtors and route customers"
+      }
       action={
         <div className="flex flex-wrap items-center gap-2">
           <CustomerImportExport

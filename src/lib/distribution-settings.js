@@ -53,6 +53,11 @@ export function isDistributionOpsEnabled(capabilities) {
   return true;
 }
 
+/** Distribution orgs only use route customers (every customer belongs to a route). */
+export function isRouteOnlyCustomers(capabilities) {
+  return Boolean(capabilities?.modules?.distribution);
+}
+
 export function mergeDistributionSettings(capabilities) {
   const distribution = mergeDistributionModuleSettings(capabilities?.module_settings);
   const enabled = isDistributionOpsEnabled(capabilities);

@@ -70,16 +70,16 @@ export function PlatformConfiguredSalesSummary({ capabilities: capabilitiesProp 
         <li>
           <span className="font-medium">Orders list:</span> Last {ordersListDays} days · {ordersListSortLabel}
         </li>
-        {capabilities?.modules?.distribution && sales.order_expiry_enabled !== false ? (
+        {capabilities?.module_settings?.sales?.order_expiry_enabled !== false ? (
           <li>
             <span className="font-medium">Stale order expiry:</span> On · after {sales.order_expiry_days ?? 5} days
-            · Expired orders link in Distribution sidebar
+            · Expired orders link in Sales → Orders
           </li>
         ) : null}
-        {capabilities?.modules?.distribution && isOrderCancellationEnabled(capabilities) ? (
+        {isOrderCancellationEnabled(capabilities) ? (
           <li>
             <span className="font-medium">Order cancellation:</span> Enabled for booked, pending, and unpaid
-            orders · Cancelled orders link in Distribution sidebar
+            orders · Cancelled orders link in Sales → Orders
           </li>
         ) : null}
       </ul>
