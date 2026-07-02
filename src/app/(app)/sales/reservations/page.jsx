@@ -23,7 +23,7 @@ export default function SalesReservationsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const { pageSize, setPageSize } = useListPageSize(20);
+  const { pageSize, setPageSize } = useListPageSize(25);
 
   const loadData = useCallback(async () => {
     try {
@@ -70,6 +70,18 @@ export default function SalesReservationsPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const handlePageSizeChange = useCallback(
+    (size) => {
+      setPageSize(size);
+      setPage(1);
+    },
+    [setPageSize],
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   return (
     <CatalogPageShell
@@ -152,8 +164,8 @@ export default function SalesReservationsPage() {
           total={filtered.length}
           pageSize={pageSize}
           onChange={setPage}
-              onPageSizeChange={handlePageSizeChange}
-            />
+          onPageSizeChange={handlePageSizeChange}
+        />
       </div>
     </CatalogPageShell>
   );

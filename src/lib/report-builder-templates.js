@@ -1,7 +1,9 @@
 import { apiRequest } from "@/lib/api";
 
-/** @type {Map<string, Promise<unknown[]>>} */
-const inFlight = new Map();
+/** @type {Map<string, { data?: unknown[], promise?: Promise<unknown[]>, fetchedAt?: number }>} */
+const cache = new Map();
+
+const CACHE_MS = 5 * 60 * 1000;
 
 /**
  * Fetch custom report templates once per workspace (dedupes concurrent sidebar/hub requests).
@@ -9,20 +11,32 @@ const inFlight = new Map();
  */
 export async function fetchReportBuilderTemplates(workspaceId) {
   const key = workspaceId ?? "default";
-  const existing = inFlight.get(key);
-  if (existing) {
-    return existing;
+  const hit = cache.get(key);
+  if (hit?.data && hit.fetchedAt != null && Date.now() - hit.fetchedAt < CACHE_MS) {
+    return hit.data;
+  }
+  if (hit?.promise) {
+    return hit.promise;
   }
 
-  const request = apiRequest("/reports/builder/templates", {
+  const promise = apiRequest("/reports/builder/templates", {
     searchParams: { workspace_id: workspaceId },
   })
     .then((res) => res.data ?? [])
     .catch(() => [])
-    .finally(() => {
-      window.setTimeout(() => inFlight.delete(key), 250);
+    .then((data) => {
+      cache.set(key, { data, fetchedAt: Date.now() });
+      return data;
+    })
+    .catch((error) => {
+      cache.delete(key);
+      throw error;
     });
 
-  inFlight.set(key, request);
-  return request;
+  cache.set(key, { promise });
+  return promise;
+}
+
+export function invalidateReportBuilderTemplateCache() {
+  cache.clear();
 }

@@ -9,6 +9,7 @@ import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useListPageSize } from "@/lib/use-list-page-controls";
+import { fetchBranchesCached, fetchRoutesAndUomsCached } from "@/lib/reference-data-cache";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -85,7 +86,7 @@ function indexPaymentRefs(payments) {
 export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnly = false }) {
   const router = useRouter();
   const confirm = useConfirm();
-  const { user, capabilities, refreshCapabilities, organization } = useAuth();
+  const { user, capabilities, organization } = useAuth();
   const { floatSessionId } = usePosSession();
   const orgWorkflow = useMemo(
     () => getSalesOrderQueueWorkflow(capabilities, "backend"),
@@ -165,37 +166,25 @@ export default function SalesOrdersListScreen({ queueSlug = null, routeOrdersOnl
   }, [includeMobileOrders, sourceFilter]);
 
   useEffect(() => {
-    refreshCapabilities().catch(() => {});
-  }, [refreshCapabilities]);
-
-  useEffect(() => {
     const orgId = user?.organization_id;
-    apiRequest("/branches", { searchParams: { per_page: 200 } })
-      .then((res) => {
-        const list = (res.data ?? []).filter(
-          (branch) => !orgId || branch.organization_id === orgId,
-        );
-        setBranches(list);
-      })
+    fetchBranchesCached(orgId)
+      .then((list) => setBranches(list))
       .catch(() => setBranches([]));
   }, [user?.organization_id]);
 
   useEffect(() => {
-    Promise.all([
-      apiRequest("/routes", { searchParams: { per_page: 200 } }),
-      apiRequest("/uoms", { searchParams: { per_page: 500 } }),
-    ])
-      .then(([routeRes, uomRes]) => {
-        const routes = new Map();
-        for (const route of routeRes.data ?? []) {
-          if (route?.id != null) routes.set(route.id, route);
+    fetchRoutesAndUomsCached()
+      .then(({ routes, uoms }) => {
+        const routeMap = new Map();
+        for (const route of routes) {
+          if (route?.id != null) routeMap.set(route.id, route);
         }
-        setRouteById(routes);
-        const uoms = new Map();
-        for (const u of uomRes.data ?? []) {
-          if (u?.id != null) uoms.set(u.id, u);
+        setRouteById(routeMap);
+        const uomMap = new Map();
+        for (const u of uoms) {
+          if (u?.id != null) uomMap.set(u.id, u);
         }
-        setUomById(uoms);
+        setUomById(uomMap);
       })
       .catch(() => {
         setRouteById(new Map());

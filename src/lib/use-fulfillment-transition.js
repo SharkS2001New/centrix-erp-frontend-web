@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError, capturePodDelivery } from "@/lib/api";
+import { fetchRoutesCached } from "@/lib/reference-data-cache";
 import {
   buildFulfillmentTransitionBody,
   mergeDistributionSettings,
@@ -27,12 +28,12 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
     Promise.all([
       apiRequest("/drivers", { searchParams: { per_page: 200 } }),
       apiRequest("/vehicles", { searchParams: { per_page: 200 } }),
-      apiRequest("/routes", { searchParams: { per_page: 200 } }),
+      fetchRoutesCached(),
     ])
-      .then(([driverRes, vehicleRes, routeRes]) => {
+      .then(([driverRes, vehicleRes, routes]) => {
         setDrivers(driverRes.data ?? []);
         setVehicles(vehicleRes.data ?? []);
-        setRoutes(routeRes.data ?? []);
+        setRoutes(routes ?? []);
       })
       .catch(() => {});
   }, [distributionSettings.enabled]);

@@ -470,9 +470,52 @@ function PrintIcon() {
   );
 }
 
+async function loadOrderRelatedDetails(saleData) {
+  const branchId = saleData.branch_id;
+  let branchName = null;
+  if (branchId != null) {
+    try {
+      const branch = await apiRequest(`/branches/${branchId}`);
+      branchName = branch.branch_name ?? null;
+    } catch {
+      branchName = null;
+    }
+  }
+
+  const inlineActorName = saleData.created_by_name ?? saleData.cashier_name ?? null;
+  let cashierName = inlineActorName;
+  if (!cashierName && (saleData.created_by != null || saleData.cashier_id != null)) {
+    const actorIds = [
+      ...new Set(
+        [saleData.created_by, saleData.cashier_id].filter((id) => id != null && id !== ""),
+      ),
+    ];
+    for (const actorId of actorIds) {
+      try {
+        const actor = await apiRequest(`/users/${actorId}`);
+        cashierName = actor.full_name ?? actor.name ?? actor.username ?? null;
+        if (cashierName) break;
+      } catch {
+        // try next id
+      }
+    }
+  }
+
+  let customer = null;
+  if (saleData.customer_num) {
+    try {
+      customer = await apiRequest(`/customers/${saleData.customer_num}`);
+    } catch {
+      customer = null;
+    }
+  }
+
+  return { branchName, cashierName, customer };
+}
+
 export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const confirm = useConfirm();
-  const { capabilities, refreshCapabilities, organization, user, hasPermission } = useAuth();
+  const { capabilities, organization, user, hasPermission } = useAuth();
   const { floatSessionId } = usePosSession();
 
   const [sale, setSale] = useState(null);
@@ -493,10 +536,6 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [editOrderOpen, setEditOrderOpen] = useState(false);
-
-  useEffect(() => {
-    refreshCapabilities().catch(() => {});
-  }, [refreshCapabilities]);
 
   const loadSale = useCallback(async () => {
     setLoading(true);
@@ -529,52 +568,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
       setDrivers(driverRes.data ?? []);
       setVehicles(vehicleRes.data ?? []);
 
-      const branchId = saleData.branch_id;
-      if (branchId != null) {
-        try {
-          const branch = await apiRequest(`/branches/${branchId}`);
-          setBranchName(branch.branch_name ?? null);
-        } catch {
-          setBranchName(null);
-        }
-      } else {
-        setBranchName(null);
-      }
-
-      const inlineActorName = saleData.created_by_name ?? saleData.cashier_name ?? null;
-      if (inlineActorName) {
-        setCashierName(inlineActorName);
-      } else if (saleData.created_by != null || saleData.cashier_id != null) {
-        const actorIds = [
-          ...new Set(
-            [saleData.created_by, saleData.cashier_id].filter((id) => id != null && id !== ""),
-          ),
-        ];
-        let resolvedName = null;
-        for (const actorId of actorIds) {
-          try {
-            const actor = await apiRequest(`/users/${actorId}`);
-            resolvedName = actor.full_name ?? actor.name ?? actor.username ?? null;
-            if (resolvedName) break;
-          } catch {
-            // try next id
-          }
-        }
-        setCashierName(resolvedName);
-      } else {
-        setCashierName(null);
-      }
-
-      if (saleData.customer_num) {
-        try {
-          const cust = await apiRequest(`/customers/${saleData.customer_num}`);
-          setCustomer(cust);
-        } catch {
-          setCustomer(null);
-        }
-      } else {
-        setCustomer(null);
-      }
+      const { branchName, cashierName, customer } = await loadOrderRelatedDetails(saleData);
+      setBranchName(branchName);
+      setCashierName(cashierName);
+      setCustomer(customer);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load order");
     } finally {

@@ -7,6 +7,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -34,8 +35,11 @@ import { resolvePostLoginPath, workspaceLoginChannel, workspacesFromCapabilities
 import { applyWorkspaceSession } from "@/lib/workspace-session";
 import { POS_LOGIN_CHANNEL, WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
 import { useCookieAuth } from "@/lib/auth-config";
+import { invalidateReferenceDataCache } from "@/lib/reference-data-cache";
+import { invalidateReportBuilderTemplateCache } from "@/lib/report-builder-templates";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
+const CAPABILITIES_REFRESH_MS = 30_000;
 
 function getClientId() {
   if (typeof window === "undefined") return "";
@@ -69,17 +73,38 @@ export function AuthProvider({ children }) {
   const [loginChannel, setLoginChannel] = useState(null);
   const [loading, setLoading] = useState(true);
   const [capabilitiesRefreshing, setCapabilitiesRefreshing] = useState(false);
+  const capabilitiesRefreshAt = useRef(0);
+  const capabilitiesRefreshPromise = useRef(null);
 
-  const refreshCapabilities = useCallback(async () => {
-    setCapabilitiesRefreshing(true);
-    try {
-      const caps = await apiRequest("/erp/capabilities", { loading: false, reportIssues: false });
-      setCapabilities(caps);
-      setStoredCapabilities(caps);
-      return caps;
-    } finally {
-      setCapabilitiesRefreshing(false);
+  const refreshCapabilities = useCallback(async ({ force = false } = {}) => {
+    const now = Date.now();
+    if (
+      !force &&
+      capabilitiesRefreshPromise.current == null &&
+      now - capabilitiesRefreshAt.current < CAPABILITIES_REFRESH_MS
+    ) {
+      return getStoredCapabilities();
     }
+    if (!force && capabilitiesRefreshPromise.current) {
+      return capabilitiesRefreshPromise.current;
+    }
+
+    setCapabilitiesRefreshing(true);
+    const promise = (async () => {
+      try {
+        const caps = await apiRequest("/erp/capabilities", { loading: false, reportIssues: false });
+        setCapabilities(caps);
+        setStoredCapabilities(caps);
+        capabilitiesRefreshAt.current = Date.now();
+        return caps;
+      } finally {
+        capabilitiesRefreshPromise.current = null;
+        setCapabilitiesRefreshing(false);
+      }
+    })();
+
+    capabilitiesRefreshPromise.current = promise;
+    return promise;
   }, []);
 
   const clearMustChangePassword = useCallback(() => {
@@ -194,7 +219,7 @@ export function AuthProvider({ children }) {
     }
     setLoading(false);
 
-    refreshCapabilities()
+    refreshCapabilities({ force: true })
       .then((caps) => {
         syncStoredWorkspace(caps?.workspaces ?? []);
       })
@@ -355,6 +380,10 @@ export function AuthProvider({ children }) {
     }
     clearSession();
     clearStoredActiveSession();
+    invalidateReferenceDataCache();
+    invalidateReportBuilderTemplateCache();
+    capabilitiesRefreshAt.current = 0;
+    capabilitiesRefreshPromise.current = null;
     setUser(null);
     setOrganization(null);
     setMemberships([]);
