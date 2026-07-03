@@ -208,6 +208,23 @@ export function MobileApplicationSettingsPanel({
               </div>
 
               <div>
+                <h3 className="text-sm font-medium text-slate-900">Customer privacy</h3>
+                <p className="theme-subtext mt-1 text-xs">
+                  Controls what customer contact details the mobile app shows to reps and drivers.
+                </p>
+                <div className="mt-3 space-y-3">
+                  <Toggle
+                    label="Show customer phone number in the mobile app"
+                    description="When off, the app shows only the customer name — phone numbers are hidden and call, SMS, and WhatsApp shortcuts are disabled for reps and drivers."
+                    checked={form.mobile_show_customer_phone !== false}
+                    onChange={(v) =>
+                      setForm((f) => ({ ...f, mobile_show_customer_phone: v }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div>
                 <h3 className="text-sm font-medium text-slate-900">Orders at customers</h3>
                 <div className="mt-3 space-y-3">
                   <Toggle
