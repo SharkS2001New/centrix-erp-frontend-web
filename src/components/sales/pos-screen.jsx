@@ -73,6 +73,7 @@ import {
   posStockDisplayMode,
   posStockInsufficientMessage,
   posStockLocationLabel,
+  productCartStockLabel,
 } from "@/lib/pos-stock";
 import {
   applyCartMutationResponse,
@@ -967,6 +968,11 @@ export function PosScreen({ standalone = false }) {
   const stockDisplayMode = useMemo(
     () => posStockDisplayMode(posSalesConfig, sellWholesale),
     [posSalesConfig, sellWholesale],
+  );
+
+  const selectedProductStockLabel = useMemo(
+    () => (selectedProduct ? productCartStockLabel(selectedProduct, posSalesConfig) : ""),
+    [selectedProduct, posSalesConfig],
   );
 
   async function resolveProductByCode(code) {
@@ -3202,6 +3208,11 @@ export function PosScreen({ standalone = false }) {
                   readOnly
                   placeholder="Select from search"
                 />
+                {selectedProductStockLabel ? (
+                  <p className="mt-0.5 text-[10px] font-medium text-[var(--theme-accent-text)]">
+                    {selectedProductStockLabel}
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="col-span-2 space-y-1">

@@ -8,7 +8,7 @@ const TRIP_STATUS_LABELS = {
 
 const TRIP_WORKFLOW_STEPS = [
   { key: "draft", label: "Draft", hint: "Trip chart created; assign orders and review the loading list." },
-  { key: "loading", label: "Loading", hint: "Loading list locked; picking is confirmed." },
+  { key: "loading", label: "Loading", hint: "Picking complete; loading list locked and vehicle being loaded." },
   { key: "in_transit", label: "Dispatched", hint: "Vehicle has departed — deliveries are in progress." },
   { key: "completed", label: "Completed", hint: "All deliveries and cash reconciliation are done." },
 ];

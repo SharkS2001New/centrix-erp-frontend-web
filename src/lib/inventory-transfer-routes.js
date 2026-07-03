@@ -32,3 +32,11 @@ export function transferRouteLabel(from, to) {
     String(to).replace(/_/g, " ");
   return `${fromLabel} → ${toLabel}`;
 }
+
+export function isStoreToShopTransfer(from, to) {
+  return from === "store" && to === "shop";
+}
+
+export function isLocationTransferTarget(to) {
+  return to === "shop" || to === "store";
+}

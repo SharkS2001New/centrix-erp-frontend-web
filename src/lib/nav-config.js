@@ -738,6 +738,12 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.fulfillment.drivers.view,
       },
       {
+        href: "/fulfillment/picking",
+        label: "Warehouse picking",
+        module: "distribution",
+        permission: P.fulfillment.drivers.view,
+      },
+      {
         href: "/fulfillment/loading-lists",
         label: "Loading lists",
         module: "distribution",

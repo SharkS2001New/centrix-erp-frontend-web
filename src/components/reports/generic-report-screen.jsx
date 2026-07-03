@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
-import { filterReportColumnKeys } from "@/lib/reports/report-column-visibility";
+import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-column-visibility";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
 import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
@@ -50,7 +50,7 @@ function formatCell(key, value) {
 }
 
 function labelizeKey(key) {
-  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return reportColumnLabel(key);
 }
 
 export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {

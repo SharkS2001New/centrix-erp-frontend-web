@@ -2,6 +2,7 @@
 import {
   baseToDisplayQty,
   formatDisplayQty,
+  formatMixedStockDisplay,
   uomConversionFactor,
 } from "./stock-uom";
 import {
@@ -291,4 +292,31 @@ export function posStockDisplayMode(posSalesConfig, sellWholesale) {
   if (posSalesConfig.allowShop && !posSalesConfig.allowStore) return "shop";
   if (!posSalesConfig.allowShop && posSalesConfig.allowStore) return "store";
   return "both";
+}
+
+export function productSellsRetail(product) {
+  const value = product?.sell_on_retail;
+  return value === true || value === 1 || value === "1";
+}
+
+export function productCartStockDisplayMode(product) {
+  return productSellsRetail(product) ? "both" : "store";
+}
+
+/** Stock summary on add-to-cart — W/R shows shop + store; wholesale-only shows store. */
+export function productCartStockLabel(product, posSalesConfig) {
+  if (!product) return "";
+
+  const uom = product.uom ?? null;
+  const shopText = formatMixedStockDisplay(productStockAtLocation(product, "shop"), uom).text;
+  const storeText = formatMixedStockDisplay(productStockAtLocation(product, "store"), uom).text;
+
+  if (productSellsRetail(product)) {
+    if (posSalesConfig?.retailShopWholesaleStoreStock || posSalesConfig?.perLineStockRouting) {
+      return `Shop (retail): ${shopText} · Store (wholesale): ${storeText}`;
+    }
+    return `Shop: ${shopText} · Store: ${storeText}`;
+  }
+
+  return `Store: ${storeText}`;
 }

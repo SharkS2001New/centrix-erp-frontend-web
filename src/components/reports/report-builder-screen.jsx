@@ -11,6 +11,14 @@ import { WORKSPACE_BUILDER_LABEL } from "@/lib/workspace-reports";
 import { CatalogPageShell, Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
+import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-column-visibility";
+
+function reportBuilderVisibleFields(sourceSchema) {
+  const fields = sourceSchema?.fields ?? [];
+  const hasProductName = fields.some((field) => field.key === "product_name");
+  if (!hasProductName) return fields;
+  return fields.filter((field) => field.key !== "product_code");
+}
 
 function emptySpec() {
   return {
@@ -357,15 +365,20 @@ export function ReportBuilderScreen() {
     }
   }
 
-  const previewKeys = previewRows[0]
-    ? Object.keys(previewRows[0])
-    : spec.columns.map((c) => c.alias ?? c.field);
+  const previewKeys = useMemo(() => {
+    if (previewRows[0]) {
+      return filterReportColumnKeys(Object.keys(previewRows[0]));
+    }
+    return spec.columns
+      .map((c) => c.alias ?? c.field)
+      .filter((key) => key !== "product_code" || !spec.columns.some((c) => (c.alias ?? c.field) === "product_name"));
+  }, [previewRows, spec.columns]);
 
   const previewExportColumns = useMemo(() => {
     if (!previewRows[0]) return [];
     return previewKeys.map((key) => ({
       key,
-      label: key,
+      label: reportColumnLabel(key),
       accessor: (row) => (row[key] == null ? "—" : String(row[key])),
     }));
   }, [previewKeys, previewRows]);
@@ -481,7 +494,7 @@ export function ReportBuilderScreen() {
                         {sourceSchema.label}
                       </p>
                       <ul className="space-y-2">
-                        {sourceSchema.fields.map((field) => {
+                        {reportBuilderVisibleFields(sourceSchema).map((field) => {
                           const selected = spec.columns.some(
                             (c) => c.source === sourceKey && c.field === field.key,
                           );
@@ -525,7 +538,7 @@ export function ReportBuilderScreen() {
               <ul className="mt-3 space-y-2 text-sm">
                 {selectedSources.flatMap((sourceKey) => {
                   const sourceSchema = findSourceSchema(schema, sourceKey);
-                  return (sourceSchema?.fields ?? [])
+                  return reportBuilderVisibleFields(sourceSchema)
                     .filter((f) => f.groupable)
                     .map((field) => (
                       <li key={columnRef(sourceKey, field.key)} className="flex items-center gap-2">

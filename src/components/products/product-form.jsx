@@ -26,6 +26,7 @@ import {
 } from "@/components/customers/customer-form";
 import { EntityPhotoField } from "@/components/media/entity-photo-field";
 import { useAuth } from "@/contexts/auth-context";
+import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
 import {
   defaultProductBranchId,
   isMultiBranchCatalog,
@@ -50,6 +51,7 @@ export const EMPTY_PRODUCT_FORM = {
   store_stock_middle: "0",
   store_stock_small: "0",
   reorder_packs: "",
+  shelf_location: "",
   sell_on_retail: false,
   retail_package_id: "",
   retail_pricing_tiers: [defaultRetailPricingTier(null)],
@@ -138,6 +140,7 @@ export function productToForm(product, retailPackage = null, uom = null) {
     store_stock_middle: storeStock.middle,
     store_stock_small: storeStock.small,
     reorder_packs: reorderPacks,
+    shelf_location: product.shelf_location ?? "",
     sell_on_retail: product.sell_on_retail === 1 || product.sell_on_retail === true,
     vat_id: product.vat_id ? String(product.vat_id) : "",
     catalog_scope: product.catalog_scope === "branch" || product.branch_id ? "branch" : "organization",
@@ -147,7 +150,7 @@ export function productToForm(product, retailPackage = null, uom = null) {
   };
 }
 
-export function buildProductBody(form, uom = null, { allowDiscounts = true, openingStockBranchId = null } = {}) {
+export function buildProductBody(form, uom = null, { allowDiscounts = true, openingStockBranchId = null, includeShelfLocation = false } = {}) {
   const unitPrice = parseDecimalInput(form.unit_price);
   const body = {
     product_code: form.product_code.trim(),
@@ -167,6 +170,10 @@ export function buildProductBody(form, uom = null, { allowDiscounts = true, open
     reorder_point: reorderBaseFromForm(form, uom),
     deleted_at: form.is_active ? null : new Date().toISOString(),
   };
+
+  if (includeShelfLocation) {
+    body.shelf_location = form.shelf_location?.trim() || null;
+  }
 
   if (form.catalog_scope === "branch" && form.branch_id) {
     body.catalog_scope = "branch";
@@ -376,6 +383,7 @@ export function ProductFormFields({
 }) {
   const { capabilities, user } = useAuth();
   const multiBranch = isMultiBranchCatalog(capabilities);
+  const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
     [categories],
@@ -732,6 +740,7 @@ export function ProductFormFields({
         globalReorderLevel={globalReorderLevel}
         stockReadOnly={mode !== "create"}
         productCode={mode === "edit" ? form.product_code : null}
+        includeShelfLocation={includeShelfLocation}
       />
 
       {mode === "edit" ? (

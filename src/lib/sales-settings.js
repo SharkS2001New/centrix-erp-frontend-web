@@ -52,6 +52,7 @@ const SALES_DEFAULTS = {
   mobile_allow_offline_orders: false,
   mobile_checkout_location_radius_metres: 5,
   mobile_checkout_mode: 'save_only',
+  mobile_product_list_mode: 'in_stock_only',
   mobile_enable_field_attendance: false,
   require_pos_till_float: false,
   require_backoffice_till_float: false,
@@ -206,11 +207,32 @@ export function normalizeMobileCheckoutMode(value) {
   return MOBILE_CHECKOUT_MODES.some((option) => option.value === mode) ? mode : "save_only";
 }
 
+export const MOBILE_PRODUCT_LIST_MODES = [
+  {
+    value: "in_stock_only",
+    label: "Show only products in stock",
+    description:
+      "Reps only see products with available quantity at their branch. Out-of-stock items are hidden from search and browse.",
+  },
+  {
+    value: "all_products",
+    label: "Show all products",
+    description:
+      "Reps can browse and search the full catalogue. Stock levels are still shown; out-of-stock items can be ordered if your sales rules allow it.",
+  },
+];
+
+export function normalizeMobileProductListMode(value) {
+  const mode = String(value ?? "in_stock_only");
+  return MOBILE_PRODUCT_LIST_MODES.some((option) => option.value === mode) ? mode : "in_stock_only";
+}
+
 export const EMPTY_MOBILE_APPLICATION_FORM = {
   mobile_enable_checkout_location_verification: false,
   mobile_allow_offline_orders: false,
   mobile_checkout_location_radius_metres: "5",
   mobile_checkout_mode: "save_only",
+  mobile_product_list_mode: "in_stock_only",
   mobile_enable_field_attendance: false,
 };
 
@@ -225,6 +247,7 @@ export function mobileApplicationFormFromApi(res) {
       sales.mobile_checkout_location_radius_metres ?? 5,
     ),
     mobile_checkout_mode: normalizeMobileCheckoutMode(sales.mobile_checkout_mode),
+    mobile_product_list_mode: normalizeMobileProductListMode(sales.mobile_product_list_mode),
     mobile_enable_field_attendance: Boolean(sales.mobile_enable_field_attendance),
   };
 }
@@ -238,6 +261,7 @@ export function mobileApplicationPayloadFromForm(form) {
     mobile_checkout_location_radius_metres:
       Number(form.mobile_checkout_location_radius_metres) || 5,
     mobile_checkout_mode: normalizeMobileCheckoutMode(form.mobile_checkout_mode),
+    mobile_product_list_mode: normalizeMobileProductListMode(form.mobile_product_list_mode),
     mobile_enable_field_attendance: Boolean(form.mobile_enable_field_attendance),
   };
 }
@@ -529,6 +553,10 @@ export function isJournalEntryApprovalEnabled(moduleSettings) {
 
 export function isStockAdjustmentApprovalEnabled(moduleSettings) {
   return Boolean(moduleSettings?.inventory?.stock_adjustment_approval_enabled);
+}
+
+export function isStockTransferApprovalEnabled(moduleSettings) {
+  return Boolean(moduleSettings?.inventory?.stock_transfer_approval_enabled);
 }
 
 export const ORDER_DOCUMENT_TYPES = ["receipt", "invoice", "both"];

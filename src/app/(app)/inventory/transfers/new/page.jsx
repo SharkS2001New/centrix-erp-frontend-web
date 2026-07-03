@@ -1,11 +1,12 @@
 "use client";
 
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { isStockTransferApprovalEnabled } from "@/lib/sales-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { LpoProductSearchPanel } from "@/components/lpo/lpo-product-search-panel";
 import { formatPackagingLabel } from "@/components/lpo/lpo-product-utils";
@@ -17,13 +18,15 @@ import {
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
 import {
   TRANSFER_FROM_OPTIONS,
+  isLocationTransferTarget,
+  isStoreToShopTransfer,
   transferToOptionsFor,
 } from "@/lib/inventory-transfer-routes";
 import { damageQtyToBase } from "@/lib/stock-uom";
 
 export default function StockTransferPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, capabilities, hasPermission } = useAuth();
   const branchId = user?.branch_id ?? 1;
 
   const [uoms, setUoms] = useState([]);
@@ -45,6 +48,13 @@ export default function StockTransferPage() {
     () => transferToOptionsFor(fromLocation),
     [fromLocation],
   );
+  const isStoreToShop = isStoreToShopTransfer(fromLocation, toLocation);
+  const showReasonField = !isStoreToShop && isLocationTransferTarget(toLocation);
+  const useRequestFlow =
+    isStockTransferApprovalEnabled(capabilities?.module_settings) &&
+    !isStoreToShop &&
+    !user?.is_admin &&
+    !hasPermission("inventory.manage");
 
   useEffect(() => {
     if (!toOptions.some((opt) => opt.value === toLocation)) {
@@ -74,25 +84,29 @@ export default function StockTransferPage() {
       notifyError("Select a product to transfer.");
       return;
     }
-    if (!reason.trim()) {
-      notifyError("Enter a reason for this transfer.");
-      return;
-    }
 
     setSaving(true);
     try {
       const uom = selected.uom ?? uomById.get(selected.unit_id);
-      await apiRequest("/inventory/transfer", {
+      const body = {
+        branch_id: branchId,
+        product_code: selected.product_code,
+        quantity: damageQtyToBase(qty, packageType, uom),
+        from_location: fromLocation,
+        to_location: toLocation,
+      };
+      if (showReasonField && reason.trim()) {
+        body.notes = reason.trim();
+      }
+      const res = await apiRequest(useRequestFlow ? "/inventory/transfer/request" : "/inventory/transfer", {
         method: "POST",
-        body: {
-          branch_id: branchId,
-          product_code: selected.product_code,
-          quantity: damageQtyToBase(qty, packageType, uom),
-          from_location: fromLocation,
-          to_location: toLocation,
-          notes: reason.trim(),
-        },
+        body,
       });
+      if (res?.pending_approval) {
+        notifySuccess("Transfer submitted for manager approval.");
+        router.push("/notifications");
+        return;
+      }
       router.push("/inventory/transactions?type=TRANSFER");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Transfer failed");
@@ -172,15 +186,28 @@ export default function StockTransferPage() {
               </Field>
             </div>
 
-            <Field label="Reason">
-              <input
-                className={inputClassName()}
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="e.g. Staff lunch, damaged display units, donation to church"
-                required
-              />
-            </Field>
+            {showReasonField ? (
+              <Field label="Reason (optional)">
+                <input
+                  className={inputClassName()}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="e.g. Staff lunch, damaged display units, donation to church"
+                />
+              </Field>
+            ) : null}
+
+            {isStoreToShop ? (
+              <p className="text-xs text-slate-500">
+                Restocking the shop from the warehouse does not require a reason or manager approval.
+              </p>
+            ) : null}
+
+            {useRequestFlow ? (
+              <p className="text-xs text-amber-700">
+                This transfer will be sent to a manager for approval before stock is moved.
+              </p>
+            ) : null}
 
             <Field label="Measured as">
               <UomMeasureSelect
@@ -213,7 +240,13 @@ export default function StockTransferPage() {
             Cancel
           </Link>
           <PrimaryButton type="submit" showIcon={false} disabled={saving || !selected}>
-            {saving ? "Transferring…" : "Transfer stock"}
+            {saving
+              ? useRequestFlow
+                ? "Submitting…"
+                : "Transferring…"
+              : useRequestFlow
+                ? "Submit for approval"
+                : "Transfer stock"}
           </PrimaryButton>
         </div>
       </form>

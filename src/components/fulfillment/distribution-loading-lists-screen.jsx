@@ -13,8 +13,9 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 import { printLoadingList } from "@/components/fulfillment/loading-list-print";
+import { printPickingList } from "@/components/fulfillment/picking-list-print";
 import { LoadingListDocumentPreview } from "@/components/fulfillment/loading-list-document-preview";
-import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { isDistributionOpsEnabled, isProductShelfLocationEnabled } from "@/lib/distribution-settings";
 import { formatSaleKes } from "@/lib/sales";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
@@ -49,6 +50,7 @@ function statusLabel(status) {
 export function DistributionLoadingListsScreen() {
   const { capabilities, organization, generalSettings, user } = useAuth();
   const allowed = isDistributionOpsEnabled(capabilities);
+  const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const organizationName = organization?.organization_name ?? organization?.company_name ?? organization?.name ?? capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME;
   const general = generalSettings();
   const loadingListPrintSettings = resolveLoadingSheetPrintSettings(
@@ -116,17 +118,49 @@ export function DistributionLoadingListsScreen() {
     setDetailError(null);
     setDetailLoading(true);
     try {
-      const [tripRes, listRes] = await Promise.all([
+      const [tripRes, listRes, pickRes] = await Promise.all([
         apiRequest(`/dispatch-trips/${trip.id}`),
         apiRequest(`/dispatch-trips/${trip.id}/loading-list`),
+        apiRequest(`/dispatch-trips/${trip.id}/picking-list`),
       ]);
       setDetail({
         trip: tripRes,
         loading_list: listRes.loading_list ?? listRes,
+        picking_list: pickRes.picking_list ?? pickRes,
         financial_summary: listRes.financial_summary ?? tripRes.financial_summary ?? null,
       });
     } catch (e) {
       setDetailError(e instanceof ApiError ? e.message : "Failed to load loading list");
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  async function handlePrintPicking() {
+    if (!selectedTripId) return;
+
+    setDetailError(null);
+    setDetailLoading(true);
+    try {
+      const pickRes = await apiRequest(`/dispatch-trips/${selectedTripId}/picking-list`);
+      const freshPick = pickRes.picking_list ?? pickRes;
+      const trip = detail?.trip ?? selectedTrip;
+      setDetail((current) => ({ ...current, picking_list: freshPick }));
+      printPickingList({
+        organization,
+        generalSettings: general,
+        organizationName,
+        pickingList: freshPick,
+        trip,
+        documentFooterText: resolvePrintFooter(
+          mergeGeneralSettings(capabilities?.module_settings),
+          "loading_sheet",
+        ),
+        printedBy: user?.full_name ?? user?.username ?? null,
+        includeShelfLocation,
+      });
+    } catch (e) {
+      setDetailError(e instanceof ApiError ? e.message : "Could not refresh picking list for print");
     } finally {
       setDetailLoading(false);
     }
@@ -190,8 +224,8 @@ export function DistributionLoadingListsScreen() {
 
   return (
     <CatalogPageShell
-      title="Loading list"
-      subtitle="Preview and print aggregated pick lists from dispatch trips"
+      title="Loading lists"
+      subtitle="Preview and print picking and loading lists from dispatch trips"
     >
       {error ? <DashboardErrorBanner message={error} className="mb-4" /> : null}
 
@@ -301,6 +335,9 @@ export function DistributionLoadingListsScreen() {
                   >
                     Open trip
                   </Link>
+                  <PrimaryButton type="button" showIcon={false} onClick={handlePrintPicking}>
+                    Print picking list
+                  </PrimaryButton>
                   <PrimaryButton type="button" showIcon={false} onClick={handlePrint}>
                     Print loading list
                   </PrimaryButton>

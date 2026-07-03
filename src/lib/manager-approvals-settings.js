@@ -48,6 +48,7 @@ export function managerApprovalsFormFromApiResponses(responses = {}) {
     discount_approval_threshold_percent: String(sales.discount_approval_threshold_percent ?? 10),
     order_cancellation_approval_enabled: Boolean(sales.order_cancellation_approval_enabled),
     stock_adjustment_approval_enabled: Boolean(inventory.stock_adjustment_approval_enabled),
+    stock_transfer_approval_enabled: Boolean(inventory.stock_transfer_approval_enabled),
     require_lpo_approval: Boolean(procurement.require_lpo_approval ?? true),
     require_payroll_approval: Boolean(hr.require_payroll_approval),
     journal_entry_approval_enabled: Boolean(accounting.journal_entry_approval_enabled),
@@ -73,7 +74,10 @@ export function salesManagerApprovalsPayload(form) {
 }
 
 export function inventoryManagerApprovalsPayload(form) {
-  return { stock_adjustment_approval_enabled: Boolean(form.stock_adjustment_approval_enabled) };
+  return {
+    stock_adjustment_approval_enabled: Boolean(form.stock_adjustment_approval_enabled),
+    stock_transfer_approval_enabled: Boolean(form.stock_transfer_approval_enabled),
+  };
 }
 
 export function procurementManagerApprovalsPayload(form) {

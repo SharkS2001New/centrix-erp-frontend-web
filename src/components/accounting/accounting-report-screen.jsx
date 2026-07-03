@@ -5,7 +5,7 @@ import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
-import { filterReportColumnKeys } from "@/lib/reports/report-column-visibility";
+import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-column-visibility";
 import { parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
@@ -36,7 +36,7 @@ function formatCell(key, value) {
 }
 
 function labelizeKey(key) {
-  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return reportColumnLabel(key);
 }
 
 const SUMMARY_LABELS = {

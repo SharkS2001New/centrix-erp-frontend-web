@@ -7,6 +7,7 @@ import {
   EMPTY_MOBILE_APPLICATION_FORM,
   isOrgMobileSalesEnabled,
   MOBILE_CHECKOUT_MODES,
+  MOBILE_PRODUCT_LIST_MODES,
   mobileApplicationFormFromApi,
   mobileApplicationPayloadFromForm,
 } from "@/lib/sales-settings";
@@ -141,6 +142,43 @@ export function MobileApplicationSettingsPanel({
                         checked={form.mobile_checkout_mode === option.value}
                         onChange={() =>
                           setForm((f) => ({ ...f, mobile_checkout_mode: option.value }))
+                        }
+                      />
+                      <span>
+                        <span className="theme-heading block text-sm font-medium">
+                          {option.label}
+                        </span>
+                        <span className="theme-subtext mt-0.5 block text-xs">
+                          {option.description}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-medium text-slate-900">Product catalogue</h3>
+                <p className="theme-subtext mt-1 text-xs">
+                  Controls which products reps see when browsing or searching on the mobile app.
+                </p>
+                <div className="mt-3 space-y-3">
+                  {MOBILE_PRODUCT_LIST_MODES.map((option) => (
+                    <label
+                      key={option.value}
+                      className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 ${
+                        form.mobile_product_list_mode === option.value
+                          ? "border-[var(--theme-accent)] bg-[var(--theme-surface-muted)]"
+                          : "border-[var(--theme-border)] bg-[var(--theme-surface-muted)]"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="mobile_product_list_mode"
+                        className="mt-1"
+                        checked={form.mobile_product_list_mode === option.value}
+                        onChange={() =>
+                          setForm((f) => ({ ...f, mobile_product_list_mode: option.value }))
                         }
                       />
                       <span>

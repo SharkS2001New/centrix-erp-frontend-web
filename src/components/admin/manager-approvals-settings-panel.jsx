@@ -252,6 +252,12 @@ export function ManagerApprovalsSettingsPanel({
                       checked={form.stock_adjustment_approval_enabled}
                       onChange={(v) => setForm((f) => ({ ...f, stock_adjustment_approval_enabled: v }))}
                     />
+                    <Toggle
+                      label="Stock transfer approval"
+                      description="Shop ↔ store and other transfers (except store to shop restock) require manager approval for non-managers."
+                      checked={form.stock_transfer_approval_enabled}
+                      onChange={(v) => setForm((f) => ({ ...f, stock_transfer_approval_enabled: v }))}
+                    />
                   </div>
                 ) : null}
 

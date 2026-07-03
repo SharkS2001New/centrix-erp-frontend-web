@@ -29,6 +29,7 @@ export function inventoryFormFromApi(res) {
         ? String(inv.global_low_stock_threshold)
         : "",
     stock_adjustment_approval_enabled: Boolean(inv.stock_adjustment_approval_enabled),
+    stock_transfer_approval_enabled: Boolean(inv.stock_transfer_approval_enabled),
   };
 }
 
@@ -44,6 +45,7 @@ export function inventoryPayloadFromForm(form) {
     allow_negative_stock: Boolean(form.allow_negative_stock),
     stock_alert_mode: form.stock_alert_mode,
     stock_adjustment_approval_enabled: Boolean(form.stock_adjustment_approval_enabled),
+    stock_transfer_approval_enabled: Boolean(form.stock_transfer_approval_enabled),
   };
   if (form.global_low_stock_threshold !== "") {
     payload.global_low_stock_threshold = Number(form.global_low_stock_threshold) || 0;

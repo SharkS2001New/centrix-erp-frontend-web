@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -9,6 +9,7 @@ import { formatImportBatchProgress, prepareImportRows, runBatchedQueuedImport, s
 import { canUseAdvancedDataImport } from "@/lib/advanced-data-import";
 import { ImportProgressLine, ImportResultPanel } from "@/components/catalog/import-feedback";
 import { useAuth } from "@/contexts/auth-context";
+import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useBackgroundTasks } from "@/contexts/background-task-context";
 import {
@@ -37,6 +38,7 @@ const PRODUCT_IMPORT_COLUMNS = [
   { key: "discount_percentage", label: "Discount percentage" },
   { key: "discount_value", label: "Discount value" },
   { key: "product_weight", label: "Product weight" },
+  { key: "shelf_location", label: "Shelf location" },
   { key: "stock_in_shop", label: "Shop stock" },
   { key: "stock_in_store", label: "Store stock" },
   { key: "reorder_point", label: "Reorder point" },
@@ -59,6 +61,7 @@ const SAMPLE_HEADERS = [
   "discount_percentage",
   "discount_value",
   "product_weight",
+  "shelf_location",
   "stock_in_shop",
   "stock_in_store",
   "reorder_point",
@@ -79,6 +82,7 @@ const SAMPLE_ROW = [
   "0",
   "0",
   "",
+  "A1",
   "0",
   "0",
   "0",
@@ -86,6 +90,25 @@ const SAMPLE_ROW = [
   "A",
   "false",
 ];
+
+function productImportColumns(includeShelfLocation) {
+  if (includeShelfLocation) return PRODUCT_IMPORT_COLUMNS;
+  return PRODUCT_IMPORT_COLUMNS.filter((col) => col.key !== "shelf_location");
+}
+
+function productSampleImportData(includeShelfLocation) {
+  if (includeShelfLocation) {
+    return { headers: SAMPLE_HEADERS, row: SAMPLE_ROW };
+  }
+  const shelfIndex = SAMPLE_HEADERS.indexOf("shelf_location");
+  if (shelfIndex < 0) {
+    return { headers: SAMPLE_HEADERS, row: SAMPLE_ROW };
+  }
+  return {
+    headers: SAMPLE_HEADERS.filter((key) => key !== "shelf_location"),
+    row: SAMPLE_ROW.filter((_, index) => index !== shelfIndex),
+  };
+}
 
 function ImportIcon() {
   return (
@@ -187,24 +210,29 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
   );
 }
 
-function ImportModal({ open, onClose, onImported }) {
+function ImportModal({ open, onClose, onImported, includeShelfLocation = false }) {
   const inputRef = useRef(null);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(null);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const { runQueuedTask, overlayNode } = useQueuedTask("Please wait while products are imported…");
+  const importColumns = useMemo(
+    () => productImportColumns(includeShelfLocation),
+    [includeShelfLocation],
+  );
 
   if (!open) return null;
 
   function downloadSample(format) {
-    const row = SAMPLE_ROW.join(",");
-    const csv = `${SAMPLE_HEADERS.join(",")}\n${row}\n`;
+    const { headers, row } = productSampleImportData(includeShelfLocation);
+    const rowText = row.join(",");
+    const csv = `${headers.join(",")}\n${rowText}\n`;
     if (format === "csv") {
       downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), "products-import-sample.csv");
       return;
     }
-    void downloadExcelFromRows("products-import-sample.xlsx", "Sample", [SAMPLE_HEADERS, SAMPLE_ROW]);
+    void downloadExcelFromRows("products-import-sample.xlsx", "Sample", [headers, row]);
   }
 
   function normalizeRow(row) {
@@ -238,6 +266,7 @@ function ImportModal({ open, onClose, onImported }) {
       "discount_percentage",
       "discount_value",
       "product_weight",
+      ...(includeShelfLocation ? ["shelf_location"] : []),
       "stock_in_shop",
       "stock_in_store",
       "reorder_point",
@@ -272,7 +301,7 @@ function ImportModal({ open, onClose, onImported }) {
     setImportProgress(null);
     setImporting(true);
     try {
-      const rows = mapImportHeaders(await parseSpreadsheet(file), PRODUCT_IMPORT_COLUMNS);
+      const rows = mapImportHeaders(await parseSpreadsheet(file), importColumns);
       if (!rows.length) throw new Error("The file has no data rows.");
 
       const { rows: normalizedRows, failures: prepFailures } = prepareImportRows({
@@ -388,6 +417,7 @@ function ImportModal({ open, onClose, onImported }) {
 
 export function ProductImportExport({ totalCount, exportSearchParams, onImported }) {
   const { user, organization, capabilities } = useAuth();
+  const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const showImport = canUseAdvancedDataImport({
@@ -422,6 +452,7 @@ export function ProductImportExport({ totalCount, exportSearchParams, onImported
         open={importOpen}
         onClose={() => setImportOpen(false)}
         onImported={onImported}
+        includeShelfLocation={includeShelfLocation}
       />
       <ExportModal
         open={exportOpen}

@@ -7,6 +7,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { catalogMetaFromCapabilities } from "@/lib/catalog-scope";
 import { mergeSalesSettings } from "@/lib/sales-settings";
+import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
 import {
   buildProductBody,
   EMPTY_PRODUCT_FORM,
@@ -26,6 +27,7 @@ export default function EditProductPage() {
   const router = useRouter();
   const { capabilities, user } = useAuth();
   const allowDiscounts = Boolean(mergeSalesSettings(capabilities?.module_settings).allow_discounts);
+  const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const productCode = decodeURIComponent(params.code);
 
   const {
@@ -138,7 +140,7 @@ export default function EditProductPage() {
     setFormError(null);
     try {
       const uom = uoms.find((u) => String(u.id) === String(form.unit_id)) ?? null;
-      const body = buildProductBody(form, uom, { allowDiscounts });
+      const body = buildProductBody(form, uom, { allowDiscounts, includeShelfLocation });
       await apiRequest(`/products/${encodeURIComponent(productCode)}`, {
         method: "PUT",
         body,

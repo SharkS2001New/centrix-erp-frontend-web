@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { mergeSalesSettings } from "@/lib/sales-settings";
+import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
 import {
   buildProductBody,
   EMPTY_PRODUCT_FORM,
@@ -24,6 +25,7 @@ export default function NewProductPage() {
   const router = useRouter();
   const { capabilities, user } = useAuth();
   const allowDiscounts = Boolean(mergeSalesSettings(capabilities?.module_settings).allow_discounts);
+  const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const {
     categories,
     subCategories,
@@ -131,6 +133,7 @@ export default function NewProductPage() {
       const body = buildProductBody(form, uom, {
         allowDiscounts,
         openingStockBranchId: resolveOpeningStockBranchId(form, user),
+        includeShelfLocation,
       });
       const res = await apiRequest("/products", { method: "POST", body });
       const saved = res.data ?? res;

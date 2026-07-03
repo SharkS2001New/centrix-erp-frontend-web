@@ -100,7 +100,6 @@ export const REPORT_DEFINITIONS = {
     showDateRange: true,
     columns: [
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
-      { key: "product_code", label: "Product Code", accessor: (r) => r.product_code, link: "product" },
       { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
       { key: "channel", label: "Channel", accessor: (r) => r.channel },
       { key: "qty_sold", label: "Qty Sold", accessor: (r) => r.qty_sold, align: "right", total: true },
@@ -241,8 +240,7 @@ export const REPORT_DEFINITIONS = {
     dateColumn: null,
     showDateRange: false,
     columns: [
-      { key: "product_code", label: "Product Code", accessor: (r) => r.product_code, link: "product" },
-      { key: "product_name", label: "Product Name", accessor: (r) => r.product_name, link: "product" },
+      { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
       {
         key: "total_base_units",
         label: "On Hand Qty",
@@ -340,6 +338,7 @@ export const REPORT_DEFINITIONS = {
     section: "Finance",
     apiPath: "/reports/invoice-payments",
     dateColumn: "date_paid",
+    defaultDateRangeDays: 364,
     showDateRange: true,
     columns: [
       { key: "date_paid", label: "Date paid", accessor: (r) => r.date_paid },
@@ -377,7 +376,12 @@ export const REPORT_DEFINITIONS = {
       { key: "created_at", label: "Date", accessor: (r) => r.created_at },
       { key: "reference", label: "Reference", accessor: (r) => `${r.reference_type ?? "—"} #${r.reference_id ?? "—"}` },
       { key: "transaction_type", label: "Type", accessor: (r) => r.transaction_type },
-      { key: "product_code", label: "Product", accessor: (r) => r.product_code, link: "product" },
+      {
+        key: "product_name",
+        label: "Product",
+        accessor: (r) => r.product_name ?? r.product?.product_name ?? r.product_code,
+        link: "product",
+      },
       { key: "stock_location", label: "Location", accessor: (r) => r.stock_location },
       {
         key: "in_qty",

@@ -16,11 +16,12 @@ import { DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { TripExpensesPanel } from "@/components/fulfillment/trip-expenses-panel";
 import { printLoadingList } from "@/components/fulfillment/loading-list-print";
+import { printPickingList } from "@/components/fulfillment/picking-list-print";
 import { formatTripRoutesLabel } from "@/lib/trip-routes";
 import { printDeliveryNote } from "@/components/fulfillment/delivery-note-print";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
-import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { isDistributionOpsEnabled, isProductShelfLocationEnabled } from "@/lib/distribution-settings";
 import { formatOrderNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 import { TripWorkflowBanner } from "@/components/fulfillment/trip-workflow-banner";
@@ -33,6 +34,7 @@ import {
   resolveTripDetailGuidance,
 } from "@/lib/fulfillment-guidance";
 import { mergeDistributionSettings } from "@/lib/distribution-settings";
+import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
 
 function PrintIcon() {
   return (
@@ -48,26 +50,39 @@ export default function TripDetailPage() {
   const { organization, generalSettings, capabilities, user } = useAuth();
   const distributionSettings = useMemo(() => mergeDistributionSettings(capabilities), [capabilities]);
   const guidanceEnabled = isFulfillmentGuidanceEnabled(capabilities);
+  const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
 
   const [trip, setTrip] = useState(null);
   const [loadingList, setLoadingList] = useState(null);
+  const [pickingList, setPickingList] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [preparedBy, setPreparedBy] = useState("");
   const [checkedBy, setCheckedBy] = useState("");
+  const [pickerName, setPickerName] = useState("");
+  const [pickedDraft, setPickedDraft] = useState({});
   const [collectedCash, setCollectedCash] = useState("");
 
   const loadTrip = useCallback(async () => {
     setLoading(true);
     try {
-      const [tripRes, listRes] = await Promise.all([
+      const [tripRes, listRes, pickRes] = await Promise.all([
         apiRequest(`/dispatch-trips/${id}`),
         apiRequest(`/dispatch-trips/${id}/loading-list`),
+        apiRequest(`/dispatch-trips/${id}/picking-list`),
       ]);
       setTrip(tripRes);
       setLoadingList(listRes.loading_list ?? listRes);
+      const nextPicking = pickRes.picking_list ?? pickRes;
+      setPickingList(nextPicking);
+      setPickedDraft(
+        Object.fromEntries(
+          (nextPicking?.lines ?? []).map((line) => [line.id, String(line.picked_qty ?? line.required_qty ?? "")]),
+        ),
+      );
       setPreparedBy(listRes.loading_list?.prepared_by_name ?? tripRes.prepared_by_name ?? "");
       setCheckedBy(listRes.loading_list?.checked_by_name ?? tripRes.checked_by_name ?? "");
+      setPickerName(nextPicking?.picker_name ?? user?.full_name ?? user?.username ?? "");
       setCollectedCash(
         tripRes.collected_cash != null ? String(tripRes.collected_cash) : "",
       );
@@ -76,18 +91,73 @@ export default function TripDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, user?.full_name, user?.username]);
 
   useEffect(() => {
     loadTrip();
   }, [loadTrip]);
 
+  const pickingEditable = pickingList?.status === "open" || pickingList?.status === "completed";
+  const pickingTableColumns = useMemo(
+    () => [
+      { key: "line_no", label: "No." },
+      ...(includeShelfLocation
+        ? [{ key: "shelf_location", label: "Shelf", render: (row) => row.shelf_location || "—" }]
+        : []),
+      { key: "product_name", label: "Product" },
+      { key: "quantity_label", label: "Requested" },
+      {
+        key: "picked_qty",
+        label: "Picked",
+        align: "right",
+        render: (row) =>
+          pickingEditable ? (
+            <input
+              type="number"
+              min="0"
+              step="any"
+              className={`${inputClassName()} w-24 text-right`}
+              value={pickedDraft[row.id] ?? String(row.picked_qty ?? row.required_qty ?? "")}
+              onChange={(e) =>
+                setPickedDraft((prev) => ({ ...prev, [row.id]: e.target.value }))
+              }
+            />
+          ) : (
+            row.picked_qty ?? row.required_qty
+          ),
+      },
+      {
+        key: "shortage_qty",
+        label: "Shortage",
+        align: "right",
+        render: (row) => {
+          const required = Number(row.required_qty) || 0;
+          const picked = Number(
+            pickingEditable ? pickedDraft[row.id] ?? row.picked_qty : row.picked_qty,
+          ) || 0;
+          const shortage = Math.max(0, required - picked);
+          return shortage > 0 ? (
+            <span className="font-medium text-amber-700">{shortage}</span>
+          ) : (
+            "—"
+          );
+        },
+      },
+      {
+        key: "stock_location",
+        label: "From",
+        render: (row) => (row.stock_location === "shop" ? "Shop" : "Store"),
+      },
+    ],
+    [includeShelfLocation, pickedDraft, pickingEditable],
+  );
+
   const guidance = useMemo(
     () =>
       trip
-        ? resolveTripDetailGuidance({ trip, loadingList, distributionSettings })
+        ? resolveTripDetailGuidance({ trip, loadingList, pickingList, distributionSettings })
         : { steps: [], nextStep: null },
-    [trip, loadingList, distributionSettings],
+    [trip, loadingList, pickingList, distributionSettings],
   );
   const quickLinks = useMemo(() => {
     if (!trip) return [];
@@ -100,14 +170,44 @@ export default function TripDetailPage() {
     return links;
   }, [trip]);
 
-  async function runAction(path, body) {
+  async function runAction(path, body, { method = "POST" } = {}) {
     setBusy(true);
     try {
-      await apiRequest(path, { method: "POST", body });
+      await apiRequest(path, { method, body });
       notifySuccess("Trip updated.");
       await loadTrip();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Action failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function savePickedQuantities() {
+    const lines = (pickingList?.lines ?? [])
+      .map((line) => ({
+        id: line.id,
+        picked_qty: Number(pickedDraft[line.id] ?? line.picked_qty ?? line.required_qty) || 0,
+      }))
+      .filter((line) => line.id);
+    if (!lines.length) return;
+
+    setBusy(true);
+    try {
+      const res = await apiRequest(`/dispatch-trips/${id}/picking-list/lines`, {
+        method: "PATCH",
+        body: { lines },
+      });
+      const updated = res.picking_list ?? res;
+      setPickingList(updated);
+      setPickedDraft(
+        Object.fromEntries(
+          (updated?.lines ?? []).map((line) => [line.id, String(line.picked_qty ?? "")]),
+        ),
+      );
+      notifySuccess("Picked quantities saved.");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not save picked quantities");
     } finally {
       setBusy(false);
     }
@@ -132,8 +232,17 @@ export default function TripDetailPage() {
   }
 
   const lines = loadingList?.lines ?? [];
+  const pickLines = pickingList?.lines ?? [];
   const loadingLocked = loadingList?.status && loadingList.status !== "open";
-  const canLock = trip.status === "draft" && lines.length > 0 && !loadingLocked;
+  const pickingComplete =
+    pickingList?.status === "completed" || pickingList?.status === "locked" || loadingLocked;
+  const requirePickingBeforeLock = Boolean(distributionSettings.requirePickingBeforeLock);
+  const pickingLocked = pickingList?.status === "locked";
+  const canLock =
+    trip.status === "draft" &&
+    lines.length > 0 &&
+    !loadingLocked &&
+    (!requirePickingBeforeLock || pickingComplete);
   const canStart =
     ["draft", "loading"].includes(trip.status) &&
     (trip.sales?.length ?? 0) > 0 &&
@@ -310,17 +419,26 @@ export default function TripDetailPage() {
       <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Trip actions</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Follow this order: lock the loading list when ready, dispatch when the vehicle leaves, then close the run.
+          Warehouse flow: print the picking list, confirm picked quantities, then lock the loading list and dispatch.
         </p>
         <div className="mt-4 flex flex-wrap items-end gap-3">
-          {canLock ? (
+          {canLock || (trip.status === "draft" && lines.length > 0 && !loadingLocked) ? (
             <div id="trip-lock-loading" className="flex w-full flex-wrap items-end gap-3 border-b border-slate-100 pb-4">
+              {requirePickingBeforeLock && !pickingComplete && pickLines.length > 0 ? (
+                <p className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Complete warehouse picking before locking the loading list.{" "}
+                  <Link href={`/fulfillment/picking?trip_id=${id}`} className="font-medium underline">
+                    Open warehouse picking
+                  </Link>
+                </p>
+              ) : null}
               <Field label="Prepared by">
                 <input className={inputClassName()} value={preparedBy} onChange={(e) => setPreparedBy(e.target.value)} />
               </Field>
               <Field label="Checked by">
                 <input className={inputClassName()} value={checkedBy} onChange={(e) => setCheckedBy(e.target.value)} />
               </Field>
+              {canLock ? (
               <PrimaryButton
                 type="button"
                 showIcon={false}
@@ -334,6 +452,7 @@ export default function TripDetailPage() {
               >
                 1. Lock loading list
               </PrimaryButton>
+              ) : null}
             </div>
           ) : null}
 
@@ -359,6 +478,46 @@ export default function TripDetailPage() {
               3. Close trip…
             </Link>
           ) : null}
+
+            <Link
+              href={`/fulfillment/picking?trip_id=${id}`}
+              className="theme-secondary-btn inline-flex rounded-lg px-4 py-2 text-sm font-medium shadow-sm"
+            >
+              Warehouse picking (mobile)
+            </Link>
+
+            <PrimaryButton
+            type="button"
+            showIcon={false}
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const pickRes = await apiRequest(`/dispatch-trips/${id}/picking-list`);
+                const freshPick = pickRes.picking_list ?? pickRes;
+                setPickingList(freshPick);
+                printPickingList({
+                  organization,
+                  generalSettings: generalSettings(),
+                  organizationName: organization?.organization_name ?? organization?.company_name ?? "Picking List",
+                  pickingList: freshPick,
+                  trip,
+                  documentFooterText: resolvePrintFooter(
+                    mergeGeneralSettings(capabilities?.module_settings),
+                    "loading_sheet",
+                  ),
+                  printedBy: user?.full_name ?? user?.username ?? null,
+                  includeShelfLocation,
+                });
+              } catch (e) {
+                notifyError(e instanceof ApiError ? e.message : "Could not refresh picking list for print");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Print picking list
+          </PrimaryButton>
 
           <PrimaryButton
             type="button"
@@ -474,10 +633,72 @@ export default function TripDetailPage() {
         />
       </div>
 
+      <section id="trip-picking-list" className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
+        <h2 className="text-lg font-medium text-slate-900">Picking list</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Warehouse pick sheet sorted by shelf location ·{" "}
+          {pickingList?.list_number ? (
+            <>
+              <span className="font-mono font-medium">{pickingList.list_number}</span>
+              {" · "}
+            </>
+          ) : null}
+          {pickLines.length} product line{pickLines.length === 1 ? "" : "s"}
+          {pickingList?.status ? (
+            <>
+              {" "}
+              · Status <span className="capitalize font-medium">{pickingList.status}</span>
+            </>
+          ) : null}
+        </p>
+
+        {pickingEditable && pickLines.length > 0 ? (
+          <div className="mt-4 flex flex-wrap items-end gap-3 border-b border-slate-100 pb-4">
+            <Field label="Picker name">
+              <input
+                className={inputClassName()}
+                value={pickerName}
+                onChange={(e) => setPickerName(e.target.value)}
+              />
+            </Field>
+            <PrimaryButton
+              type="button"
+              showIcon={false}
+              disabled={busy}
+              onClick={savePickedQuantities}
+            >
+              Save picked quantities
+            </PrimaryButton>
+            <button
+              type="button"
+              className="theme-secondary-btn rounded-lg px-4 py-2 text-sm shadow-sm"
+              disabled={busy}
+              onClick={() =>
+                runAction(`/dispatch-trips/${id}/picking-list/complete`, {
+                  picker_name: pickerName.trim() || null,
+                })
+              }
+            >
+              Mark picking complete
+            </button>
+          </div>
+        ) : null}
+
+        <div className="mt-4">
+          <DashboardSummaryTable
+            columns={pickingTableColumns}
+            rows={pickLines}
+          />
+        </div>
+        {pickingLocked ? (
+          <p className="mt-3 text-xs text-slate-500">Picking list locked with the loading list.</p>
+        ) : null}
+      </section>
+
       <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Loading list</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Aggregated pick quantities from mobile and route orders on this trip · Total{" "}
+          Vehicle load manifest from picked goods · Total{" "}
           {formatSaleKes(loadingList?.total_amount ?? 0)}
           {loadingList?.status ? (
             <>

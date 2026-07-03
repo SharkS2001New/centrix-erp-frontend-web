@@ -99,6 +99,7 @@ export function ProductInventoryFields({
   globalReorderLevel = null,
   stockReadOnly = true,
   productCode = null,
+  includeShelfLocation = false,
 }) {
   const [guideOpen, setGuideOpen] = useState(false);
   const packName = productUom ? fullPackageLabel(productUom) : "full package";
@@ -157,6 +158,26 @@ export function ProductInventoryFields({
           readOnly={stockReadOnly}
         />
       </div>
+
+      {includeShelfLocation ? (
+        <div className="md:col-span-2 xl:col-span-3">
+          <Field label="Warehouse shelf / bin">
+            <input
+              type="text"
+              value={form.shelf_location ?? ""}
+              onChange={(e) => onChange("shelf_location", e.target.value)}
+              className={inputClassName()}
+              placeholder="e.g. A1, B2, C4"
+              maxLength={50}
+              autoComplete="off"
+            />
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">
+              Used to sort products on warehouse picking lists. Leave blank if not assigned to a shelf
+              yet.
+            </p>
+          </Field>
+        </div>
+      ) : null}
 
       <div className="md:col-span-2 xl:col-span-3">
         <Field label={reorderLabel}>

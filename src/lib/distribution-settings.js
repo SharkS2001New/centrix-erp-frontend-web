@@ -13,8 +13,12 @@ export const DISTRIBUTION_DEFAULTS = {
   enforce_vehicle_capacity: true,
   enable_cod_reconciliation: true,
   require_trip_cash_settlement: false,
+  require_picking_before_lock: false,
   include_normal_orders_in_loading_list: true,
   enable_fulfillment_guidance: false,
+  enable_product_shelf_location: false,
+  mobile_enable_driver_app: true,
+  mobile_enable_driver_attendance: false,
 };
 
 export const DISTRIBUTION_ASSIGN_STATUS_OPTIONS = [
@@ -56,7 +60,17 @@ export function isDistributionOpsEnabled(capabilities) {
   return true;
 }
 
-/** Distribution orgs only use route customers (every customer belongs to a route). */
+/** Warehouse shelf/bin on products — distribution orgs only, enabled by platform super admin. */
+export function isProductShelfLocationEnabled(capabilities) {
+  if (capabilities?.product_shelf_location_enabled != null) {
+    return Boolean(capabilities.product_shelf_location_enabled);
+  }
+  if (!isDistributionOpsEnabled(capabilities)) {
+    return false;
+  }
+  return Boolean(mergeDistributionModuleSettings(capabilities?.module_settings).enable_product_shelf_location);
+}
+
 export function isRouteOnlyCustomers(capabilities) {
   return Boolean(capabilities?.modules?.distribution);
 }
@@ -78,8 +92,12 @@ export function mergeDistributionSettings(capabilities) {
     enforceVehicleCapacity: distribution.enforce_vehicle_capacity !== false,
     enableCodReconciliation: Boolean(distribution.enable_cod_reconciliation),
     requireTripCashSettlement: Boolean(distribution.require_trip_cash_settlement),
+    requirePickingBeforeLock: Boolean(distribution.require_picking_before_lock),
     includeNormalOrdersInLoadingList: distribution.include_normal_orders_in_loading_list !== false,
     enableFulfillmentGuidance: Boolean(distribution.enable_fulfillment_guidance),
+    enableProductShelfLocation: Boolean(distribution.enable_product_shelf_location),
+    mobileEnableDriverApp: distribution.mobile_enable_driver_app !== false,
+    mobileEnableDriverAttendance: Boolean(distribution.mobile_enable_driver_attendance),
   };
 }
 
@@ -98,8 +116,12 @@ export function distributionFormFromApi(res) {
     enforce_vehicle_capacity: distribution.enforce_vehicle_capacity !== false,
     enable_cod_reconciliation: Boolean(distribution.enable_cod_reconciliation),
     require_trip_cash_settlement: Boolean(distribution.require_trip_cash_settlement),
+    require_picking_before_lock: Boolean(distribution.require_picking_before_lock),
     include_normal_orders_in_loading_list: distribution.include_normal_orders_in_loading_list !== false,
     enable_fulfillment_guidance: Boolean(distribution.enable_fulfillment_guidance),
+    enable_product_shelf_location: Boolean(distribution.enable_product_shelf_location),
+    mobile_enable_driver_app: distribution.mobile_enable_driver_app !== false,
+    mobile_enable_driver_attendance: Boolean(distribution.mobile_enable_driver_attendance),
     ...loadingSheetPrintFormFromApi({ distribution }),
   };
 }
@@ -118,10 +140,16 @@ export function distributionPayloadFromForm(form) {
     enforce_vehicle_capacity: Boolean(form.enforce_vehicle_capacity),
     enable_cod_reconciliation: Boolean(form.enable_cod_reconciliation),
     require_trip_cash_settlement: Boolean(form.require_trip_cash_settlement),
+    require_picking_before_lock: Boolean(form.require_picking_before_lock),
     include_normal_orders_in_loading_list: Boolean(form.include_normal_orders_in_loading_list),
     ...(form.enable_fulfillment_guidance != null
       ? { enable_fulfillment_guidance: Boolean(form.enable_fulfillment_guidance) }
       : {}),
+    ...(form.enable_product_shelf_location != null
+      ? { enable_product_shelf_location: Boolean(form.enable_product_shelf_location) }
+      : {}),
+    mobile_enable_driver_app: Boolean(form.mobile_enable_driver_app),
+    mobile_enable_driver_attendance: Boolean(form.mobile_enable_driver_attendance),
     ...loadingSheetPrintPayloadFromForm(form),
   };
 }

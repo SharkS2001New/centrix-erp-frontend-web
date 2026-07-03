@@ -167,13 +167,22 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
             {activeTab === "trips" ? (
           <div className="space-y-3">
             {isSuperAdmin?.() ? (
-              <Toggle
-                label="Show fulfillment step guidance"
-                description="Platform-only. When enabled, dispatch staff see interactive next-step hints on trip pages (tooltips and ordered actions). Off by default."
-                checked={form.enable_fulfillment_guidance}
-                onChange={(v) => setForm((f) => ({ ...f, enable_fulfillment_guidance: v }))}
-                disabled={!form.enable_distribution_ops}
-              />
+              <>
+                <Toggle
+                  label="Show fulfillment step guidance"
+                  description="Platform-only. When enabled, dispatch staff see interactive next-step hints on trip pages (tooltips and ordered actions). Off by default."
+                  checked={form.enable_fulfillment_guidance}
+                  onChange={(v) => setForm((f) => ({ ...f, enable_fulfillment_guidance: v }))}
+                  disabled={!form.enable_distribution_ops}
+                />
+                <Toggle
+                  label="Warehouse shelf / bin on products"
+                  description="Platform-only. For distribution setups: show shelf location on products and picking lists. Leave off for wholesale, retail, and small shops."
+                  checked={form.enable_product_shelf_location}
+                  onChange={(v) => setForm((f) => ({ ...f, enable_product_shelf_location: v }))}
+                  disabled={!form.enable_distribution_ops}
+                />
+              </>
             ) : null}
             <Toggle
               label="Auto-create dispatch trips"
@@ -194,6 +203,13 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
               description="Block locking the loading list or starting a trip when load weight or volume exceeds the assigned vehicle limits."
               checked={form.enforce_vehicle_capacity}
               onChange={(v) => setForm((f) => ({ ...f, enforce_vehicle_capacity: v }))}
+              disabled={!form.enable_distribution_ops}
+            />
+            <Toggle
+              label="Require picking complete before lock"
+              description="Warehouse must mark the picking list complete (with picked quantities recorded) before the loading list can be locked."
+              checked={form.require_picking_before_lock}
+              onChange={(v) => setForm((f) => ({ ...f, require_picking_before_lock: v }))}
               disabled={!form.enable_distribution_ops}
             />
             <Toggle
@@ -221,6 +237,20 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
 
             {activeTab === "delivery" ? (
           <div className="space-y-3">
+            <Toggle
+              label="Enable driver mobile app"
+              description="Allow drivers to view assigned trips, navigate to stops, and mark deliveries with proof of delivery on the mobile app."
+              checked={form.mobile_enable_driver_app}
+              onChange={(v) => setForm((f) => ({ ...f, mobile_enable_driver_app: v }))}
+              disabled={!form.enable_distribution_ops}
+            />
+            <Toggle
+              label="Require driver sign-in photo and location"
+              description="When enabled, drivers must take a photo and capture GPS when signing in and out on the mobile app."
+              checked={form.mobile_enable_driver_attendance}
+              onChange={(v) => setForm((f) => ({ ...f, mobile_enable_driver_attendance: v }))}
+              disabled={!form.enable_distribution_ops || !form.mobile_enable_driver_app}
+            />
             <Toggle
               label="Require proof of delivery"
               description="Prompt for receiver name before marking an order as delivered."

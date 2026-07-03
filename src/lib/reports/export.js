@@ -8,7 +8,7 @@ import {
   reportDetailMetaLines,
   reportDocumentStyles,
 } from "@/lib/reports/report-branding";
-import { filterReportColumnKeys } from "@/lib/reports/report-column-visibility";
+import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-column-visibility";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -184,8 +184,8 @@ export function slugifyReportFilename(value) {
     .replace(/^-+|-+$/g, "");
 }
 
-/** @param {object[]} rows @param {(key: string) => string} labelize @param {{ multiBranch?: boolean }} [options] */
-export function columnsFromRowKeys(rows, labelize = (key) => key, options = {}) {
+/** @param {object[]} rows @param {(key: string) => string} [labelize] @param {{ multiBranch?: boolean }} [options] */
+export function columnsFromRowKeys(rows, labelize = reportColumnLabel, options = {}) {
   if (!rows[0]) return [];
   return filterReportColumnKeys(Object.keys(rows[0]), options)
     .filter((key) => !["is_header", "is_total"].includes(key))

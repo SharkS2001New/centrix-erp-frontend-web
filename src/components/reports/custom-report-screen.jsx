@@ -16,6 +16,7 @@ import {
   ReportTable,
 } from "@/components/reports/report-screen-shared";
 import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
+import { filterStructuredReportColumns } from "@/lib/reports/report-column-visibility";
 
 const PAGE_SIZE = 25;
 
@@ -82,7 +83,7 @@ export function CustomReportScreen({ templateId }) {
 
   const columns = useMemo(
     () =>
-      (definition?.columns ?? []).map((col) => ({
+      filterStructuredReportColumns(definition?.columns ?? []).map((col) => ({
         ...col,
         accessor: (row) => row[col.key],
       })),

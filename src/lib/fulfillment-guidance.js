@@ -24,18 +24,25 @@ export const FULFILLMENT_WORKFLOW_SCREENS = [
     step: 3,
   },
   {
+    id: "picking",
+    screen: "Warehouse picking",
+    path: "/fulfillment/picking",
+    description: "Mobile-friendly picking workflow for warehouse staff — record picked quantities by shelf.",
+    step: 4,
+  },
+  {
     id: "trips",
     screen: "Trips",
     path: "/fulfillment/trips",
     description: "Trip charts — lock loading lists, dispatch vehicles, and close runs.",
-    step: 4,
+    step: 5,
   },
   {
     id: "loading-lists",
     screen: "Loading lists",
     path: "/fulfillment/loading-lists",
-    description: "Preview and print aggregated pick lists for any trip.",
-    step: 5,
+    description: "Preview and print picking and loading lists for any trip.",
+    step: 6,
   },
 ];
 
@@ -69,10 +76,13 @@ export function tripDispatchStatusCopy(status) {
  * Interactive guidance steps for a trip detail page.
  * @returns {{ steps: Array<{id:string,label:string,state:'done'|'current'|'next'|'upcoming',hint:string,actionLabel?:string}>, nextStep: object|null }}
  */
-export function resolveTripDetailGuidance({ trip, loadingList, distributionSettings = {} }) {
+export function resolveTripDetailGuidance({ trip, loadingList, pickingList, distributionSettings = {} }) {
   const status = String(trip?.status ?? "draft");
   const lines = loadingList?.lines ?? [];
+  const pickLines = pickingList?.lines ?? [];
   const loadingLocked = loadingList?.status && loadingList.status !== "open";
+  const pickingComplete =
+    pickingList?.status === "completed" || pickingList?.status === "locked" || loadingLocked;
   const orderCount = trip?.financial_summary?.order_count ?? trip?.sales?.length ?? 0;
   const workflowIndex = tripWorkflowIndex(status);
 
@@ -84,15 +94,22 @@ export function resolveTripDetailGuidance({ trip, loadingList, distributionSetti
       done: orderCount > 0,
     },
     {
+      id: "pick",
+      label: "Warehouse picking",
+      hint: "Print the picking list, collect stock from shelves, and record picked quantities or shortages.",
+      done: pickingComplete || (pickLines.length > 0 && workflowIndex >= 1),
+      skipWhen: pickLines.length === 0,
+    },
+    {
       id: "review",
       label: "Review loading list",
-      hint: "Check aggregated product quantities before locking the pick list.",
+      hint: "Check the vehicle load manifest matches what was picked.",
       done: lines.length > 0 || workflowIndex >= 1,
     },
     {
       id: "lock",
       label: "Lock loading list",
-      hint: "Enter prepared by and checked by to confirm picking is complete.",
+      hint: "Enter prepared by and checked by to confirm loading is ready.",
       done: loadingLocked || workflowIndex >= 2,
       skipWhen: lines.length === 0,
     },
@@ -136,6 +153,9 @@ export function resolveTripDetailGuidance({ trip, loadingList, distributionSetti
     if (nextStep.id === "assign") {
       nextStep.actionLabel = "Go to dispatch board";
       nextStep.href = "/fulfillment/dispatch";
+    } else if (nextStep.id === "pick") {
+      nextStep.actionLabel = "Open warehouse picking";
+      nextStep.href = trip?.id ? `/fulfillment/picking?trip_id=${trip.id}` : "/fulfillment/picking";
     } else if (nextStep.id === "lock") {
       nextStep.actionLabel = "Lock loading list below";
       nextStep.scrollTo = "trip-lock-loading";

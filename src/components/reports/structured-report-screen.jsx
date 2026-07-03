@@ -21,6 +21,7 @@ import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options"
 import { ProfitLossReportScreen } from "@/components/reports/profit-loss-report-screen";
 import { ExpensesReportScreen } from "@/components/reports/expenses-report-screen";
 import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
+import { filterStructuredReportColumns } from "@/lib/reports/report-column-visibility";
 
 const PAGE_SIZE = 20;
 
@@ -38,7 +39,10 @@ export function StructuredReportScreen({ definition }) {
 function StandardReportScreen({ definition }) {
   const { user, isOrgWide, capabilities } = useAuth();
   const multiBranch = isMultiBranchCatalog(capabilities);
-  const defaultRange = useMemo(() => defaultReportDateRange(), []);
+  const defaultRange = useMemo(
+    () => defaultReportDateRange(definition.defaultDateRangeDays ?? 29),
+    [definition.defaultDateRangeDays],
+  );
   const branchInitialized = useRef(false);
   const [rows, setRows] = useState([]);
   const [legacyRows, setLegacyRows] = useState([]);
@@ -149,11 +153,16 @@ function StandardReportScreen({ definition }) {
     });
   }, [rows, legacyRows, includeLegacy, definition.kpis]);
 
+  const columns = useMemo(
+    () => filterStructuredReportColumns(definition.columns ?? []),
+    [definition.columns],
+  );
+
   const footerTotals = useMemo(() => {
-    if (!definition.footerTotals || !definition.columns) return {};
+    if (!definition.footerTotals || !columns.length) return {};
     const totalRows = includeLegacy ? [...rows, ...legacyRows] : rows;
     const totals = {};
-    for (const col of definition.columns) {
+    for (const col of columns) {
       if (!col.total) continue;
       const sum = totalRows.reduce((acc, row) => {
         const raw = col.accessor ? col.accessor(row) : row[col.key];
@@ -162,7 +171,7 @@ function StandardReportScreen({ definition }) {
       totals[col.key] = formatReportCell(col.key, sum);
     }
     return totals;
-  }, [rows, legacyRows, includeLegacy, definition.columns, definition.footerTotals]);
+  }, [rows, legacyRows, includeLegacy, columns, definition.footerTotals]);
 
   function applyFilters() {
     setPage(1);
@@ -224,10 +233,10 @@ function StandardReportScreen({ definition }) {
       title={definition.title}
       subtitle={definition.subtitle}
       exportConfig={
-        definition.columns
+        columns.length
           ? {
               filename: definition.key ?? "report",
-              columns: definition.columns.map((col) => ({
+              columns: columns.map((col) => ({
                 ...col,
                 accessor: (row) => formatReportCell(col.key, col.accessor(row)),
               })),
@@ -344,7 +353,7 @@ function StandardReportScreen({ definition }) {
 
       {loading ? null : (
         <>
-          <ReportTable columns={definition.columns ?? []} rows={displayRows} footerTotals={footerTotals} />
+          <ReportTable columns={columns} rows={displayRows} footerTotals={footerTotals} />
           <PaginationBar
             page={page}
             totalPages={totalPages}
@@ -357,7 +366,7 @@ function StandardReportScreen({ definition }) {
               <h2 className="mb-3 text-sm font-semibold text-slate-900">
                 Legacy archive — {legacyArchiveMeta?.label ?? "pre-cutover sales"}
               </h2>
-              <ReportTable columns={definition.columns ?? []} rows={legacyRows} />
+              <ReportTable columns={columns} rows={legacyRows} />
               <PaginationBar
                 page={legacyPage}
                 totalPages={legacyTotalPages}

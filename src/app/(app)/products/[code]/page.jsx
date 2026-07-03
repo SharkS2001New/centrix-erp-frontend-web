@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
+import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import {
   formatShortDate,
@@ -466,6 +468,8 @@ export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { capabilities } = useAuth();
+  const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const productCode = decodeURIComponent(params.code);
 
   const initialTabs = parsePageTabs(searchParams);
@@ -904,6 +908,11 @@ export default function ProductDetailPage() {
               <SectionCard title="Inventory" description="Stock in UOM packaging — same format as stock take">
                 <DetailItem label="Stock in shop">{enriched.stock_shop_text}</DetailItem>
                 <DetailItem label="Stock in store">{enriched.stock_store_text}</DetailItem>
+                {includeShelfLocation ? (
+                  <DetailItem label="Warehouse shelf">
+                    {enriched.shelf_location?.trim() ? enriched.shelf_location : "—"}
+                  </DetailItem>
+                ) : null}
                 <DetailItem label="Reorder level">{reorderLabel}</DetailItem>
                 <DetailItem label="Retail sales">{enriched.sell_on_retail_label}</DetailItem>
               </SectionCard>
