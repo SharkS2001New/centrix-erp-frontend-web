@@ -18,7 +18,7 @@ import {
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
 import { ProductWeightPromptDialog } from "@/components/fulfillment/product-weight-prompt-dialog";
 import { getSaleDriverId, getSaleVehicleId } from "@/components/fulfillment/fulfillment-shared";
-import { DISPATCH_READY_STATUSES, isDistributionOpsEnabled, mergeDistributionSettings, shouldShowOrderAssignAction, assignActionLabel } from "@/lib/distribution-settings";
+import { dispatchReadyStatuses, isDistributionOpsEnabled, mergeDistributionSettings, shouldShowOrderAssignAction, assignActionLabel } from "@/lib/distribution-settings";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
 import { formatOrderNumber, formatSaleKes, saleCustomerLabel } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
@@ -64,8 +64,7 @@ export function DispatchBoardContent() {
         dispatch_orders: 1,
         with_items: 0,
         required_date: runDate,
-        status_in: DISPATCH_READY_STATUSES.join(","),
-        exclude_statuses: "cancelled,completed,held,draft",
+        status_in: dispatchReadyStatuses(distributionSettings).join(","),
       };
       if (routeFilter !== "all") extra.route_id = routeFilter;
 
@@ -89,7 +88,7 @@ export function DispatchBoardContent() {
     } finally {
       setLoading(false);
     }
-  }, [runDate, routeFilter, page]);
+  }, [runDate, routeFilter, page, pageSize, distributionSettings]);
 
   useEffect(() => {
     setPage(1);

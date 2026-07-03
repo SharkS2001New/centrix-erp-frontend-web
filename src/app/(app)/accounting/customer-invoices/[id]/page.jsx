@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -18,7 +18,7 @@ import {
 export default function CustomerInvoiceDetailPage() {
   const params = useParams();
   const invoiceId = params.id;
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const { currency, date } = useOrgFormat();
   const canPay =
     hasPermission(P.payments.customer_payments.manage)
@@ -30,9 +30,20 @@ export default function CustomerInvoiceDetailPage() {
   const [methods, setMethods] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [payForm, setPayForm] = useState({ amount_paid: "", payment_method_id: "", reference_number: "" });
+  const [payForm, setPayForm] = useState({
+    amount_paid: "",
+    payment_method_id: "",
+    reference_number: "",
+    date_paid: new Date().toISOString().slice(0, 10),
+    notes: "",
+  });
   const [paySaving, setPaySaving] = useState(false);
   const [payError, setPayError] = useState(null);
+
+  const receivedByLabel = useMemo(() => {
+    if (!user) return "";
+    return user.full_name || user.username || "";
+  }, [user]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,7 +60,12 @@ export default function CustomerInvoiceDetailPage() {
       setPayments(payRes.data ?? []);
       setMethods(methodsRes.data ?? []);
       const balance = Number(inv.invoice_total ?? 0) - Number(inv.amount_paid ?? 0);
-      setPayForm((f) => ({ ...f, amount_paid: balance > 0 ? String(balance) : "" }));
+      const customerName = inv.customer_name || inv.customer?.customer_name || "";
+      setPayForm((f) => ({
+        ...f,
+        amount_paid: balance > 0 ? String(balance.toFixed(2)) : "",
+        notes: customerName ? `Received from ${customerName}` : f.notes,
+      }));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load invoice");
     } finally {
@@ -75,7 +91,8 @@ export default function CustomerInvoiceDetailPage() {
           payment_method_id: Number(payForm.payment_method_id),
           amount_paid: Number(payForm.amount_paid),
           reference_number: payForm.reference_number || null,
-          date_paid: new Date().toISOString().slice(0, 10),
+          date_paid: payForm.date_paid || new Date().toISOString().slice(0, 10),
+          notes: payForm.notes || null,
         },
       });
       await load();
@@ -148,10 +165,16 @@ export default function CustomerInvoiceDetailPage() {
         ) : (
           <ul className="mt-3 divide-y text-sm">
             {payments.map((p) => (
-              <li key={p.id} className="flex justify-between py-2">
-                <span>
-                  {date(p.date_paid)} · {p.reference_number || "—"}
-                </span>
+              <li key={p.id} className="flex flex-col gap-1 py-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div>
+                    {date(p.date_paid)}
+                    {p.reference_number ? <span> · {p.reference_number}</span> : null}
+                  </div>
+                  {p.notes ? (
+                    <div className="text-xs text-slate-500">{p.notes}</div>
+                  ) : null}
+                </div>
                 <span className="font-medium">{currency(p.amount_paid)}</span>
               </li>
             ))}
@@ -162,12 +185,20 @@ export default function CustomerInvoiceDetailPage() {
       {canPay && balance > 0 ? (
         <section className="mt-6 rounded-xl border bg-white p-4 shadow-sm">
           <h2 className="font-medium text-slate-900">Record payment</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Received by <span className="font-medium text-slate-700">{receivedByLabel || "you"}</span>
+            {" · "}
+            {invoice.customer_name
+              ? `Payer: ${invoice.customer_name}`
+              : `Customer #${invoice.customer_num}`}
+          </p>
           <form onSubmit={recordPayment} className="mt-3 grid max-w-md gap-3">
             <Field label="Amount">
               <input
                 type="number"
                 min="0.01"
                 step="0.01"
+                max={balance}
                 className={inputClassName()}
                 value={payForm.amount_paid}
                 onChange={(e) => setPayForm((f) => ({ ...f, amount_paid: e.target.value }))}
@@ -189,11 +220,29 @@ export default function CustomerInvoiceDetailPage() {
                 ))}
               </select>
             </Field>
-            <Field label="Reference">
+            <Field label="Date paid">
+              <input
+                type="date"
+                className={inputClassName()}
+                value={payForm.date_paid}
+                onChange={(e) => setPayForm((f) => ({ ...f, date_paid: e.target.value }))}
+              />
+            </Field>
+            <Field label="Reference (M-Pesa code, cheque #, etc.)">
               <input
                 className={inputClassName()}
                 value={payForm.reference_number}
                 onChange={(e) => setPayForm((f) => ({ ...f, reference_number: e.target.value }))}
+              />
+            </Field>
+            <Field label="Note (e.g. received from name)">
+              <input
+                className={inputClassName()}
+                value={payForm.notes}
+                onChange={(e) => setPayForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder={
+                  invoice.customer_name ? `Received from ${invoice.customer_name}` : "Received from…"
+                }
               />
             </Field>
             {payError ? <p className="text-sm text-red-600">{payError}</p> : null}

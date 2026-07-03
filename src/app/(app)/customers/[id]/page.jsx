@@ -36,46 +36,63 @@ export default function CustomerDetailPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
+    let cust;
     try {
-      const [cust, salesRes, productsRes] = await Promise.all([
-        apiRequest(`/customers/${customerNum}`),
-        apiRequest(`/customers/${customerNum}/sales`, { searchParams: { per_page: 20 } }),
-        apiRequest("/products", { searchParams: { per_page: 500 } }).catch(() => ({ data: [] })),
-      ]);
+      cust = await apiRequest(`/customers/${customerNum}`);
       setCustomer(cust);
-      setProductByCode(indexProductsByCode(productsRes.data ?? []));
-
-      if (cust.branch_id) {
-        try {
-          const branch = await apiRequest(`/branches/${cust.branch_id}`);
-          setBranchName(branch.branch_name ?? null);
-        } catch {
-          setBranchName(null);
-        }
-      } else {
-        setBranchName(null);
-      }
-
-      if (cust.route_id) {
-        try {
-          const route = await apiRequest(`/routes/${cust.route_id}`);
-          setRouteName(route.route_name ?? null);
-        } catch {
-          setRouteName(null);
-        }
-      } else {
-        setRouteName(null);
-      }
-
-      setOrders(salesRes.data ?? []);
     } catch (e) {
-      const message = e instanceof ApiError ? e.message : "Failed to load customer";
+      const message =
+        e instanceof ApiError
+          ? e.status === 404
+            ? `Customer #${customerNum} was not found in your organization.`
+            : e.message
+          : "Failed to load customer";
       setCustomer(null);
       setLoadError(message);
       notifyError(message);
-    } finally {
       setLoading(false);
+      return;
     }
+
+    try {
+      if (cust.branch_id) {
+        const branch = await apiRequest(`/branches/${cust.branch_id}`);
+        setBranchName(branch.branch_name ?? null);
+      } else {
+        setBranchName(null);
+      }
+    } catch {
+      setBranchName(null);
+    }
+
+    try {
+      if (cust.route_id) {
+        const route = await apiRequest(`/routes/${cust.route_id}`);
+        setRouteName(route.route_name ?? null);
+      } else {
+        setRouteName(null);
+      }
+    } catch {
+      setRouteName(null);
+    }
+
+    try {
+      const salesRes = await apiRequest(`/customers/${customerNum}/sales`, {
+        searchParams: { per_page: 20 },
+      });
+      setOrders(salesRes.data ?? []);
+    } catch {
+      setOrders([]);
+    }
+
+    try {
+      const productsRes = await apiRequest("/products", { searchParams: { per_page: 500 } });
+      setProductByCode(indexProductsByCode(productsRes.data ?? []));
+    } catch {
+      setProductByCode({});
+    }
+
+    setLoading(false);
   }, [customerNum]);
 
   useEffect(() => {

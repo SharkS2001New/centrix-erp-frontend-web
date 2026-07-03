@@ -154,15 +154,24 @@ export function distributionPayloadFromForm(form) {
   };
 }
 
-/** Statuses that typically mean an order is ready for dispatch planning. */
-export const DISPATCH_READY_STATUSES = [
-  "booked",
-  "pending",
-  "unpaid",
-  "pending_payment",
-  "paid",
-  "processed",
-];
+/**
+ * Statuses that make an order eligible for the dispatch board.
+ *
+ * An order carries both a workflow `status` (e.g. `processed`) and a
+ * `payment_status` (e.g. `unpaid`). Trip assignment only cares about the
+ * workflow status — an order at `status='processed'` must appear on the board
+ * even when its `payment_status` is `unpaid` (credit sale advanced to
+ * processed).
+ */
+export const DISPATCH_READY_STATUSES = ["processed"];
+
+/** Resolve the workflow statuses that put an order on the dispatch board. */
+export function dispatchReadyStatuses(distributionSettings) {
+  const assignStatus = distributionSettings?.assignOnStatus || "processed";
+  return DISPATCH_READY_STATUSES.includes(assignStatus)
+    ? DISPATCH_READY_STATUSES
+    : [assignStatus];
+}
 
 export function orderNeedsDriverAssignment(sale) {
   const meta = sale?.fulfillment_meta;
@@ -178,9 +187,7 @@ export function shouldShowOrderAssignAction(sale, distributionSettings) {
   if (["cancelled", "completed", "delivered"].includes(status)) return false;
 
   const assignStatus = distributionSettings.assignOnStatus || "processed";
-  if (status === assignStatus) return true;
-
-  return DISPATCH_READY_STATUSES.includes(status) && status !== assignStatus;
+  return status === assignStatus;
 }
 
 export function assignActionLabel(sale, distributionSettings) {
@@ -191,7 +198,7 @@ export function assignActionLabel(sale, distributionSettings) {
     return orderNeedsDriverAssignment(sale) ? "Assign driver" : "Change driver";
   }
 
-  return "Process & assign";
+  return "Assign driver";
 }
 
 export function shouldPromptFulfillmentAssignment(targetStatus, distributionSettings, sale = null) {
