@@ -10,6 +10,7 @@ import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
 import { useOrgFormat } from "@/lib/org-format";
+import { normalizeCustomerInvoice } from "@/lib/customer-invoices";
 import {
   CatalogPageShell,
   FilterSelect,
@@ -61,7 +62,7 @@ export default function CustomerInvoicesPage() {
       });
       const res = await apiRequest("/customer-invoices", { searchParams: searchParamsApi });
       const parsed = parsePaginator(res);
-      setInvoices(parsed.items);
+      setInvoices(parsed.items.map(normalizeCustomerInvoice));
       setTotalInvoices(parsed.total);
       setTotalPages(parsed.totalPages);
     } catch (e) {
@@ -157,14 +158,21 @@ export default function CustomerInvoicesPage() {
               </tr>
             ) : (
               invoices.map((inv) => {
-                const balance = Number(inv.invoice_total ?? 0) - Number(inv.amount_paid ?? 0);
+                const balance = Number(inv.balance_due ?? (Number(inv.invoice_total ?? 0) - Number(inv.amount_paid ?? 0)));
                 const status = PAYMENT_STATUS[inv.payment_status] ?? PAYMENT_STATUS[0];
                 return (
                   <tr key={inv.id} className="border-t border-slate-100">
                     <td className="px-4 py-3 font-medium">{inv.invoice_number}</td>
                     <td className="px-4 py-3">
                       <Link href={`/customers/${inv.customer_num}`} className="text-[#185FA5] hover:underline">
-                        #{inv.customer_num}
+                        {inv.customer_name ? (
+                          <>
+                            {inv.customer_name}
+                            <span className="ml-1 text-slate-500">#{inv.customer_num}</span>
+                          </>
+                        ) : (
+                          <>#{inv.customer_num}</>
+                        )}
                       </Link>
                     </td>
                     <td className="px-4 py-3">{date(inv.invoice_date)}</td>

@@ -4,7 +4,7 @@ import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, ApiError } from "@/lib/api";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
 import { CustomerLocationSection } from "@/components/customers/customer-location-section";
 import {
@@ -32,8 +32,10 @@ export default function CustomerDetailPage() {
   const [orderItemsById, setOrderItemsById] = useState({});
   const [itemsLoadingId, setItemsLoadingId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const loadData = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [cust, salesRes, productsRes] = await Promise.all([
         apiRequest(`/customers/${customerNum}`),
@@ -67,7 +69,10 @@ export default function CustomerDetailPage() {
 
       setOrders(salesRes.data ?? []);
     } catch (e) {
-      notifyError(e instanceof Error ? e.message : "Failed to load customer");
+      const message = e instanceof ApiError ? e.message : "Failed to load customer";
+      setCustomer(null);
+      setLoadError(message);
+      notifyError(message);
     } finally {
       setLoading(false);
     }
@@ -323,7 +328,20 @@ export default function CustomerDetailPage() {
           </div>
           </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="theme-panel rounded-xl border p-8 text-center shadow-sm">
+          <h2 className="text-lg font-medium text-slate-900">Customer not found</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            {loadError || `Customer #${customerNum} could not be loaded.`}
+          </p>
+          <Link
+            href="/customers"
+            className="mt-4 inline-block text-sm font-medium text-[#185FA5] hover:underline"
+          >
+            Back to customers
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

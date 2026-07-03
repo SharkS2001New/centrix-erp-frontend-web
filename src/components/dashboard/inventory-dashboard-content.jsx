@@ -16,9 +16,18 @@ import {
 } from "@/components/dashboard/dashboard-shared";
 import { DonutChart, CHART_COLORS } from "@/components/reports/report-charts";
 import { formatReportKes } from "@/lib/reports/format";
+import {
+  ITEMS_CURRENTLY_IN_STOCK_DESC,
+  ITEMS_CURRENTLY_IN_STOCK_HREF,
+  ITEMS_CURRENTLY_IN_STOCK_LABEL,
+} from "@/lib/inventory-routes";
 
 const INVENTORY_LINKS = [
-  { href: "/inventory/stock", title: "Current stock", desc: "On-hand quantities and valuation" },
+  {
+    href: ITEMS_CURRENTLY_IN_STOCK_HREF,
+    title: ITEMS_CURRENTLY_IN_STOCK_LABEL,
+    desc: ITEMS_CURRENTLY_IN_STOCK_DESC,
+  },
   { href: "/inventory/receipts", title: "Stock receipts", desc: "Goods received into inventory" },
   { href: "/inventory/adjustments", title: "Stock adjustments", desc: "Increase or decrease shop/store stock" },
   { href: "/inventory/transactions", title: "Movements", desc: "Transfers, adjustments, issues" },
@@ -52,20 +61,30 @@ export function InventoryDashboardContent() {
   }, []);
 
   const stats = useMemo(() => {
+    const inStock = stockRows.filter((r) => Number(r.total_base_units ?? 0) > 0);
     const low = stockRows.filter((r) => {
       const qty = Number(r.total_base_units) || 0;
       if (qty <= 0) return true;
       return r.product_alert === "REORDER";
     }).length;
     const out = stockRows.filter((r) => Number(r.total_base_units) <= 0).length;
-    const totalQty = stockRows.reduce((sum, r) => sum + Number(r.total_base_units ?? 0), 0);
+    const totalQty = inStock.reduce((sum, r) => sum + Number(r.total_base_units ?? 0), 0);
     return {
-      skus: stockRows.length,
+      skus: inStock.length,
       totalQty,
       low,
       out,
     };
   }, [stockRows]);
+
+  const inStockItems = useMemo(
+    () =>
+      [...stockRows]
+        .filter((r) => Number(r.total_base_units ?? 0) > 0)
+        .sort((a, b) => Number(b.total_base_units ?? 0) - Number(a.total_base_units ?? 0))
+        .slice(0, 10),
+    [stockRows],
+  );
 
   const topByQty = useMemo(
     () =>
@@ -82,7 +101,7 @@ export function InventoryDashboardContent() {
 
   const kpiItems = [
     { id: "value", label: "Inventory value", value: inventoryValue != null ? formatReportKes(inventoryValue) : "—" },
-    { id: "skus", label: "SKUs tracked", value: stats.skus.toLocaleString() },
+    { id: "skus", label: "SKUs in stock", value: stats.skus.toLocaleString(), hint: "With quantity on hand" },
     { id: "low", label: "Low stock", value: stats.low.toLocaleString(), hint: "Below reorder point" },
     { id: "out", label: "Out of stock", value: stats.out.toLocaleString(), hint: "Zero on hand" },
   ];
@@ -133,6 +152,33 @@ export function InventoryDashboardContent() {
               </dl>
             </DashboardPanel>
           </div>
+
+          <DashboardSection
+            title={ITEMS_CURRENTLY_IN_STOCK_LABEL}
+            subtitle="Products with quantity on hand right now"
+            action={
+              <Link href={ITEMS_CURRENTLY_IN_STOCK_HREF} className="text-sm text-[#185FA5] hover:underline">
+                View all
+              </Link>
+            }
+          >
+            <DashboardSummaryTable
+              columns={[
+                { key: "product_name", label: "Product" },
+                { key: "total_base_units", label: "On hand", align: "right" },
+                { key: "uom_name", label: "UOM" },
+              ]}
+              rows={inStockItems}
+              emptyMessage="No items currently in stock."
+              formatValue={(key, value) =>
+                key === "total_base_units"
+                  ? Number(value ?? 0).toLocaleString("en-KE", { maximumFractionDigits: 2 })
+                  : value
+              }
+              viewAllHref={ITEMS_CURRENTLY_IN_STOCK_HREF}
+              viewAllLabel={`Open ${ITEMS_CURRENTLY_IN_STOCK_LABEL.toLowerCase()} →`}
+            />
+          </DashboardSection>
 
           <DashboardSection
             title="Low stock items"

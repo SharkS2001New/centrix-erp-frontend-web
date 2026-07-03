@@ -12,6 +12,7 @@ export function normalizeCustomerInvoice(row) {
   return {
     ...row,
     invoice_number: row.invoice_number ?? row.invoice_no ?? null,
+    customer_name: row.customer_name ?? row.customer?.customer_name ?? null,
     invoice_total: invoiceTotal,
     amount_paid: amountPaid,
     balance_due: balanceDue,

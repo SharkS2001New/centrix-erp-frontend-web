@@ -160,6 +160,7 @@ export const P = {
 export function reportPermissionCode(reportKey) {
   const map = {
     "daily-sales": P.reports.daily_sales.view,
+    "items-currently-in-stock": P.inventory.stock.view,
     "stock-on-hand": P.reports.stock_on_hand.view,
     "profit-loss": P.reports.profit_loss.view,
     "top-debtors": P.reports.top_debtors.view,
@@ -223,6 +224,13 @@ function canViewHrReport(reportKey, hasPermission) {
 export function canViewReport(reportKey, hasPermission) {
   if (HR_REPORT_KEY_SET.has(reportKey)) {
     return canViewHrReport(reportKey, hasPermission);
+  }
+  if (reportKey === "items-currently-in-stock") {
+    return (
+      hasPermission(P.inventory.stock.view) ||
+      hasPermission(P.reports.stock_on_hand.view) ||
+      hasPermission(P.reports.hub.view)
+    );
   }
   if (reportKey === "customer-statement") {
     return (

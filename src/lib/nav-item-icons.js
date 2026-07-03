@@ -68,6 +68,7 @@ export const NAV_HREF_ICONS = {
   "/inventory/stock-take": "check",
   "/inventory/transactions": "list",
   "/inventory/stock": "inventory",
+  "/reports/items-currently-in-stock": "inventory",
 
   // Stock movements
   "/inventory/transfers": "swap",

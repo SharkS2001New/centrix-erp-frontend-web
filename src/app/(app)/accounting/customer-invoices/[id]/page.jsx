@@ -12,6 +12,7 @@ import {
   CatalogPageShell,
   Field,
   PrimaryButton,
+  inputClassName,
 } from "@/components/catalog/catalog-shared";
 
 export default function CustomerInvoiceDetailPage() {
@@ -106,7 +107,11 @@ export default function CustomerInvoiceDetailPage() {
   return (
     <CatalogPageShell
       title={invoice.invoice_number}
-      subtitle={`Customer #${invoice.customer_num} · ${date(invoice.invoice_date)}`}
+      subtitle={
+        invoice.customer_name
+          ? `${invoice.customer_name} · ${date(invoice.invoice_date)}`
+          : `Customer #${invoice.customer_num} · ${date(invoice.invoice_date)}`
+      }
     >
       <Link href="/accounting/customer-invoices" className="text-sm text-[#185FA5] hover:underline">
         ← All invoices

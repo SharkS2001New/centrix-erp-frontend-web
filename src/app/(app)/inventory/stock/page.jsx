@@ -31,6 +31,10 @@ import {
 } from "@/lib/retail-pricing";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import {
+  ITEMS_CURRENTLY_IN_STOCK_HREF,
+  ITEMS_CURRENTLY_IN_STOCK_LABEL,
+} from "@/lib/inventory-routes";
+import {
   BatchActionBar,
   TableRowSelectCell,
   TableSelectAllHeader,
@@ -341,11 +345,11 @@ export default function CurrentStockPage() {
 
   return (
     <InventoryPageShell
-      title="Current stock"
+      title={ITEMS_CURRENTLY_IN_STOCK_LABEL}
       subtitle="Quantities in packaging hierarchy — values use retail tier prices when configured"
       action={
         <CatalogListExport
-          title="Current stock"
+          title={ITEMS_CURRENTLY_IN_STOCK_LABEL}
           filename="stock-on-hand"
           apiPath="/reports/stock-on-hand"
           columns={STOCK_ON_HAND_EXPORT_COLUMNS}

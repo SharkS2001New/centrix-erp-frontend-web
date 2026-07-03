@@ -8,6 +8,12 @@ import { useAuth } from "@/contexts/auth-context";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
 import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
+import {
+  buildReportQueryParams,
+  reportShowsDateRange,
+} from "@/lib/reports/report-filter-config";
+import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options";
+import { ReportQueryFilterFields } from "@/components/reports/report-query-filter-fields";
 import { reportVatKpis } from "@/lib/reports/vat-summary";
 import { formatReportKes } from "@/lib/reports/format";
 import { ReportKpiGrid } from "@/components/reports/report-screen-shared";
@@ -21,43 +27,9 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 
-const DATE_COLUMNS = {
-  "sales-by-product": "sale_date",
-  "sales-by-supplier": "sale_date",
-  "sales-by-user": "sale_date",
-  "sales-by-channel": "sale_date",
-  "daily-sales": "sale_day",
-  "mobile-route-sales": "loading_date",
-  "dispatch-trips": "scheduled_date",
-  "trip-cash-settlement": "scheduled_date",
-  "pod-compliance": "capture_date",
-  "driver-deliveries": "delivery_date",
-  "sales-pipeline": "order_date",
-  "vat-collected": "sale_date",
-  "category-sales": "sale_date",
-  "discount-summary": "sale_date",
-  "payment-collection": "payment_date",
-  "credit-outstanding": "sale_date",
-  "stock-movement": "entry_date",
-  "stock-transfers": "transfer_date",
-  "branch-stock-transfers": "transfer_date",
-  returns: "return_date",
-  "expenses": "expense_date",
-  "journal-register": "entry_date",
-  "general-ledger": "entry_date",
-  "trial-balance": "entry_date",
-  "balance-sheet": "entry_date",
-  "profit-loss-gl": "entry_date",
-  "cash-flow": "entry_date",
-  "invoice-payments": "date_paid",
-  "kra-receipts": "receipt_date",
-  "till-sessions": "session_date",
-  "audit-trail": "created_at",
-  "statutory-deductions": "run_date",
-  "bank-transfer": "run_date",
-  headcount: "hire_date",
-  "contract-expiry": "contract_end_date",
-};
+const PAGE_SIZE = 20;
+
+const LEGACY_ARCHIVE_REPORT_KEYS = new Set(["sales-by-channel"]);
 
 function formatCell(key, value) {
   if (value == null || value === "") return "—";
@@ -78,18 +50,13 @@ function labelizeKey(key) {
   return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-const PAGE_SIZE = 20;
-
-const REPORTS_WITHOUT_DATE_FILTER = new Set(["price-list"]);
-
-const LEGACY_ARCHIVE_REPORT_KEYS = new Set(["sales-by-channel"]);
-
 export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const urlParams = useSearchParams();
   const payrollRunId = urlParams.get("payroll_run_id") ?? "";
   const { user, isOrgWide } = useAuth();
   const defaultRange = useMemo(() => defaultReportDateRange(), []);
   const branchInitialized = useRef(false);
+  const filterOptions = useReportFilterOptions(reportKey);
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -98,6 +65,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
   const [branchId, setBranchId] = useState("");
+  const [queryFilters, setQueryFilters] = useState({});
   const [branches, setBranches] = useState([]);
   const [includeLegacyArchive, setIncludeLegacyArchive] = useState(false);
   const [legacyArchiveMeta, setLegacyArchiveMeta] = useState(null);
@@ -105,8 +73,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const [legacyPage, setLegacyPage] = useState(1);
 
   const supportsLegacyArchive = LEGACY_ARCHIVE_REPORT_KEYS.has(reportKey);
-  const showDateFilters = !REPORTS_WITHOUT_DATE_FILTER.has(reportKey);
-  const dateColumn = DATE_COLUMNS[reportKey] ?? "sale_date";
+  const showDateFilters = reportShowsDateRange(reportKey);
 
   useEffect(() => {
     apiRequest("/branches", { searchParams: { per_page: 100 } })
@@ -127,13 +94,13 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       const searchParams = {
         per_page: PAGE_SIZE,
         page,
+        ...buildReportQueryParams(reportKey, {
+          fromDate,
+          toDate,
+          branchId,
+          extraValues: queryFilters,
+        }),
       };
-      if (showDateFilters) {
-        searchParams.date_column = dateColumn;
-        if (fromDate) searchParams.from_date = fromDate;
-        if (toDate) searchParams.to_date = toDate;
-      }
-      if (branchId) searchParams.branch_id = branchId;
       if (payrollRunId) searchParams.payroll_run_id = payrollRunId;
       if (supportsLegacyArchive && includeLegacyArchive) {
         searchParams.include_legacy_archive = 1;
@@ -155,7 +122,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, legacyPage, fromDate, toDate, branchId, dateColumn, payrollRunId, supportsLegacyArchive, includeLegacyArchive, showDateFilters]);
+  }, [apiPath, page, legacyPage, fromDate, toDate, branchId, queryFilters, payrollRunId, supportsLegacyArchive, includeLegacyArchive, reportKey]);
 
   useEffect(() => {
     loadReport();
@@ -195,19 +162,18 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   }, [rows, legacyRows]);
 
   const exportSearchParams = useMemo(() => {
-    const searchParams = {};
-    if (showDateFilters) {
-      searchParams.date_column = dateColumn;
-      if (fromDate) searchParams.from_date = fromDate;
-      if (toDate) searchParams.to_date = toDate;
-    }
-    if (branchId) searchParams.branch_id = branchId;
+    const searchParams = buildReportQueryParams(reportKey, {
+      fromDate,
+      toDate,
+      branchId,
+      extraValues: queryFilters,
+    });
     if (payrollRunId) searchParams.payroll_run_id = payrollRunId;
     if (supportsLegacyArchive && includeLegacyArchive) {
       searchParams.include_legacy_archive = 1;
     }
     return searchParams;
-  }, [branchId, dateColumn, fromDate, payrollRunId, showDateFilters, toDate, supportsLegacyArchive, includeLegacyArchive]);
+  }, [branchId, fromDate, toDate, queryFilters, payrollRunId, reportKey, supportsLegacyArchive, includeLegacyArchive]);
 
   const totalPages = meta?.last_page ?? 1;
   const total = meta?.total ?? rows.length;
@@ -251,7 +217,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       toolbar={
         <FilterToolbar>
           <Link href="/reports" className="pb-2 text-sm text-[#185FA5] hover:underline">
-            ? All reports
+            ← All reports
           </Link>
           {showDateFilters ? (
             <>
@@ -296,6 +262,15 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
               ))}
             </select>
           </Field>
+          <ReportQueryFilterFields
+            reportKey={reportKey}
+            values={queryFilters}
+            onChange={(id, value) => {
+              setPage(1);
+              setQueryFilters((prev) => ({ ...prev, [id]: value }));
+            }}
+            optionsByKey={filterOptions}
+          />
           {supportsLegacyArchive ? (
             <label className="flex cursor-pointer items-center gap-2 pb-2 text-sm text-slate-700">
               <input

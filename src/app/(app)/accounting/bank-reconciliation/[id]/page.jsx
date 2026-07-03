@@ -37,6 +37,8 @@ export default function BankReconciliationDetailPage() {
   const [busy, setBusy] = useState(false);
   const [selectedStatementId, setSelectedStatementId] = useState(null);
   const [selectedBookId, setSelectedBookId] = useState(null);
+  const [importCsv, setImportCsv] = useState("");
+  const [importing, setImporting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,6 +98,28 @@ export default function BankReconciliationDetailPage() {
       return;
     }
     await applyMatch(selectedStatementId, selectedBookId, "manual");
+  }
+
+  async function importStatementLines() {
+    if (!importCsv.trim()) {
+      notifyError("Paste CSV statement data to import.");
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const res = await apiRequest(`/accounting/bank-reconciliations/${params.id}/statement-lines`, {
+        method: "POST",
+        body: { csv: importCsv.trim() },
+      });
+      setData(res);
+      setImportCsv("");
+      notifySuccess("Bank statement lines imported.");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to import statement lines");
+    } finally {
+      setImporting(false);
+    }
   }
 
   async function applySuggestion(suggestion) {
@@ -268,6 +292,37 @@ export default function BankReconciliationDetailPage() {
           <p className="text-xs text-slate-500">
             Select one bank line and one book transaction, then match.
           </p>
+        </div>
+      ) : null}
+
+      {editable ? (
+        <div className="theme-panel mb-6 rounded-xl border p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-900">Import bank statement</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Paste CSV from your bank export. Columns: date, description, reference, amount (or debit/credit).
+          </p>
+          <textarea
+            value={importCsv}
+            onChange={(e) => setImportCsv(e.target.value)}
+            rows={5}
+            placeholder={"date,description,reference,amount\n2026-06-01,Deposit,DEP-1,1500"}
+            className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs"
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={importing || busy || !importCsv.trim()}
+              onClick={importStatementLines}
+              className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#134a84] disabled:opacity-60"
+            >
+              {importing ? "Importing…" : statementLines.length === 0 ? "Import statement" : "Add more lines"}
+            </button>
+            {statementLines.length === 0 ? (
+              <p className="text-xs text-amber-700">
+                No statement lines yet — import your bank CSV to start matching.
+              </p>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

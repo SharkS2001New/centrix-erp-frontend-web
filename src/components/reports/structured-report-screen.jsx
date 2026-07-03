@@ -15,6 +15,8 @@ import {
 } from "@/components/reports/report-screen-shared";
 import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
 import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
+import { buildReportQueryParams, reportShowsDateRange } from "@/lib/reports/report-filter-config";
+import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options";
 import { ProfitLossReportScreen } from "@/components/reports/profit-loss-report-screen";
 import { ExpensesReportScreen } from "@/components/reports/expenses-report-screen";
 import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
@@ -48,13 +50,16 @@ function StandardReportScreen({ definition }) {
   const [branchId, setBranchId] = useState("");
   const [branches, setBranches] = useState([]);
   const [extraFilters, setExtraFilters] = useState({});
+  const [queryFilters, setQueryFilters] = useState({});
   const [applied, setApplied] = useState({
     fromDate: defaultRange.from,
     toDate: defaultRange.to,
     branchId: "",
     extraFilters: {},
+    queryFilters: {},
   });
   const [legacyArchiveMeta, setLegacyArchiveMeta] = useState(null);
+  const filterOptions = useReportFilterOptions(definition.key);
 
   const includeLegacy = Boolean(applied.extraFilters?.include_legacy_archive);
 
@@ -76,13 +81,19 @@ function StandardReportScreen({ definition }) {
     setLoading(true);
     setError(null);
     try {
-      const searchParams = { per_page: PAGE_SIZE, page };
-      if (definition.dateColumn) {
+      const searchParams = {
+        per_page: PAGE_SIZE,
+        page,
+        ...buildReportQueryParams(definition.key, {
+          fromDate: applied.fromDate,
+          toDate: applied.toDate,
+          branchId: applied.branchId,
+          extraValues: applied.queryFilters,
+        }),
+      };
+      if (definition.dateColumn && !searchParams.date_column && reportShowsDateRange(definition.key)) {
         searchParams.date_column = definition.dateColumn;
-        if (applied.fromDate) searchParams.from_date = applied.fromDate;
-        if (applied.toDate) searchParams.to_date = applied.toDate;
       }
-      if (applied.branchId) searchParams.branch_id = applied.branchId;
       if (applied.extraFilters?.include_legacy_archive) {
         searchParams.include_legacy_archive = 1;
         searchParams.legacy_page = legacyPage;
@@ -154,7 +165,7 @@ function StandardReportScreen({ definition }) {
   function applyFilters() {
     setPage(1);
     setLegacyPage(1);
-    setApplied({ fromDate, toDate, branchId, extraFilters });
+    setApplied({ fromDate, toDate, branchId, extraFilters, queryFilters });
   }
 
   function resetFilters() {
@@ -164,7 +175,14 @@ function StandardReportScreen({ definition }) {
     setToDate(range.to);
     setBranchId(nextBranchId);
     setExtraFilters({});
-    setApplied({ fromDate: range.from, toDate: range.to, branchId: nextBranchId, extraFilters: {} });
+    setQueryFilters({});
+    setApplied({
+      fromDate: range.from,
+      toDate: range.to,
+      branchId: nextBranchId,
+      extraFilters: {},
+      queryFilters: {},
+    });
     setPage(1);
     setLegacyPage(1);
   }
@@ -174,16 +192,16 @@ function StandardReportScreen({ definition }) {
     return branches.find((b) => String(b.id) === String(branchIdValue))?.branch_name ?? "";
   }
 
-  const exportSearchParams = useMemo(() => {
-    const searchParams = {};
-    if (definition.dateColumn) {
-      searchParams.date_column = definition.dateColumn;
-      if (applied.fromDate) searchParams.from_date = applied.fromDate;
-      if (applied.toDate) searchParams.to_date = applied.toDate;
-    }
-    if (applied.branchId) searchParams.branch_id = applied.branchId;
-    return searchParams;
-  }, [applied, definition.dateColumn]);
+  const exportSearchParams = useMemo(
+    () =>
+      buildReportQueryParams(definition.key, {
+        fromDate: applied.fromDate,
+        toDate: applied.toDate,
+        branchId: applied.branchId,
+        extraValues: applied.queryFilters,
+      }),
+    [applied, definition.key],
+  );
 
   const fetchAllReportRows = useCallback(async () => {
     const centrixRows = await loadFullReportDataset(definition.apiPath, exportSearchParams, {
@@ -268,7 +286,11 @@ function StandardReportScreen({ definition }) {
         toDate={toDate}
         branchId={branchId}
         branches={branches}
-        showDateRange={definition.showDateRange !== false && Boolean(definition.dateColumn)}
+        reportKey={definition.key}
+        queryFilterValues={queryFilters}
+        queryFilterOptions={filterOptions}
+        onQueryFilterChange={(id, value) => setQueryFilters((f) => ({ ...f, [id]: value }))}
+        showDateRange={reportShowsDateRange(definition.key) && definition.showDateRange !== false}
         extraFilters={definition.extraFilters ?? []}
         extraValues={extraFilters}
         onFromDateChange={setFromDate}

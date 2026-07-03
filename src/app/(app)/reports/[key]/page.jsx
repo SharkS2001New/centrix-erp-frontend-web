@@ -1,15 +1,25 @@
 "use client";
 
+import { Suspense, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+
 import { REPORT_DEFINITIONS } from "@/lib/reports/definitions";
 import { hrReportSubtitle } from "@/lib/reports/hr-reports";
 import { distributionReportSubtitle } from "@/lib/reports/distribution-reports";
 import { StructuredReportScreen } from "@/components/reports/structured-report-screen";
 import { GenericReportScreen } from "@/components/reports/generic-report-screen";
-import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { AppRouteLoading } from "@/components/shared/app-route-loading";
 
 export default function ReportViewerPage() {
+  return (
+    <Suspense fallback={<AppRouteLoading pathname="/reports" />}>
+      <ReportViewerPageContent />
+    </Suspense>
+  );
+}
+
+function ReportViewerPageContent() {
   const params = useParams();
   const reportKey = params.key;
   const [meta, setMeta] = useState(null);

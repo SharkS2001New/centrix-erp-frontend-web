@@ -398,6 +398,38 @@ export const REPORT_DEFINITIONS = {
     footerTotals: ["current_balance", "open_invoices", "invoice_balance"],
   },
 
+  "invoice-payments": {
+    title: "Customer invoice payments",
+    subtitle: "Payments recorded against customer invoices",
+    section: "Finance",
+    apiPath: "/reports/invoice-payments",
+    dateColumn: "date_paid",
+    showDateRange: true,
+    columns: [
+      { key: "date_paid", label: "Date paid", accessor: (r) => r.date_paid },
+      { key: "invoice_number", label: "Invoice #", accessor: (r) => r.invoice_number },
+      { key: "customer_num", label: "Customer #", accessor: (r) => r.customer_num },
+      { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name },
+      { key: "amount_paid", label: "Amount", accessor: (r) => r.amount_paid, align: "right", total: true },
+      { key: "method_name", label: "Method", accessor: (r) => r.method_name },
+      { key: "reference_number", label: "Reference", accessor: (r) => r.reference_number ?? "—" },
+      { key: "received_by", label: "Received by", accessor: (r) => r.received_by },
+    ],
+    kpis: [
+      {
+        id: "payments",
+        label: "Payments",
+        compute: (rows) => ({ value: String(rows.length) }),
+      },
+      {
+        id: "total",
+        label: "Total collected",
+        compute: (rows) => ({ value: kes(sum(rows, "amount_paid")) }),
+      },
+    ],
+    footerTotals: ["amount_paid"],
+  },
+
   "stock-movement": {
     title: "Stock Movement Report",
     subtitle: "Inventory ledger transactions",

@@ -286,10 +286,11 @@ export const JOURNAL_ENTRY_EXPORT_COLUMNS = [
 ];
 
 export const CUSTOMER_INVOICE_EXPORT_COLUMNS = [
-  { key: "invoice_no", label: "Invoice #" },
+  { key: "invoice_number", label: "Invoice #" },
   { key: "customer_num", label: "Customer #" },
+  { key: "customer_name", label: "Customer name" },
   { key: "invoice_date", label: "Date" },
-  { key: "total_amount", label: "Total", align: "right" },
+  { key: "invoice_total", label: "Total", align: "right" },
   { key: "balance_due", label: "Balance", align: "right" },
   { key: "payment_status", label: "Payment status" },
 ];

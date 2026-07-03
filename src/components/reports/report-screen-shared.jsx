@@ -17,6 +17,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { formatReportCell } from "@/lib/reports/format";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
+import { ReportQueryFilterFieldsStructured } from "@/components/reports/report-query-filter-fields";
 
 const BADGE_TONES = {
   success: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
@@ -58,6 +59,10 @@ export function ReportFilterBar({
   branchId,
   branches,
   showDateRange = true,
+  reportKey,
+  queryFilterValues = {},
+  queryFilterOptions = {},
+  onQueryFilterChange,
   extraFilters = [],
   extraValues = {},
   onFromDateChange,
@@ -101,6 +106,14 @@ export function ReportFilterBar({
             ))}
           </select>
         </Field>
+        {reportKey && onQueryFilterChange ? (
+          <ReportQueryFilterFieldsStructured
+            reportKey={reportKey}
+            values={queryFilterValues}
+            onChange={onQueryFilterChange}
+            optionsByKey={queryFilterOptions}
+          />
+        ) : null}
         {extraFilters.map((filter) =>
           filter.type === "checkbox" ? (
             <label key={filter.id} className="flex cursor-pointer items-center gap-2 pb-2 text-sm theme-text-muted">

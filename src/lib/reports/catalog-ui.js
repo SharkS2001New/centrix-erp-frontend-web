@@ -19,6 +19,7 @@ export function reportVisibleForCatalog(key, capabilities) {
 }
 
 export const REPORT_UI_ROUTES = {
+  "items-currently-in-stock": "/inventory/stock",
   "eod-report": "/sales/end-of-day",
   "eod-cashier": "/sales/end-of-day",
   "customer-statement": "/reports/customer-statement",
@@ -31,7 +32,15 @@ export function reportHref(key, path) {
   return REPORT_UI_ROUTES[key] ?? path ?? `/reports/${key}`;
 }
 
-/** Hub category cards — keys map to API catalog entries. */
+/** Hub entries that route to operational screens instead of /reports/{slug}. */
+export const STATIC_CATALOG_REPORTS = {
+  "items-currently-in-stock": {
+    label: "Items currently in stock",
+    href: "/inventory/stock",
+    categoryId: "inventory",
+  },
+};
+
 export const REPORT_CATEGORY_DEFS = [
   {
     id: "sales",
@@ -82,6 +91,7 @@ export const REPORT_CATEGORY_DEFS = [
     description: "Stock levels, movement, and valuation",
     icon: "inventory",
     keys: [
+      "items-currently-in-stock",
       "stock-on-hand",
       "low-stock",
       "stock-movement",
@@ -182,6 +192,16 @@ export function buildReportCategories(catalog) {
   const categories = REPORT_CATEGORY_DEFS.map((def) => {
     const reports = def.keys
       .map((key) => {
+        const staticItem = STATIC_CATALOG_REPORTS[key];
+        if (staticItem?.categoryId === def.id) {
+          assigned.add(key);
+          return {
+            key,
+            label: staticItem.label,
+            href: staticItem.href,
+          };
+        }
+
         const item = byKey.get(key);
         if (!item) return null;
         assigned.add(key);

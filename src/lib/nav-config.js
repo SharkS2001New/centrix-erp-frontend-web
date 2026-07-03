@@ -346,7 +346,7 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/inventory/stock",
-        label: "Stock levels",
+        label: "Items currently in stock",
         module: "inventory",
         permission: P.inventory.stock.view,
       },
