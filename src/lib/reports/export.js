@@ -8,6 +8,7 @@ import {
   reportDetailMetaLines,
   reportDocumentStyles,
 } from "@/lib/reports/report-branding";
+import { filterReportColumnKeys } from "@/lib/reports/report-column-visibility";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -183,11 +184,11 @@ export function slugifyReportFilename(value) {
     .replace(/^-+|-+$/g, "");
 }
 
-/** @param {object[]} rows @param {(key: string) => string} labelize */
-export function columnsFromRowKeys(rows, labelize = (key) => key) {
+/** @param {object[]} rows @param {(key: string) => string} labelize @param {{ multiBranch?: boolean }} [options] */
+export function columnsFromRowKeys(rows, labelize = (key) => key, options = {}) {
   if (!rows[0]) return [];
-  return Object.keys(rows[0])
-    .filter((key) => !key.startsWith("_") && !["is_header", "is_total"].includes(key))
+  return filterReportColumnKeys(Object.keys(rows[0]), options)
+    .filter((key) => !["is_header", "is_total"].includes(key))
     .map((key) => ({
       key,
       label: labelize(key),

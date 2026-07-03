@@ -18,6 +18,29 @@ export const RETURN_REASONS = [
   "Other",
 ];
 
+export const RETURN_REASON_OTHER = "Other";
+
+/** @returns {{ preset: string, other: string }} */
+export function parseReturnReason(stored) {
+  const value = String(stored ?? "").trim();
+  if (!value) {
+    return { preset: RETURN_REASONS[0], other: "" };
+  }
+  if (RETURN_REASONS.includes(value)) {
+    return { preset: value, other: "" };
+  }
+  return { preset: RETURN_REASON_OTHER, other: value };
+}
+
+/** @returns {string} */
+export function resolveReturnReason(preset, otherText) {
+  const selected = String(preset ?? "").trim();
+  if (selected === RETURN_REASON_OTHER) {
+    return String(otherText ?? "").trim();
+  }
+  return selected;
+}
+
 export const REFUND_METHODS = [
   { value: "CASH", label: "Cash" },
   { value: "MPESA", label: "M-Pesa" },

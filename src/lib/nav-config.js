@@ -340,7 +340,7 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/inventory/transactions",
-        label: "Transactions",
+        label: "Inventory movements",
         module: "inventory",
         permission: P.inventory.movements.view,
       },

@@ -13,11 +13,14 @@ export const STOCK_LOCATION = {
   STORE: "store",
 };
 
+import { RETURN_REASONS } from "@/components/sales/customer-returns-shared";
+
 export const DEFAULT_RETURN_DRAFT = {
   quantity: "1",
   package_type: "full_package",
   stock_location: STOCK_LOCATION.STORE,
-  reason: "",
+  reasonPreset: RETURN_REASONS[0],
+  reasonOther: "",
 };
 
 /** UOM label for package dropdown, e.g. "Carton (20)". */

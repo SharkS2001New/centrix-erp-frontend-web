@@ -9,10 +9,13 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
 import {
+  Field,
   FilterSelect,
   PaginationBar,
   SearchInput,
 } from "@/components/catalog/catalog-shared";
+import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
+import { defaultProductBranchId, isMultiBranchCatalog } from "@/lib/catalog-scope";
 import {
   baseToDisplayQty,
   formatInventoryKes,
@@ -76,12 +79,14 @@ function readStoredColumnIds() {
 }
 
 export default function CurrentStockPage() {
-  const { user } = useAuth();
-  const branchId = user?.branch_id ?? 1;
+  const { user, capabilities } = useAuth();
+  const multiBranch = isMultiBranchCatalog(capabilities);
 
   const [stockRows, setStockRows] = useState([]);
   const [valuationRows, setValuationRows] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const [subcategories, setSubcategories] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [branchId, setBranchId] = useState("");
   const [retailPackages, setRetailPackages] = useState([]);
   const [totalStockRows, setTotalStockRows] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -92,7 +97,7 @@ export default function CurrentStockPage() {
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [subcategoryFilter, setSubcategoryFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(15);
@@ -112,20 +117,32 @@ export default function CurrentStockPage() {
 
   const loadReferenceData = useCallback(async () => {
     try {
-      const [catRes, retailRes] = await Promise.all([
-        apiRequest("/categories", { searchParams: { per_page: 200 } }),
+      const [subRes, branchRes, retailRes] = await Promise.all([
+        apiRequest("/sub-categories", { searchParams: { per_page: 500 } }),
+        apiRequest("/branches", { searchParams: { per_page: 200 } }),
         apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }),
       ]);
-      setCategories(catRes.data ?? []);
+      const branchRows = branchRes.data ?? [];
+      setSubcategories(subRes.data ?? []);
+      setBranches(branchRows);
       setRetailPackages(retailRes.data ?? []);
+      if (user?.branch_id) {
+        setBranchId(String(user.branch_id));
+      } else if (branchRows.length === 1) {
+        setBranchId(String(branchRows[0].id));
+      } else {
+        const fallback = defaultProductBranchId(capabilities, user, branchRows);
+        if (fallback) setBranchId(fallback);
+      }
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load stock filters");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [capabilities, user]);
 
   const loadStock = useCallback(async () => {
+    if (!branchId) return;
     setListLoading(true);
     try {
       const searchParams = buildPageParams({
@@ -134,7 +151,8 @@ export default function CurrentStockPage() {
         q: debouncedSearch,
         extra: {
           branch_id: branchId,
-          category_id: categoryFilter !== "all" ? categoryFilter : undefined,
+          in_stock_only: 1,
+          subcategory_id: subcategoryFilter !== "all" ? subcategoryFilter : undefined,
           location: locationFilter !== "all" ? locationFilter : undefined,
         },
       });
@@ -152,20 +170,20 @@ export default function CurrentStockPage() {
     } finally {
       setListLoading(false);
     }
-  }, [branchId, page, debouncedSearch, categoryFilter, locationFilter]);
+  }, [branchId, page, pageSize, debouncedSearch, subcategoryFilter, locationFilter]);
 
   useEffect(() => {
     loadReferenceData();
   }, [loadReferenceData]);
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || !branchId) return;
     loadStock();
-  }, [loading, loadStock]);
+  }, [loading, branchId, loadStock]);
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, categoryFilter, locationFilter]);
+  }, [debouncedSearch, subcategoryFilter, locationFilter, branchId]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -333,6 +351,19 @@ export default function CurrentStockPage() {
     generatePriceList(selected);
   }
 
+  const subcategoryOptions = useMemo(
+    () =>
+      [...subcategories]
+        .sort((a, b) =>
+          String(a.subcategory_name ?? "").localeCompare(String(b.subcategory_name ?? "")),
+        )
+        .map((sub) => ({
+          value: String(sub.id),
+          label: sub.subcategory_name ?? `Subcategory #${sub.id}`,
+        })),
+    [subcategories],
+  );
+
   const totals = useMemo(() => {
     let shop = 0;
     let store = 0;
@@ -357,11 +388,12 @@ export default function CurrentStockPage() {
           getSearchParams={() => ({
             per_page: 200,
             branch_id: branchId,
-            ...(categoryFilter !== "all" ? { category_id: categoryFilter } : {}),
+            in_stock_only: 1,
+            ...(subcategoryFilter !== "all" ? { subcategory_id: subcategoryFilter } : {}),
             ...(locationFilter !== "all" ? { location: locationFilter } : {}),
             ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
           })}
-          disabled={loading || listLoading}
+          disabled={loading || listLoading || !branchId}
         />
       }
     >
@@ -371,14 +403,27 @@ export default function CurrentStockPage() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search product…"
         />
-        <FilterSelect
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          options={[
-            { value: "all", label: "All categories" },
-            ...categories.map((c) => ({ value: String(c.id), label: c.category_name })),
-          ]}
-        />
+        <Field label="Categories">
+          <HrSearchableSelect
+            value={subcategoryFilter === "all" ? "" : subcategoryFilter}
+            onChange={(value) => setSubcategoryFilter(value || "all")}
+            options={subcategoryOptions}
+            placeholder="All categories"
+            emptyLabel="No subcategories found"
+          />
+        </Field>
+        {multiBranch ? (
+          <Field label="Branch">
+            <FilterSelect
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+              options={branches.map((b) => ({
+                value: String(b.id),
+                label: b.branch_name ?? `Branch #${b.id}`,
+              }))}
+            />
+          </Field>
+        ) : null}
         <FilterSelect
           value={locationFilter}
           onChange={(e) => setLocationFilter(e.target.value)}
@@ -430,8 +475,10 @@ export default function CurrentStockPage() {
       ) : null}
 
       <InventoryTableShell>
-        {loading ? (
-          <p className="p-8 text-sm text-slate-500">Loading stock…</p>
+        {loading || !branchId ? (
+          <p className="p-8 text-sm text-slate-500">
+            {loading ? "Loading stock…" : "Select a branch to view stock."}
+          </p>
         ) : (
           <>
             <div className="overflow-x-auto">

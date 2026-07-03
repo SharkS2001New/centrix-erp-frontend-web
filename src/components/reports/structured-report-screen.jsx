@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { formatReportCell } from "@/lib/reports/format";
 import { loadFullReportDataset } from "@/lib/paginated-fetch";
@@ -15,7 +16,7 @@ import {
 } from "@/components/reports/report-screen-shared";
 import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
 import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
-import { buildReportQueryParams, reportShowsDateRange } from "@/lib/reports/report-filter-config";
+import { buildReportQueryParams, reportHidesBranchFilter, reportShowsDateRange } from "@/lib/reports/report-filter-config";
 import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options";
 import { ProfitLossReportScreen } from "@/components/reports/profit-loss-report-screen";
 import { ExpensesReportScreen } from "@/components/reports/expenses-report-screen";
@@ -35,7 +36,8 @@ export function StructuredReportScreen({ definition }) {
 }
 
 function StandardReportScreen({ definition }) {
-  const { user, isOrgWide } = useAuth();
+  const { user, isOrgWide, capabilities } = useAuth();
+  const multiBranch = isMultiBranchCatalog(capabilities);
   const defaultRange = useMemo(() => defaultReportDateRange(), []);
   const branchInitialized = useRef(false);
   const [rows, setRows] = useState([]);
@@ -300,6 +302,7 @@ function StandardReportScreen({ definition }) {
         onFilter={applyFilters}
         onReset={resetFilters}
         loading={loading}
+        showBranchFilter={multiBranch && !reportHidesBranchFilter(definition.key)}
       />
 
       {!loading ? <ReportKpiGrid items={kpis} /> : null}

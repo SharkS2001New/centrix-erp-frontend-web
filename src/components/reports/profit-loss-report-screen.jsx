@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { formatReportKes } from "@/lib/reports/format";
 import {
   ReportFilterBar,
@@ -16,7 +17,8 @@ function pct(part, whole) {
 }
 
 export function ProfitLossReportScreen({ definition }) {
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
+  const multiBranch = isMultiBranchCatalog(capabilities);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -146,6 +148,7 @@ export function ProfitLossReportScreen({ definition }) {
           setApplied({ fromDate: "", toDate: "", branchId: bid });
         }}
         loading={loading}
+        showBranchFilter={multiBranch}
       />
 
       {!loading ? <ReportKpiGrid items={kpis} /> : null}

@@ -11,10 +11,13 @@ import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import {
   REFUND_METHODS,
   RETURN_REASONS,
+  parseReturnReason,
+  resolveReturnReason,
   legacyFullReturnLine,
   legacyReturnLineQtyLabel,
   totalLegacyReturnCredit,
 } from "@/components/sales/customer-returns-shared";
+import { ReturnReasonFields, isReturnReasonValid } from "@/components/returns/return-reason-fields";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
 
 export function LegacyReturnForm({
@@ -36,7 +39,8 @@ export function LegacyReturnForm({
   const [kraInvoiceNumber, setKraInvoiceNumber] = useState("");
   const [returnDate, setReturnDate] = useState(new Date().toISOString().slice(0, 10));
   const [refundMethod, setRefundMethod] = useState("CASH");
-  const [reason, setReason] = useState(RETURN_REASONS[0]);
+  const [reasonPreset, setReasonPreset] = useState(RETURN_REASONS[0]);
+  const [reasonOther, setReasonOther] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState([]);
   const [loadingSale, setLoadingSale] = useState(false);
@@ -133,6 +137,12 @@ export function LegacyReturnForm({
       return;
     }
 
+    if (!isReturnReasonValid(reasonPreset, reasonOther)) {
+      setError("Reason is required.");
+      return;
+    }
+    const resolvedReason = resolveReturnReason(reasonPreset, reasonOther);
+
     setSaving(true);
     setError(null);
     try {
@@ -140,7 +150,7 @@ export function LegacyReturnForm({
         sale_id: Number(saleId),
         return_date: returnDate,
         refund_method: refundMethod,
-        reason,
+        reason: resolvedReason,
         notes: notes || null,
         auto_approve: true,
         lines: payloadLines,
@@ -266,19 +276,13 @@ export function LegacyReturnForm({
             ))}
           </select>
         </Field>
-        <Field label="Reason">
-          <select
-            className={inputClassName}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          >
-            {RETURN_REASONS.map((item) => (
-              <option key={item} value={item}>
-                {item}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <ReturnReasonFields
+          preset={reasonPreset}
+          otherText={reasonOther}
+          onPresetChange={setReasonPreset}
+          onOtherTextChange={setReasonOther}
+          label="Reason"
+        />
       </div>
 
       <Field label="Notes">

@@ -1,9 +1,10 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import { REPORT_DEFINITIONS } from "@/lib/reports/definitions";
+import { REPORT_UI_ROUTES } from "@/lib/reports/catalog-ui";
 import { hrReportSubtitle } from "@/lib/reports/hr-reports";
 import { distributionReportSubtitle } from "@/lib/reports/distribution-reports";
 import { StructuredReportScreen } from "@/components/reports/structured-report-screen";
@@ -21,14 +22,25 @@ export default function ReportViewerPage() {
 
 function ReportViewerPageContent() {
   const params = useParams();
+  const router = useRouter();
   const reportKey = params.key;
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState(null);
 
+  const externalRoute = REPORT_UI_ROUTES[reportKey];
+  const redirectsOutsideReports =
+    externalRoute && !String(externalRoute).startsWith("/reports");
+
+  useEffect(() => {
+    if (redirectsOutsideReports) {
+      router.replace(externalRoute);
+    }
+  }, [redirectsOutsideReports, externalRoute, router]);
+
   const structured = REPORT_DEFINITIONS[reportKey];
 
   useEffect(() => {
-    if (structured) return;
+    if (structured || redirectsOutsideReports) return;
     apiRequest("/reports/")
       .then((catalog) => {
         for (const section of Object.values(catalog ?? {})) {
@@ -42,7 +54,11 @@ function ReportViewerPageContent() {
         setError("Report not found in catalog.");
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load catalog"));
-  }, [reportKey, structured]);
+  }, [reportKey, structured, redirectsOutsideReports]);
+
+  if (redirectsOutsideReports) {
+    return <AppRouteLoading pathname={externalRoute} />;
+  }
 
   if (structured) {
     return <StructuredReportScreen definition={{ ...structured, key: reportKey }} />;

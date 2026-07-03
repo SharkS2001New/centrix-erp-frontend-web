@@ -27,6 +27,8 @@ import {
   packagingLabelFromProduct,
   stockLocationSelectOptions,
 } from "@/components/suppliers/supplier-return-shared";
+import { parseReturnReason, resolveReturnReason } from "@/components/sales/customer-returns-shared";
+import { ReturnReasonFields, isReturnReasonValid } from "@/components/returns/return-reason-fields";
 
 const RETURN_MODES = {
   LPO: "lpo",
@@ -78,7 +80,8 @@ export function RecordSupplierReturnForm({
   const [loadingLpoSummary, setLoadingLpoSummary] = useState(false);
   const [lines, setLines] = useState([]);
   const [notes, setNotes] = useState("");
-  const [returnReason, setReturnReason] = useState("");
+  const [returnReasonPreset, setReturnReasonPreset] = useState("Damaged Product");
+  const [returnReasonOther, setReturnReasonOther] = useState("");
   const [reasonScope, setReasonScope] = useState(REASON_SCOPE.ORDER);
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState("");
   const [pendingManual, setPendingManual] = useState(null);
@@ -90,6 +93,10 @@ export function RecordSupplierReturnForm({
   const [formError, setFormError] = useState(null);
   const [addError, setAddError] = useState(null);
   const [returnReasonError, setReturnReasonError] = useState(null);
+  const resolvedOrderReason = useMemo(
+    () => resolveReturnReason(returnReasonPreset, returnReasonOther),
+    [returnReasonPreset, returnReasonOther],
+  );
   const [proofFile, setProofFile] = useState(null);
   const [existingProof, setExistingProof] = useState(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
@@ -181,8 +188,9 @@ export function RecordSupplierReturnForm({
         setLpoNo(doc.lpo_no ? String(doc.lpo_no) : "");
         setSupplierInvoiceNo(doc.supplier_invoice_no ?? "");
         setReasonScope(doc.reason_scope ?? REASON_SCOPE.ORDER);
-        const docReason = (doc.return_reason ?? doc.notes ?? "").trim();
-        setReturnReason(docReason);
+        const parsedReason = parseReturnReason(doc.return_reason ?? doc.notes ?? "");
+        setReturnReasonPreset(parsedReason.preset);
+        setReturnReasonOther(parsedReason.other);
         setNotes(doc.notes ?? "");
         setExistingProof(doc.proof ?? null);
         setLines(
@@ -368,10 +376,7 @@ export function RecordSupplierReturnForm({
     }
     setPendingManual(product);
     setPendingLpoLine(null);
-    setAddDraft({
-      ...DEFAULT_RETURN_DRAFT,
-      reason: reasonScope === REASON_SCOPE.ORDER ? returnReason : "",
-    });
+    setAddDraft({ ...DEFAULT_RETURN_DRAFT });
     setFormError(null);
     setAddError(null);
     setReturnReasonError(null);
@@ -391,7 +396,6 @@ export function RecordSupplierReturnForm({
       ...DEFAULT_RETURN_DRAFT,
       quantity: String(Math.min(1, Number(line.max_return_qty ?? 1))),
       stock_location: primary,
-      reason: reasonScope === REASON_SCOPE.ORDER ? returnReason : "",
     });
     setFormError(null);
     setAddError(null);
@@ -428,8 +432,11 @@ export function RecordSupplierReturnForm({
 
   function addPendingToLines() {
     const qty = Number(addDraft.quantity);
+    const orderReason = resolveReturnReason(returnReasonPreset, returnReasonOther);
     const lineReason =
-      reasonScope === REASON_SCOPE.PER_PRODUCT ? addDraft.reason.trim() : returnReason.trim();
+      reasonScope === REASON_SCOPE.PER_PRODUCT
+        ? resolveReturnReason(addDraft.reasonPreset, addDraft.reasonOther)
+        : orderReason;
     setAddError(null);
     setFormError(null);
     if (!qty || qty <= 0) {
@@ -440,7 +447,7 @@ export function RecordSupplierReturnForm({
       setAddError("Return reason is required for this product (at least 3 characters).");
       return;
     }
-    if (reasonScope === REASON_SCOPE.ORDER && returnReason.trim().length < 3) {
+    if (reasonScope === REASON_SCOPE.ORDER && orderReason.length < 3) {
       setReturnReasonError("Return reason is required (at least 3 characters).");
       setAddError(null);
       return;
@@ -493,10 +500,7 @@ export function RecordSupplierReturnForm({
       return;
     }
 
-    setAddDraft({
-      ...DEFAULT_RETURN_DRAFT,
-      reason: reasonScope === REASON_SCOPE.ORDER ? returnReason : "",
-    });
+    setAddDraft({ ...DEFAULT_RETURN_DRAFT });
     setFormError(null);
     setAddError(null);
     setReturnReasonError(null);
@@ -534,7 +538,7 @@ export function RecordSupplierReturnForm({
         returnReasonError: null,
       };
     }
-    if (reasonScope === REASON_SCOPE.ORDER && returnReason.trim().length < 3) {
+    if (reasonScope === REASON_SCOPE.ORDER && !isReturnReasonValid(returnReasonPreset, returnReasonOther)) {
       return {
         ok: false,
         formError: null,
@@ -601,7 +605,7 @@ export function RecordSupplierReturnForm({
       return false;
     }
     if (reasonScope === REASON_SCOPE.ORDER) {
-      return returnReason.trim().length >= 3;
+      return isReturnReasonValid(returnReasonPreset, returnReasonOther);
     }
     return lines.every((line) => (line.reason ?? "").trim().length >= 3);
   }, [
@@ -614,7 +618,8 @@ export function RecordSupplierReturnForm({
     lpoInvoiceChoices.length,
     supplierInvoiceNo,
     reasonScope,
-    returnReason,
+    returnReasonPreset,
+    returnReasonOther,
   ]);
 
   const reasonScopeLocked = lines.length > 0;
@@ -637,7 +642,7 @@ export function RecordSupplierReturnForm({
 
     const docNotes =
       reasonScope === REASON_SCOPE.ORDER
-        ? returnReason.trim()
+        ? resolvedOrderReason
         : notes.trim() ||
           lines
             .map((l) => (l.reason ?? "").trim())
@@ -775,18 +780,13 @@ export function RecordSupplierReturnForm({
           </div>
           {reasonScope === REASON_SCOPE.PER_PRODUCT ? (
             <div className="sm:col-span-2">
-              <Field label="Reason for this product" required>
-                <textarea
-                  rows={2}
-                  autoComplete="off"
-                  required
-                  minLength={3}
-                  className={inputClassName()}
-                  value={addDraft.reason}
-                  onChange={(e) => setAddDraft((d) => ({ ...d, reason: e.target.value }))}
-                  placeholder="e.g. Damaged packs, expired batch"
-                />
-              </Field>
+              <ReturnReasonFields
+                preset={addDraft.reasonPreset}
+                otherText={addDraft.reasonOther}
+                onPresetChange={(value) => setAddDraft((d) => ({ ...d, reasonPreset: value }))}
+                onOtherTextChange={(value) => setAddDraft((d) => ({ ...d, reasonOther: value }))}
+                label="Reason for this product"
+              />
             </div>
           ) : null}
         </div>
@@ -836,10 +836,7 @@ export function RecordSupplierReturnForm({
             onClick={() => {
               setPendingManual(null);
               setPendingLpoLine(null);
-              setAddDraft({
-                ...DEFAULT_RETURN_DRAFT,
-                reason: reasonScope === REASON_SCOPE.ORDER ? returnReason : "",
-              });
+              setAddDraft({ ...DEFAULT_RETURN_DRAFT });
             }}
             className="theme-secondary-btn rounded-lg px-4 py-2 text-sm shadow-sm"
           >
@@ -1237,26 +1234,29 @@ export function RecordSupplierReturnForm({
                     </label>
                   </div>
                   {reasonScope === REASON_SCOPE.ORDER ? (
-                    <Field label="Reason to return" required>
-                      <textarea
-                        rows={2}
-                        autoComplete="off"
-                        required
-                        minLength={3}
-                        disabled={reasonScopeLocked}
-                        className={`${inputClassName()} ${returnReasonError ? "border-red-300 focus:border-red-400 focus:ring-red-200" : ""} ${reasonScopeLocked ? "theme-input-readonly cursor-not-allowed" : ""}`}
-                        value={returnReason}
-                        onChange={(e) => {
+                    <div className={reasonScopeLocked ? "pointer-events-none opacity-60" : ""}>
+                      <ReturnReasonFields
+                        preset={returnReasonPreset}
+                        otherText={returnReasonOther}
+                        onPresetChange={(value) => {
                           if (reasonScopeLocked) return;
-                          setReturnReason(e.target.value);
+                          setReturnReasonPreset(value);
                           if (returnReasonError) setReturnReasonError(null);
                         }}
-                        placeholder="Required — e.g. damaged delivery, wrong goods"
+                        onOtherTextChange={(value) => {
+                          if (reasonScopeLocked) return;
+                          setReturnReasonOther(value);
+                          if (returnReasonError) setReturnReasonError(null);
+                        }}
+                        label="Reason to return"
+                        disabled={reasonScopeLocked}
+                        selectClassName={`${inputClassName()} ${returnReasonError ? "border-red-300 focus:border-red-400 focus:ring-red-200" : ""}`}
+                        otherClassName={`${inputClassName()} ${returnReasonError ? "border-red-300 focus:border-red-400 focus:ring-red-200" : ""}`}
                       />
                       {returnReasonError ? (
                         <p className="mt-1 text-xs text-red-600">{returnReasonError}</p>
                       ) : null}
-                    </Field>
+                    </div>
                   ) : (
                     <p className="theme-subtext text-xs">
                       A reason is required for each product when adding lines and in the list on the
@@ -1304,7 +1304,8 @@ export function RecordSupplierReturnForm({
                       disabled={saving || !canSubmit}
                       title={
                         !canSubmit
-                          ? reasonScope === REASON_SCOPE.ORDER && returnReason.trim().length < 3
+                          ? reasonScope === REASON_SCOPE.ORDER &&
+                              !isReturnReasonValid(returnReasonPreset, returnReasonOther)
                             ? "Enter a return reason (at least 3 characters) before submitting"
                             : "Complete all required fields before submitting"
                           : undefined
@@ -1440,9 +1441,9 @@ export function RecordSupplierReturnForm({
                                   <span className="theme-subtext font-medium">Reason: </span>
                                   {(line.reason ?? "").trim() || "—"}
                                 </p>
-                              ) : returnReason.trim().length >= 3 ? (
+                              ) : resolvedOrderReason.length >= 3 ? (
                                 <p className="theme-subtext mt-2 text-[11px]">
-                                  Reason: {returnReason.trim()}
+                                  Reason: {resolvedOrderReason}
                                 </p>
                               ) : (
                                 <p className="mt-2 text-[11px] font-medium text-amber-700">

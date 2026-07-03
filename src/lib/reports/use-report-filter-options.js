@@ -132,7 +132,7 @@ export function useReportFilterOptions(reportKey) {
         })),
       ],
       cashiers: [
-        { value: "", label: "All cashiers" },
+        { value: "", label: "All users" },
         ...cashiers.map((u) => ({
           value: String(u.id),
           label: u.full_name ?? u.username ?? `User #${u.id}`,

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { isMultiBranchCatalog } from "@/lib/catalog-scope";
+import { filterReportColumnKeys } from "@/lib/reports/report-column-visibility";
 import { parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
@@ -68,7 +70,8 @@ export function AccountingReportScreen({
   emptyLabel = "No rows for this filter.",
   intro = null,
 }) {
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
+  const multiBranch = isMultiBranchCatalog(capabilities);
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState(null);
   const [meta, setMeta] = useState(null);
@@ -147,10 +150,10 @@ export function AccountingReportScreen({
 
   const columns = useMemo(() => {
     if (!rows[0]) return [];
-    return Object.keys(rows[0]).filter(
-      (k) => !k.startsWith("_") && !["is_header", "is_total"].includes(k),
+    return filterReportColumnKeys(Object.keys(rows[0]), { multiBranch }).filter(
+      (k) => !["is_header", "is_total"].includes(k),
     );
-  }, [rows]);
+  }, [rows, multiBranch]);
 
   const branchLabel = branches.find((b) => String(b.id) === branchId)?.branch_name
     ?? (branchId ? "" : "All branches");
@@ -244,23 +247,25 @@ export function AccountingReportScreen({
               }}
             />
           </Field>
-          <Field label="Branch">
-            <select
-              className={inputClassName()}
-              value={branchId}
-              onChange={(e) => {
-                setPage(1);
-                setBranchId(e.target.value);
-              }}
-            >
-              <option value="">All branches</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.branch_name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {multiBranch ? (
+            <Field label="Branch">
+              <select
+                className={inputClassName()}
+                value={branchId}
+                onChange={(e) => {
+                  setPage(1);
+                  setBranchId(e.target.value);
+                }}
+              >
+                <option value="">All branches</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.branch_name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
           {showAccountFilter ? (
             <Field label="Account">
               <select

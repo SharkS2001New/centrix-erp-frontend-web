@@ -34,7 +34,6 @@ const INVENTORY_LINKS = [
   { href: "/inventory/transfers/new", title: "Transfer stock", desc: "Move stock between locations" },
   { href: "/inventory/damages", title: "Damages", desc: "Write-offs and damaged stock" },
   { href: "/inventory/stock-take", title: "Stock take", desc: "Physical count and reconciliation" },
-  { href: "/reports/stock-on-hand", title: "Stock on hand report", desc: "Full inventory valuation" },
   { href: "/reports/low-stock", title: "Low stock report", desc: "Items at or below reorder" },
 ];
 

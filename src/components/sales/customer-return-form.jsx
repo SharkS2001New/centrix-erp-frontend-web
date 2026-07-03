@@ -11,6 +11,8 @@ import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import {
   REFUND_METHODS,
   RETURN_REASONS,
+  parseReturnReason,
+  resolveReturnReason,
   customerReturnLineQtyLabel,
   customerReturnLineUnitLabel,
   emptyReturnLineFromSaleItem,
@@ -26,6 +28,7 @@ import {
   returnLineCountId,
   totalReturnAmount,
 } from "@/components/sales/customer-returns-shared";
+import { ReturnReasonFields, isReturnReasonValid } from "@/components/returns/return-reason-fields";
 import { CustomerReturnQtyInputs } from "@/components/sales/customer-return-qty-inputs";
 
 export function CustomerReturnForm({
@@ -45,7 +48,8 @@ export function CustomerReturnForm({
   const [customerName, setCustomerName] = useState("");
   const [returnDate, setReturnDate] = useState(new Date().toISOString().slice(0, 10));
   const [refundMethod, setRefundMethod] = useState("CASH");
-  const [reason, setReason] = useState(RETURN_REASONS[0]);
+  const [reasonPreset, setReasonPreset] = useState(RETURN_REASONS[0]);
+  const [reasonOther, setReasonOther] = useState("");
   const [notes, setNotes] = useState("");
   const [stockLocation, setStockLocation] = useState("shop");
   const [lines, setLines] = useState([]);
@@ -74,7 +78,9 @@ export function CustomerReturnForm({
     setCustomerName(editing.customer?.customer_name ?? "");
     setReturnDate(editing.return_date?.slice?.(0, 10) ?? editing.return_date ?? returnDate);
     setRefundMethod(editing.refund_method ?? "CASH");
-    setReason(editing.reason ?? RETURN_REASONS[0]);
+    const parsedReason = parseReturnReason(editing.reason);
+    setReasonPreset(parsedReason.preset);
+    setReasonOther(parsedReason.other);
     setNotes(editing.notes ?? "");
     setStockLocation(editing.stock_location ?? "shop");
     const nextLines = (editing.lines ?? []).map((line) =>
@@ -288,10 +294,11 @@ export function CustomerReturnForm({
       setError("Set a return quantity for at least one product.");
       return;
     }
-    if (!reason?.trim() || reason.trim().length < 3) {
+    if (!isReturnReasonValid(reasonPreset, reasonOther)) {
       setError("Reason for return is required.");
       return;
     }
+    const resolvedReason = resolveReturnReason(reasonPreset, reasonOther);
 
     setSaving(true);
     setError(null);
@@ -302,7 +309,7 @@ export function CustomerReturnForm({
         branch_id: user.branch_id,
         return_date: returnDate,
         refund_method: refundMethod,
-        reason,
+        reason: resolvedReason,
         notes: notes.trim() || null,
         stock_location: stockLocation,
         lines: payloadLines.map((line) => ({
@@ -442,20 +449,12 @@ export function CustomerReturnForm({
             ))}
           </select>
         </Field>
-        <Field label="Reason for return" required>
-          <select
-            className={inputClassName()}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            required
-          >
-            {RETURN_REASONS.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <ReturnReasonFields
+          preset={reasonPreset}
+          otherText={reasonOther}
+          onPresetChange={setReasonPreset}
+          onOtherTextChange={setReasonOther}
+        />
         <Field label="Restock location">
           <select
             className={inputClassName()}

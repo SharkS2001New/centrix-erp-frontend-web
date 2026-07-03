@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/api";
 import { loadFullReportDataset } from "@/lib/paginated-fetch";
 import { useAuth } from "@/contexts/auth-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
+import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { defaultWorkspaceId } from "@/lib/workspaces";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { formatReportCell, formatReportKes, sumField } from "@/lib/reports/format";
@@ -21,6 +22,7 @@ const PAGE_SIZE = 25;
 export function CustomReportScreen({ templateId }) {
   const { user, capabilities } = useAuth();
   const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(capabilities, {});
+  const multiBranch = isMultiBranchCatalog(capabilities);
   const [definition, setDefinition] = useState(null);
   const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -191,6 +193,7 @@ export function CustomReportScreen({ templateId }) {
         onFilter={applyFilters}
         onReset={resetFilters}
         loading={loading}
+        showBranchFilter={multiBranch}
       />
 
       {!loading ? <ReportKpiGrid items={kpis} /> : null}

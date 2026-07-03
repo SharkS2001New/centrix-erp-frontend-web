@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { isMultiBranchCatalog } from "@/lib/catalog-scope";
+import { filterReportColumnKeys } from "@/lib/reports/report-column-visibility";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
 import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
@@ -17,6 +19,7 @@ import { ReportQueryFilterFields } from "@/components/reports/report-query-filte
 import { reportVatKpis } from "@/lib/reports/vat-summary";
 import { formatReportKes } from "@/lib/reports/format";
 import { ReportKpiGrid } from "@/components/reports/report-screen-shared";
+import { ReportCellLink } from "@/components/reports/report-cell-link";
 import {
   CatalogPageShell,
   Field,
@@ -53,7 +56,8 @@ function labelizeKey(key) {
 export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const urlParams = useSearchParams();
   const payrollRunId = urlParams.get("payroll_run_id") ?? "";
-  const { user, isOrgWide } = useAuth();
+  const { user, isOrgWide, capabilities } = useAuth();
+  const multiBranch = isMultiBranchCatalog(capabilities);
   const defaultRange = useMemo(() => defaultReportDateRange(), []);
   const branchInitialized = useRef(false);
   const filterOptions = useReportFilterOptions(reportKey);
@@ -130,8 +134,8 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
 
   const columns = useMemo(() => {
     if (!rows[0]) return [];
-    return Object.keys(rows[0]).filter((k) => !k.startsWith("_"));
-  }, [rows]);
+    return filterReportColumnKeys(Object.keys(rows[0]), { multiBranch });
+  }, [rows, multiBranch]);
 
   const footerTotals = useMemo(() => {
     if (!rows.length || !columns.length) return {};
@@ -152,14 +156,12 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const exportColumns = useMemo(() => {
     const sample = rows[0] ?? legacyRows[0];
     if (!sample) return [];
-    return Object.keys(sample)
-      .filter((k) => !k.startsWith("_"))
-      .map((key) => ({
-        key,
-        label: labelizeKey(key),
-        accessor: (row) => formatCell(key, row[key]),
-      }));
-  }, [rows, legacyRows]);
+    return filterReportColumnKeys(Object.keys(sample), { multiBranch }).map((key) => ({
+      key,
+      label: labelizeKey(key),
+      accessor: (row) => formatCell(key, row[key]),
+    }));
+  }, [rows, legacyRows, multiBranch]);
 
   const exportSearchParams = useMemo(() => {
     const searchParams = buildReportQueryParams(reportKey, {
@@ -245,23 +247,25 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
               </Field>
             </>
           ) : null}
-          <Field label="Branch">
-            <select
-              className={FILTER_CONTROL_CLASS}
-              value={branchId}
-              onChange={(e) => {
-                setPage(1);
-                setBranchId(e.target.value);
-              }}
-            >
-              <option value="">All branches</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.branch_name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {multiBranch ? (
+            <Field label="Branch">
+              <select
+                className={FILTER_CONTROL_CLASS}
+                value={branchId}
+                onChange={(e) => {
+                  setPage(1);
+                  setBranchId(e.target.value);
+                }}
+              >
+                <option value="">All branches</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.branch_name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
           <ReportQueryFilterFields
             reportKey={reportKey}
             values={queryFilters}
@@ -336,7 +340,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
                   >
                     {columns.map((col) => (
                       <td key={col} className="whitespace-nowrap px-4 py-2.5 text-slate-800">
-                        {formatCell(col, row[col])}
+                        <ReportCellLink columnKey={col} row={row} value={row[col]} />
                       </td>
                     ))}
                   </tr>
@@ -379,7 +383,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
                   <tr key={`legacy-${idx}`} className="border-b border-slate-100 bg-amber-50/50 last:border-b-0">
                     {columns.map((col) => (
                       <td key={col} className="whitespace-nowrap px-4 py-2.5 text-slate-800">
-                        {formatCell(col, row[col])}
+                        <ReportCellLink columnKey={col} row={row} value={row[col]} />
                       </td>
                     ))}
                   </tr>

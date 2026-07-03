@@ -27,6 +27,7 @@ const GROUP_BY_CATEGORY = {
 const LABEL_OVERRIDES = {
   "items-currently-in-stock": "Items currently in stock",
   "purchases-by-supplier": "Purchases summary",
+  "sales-by-user": "Sales by user",
 };
 
 function lookupReportLabel(key) {

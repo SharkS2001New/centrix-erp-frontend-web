@@ -488,7 +488,7 @@ export function nextTransitionOptions(status, workflow) {
 }
 
 /** Next forward workflow step for list-row confirm actions. */
-export function primaryWorkflowAdvanceStatus(status, workflow) {
+export function primaryWorkflowAdvanceStatus(status, workflow, sale = null, capabilities = null) {
   if (!status || status === "cancelled" || isTerminalStatus(status, workflow)) return null;
 
   const steps = workflowPipelineSteps(workflow);
@@ -502,17 +502,27 @@ export function primaryWorkflowAdvanceStatus(status, workflow) {
     return steps[0].key;
   }
 
+  const fieldOrder = sale && isFieldFulfillmentOrder(sale, capabilities);
+  const aligned = alignStatusToWorkflow(status, workflow);
+  if (fieldOrder && aligned === "delivered") {
+    return saleBalanceDue(sale, null) <= 0.01 && allowed.has("completed") ? "completed" : null;
+  }
+
   if (currentIdx >= 0 && currentIdx < steps.length - 1) {
-    const next = steps[currentIdx + 1]?.key;
-    if (next && allowed.has(next)) return next;
+    for (let i = currentIdx + 1; i < steps.length; i += 1) {
+      const next = steps[i]?.key;
+      if (!next || !allowed.has(next)) continue;
+      if (fieldOrder && next === "completed") continue;
+      return next;
+    }
   }
 
-  for (let i = currentIdx + 1; i < steps.length; i += 1) {
-    const key = steps[i]?.key;
-    if (key && allowed.has(key)) return key;
+  for (const key of allowed) {
+    if (fieldOrder && key === "completed") continue;
+    return key;
   }
 
-  return [...allowed][0] ?? null;
+  return null;
 }
 
 /**
@@ -875,25 +885,29 @@ export function paymentStatusForCollectionQueue(slug) {
 /** Workflow statuses that should never show a second payment badge. */
 const WORKFLOW_ONLY_BADGE_STATUSES = new Set(["cancelled", "expired", "draft", "held", "completed"]);
 
-/**
- * Whether payment_status aligns with the current workflow step (same meaning, different field).
- */
-export function paymentStatusAlignsWithWorkflowStep(sale) {
-  const workflowStatus = String(sale?.status ?? "").toLowerCase();
-  const paymentStatus = String(sale?.payment_status ?? "").toLowerCase();
-  if (workflowStatus === "unpaid" && paymentStatus === "unpaid") return true;
-  if (workflowStatus === "pending_payment" && paymentStatus === "partial") return true;
-  if (workflowStatus === "paid" && paymentStatus === "paid") return true;
+/** Workflow statuses where payment is the primary meaning — no second payment badge. */
+const PAYMENT_WORKFLOW_STATUSES = new Set(["unpaid", "pending_payment", "paid"]);
 
-  return workflowStatus === paymentStatus;
+/** Fulfillment steps that may show a payment badge when balance remains. */
+const FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE = new Set([
+  "booked",
+  "pending",
+  "processed",
+  "delivered",
+]);
+
+/** Route / field-sales orders stop at delivered; completed follows payment in backoffice. */
+export function isFieldFulfillmentOrder(sale, capabilities = null) {
+  if (!sale) return false;
+  if (resolveOrderChannel(sale) !== "mobile") return false;
+  return capabilities ? orgDefersPaymentToFulfillment(capabilities) : true;
 }
 
 /**
- * Show a payment badge only when fulfillment advanced past payment steps while balance remains
- * (e.g. Processed + Unpaid). Not for cancelled orders or when workflow already conveys payment.
+ * Show a payment badge only when payment_status is unpaid/partial and the workflow step
+ * does not already convey that (e.g. Booked + Unpaid, Delivered + Partial).
  */
 export function shouldShowPaymentStatusBadge(sale, totalPaid = null, capabilities = null) {
-  if (capabilities && !orgDefersPaymentToFulfillment(capabilities)) return false;
   if (!sale?.payment_status) return false;
 
   const workflowStatus = String(sale.status ?? "").toLowerCase();
@@ -901,12 +915,16 @@ export function shouldShowPaymentStatusBadge(sale, totalPaid = null, capabilitie
 
   if (WORKFLOW_ONLY_BADGE_STATUSES.has(workflowStatus)) return false;
   if (paymentStatus === "paid") return false;
-  if (isPaymentCollectWorkflowStatus(workflowStatus)) return false;
-  if (paymentStatusAlignsWithWorkflowStep(sale)) return false;
-
   if (paymentStatus !== "unpaid" && paymentStatus !== "partial") return false;
+  if (saleBalanceDue(sale, totalPaid) <= 0.01) return false;
 
-  return saleBalanceDue(sale, totalPaid) > 0.01;
+  if (PAYMENT_WORKFLOW_STATUSES.has(workflowStatus)) {
+    if (workflowStatus === "unpaid" && paymentStatus === "unpaid") return false;
+    if (workflowStatus === "pending_payment" && paymentStatus === "partial") return false;
+    if (workflowStatus === "paid") return false;
+  }
+
+  return FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE.has(workflowStatus);
 }
 
 /**
@@ -920,7 +938,7 @@ export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null, ca
   }
 
   const balanceDue = saleBalanceDue(sale, totalPaid);
-  let advanceStatus = primaryWorkflowAdvanceStatus(status, workflow);
+  let advanceStatus = primaryWorkflowAdvanceStatus(status, workflow, sale, capabilities);
 
   if (advanceStatus && isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {
     const fulfillmentAdvance = primaryFulfillmentAdvanceStatus(status, workflow, sale, totalPaid);

@@ -12,7 +12,7 @@ export function getReportDefinition(key, def) {
 
 export const FEATURED_REPORT_KEYS = [
   "daily-sales",
-  "stock-on-hand",
+  "items-currently-in-stock",
   "profit-loss",
   "top-debtors",
   "stock-movement",
@@ -100,8 +100,8 @@ export const REPORT_DEFINITIONS = {
     showDateRange: true,
     columns: [
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
-      { key: "product_code", label: "Product Code", accessor: (r) => r.product_code },
-      { key: "product_name", label: "Product", accessor: (r) => r.product_name },
+      { key: "product_code", label: "Product Code", accessor: (r) => r.product_code, link: "product" },
+      { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
       { key: "channel", label: "Channel", accessor: (r) => r.channel },
       { key: "qty_sold", label: "Qty Sold", accessor: (r) => r.qty_sold, align: "right", total: true },
       {
@@ -128,8 +128,8 @@ export const REPORT_DEFINITIONS = {
     showDateRange: true,
     columns: [
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
-      { key: "supplier_code", label: "Supplier Code", accessor: (r) => r.supplier_code || "—" },
-      { key: "supplier_name", label: "Supplier", accessor: (r) => r.supplier_name },
+      { key: "supplier_code", label: "Supplier Code", accessor: (r) => r.supplier_code || "—", link: "supplier" },
+      { key: "supplier_name", label: "Supplier", accessor: (r) => r.supplier_name, link: "supplier" },
       { key: "channel", label: "Channel", accessor: (r) => r.channel },
       { key: "order_count", label: "Orders", accessor: (r) => r.order_count, align: "right", total: true },
       { key: "products_sold", label: "Products", accessor: (r) => r.products_sold, align: "right", total: true },
@@ -180,15 +180,15 @@ export const REPORT_DEFINITIONS = {
   },
 
   "sales-by-user": {
-    title: "Sales by Cashier / User",
-    subtitle: "Sales performance with VAT breakdown",
+    title: "Sales by User",
+    subtitle: "Sales performance by user with VAT breakdown",
     section: "Sales",
     apiPath: "/reports/sales-by-user",
     dateColumn: "sale_date",
     showDateRange: true,
     columns: [
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
-      { key: "salesperson", label: "Cashier", accessor: (r) => r.salesperson },
+      { key: "salesperson", label: "User", accessor: (r) => r.salesperson },
       { key: "channel", label: "Channel", accessor: (r) => r.channel },
       { key: "order_count", label: "Orders", accessor: (r) => r.order_count, align: "right", total: true },
       {
@@ -233,70 +233,6 @@ export const REPORT_DEFINITIONS = {
     footerTotals: ["qty_sold", "vat", "revenue", "discounts"],
   },
 
-  "stock-on-hand": {
-    title: "Stock On Hand Report",
-    subtitle: "Current inventory levels and valuation",
-    section: "Inventory",
-    apiPath: "/reports/stock-on-hand",
-    dateColumn: null,
-    showDateRange: false,
-    extraFilters: [{ id: "lowStockOnly", label: "Low stock only", type: "checkbox" }],
-    columns: [
-      { key: "product_code", label: "Product Code", accessor: (r) => r.product_code },
-      { key: "product_name", label: "Product Name", accessor: (r) => r.product_name },
-      { key: "total_base_units", label: "On Hand Qty", accessor: (r) => r.total_base_units, align: "right", total: true },
-      { key: "uom_name", label: "UOM", accessor: (r) => r.uom_name },
-      { key: "wholesale_price", label: "Unit Price", accessor: (r) => r.wholesale_price, align: "right" },
-      {
-        key: "status",
-        label: "Status",
-        accessor: (r) => stockStatus(r).label,
-        badge: (r) => stockStatus(r),
-      },
-    ],
-    kpis: [
-      {
-        id: "products",
-        label: "Total Products",
-        compute: (rows) => ({ value: String(rows.length) }),
-      },
-      {
-        id: "qty",
-        label: "Total Quantity",
-        compute: (rows) => ({ value: formatQty(sum(rows, "total_base_units")) }),
-      },
-      {
-        id: "low",
-        label: "Low Stock Items",
-        compute: (rows) => ({
-          value: String(
-            rows.filter((r) => {
-              const qty = Number(r.total_base_units) || 0;
-              if (qty <= 0) return true;
-              return r.product_alert === "REORDER";
-            }).length,
-          ),
-          tone: "warning",
-        }),
-      },
-      {
-        id: "out",
-        label: "Out of Stock",
-        compute: (rows) => ({
-          value: String(rows.filter((r) => Number(r.total_base_units) <= 0).length),
-          tone: "danger",
-        }),
-      },
-    ],
-    filterRows: (rows, filters) => {
-      if (!filters.lowStockOnly) return rows;
-      return rows.filter((r) => {
-        const qty = Number(r.total_base_units) || 0;
-        return qty <= 0 || r.product_alert === "REORDER";
-      });
-    },
-  },
-
   "low-stock": {
     title: "Low Stock / Reorder Report",
     subtitle: "Products at or below reorder point, including out of stock",
@@ -305,8 +241,8 @@ export const REPORT_DEFINITIONS = {
     dateColumn: null,
     showDateRange: false,
     columns: [
-      { key: "product_code", label: "Product Code", accessor: (r) => r.product_code },
-      { key: "product_name", label: "Product Name", accessor: (r) => r.product_name },
+      { key: "product_code", label: "Product Code", accessor: (r) => r.product_code, link: "product" },
+      { key: "product_name", label: "Product Name", accessor: (r) => r.product_name, link: "product" },
       {
         key: "total_base_units",
         label: "On Hand Qty",
@@ -376,8 +312,8 @@ export const REPORT_DEFINITIONS = {
     dateColumn: null,
     showDateRange: false,
     columns: [
-      { key: "customer_num", label: "Customer Code", accessor: (r) => r.customer_num },
-      { key: "customer_name", label: "Customer Name", accessor: (r) => r.customer_name },
+      { key: "customer_num", label: "Customer Code", accessor: (r) => r.customer_num, link: "customer" },
+      { key: "customer_name", label: "Customer Name", accessor: (r) => r.customer_name, link: "customer" },
       { key: "route_name", label: "Route", accessor: (r) => r.route_name },
       { key: "current_balance", label: "Outstanding", accessor: (r) => r.current_balance, align: "right", total: true },
       { key: "open_invoices", label: "Open Invoices", accessor: (r) => r.open_invoices, align: "right", total: true },
@@ -407,9 +343,9 @@ export const REPORT_DEFINITIONS = {
     showDateRange: true,
     columns: [
       { key: "date_paid", label: "Date paid", accessor: (r) => r.date_paid },
-      { key: "invoice_number", label: "Invoice #", accessor: (r) => r.invoice_number },
-      { key: "customer_num", label: "Customer #", accessor: (r) => r.customer_num },
-      { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name },
+      { key: "invoice_number", label: "Invoice #", accessor: (r) => r.invoice_number, link: "invoice" },
+      { key: "customer_num", label: "Customer #", accessor: (r) => r.customer_num, link: "customer" },
+      { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name, link: "customer" },
       { key: "amount_paid", label: "Amount", accessor: (r) => r.amount_paid, align: "right", total: true },
       { key: "method_name", label: "Method", accessor: (r) => r.method_name },
       { key: "reference_number", label: "Reference", accessor: (r) => r.reference_number ?? "—" },
@@ -441,7 +377,7 @@ export const REPORT_DEFINITIONS = {
       { key: "created_at", label: "Date", accessor: (r) => r.created_at },
       { key: "reference", label: "Reference", accessor: (r) => `${r.reference_type ?? "—"} #${r.reference_id ?? "—"}` },
       { key: "transaction_type", label: "Type", accessor: (r) => r.transaction_type },
-      { key: "product_code", label: "Product", accessor: (r) => r.product_code },
+      { key: "product_code", label: "Product", accessor: (r) => r.product_code, link: "product" },
       { key: "stock_location", label: "Location", accessor: (r) => r.stock_location },
       {
         key: "in_qty",

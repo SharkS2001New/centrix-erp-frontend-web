@@ -222,6 +222,9 @@ function canViewHrReport(reportKey, hasPermission) {
 
 /** @param {(code: string) => boolean} hasPermission */
 export function canViewReport(reportKey, hasPermission) {
+  if (reportKey === "stock-on-hand") {
+    return canViewReport("items-currently-in-stock", hasPermission);
+  }
   if (HR_REPORT_KEY_SET.has(reportKey)) {
     return canViewHrReport(reportKey, hasPermission);
   }

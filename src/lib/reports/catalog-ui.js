@@ -20,6 +20,7 @@ export function reportVisibleForCatalog(key, capabilities) {
 
 export const REPORT_UI_ROUTES = {
   "items-currently-in-stock": "/inventory/stock",
+  "stock-on-hand": "/inventory/stock",
   "eod-report": "/sales/end-of-day",
   "eod-cashier": "/sales/end-of-day",
   "customer-statement": "/reports/customer-statement",
@@ -92,7 +93,6 @@ export const REPORT_CATEGORY_DEFS = [
     icon: "inventory",
     keys: [
       "items-currently-in-stock",
-      "stock-on-hand",
       "low-stock",
       "stock-movement",
       "stock-chain",

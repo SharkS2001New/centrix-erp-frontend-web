@@ -18,6 +18,7 @@ import {
 import { formatReportCell } from "@/lib/reports/format";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { ReportQueryFilterFieldsStructured } from "@/components/reports/report-query-filter-fields";
+import { ReportCellLink } from "@/components/reports/report-cell-link";
 
 const BADGE_TONES = {
   success: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
@@ -72,6 +73,7 @@ export function ReportFilterBar({
   onFilter,
   onReset,
   loading = false,
+  showBranchFilter = true,
 }) {
   return (
     <div className={`mb-6 ${FILTER_BAR_CLASS}`}>
@@ -96,16 +98,18 @@ export function ReportFilterBar({
             </Field>
           </>
         ) : null}
-        <Field label="Branch">
-          <select className={inputClassName()} value={branchId} onChange={(e) => onBranchChange(e.target.value)}>
-            <option value="">All branches</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.branch_name}
-              </option>
-            ))}
-          </select>
-        </Field>
+        {showBranchFilter ? (
+          <Field label="Branch">
+            <select className={inputClassName()} value={branchId} onChange={(e) => onBranchChange(e.target.value)}>
+              <option value="">All branches</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.branch_name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
         {reportKey && onQueryFilterChange ? (
           <ReportQueryFilterFieldsStructured
             reportKey={reportKey}
@@ -177,7 +181,12 @@ export function ReportTable({ columns, rows, footerTotals = {}, emptyLabel = "No
                       {badge ? (
                         <ReportBadge label={badge.label} tone={badge.tone} />
                       ) : (
-                        formatReportCell(col.key, raw)
+                        <ReportCellLink
+                          columnKey={col.key}
+                          row={row}
+                          value={raw}
+                          link={col.link}
+                        />
                       )}
                     </td>
                   );

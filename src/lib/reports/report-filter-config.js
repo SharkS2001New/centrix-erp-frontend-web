@@ -1,7 +1,6 @@
 /** Reports with no date range UI or params. */
 export const REPORTS_WITHOUT_DATE_FILTER = new Set([
   "price-list",
-  "stock-on-hand",
   "low-stock",
   "top-debtors",
   "ar-aging",
@@ -12,6 +11,9 @@ export const REPORTS_WITHOUT_DATE_FILTER = new Set([
 
 /** Send from_date/to_date but omit date_column (backend applies custom date logic). */
 export const REPORTS_DATE_WITHOUT_COLUMN = new Set(["sales-by-customer"]);
+
+/** AR / payment reports are org-scoped — branch filter hides valid rows. */
+export const REPORTS_WITHOUT_BRANCH_FILTER = new Set(["invoice-payments"]);
 
 export const SALES_CHANNEL_OPTIONS = [
   { value: "", label: "All channels" },
@@ -120,14 +122,13 @@ export const REPORT_EXTRA_FILTERS = {
   ],
   "sales-by-user": [
     { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },
-    { id: "cashier_id", label: "Cashier", type: "select", optionsKey: "cashiers" },
+    { id: "cashier_id", label: "User", type: "select", optionsKey: "cashiers" },
   ],
   "sales-by-channel": [
     { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },
     { id: "payment_status", label: "Payment", type: "select", optionsKey: "paymentStatuses" },
   ],
   "sales-by-customer": [
-    { id: "customer_num", label: "Customer", type: "select", optionsKey: "customers" },
     { id: "route_name", label: "Route", type: "select", optionsKey: "routes" },
     { id: "q", label: "Search", type: "text", placeholder: "Customer name or phone…" },
   ],
@@ -147,7 +148,6 @@ export const REPORT_EXTRA_FILTERS = {
     { id: "payment_status", label: "Payment", type: "select", optionsKey: "paymentStatuses" },
   ],
   "invoice-payments": [
-    { id: "customer_num", label: "Customer", type: "select", optionsKey: "customers" },
     { id: "q", label: "Search", type: "text", placeholder: "Customer, invoice #, or reference…" },
   ],
   "sales-pipeline": [
@@ -155,45 +155,43 @@ export const REPORT_EXTRA_FILTERS = {
     { id: "status", label: "Order status", type: "select", optionsKey: "orderStatuses" },
     { id: "payment_status", label: "Payment", type: "select", optionsKey: "paymentStatuses" },
   ],
-  "stock-on-hand": [
-    { id: "product_code", label: "Product", type: "select", optionsKey: "products" },
-    { id: "category_id", label: "Category", type: "select", optionsKey: "categories" },
-    { id: "location", label: "Location", type: "select", optionsKey: "inventoryLocations" },
-    { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
-  ],
   "low-stock": [
-    { id: "product_code", label: "Product", type: "select", optionsKey: "products" },
     { id: "category_id", label: "Category", type: "select", optionsKey: "categories" },
     { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
   ],
   "stock-movement": [
-    { id: "product_code", label: "Product", type: "select", optionsKey: "products" },
     { id: "transaction_type", label: "Type", type: "select", optionsKey: "transactionTypes" },
     { id: "stock_location", label: "Location", type: "select", optionsKey: "stockLocations" },
     { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
   ],
   "stock-transfers": [
-    { id: "product_code", label: "Product", type: "select", optionsKey: "products" },
     { id: "from_location", label: "From", type: "select", optionsKey: "stockLocations" },
     { id: "to_location", label: "To", type: "select", optionsKey: "stockLocations" },
+    { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
   ],
   "stock-receipts": [
     { id: "product_code", label: "Product", type: "select", optionsKey: "products" },
     { id: "stock_location", label: "Location", type: "select", optionsKey: "stockLocations" },
   ],
   "stock-valuation": [
-    { id: "product_code", label: "Product", type: "select", optionsKey: "products" },
+    { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
   ],
   "stock-reservations": [
-    { id: "product_code", label: "Product", type: "select", optionsKey: "products" },
     { id: "stock_location", label: "Location", type: "select", optionsKey: "stockLocations" },
+    { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
   ],
   returns: [
-    { id: "product_code", label: "Product", type: "select", optionsKey: "products" },
     { id: "return_type", label: "Return type", type: "text", placeholder: "e.g. customer" },
+    { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
   ],
   damages: [
     { id: "product_code", label: "Product", type: "select", optionsKey: "products" },
+  ],
+  "branch-stock-transfers": [
+    { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
+  ],
+  "stock-chain": [
+    { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
   ],
 };
 
@@ -209,6 +207,10 @@ export function reportSendsDateColumn(reportKey) {
   return reportShowsDateRange(reportKey) && !REPORTS_DATE_WITHOUT_COLUMN.has(reportKey);
 }
 
+export function reportHidesBranchFilter(reportKey) {
+  return REPORTS_WITHOUT_BRANCH_FILTER.has(reportKey);
+}
+
 /** @param {string} reportKey @param {Record<string, string>} values */
 export function buildReportQueryParams(reportKey, { fromDate, toDate, branchId, extraValues = {} }) {
   /** @type {Record<string, string | number>} */
@@ -222,7 +224,9 @@ export function buildReportQueryParams(reportKey, { fromDate, toDate, branchId, 
     if (toDate) searchParams.to_date = toDate;
   }
 
-  if (branchId) searchParams.branch_id = branchId;
+  if (branchId && !reportHidesBranchFilter(reportKey)) {
+    searchParams.branch_id = branchId;
+  }
 
   for (const filter of REPORT_EXTRA_FILTERS[reportKey] ?? []) {
     const param = filter.param ?? filter.id;

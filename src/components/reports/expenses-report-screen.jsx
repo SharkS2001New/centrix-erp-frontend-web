@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { loadFullReportDataset } from "@/lib/paginated-fetch";
 import { useAuth } from "@/contexts/auth-context";
+import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { formatReportCell, sumField } from "@/lib/reports/format";
 import {
@@ -17,7 +18,8 @@ const PAGE_SIZE = 25;
 const CHART_COLORS = ["#185FA5", "#0F766E", "#B45309", "#7C3AED", "#BE123C", "#0369A1", "#4D7C0F"];
 
 export function ExpensesReportScreen({ definition }) {
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
+  const multiBranch = isMultiBranchCatalog(capabilities);
   const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -151,6 +153,7 @@ export function ExpensesReportScreen({ definition }) {
           setApplied({ fromDate: "", toDate: "", branchId: bid });
         }}
         loading={loading}
+        showBranchFilter={multiBranch}
       />
 
       {!loading ? <ReportKpiGrid items={kpis ?? []} /> : null}
