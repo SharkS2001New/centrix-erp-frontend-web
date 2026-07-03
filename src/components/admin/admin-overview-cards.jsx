@@ -4,6 +4,8 @@ import { AppNavLink } from "@/components/layout/app-nav-link";
 import { useAuth } from "@/contexts/auth-context";
 import { workspaceCardClassName } from "@/components/catalog/catalog-shared";
 import { canAccessOrgAdminSettings } from "@/lib/admin-scope";
+import { resolveTillFloatNavFlag } from "@/lib/access-control";
+import { isNavItemVisible, navSections } from "@/lib/nav-config";
 import { P } from "@/lib/permission-codes";
 
 const CARDS = [
@@ -51,8 +53,15 @@ const CARDS = [
   },
 ];
 
+const ADMIN_NAV_BY_HREF = new Map(
+  navSections
+    .filter((section) => String(section.id ?? "").startsWith("admin"))
+    .flatMap((section) => section.items ?? [])
+    .map((item) => [item.href, item]),
+);
+
 export function AdminOverviewCards() {
-  const { hasPermission, isSuperAdmin, organization, user, capabilities } = useAuth();
+  const { hasPermission, isModuleEnabled, isSuperAdmin, organization, user, capabilities } = useAuth();
   const orgAdminOk = canAccessOrgAdminSettings({
     organization,
     isSuperAdmin,
@@ -60,7 +69,23 @@ export function AdminOverviewCards() {
     user,
     capabilities,
   });
-  const visible = CARDS.filter((card) => orgAdminOk && hasPermission(card.permission));
+  const navContext = {
+    hasPermission,
+    isModuleEnabled,
+    isSuperAdmin,
+    organization,
+    user,
+    capabilities,
+    requireTillFloat: resolveTillFloatNavFlag(capabilities),
+  };
+  const visible = CARDS.filter((card) => {
+    if (!orgAdminOk) return false;
+    const navItem = ADMIN_NAV_BY_HREF.get(card.href);
+    if (navItem) {
+      return isNavItemVisible(navItem, navContext);
+    }
+    return hasPermission(card.permission);
+  });
 
   if (visible.length === 0) {
     return (

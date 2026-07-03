@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
@@ -45,12 +44,10 @@ function StandardReportScreen({ definition }) {
   );
   const branchInitialized = useRef(false);
   const [rows, setRows] = useState([]);
-  const [legacyRows, setLegacyRows] = useState([]);
   const [reportMeta, setReportMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
-  const [legacyPage, setLegacyPage] = useState(1);
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
   const [branchId, setBranchId] = useState("");
@@ -64,10 +61,7 @@ function StandardReportScreen({ definition }) {
     extraFilters: {},
     queryFilters: {},
   });
-  const [legacyArchiveMeta, setLegacyArchiveMeta] = useState(null);
   const filterOptions = useReportFilterOptions(definition.key);
-
-  const includeLegacy = Boolean(applied.extraFilters?.include_legacy_archive);
 
   useEffect(() => {
     apiRequest("/branches", { searchParams: { per_page: 100 } })
@@ -100,15 +94,8 @@ function StandardReportScreen({ definition }) {
       if (definition.dateColumn && !searchParams.date_column && reportShowsDateRange(definition.key)) {
         searchParams.date_column = definition.dateColumn;
       }
-      if (applied.extraFilters?.include_legacy_archive) {
-        searchParams.include_legacy_archive = 1;
-        searchParams.legacy_page = legacyPage;
-      }
-
       const res = await apiRequest(definition.apiPath, { searchParams });
       let centrixRows = normalizeReportRows(res);
-      setLegacyArchiveMeta(res.legacy_archive ?? null);
-      setLegacyRows(res.legacy_archive?.data ?? []);
       if (definition.filterRows) {
         centrixRows = definition.filterRows(centrixRows, applied.extraFilters);
       }
@@ -117,33 +104,24 @@ function StandardReportScreen({ definition }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
       setRows([]);
-      setLegacyRows([]);
       setReportMeta(null);
-      setLegacyArchiveMeta(null);
     } finally {
       setLoading(false);
     }
-  }, [definition, applied, page, legacyPage]);
+  }, [definition, applied, page]);
 
   useEffect(() => {
     loadReport();
   }, [loadReport]);
 
   const totalPages = reportMeta?.last_page ?? 1;
-  const legacyMeta = legacyArchiveMeta?.meta;
-  const legacyTotalPages = legacyMeta?.last_page ?? 1;
-
   const displayRows = useMemo(() => rows, [rows]);
-  const chartRows = useMemo(
-    () => (includeLegacy ? [...rows, ...legacyRows] : rows),
-    [rows, legacyRows, includeLegacy],
-  );
+  const chartRows = useMemo(() => rows, [rows]);
 
   const kpis = useMemo(() => {
     if (!definition.kpis) return [];
-    const kpiRows = includeLegacy ? [...rows, ...legacyRows] : rows;
     return definition.kpis.map((kpi) => {
-      const result = kpi.compute(kpiRows);
+      const result = kpi.compute(rows);
       return {
         id: kpi.id,
         label: kpi.label,
@@ -151,7 +129,7 @@ function StandardReportScreen({ definition }) {
         hint: result.hint,
       };
     });
-  }, [rows, legacyRows, includeLegacy, definition.kpis]);
+  }, [rows, definition.kpis]);
 
   const columns = useMemo(
     () => filterStructuredReportColumns(definition.columns ?? []),
@@ -160,22 +138,20 @@ function StandardReportScreen({ definition }) {
 
   const footerTotals = useMemo(() => {
     if (!definition.footerTotals || !columns.length) return {};
-    const totalRows = includeLegacy ? [...rows, ...legacyRows] : rows;
     const totals = {};
     for (const col of columns) {
       if (!col.total) continue;
-      const sum = totalRows.reduce((acc, row) => {
+      const sum = rows.reduce((acc, row) => {
         const raw = col.accessor ? col.accessor(row) : row[col.key];
         return acc + (Number(raw) || 0);
       }, 0);
       totals[col.key] = formatReportCell(col.key, sum);
     }
     return totals;
-  }, [rows, legacyRows, includeLegacy, columns, definition.footerTotals]);
+  }, [rows, columns, definition.footerTotals]);
 
   function applyFilters() {
     setPage(1);
-    setLegacyPage(1);
     setApplied({ fromDate, toDate, branchId, extraFilters, queryFilters });
   }
 
@@ -195,7 +171,6 @@ function StandardReportScreen({ definition }) {
       queryFilters: {},
     });
     setPage(1);
-    setLegacyPage(1);
   }
 
   function branchLabel(branchIdValue) {
@@ -247,8 +222,6 @@ function StandardReportScreen({ definition }) {
                       path: definition.apiPath,
                       searchParams: exportSearchParams,
                       estimatedRowCount: reportMeta?.total ?? rows.length,
-                      legacyMerge:
-                        applied.extraFilters?.include_legacy_archive && legacyArchiveMeta?.available,
                     },
                   }),
               estimatedRowCount: reportMeta?.total ?? rows.length,
@@ -265,31 +238,6 @@ function StandardReportScreen({ definition }) {
     >
       {error ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      ) : null}
-
-      {legacyArchiveMeta?.available && (legacyArchiveMeta.meta?.total ?? 0) > 0 ? (
-        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          Showing <strong>{legacyRows.length}</strong> of <strong>{legacyArchiveMeta.meta.total}</strong> legacy archive
-          row(s) from <strong>{legacyArchiveMeta.label ?? "legacy archive"}</strong>
-          {legacyArchiveMeta.cutover_date ? ` (cutover ${legacyArchiveMeta.cutover_date})` : ""}. Browse individual
-          sales under{" "}
-          <Link href="/reports/legacy-archive" className="font-medium text-[#185FA5] hover:underline">
-            Legacy sales archive
-          </Link>
-          .
-        </p>
-      ) : null}
-
-      {legacyArchiveMeta?.requires_date_range && includeLegacy ? (
-        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          {legacyArchiveMeta.message ?? "Set from and to dates, then filter, to load legacy archive rows."}
-        </p>
-      ) : null}
-
-      {legacyArchiveMeta?.available === false && applied.extraFilters?.include_legacy_archive ? (
-        <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-          {legacyArchiveMeta.message ?? "Legacy archive is not available for this organization."}
-        </p>
       ) : null}
 
       <ReportFilterBar
@@ -361,21 +309,6 @@ function StandardReportScreen({ definition }) {
             pageSize={PAGE_SIZE}
             onChange={setPage}
           />
-          {includeLegacy && legacyRows.length > 0 ? (
-            <div className="mt-8">
-              <h2 className="mb-3 text-sm font-semibold text-slate-900">
-                Legacy archive — {legacyArchiveMeta?.label ?? "pre-cutover sales"}
-              </h2>
-              <ReportTable columns={columns} rows={legacyRows} />
-              <PaginationBar
-                page={legacyPage}
-                totalPages={legacyTotalPages}
-                total={legacyMeta?.total ?? legacyRows.length}
-                pageSize={legacyMeta?.per_page ?? PAGE_SIZE}
-                onChange={setLegacyPage}
-              />
-            </div>
-          ) : null}
         </>
       )}
     </ReportPageShell>

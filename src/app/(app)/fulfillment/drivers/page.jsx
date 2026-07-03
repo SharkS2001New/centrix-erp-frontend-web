@@ -55,6 +55,7 @@ export default function DriversPage() {
   const [routes, setRoutes] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [users, setUsers] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const { search, setSearch } = useListUrlSearch();
@@ -82,17 +83,19 @@ export default function DriversPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [driverRes, routeRes, vehicleRes, userRes, salesRes] = await Promise.all([
+      const [driverRes, routeRes, vehicleRes, userRes, employeeRes, salesRes] = await Promise.all([
         apiRequest("/drivers", { searchParams: { per_page: 200 } }),
         apiRequest("/routes", { searchParams: { per_page: 200 } }),
         apiRequest("/vehicles", { searchParams: { per_page: 200 } }),
         apiRequest("/users", { searchParams: { per_page: 200 } }),
+        apiRequest("/employees", { searchParams: { per_page: 500 } }).catch(() => ({ data: [] })),
         apiRequest("/sales", { searchParams: { per_page: 500 } }),
       ]);
       setDrivers(driverRes.data ?? []);
       setRoutes(routeRes.data ?? []);
       setVehicles(vehicleRes.data ?? []);
       setUsers(userRes.data ?? []);
+      setEmployees(employeeRes.data ?? []);
       setSales(salesRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load drivers");
@@ -181,6 +184,19 @@ export default function DriversPage() {
   function updateField(key, value) {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
+      if (key === "employee_id") {
+        const employee = employees.find((item) => String(item.id) === String(value));
+        if (employee) {
+          next.full_name = employee.full_name || [employee.first_name, employee.middle_name, employee.last_name].filter(Boolean).join(" ");
+          next.phone = employee.phone ?? "";
+          next.user_id = employee.user_id != null ? String(employee.user_id) : "";
+          if (drawerMode === "create" && !prev.driver_code.trim()) {
+            next.driver_code = suggestDriverCode(next.full_name);
+          }
+        } else {
+          next.user_id = "";
+        }
+      }
       if (key === "full_name" && drawerMode === "create" && !prev.driver_code.trim()) {
         next.driver_code = suggestDriverCode(value);
       }
@@ -334,7 +350,7 @@ export default function DriversPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] border-collapse text-sm">
+              <table className="w-full min-w-[860px] border-collapse text-sm">
                 <thead>
                   <tr className="theme-table-head-row text-left text-xs font-medium">
                     <TableSelectAllHeader
@@ -344,6 +360,7 @@ export default function DriversPage() {
                     />
                     <th className="px-4 py-2.5">Driver</th>
                     <th className="px-4 py-2.5">Phone</th>
+                    <th className="px-4 py-2.5">Employee</th>
                     <th className="px-4 py-2.5">Code</th>
                     <th className="px-4 py-2.5">Route</th>
                     <th className="px-4 py-2.5">Vehicle</th>
@@ -354,7 +371,7 @@ export default function DriversPage() {
                 <tbody>
                   {pageSlice.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
                         No drivers found.
                       </td>
                     </tr>
@@ -378,6 +395,9 @@ export default function DriversPage() {
                           </Link>
                         </td>
                         <td className="px-4 py-3 text-slate-700">{driver.phone || "—"}</td>
+                        <td className="px-4 py-3 text-slate-700">
+                          {driver.employee?.full_name ?? "—"}
+                        </td>
                         <td className="px-4 py-3 font-mono text-xs text-slate-600">
                           {driver.driver_code}
                         </td>
@@ -435,12 +455,31 @@ export default function DriversPage() {
         error={formError}
         submitLabel={drawerMode === "edit" ? "Save changes" : "Save driver"}
       >
+        <Field label="Employee record (optional)">
+          <select
+            value={form.employee_id}
+            onChange={(e) => updateField("employee_id", e.target.value)}
+            className={inputClassName()}
+          >
+            <option value="">Standalone driver / not an employee</option>
+            {employees.map((employee) => (
+              <option key={employee.id} value={String(employee.id)}>
+                {employee.full_name ?? employee.employee_code ?? `Employee #${employee.id}`}
+                {employee.employee_code ? ` · ${employee.employee_code}` : ""}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-slate-500">
+            If the driver is already an HR employee, link this record instead of creating duplicate details.
+          </p>
+        </Field>
         <Field label="Full name">
           <input
             type="text"
             value={form.full_name}
             onChange={(e) => updateField("full_name", e.target.value)}
             required
+            disabled={Boolean(form.employee_id)}
             className={inputClassName()}
             placeholder="John Kamau"
           />
@@ -450,6 +489,7 @@ export default function DriversPage() {
             type="tel"
             value={form.phone}
             onChange={(e) => updateField("phone", e.target.value)}
+            disabled={Boolean(form.employee_id)}
             className={inputClassName()}
             placeholder="0712345678"
           />
@@ -496,6 +536,7 @@ export default function DriversPage() {
           <select
             value={form.user_id}
             onChange={(e) => updateField("user_id", e.target.value)}
+            disabled={Boolean(form.employee_id && form.user_id)}
             className={inputClassName()}
           >
             <option value="">None</option>

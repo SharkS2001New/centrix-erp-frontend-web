@@ -127,9 +127,11 @@ export function TripCloseReconciliation({ tripId }) {
   const kpiItems = [
     {
       id: "orders",
-      label: "Deliveries",
-      value: `${delivery.delivered_count}/${delivery.order_count}`,
-      hint: delivery.pending_count ? `${delivery.pending_count} pending` : "All delivered",
+      label: "Resolved stops",
+      value: `${delivery.resolved_count ?? delivery.delivered_count}/${delivery.order_count}`,
+      hint: delivery.pending_count
+        ? `${delivery.pending_count} pending`
+        : `${delivery.delivered_count} full · ${delivery.partial_count ?? 0} partial · ${delivery.failed_count ?? 0} cancelled`,
     },
     {
       id: "loading",
@@ -315,7 +317,7 @@ export function TripCloseReconciliation({ tripId }) {
       <section className="mt-8 theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-lg font-medium text-slate-900">Order cash breakdown</h2>
         <p className="mt-1 text-sm text-slate-500">
-          COD due is the unpaid balance on each route order.
+          COD due excludes stops recorded as not delivered and subtracts pending/approved return value.
         </p>
         <div className="mt-4">
           <DashboardSummaryTable
@@ -336,9 +338,21 @@ export function TripCloseReconciliation({ tripId }) {
                 label: "Status",
                 render: (row) => <SaleStatusBadge status={row.status} />,
               },
+              {
+                key: "delivery_outcome",
+                label: "Outcome",
+                render: (row) => {
+                  if (row.is_failed_delivery) return "Not delivered";
+                  if (row.is_partial_delivery) return "Partial";
+                  if (row.is_delivered) return "Delivered";
+                  return "Pending";
+                },
+              },
               { key: "order_total", label: "Total", align: "right" },
+              { key: "return_amount", label: "Returns", align: "right" },
               { key: "amount_paid", label: "Paid", align: "right" },
               { key: "balance_due", label: "COD due", align: "right" },
+              { key: "return_no", label: "Return #" },
               {
                 key: "pod_captured",
                 label: "POD",
@@ -349,8 +363,10 @@ export function TripCloseReconciliation({ tripId }) {
               ...row,
               customer_name: row.customer_name ?? "—",
               order_total: formatSaleKes(row.order_total),
+              return_amount: row.return_amount ? formatSaleKes(row.return_amount) : "—",
               amount_paid: formatSaleKes(row.amount_paid),
               balance_due: formatSaleKes(row.balance_due),
+              return_no: row.return_no ?? "—",
             }))}
           />
         </div>

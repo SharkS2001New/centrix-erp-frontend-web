@@ -26,7 +26,6 @@ import { canExportPdf, PDF_EXPORT_MAX_ROWS } from "@/lib/report-export-limits";
  *   source?: string,
  *   path?: string,
  *   searchParams?: Record<string, unknown>,
- *   legacyMerge?: boolean,
  * }} [props.exportSource]
  * @param {object} [props.meta]
  * @param {object} [props.footerRow]

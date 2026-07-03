@@ -237,9 +237,10 @@ export default function TripsPage() {
                 <th className="px-4 py-3">Trip</th>
                 <th className="px-4 py-3">Routes</th>
                 <th className="px-4 py-3">Driver</th>
+                <th className="px-4 py-3">Turn boys</th>
                 <th className="px-4 py-3">Vehicle</th>
                 <th className="px-4 py-3">Orders</th>
-                <th className="px-4 py-3 text-right">Amount</th>
+                <th className="px-4 py-3 text-right">Planned / actual</th>
                 <th className="px-4 py-3 text-right">Profit</th>
                 <th className="px-4 py-3 text-right">Net profit</th>
                 <th className="px-4 py-3 text-right">Margin</th>
@@ -259,10 +260,20 @@ export default function TripsPage() {
                   <td className="px-4 py-3 font-mono">{trip.trip_code}</td>
                   <td className="px-4 py-3">{formatTripRoutesLabel(trip, routeById)}</td>
                   <td className="px-4 py-3">{trip.driver?.full_name ?? "—"}</td>
+                  <td className="px-4 py-3">
+                    {trip.turn_boys?.length
+                      ? trip.turn_boys.map((employee) => employee.full_name).join(", ")
+                      : "—"}
+                  </td>
                   <td className="px-4 py-3">{trip.vehicle?.plate_number ?? trip.vehicle?.vehicle_name ?? "—"}</td>
                   <td className="px-4 py-3">{trip.financial_summary?.order_count ?? trip.sales_count ?? 0}</td>
-                  <td className="px-4 py-3 text-right font-medium text-slate-800">
-                    {formatSaleKes(trip.financial_summary?.total_amount ?? 0)}
+                  <td className="px-4 py-3 text-right">
+                    <div className="font-medium text-slate-800">
+                      {formatSaleKes(trip.financial_summary?.total_amount ?? 0)}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      Actual {formatSaleKes(trip.financial_summary?.actual_amount ?? trip.financial_summary?.total_amount ?? 0)}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right text-slate-700">
                     {formatSaleKes(trip.financial_summary?.total_profit ?? 0)}

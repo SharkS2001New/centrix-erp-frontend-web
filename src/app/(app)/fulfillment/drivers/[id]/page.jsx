@@ -101,6 +101,14 @@ export default function DriverProfilePage() {
                   label="Linked user"
                   value={linkedUser?.full_name ?? linkedUser?.username ?? "—"}
                 />
+                <DetailRow
+                  label="Employee record"
+                  value={
+                    driver.employee
+                      ? `${driver.employee.full_name}${driver.employee.employee_code ? ` · ${driver.employee.employee_code}` : ""}`
+                      : "—"
+                  }
+                />
                 <DetailRow label="Branch" value={driver.branch?.branch_name ?? "—"} />
                 <DetailRow label="Created" value={formatShortDate(driver.created_at)} />
                 <div className="flex items-center justify-between gap-4 border-t border-slate-100 pt-3">

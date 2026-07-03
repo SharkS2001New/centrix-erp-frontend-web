@@ -138,13 +138,29 @@ export function capabilitiesFromOrganizationPayload(payload) {
   const finance = moduleSettings.finance ?? {};
   const ai = moduleSettings.ai ?? {};
   const sales = moduleSettings.sales ?? {};
+  const distribution = moduleSettings.distribution ?? {};
+  const driverMobileEnabled = Boolean(modules.distribution)
+    && distribution.enable_distribution_ops !== false
+    && distribution.mobile_enable_driver_app !== false
+    && Boolean(modules["sales.mobile"]);
 
   return {
     modules,
     module_settings: moduleSettings,
+    channels: [
+      ...(modules["sales.pos"] ? ["pos"] : []),
+      ...(sales.enable_mobile_orders !== false && modules["sales.mobile"] ? ["mobile"] : []),
+      ...(modules["sales.backend"] ? ["backend"] : []),
+    ],
     screen_lock_minutes: security.screen_lock_minutes ?? 5,
     session_idle_minutes: security.session_idle_minutes ?? 60,
     mobile_orders_enabled: sales.enable_mobile_orders !== false,
+    driver_mobile_enabled: driverMobileEnabled,
+    allowed_login_channels: [
+      ...(modules["sales.backend"] ? ["backoffice"] : []),
+      ...(modules["sales.pos"] ? ["pos"] : []),
+      ...((sales.enable_mobile_orders !== false && modules["sales.mobile"]) || driverMobileEnabled ? ["mobile"] : []),
+    ],
     platform_mpesa_stk_enabled: finance.enable_mpesa_stk !== false,
     platform_kra_integration_enabled: finance.enable_kra_integration !== false,
     platform_ai_enabled: ai.enable_ai !== false,

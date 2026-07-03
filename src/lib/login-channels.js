@@ -20,9 +20,12 @@ export function allowedLoginChannelValues(capabilities) {
     allowed.add("pos");
   }
   if (
-    capabilities?.mobile_orders_enabled !== false &&
-    capabilities?.modules?.["sales.mobile"] &&
-    capabilities?.module_settings?.sales?.enable_mobile_orders !== false
+    (
+      capabilities?.mobile_orders_enabled !== false &&
+      capabilities?.modules?.["sales.mobile"] &&
+      capabilities?.module_settings?.sales?.enable_mobile_orders !== false
+    ) ||
+    capabilities?.driver_mobile_enabled === true
   ) {
     allowed.add("mobile");
   }

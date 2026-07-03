@@ -155,20 +155,15 @@ export function distributionPayloadFromForm(form) {
 }
 
 /**
- * Statuses that make an order eligible for the dispatch board.
+ * Workflow statuses that make an order eligible for the dispatch board.
  *
  * An order carries both a workflow `status` (e.g. `processed`) and a
  * `payment_status` (e.g. `unpaid`, `partial`). The board must surface orders
- * regardless of the payment axis — an order at `status='processed'` with
- * `payment_status='unpaid'` (credit sale advanced to processed) shows the
- * "Unpaid + Processed" badge combo and must appear here so it can be assigned
- * to a trip. Pre-processed orders (`unpaid`, `pending_payment`, `paid`) also
- * appear so staff can advance them to processed & assign from the board.
+ * regardless of the payment axis, but the workflow status must already be the
+ * dispatch-ready status. For example, `status='processed'` with
+ * `payment_status='unpaid'` is allowed, but `status='unpaid'` is not.
  */
 export const DISPATCH_READY_STATUSES = [
-  "unpaid",
-  "pending_payment",
-  "paid",
   "processed",
 ];
 

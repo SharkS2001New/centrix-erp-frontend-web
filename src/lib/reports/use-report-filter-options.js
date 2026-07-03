@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 import {
   INVENTORY_LOCATION_OPTIONS,
   INVENTORY_TXN_TYPE_OPTIONS,
   ORDER_STATUS_OPTIONS,
   PAYMENT_STATUS_OPTIONS,
   REPORT_EXTRA_FILTERS,
-  SALES_CHANNEL_OPTIONS,
+  salesChannelOptionsForCapabilities,
   STOCK_LOCATION_FILTER_OPTIONS,
 } from "@/lib/reports/report-filter-config";
 
@@ -24,6 +25,7 @@ function mapSelectOptions(rows, valueKey, labelKey) {
  * @param {string | undefined} reportKey
  */
 export function useReportFilterOptions(reportKey) {
+  const { capabilities } = useAuth();
   const [categories, setCategories] = useState([]);
   const [subcategories, setSubcategories] = useState([]);
   const [products, setProducts] = useState([]);
@@ -108,7 +110,7 @@ export function useReportFilterOptions(reportKey) {
 
   const optionsByKey = useMemo(
     () => ({
-      channels: SALES_CHANNEL_OPTIONS,
+      channels: salesChannelOptionsForCapabilities(capabilities),
       paymentStatuses: PAYMENT_STATUS_OPTIONS,
       orderStatuses: ORDER_STATUS_OPTIONS,
       stockLocations: STOCK_LOCATION_FILTER_OPTIONS,
@@ -153,7 +155,7 @@ export function useReportFilterOptions(reportKey) {
         })),
       ],
     }),
-    [categories, subcategories, products, suppliers, customers, cashiers, routes, paymentMethods],
+    [capabilities, categories, subcategories, products, suppliers, customers, cashiers, routes, paymentMethods],
   );
 
   return optionsByKey;

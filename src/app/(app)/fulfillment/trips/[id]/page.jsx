@@ -362,7 +362,7 @@ export default function TripDetailPage() {
         <TripWorkflowBanner status={trip.status} />
       )}
 
-      <div className="mb-6 grid gap-4 theme-panel rounded-xl border p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+      <div className="mb-6 grid gap-4 theme-panel rounded-xl border p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-9">
         <div>
           <p className="text-xs uppercase text-slate-500">Status</p>
           <p className="mt-1 font-medium text-slate-900">{tripStatusLabel(trip.status)}</p>
@@ -370,6 +370,14 @@ export default function TripDetailPage() {
         <div>
           <p className="text-xs uppercase text-slate-500">Driver</p>
           <p className="mt-1 font-medium text-slate-900">{trip.driver?.full_name ?? "—"}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase text-slate-500">Turn boys</p>
+          <p className="mt-1 font-medium text-slate-900">
+            {trip.turn_boys?.length
+              ? trip.turn_boys.map((employee) => employee.full_name).join(", ")
+              : "—"}
+          </p>
         </div>
         <div>
           <p className="text-xs uppercase text-slate-500">Vehicle</p>
@@ -387,9 +395,19 @@ export default function TripDetailPage() {
           </p>
         </div>
         <div>
-          <p className="text-xs uppercase text-slate-500">Total amount</p>
+          <p className="text-xs uppercase text-slate-500">Planned amount</p>
           <p className="mt-1 font-medium text-slate-900">
             {formatSaleKes(trip.financial_summary?.total_amount ?? 0)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs uppercase text-slate-500">Actual accepted</p>
+          <p className="mt-1 font-medium text-slate-900">
+            {formatSaleKes(trip.financial_summary?.actual_amount ?? trip.financial_summary?.total_amount ?? 0)}
+          </p>
+          <p className="text-xs text-slate-500">
+            Returns {formatSaleKes(trip.financial_summary?.returned_amount ?? 0)} · Failed{" "}
+            {formatSaleKes(trip.financial_summary?.failed_amount ?? 0)}
           </p>
         </div>
         <div>

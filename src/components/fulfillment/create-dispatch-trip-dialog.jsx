@@ -62,7 +62,9 @@ export function CreateDispatchTripDialog({
   const [routesLoaded, setRoutesLoaded] = useState([]);
   const [driversLoaded, setDriversLoaded] = useState([]);
   const [vehiclesLoaded, setVehiclesLoaded] = useState([]);
+  const [employeesLoaded, setEmployeesLoaded] = useState([]);
   const [refsLoading, setRefsLoading] = useState(false);
+  const [selectedCrewEmployeeIds, setSelectedCrewEmployeeIds] = useState(() => new Set());
 
   useEffect(() => {
     if (!open) return;
@@ -71,6 +73,7 @@ export function CreateDispatchTripDialog({
     setSelectedRouteIds(new Set(ids));
     setDriverId("");
     setVehicleId("");
+    setSelectedCrewEmployeeIds(new Set());
     setNotes("");
   }, [open, defaultDate, initialRouteIdsKey]);
 
@@ -86,19 +89,24 @@ export function CreateDispatchTripDialog({
     const loadVehicles = vehiclesFromProps.length
       ? Promise.resolve(vehiclesFromProps)
       : apiRequest("/vehicles", { searchParams: { per_page: 200 } }).then((r) => r.data ?? []);
+    const loadEmployees = apiRequest("/employees", { searchParams: { per_page: 500 } })
+      .then((r) => r.data ?? [])
+      .catch(() => []);
 
-    Promise.all([fetchRoutesCached(), loadDrivers, loadVehicles])
-      .then(([routes, drivers, vehicles]) => {
+    Promise.all([fetchRoutesCached(), loadDrivers, loadVehicles, loadEmployees])
+      .then(([routes, drivers, vehicles, employees]) => {
         if (cancelled) return;
         setRoutesLoaded(routes ?? []);
         setDriversLoaded(drivers ?? []);
         setVehiclesLoaded(vehicles ?? []);
+        setEmployeesLoaded(employees ?? []);
       })
       .catch(() => {
         if (!cancelled) {
           setRoutesLoaded([]);
           setDriversLoaded([]);
           setVehiclesLoaded([]);
+          setEmployeesLoaded([]);
         }
       })
       .finally(() => {
@@ -108,7 +116,7 @@ export function CreateDispatchTripDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, driversFromProps.length, vehiclesFromProps.length]);
+  }, [open, driversFromProps, vehiclesFromProps]);
 
   const routes = useMemo(() => {
     const byId = new Map();
@@ -126,6 +134,26 @@ export function CreateDispatchTripDialog({
     () => sortByName([...vehiclesFromProps, ...vehiclesLoaded], "plate_number"),
     [vehiclesFromProps, vehiclesLoaded],
   );
+  const employees = useMemo(
+    () => sortByName(employeesLoaded),
+    [employeesLoaded],
+  );
+  const selectedDriver = useMemo(
+    () => drivers.find((driver) => String(driver.id) === String(driverId)),
+    [drivers, driverId],
+  );
+  const selectedDriverEmployeeId =
+    selectedDriver?.employee_id != null ? String(selectedDriver.employee_id) : "";
+
+  useEffect(() => {
+    if (!selectedDriverEmployeeId) return;
+    setSelectedCrewEmployeeIds((prev) => {
+      if (!prev.has(selectedDriverEmployeeId)) return prev;
+      const next = new Set(prev);
+      next.delete(selectedDriverEmployeeId);
+      return next;
+    });
+  }, [selectedDriverEmployeeId]);
 
   const routesHint =
     initialRouteIds.length > 0
@@ -135,6 +163,20 @@ export function CreateDispatchTripDialog({
   function toggleRoute(id) {
     const key = String(id);
     setSelectedRouteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleCrewEmployee(id) {
+    const key = String(id);
+    if (selectedDriverEmployeeId && key === selectedDriverEmployeeId) {
+      notifyError("The driver cannot also be selected as a turn boy.");
+      return;
+    }
+    setSelectedCrewEmployeeIds((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -163,6 +205,9 @@ export function CreateDispatchTripDialog({
           route_ids: routeIds,
           driver_id: Number(driverId),
           vehicle_id: Number(vehicleId),
+          crew_employee_ids: [...selectedCrewEmployeeIds]
+            .map((id) => Number(id))
+            .filter((id) => id > 0),
           notes: notes.trim() || null,
           ...(saleIds.length ? { sale_ids: saleIds } : {}),
         },
@@ -174,7 +219,7 @@ export function CreateDispatchTripDialog({
     } finally {
       setSaving(false);
     }
-  }, [scheduledDate, selectedRouteIds, driverId, vehicleId, notes, saleIds, onClose, router]);
+  }, [scheduledDate, selectedRouteIds, driverId, vehicleId, selectedCrewEmployeeIds, notes, saleIds, onClose, router]);
 
   if (!open) return null;
 
@@ -251,6 +296,44 @@ export function CreateDispatchTripDialog({
                 </option>
               ))}
             </select>
+          </Field>
+          <Field label="Turn boys / works with (optional)">
+            <p className="mb-2 text-xs text-slate-500">
+              Select HR employees assigned to assist this trip. These links are kept with the trip for attendance and payroll reporting.
+            </p>
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+              {refsLoading && !employees.length ? (
+                <p className="text-sm text-slate-500">Loading employees…</p>
+              ) : employees.length ? (
+                employees.map((employee) => {
+                  const key = String(employee.id);
+                  const isDriverEmployee = selectedDriverEmployeeId && key === selectedDriverEmployeeId;
+                  return (
+                    <label
+                      key={employee.id}
+                      className={`flex items-center gap-2 rounded px-2 py-1 ${
+                        isDriverEmployee ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-slate-50"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={Boolean(isDriverEmployee)}
+                        checked={selectedCrewEmployeeIds.has(key)}
+                        onChange={() => toggleCrewEmployee(employee.id)}
+                      />
+                      <span className="text-sm text-slate-800">
+                        {employee.full_name ?? employee.employee_code ?? `Employee #${employee.id}`}
+                        {employee.employee_code ? <span className="text-slate-500"> · {employee.employee_code}</span> : null}
+                      </span>
+                    </label>
+                  );
+                })
+              ) : (
+                <p className="text-sm text-slate-500">
+                  No employees available, or your role cannot view HR employees.
+                </p>
+              )}
+            </div>
           </Field>
           <Field label="Notes">
             <textarea

@@ -22,6 +22,25 @@ export const SALES_CHANNEL_OPTIONS = [
   { value: "backend", label: "Backoffice" },
 ];
 
+export function salesChannelOptionsForCapabilities(capabilities) {
+  const channels = Array.isArray(capabilities?.channels)
+    ? capabilities.channels
+    : [
+        ...(capabilities?.modules?.["sales.pos"] ? ["pos"] : []),
+        ...(
+          capabilities?.modules?.["sales.mobile"] &&
+          capabilities?.mobile_orders_enabled !== false &&
+          capabilities?.module_settings?.sales?.enable_mobile_orders !== false
+            ? ["mobile"]
+            : []
+        ),
+        ...(capabilities?.modules?.["sales.backend"] !== false ? ["backend"] : []),
+      ];
+  const allowed = new Set(channels);
+
+  return SALES_CHANNEL_OPTIONS.filter((option) => option.value === "" || allowed.has(option.value));
+}
+
 export const PAYMENT_STATUS_OPTIONS = [
   { value: "", label: "All payment statuses" },
   { value: "paid", label: "Paid" },

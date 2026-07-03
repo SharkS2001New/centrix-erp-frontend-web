@@ -63,9 +63,6 @@ export function buildReportExportRequest({
     if (exportSource.searchParams) {
       body.search_params = sanitizeExportSearchParams(exportSource.searchParams);
     }
-    if (exportSource.legacyMerge) {
-      body.legacy_merge = { enabled: true };
-    }
     if (exportSource.estimatedRowCount != null) {
       body.estimated_row_count = Number(exportSource.estimatedRowCount) || 0;
     }

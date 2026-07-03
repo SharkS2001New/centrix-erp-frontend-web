@@ -29,25 +29,9 @@ export const REPORT_DEFINITIONS = {
     apiPath: "/reports/daily-sales",
     dateColumn: "sale_day",
     showDateRange: true,
-    extraFilters: [
-      {
-        id: "include_legacy_archive",
-        type: "checkbox",
-        label: "Include legacy archive (requires date range)",
-      },
-    ],
     /** @type {ReportColumn[]} */
     columns: [
       { key: "sale_day", label: "Date", accessor: (r) => r.sale_day },
-      {
-        key: "source",
-        label: "Source",
-        accessor: () => null,
-        badge: (r) =>
-          r.legacy_archive
-            ? { label: "Legacy archive", tone: "warning" }
-            : { label: "Centrix", tone: "neutral" },
-      },
       { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
       { key: "channel", label: "Channel", accessor: (r) => r.channel },
       { key: "orders", label: "Transactions", accessor: (r) => r.orders, align: "right", total: true },
@@ -156,13 +140,6 @@ export const REPORT_DEFINITIONS = {
     apiPath: "/reports/sales-by-channel",
     dateColumn: "sale_date",
     showDateRange: true,
-    extraFilters: [
-      {
-        id: "include_legacy_archive",
-        type: "checkbox",
-        label: "Include legacy archive (requires date range)",
-      },
-    ],
     columns: [
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },

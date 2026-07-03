@@ -12,6 +12,7 @@ export const EMPTY_DRIVER_FORM = {
   driver_code: "",
   is_active: true,
   user_id: "",
+  employee_id: "",
   default_vehicle_id: "",
   default_route_id: "",
 };
@@ -32,6 +33,7 @@ export function driverToForm(driver) {
     driver_code: driver.driver_code ?? "",
     is_active: driver.is_active !== false,
     user_id: driver.user_id != null ? String(driver.user_id) : "",
+    employee_id: driver.employee_id != null ? String(driver.employee_id) : "",
     default_vehicle_id:
       driver.default_vehicle_id != null ? String(driver.default_vehicle_id) : "",
     default_route_id: driver.default_route_id != null ? String(driver.default_route_id) : "",
@@ -57,6 +59,7 @@ export function buildDriverBody(form, branchId) {
     driver_code: form.driver_code.trim(),
     is_active: form.is_active,
     user_id: form.user_id ? Number(form.user_id) : null,
+    employee_id: form.employee_id ? Number(form.employee_id) : null,
     default_vehicle_id: form.default_vehicle_id ? Number(form.default_vehicle_id) : null,
     default_route_id: form.default_route_id ? Number(form.default_route_id) : null,
   };

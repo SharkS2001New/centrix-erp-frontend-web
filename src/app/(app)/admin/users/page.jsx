@@ -121,6 +121,7 @@ export default function AdminUsersPage() {
   const [deniedIds, setDeniedIds] = useState(new Set());
 
   const mobileOrdersEnabled = isOrgMobileSalesEnabled(effectiveCapabilities);
+  const mobileAppEnabled = mobileOrdersEnabled || effectiveCapabilities?.driver_mobile_enabled === true;
   const posEnabled = Boolean(effectiveCapabilities?.modules?.["sales.pos"]);
   const allowedLoginChannelSet = useMemo(
     () => new Set(defaultLoginChannelsForCapabilities(effectiveCapabilities)),
@@ -143,7 +144,7 @@ export default function AdminUsersPage() {
         apiRequest(adminPath("/roles/permissions/matrix")),
       ];
 
-      if (mobileOrdersEnabled) {
+      if (mobileAppEnabled) {
         requests.push(
           apiRequest(adminPath("/routes"), {
             searchParams: { per_page: 200, ...orgListParams(organizationId) },
@@ -170,7 +171,7 @@ export default function AdminUsersPage() {
       setPermissionApplications(matrixRes.value.applications ?? []);
       setPermissionGroups(matrixRes.value.groups ?? []);
 
-      if (mobileOrdersEnabled) {
+      if (mobileAppEnabled) {
         if (routeRes?.status === "fulfilled") {
           setRoutes(filterByOrganization(routeRes.value.data ?? [], organizationId));
         } else {
@@ -184,7 +185,7 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [organizationId, adminPath, mobileOrdersEnabled]);
+  }, [organizationId, adminPath, mobileAppEnabled]);
 
   const loadUsers = useCallback(async () => {
     if (!organizationId) return;
@@ -788,14 +789,14 @@ export default function AdminUsersPage() {
             </div>
             <p className="mt-1 text-xs text-slate-500">
               Only channels enabled for this organization are listed.
-              {mobileOrdersEnabled
+              {mobileAppEnabled
                 ? " Mobile-only users can sign in from the mobile app but not the web backoffice or POS."
                 : posEnabled
                   ? " External POS and backoffice are available; mobile orders are disabled."
                   : " Backoffice web sign-in is available; external POS and mobile are disabled for this organization."}
             </p>
           </Field>
-          {mobileOrdersEnabled && userHasMobileChannel(form.login_channels) ? (
+          {mobileAppEnabled && userHasMobileChannel(form.login_channels) ? (
             <Field label="Assigned route (optional)">
               <HrSearchableSelect
                 value={form.assigned_route_id}
