@@ -16,7 +16,7 @@ import {
   pipelineStatusIndex,
   resolveOrderWorkflowActions,
   canCancelOrder,
-  saleNeedsPaymentCollection,
+  canRecordOrderPayment,
   shouldShowPaymentStatusBadge,
   workflowPipelineSteps,
   workflowStatusLabel,
@@ -362,13 +362,13 @@ export function buildOrderContextMenuItems({
     });
   }
 
-  const canCollect = sale && onCollectPayment && saleNeedsPaymentCollection(sale);
+  const canCollect = sale && onCollectPayment && canRecordOrderPayment(sale);
   const workflowActions =
     sale && workflow
       ? resolveOrderWorkflowActions(sale, workflow, null, capabilities)
       : { showCollectPayment: false, advanceStatus: null };
 
-  if (canCollect && workflowActions.showCollectPayment) {
+  if (canCollect) {
     items.push({
       key: "collect-payment",
       label: "Collect payment",

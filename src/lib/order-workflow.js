@@ -809,19 +809,10 @@ export function saleBalanceDue(sale, totalPaid = null) {
 
 /**
  * Whether staff should be offered "Collect payment" for this order.
- * Only on Unpaid / Partially paid workflow steps while balance remains.
+ * Includes orders that advanced through fulfillment while payment remains outstanding.
  */
 export function saleNeedsPaymentCollection(sale, totalPaid = null) {
-  if (!sale || sale.status === "cancelled" || sale.status === "expired" || sale.status === "completed") {
-    return false;
-  }
-  if (!isPaymentCollectWorkflowStatus(sale.status)) return false;
-
-  const balance = saleBalanceDue(sale, totalPaid);
-  if (balance <= 0.01) return false;
-
-  const paymentStatus = String(sale.payment_status ?? "unpaid").toLowerCase();
-  return paymentStatus === "unpaid" || paymentStatus === "partial";
+  return canRecordOrderPayment(sale, totalPaid);
 }
 
 /** Whether payment can be recorded from order summary / AR (any active workflow step). */
@@ -919,8 +910,8 @@ export function shouldShowPaymentStatusBadge(sale, totalPaid = null, capabilitie
 }
 
 /**
- * Decide whether to show Collect payment vs advance workflow — never both at once.
- * Unpaid / partially paid orders may advance through fulfillment without collecting payment first.
+ * Collect payment and workflow advance can both be shown when payment was deferred
+ * (e.g. delivered + unpaid still offers Collect payment alongside Confirm → Completed).
  */
 export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null, capabilities = null) {
   const status = String(sale?.status ?? "").toLowerCase();
@@ -929,9 +920,6 @@ export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null, ca
   }
 
   const balanceDue = saleBalanceDue(sale, totalPaid);
-  const onPaymentStep = isPaymentCollectWorkflowStatus(status);
-  const deferPayment = orgDefersPaymentToFulfillment(capabilities);
-  const isCredit = Boolean(sale.is_credit_sale);
   let advanceStatus = primaryWorkflowAdvanceStatus(status, workflow);
 
   if (advanceStatus && isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {
@@ -939,24 +927,11 @@ export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null, ca
     advanceStatus = fulfillmentAdvance ?? null;
   }
 
-  const advanceIsPaymentStep =
-    advanceStatus && PAYMENT_STEP_KEYS.has(String(advanceStatus).toLowerCase());
-  const canAdvanceWithoutPayment =
-    onPaymentStep
-    && advanceStatus
-    && !advanceIsPaymentStep
-    && (deferPayment || isCredit);
-
-  let showCollectPayment = saleNeedsPaymentCollection(sale, totalPaid);
-  if (canAdvanceWithoutPayment) {
-    showCollectPayment = false;
-  }
+  const showCollectPayment = canRecordOrderPayment(sale, totalPaid);
 
   let resolvedAdvance = null;
   if (advanceStatus && !isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {
-    if (canAdvanceWithoutPayment || !showCollectPayment) {
-      resolvedAdvance = advanceStatus;
-    }
+    resolvedAdvance = advanceStatus;
   }
 
   return {

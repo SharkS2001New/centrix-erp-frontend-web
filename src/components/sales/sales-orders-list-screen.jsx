@@ -18,7 +18,7 @@ import {
   isPaymentGatedWorkflowTransition,
   resolveSalesOrderQueue,
   saleBalanceDue,
-  saleNeedsPaymentCollection,
+  canRecordOrderPayment,
   workflowStatusFilterOptions,
 } from "@/lib/order-workflow";
 import {
@@ -560,7 +560,7 @@ export default function SalesOrdersListScreen({
   }
 
   function openCollectPayment(sale) {
-    if (!sale?.id || !saleNeedsPaymentCollection(sale)) return;
+    if (!sale?.id || !canRecordOrderPayment(sale)) return;
     setContextMenu(null);
     setPaySale(sale);
   }
@@ -618,7 +618,7 @@ export default function SalesOrdersListScreen({
       balanceDue: saleBalanceDue(sale),
       onView: () => viewOrder(sale),
       onEdit: () => openEditOrder(sale),
-      onCollectPayment: saleNeedsPaymentCollection(sale) ? () => openCollectPayment(sale) : null,
+      onCollectPayment: canRecordOrderPayment(sale) ? () => openCollectPayment(sale) : null,
       onPrintThermal: () => void printOrder(sale, "receipt"),
       onPrintA4: () => void printOrder(sale, "invoice"),
       onAdvance: (status) => void handleAdvance(sale, status),
