@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import { formatAccountingAmount } from "@/lib/accounting-shared";
+import { normalizeCustomerInvoice } from "@/lib/customer-invoices";
 import { currentMonthDateRange } from "@/lib/dashboard-dates";
 import {
   DashboardErrorBanner,
@@ -18,6 +19,7 @@ import {
 import { DonutChart, CHART_COLORS } from "@/components/reports/report-charts";
 
 const ACCOUNTING_LINKS = [
+  { href: "/accounting/customer-invoices", title: "Customer invoices", desc: "AR invoices from customer orders" },
   { href: "/accounting/journal-entries", title: "Journal entries", desc: "Create and post entries" },
   { href: "/accounting/general-ledger", title: "General ledger", desc: "Posted journal activity" },
   { href: "/accounting/bank-reconciliation", title: "Bank reconciliation", desc: "Match bank statements to ledger" },
@@ -40,6 +42,7 @@ export function AccountingDashboardContent() {
   const [balanceSheet, setBalanceSheet] = useState(null);
   const [receivables, setReceivables] = useState([]);
   const [payables, setPayables] = useState([]);
+  const [recentInvoices, setRecentInvoices] = useState([]);
 
   useEffect(() => {
     Promise.all([
@@ -48,13 +51,15 @@ export function AccountingDashboardContent() {
       apiRequest("/reports/balance-sheet"),
       apiRequest("/reports/accounts-receivable", { searchParams: { per_page: 5 } }),
       apiRequest("/reports/accounts-payable", { searchParams: { per_page: 5 } }),
+      apiRequest("/customer-invoices", { searchParams: { per_page: 5, page: 1 } }),
     ])
-      .then(([tb, pl, bs, ar, ap]) => {
+      .then(([tb, pl, bs, ar, ap, invoicesRes]) => {
         setTrialBalance(tb.summary ?? null);
         setProfitLoss(pl.summary ?? null);
         setBalanceSheet(bs.summary ?? null);
         setReceivables(ar.data ?? []);
         setPayables(ap.data ?? []);
+        setRecentInvoices(invoicesRes.data ?? []);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load accounting dashboard"))
       .finally(() => setLoading(false));
@@ -146,6 +151,29 @@ export function AccountingDashboardContent() {
           </div>
 
           <div className="grid gap-6 xl:grid-cols-2">
+            <DashboardSection
+              title="Recent customer invoices"
+              action={
+                <Link href="/accounting/customer-invoices" className="text-sm text-[#185FA5] hover:underline">
+                  View all
+                </Link>
+              }
+            >
+              <DashboardSummaryTable
+                columns={[
+                  { key: "invoice_number", label: "Invoice" },
+                  { key: "customer_num", label: "Customer" },
+                  { key: "balance_due", label: "Balance", align: "right" },
+                ]}
+                rows={recentInvoices.map(normalizeCustomerInvoice)}
+                formatValue={(key, value) =>
+                  key === "balance_due" ? formatAccountingAmount(value) : value
+                }
+                viewAllHref="/accounting/customer-invoices"
+                emptyMessage="No customer invoices yet. Invoices are created when orders are placed for registered customers."
+              />
+            </DashboardSection>
+
             <DashboardSection
               title="Top receivables"
               action={

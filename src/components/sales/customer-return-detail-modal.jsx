@@ -18,6 +18,7 @@ import { resolveCustomerReturnActionFlags } from "@/components/sales/customer-re
 export function CustomerReturnDetailModal({
   open,
   row,
+  loading = false,
   busy,
   canManage = false,
   onClose,
@@ -52,24 +53,24 @@ export function CustomerReturnDetailModal({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, onClose]);
 
-  if (!open || !mounted || !row) return null;
+  if (!open || !mounted) return null;
 
   const customerName =
-    row.customer?.customer_name ?? row.sale?.customer_name_override ?? "Walk-in customer";
-  const approved = normalizeReturnStatus(row.status) === "approved";
-  const flags = resolveCustomerReturnActionFlags(row, canManage);
+    row?.customer?.customer_name ?? row?.sale?.customer_name_override ?? "Walk-in customer";
+  const approved = row ? normalizeReturnStatus(row.status) === "approved" : false;
+  const flags = row ? resolveCustomerReturnActionFlags(row, canManage) : null;
   const approverName =
-    row.approved_by_user?.full_name ??
-    row.approvedByUser?.full_name ??
-    row.approved_by_user?.username ??
-    row.approvedByUser?.username ??
+    row?.approved_by_user?.full_name ??
+    row?.approvedByUser?.full_name ??
+    row?.approved_by_user?.username ??
+    row?.approvedByUser?.username ??
     null;
 
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !busy) onClose?.();
+        if (e.target === e.currentTarget && !busy && !loading) onClose?.();
       }}
     >
       <div
@@ -80,14 +81,15 @@ export function CustomerReturnDetailModal({
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Return details</p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-900">{row.return_no}</h2>
+            <h2 className="mt-1 text-lg font-semibold text-slate-900">{row?.return_no ?? "Loading…"}</h2>
           </div>
           <div className="flex items-center gap-2">
-            <ReturnStatusBadge status={row.status} />
+            {row?.status ? <ReturnStatusBadge status={row.status} /> : null}
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              disabled={loading}
+              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50"
               aria-label="Close"
             >
               ✕
@@ -96,6 +98,10 @@ export function CustomerReturnDetailModal({
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 text-sm">
+          {loading ? (
+            <p className="text-slate-500">Loading return details…</p>
+          ) : row ? (
+            <>
           {successMessage ? (
             <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
               {successMessage}
@@ -251,6 +257,8 @@ export function CustomerReturnDetailModal({
               <span className="text-lg font-semibold text-violet-900">{formatSaleKes(row.total_amount)}</span>
             </div>
           </div>
+            </>
+          ) : null}
         </div>
 
         {error ? (
@@ -258,7 +266,7 @@ export function CustomerReturnDetailModal({
         ) : null}
 
         <div className="shrink-0 border-t border-slate-100 bg-white px-5 py-4">
-          {flags.can_approve || flags.can_reject ? (
+          {flags && (flags.can_approve || flags.can_reject) ? (
             <div className="mb-3 flex flex-wrap gap-2">
               {flags.can_approve ? (
                 <button
@@ -284,7 +292,7 @@ export function CustomerReturnDetailModal({
           ) : null}
 
           <div className="flex flex-wrap gap-2">
-            {flags.can_print ? (
+            {flags?.can_print ? (
               <button
                 type="button"
                 onClick={() => onPrint?.(row)}
@@ -294,7 +302,7 @@ export function CustomerReturnDetailModal({
                 {approved ? "Print credit note" : "Print return"}
               </button>
             ) : null}
-            {flags.can_edit ? (
+            {flags?.can_edit ? (
               <button
                 type="button"
                 onClick={() => onEdit?.(row)}
@@ -304,7 +312,7 @@ export function CustomerReturnDetailModal({
                 Edit
               </button>
             ) : null}
-            {flags.can_delete ? (
+            {flags?.can_delete ? (
               <button
                 type="button"
                 onClick={() => onRequestAction?.("delete", row)}

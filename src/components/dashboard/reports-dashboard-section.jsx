@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { defaultDashboardDateRange } from "@/lib/dashboard-dates";
+import { defaultReportBranchId } from "@/lib/reports/report-filters";
 import {
   CHART_COLORS,
   DonutChart,
@@ -48,8 +49,9 @@ export function ReportsDashboardSection({
   workspaceScope = "backoffice",
   onError,
 }) {
-  const { user } = useAuth();
+  const { user, isOrgWide } = useAuth();
   const defaults = defaultDashboardDateRange();
+  const branchInitialized = useRef(false);
   const [fromDate, setFromDate] = useState(controlledFrom ?? defaults.from);
   const [toDate, setToDate] = useState(controlledTo ?? defaults.to);
   const [branchId, setBranchId] = useState(controlledBranch ?? "");
@@ -76,10 +78,10 @@ export function ReportsDashboardSection({
   }, []);
 
   useEffect(() => {
-    if (user?.branch_id && !branchId && controlledBranch === undefined) {
-      setBranchId(String(user.branch_id));
-    }
-  }, [user?.branch_id, branchId, controlledBranch]);
+    if (controlledBranch !== undefined || !user || branchInitialized.current) return;
+    branchInitialized.current = true;
+    setBranchId(defaultReportBranchId(user, isOrgWide));
+  }, [user, isOrgWide, controlledBranch]);
 
   const topProductSegments = useMemo(
     () =>

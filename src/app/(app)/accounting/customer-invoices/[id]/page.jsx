@@ -7,19 +7,17 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
 import { useOrgFormat } from "@/lib/org-format";
-import {
-  CatalogPageShell,
-  Field,
-  PrimaryButton,
-  inputClassName,
-} from "@/components/catalog/catalog-shared";
+import { normalizeCustomerInvoice } from "@/lib/customer-invoices";
 
 export default function CustomerInvoiceDetailPage() {
   const params = useParams();
   const invoiceId = params.id;
   const { hasPermission } = useAuth();
   const { currency, date } = useOrgFormat();
-  const canPay = hasPermission(P.payments.customer_payments.manage);
+  const canPay =
+    hasPermission(P.payments.customer_payments.manage)
+    || hasPermission(P.payments.customer_invoices.manage)
+    || hasPermission(P.accounting.accounts_receivable.view);
 
   const [invoice, setInvoice] = useState(null);
   const [payments, setPayments] = useState([]);
@@ -41,7 +39,7 @@ export default function CustomerInvoiceDetailPage() {
         }),
         apiRequest("/payment-methods", { searchParams: { per_page: 50, "filter[is_active]": 1 } }),
       ]);
-      setInvoice(inv);
+      setInvoice(normalizeCustomerInvoice(inv));
       setPayments(payRes.data ?? []);
       setMethods(methodsRes.data ?? []);
       const balance = Number(inv.invoice_total ?? 0) - Number(inv.amount_paid ?? 0);

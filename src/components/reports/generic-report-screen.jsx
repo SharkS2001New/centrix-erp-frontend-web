@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
+import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
 import { reportVatKpis } from "@/lib/reports/vat-summary";
 import { formatReportKes } from "@/lib/reports/format";
 import { ReportKpiGrid } from "@/components/reports/report-screen-shared";
@@ -86,14 +87,16 @@ const LEGACY_ARCHIVE_REPORT_KEYS = new Set(["sales-by-channel"]);
 export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const urlParams = useSearchParams();
   const payrollRunId = urlParams.get("payroll_run_id") ?? "";
-  const { user } = useAuth();
+  const { user, isOrgWide } = useAuth();
+  const defaultRange = useMemo(() => defaultReportDateRange(), []);
+  const branchInitialized = useRef(false);
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(defaultRange.from);
+  const [toDate, setToDate] = useState(defaultRange.to);
   const [branchId, setBranchId] = useState("");
   const [branches, setBranches] = useState([]);
   const [includeLegacyArchive, setIncludeLegacyArchive] = useState(false);
@@ -112,8 +115,10 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   }, []);
 
   useEffect(() => {
-    if (user?.branch_id && !branchId) setBranchId(String(user.branch_id));
-  }, [user?.branch_id, branchId]);
+    if (!user || branchInitialized.current) return;
+    branchInitialized.current = true;
+    setBranchId(defaultReportBranchId(user, isOrgWide));
+  }, [user, isOrgWide]);
 
   const loadReport = useCallback(async () => {
     setLoading(true);
@@ -160,6 +165,19 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     if (!rows[0]) return [];
     return Object.keys(rows[0]).filter((k) => !k.startsWith("_"));
   }, [rows]);
+
+  const footerTotals = useMemo(() => {
+    if (!rows.length || !columns.length) return {};
+    const totals = {};
+    for (const col of columns) {
+      if (!/amount|total|paid|balance|vat|gross|net|qty|quantity|count|orders|revenue|collected|discount|credit|debit|sales|profit|expense|due|outstanding|variance|float/i.test(col)) {
+        continue;
+      }
+      const sum = rows.reduce((acc, row) => acc + (Number(row[col]) || 0), 0);
+      totals[col] = formatCell(col, sum);
+    }
+    return totals;
+  }, [rows, columns]);
 
   const branchLabel = branches.find((b) => String(b.id) === branchId)?.branch_name
     ?? (branchId ? "" : "All branches");
@@ -233,7 +251,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       toolbar={
         <FilterToolbar>
           <Link href="/reports" className="pb-2 text-sm text-[#185FA5] hover:underline">
-            ← All reports
+            ? All reports
           </Link>
           {showDateFilters ? (
             <>
@@ -304,7 +322,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
         ) : legacyArchiveMeta?.available && (legacyArchiveMeta.meta?.total ?? 0) > 0 ? (
           <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             Showing <strong>{legacyRows.length}</strong> of <strong>{legacyArchiveMeta.meta.total}</strong> legacy
-            archive row(s) on this page — see{" "}
+            archive row(s) on this page  see{" "}
             <Link href="/reports/legacy-archive" className="font-medium text-[#185FA5] hover:underline">
               Legacy sales archive
             </Link>{" "}
@@ -349,6 +367,17 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
                   </tr>
                 ))}
               </tbody>
+              {Object.keys(footerTotals).length ? (
+                <tfoot>
+                  <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-900">
+                    {columns.map((col, idx) => (
+                      <td key={col} className="whitespace-nowrap px-4 py-2.5">
+                        {idx === 0 ? "Totals (this page)" : footerTotals[col] ?? ""}
+                      </td>
+                    ))}
+                  </tr>
+                </tfoot>
+              ) : null}
             </table>
           </div>
         )}

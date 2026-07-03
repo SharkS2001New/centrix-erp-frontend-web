@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
-import { formatReportCell, sumField } from "@/lib/reports/format";
+import { formatReportCell } from "@/lib/reports/format";
 import { loadFullReportDataset } from "@/lib/paginated-fetch";
 import {
   ReportFilterBar,
@@ -14,6 +14,7 @@ import {
   ReportTable,
 } from "@/components/reports/report-screen-shared";
 import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
+import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
 import { ProfitLossReportScreen } from "@/components/reports/profit-loss-report-screen";
 import { ExpensesReportScreen } from "@/components/reports/expenses-report-screen";
 import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
@@ -32,7 +33,9 @@ export function StructuredReportScreen({ definition }) {
 }
 
 function StandardReportScreen({ definition }) {
-  const { user } = useAuth();
+  const { user, isOrgWide } = useAuth();
+  const defaultRange = useMemo(() => defaultReportDateRange(), []);
+  const branchInitialized = useRef(false);
   const [rows, setRows] = useState([]);
   const [legacyRows, setLegacyRows] = useState([]);
   const [reportMeta, setReportMeta] = useState(null);
@@ -40,12 +43,17 @@ function StandardReportScreen({ definition }) {
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
   const [legacyPage, setLegacyPage] = useState(1);
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(defaultRange.from);
+  const [toDate, setToDate] = useState(defaultRange.to);
   const [branchId, setBranchId] = useState("");
   const [branches, setBranches] = useState([]);
   const [extraFilters, setExtraFilters] = useState({});
-  const [applied, setApplied] = useState({ fromDate: "", toDate: "", branchId: "", extraFilters: {} });
+  const [applied, setApplied] = useState({
+    fromDate: defaultRange.from,
+    toDate: defaultRange.to,
+    branchId: "",
+    extraFilters: {},
+  });
   const [legacyArchiveMeta, setLegacyArchiveMeta] = useState(null);
 
   const includeLegacy = Boolean(applied.extraFilters?.include_legacy_archive);
@@ -57,11 +65,12 @@ function StandardReportScreen({ definition }) {
   }, []);
 
   useEffect(() => {
-    if (!user?.branch_id) return;
-    const id = String(user.branch_id);
-    if (!branchId) setBranchId(id);
-    setApplied((prev) => (prev.branchId ? prev : { ...prev, branchId: id }));
-  }, [user?.branch_id, branchId]);
+    if (!user || branchInitialized.current) return;
+    branchInitialized.current = true;
+    const nextBranchId = defaultReportBranchId(user, isOrgWide);
+    setBranchId(nextBranchId);
+    setApplied((prev) => ({ ...prev, branchId: nextBranchId }));
+  }, [user, isOrgWide]);
 
   const loadReport = useCallback(async () => {
     setLoading(true);
@@ -130,10 +139,14 @@ function StandardReportScreen({ definition }) {
   const footerTotals = useMemo(() => {
     if (!definition.footerTotals || !definition.columns) return {};
     const totalRows = includeLegacy ? [...rows, ...legacyRows] : rows;
-    const totals = { [definition.columns[0]?.key]: "Totals (this page)" };
+    const totals = {};
     for (const col of definition.columns) {
       if (!col.total) continue;
-      totals[col.key] = formatReportCell(col.key, sumField(totalRows, col.key));
+      const sum = totalRows.reduce((acc, row) => {
+        const raw = col.accessor ? col.accessor(row) : row[col.key];
+        return acc + (Number(raw) || 0);
+      }, 0);
+      totals[col.key] = formatReportCell(col.key, sum);
     }
     return totals;
   }, [rows, legacyRows, includeLegacy, definition.columns, definition.footerTotals]);
@@ -145,12 +158,13 @@ function StandardReportScreen({ definition }) {
   }
 
   function resetFilters() {
-    const empty = { fromDate: "", toDate: "", branchId: user?.branch_id ? String(user.branch_id) : "", extraFilters: {} };
-    setFromDate("");
-    setToDate("");
-    setBranchId(empty.branchId);
+    const range = defaultReportDateRange();
+    const nextBranchId = defaultReportBranchId(user, isOrgWide);
+    setFromDate(range.from);
+    setToDate(range.to);
+    setBranchId(nextBranchId);
     setExtraFilters({});
-    setApplied(empty);
+    setApplied({ fromDate: range.from, toDate: range.to, branchId: nextBranchId, extraFilters: {} });
     setPage(1);
     setLegacyPage(1);
   }
