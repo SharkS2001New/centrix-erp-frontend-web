@@ -37,6 +37,7 @@ import { POS_LOGIN_CHANNEL, WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
 import { useCookieAuth } from "@/lib/auth-config";
 import { invalidateReferenceDataCache } from "@/lib/reference-data-cache";
 import { invalidateReportBuilderTemplateCache } from "@/lib/report-builder-templates";
+import { capabilitiesVersionChanged } from "@/lib/capabilities-sync";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
 const CAPABILITIES_REFRESH_MS = 30_000;
@@ -78,12 +79,13 @@ export function AuthProvider({ children }) {
 
   const refreshCapabilities = useCallback(async ({ force = false } = {}) => {
     const now = Date.now();
+    const cached = getStoredCapabilities();
     if (
       !force &&
       capabilitiesRefreshPromise.current == null &&
       now - capabilitiesRefreshAt.current < CAPABILITIES_REFRESH_MS
     ) {
-      return getStoredCapabilities();
+      return cached;
     }
     if (!force && capabilitiesRefreshPromise.current) {
       return capabilitiesRefreshPromise.current;
@@ -93,9 +95,13 @@ export function AuthProvider({ children }) {
     const promise = (async () => {
       try {
         const caps = await apiRequest("/erp/capabilities", { loading: false, reportIssues: false });
+        const versionBumped = capabilitiesVersionChanged(cached, caps);
         setCapabilities(caps);
         setStoredCapabilities(caps);
         capabilitiesRefreshAt.current = Date.now();
+        if (versionBumped) {
+          invalidateReferenceDataCache();
+        }
         return caps;
       } finally {
         capabilitiesRefreshPromise.current = null;

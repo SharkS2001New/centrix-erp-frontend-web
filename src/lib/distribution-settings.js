@@ -214,6 +214,13 @@ export function shouldPromptPodCapture(targetStatus, distributionSettings) {
   return targetStatus === "delivered";
 }
 
+export function shouldCheckProductWeights(targetStatus, distributionSettings) {
+  if (!distributionSettings?.enabled) return false;
+  if (!distributionSettings.requireWeightOnLoad) return false;
+  const assignStatus = distributionSettings.assignOnStatus || "processed";
+  return String(targetStatus ?? "").toLowerCase() === assignStatus;
+}
+
 export function buildFulfillmentTransitionBody(targetStatus, fulfillmentMeta = {}) {
   const body = { status: targetStatus };
   if (fulfillmentMeta && Object.keys(fulfillmentMeta).length > 0) {

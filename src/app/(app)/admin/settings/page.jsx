@@ -15,7 +15,7 @@ export default function AdminSettingsPage() {
       <SettingsApiProvider apiPrefix="/erp/settings">
         <OrganizationSettingsContent
           capabilities={capabilities}
-          onAfterSave={refreshCapabilities}
+          onAfterSave={() => refreshCapabilities({ force: true })}
           tenantSelfService
           breadcrumbItems={[
             { label: "Administration", href: "/admin" },

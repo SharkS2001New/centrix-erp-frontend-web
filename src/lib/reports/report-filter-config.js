@@ -12,8 +12,8 @@ export const REPORTS_WITHOUT_DATE_FILTER = new Set([
 /** Send from_date/to_date but omit date_column (backend applies custom date logic). */
 export const REPORTS_DATE_WITHOUT_COLUMN = new Set(["sales-by-customer"]);
 
-/** AR / payment reports are org-scoped — branch filter hides valid rows. */
-export const REPORTS_WITHOUT_BRANCH_FILTER = new Set(["invoice-payments"]);
+/** AR / payment reports are org-scoped; branch filter applies via invoice branch. */
+export const REPORTS_WITHOUT_BRANCH_FILTER = new Set([]);
 
 export const SALES_CHANNEL_OPTIONS = [
   { value: "", label: "All channels" },

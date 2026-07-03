@@ -233,7 +233,6 @@ export const EMPTY_MOBILE_APPLICATION_FORM = {
   mobile_checkout_location_radius_metres: "5",
   mobile_checkout_mode: "save_only",
   mobile_product_list_mode: "in_stock_only",
-  mobile_enable_field_attendance: false,
 };
 
 export function mobileApplicationFormFromApi(res) {
@@ -248,7 +247,6 @@ export function mobileApplicationFormFromApi(res) {
     ),
     mobile_checkout_mode: normalizeMobileCheckoutMode(sales.mobile_checkout_mode),
     mobile_product_list_mode: normalizeMobileProductListMode(sales.mobile_product_list_mode),
-    mobile_enable_field_attendance: Boolean(sales.mobile_enable_field_attendance),
   };
 }
 
@@ -262,7 +260,6 @@ export function mobileApplicationPayloadFromForm(form) {
       Number(form.mobile_checkout_location_radius_metres) || 5,
     mobile_checkout_mode: normalizeMobileCheckoutMode(form.mobile_checkout_mode),
     mobile_product_list_mode: normalizeMobileProductListMode(form.mobile_product_list_mode),
-    mobile_enable_field_attendance: Boolean(form.mobile_enable_field_attendance),
   };
 }
 

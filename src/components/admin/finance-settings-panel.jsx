@@ -43,7 +43,7 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
   const { refreshCapabilities, capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
   const { settingsPath } = useSettingsApi();
-  const afterSave = onAfterSave ?? refreshCapabilities;
+  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
   const [form, setForm] = useState(financeFormFromApi({}));
   const [autoPostForm, setAutoPostForm] = useState(null);
   const [loading, setLoading] = useState(true);

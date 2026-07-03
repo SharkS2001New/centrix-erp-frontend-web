@@ -16,6 +16,7 @@ import {
   isPlatformMpesaStkEnabled,
 } from "@/lib/platform-org-features";
 import { useSettingsApi } from "@/contexts/settings-api-context";
+import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 
 const SALES_SETTINGS_TABS = [
@@ -527,6 +528,8 @@ export function SalesSettingsPanel({
   platformManaged = false,
 }) {
   const { settingsPath } = useSettingsApi();
+  const { refreshCapabilities } = useAuth();
+  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
   const [salesForm, setSalesForm] = useState(EMPTY_SALES_ORGANIZATION_FORM);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("checkout");
@@ -574,7 +577,7 @@ export function SalesSettingsPanel({
       setSalesForm(
         sanitizeSalesOrganizationFormForModules(salesOrganizationFormFromApi(res), capabilities),
       );
-      if (onAfterSave) await onAfterSave();
+      if (afterSave) await afterSave();
       setMessage("Sales settings saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save settings");

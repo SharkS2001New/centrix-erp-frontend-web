@@ -38,7 +38,7 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
 export function InventorySettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { refreshCapabilities } = useAuth();
   const { settingsPath } = useSettingsApi();
-  const afterSave = onAfterSave ?? refreshCapabilities;
+  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
   const [form, setForm] = useState(inventoryFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("selling");

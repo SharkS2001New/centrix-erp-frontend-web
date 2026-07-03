@@ -971,8 +971,11 @@ export function PosScreen({ standalone = false }) {
   );
 
   const selectedProductStockLabel = useMemo(
-    () => (selectedProduct ? productCartStockLabel(selectedProduct, posSalesConfig) : ""),
-    [selectedProduct, posSalesConfig],
+    () =>
+      selectedProduct
+        ? productCartStockLabel(selectedProduct, posSalesConfig, { sellWholesale })
+        : "",
+    [selectedProduct, posSalesConfig, sellWholesale],
   );
 
   async function resolveProductByCode(code) {
@@ -3198,6 +3201,7 @@ export function PosScreen({ standalone = false }) {
                 onBarcodeEnter={handleBarcodeEnter}
                 barcodeEnabled={enableBarcodeScanner}
                 stockDisplayMode={stockDisplayMode}
+                posSalesConfig={posSalesConfig}
                 disabled={busy}
               />
               <div className="space-y-1">

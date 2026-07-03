@@ -32,7 +32,7 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
 export function AiSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { refreshCapabilities } = useAuth();
   const { settingsPath } = useSettingsApi();
-  const afterSave = onAfterSave ?? refreshCapabilities;
+  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
   const [form, setForm] = useState(aiFormFromApi({}));
   const [loading, setLoading] = useState(true);
 

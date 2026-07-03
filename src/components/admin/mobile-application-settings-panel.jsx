@@ -40,18 +40,31 @@ function PlatformMobileSummary({ capabilities: capabilitiesProp }) {
   const { capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
   const mobileOrdersEnabled = isOrgMobileSalesEnabled(capabilities);
+  const mobileApp = capabilities?.mobile_app ?? {};
 
   return (
     <div className="mb-5 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-4 text-sm">
       <p className="theme-heading font-medium">Configured by platform administrator</p>
       <p className="theme-subtext mt-1 text-xs">
-        Whether this organization uses the mobile application and field-sales backoffice views is set at
+        Whether this organization uses the mobile application and which mobile modules are enabled is set at
         organization registration. Contact your platform administrator to change it.
       </p>
       <ul className="mt-3 space-y-1 text-xs">
         <li>
           <span className="font-medium">Mobile orders:</span>{" "}
           {mobileOrdersEnabled ? "Enabled" : "Disabled"}
+        </li>
+        <li>
+          <span className="font-medium">Field sales attendance:</span>{" "}
+          {mobileApp.field_attendance_enabled ? "Enabled" : "Disabled"}
+        </li>
+        <li>
+          <span className="font-medium">Driver module:</span>{" "}
+          {mobileApp.driver_mobile_enabled ? "Enabled" : "Disabled"}
+        </li>
+        <li>
+          <span className="font-medium">Driver attendance:</span>{" "}
+          {mobileApp.driver_attendance_enabled ? "Enabled" : "Disabled"}
         </li>
       </ul>
     </div>
@@ -69,7 +82,7 @@ export function MobileApplicationSettingsPanel({
   const { refreshCapabilities, capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
   const { settingsPath } = useSettingsApi();
-  const afterSave = onAfterSave ?? refreshCapabilities;
+  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
   const [form, setForm] = useState(EMPTY_MOBILE_APPLICATION_FORM);
   const [loading, setLoading] = useState(true);
 
@@ -234,18 +247,6 @@ export function MobileApplicationSettingsPanel({
                       />
                     </>
                   ) : null}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-sm font-medium text-slate-900">Rep check-in</h3>
-                <div className="mt-3 space-y-3">
-                  <Toggle
-                    label="Require sign-in photo and location"
-                    description="When enabled, sales reps must take a photo and capture GPS when signing in and signing out on the mobile app. Sessions appear under HR → Time & attendance → Field attendance and Sales → Field sales → Field attendance."
-                    checked={form.mobile_enable_field_attendance}
-                    onChange={(v) => setForm((f) => ({ ...f, mobile_enable_field_attendance: v }))}
-                  />
                 </div>
               </div>
             </div>

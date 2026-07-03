@@ -4,6 +4,7 @@ import {
   ORDER_CANCELLABLE_STATUSES,
   orgDefersPaymentToFulfillment,
 } from "@/lib/platform-org-features";
+import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 
 export const DEFAULT_ORDER_WORKFLOW = {
   steps: [
@@ -931,6 +932,19 @@ export function shouldShowPaymentStatusBadge(sale, totalPaid = null, capabilitie
  * Collect payment and workflow advance can both be shown when payment was deferred
  * (e.g. delivered + unpaid still offers Collect payment alongside Confirm → Completed).
  */
+/** Backoffice/sales UI must not offer distribution-only fulfillment transitions. */
+export function isBackofficeDistributionTransitionBlocked(fromStatus, toStatus, capabilities = null) {
+  if (!isDistributionOpsEnabled(capabilities)) return false;
+
+  const from = String(fromStatus ?? "").toLowerCase();
+  const to = String(toStatus ?? "").toLowerCase();
+
+  if (from === "processed" && to === "delivered") return true;
+  if (to === "completed") return true;
+
+  return false;
+}
+
 export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null, capabilities = null) {
   const status = String(sale?.status ?? "").toLowerCase();
   if (!sale || status === "cancelled" || status === "expired" || status === "completed") {
@@ -948,7 +962,11 @@ export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null, ca
   const showCollectPayment = canRecordOrderPayment(sale, totalPaid);
 
   let resolvedAdvance = null;
-  if (advanceStatus && !isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {
+  if (
+    advanceStatus
+    && !isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)
+    && !isBackofficeDistributionTransitionBlocked(status, advanceStatus, capabilities)
+  ) {
     resolvedAdvance = advanceStatus;
   }
 

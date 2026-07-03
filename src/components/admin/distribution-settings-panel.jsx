@@ -39,7 +39,7 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
 export function DistributionSettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave, platformManaged = false }) {
   const { refreshCapabilities, isSuperAdmin } = useAuth();
   const { settingsPath } = useSettingsApi();
-  const afterSave = onAfterSave ?? refreshCapabilities;
+  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
   const [form, setForm] = useState(distributionFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("routes");
@@ -237,20 +237,13 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
 
             {activeTab === "delivery" ? (
           <div className="space-y-3">
-            <Toggle
-              label="Enable driver mobile app"
-              description="Allow drivers to view assigned trips, navigate to stops, and mark deliveries with proof of delivery on the mobile app."
-              checked={form.mobile_enable_driver_app}
-              onChange={(v) => setForm((f) => ({ ...f, mobile_enable_driver_app: v }))}
-              disabled={!form.enable_distribution_ops}
-            />
-            <Toggle
-              label="Require driver sign-in photo and location"
-              description="When enabled, drivers must take a photo and capture GPS when signing in and out on the mobile app."
-              checked={form.mobile_enable_driver_attendance}
-              onChange={(v) => setForm((f) => ({ ...f, mobile_enable_driver_attendance: v }))}
-              disabled={!form.enable_distribution_ops || !form.mobile_enable_driver_app}
-            />
+            <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-sm">
+              <p className="theme-heading font-medium">Driver mobile app & attendance</p>
+              <p className="theme-subtext mt-1 text-xs">
+                Whether drivers can use the mobile app and whether sign-in photo/GPS is required are
+                configured by the platform administrator under Sales behaviour → Mobile application modules.
+              </p>
+            </div>
             <Toggle
               label="Require proof of delivery"
               description="Prompt for receiver name before marking an order as delivered."

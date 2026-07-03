@@ -472,7 +472,7 @@ export function PrintoutsSettingsPanel({
   const { refreshCapabilities } = useAuth();
   const { settingsPath } = useSettingsApi();
   const previewContext = useDocumentPrintPreviewContext();
-  const afterSave = onAfterSave ?? refreshCapabilities;
+  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
   const [form, setForm] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("general");

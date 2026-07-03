@@ -215,10 +215,14 @@ function Toggle({ checked, onChange, label, description }) {
 
 export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail") {
   const mobileProfiles = new Set(["wholesale_retail", "distribution"]);
+  const driverProfiles = new Set(["distribution", "wholesale_retail"]);
 
   return {
     show_checkout_on_create_order: true,
     enable_mobile_orders: mobileProfiles.has(deploymentProfile),
+    mobile_enable_field_attendance: false,
+    mobile_enable_driver_app: driverProfiles.has(deploymentProfile),
+    mobile_enable_driver_attendance: false,
     enable_mpesa_stk: true,
     enable_kra_integration: true,
     enable_ai: true,
@@ -249,6 +253,9 @@ export function salesPlatformFromApi(apiPayload) {
   return {
     show_checkout_on_create_order: Boolean(apiPayload.show_checkout_on_create_order ?? true),
     enable_mobile_orders: apiPayload.enable_mobile_orders !== false,
+    mobile_enable_field_attendance: Boolean(apiPayload.mobile_enable_field_attendance),
+    mobile_enable_driver_app: apiPayload.mobile_enable_driver_app !== false,
+    mobile_enable_driver_attendance: Boolean(apiPayload.mobile_enable_driver_attendance),
     enable_mpesa_stk: apiPayload.enable_mpesa_stk !== false,
     enable_kra_integration: apiPayload.enable_kra_integration !== false,
     enable_ai: apiPayload.enable_ai !== false,
@@ -315,6 +322,39 @@ export function OrganizationPlatformSalesSettings({
             checked={mobileOrdersEnabled}
             onChange={(v) => patch({ enable_mobile_orders: v })}
           />
+          {mobileOrdersEnabled ? (
+            <div className="ml-4 space-y-3 border-l border-slate-200 pl-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Mobile application modules
+              </p>
+              <Toggle
+                label="Field sales attendance (sign-in photo & GPS)"
+                description="Sales reps must sign in with photo and location on the mobile app. Sessions appear under HR field attendance."
+                checked={Boolean(salesPlatform?.mobile_enable_field_attendance)}
+                onChange={(v) => patch({ mobile_enable_field_attendance: v })}
+              />
+              <Toggle
+                label="Driver module on mobile app"
+                description="Drivers can view trips, navigate stops, and capture proof of delivery on the mobile app. Requires Distribution."
+                checked={salesPlatform?.mobile_enable_driver_app !== false}
+                onChange={(v) =>
+                  patch({
+                    mobile_enable_driver_app: v,
+                    mobile_enable_driver_attendance: v
+                      ? salesPlatform?.mobile_enable_driver_attendance
+                      : false,
+                  })
+                }
+              />
+              <Toggle
+                label="Driver attendance (sign-in photo & GPS)"
+                description="Drivers must sign in and out with photo and GPS on the mobile app."
+                checked={Boolean(salesPlatform?.mobile_enable_driver_attendance)}
+                onChange={(v) => patch({ mobile_enable_driver_attendance: v })}
+                disabled={salesPlatform?.mobile_enable_driver_app === false}
+              />
+            </div>
+          ) : null}
           <Toggle
             label="Require operating till float at external POS"
             description="When on, cashiers on the external POS workspace (/pos) must open a till session and declare operating float before sales. Backoffice create order uses a separate setting below. X/Z reports and end-of-day include float breakdown."

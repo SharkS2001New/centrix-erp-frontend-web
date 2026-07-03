@@ -34,6 +34,7 @@ export function PosProductSearch({
   onBarcodeEnter,
   barcodeEnabled = false,
   stockDisplayMode = "both",
+  posSalesConfig = null,
   disabled = false,
   placeholder = "Search by product name or code…",
   inputRef,
@@ -247,9 +248,11 @@ export function PosProductSearch({
                       </td>
                       {showShopStock ? (
                         <td className="px-2 py-1.5 text-right text-slate-600">
-                          {productCartStockDisplayMode(product) !== "store"
-                            ? formatStockQty(productStockAtLocation(product, "shop"), product)
-                            : "—"}
+                          {posSalesConfig &&
+                          productCartStockDisplayMode(product, posSalesConfig, sellWholesale) ===
+                            "store"
+                            ? "—"
+                            : formatStockQty(productStockAtLocation(product, "shop"), product)}
                         </td>
                       ) : null}
                       {showStoreStock ? (

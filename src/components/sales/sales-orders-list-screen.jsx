@@ -67,6 +67,7 @@ import {
   FulfillmentAssignmentDialog,
   PodCaptureDialog,
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
+import { ProductWeightPromptDialog } from "@/components/fulfillment/product-weight-prompt-dialog";
 import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { usePosSession } from "@/contexts/pos-session-context";
@@ -907,6 +908,18 @@ export default function SalesOrdersListScreen({
         onConfirm={(meta) => {
           const { sale, targetStatus } = fulfillment.podDialog ?? {};
           if (sale) void fulfillment.runTransition(sale, targetStatus, meta);
+        }}
+      />
+      <ProductWeightPromptDialog
+        open={Boolean(fulfillment.weightDialog)}
+        sale={fulfillment.weightDialog?.sale}
+        targetStatus={fulfillment.weightDialog?.targetStatus}
+        products={fulfillment.weightDialog?.products ?? []}
+        busy={fulfillment.busy}
+        onClose={() => fulfillment.setWeightDialog(null)}
+        onSaved={async () => {
+          const { sale, targetStatus, fulfillmentMeta } = fulfillment.weightDialog ?? {};
+          if (sale) await fulfillment.continueAfterWeights(sale, targetStatus, fulfillmentMeta);
         }}
       />
       <BackofficeOrderEditModal

@@ -98,6 +98,17 @@ export function isSessionConflictError(error) {
   );
 }
 
+/** @param {unknown} error */
+export function isMissingProductWeightsError(error) {
+  return error instanceof ApiError && error.body?.code === "missing_product_weights";
+}
+
+/** @param {unknown} error */
+export function missingProductWeightsFromError(error) {
+  if (!isMissingProductWeightsError(error)) return [];
+  return Array.isArray(error.body?.products) ? error.body.products : [];
+}
+
 function dedupeRepeatedText(text) {
   const trimmed = String(text ?? "").trim();
   if (!trimmed) return trimmed;

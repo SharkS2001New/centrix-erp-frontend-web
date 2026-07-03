@@ -58,6 +58,7 @@ import {
   FulfillmentAssignmentDialog,
   PodCaptureDialog,
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
+import { ProductWeightPromptDialog } from "@/components/fulfillment/product-weight-prompt-dialog";
 import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
 import { getSaleDriverId, getSaleVehicleId } from "@/components/fulfillment/fulfillment-shared";
 
@@ -1064,6 +1065,18 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         onConfirm={(meta) => {
           const { sale: dialogSale, targetStatus } = fulfillment.podDialog ?? {};
           if (dialogSale) void fulfillment.runTransition(dialogSale, targetStatus, meta);
+        }}
+      />
+      <ProductWeightPromptDialog
+        open={Boolean(fulfillment.weightDialog)}
+        sale={fulfillment.weightDialog?.sale}
+        targetStatus={fulfillment.weightDialog?.targetStatus}
+        products={fulfillment.weightDialog?.products ?? []}
+        busy={fulfillment.busy}
+        onClose={() => fulfillment.setWeightDialog(null)}
+        onSaved={async () => {
+          const { sale: dialogSale, targetStatus, fulfillmentMeta } = fulfillment.weightDialog ?? {};
+          if (dialogSale) await fulfillment.continueAfterWeights(dialogSale, targetStatus, fulfillmentMeta);
         }}
       />
     </div>

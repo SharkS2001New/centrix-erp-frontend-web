@@ -27,7 +27,7 @@ function Toggle({ checked, onChange, label, description }) {
 export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage, onAfterSave }) {
   const { settingsPath } = useSettingsApi();
   const { refreshCapabilities } = useAuth();
-  const afterSave = onAfterSave ?? refreshCapabilities;
+  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
   const [form, setForm] = useState(securityFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("sessions");

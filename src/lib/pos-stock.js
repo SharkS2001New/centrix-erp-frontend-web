@@ -299,24 +299,35 @@ export function productSellsRetail(product) {
   return value === true || value === 1 || value === "1";
 }
 
-export function productCartStockDisplayMode(product) {
-  return productSellsRetail(product) ? "both" : "store";
+export function productCartStockDisplayMode(product, posSalesConfig, sellWholesale = true) {
+  if (!product || !posSalesConfig) return "store";
+
+  if (posSalesConfig.allowShop && !posSalesConfig.allowStore) return "shop";
+  if (!posSalesConfig.allowShop && posSalesConfig.allowStore) return "store";
+
+  if (posSalesConfig.retailShopWholesaleStoreStock) {
+    return productSellsRetail(product) ? "both" : "store";
+  }
+
+  return posStockDisplayMode(posSalesConfig, sellWholesale);
 }
 
-/** Stock summary on add-to-cart — W/R shows shop + store; wholesale-only shows store. */
-export function productCartStockLabel(product, posSalesConfig) {
+/** Stock summary on add-to-cart — respects org stock source settings. */
+export function productCartStockLabel(product, posSalesConfig, { sellWholesale = true } = {}) {
   if (!product) return "";
 
+  const mode = productCartStockDisplayMode(product, posSalesConfig, sellWholesale);
   const uom = product.uom ?? null;
   const shopText = formatMixedStockDisplay(productStockAtLocation(product, "shop"), uom).text;
   const storeText = formatMixedStockDisplay(productStockAtLocation(product, "store"), uom).text;
 
-  if (productSellsRetail(product)) {
+  if (mode === "both") {
     if (posSalesConfig?.retailShopWholesaleStoreStock || posSalesConfig?.perLineStockRouting) {
       return `Shop (retail): ${shopText} · Store (wholesale): ${storeText}`;
     }
     return `Shop: ${shopText} · Store: ${storeText}`;
   }
 
-  return `Store: ${storeText}`;
+  if (mode === "store") return `Store: ${storeText}`;
+  return `Shop: ${shopText}`;
 }

@@ -281,6 +281,13 @@ export default function TripDetailPage() {
   const orderedSales = [...(trip.sales ?? [])].sort(
     (a, b) => (a.pivot?.stop_seq ?? 0) - (b.pivot?.stop_seq ?? 0),
   );
+  const pendingDeliveryCount = orderedSales.filter(
+    (sale) => String(sale.status).toLowerCase() === "processed",
+  ).length;
+  const canConfirmDeliveries =
+    trip.status === "in_transit" &&
+    pendingDeliveryCount > 0 &&
+    !distributionSettings.requirePodOnDelivered;
 
   async function moveStop(saleId, direction) {
     const list = [...orderedSales];
@@ -727,8 +734,27 @@ export default function TripDetailPage() {
       </section>
 
       <section className="theme-panel rounded-xl border p-5 shadow-sm">
-        <h2 className="text-lg font-medium text-slate-900">Delivery stops</h2>
-        <p className="mt-1 text-sm text-slate-500">Sequence orders for the driver route run.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-medium text-slate-900">Delivery stops</h2>
+            <p className="mt-1 text-sm text-slate-500">Sequence orders for the driver route run.</p>
+          </div>
+          {canConfirmDeliveries ? (
+            <PrimaryButton
+              type="button"
+              showIcon={false}
+              disabled={busy}
+              onClick={() => runAction(`/dispatch-trips/${id}/confirm-deliveries`)}
+            >
+              Confirm all delivered ({pendingDeliveryCount})
+            </PrimaryButton>
+          ) : null}
+        </div>
+        {trip.status === "in_transit" && pendingDeliveryCount > 0 && distributionSettings.requirePodOnDelivered ? (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Proof of delivery is required for each stop. Capture POD from the driver app before confirming deliveries.
+          </p>
+        ) : null}
         <div className="mt-4">
           <DashboardSummaryTable
             columns={[

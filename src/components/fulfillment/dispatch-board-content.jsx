@@ -16,6 +16,7 @@ import {
   FulfillmentAssignmentDialog,
   PodCaptureDialog,
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
+import { ProductWeightPromptDialog } from "@/components/fulfillment/product-weight-prompt-dialog";
 import { getSaleDriverId, getSaleVehicleId } from "@/components/fulfillment/fulfillment-shared";
 import { DISPATCH_READY_STATUSES, isDistributionOpsEnabled, mergeDistributionSettings, shouldShowOrderAssignAction, assignActionLabel } from "@/lib/distribution-settings";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
@@ -131,12 +132,15 @@ export function DispatchBoardContent() {
   const {
     assignDialog,
     podDialog,
+    weightDialog,
     setAssignDialog,
     setPodDialog,
+    setWeightDialog,
     busy: transitionBusy,
     requestTransition,
     requestAssignment,
     runTransition,
+    continueAfterWeights,
   } = useFulfillmentTransition({
     capabilities,
     onSuccess: () => {
@@ -414,6 +418,19 @@ export function DispatchBoardContent() {
           if (podDialog?.sale) {
             void runTransition(podDialog.sale, podDialog.targetStatus, meta);
           }
+        }}
+      />
+
+      <ProductWeightPromptDialog
+        open={Boolean(weightDialog)}
+        sale={weightDialog?.sale}
+        targetStatus={weightDialog?.targetStatus}
+        products={weightDialog?.products ?? []}
+        busy={transitionBusy}
+        onClose={() => setWeightDialog(null)}
+        onSaved={async () => {
+          const { sale, targetStatus, fulfillmentMeta } = weightDialog ?? {};
+          if (sale) await continueAfterWeights(sale, targetStatus, fulfillmentMeta);
         }}
       />
     </CatalogPageShell>
