@@ -8,6 +8,11 @@ import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
 import { useOrgFormat } from "@/lib/org-format";
 import { normalizeCustomerInvoice } from "@/lib/customer-invoices";
+import {
+  CatalogPageShell,
+  Field,
+  PrimaryButton,
+} from "@/components/catalog/catalog-shared";
 
 export default function CustomerInvoiceDetailPage() {
   const params = useParams();
