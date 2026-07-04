@@ -20,6 +20,7 @@ import {
   useProductFormResources,
   validateRetailPackage,
 } from "@/components/products/product-form";
+import { SubcategoryCreateModal } from "@/components/products/subcategory-create-modal";
 import { productsCatalogHref } from "@/lib/products-list-state";
 
 export default function EditProductPage() {
