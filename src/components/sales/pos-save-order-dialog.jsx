@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
-import { apiRequest } from "@/lib/api";
+import {
+  creditCustomerToOption,
+  fetchCreditCustomerByNum,
+  searchCreditCustomers,
+} from "@/lib/credit-customer-search";
+import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 
 import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
 
@@ -23,11 +28,12 @@ export function PosSaveOrderDialog({
 }) {
   const isHold = mode === "hold";
   const [mounted, setMounted] = useState(false);
-  const [customers, setCustomers] = useState([]);
   const [isWalkIn, setIsWalkIn] = useState(false);
   const [walkInName, setWalkInName] = useState("");
   const [customerNum, setCustomerNum] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [customerOptions, setCustomerOptions] = useState([]);
+  const [prefillLoading, setPrefillLoading] = useState(false);
   const [localError, setLocalError] = useState(null);
 
   useEffect(() => setMounted(true), []);
@@ -39,13 +45,44 @@ export function PosSaveOrderDialog({
     setIsWalkIn(Boolean(prefillName) && !prefillNum);
     setWalkInName(prefillName);
     setCustomerNum(prefillNum);
+    setSelectedCustomer(null);
+    setCustomerOptions([]);
     setLocalError(null);
-    setLoading(true);
-    apiRequest("/customers", { searchParams: { per_page: 200 } })
-      .then((res) => setCustomers(res.data ?? []))
-      .catch(() => setLocalError("Failed to load customers."))
-      .finally(() => setLoading(false));
+
+    if (!prefillNum) return;
+
+    let cancelled = false;
+    setPrefillLoading(true);
+    fetchCreditCustomerByNum(prefillNum)
+      .then((customer) => {
+        if (cancelled || !customer) return;
+        const option = creditCustomerToOption(customer);
+        setCustomerNum(option.value);
+        setSelectedCustomer(customer);
+        setCustomerOptions([option]);
+      })
+      .catch(() => {
+        if (!cancelled) setLocalError("Could not load the selected customer.");
+      })
+      .finally(() => {
+        if (!cancelled) setPrefillLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [open, prefillWalkInName, prefillCustomerNum]);
+
+  const searchCustomersForSelect = useCallback(async (query) => {
+    const rows = await searchCreditCustomers(query, { perPage: 30 });
+    setCustomerOptions(rows);
+    return rows;
+  }, []);
+
+  const selectedOption = useMemo(() => {
+    if (!customerNum) return null;
+    return customerOptions.find((row) => String(row.value) === String(customerNum)) ?? null;
+  }, [customerNum, customerOptions]);
 
   useEffect(() => {
     if (!open) return;
@@ -55,6 +92,12 @@ export function PosSaveOrderDialog({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, saving, onClose]);
+
+  function handleCustomerChange(nextValue, option) {
+    setCustomerNum(nextValue);
+    setSelectedCustomer(option?.customer ?? null);
+    setLocalError(null);
+  }
 
   function handleSave(mode = "save") {
     if (isWalkIn) {
@@ -70,9 +113,9 @@ export function PosSaveOrderDialog({
       setLocalError(isHold ? "Select a customer to hold this order." : "Select a customer to save this order.");
       return;
     }
-    const customer = customers.find((c) => String(c.customer_num) === customerNum);
+    const customer = selectedCustomer ?? selectedOption?.customer;
     if (!customer) {
-      setLocalError("Select a valid customer.");
+      setLocalError("Search and select a valid customer.");
       return;
     }
     onSave?.({ walkIn: false, customer, hold: mode === "hold" });
@@ -118,22 +161,20 @@ export function PosSaveOrderDialog({
               <span className="theme-accent-label mb-0.5 block text-[11px] font-bold uppercase tracking-wide">
                 Customer
               </span>
-              <select
-                className={inputCls}
+              <PosSearchableSelect
                 value={customerNum}
-                onChange={(e) => {
-                  setCustomerNum(e.target.value);
-                  setLocalError(null);
-                }}
-                disabled={loading || saving}
-              >
-                <option value="">— Select customer —</option>
-                {customers.map((c) => (
-                  <option key={c.customer_num} value={String(c.customer_num)}>
-                    {c.customer_name ?? `Customer #${c.customer_num}`}
-                  </option>
-                ))}
-              </select>
+                onChange={handleCustomerChange}
+                options={customerOptions}
+                loadOptions={searchCustomersForSelect}
+                minSearchLength={1}
+                loading={prefillLoading}
+                disabled={saving}
+                placeholder="Search customer by name, phone, or #"
+                searchPlaceholder="Search by name, phone, or customer #…"
+                idleSearchLabel="Type a name, phone number, or customer #"
+                emptyLabel="No matching customers"
+                inputClassName={inputCls}
+              />
             </label>
           ) : (
             <label className="block">
@@ -163,6 +204,8 @@ export function PosSaveOrderDialog({
                 setIsWalkIn(e.target.checked);
                 if (e.target.checked) {
                   setCustomerNum("");
+                  setSelectedCustomer(null);
+                  setCustomerOptions([]);
                 } else {
                   setWalkInName("");
                 }
@@ -183,7 +226,7 @@ export function PosSaveOrderDialog({
           {isHold ? (
             <button
               type="button"
-              disabled={saving || loading}
+              disabled={saving || prefillLoading}
               onClick={() => handleSave("hold")}
               className="theme-accent-btn rounded-lg px-3 py-3 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -192,7 +235,7 @@ export function PosSaveOrderDialog({
           ) : (
             <button
               type="button"
-              disabled={saving || loading}
+              disabled={saving || prefillLoading}
               onClick={() => handleSave("save")}
               className="theme-primary-btn rounded-lg px-3 py-3 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50"
             >

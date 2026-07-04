@@ -109,8 +109,18 @@ export function formatFactor(value) {
 
 /** @param {object} product @param {Map<number, object>} uomById @param {Map<number, object>} vatById */
 export function enrichProductForLpo(product, uomById, vatById) {
-  const uom = uomById.get(product.unit_id);
-  const vat = vatById.get(product.vat_id);
+  const unitId = product.unit_id;
+  const uom =
+    uomById.get(unitId) ??
+    uomById.get(String(unitId ?? "")) ??
+    product.uom ??
+    null;
+  const vatId = product.vat_id;
+  const vat =
+    vatById.get(vatId) ??
+    vatById.get(String(vatId ?? "")) ??
+    product.vat ??
+    null;
   const packaging = formatLpoPackagingLabel(uom);
   const packName = packageNameFromUom(uom);
 

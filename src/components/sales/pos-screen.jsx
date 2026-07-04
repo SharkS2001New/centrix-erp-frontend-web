@@ -740,9 +740,9 @@ export function PosScreen({ standalone = false }) {
       })),
     ]);
     const uomMap = new Map();
-    for (const u of uomRes.data ?? []) uomMap.set(u.id, u);
+    for (const u of uomRes.data ?? []) uomMap.set(String(u.id), u);
     const vatMap = new Map();
-    for (const v of vatRes.data ?? []) vatMap.set(v.id, v);
+    for (const v of vatRes.data ?? []) vatMap.set(String(v.id), v);
     const retailMap = {};
     for (const row of retailRes.data ?? []) {
       if (row.product_code) retailMap[row.product_code] = row;
@@ -907,7 +907,7 @@ export function PosScreen({ standalone = false }) {
     const sellMode = sellWholesaleOverride ?? sellWholesale;
     const retailPackage = retailByCode[product.product_code] ?? null;
     const resolved = resolvePosQuantity(entryQty, product, retailPackage, sellMode);
-    return posLineRetailStockFlag(posSalesConfig, sellMode, resolved.isRetail);
+    return posLineRetailStockFlag(posSalesConfig, sellMode, resolved.isRetail, product);
   }
 
   function applyComputedPrice(
@@ -1038,10 +1038,13 @@ export function PosScreen({ standalone = false }) {
       finalComputed = applyComputedPrice(product, mergedEntryQty, discount, override);
     }
 
-    const lineRetailStockFlag =
+    const stockAsRetail =
       lineRetailStockFlagOverride != null
         ? lineRetailStockFlagOverride
-        : posLineRetailStockFlag(posSalesConfig, sellWholesale, computed.isRetail);
+        : posLineRetailStockFlag(posSalesConfig, sellWholesale, computed.isRetail, product);
+    const onWholesaleRetailFlag = posSalesConfig.perLineStockRouting
+      ? sellWholesale === false
+      : Boolean(computed.isRetail);
 
     const stockBaseQty =
       mergeTarget && !editingId
@@ -1055,9 +1058,9 @@ export function PosScreen({ standalone = false }) {
       sellFromShop,
       posSalesConfig,
       allowNegativeStock,
-      lineRetailStockFlag,
+      stockAsRetail,
       productByCode,
-      excludeLineId: editingId ?? mergeTarget?.id,
+      excludeLineId: editingId ?? mergeTarget?.id ?? mergeTarget?.update_code,
     });
     if (!stockCheck.ok) {
       setStatusMessage(
@@ -1077,7 +1080,7 @@ export function PosScreen({ standalone = false }) {
       quantity: finalComputed.baseQty,
       unit_price: finalComputed.unitPricePerBase,
       uom: finalComputed.uomLabel || product.package_name,
-      on_wholesale_retail: lineRetailStockFlag ? 1 : 0,
+      on_wholesale_retail: onWholesaleRetailFlag ? 1 : 0,
       discount_given: allowDiscounts ? finalComputed.discountApplied : 0,
       product_vat: lineProductVat(product, finalComputed.lineAmount),
     };
@@ -1387,6 +1390,7 @@ export function PosScreen({ standalone = false }) {
       posSalesConfig,
       sellWholesale,
       computed.isRetail,
+      selectedProduct,
     );
     const loc = posStockLocationLabel(
       posLineStockLocation(sellFromShop, posSalesConfig, lineRetailStockFlag),
@@ -1413,29 +1417,44 @@ export function PosScreen({ standalone = false }) {
     if (!selectedProduct || allowNegativeStock) {
       return { ok: true };
     }
-    const retailPackage = retailByCode[selectedProduct.product_code] ?? null;
+    const product = productByCode[selectedProduct.product_code] ?? selectedProduct;
+    const retailPackage = retailByCode[product.product_code] ?? null;
     const computed = computePosLine({
-      product: selectedProduct,
+      product,
       entryQty: lineForm.quantity,
       sellWholesale,
       retailPackage,
       discount: 0,
       routeMarkupPerUnit,
     });
+    const mergeTarget = editingLineId
+      ? null
+      : findMergeableCartLine(
+          cart?.lines,
+          product.product_code,
+          computed,
+          posSalesConfig,
+          sellWholesale,
+        );
+    const stockBaseQty =
+      mergeTarget && !editingLineId
+        ? Number(mergeTarget.quantity) + computed.baseQty
+        : computed.baseQty;
     return posStockAvailability({
-      product: selectedProduct,
-      baseQty: computed.baseQty,
+      product,
+      baseQty: stockBaseQty,
       cartLines: cart?.lines,
       sellFromShop,
       posSalesConfig,
       allowNegativeStock,
-      lineRetailStockFlag: posLineRetailStockFlag(
+      stockAsRetail: posLineRetailStockFlag(
         posSalesConfig,
         sellWholesale,
         computed.isRetail,
+        product,
       ),
       productByCode,
-      excludeLineId: editingLineId,
+      excludeLineId: editingLineId ?? mergeTarget?.id ?? mergeTarget?.update_code,
     });
   }, [
     selectedProduct,
@@ -1453,14 +1472,15 @@ export function PosScreen({ standalone = false }) {
 
   const lineStockMessage = useMemo(() => {
     if (!selectedProduct) return null;
-    const retailPackage = retailByCode[selectedProduct.product_code] ?? null;
+    const product = productByCode[selectedProduct.product_code] ?? selectedProduct;
+    const retailPackage = retailByCode[product.product_code] ?? null;
     return posStockInsufficientMessage(lineStockCheck, {
-      product: selectedProduct,
+      product,
       sellWholesale,
       retailPackage,
       posSalesConfig,
     });
-  }, [lineStockCheck, selectedProduct, sellWholesale, retailByCode, posSalesConfig]);
+  }, [lineStockCheck, selectedProduct, productByCode, sellWholesale, retailByCode, posSalesConfig]);
 
   const cartStockBlocked = useMemo(
     () =>

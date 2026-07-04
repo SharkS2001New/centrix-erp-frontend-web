@@ -15,19 +15,57 @@ export function posLineIsRetail(product, onWholesaleRetail) {
   return Boolean(product?.sell_on_retail) && Boolean(onWholesaleRetail);
 }
 
+export function productSellsRetail(product) {
+  const value = product?.sell_on_retail;
+  return value === true || value === 1 || value === "1";
+}
+
+/** Match SaleStockLocationResolver::stockRouteAsRetail — shop only when product sells retail AND line is retail-routed. */
+export function saleLineStockAsRetail(product, onWholesaleRetailFlag) {
+  return productSellsRetail(product) && Boolean(onWholesaleRetailFlag);
+}
+
 /**
  * Retail-side flag for stock routing (shop vs store).
- * Per-line routing: retail pricing session → shop; wholesale session → store.
+ * Per-line routing: retail session + product sells retail → shop; otherwise store.
  */
-export function posLineRetailStockFlag(posSalesConfig, sellWholesale, computedIsRetail) {
+export function posLineRetailStockFlag(posSalesConfig, sellWholesale, computedIsRetail, product) {
   if (posSalesConfig.perLineStockRouting) {
-    return sellWholesale === false;
+    return saleLineStockAsRetail(product, sellWholesale === false);
   }
   return Boolean(computedIsRetail);
 }
 
 export function cartLineRetailStockFlag(line) {
   return Number(line?.on_wholesale_retail) === 1;
+}
+
+function cartLineByRef(cartLines, lineRef) {
+  if (lineRef == null || !cartLines?.length) return null;
+  const ref = String(lineRef);
+  return (
+    cartLines.find(
+      (line) => String(line.id) === ref || String(line.update_code ?? "") === ref,
+    ) ?? null
+  );
+}
+
+function lineMatchesRef(line, lineRef) {
+  if (lineRef == null) return false;
+  const ref = String(lineRef);
+  return String(line.id) === ref || String(line.update_code ?? "") === ref;
+}
+
+/** Qty already reserved server-side for the line being edited (skip optimistic/pending lines). */
+function reservedQtyForExcludedLine(cartLines, excludeLineId) {
+  const line = cartLineByRef(cartLines, excludeLineId);
+  if (!line || line._optimistic) return 0;
+  return Number(line.quantity ?? 0);
+}
+
+/** Shop vs store routing for an existing cart line. */
+export function cartLineStockAsRetail(line, product) {
+  return saleLineStockAsRetail(product, cartLineRetailStockFlag(line));
 }
 
 /** One +/- click changes quantity by this many base (stock) units. */
@@ -67,7 +105,7 @@ export function canAdjustCartLineQuantity({
     return { ok: true, willRemove: false };
   }
 
-  const lineRetailStockFlag = cartLineRetailStockFlag(line);
+  const stockAsRetail = cartLineStockAsRetail(line, product);
   const stockCheck = posStockAvailability({
     product,
     baseQty: nextBaseQty,
@@ -75,9 +113,9 @@ export function canAdjustCartLineQuantity({
     sellFromShop,
     posSalesConfig,
     allowNegativeStock,
-    lineRetailStockFlag,
+    stockAsRetail,
     productByCode,
-    excludeLineId: line?.id,
+    excludeLineId: line?.id ?? line?.update_code,
   });
 
   return {
@@ -95,10 +133,11 @@ export function cartLineEntryQtyForBaseQty(line, product, retailPackage, baseQty
 
 /**
  * Which stock location a sale line deducts from, given org stock-source settings.
+ * @param {boolean} stockAsRetail — when per-line routing is on, true → shop, false → store
  */
-export function posLineStockLocation(sellFromShop, posSalesConfig, lineRetailStockFlag) {
+export function posLineStockLocation(sellFromShop, posSalesConfig, stockAsRetail) {
   if (posSalesConfig.perLineStockRouting) {
-    return lineRetailStockFlag ? "shop" : "store";
+    return stockAsRetail ? "shop" : "store";
   }
   if (posSalesConfig.allowShop && !posSalesConfig.allowStore) {
     return "shop";
@@ -125,9 +164,18 @@ export function productStockAtLocation(product, location) {
   return Number(product?.[onHandKey] ?? 0);
 }
 
+/** Physical on-hand qty (ignores cart reservations). Use for POS cart validation. */
+export function productPhysicalStockAtLocation(product, location) {
+  const onHandKey = location === "store" ? "stock_in_store" : "stock_in_shop";
+  return Number(product?.[onHandKey] ?? 0);
+}
+
 export function cartLineStockLocation(line, product, sellFromShop, posSalesConfig) {
-  const lineRetail = cartLineRetailStockFlag(line);
-  return posLineStockLocation(sellFromShop, posSalesConfig, lineRetail);
+  return posLineStockLocation(
+    sellFromShop,
+    posSalesConfig,
+    cartLineStockAsRetail(line, product),
+  );
 }
 
 export function cartQtyAtLocation(
@@ -140,11 +188,10 @@ export function cartQtyAtLocation(
   excludeLineId = null,
 ) {
   if (!cartLines?.length) return 0;
-  const excludedId = excludeLineId != null ? String(excludeLineId) : null;
   let total = 0;
   for (const line of cartLines) {
     if (line.product_code !== productCode) continue;
-    if (excludedId != null && String(line.id) === excludedId) continue;
+    if (lineMatchesRef(line, excludeLineId)) continue;
     const product = productByCode?.[line.product_code] ?? productByCode;
     const lineLoc = cartLineStockLocation(line, product, sellFromShop, posSalesConfig);
     if (lineLoc === location) {
@@ -161,6 +208,7 @@ export function posStockAvailability({
   sellFromShop,
   posSalesConfig,
   allowNegativeStock,
+  stockAsRetail,
   lineRetailStockFlag,
   productByCode = {},
   excludeLineId = null,
@@ -169,8 +217,11 @@ export function posStockAvailability({
     return { ok: true, location: null, available: null, requested: baseQty, shortfall: 0 };
   }
 
-  const location = posLineStockLocation(sellFromShop, posSalesConfig, lineRetailStockFlag);
-  const onHand = productStockAtLocation(product, location);
+  const resolvedStockAsRetail =
+    stockAsRetail != null ? Boolean(stockAsRetail) : Boolean(lineRetailStockFlag);
+  const location = posLineStockLocation(sellFromShop, posSalesConfig, resolvedStockAsRetail);
+  const physical = productPhysicalStockAtLocation(product, location);
+  const netAvailable = productStockAtLocation(product, location);
   const inCart = cartQtyAtLocation(
     cartLines,
     product.product_code,
@@ -180,7 +231,10 @@ export function posStockAvailability({
     { [product.product_code]: product, ...productByCode },
     excludeLineId,
   );
-  const available = Math.max(0, onHand - inCart);
+  const reservedForExcludedLine = reservedQtyForExcludedLine(cartLines, excludeLineId);
+  const fromPhysical = Math.max(0, physical - inCart);
+  const fromNet = Math.max(0, netAvailable + reservedForExcludedLine);
+  const available = Math.min(fromPhysical, fromNet);
   const ok = baseQty <= available + 0.0001;
 
   return {
@@ -189,8 +243,9 @@ export function posStockAvailability({
     available,
     requested: baseQty,
     shortfall: ok ? 0 : baseQty - available,
-    onHand,
+    onHand: physical,
     inCart,
+    netAvailable,
   };
 }
 
@@ -261,24 +316,28 @@ export function posCartHasInsufficientStock(
 ) {
   if (allowNegativeStock || !cartLines?.length) return false;
 
-  const demand = new Map();
   for (const line of cartLines) {
     const product = productByCode[line.product_code];
     if (!product) continue;
-    const location = cartLineStockLocation(line, product, sellFromShop, posSalesConfig);
-    const key = `${line.product_code}:${location}`;
-    demand.set(key, (demand.get(key) ?? 0) + Number(line.quantity ?? 0));
-  }
-
-  for (const [key, qty] of demand) {
-    const [code, location] = key.split(":");
-    const product = productByCode[code];
-    if (!product) continue;
-    const onHand = productStockAtLocation(product, location);
-    if (qty > onHand + 0.0001) return true;
+    const check = posStockAvailability({
+      product,
+      baseQty: Number(line.quantity ?? 0),
+      cartLines,
+      sellFromShop,
+      posSalesConfig,
+      allowNegativeStock,
+      stockAsRetail: cartLineStockAsRetail(line, product),
+      productByCode,
+      excludeLineId: cartLineRef(line),
+    });
+    if (!check.ok) return true;
   }
 
   return false;
+}
+
+function cartLineRef(line) {
+  return line?.update_code ?? line?.id ?? null;
 }
 
 /** Which stock columns to show in POS product search for current settings. */
@@ -292,11 +351,6 @@ export function posStockDisplayMode(posSalesConfig, sellWholesale) {
   if (posSalesConfig.allowShop && !posSalesConfig.allowStore) return "shop";
   if (!posSalesConfig.allowShop && posSalesConfig.allowStore) return "store";
   return "both";
-}
-
-export function productSellsRetail(product) {
-  const value = product?.sell_on_retail;
-  return value === true || value === 1 || value === "1";
 }
 
 export function productCartStockDisplayMode(product, posSalesConfig, sellWholesale = true) {
