@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useOrgFormat } from "@/lib/org-format";
 import {
@@ -12,7 +12,12 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
-import { defaultDateRange } from "@/components/inventory/inventory-shared";
+import {
+  buildUomByProductCode,
+  defaultDateRange,
+  formatStockQty,
+  uomForInventoryRow,
+} from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_TRANSFER_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { P } from "@/lib/permission-codes";
@@ -22,6 +27,8 @@ export default function InventoryTransfersPage() {
   const { capabilities } = useAuth();
   const showInterBranch = isMultiBranchCatalog(capabilities);
   const [rows, setRows] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [uoms, setUoms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
@@ -33,16 +40,24 @@ export default function InventoryTransfersPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiRequest("/reports/stock-transfers", {
-        searchParams: { from_date: fromDate, to_date: toDate, per_page: 200 },
-      });
+      const [res, prodRes, uomRes] = await Promise.all([
+        apiRequest("/reports/stock-transfers", {
+          searchParams: { from_date: fromDate, to_date: toDate, per_page: 200 },
+        }),
+        apiRequest("/products", { searchParams: { per_page: 500 } }),
+        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
+      ]);
       setRows(res.data ?? []);
+      setProducts(prodRes.data ?? []);
+      setUoms(uomRes.data ?? []);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load transfers");
     } finally {
       setLoading(false);
     }
   }, [fromDate, toDate]);
+
+  const uomByProduct = useMemo(() => buildUomByProductCode(products, uoms), [products, uoms]);
 
   useEffect(() => {
     load();
@@ -139,7 +154,12 @@ export default function InventoryTransfersPage() {
                   </td>
                   <td className="px-4 py-3 capitalize">{r.from_location}</td>
                   <td className="px-4 py-3 capitalize">{r.to_location}</td>
-                  <td className="px-4 py-3 text-right">{r.total_moved}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {formatStockQty(
+                      r.total_moved,
+                      uomForInventoryRow(r, null, uomByProduct),
+                    )}
+                  </td>
                 </tr>
               ))
             )}

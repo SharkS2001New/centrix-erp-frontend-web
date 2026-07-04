@@ -18,6 +18,9 @@ import {
   defaultDateRange,
   formatMovementDateTime,
   formatStockQty,
+  buildUomByProductCode,
+  buildUomById,
+  uomForInventoryRow,
   InventoryPageShell,
   InventoryTableShell,
   movementLocationLabel,
@@ -69,14 +72,8 @@ export default function StockAdjustmentsPage() {
     load();
   }, [load]);
 
-  const uomByProduct = useMemo(() => {
-    const uomById = new Map(uoms.map((u) => [u.id, u]));
-    const map = new Map();
-    for (const p of products) {
-      map.set(p.product_code, uomById.get(p.unit_id));
-    }
-    return map;
-  }, [products, uoms]);
+  const uomById = useMemo(() => buildUomById(uoms), [uoms]);
+  const uomByProduct = useMemo(() => buildUomByProductCode(products, uoms), [products, uoms]);
 
   const productByCode = useMemo(
     () => new Map(products.map((p) => [p.product_code, p])),
@@ -180,7 +177,7 @@ export default function StockAdjustmentsPage() {
                   ) : (
                     pageSlice.map((row) => {
                       const change = Number(row.quantity_change ?? 0);
-                      const uom = uomByProduct.get(row.product_code);
+                      const uom = uomForInventoryRow(row, uomById, uomByProduct);
                       return (
                         <tr key={row.id} className="border-b border-slate-100">
                           <td className="px-4 py-3 text-slate-600">

@@ -9,6 +9,9 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   formatReceiptDate,
   formatStockQty,
+  buildUomByProductCode,
+  buildUomById,
+  uomForInventoryRow,
   InventoryPageShell,
   InventoryTableShell,
   productDisplayName,
@@ -60,14 +63,8 @@ export default function StockReceiptDetailPage() {
     load();
   }, [load]);
 
-  const uomByProduct = useMemo(() => {
-    const uomById = new Map(uoms.map((u) => [u.id, u]));
-    const map = new Map();
-    for (const p of products) {
-      map.set(p.product_code, uomById.get(p.unit_id));
-    }
-    return map;
-  }, [products, uoms]);
+  const uomById = useMemo(() => buildUomById(uoms), [uoms]);
+  const uomByProduct = useMemo(() => buildUomByProductCode(products, uoms), [products, uoms]);
 
   const productByCode = useMemo(
     () => new Map(products.map((p) => [p.product_code, p])),
@@ -128,7 +125,10 @@ export default function StockReceiptDetailPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums">
-                          {formatStockQty(row.units_received, uomByProduct.get(row.product_code))}
+                          {formatStockQty(
+                            row.units_received,
+                            uomForInventoryRow(row, uomById, uomByProduct),
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right text-slate-600">
                           {row.cost_price != null ? `KES ${Number(row.cost_price).toLocaleString("en-KE")}` : "—"}

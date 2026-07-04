@@ -19,6 +19,9 @@ import { P } from "@/lib/permission-codes";
 import {
   defaultDateRange,
   formatStockQty,
+  buildUomByProductCode,
+  buildUomById,
+  uomForInventoryRow,
   InventoryPageShell,
   InventoryTableShell,
   productDisplayName,
@@ -72,14 +75,8 @@ export default function DamagesPage() {
     load();
   }, [load]);
 
-  const uomByProduct = useMemo(() => {
-    const uomById = new Map(uoms.map((u) => [u.id, u]));
-    const map = new Map();
-    for (const p of products) {
-      map.set(p.product_code, uomById.get(p.unit_id));
-    }
-    return map;
-  }, [products, uoms]);
+  const uomById = useMemo(() => buildUomById(uoms), [uoms]);
+  const uomByProduct = useMemo(() => buildUomByProductCode(products, uoms), [products, uoms]);
 
   const productByCode = useMemo(
     () => new Map(products.map((p) => [p.product_code, p])),
@@ -106,7 +103,10 @@ export default function DamagesPage() {
 
   async function deleteDamage(row) {
     const label = productDisplayName(row, productByCode);
-    const qtyLabel = formatStockQty(row.quantity, uomByProduct.get(row.product_code));
+    const qtyLabel = formatStockQty(
+      row.quantity,
+      uomForInventoryRow(row, uomById, uomByProduct),
+    );
     const ok = await confirm({
       title: "Delete damage record",
       message: `Delete this damage record for ${label} and restore ${qtyLabel} to ${row.stock_location ?? "shop"} stock?`,
@@ -211,7 +211,10 @@ export default function DamagesPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums text-red-700">
-                            −{formatStockQty(row.quantity, uomByProduct.get(row.product_code))}
+                            −{formatStockQty(
+                              row.quantity,
+                              uomForInventoryRow(row, uomById, uomByProduct),
+                            )}
                           </td>
                           <td className="px-4 py-3 capitalize text-slate-600">
                             {row.stock_location ?? "—"}

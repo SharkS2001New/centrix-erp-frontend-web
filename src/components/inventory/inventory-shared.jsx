@@ -55,6 +55,48 @@ export function formatStockQtyParts(baseQty, uomOrFactor, label) {
   return formatMixedStockDisplay(baseQty, uomOrFactor, packLabel);
 }
 
+/** Map UOM id → record (string-normalized keys for API id type mismatches). */
+export function buildUomById(uoms = []) {
+  const map = new Map();
+  for (const uom of uoms) {
+    if (uom?.id == null) continue;
+    map.set(String(uom.id), uom);
+  }
+  return map;
+}
+
+export function resolveUom(uomById, unitId) {
+  if (!uomById || unitId == null || unitId === "") return null;
+  return uomById.get(String(unitId)) ?? null;
+}
+
+/** product_code → UOM for catalog rows. */
+export function buildUomByProductCode(products = [], uoms = []) {
+  const uomById = buildUomById(uoms);
+  const map = new Map();
+  for (const product of products) {
+    const code = product?.product_code;
+    if (!code) continue;
+    map.set(code, resolveUom(uomById, product.unit_id));
+  }
+  return map;
+}
+
+/** Resolve UOM for an inventory ledger / damage / receipt row. */
+export function uomForInventoryRow(row, uomById, uomByProductCode) {
+  const embedded = row?.product?.uom;
+  if (embedded && typeof embedded === "object") return embedded;
+
+  const fromUnit = resolveUom(uomById, row?.product?.unit_id ?? row?.unit_id);
+  if (fromUnit) return fromUnit;
+
+  const code = row?.product_code;
+  if (code && uomByProductCode) {
+    return uomByProductCode.get(code) ?? null;
+  }
+  return null;
+}
+
 export { baseToDisplayQty, displayToBaseQty, uomLabelFrom };
 
 export function stockHealthStatus(totalQty, productAlert) {

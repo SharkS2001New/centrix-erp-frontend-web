@@ -191,22 +191,38 @@ export function CustomerFormFields({
         />
       </Field>
 
-      <Field label="Type" className={routeCustomersOnly ? "hidden" : undefined}>
-        <select
-          value={form.customer_type}
-          onChange={(e) => onChange("customer_type", e.target.value)}
-          className={inputClassName()}
-        >
-          <option value="debtor">Debtor</option>
-          <option value="route">Route</option>
-          <option value="regular">Regular customer</option>
-        </select>
-        {!routeCustomersOnly ? (
-          <p className="mt-1 text-xs text-slate-500">
-            Debtors are on account. Route customers belong to a delivery route. Regular customers are
-            for records that are not on credit.
-          </p>
-        ) : null}
+      <Field label="Type">
+        {routeCustomersOnly ? (
+          <>
+            <select
+              value="route"
+              disabled
+              aria-readonly="true"
+              className={`${inputClassName()} cursor-not-allowed bg-slate-50 text-slate-600`}
+            >
+              <option value="route">Route</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Distribution companies only use route customers assigned to a sales or delivery route.
+            </p>
+          </>
+        ) : (
+          <>
+            <select
+              value={form.customer_type}
+              onChange={(e) => onChange("customer_type", e.target.value)}
+              className={inputClassName()}
+            >
+              <option value="debtor">Debtor</option>
+              <option value="route">Route</option>
+              <option value="regular">Regular customer</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Debtors are on account. Route customers belong to a delivery route. Regular customers are
+              for records that are not on credit.
+            </p>
+          </>
+        )}
       </Field>
 
       {showBranchSelect && (

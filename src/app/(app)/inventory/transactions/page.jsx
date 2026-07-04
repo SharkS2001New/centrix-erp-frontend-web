@@ -21,6 +21,8 @@ import {
   formatMovementDate,
   formatMovementDateTime,
   formatStockQty,
+  buildUomById,
+  uomForInventoryRow,
   InventoryPageShell,
   InventoryTableShell,
   movementLocationLabel,
@@ -29,6 +31,7 @@ import {
   transactionTypeLabel,
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
+import { STOCK_MOVEMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { INVENTORY_TRANSACTION_TYPE_LABELS } from "@/lib/user-facing-labels";
 
 const TYPE_OPTIONS = [
@@ -159,16 +162,17 @@ export default function InventoryTransactionsPage() {
     setPage(1);
   }, [debouncedSearch, typeFilter, fromDate, toDate]);
 
+  const uomById = useMemo(() => buildUomById(uoms), [uoms]);
+
   const uomByProduct = useMemo(() => {
-    const uomById = new Map(uoms.map((u) => [u.id, u]));
     const map = new Map();
     for (const row of rows) {
       if (!map.has(row.product_code)) {
-        map.set(row.product_code, uomById.get(row.product?.unit_id));
+        map.set(row.product_code, uomForInventoryRow(row, uomById));
       }
     }
     return map;
-  }, [rows, uoms]);
+  }, [rows, uomById]);
 
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 
