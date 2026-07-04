@@ -118,7 +118,7 @@ function workflowStepDetail(sale, step, payments) {
     if (paymentStatus === "paid" || paymentStatus === "partial") {
       const methods = salePaymentMethodDisplay(sale);
       const methodText = methods.isMixed ? methods.methods.join(" and ") : methods.label;
-      if (methodText && methodText !== "—") {
+      if (methodText && methodText !== "—" && methodText !== "Not paid") {
         return `Payment recorded via ${methodText}.`;
       }
     }

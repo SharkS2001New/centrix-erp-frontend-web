@@ -153,6 +153,7 @@ export function sortOrdersForList(orders, sortKey = "-created_at") {
 export const STOCK_DEDUCT_TIMING_OPTIONS = [
   { value: "order_created", label: "When order is placed (checkout)" },
   { value: "order_completed", label: "When order reaches workflow status" },
+  { value: "trip_pick", label: "When picking list is marked complete (distribution)" },
   { value: "trip_load", label: "When loading list is locked (distribution)" },
   { value: "trip_depart", label: "When trip departs (distribution)" },
 ];

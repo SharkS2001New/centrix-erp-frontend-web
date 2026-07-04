@@ -16,6 +16,7 @@ export const DISTRIBUTION_DEFAULTS = {
   require_trip_cash_settlement: false,
   require_picking_before_lock: false,
   include_normal_orders_in_loading_list: true,
+  dispatch_board_processed_only: true,
   enable_fulfillment_guidance: false,
   enable_product_shelf_location: false,
   mobile_enable_driver_app: true,
@@ -95,6 +96,7 @@ export function mergeDistributionSettings(capabilities) {
     requireTripCashSettlement: Boolean(distribution.require_trip_cash_settlement),
     requirePickingBeforeLock: Boolean(distribution.require_picking_before_lock),
     includeNormalOrdersInLoadingList: distribution.include_normal_orders_in_loading_list !== false,
+    dispatchBoardProcessedOnly: distribution.dispatch_board_processed_only !== false,
     enableFulfillmentGuidance: Boolean(distribution.enable_fulfillment_guidance),
     enableProductShelfLocation: Boolean(distribution.enable_product_shelf_location),
     mobileEnableDriverApp: distribution.mobile_enable_driver_app !== false,
@@ -119,6 +121,7 @@ export function distributionFormFromApi(res) {
     require_trip_cash_settlement: Boolean(distribution.require_trip_cash_settlement),
     require_picking_before_lock: Boolean(distribution.require_picking_before_lock),
     include_normal_orders_in_loading_list: distribution.include_normal_orders_in_loading_list !== false,
+    dispatch_board_processed_only: distribution.dispatch_board_processed_only !== false,
     enable_fulfillment_guidance: Boolean(distribution.enable_fulfillment_guidance),
     enable_product_shelf_location: Boolean(distribution.enable_product_shelf_location),
     mobile_enable_driver_app: distribution.mobile_enable_driver_app !== false,
@@ -143,6 +146,7 @@ export function distributionPayloadFromForm(form) {
     require_trip_cash_settlement: Boolean(form.require_trip_cash_settlement),
     require_picking_before_lock: Boolean(form.require_picking_before_lock),
     include_normal_orders_in_loading_list: Boolean(form.include_normal_orders_in_loading_list),
+    dispatch_board_processed_only: form.dispatch_board_processed_only !== false,
     ...(form.enable_fulfillment_guidance != null
       ? { enable_fulfillment_guidance: Boolean(form.enable_fulfillment_guidance) }
       : {}),
@@ -168,12 +172,12 @@ export const DISPATCH_READY_STATUSES = [
   "processed",
 ];
 
-/** Resolve the workflow statuses that put an order on the dispatch board. */
+/** Resolve the workflow statuses that put an order on the dispatch board (client hint; API enforces). */
 export function dispatchReadyStatuses(distributionSettings) {
-  const assignStatus = distributionSettings?.assignOnStatus || "processed";
-  const base = new Set(DISPATCH_READY_STATUSES);
-  if (assignStatus) base.add(assignStatus);
-  return [...base];
+  if (distributionSettings?.dispatchBoardProcessedOnly !== false) {
+    return [...DISPATCH_READY_STATUSES];
+  }
+  return null;
 }
 
 export function orderNeedsDriverAssignment(sale) {

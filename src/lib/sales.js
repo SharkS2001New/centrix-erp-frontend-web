@@ -202,8 +202,24 @@ function formatPaymentMethodCode(code) {
   return code;
 }
 
+/** True when the order has collected payment (not just a default checkout method code). */
+export function saleHasRecordedPayment(sale) {
+  if (Number(sale?.amount_paid ?? 0) > 0.001) return true;
+  if (Number(sale?.cash ?? 0) > 0) return true;
+  if (Number(sale?.mpesa_amount ?? 0) > 0) return true;
+  if (Number(sale?.equity_amount ?? 0) > 0) return true;
+  if (Number(sale?.kcb_amount ?? 0) > 0) return true;
+  if (Number(sale?.voucher_payment_amount ?? 0) > 0) return true;
+  if (Number(sale?.points_payment_amount ?? 0) > 0) return true;
+  return false;
+}
+
 /** Checkout methods used on an order (amount buckets + credit flag). */
 export function salePaymentMethods(sale) {
+  if (!saleHasRecordedPayment(sale)) {
+    return [];
+  }
+
   const methods = [];
   if (Number(sale?.cash ?? 0) > 0) methods.push("Cash");
   if (Number(sale?.mpesa_amount ?? 0) > 0) methods.push("M-Pesa");
@@ -220,7 +236,7 @@ export function salePaymentMethods(sale) {
 
 export function salePaymentMethodDisplay(sale) {
   const methods = salePaymentMethods(sale);
-  if (!methods.length) return { label: "—", methods: [], isMixed: false };
+  if (!methods.length) return { label: "Not paid", methods: [], isMixed: false };
   if (methods.length === 1) return { label: methods[0], methods: [], isMixed: false };
   return { label: "Mixed", methods, isMixed: true };
 }

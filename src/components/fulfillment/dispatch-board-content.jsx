@@ -64,8 +64,11 @@ export function DispatchBoardContent() {
         dispatch_orders: 1,
         with_items: 0,
         required_date: runDate,
-        status_in: dispatchReadyStatuses(distributionSettings).join(","),
       };
+      const boardStatuses = dispatchReadyStatuses(distributionSettings);
+      if (boardStatuses?.length) {
+        extra.status_in = boardStatuses.join(",");
+      }
       if (routeFilter !== "all") extra.route_id = routeFilter;
 
       const [salesRes, routeRes, driverRes, vehicleRes] = await Promise.all([

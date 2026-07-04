@@ -27,6 +27,7 @@ import {
   formatSaleKes,
   orderSourceLabel,
   saleCustomerLabel,
+  saleHasRecordedPayment,
   salePaymentMethodDisplay,
   saleStatusLabel,
 } from "@/lib/sales";
@@ -567,10 +568,11 @@ export function OrderPaymentMethodCell({ sale, paymentRefsBySaleId }) {
   const refs = paymentRefsBySaleId?.get(sale.id) ?? [];
   const refText = salePaymentReferenceLabel(refs);
   const showRef = refText && shouldShowPaymentReference(label, methods, isMixed);
+  const unpaid = label === "Not paid";
 
   return (
     <div className="min-w-[5.5rem]">
-      <p className="text-sm text-slate-700">{label}</p>
+      <p className={`text-sm ${unpaid ? "text-slate-400" : "text-slate-700"}`}>{label}</p>
       {isMixed ? (
         <p className="mt-0.5 text-[11px] leading-snug text-slate-500">{methods.join(" · ")}</p>
       ) : null}
@@ -937,7 +939,7 @@ export function OrderFinancialSummary({ sale, payments, totalPaid, balanceDue })
         </div>
       ) : null}
 
-      {sale.payment_method_code ? (
+      {saleHasRecordedPayment(sale) && sale.payment_method_code ? (
         <p className="mt-4 text-xs text-slate-500">
           Primary method: <span className="font-medium text-slate-700">{sale.payment_method_code}</span>
         </p>

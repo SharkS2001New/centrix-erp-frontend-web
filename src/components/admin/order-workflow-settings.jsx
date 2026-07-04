@@ -162,7 +162,8 @@ export function OrderWorkflowSettingsEditor({
       (opt) =>
         opt.value === "order_created" ||
         opt.value === "order_completed" ||
-        (distributionOpsEnabled && (opt.value === "trip_load" || opt.value === "trip_depart")),
+        (distributionOpsEnabled &&
+          (opt.value === "trip_pick" || opt.value === "trip_load" || opt.value === "trip_depart")),
     );
   }
 
@@ -531,11 +532,19 @@ export function OrderWorkflowSettingsEditor({
                         there, otherwise on workflow transition).
                       </p>
                     </Field>
-                  ) : (
+                  ) : timing === "trip_pick" ? (
                     <p className="theme-subtext text-xs">
-                      Stock stays reserved until the loading list is locked or the trip departs.
+                      Stock is deducted when the warehouse marks the trip picking list complete.
                     </p>
-                  )}
+                  ) : timing === "trip_load" ? (
+                    <p className="theme-subtext text-xs">
+                      Stock stays reserved until the loading list is locked for the trip.
+                    </p>
+                  ) : timing === "trip_depart" ? (
+                    <p className="theme-subtext text-xs">
+                      Stock stays reserved until the trip departs.
+                    </p>
+                  ) : null}
                 </div>
               </div>
             );

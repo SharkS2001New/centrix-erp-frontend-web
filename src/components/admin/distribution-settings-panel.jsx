@@ -177,6 +177,13 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
                 </select>
               </Field>
             </div>
+            <Toggle
+              label="Only show processed orders on dispatch board"
+              description="When enabled (default), the dispatch board lists orders in Processed status only. Turn off to include other active workflow statuses (paid, unpaid, pending, and so on)."
+              checked={form.dispatch_board_processed_only !== false}
+              onChange={(v) => setForm((f) => ({ ...f, dispatch_board_processed_only: v }))}
+              disabled={!form.enable_distribution_ops}
+            />
           </div>
             ) : null}
 
