@@ -29,6 +29,7 @@ import { stockSellingValue } from "@/lib/retail-pricing";
 import { baseToDisplayQty, formatMixedStockDisplay } from "@/lib/stock-uom";
 import { formatOrderNumber } from "@/lib/sales";
 import { resolveProductAudit } from "@/lib/product-audit";
+import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 
 const MAIN_TABS = [
   { id: "info", label: "Product information" },

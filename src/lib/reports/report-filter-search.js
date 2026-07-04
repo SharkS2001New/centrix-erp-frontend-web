@@ -76,7 +76,7 @@ export async function searchReportFilterOptions(optionsKey, query) {
       }));
     }
     case "cashiers": {
-      const res = await apiRequest("/users", { searchParams: { per_page: 50, q } });
+      const res = await apiRequest("/reports/filter-cashiers", { searchParams: { per_page: 50, q } });
       return (res.data ?? []).map((row) => ({
         value: String(row.id),
         label: row.full_name ?? row.username ?? `User #${row.id}`,
@@ -139,7 +139,7 @@ export async function resolveReportFilterSelection(optionsKey, value) {
     }
     case "cashiers": {
       try {
-        const row = await apiRequest(`/users/${encodeURIComponent(raw)}`);
+        const row = await apiRequest("/reports/filter-cashiers", { searchParams: { id: raw } });
         return {
           value: String(row.id ?? raw),
           label: row.full_name ?? row.username ?? `User #${raw}`,
