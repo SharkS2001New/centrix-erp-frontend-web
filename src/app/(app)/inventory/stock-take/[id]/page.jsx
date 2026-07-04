@@ -11,6 +11,10 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   FormModal,
   PrimaryButton,
+  Field,
+  FilterSelect,
+  FilterToolbar,
+  FILTER_CONTROL_CLASS,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import {
@@ -62,6 +66,9 @@ export default function StockTakeSessionPage() {
   const [saving, setSaving] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [subcategoryFilter, setSubcategoryFilter] = useState("all");
   const { runQueuedTask, overlayNode } = useQueuedTask("Saving stock take counts…");
 
   const load = useCallback(async () => {
@@ -125,6 +132,29 @@ export default function StockTakeSessionPage() {
     () => new Map(products.map((p) => [p.product_code, p])),
     [products],
   );
+  const subById = useMemo(
+    () => new Map(subCategories.map((sub) => [String(sub.id), sub])),
+    [subCategories],
+  );
+
+  const showTaxonomyFilters =
+    session &&
+    !session.filter_category_id &&
+    !session.filter_subcategory_id;
+
+  const filterSubCategoryOptions = useMemo(() => {
+    if (categoryFilter === "all") return subCategories;
+    return subCategories.filter((sub) => String(sub.category_id) === categoryFilter);
+  }, [subCategories, categoryFilter]);
+
+  function productTaxonomy(productCode) {
+    const product = productByCode.get(productCode);
+    const sub = subById.get(String(product?.subcategory_id ?? ""));
+    return {
+      subcategoryId: sub?.id != null ? String(sub.id) : null,
+      categoryId: sub?.category_id != null ? String(sub.category_id) : null,
+    };
+  }
 
   function productMeta(productCode) {
     const product = productByCode.get(productCode);
@@ -168,6 +198,30 @@ export default function StockTakeSessionPage() {
     }
     return [...map.values()].sort((a, b) => a.product_name.localeCompare(b.product_name));
   }, [lines, productByCode, uomById]);
+
+  const filteredGroupedProducts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return groupedProducts.filter((row) => {
+      if (q) {
+        const name = String(row.product_name ?? "").toLowerCase();
+        const code = String(row.product_code ?? "").toLowerCase();
+        if (!name.includes(q) && !code.includes(q)) return false;
+      }
+      if (!showTaxonomyFilters) return true;
+      const { categoryId, subcategoryId } = productTaxonomy(row.product_code);
+      if (categoryFilter !== "all" && categoryId !== categoryFilter) return false;
+      if (subcategoryFilter !== "all" && subcategoryId !== subcategoryFilter) return false;
+      return true;
+    });
+  }, [
+    groupedProducts,
+    search,
+    showTaxonomyFilters,
+    categoryFilter,
+    subcategoryFilter,
+    productByCode,
+    subById,
+  ]);
 
   const dirty = useMemo(() => {
     for (const line of lines) {
@@ -376,6 +430,57 @@ export default function StockTakeSessionPage() {
         ) : null}
       </div>
 
+      {!loading && groupedProducts.length > 0 ? (
+        <FilterToolbar className="flex-wrap">
+          <Field label="Search">
+            <input
+              type="search"
+              className={`${FILTER_CONTROL_CLASS} min-w-[14rem]`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Product name or code…"
+            />
+          </Field>
+          {showTaxonomyFilters ? (
+            <>
+              <Field label="Category">
+                <FilterSelect
+                  value={categoryFilter}
+                  onChange={(e) => {
+                    setCategoryFilter(e.target.value);
+                    setSubcategoryFilter("all");
+                  }}
+                  options={[
+                    { value: "all", label: "All categories" },
+                    ...categories.map((category) => ({
+                      value: String(category.id),
+                      label: category.category_name ?? `Category #${category.id}`,
+                    })),
+                  ]}
+                />
+              </Field>
+              <Field label="Subcategory">
+                <FilterSelect
+                  value={subcategoryFilter}
+                  onChange={(e) => setSubcategoryFilter(e.target.value)}
+                  options={[
+                    { value: "all", label: "All subcategories" },
+                    ...filterSubCategoryOptions.map((sub) => ({
+                      value: String(sub.id),
+                      label: sub.subcategory_name ?? `Subcategory #${sub.id}`,
+                    })),
+                  ]}
+                />
+              </Field>
+            </>
+          ) : null}
+          <p className="pb-2 text-xs text-slate-500">
+            Showing {filteredGroupedProducts.length} of {groupedProducts.length} product
+            {groupedProducts.length === 1 ? "" : "s"}
+          </p>
+        </FilterToolbar>
+      ) : null}
+
       <InventoryTableShell>
         {loading ? (
           <p className="p-8 text-sm text-slate-500">Loading count sheet…</p>
@@ -426,14 +531,16 @@ export default function StockTakeSessionPage() {
                 </tr>
               </thead>
               <tbody>
-                {groupedProducts.length === 0 ? (
+                {filteredGroupedProducts.length === 0 ? (
                   <tr>
                     <td colSpan={1 + (showShop ? 3 : 0) + (showStore ? 3 : 0)} className="px-4 py-8 text-center text-slate-500">
-                      No count lines in this session.
+                      {groupedProducts.length === 0
+                        ? "No count lines in this session."
+                        : "No products match your search or filters."}
                     </td>
                   </tr>
                 ) : (
-                  groupedProducts.map((row) => (
+                  filteredGroupedProducts.map((row) => (
                     <tr key={row.product_code} className="border-b border-slate-100">
                       <td className="px-3 py-2.5">
                         <span className="font-medium text-slate-900">{row.product_name}</span>
