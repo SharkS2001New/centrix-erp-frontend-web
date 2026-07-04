@@ -1,11 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
+import { getStoredWorkspace } from "@/lib/auth-storage";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { resolveNotificationLinkAccess } from "@/lib/notification-action-url";
 import { ApprovalNotificationDetails } from "@/components/notifications/approval-notification-details";
+import { NotificationActionLink } from "@/components/notifications/notification-action-link";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 
 const BUCKETS = [
@@ -79,16 +83,17 @@ function NotificationCard({ item, busy, onApprove, onReject, onOpen, onDismiss }
             Reject
           </button>
           {item.action_url ? (
-            <Link href={item.action_url} className="rounded-md px-3 py-1.5 text-xs font-medium text-[#185FA5] hover:bg-[#185FA5]/10">
-              View document
-            </Link>
+            <NotificationActionLink
+              actionUrl={item.action_url}
+              label="View document"
+              className="rounded-md px-3 py-1.5 text-xs font-medium text-[#185FA5] hover:bg-[#185FA5]/10"
+              disabledClassName="rounded-md px-3 py-1.5 text-xs font-medium text-slate-400 cursor-not-allowed"
+            />
           ) : null}
         </div>
       ) : item.action_url ? (
         <div className="mt-3 pl-5">
-          <Link href={item.action_url} className="text-xs font-medium text-[#185FA5] hover:underline">
-            Open related screen
-          </Link>
+          <NotificationActionLink actionUrl={item.action_url} />
         </div>
       ) : null}
       {canDismiss ? (
@@ -109,6 +114,7 @@ function NotificationCard({ item, busy, onApprove, onReject, onOpen, onDismiss }
 
 export default function NotificationsPage() {
   const router = useRouter();
+  const { capabilities, user, organization, isSuperAdmin } = useAuth();
   const [bucket, setBucket] = useState("pending_approvals");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -151,9 +157,30 @@ export default function NotificationsPage() {
   const openItem = useCallback(
     async (item) => {
       await markRead(item);
-      if (item.action_url) router.push(item.action_url);
+      if (!item.action_url) return;
+
+      const access = resolveNotificationLinkAccess(item.action_url, {
+        capabilities,
+        ctx: buildAccessContext({
+          user,
+          organization,
+          capabilities,
+          requireTillFloat: resolveTillFloatNavFlag(capabilities),
+          isSuperAdmin,
+        }),
+        storedWorkspaceId: getStoredWorkspace(),
+      });
+
+      if (access.canOpen && access.normalizedUrl) {
+        router.push(access.normalizedUrl);
+        return;
+      }
+
+      if (access.message) {
+        notifyError(access.message);
+      }
     },
-    [markRead, router],
+    [capabilities, isSuperAdmin, markRead, organization, router, user],
   );
 
   const approveItem = useCallback(

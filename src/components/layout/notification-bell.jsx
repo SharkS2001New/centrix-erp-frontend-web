@@ -1,11 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError, notifyActionError } from "@/lib/api";
+import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
+import { getStoredWorkspace } from "@/lib/auth-storage";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { resolveNotificationLinkAccess } from "@/lib/notification-action-url";
 import { ApprovalNotificationDetails } from "@/components/notifications/approval-notification-details";
+import { NotificationActionLink } from "@/components/notifications/notification-action-link";
 
 const POLL_MS = 60_000;
 
@@ -77,32 +81,42 @@ function NotificationRow({ item, busy, onApprove, onReject, onOpen, onDismiss })
             Reject
           </button>
           {item.action_url ? (
-            <Link
-              href={item.action_url}
+            <NotificationActionLink
+              actionUrl={item.action_url}
+              label="View"
               className="rounded-md px-2.5 py-1 text-xs font-medium text-[#185FA5] hover:bg-[#185FA5]/10"
-            >
-              View
-            </Link>
+              disabledClassName="rounded-md px-2.5 py-1 text-xs font-medium text-slate-400 cursor-not-allowed"
+            />
           ) : null}
         </div>
-      ) : canDismiss ? (
-        <div className="mt-2 pl-4">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onDismiss(item)}
-            className="text-xs font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50"
-          >
-            Clear
-          </button>
-        </div>
-      ) : null}
+      ) : (
+        <>
+          {item.action_url ? (
+            <div className="mt-2 pl-4">
+              <NotificationActionLink actionUrl={item.action_url} />
+            </div>
+          ) : null}
+          {canDismiss ? (
+            <div className="mt-2 pl-4">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onDismiss(item)}
+                className="text-xs font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50"
+              >
+                Clear
+              </button>
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
 
 export function NotificationBell() {
   const router = useRouter();
+  const { capabilities, user, organization, isSuperAdmin } = useAuth();
   const [open, setOpen] = useState(false);
   const [count, setCount] = useState(0);
   const [items, setItems] = useState([]);
@@ -161,14 +175,37 @@ export function NotificationBell() {
     async (item) => {
       await markRead(item);
       setOpen(false);
-      if (item.action_url) {
-        router.push(item.action_url);
+
+      if (!item.action_url) {
+        router.push("/notifications");
+        void fetchCount();
+        return;
+      }
+
+      const access = resolveNotificationLinkAccess(item.action_url, {
+        capabilities,
+        ctx: buildAccessContext({
+          user,
+          organization,
+          capabilities,
+          requireTillFloat: resolveTillFloatNavFlag(capabilities),
+          isSuperAdmin,
+        }),
+        storedWorkspaceId: getStoredWorkspace(),
+      });
+
+      if (access.canOpen && access.normalizedUrl) {
+        router.push(access.normalizedUrl);
+      } else if (access.message) {
+        notifyError(access.message);
+        router.push("/notifications");
       } else {
         router.push("/notifications");
       }
+
       void fetchCount();
     },
-    [fetchCount, markRead, router],
+    [capabilities, fetchCount, isSuperAdmin, markRead, organization, router, user],
   );
 
   const approveItem = useCallback(
