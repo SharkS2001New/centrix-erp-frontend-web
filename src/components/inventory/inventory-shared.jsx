@@ -162,6 +162,21 @@ export function ProductCodeLink({ code }) {
   );
 }
 
+/** Resolve a human-readable product label from an API row and optional catalog map. */
+export function productDisplayName(row, productByCode) {
+  const fromRow = row?.product?.product_name?.trim();
+  if (fromRow) return fromRow;
+
+  const code = row?.product_code;
+  const fromMap = code ? productByCode?.get?.(code)?.product_name?.trim() : "";
+  if (fromMap) return fromMap;
+
+  const legacy = row?.product_name?.trim();
+  if (legacy) return legacy;
+
+  return code ?? "—";
+}
+
 export function formatReceiptDate(value) {
   if (!value) return "—";
   return formatMovementDate(value);

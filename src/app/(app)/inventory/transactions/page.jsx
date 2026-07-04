@@ -24,6 +24,7 @@ import {
   InventoryPageShell,
   InventoryTableShell,
   movementLocationLabel,
+  productDisplayName,
   ProductCodeLink,
   transactionTypeLabel,
 } from "@/components/inventory/inventory-shared";
@@ -52,7 +53,7 @@ function groupMovementsByProduct(rows) {
       const product = row.product;
       group = {
         product_code: row.product_code,
-        product_name: product?.product_name ?? row.product_code,
+        product_name: productDisplayName(row),
         unit_id: product?.unit_id,
         movements: [],
         netChange: 0,
@@ -282,7 +283,9 @@ export default function InventoryTransactionsPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-baseline gap-2">
                           <span className="font-medium text-slate-900">{group.product_name}</span>
-                          <ProductCodeLink code={group.product_code} />
+                          {group.product_name !== group.product_code ? (
+                            <ProductCodeLink code={group.product_code} />
+                          ) : null}
                         </div>
                         <p className="mt-0.5 text-xs text-slate-500">
                           {group.movements.length} movement{group.movements.length === 1 ? "" : "s"} ·{" "}

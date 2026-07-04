@@ -21,7 +21,7 @@ import {
   InventoryPageShell,
   InventoryTableShell,
   movementLocationLabel,
-  ProductCodeLink,
+  productDisplayName,
   rowInDateRange,
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
@@ -179,7 +179,6 @@ export default function StockAdjustmentsPage() {
                     </tr>
                   ) : (
                     pageSlice.map((row) => {
-                      const product = productByCode.get(row.product_code);
                       const change = Number(row.quantity_change ?? 0);
                       const uom = uomByProduct.get(row.product_code);
                       return (
@@ -189,11 +188,8 @@ export default function StockAdjustmentsPage() {
                           </td>
                           <td className="px-4 py-3">
                             <span className="font-medium text-slate-900">
-                              {product?.product_name ?? row.product_code}
+                              {productDisplayName(row, productByCode)}
                             </span>
-                            <div className="mt-0.5">
-                              <ProductCodeLink code={row.product_code} />
-                            </div>
                           </td>
                           <td
                             className={`px-4 py-3 text-right tabular-nums font-medium ${
@@ -204,7 +200,7 @@ export default function StockAdjustmentsPage() {
                             {formatStockQty(Math.abs(change), uom)}
                           </td>
                           <td className="px-4 py-3 text-slate-600">
-                            {movementLocationLabel(row.stock_location)}
+                            {movementLocationLabel(row)}
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums text-slate-600">
                             {formatStockQty(row.quantity_before, uom)}

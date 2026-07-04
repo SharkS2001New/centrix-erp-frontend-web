@@ -126,17 +126,6 @@ export function BackgroundTaskProvider({ children }) {
         }
 
         clearActiveTask();
-        setNotice({
-          type: "success",
-          title: "Background task completed",
-          taskLabel: label,
-          message: opts.downloadOnComplete
-            ? `Your file "${downloadFilename}" has been downloaded.`
-            : "The task finished successfully.",
-          downloadTaskId: opts.downloadOnComplete ? taskId : undefined,
-          downloadFilename,
-        });
-
         opts.onComplete?.(merged);
         return merged;
       } catch (error) {
@@ -147,15 +136,6 @@ export function BackgroundTaskProvider({ children }) {
         const message = cancelled ? "Background task was cancelled." : taskErrorMessage(error);
 
         clearActiveTask();
-
-        if (!cancelled) {
-          setNotice({
-            type: "error",
-            title: "Background task failed",
-            taskLabel: label,
-            message,
-          });
-        }
 
         if (cancelled) {
           return null;

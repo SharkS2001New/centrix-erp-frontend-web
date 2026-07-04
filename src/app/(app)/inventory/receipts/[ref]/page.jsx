@@ -11,7 +11,7 @@ import {
   formatStockQty,
   InventoryPageShell,
   InventoryTableShell,
-  ProductCodeLink,
+  productDisplayName,
 } from "@/components/inventory/inventory-shared";
 
 export default function StockReceiptDetailPage() {
@@ -120,16 +120,12 @@ export default function StockReceiptDetailPage() {
                 </thead>
                 <tbody>
                   {rows.map((row) => {
-                    const product = productByCode.get(row.product_code);
                     return (
                       <tr key={row.id} className="border-b border-slate-100">
                         <td className="px-4 py-3">
                           <span className="font-medium text-slate-900">
-                            {product?.product_name ?? row.product_code}
+                            {productDisplayName(row, productByCode)}
                           </span>
-                          <div className="mt-0.5">
-                            <ProductCodeLink code={row.product_code} />
-                          </div>
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums">
                           {formatStockQty(row.units_received, uomByProduct.get(row.product_code))}

@@ -21,7 +21,7 @@ import {
   formatStockQty,
   InventoryPageShell,
   InventoryTableShell,
-  ProductCodeLink,
+  productDisplayName,
   rowInDateRange,
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
@@ -105,8 +105,7 @@ export default function DamagesPage() {
   }
 
   async function deleteDamage(row) {
-    const product = productByCode.get(row.product_code);
-    const label = product?.product_name ?? row.product_code;
+    const label = productDisplayName(row, productByCode);
     const qtyLabel = formatStockQty(row.quantity, uomByProduct.get(row.product_code));
     const ok = await confirm({
       title: "Delete damage record",
@@ -199,7 +198,6 @@ export default function DamagesPage() {
                     </tr>
                   ) : (
                     pageSlice.map((row) => {
-                      const product = productByCode.get(row.product_code);
                       return (
                         <tr key={row.id} className="border-b border-slate-100">
                           <td className="px-4 py-3 text-slate-600">
@@ -209,11 +207,8 @@ export default function DamagesPage() {
                           </td>
                           <td className="px-4 py-3">
                             <span className="font-medium text-slate-900">
-                              {product?.product_name ?? row.product_code}
+                              {productDisplayName(row, productByCode)}
                             </span>
-                            <div className="mt-0.5">
-                              <ProductCodeLink code={row.product_code} />
-                            </div>
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums text-red-700">
                             −{formatStockQty(row.quantity, uomByProduct.get(row.product_code))}
