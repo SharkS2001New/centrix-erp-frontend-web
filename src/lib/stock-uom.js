@@ -6,7 +6,9 @@ import {
   smallPackagingLabel,
   uomHasFullPack,
   uomHasMiddlePack,
+  uomIsFullPackageOnly,
   uomStockTakeLevels,
+  uomUsesSmallPackaging,
 } from "./uom-packaging";
 
 /** True when one display unit equals one piece in stock (conversion factor 1). */
@@ -35,6 +37,9 @@ export function displayToBaseQty(displayQty, conversionFactor) {
 
 export function uomLabelFrom(uom) {
   if (!uom) return "units";
+  if (uomIsFullPackageOnly(uom)) {
+    return fullPackageLabel(uom);
+  }
   return (uom.full_name || uom.uom_type || "units").trim();
 }
 
@@ -105,6 +110,13 @@ export function splitBaseToHierarchy(baseQty, uomOrFactor) {
   const uom = uomOrFactor != null && typeof uomOrFactor === "object" ? uomOrFactor : null;
   const factor = uomConversionFactor(uomOrFactor);
   let remaining = Number(baseQty ?? 0);
+
+  if (uomIsFullPackageOnly(uom)) {
+    const fullLabel = fullPackageLabel(uom);
+    const qty = factor > 1 ? baseToDisplayQty(remaining, factor) : remaining;
+    return [{ label: fullLabel, qty }];
+  }
+
   const smallLabel = smallPackagingLabel(uom);
   const parts = [];
 
@@ -194,6 +206,12 @@ export function baseToHierarchyCounts(baseQty, uomOrFactor) {
 export function stockTakeCountsToBase(countsByKey, uomOrFactor) {
   const uom = uomOrFactor != null && typeof uomOrFactor === "object" ? uomOrFactor : null;
   const factor = uomConversionFactor(uomOrFactor);
+
+  if (uomIsFullPackageOnly(uom)) {
+    const full = Number(countsByKey.full ?? 0);
+    return factor > 1 ? full * factor : full;
+  }
+
   if (factor <= 1) {
     return Number(countsByKey.small ?? countsByKey.full ?? 0);
   }

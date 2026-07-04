@@ -10,6 +10,7 @@ import {
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
 import { documentFooterHtmlFromText } from "@/lib/footer-line-format";
+import { formatFulfillmentQty } from "@/lib/fulfillment-quantity";
 import {
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
@@ -76,11 +77,14 @@ function buildPickingListHeaderHtml({ branding, companyName }) {
   return parts.length ? `<div class="org-header">${parts.join("")}</div>` : "";
 }
 
-function normalizePickingLines(lines) {
+function normalizePickingLines(lines, uomByProductCode) {
   return (lines ?? []).map((line, index) => {
     const required = Number(line.required_qty ?? line.quantity ?? 0);
     const picked = Number(line.picked_qty ?? required);
     const shortage = Math.max(0, Number(line.shortage_qty ?? required - picked));
+    const requestedLabel = formatFulfillmentQty(required, line, uomByProductCode);
+    const pickedLabel = formatFulfillmentQty(picked, line, uomByProductCode);
+    const shortageLabel = shortage > 0 ? formatFulfillmentQty(shortage, line, uomByProductCode) : "—";
 
     return {
       ...line,
@@ -90,13 +94,17 @@ function normalizePickingLines(lines) {
       required_qty: required,
       picked_qty: picked,
       shortage_qty: shortage,
-      quantity_label: line.quantity_label ?? formatQty(required),
+      quantity_label: requestedLabel,
+      picked_label: pickedLabel,
+      shortage_label: shortageLabel,
+      pack_breakdown:
+        line.pack_breakdown && line.pack_breakdown !== requestedLabel ? line.pack_breakdown : "",
     };
   });
 }
 
-function buildPickingLineRows(lines, includeShelfLocation = true) {
-  return normalizePickingLines(lines)
+function buildPickingLineRows(lines, includeShelfLocation = true, uomByProductCode) {
+  return normalizePickingLines(lines, uomByProductCode)
     .map((line) => {
       const hasShortage = Number(line.shortage_qty) > 0.0001;
       const shortageClass = hasShortage ? "shortage" : "";
@@ -113,8 +121,8 @@ function buildPickingLineRows(lines, includeShelfLocation = true) {
           ${line.pack_breakdown ? `<div class="ghost">${escapeHtml(line.pack_breakdown)}</div>` : ""}
         </td>
         <td class="col-qty">${escapeHtml(line.quantity_label)}</td>
-        <td class="col-picked">${formatQty(line.picked_qty)}</td>
-        <td class="col-shortage">${hasShortage ? formatQty(line.shortage_qty) : "—"}</td>
+        <td class="col-picked">${escapeHtml(line.picked_label)}</td>
+        <td class="col-shortage">${line.shortage_qty > 0.0001 ? escapeHtml(line.shortage_label) : "—"}</td>
       </tr>`;
     })
     .join("");
@@ -168,12 +176,13 @@ export function buildPickingListHtml({
   documentFooterText = null,
   printedBy = null,
   includeShelfLocation = true,
+  uomByProductCode = null,
 } = {}) {
   const branding = resolveReportBranding({ organization, generalSettings });
   const companyName = resolveOrganizationName({ organization, organizationName, branding });
   const orgHeader = buildPickingListHeaderHtml({ branding, companyName });
   const watermark = buildReportWatermarkHtml(branding);
-  const lines = normalizePickingLines(pickingList?.lines ?? []);
+  const lines = normalizePickingLines(pickingList?.lines ?? [], uomByProductCode);
   const meta = resolveRouteHeader({ pickingList, trip });
   const listDate = pickingList?.list_date ?? trip?.scheduled_date;
   const dateLabel = formatPrintDisplayDate(listDate, { emptyLabel: "—" });
@@ -184,7 +193,7 @@ export function buildPickingListHtml({
   const totalShortage = lines.reduce((sum, line) => sum + Number(line.shortage_qty || 0), 0);
   const columnCount = includeShelfLocation ? 6 : 5;
   const rowHtml =
-    buildPickingLineRows(lines, includeShelfLocation) ||
+    buildPickingLineRows(lines, includeShelfLocation, uomByProductCode) ||
     `<tr><td colspan="${columnCount}" class="empty">No products to pick</td></tr>`;
 
   const footerText = documentFooterText ?? branding.documentFooterText ?? "";
@@ -266,6 +275,7 @@ export function printPickingList({
   documentFooterText = null,
   printedBy = null,
   includeShelfLocation = true,
+  uomByProductCode = null,
 } = {}) {
   const html = buildPickingListHtml({
     organization,
@@ -276,6 +286,7 @@ export function printPickingList({
     documentFooterText,
     printedBy,
     includeShelfLocation,
+    uomByProductCode,
   });
   openPrintWindow(html, "width=900,height=800");
 }

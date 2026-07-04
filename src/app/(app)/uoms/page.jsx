@@ -9,7 +9,9 @@ import {
   uomFromForm,
   uomHierarchyChain,
   uomHasMiddlePack,
+  uomIsFullPackageOnly,
   uomStockReportExamples,
+  uomUsesSmallPackaging,
   UOM_TYPE_FILTER_OPTIONS,
   UOM_TYPE_OPTIONS,
 } from "@/lib/uom-packaging";
@@ -54,6 +56,7 @@ const PACK_FILTER_OPTIONS = [
 
 const EMPTY_FORM = {
   measure_name: "",
+  uses_small_packaging: true,
   small_packaging_label: "piece",
   has_middle_pack: false,
   middle_packaging_label: "",
@@ -230,7 +233,8 @@ export default function UomsPage() {
   const uomById = useMemo(() => new Map(uoms.map((u) => [String(u.id), u])), [uoms]);
 
   const formTitle = drawerMode === "create" ? "Add UOM" : "Edit UOM";
-  const formFactor = uomConversionFactor(form.conversion_factor);
+  const fullPackageOnly = form.uses_small_packaging === false;
+  const formFactor = fullPackageOnly ? 1 : uomConversionFactor(form.conversion_factor);
   const fullSectionNum = form.has_middle_pack ? 3 : 2;
 
   function openCreateDrawer() {
@@ -246,6 +250,7 @@ export default function UomsPage() {
     setEditingId(uom.id);
     setForm({
       measure_name: uom.measure_name ?? "",
+      uses_small_packaging: uomUsesSmallPackaging(uom),
       small_packaging_label: uom.small_packaging_label ?? defaultSmallLabelForType(uom.uom_type),
       has_middle_pack: uomHasMiddlePack(uom),
       middle_packaging_label: uom.middle_packaging_label ?? "",
@@ -270,6 +275,12 @@ export default function UomsPage() {
       if (key === "uom_type" && !prev.small_packaging_label) {
         next.small_packaging_label = defaultSmallLabelForType(value);
       }
+      if (key === "uses_small_packaging" && value === false) {
+        next.conversion_factor = "1";
+        next.has_middle_pack = false;
+        next.middle_packaging_label = "";
+        next.middle_factor = "";
+      }
       if (key === "has_middle_pack" && !value) {
         next.middle_packaging_label = "";
         next.middle_factor = "";
@@ -282,11 +293,14 @@ export default function UomsPage() {
     e.preventDefault();
     setFormError(null);
     setSaving(true);
-    const conversionFactor = parseFloat(form.conversion_factor);
-    const useMiddle = form.has_middle_pack && form.middle_packaging_label.trim();
+    const fullPackageOnlySave = form.uses_small_packaging === false;
+    const conversionFactor = fullPackageOnlySave ? 1 : parseFloat(form.conversion_factor);
+    const useMiddle =
+      !fullPackageOnlySave && form.has_middle_pack && form.middle_packaging_label.trim();
     const body = {
       full_name: form.full_name.trim(),
       measure_name: form.measure_name.trim() || null,
+      uses_small_packaging: !fullPackageOnlySave,
       small_packaging_label: form.small_packaging_label.trim() || defaultSmallLabelForType(form.uom_type),
       middle_packaging_label: useMiddle ? form.middle_packaging_label.trim() : null,
       middle_factor:
@@ -412,7 +426,7 @@ export default function UomsPage() {
   return (
     <CatalogPageShell
       title="Units of measure"
-      subtitle="Define how stock is counted and reported — base unit, optional middle packs, and full packages"
+      subtitle="Define how stock is counted — small units with optional packs, or full package only for wholesale items"
       action={
         <div className="flex flex-wrap items-center gap-2">
           <CatalogDataImportButton
@@ -421,6 +435,7 @@ export default function UomsPage() {
             sampleHeaders={[
               "measure_name",
               "full_name",
+              "uses_small_packaging",
               "small_packaging_label",
               "middle_packaging_label",
               "middle_factor",
@@ -428,7 +443,7 @@ export default function UomsPage() {
               "uom_type",
               "is_active",
             ]}
-            sampleRow={["Piece", "Piece", "piece", "", "", "1", "piece", "true"]}
+            sampleRow={["Piece", "Piece", "true", "piece", "", "", "1", "piece", "true"]}
             apiPath="/uoms/import-batch"
             normalizeRows={(rows) => filterNonEmptyImportRows(rows, ["measure_name"])}
             onImported={loadData}
@@ -508,7 +523,11 @@ export default function UomsPage() {
                         />
                         <td className="px-4 py-3 text-slate-700">
                           <span className="font-medium text-slate-900">{uomHierarchyChain(uom)}</span>
-                          {Number(uom.conversion_factor ?? 1) > 1 ? (
+                          {uomIsFullPackageOnly(uom) ? (
+                            <span className="mt-0.5 block text-xs text-amber-700">
+                              Full package only — wholesale, no small unit breakdown
+                            </span>
+                          ) : Number(uom.conversion_factor ?? 1) > 1 ? (
                             <span className="mt-0.5 block text-xs text-slate-500">
                               1 {uom.full_name} = {uom.conversion_factor}{" "}
                               {uom.small_packaging_label ?? uom.uom_type}
@@ -580,6 +599,54 @@ export default function UomsPage() {
           />
         </Field>
 
+        <Toggle
+          label="Use small unit breakdown (pieces, kg, litres, etc.)"
+          checked={form.uses_small_packaging !== false}
+          onChange={(v) => updateField("uses_small_packaging", v)}
+        />
+        <p className="-mt-2 text-[11px] leading-relaxed text-slate-500">
+          Turn off for wholesale-only products sold in full packages only — e.g. 20L jericans with no
+          retail piece count.
+        </p>
+
+        {fullPackageOnly ? (
+          <>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Full package (stock unit)
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Full package name">
+                <input
+                  type="text"
+                  value={form.full_name}
+                  onChange={(e) => updateField("full_name", e.target.value)}
+                  required
+                  className={inputClassName()}
+                  placeholder="e.g. Jerican, Drum, Bale"
+                />
+              </Field>
+              <Field label="Category">
+                <select
+                  value={form.uom_type}
+                  onChange={(e) => updateField("uom_type", e.target.value)}
+                  required
+                  className={inputClassName()}
+                >
+                  {UOM_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-500">
+              Stock is counted and sold in {form.full_name || "full packages"} only — each unit is 1{" "}
+              {form.full_name || "package"}.
+            </p>
+          </>
+        ) : (
+          <>
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           1. {form.small_packaging_label?.trim() || "Base"} unit (always 1 = this unit)
         </p>
@@ -677,6 +744,8 @@ export default function UomsPage() {
             ? `Stock counted only in ${form.small_packaging_label || "small units"} (no full package split).`
             : `1 ${form.full_name || "pack"} = ${formFactor} ${form.small_packaging_label || "units"}. e.g. 60 ${form.small_packaging_label} → 1 ${form.full_name}, 10 ${form.small_packaging_label}.`}
         </p>
+          </>
+        )}
 
         <StockReportPreview form={form} />
 

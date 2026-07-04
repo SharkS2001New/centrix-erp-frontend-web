@@ -80,13 +80,30 @@ export function uomHasFullPack(uom) {
   return Number(uom?.conversion_factor ?? 1) > 1;
 }
 
+/** When false, stock and sales use the full package only (e.g. 20L jericans — no piece/kg breakdown). */
+export function uomUsesSmallPackaging(uom) {
+  if (!uom) return true;
+  const value = uom.uses_small_packaging;
+  if (value === false || value === 0 || value === "0") return false;
+  return true;
+}
+
+export function uomIsFullPackageOnly(uom) {
+  return !uomUsesSmallPackaging(uom);
+}
+
 /**
  * Packaging levels used when counting stock (stock take, reconciliation).
+ * - Full package only: count in {Jerican, Bag, …} only
  * - Small unit only (factor 1): count in {piece, kg, …}
  * - Full + middle + small: e.g. bale, outers, pieces (3 fields)
  * - Full + small (no middle): e.g. bag + kg, carton + pieces (2 fields)
  */
 export function uomStockTakeLevels(uom) {
+  if (uomIsFullPackageOnly(uom)) {
+    return [{ level: "full", key: "full", label: fullPackageLabel(uom) }];
+  }
+
   if (!uomHasFullPack(uom)) {
     return [{ level: "small", key: "small", label: smallPackagingLabel(uom) }];
   }
@@ -103,6 +120,9 @@ export function uomStockTakeLevels(uom) {
 
 export function uomStockTakeHint(uom) {
   const levels = uomStockTakeLevels(uom);
+  if (uomIsFullPackageOnly(uom)) {
+    return `Count in ${levels[0].label} only — wholesale / full package unit.`;
+  }
   if (levels.length === 1) {
     return `Count in ${levels[0].label} only.`;
   }
@@ -135,6 +155,10 @@ export function middlePackagingLabel(uom) {
 export function uomMeasureLevels(uom) {
   if (!uom) {
     return [{ level: "small", label: "pcs" }];
+  }
+
+  if (uomIsFullPackageOnly(uom)) {
+    return [{ level: "full", label: fullPackageLabel(uom) }];
   }
 
   const stockLevels = uomStockTakeLevels(uom);
@@ -238,10 +262,13 @@ export function uomSmallUnitIsWholeNumber(uom) {
 /** e.g. "1 bale = 12 pcs" — one wholesale (full) unit to small units. */
 export function uomWholesaleConversionExample(uom) {
   const factor = Number(uom?.conversion_factor ?? 1);
+  const full = fullPackageLabel(uom);
+  if (uomIsFullPackageOnly(uom)) {
+    return `1 ${full}`;
+  }
   const small = smallPackagingLabel(uom);
   if (factor <= 1) return `1 ${small}`;
 
-  const full = fullPackageLabel(uom);
   const factorText = uomSmallUnitIsWholeNumber(uom)
     ? String(Math.round(factor))
     : String(factor);
@@ -251,6 +278,9 @@ export function uomWholesaleConversionExample(uom) {
 
 /** e.g. "1 bale = 12 pcs · 1 outer = 10 pcs" */
 export function uomConversionSummary(uom) {
+  if (uomIsFullPackageOnly(uom)) {
+    return `Full package only — ${fullPackageLabel(uom)}`;
+  }
   const factor = Number(uom?.conversion_factor ?? 1);
   if (factor <= 1) return null;
 
@@ -267,6 +297,11 @@ export function uomConversionSummary(uom) {
 /** Human-readable chain e.g. "Sugars: Bale → outer → piece" */
 export function uomHierarchyChain(uom) {
   if (!uom) return "piece";
+  if (uomIsFullPackageOnly(uom)) {
+    const name = uomMeasureName(uom);
+    const full = fullPackageLabel(uom);
+    return name ? `${name}: ${full}` : full;
+  }
   const parts = [smallPackagingLabel(uom)];
   if (uomHasMiddlePack(uom)) {
     parts.unshift(middlePackagingLabel(uom));
@@ -281,14 +316,16 @@ export function uomHierarchyChain(uom) {
 
 /** Build a UOM-like object from the form for live preview. */
 export function uomFromForm(form) {
-  const hasMiddle = Boolean(form.has_middle_pack && form.middle_packaging_label?.trim());
+  const usesSmall = form.uses_small_packaging !== false;
+  const hasMiddle = usesSmall && Boolean(form.has_middle_pack && form.middle_packaging_label?.trim());
   return {
     full_name: form.full_name,
     measure_name: form.measure_name?.trim() || null,
+    uses_small_packaging: usesSmall,
     small_packaging_label: form.small_packaging_label || defaultSmallLabelForType(form.uom_type),
     middle_packaging_label: hasMiddle ? form.middle_packaging_label.trim() : null,
     middle_factor: hasMiddle && form.middle_factor !== "" ? Number(form.middle_factor) : null,
-    conversion_factor: Number(form.conversion_factor ?? 1),
+    conversion_factor: usesSmall ? Number(form.conversion_factor ?? 1) : 1,
     uom_type: form.uom_type,
   };
 }
@@ -301,6 +338,13 @@ export function uomStockReportExamples(uom) {
   const mid = Number(uom?.middle_factor ?? 0);
   const hasMiddle = uomHasMiddlePack(uom);
   const wholeSmall = uomSmallUnitIsWholeNumber(uom);
+
+  if (uomIsFullPackageOnly(uom)) {
+    return [
+      { base: 25, note: `25 ${full} in stock` },
+      { base: 400, note: `400 ${full} — typical wholesale quantity` },
+    ];
+  }
 
   if (factor <= 1) {
     return [{ base: 25, note: `Stock counted in ${small} only` }];

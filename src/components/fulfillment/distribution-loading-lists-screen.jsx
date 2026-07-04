@@ -21,6 +21,9 @@ import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
+import {
+  buildUomByProductCode,
+} from "@/lib/fulfillment-quantity";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -67,6 +70,13 @@ export function DistributionLoadingListsScreen() {
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
+  const [catalogProducts, setCatalogProducts] = useState([]);
+  const [uoms, setUoms] = useState([]);
+
+  const uomByProductCode = useMemo(
+    () => buildUomByProductCode(catalogProducts, uoms),
+    [catalogProducts, uoms],
+  );
 
   const loadTrips = useCallback(async () => {
     setLoading(true);
@@ -118,11 +128,15 @@ export function DistributionLoadingListsScreen() {
     setDetailError(null);
     setDetailLoading(true);
     try {
-      const [tripRes, listRes, pickRes] = await Promise.all([
+      const [tripRes, listRes, pickRes, prodRes, uomRes] = await Promise.all([
         apiRequest(`/dispatch-trips/${trip.id}`),
         apiRequest(`/dispatch-trips/${trip.id}/loading-list`),
         apiRequest(`/dispatch-trips/${trip.id}/picking-list`),
+        apiRequest("/products", { searchParams: { per_page: 500 } }),
+        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
       ]);
+      setCatalogProducts(prodRes.data ?? []);
+      setUoms(uomRes.data ?? []);
       setDetail({
         trip: tripRes,
         loading_list: listRes.loading_list ?? listRes,
@@ -152,6 +166,7 @@ export function DistributionLoadingListsScreen() {
         organizationName,
         pickingList: freshPick,
         trip,
+        uomByProductCode,
         documentFooterText: resolvePrintFooter(
           mergeGeneralSettings(capabilities?.module_settings),
           "loading_sheet",
@@ -195,6 +210,7 @@ export function DistributionLoadingListsScreen() {
         ),
         printedBy: user?.full_name ?? user?.username ?? null,
         distributionEnabled: allowed,
+        uomByProductCode,
       });
     } catch (e) {
       setDetailError(e instanceof ApiError ? e.message : "Could not refresh loading list for print");

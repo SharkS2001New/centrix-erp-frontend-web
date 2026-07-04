@@ -12,6 +12,7 @@ import {
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
 import { documentFooterHtmlFromText } from "@/lib/footer-line-format";
+import { formatFulfillmentQty } from "@/lib/fulfillment-quantity";
 import {
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
@@ -222,16 +223,16 @@ function buildLoadingListHeaderHtml({ branding, companyName }) {
   return parts.length ? `<div class="org-header">${parts.join("")}</div>` : "";
 }
 
-function normalizeLoadingListOrders(loadingList) {
+function normalizeLoadingListOrders(loadingList, uomByProductCode = null) {
   if (Array.isArray(loadingList?.orders) && loadingList.orders.length > 0) {
     return loadingList.orders.map((order, index) => ({
       ...order,
       stop_no: order.stop_no ?? index + 1,
-      lines: normalizeLoadingListLines(order.lines ?? []),
+      lines: normalizeLoadingListLines(order.lines ?? [], uomByProductCode),
     }));
   }
 
-  const flatLines = normalizeLoadingListLines(loadingList?.lines ?? []);
+  const flatLines = normalizeLoadingListLines(loadingList?.lines ?? [], uomByProductCode);
   if (flatLines.length === 0) return [];
 
   return [
@@ -317,19 +318,23 @@ function buildTripSummaryHtml({ orders, total, showPriceColumns }) {
   </div>`;
 }
 
-function normalizeLoadingListLines(lines) {
+function normalizeLoadingListLines(lines, uomByProductCode = null) {
   return (lines ?? []).map((line, index) => {
     const productCode = String(line.product_code ?? "").trim();
     const productName = String(line.product_name ?? "").trim();
     const resolvedName =
       productName && productName !== productCode ? productName : productName || productCode;
+    const packaging = uomByProductCode
+      ? formatFulfillmentQty(line.quantity, line, uomByProductCode)
+      : (line.quantity_label ?? String(line.quantity ?? ""));
 
     return {
       ...line,
       line_no: line.line_no ?? index + 1,
       product_name: resolvedName,
-      quantity_label: line.quantity_label ?? String(line.quantity ?? ""),
-      pack_breakdown: line.pack_breakdown ?? "",
+      quantity_label: packaging,
+      pack_breakdown:
+        line.pack_breakdown && line.pack_breakdown !== packaging ? line.pack_breakdown : "",
     };
   });
 }
@@ -762,6 +767,7 @@ export function buildLoadingListHtml({
   footerLines = null,
   printedBy = null,
   distributionEnabled = false,
+  uomByProductCode = null,
 } = {}) {
   const branding = resolveReportBranding({ organization, generalSettings });
   const orgHeader = buildLoadingListHeaderHtml({
@@ -780,7 +786,7 @@ export function buildLoadingListHtml({
     showTripProfit,
   } = columnFlags;
 
-  const orders = normalizeLoadingListOrders(loadingList);
+  const orders = normalizeLoadingListOrders(loadingList, uomByProductCode);
   const routeHeader = resolveLoadingSheetRouteHeader({ loadingList, trip, distributionEnabled });
   const routeName = routeHeader.value;
   const listDate = loadingList?.list_date ?? trip?.scheduled_date;
@@ -916,6 +922,7 @@ export function printLoadingList({
   documentFooterText = null,
   printedBy = null,
   distributionEnabled = false,
+  uomByProductCode = null,
 } = {}) {
   const html = buildLoadingListHtml({
     organization,
@@ -928,6 +935,7 @@ export function printLoadingList({
     documentFooterText,
     printedBy,
     distributionEnabled,
+    uomByProductCode,
   });
   openPrintWindow(html, "width=900,height=800");
 }

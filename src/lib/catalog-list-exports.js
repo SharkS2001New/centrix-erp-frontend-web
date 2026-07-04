@@ -85,6 +85,7 @@ export const CATEGORY_EXPORT_COLUMNS = [
 export const UOM_EXPORT_COLUMNS = [
   { key: "full_name", label: "Unit" },
   { key: "measure_name", label: "Measure" },
+  { key: "uses_small_packaging", label: "Small unit breakdown" },
   { key: "conversion_factor", label: "Factor", align: "right" },
   { key: "is_active", label: "Active" },
 ];

@@ -23,6 +23,7 @@ import {
   fullPackageLabel,
   measureLevelLabel,
   smallPackagingLabel,
+  uomIsFullPackageOnly,
   uomSmallUnitIsWholeNumber,
 } from "@/lib/uom-packaging";
 
@@ -83,16 +84,17 @@ export function posQuantityFieldMeta(
   }
 
   if (!retailPricing) {
-    const unit =
-      factor > 1 ? fullPackageLabel(uom) : smallPackagingLabel(uom);
+    const fullOnly = uomIsFullPackageOnly(uom);
+    const unit = fullOnly || factor > 1 ? fullPackageLabel(uom) : smallPackagingLabel(uom);
     const small = smallPackagingLabel(uom);
     return {
       label: `Quantity (${unit})`,
-      hint:
-        factor > 1
+      hint: fullOnly
+        ? `Wholesale — count in ${unit} only`
+        : factor > 1
           ? `Wholesale — each count is 1 ${unit}; stock is recorded in ${small}`
           : `Wholesale — count in ${unit}`,
-      step: uomSmallUnitIsWholeNumber(uom) ? "1" : "any",
+      step: uomSmallUnitIsWholeNumber(uom) || fullOnly ? "1" : "any",
     };
   }
 
@@ -129,10 +131,12 @@ export function resolvePosQuantity(entryQty, product, retailPackage, sellWholesa
 
   if (!retailPricing) {
     const packQty = qty;
-    const baseQty = factor > 1 ? displayToBaseQty(qty, factor) : qty;
+    const fullOnly = uomIsFullPackageOnly(uom);
+    const baseQty = fullOnly || factor <= 1 ? qty : displayToBaseQty(qty, factor);
     const wholesaleTiers = tiersWithPriceMode(tiers, "wholesale");
     const tier = tierForQuantity(wholesaleTiers, baseQty);
-    const measureLevel = tier?.measure_level || (factor > 1 ? "full" : "small");
+    const measureLevel =
+      tier?.measure_level || (fullOnly || factor > 1 ? "full" : "small");
     return {
       baseQty,
       packQty,

@@ -21,6 +21,10 @@ import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { formatTripRoutesLabel } from "@/lib/trip-routes";
 import { tripStatusLabel } from "@/lib/trip-status";
+import {
+  buildUomByProductCode,
+  formatFulfillmentQty,
+} from "@/lib/fulfillment-quantity";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -62,6 +66,13 @@ export function MobilePickingScreen() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [catalogProducts, setCatalogProducts] = useState([]);
+  const [uoms, setUoms] = useState([]);
+
+  const uomByProductCode = useMemo(
+    () => buildUomByProductCode(catalogProducts, uoms),
+    [catalogProducts, uoms],
+  );
 
   const loadTrips = useCallback(async () => {
     setLoading(true);
@@ -90,13 +101,17 @@ export function MobilePickingScreen() {
       setDetailLoading(true);
       setDetailError(null);
       try {
-        const [tripRes, pickRes] = await Promise.all([
+        const [tripRes, pickRes, prodRes, uomRes] = await Promise.all([
           apiRequest(`/dispatch-trips/${tripId}`),
           apiRequest(`/dispatch-trips/${tripId}/picking-list`),
+          apiRequest("/products", { searchParams: { per_page: 500 } }),
+          apiRequest("/uoms", { searchParams: { per_page: 200 } }),
         ]);
         const nextPick = pickRes.picking_list ?? pickRes;
         setTrip(tripRes);
         setPickingList(nextPick);
+        setCatalogProducts(prodRes.data ?? []);
+        setUoms(uomRes.data ?? []);
         setPickerName(nextPick?.picker_name ?? user?.full_name ?? user?.username ?? "");
         setPickedDraft(
           Object.fromEntries(
@@ -229,6 +244,7 @@ export function MobilePickingScreen() {
         organizationName: organization?.organization_name ?? organization?.company_name ?? "Picking List",
         pickingList: freshPick,
         trip,
+        uomByProductCode,
         documentFooterText: resolvePrintFooter(
           mergeGeneralSettings(capabilities?.module_settings),
           "loading_sheet",
@@ -344,12 +360,9 @@ export function MobilePickingScreen() {
                         <h3 className={`${includeShelfLocation ? "mt-1" : ""} text-base font-semibold text-slate-900`}>
                           {line.product_name}
                         </h3>
-                        {line.quantity_label ? (
-                          <p className="mt-1 text-sm text-slate-600">Requested: {line.quantity_label}</p>
-                        ) : null}
-                        {line.pack_breakdown ? (
-                          <p className="text-xs text-slate-500">{line.pack_breakdown}</p>
-                        ) : null}
+                        <p className="mt-1 text-sm text-slate-600">
+                          Requested: {formatFulfillmentQty(required, line, uomByProductCode)}
+                        </p>
                       </div>
                       <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
                         #{line.line_no}
@@ -360,7 +373,8 @@ export function MobilePickingScreen() {
                       <div>
                         <p className="text-xs uppercase text-slate-500">Picked</p>
                         {pickingEditable ? (
-                          <div className="mt-1 flex items-center gap-2">
+                          <div className="mt-1 flex flex-col items-start gap-1">
+                            <div className="flex items-center gap-2">
                             <button
                               type="button"
                               className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 bg-white text-xl font-medium text-slate-700"
@@ -388,15 +402,25 @@ export function MobilePickingScreen() {
                             >
                               +
                             </button>
+                            </div>
+                            <span className="text-[11px] text-slate-500">
+                              {formatFulfillmentQty(
+                                Number(pickedDraft[line.id] ?? line.picked_qty ?? required) || 0,
+                                line,
+                                uomByProductCode,
+                              )}
+                            </span>
                           </div>
                         ) : (
-                          <p className="mt-1 text-2xl font-semibold text-slate-900">{formatQty(picked)}</p>
+                          <p className="mt-1 text-2xl font-semibold text-slate-900">
+                            {formatFulfillmentQty(picked, line, uomByProductCode)}
+                          </p>
                         )}
                       </div>
                       <div className="text-right">
                         <p className="text-xs uppercase text-slate-500">Shortage</p>
                         <p className={`mt-1 text-2xl font-semibold ${shortage > 0 ? "text-amber-700" : "text-slate-900"}`}>
-                          {shortage > 0 ? formatQty(shortage) : "—"}
+                          {shortage > 0 ? formatFulfillmentQty(shortage, line, uomByProductCode) : "—"}
                         </p>
                       </div>
                     </div>
