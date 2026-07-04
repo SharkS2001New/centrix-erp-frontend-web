@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useAppRouter } from "@/lib/use-app-router";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
+import { readProductsListState, writeProductsListState } from "@/lib/products-list-state";
 import { DeleteProductDialog } from "@/components/products/delete-product-dialog";
 import { ProductImportExport } from "@/components/products/product-import-export";
 import {
@@ -268,6 +270,10 @@ export default function ProductsPage() {
   const [deleteError, setDeleteError] = useState(null);
 
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
+  const searchParams = useSearchParams();
+  const listStateRestored = useRef(false);
+  const listStateReady = useRef(false);
+  const pendingRestoredSearch = useRef(null);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subCategoryFilter, setSubCategoryFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
@@ -312,6 +318,63 @@ export default function ProductsPage() {
       if (fallback) setStockBranchId(fallback);
     }
   }, [user?.branch_id, capabilities, user, branches, stockBranchId]);
+
+  useEffect(() => {
+    if (listStateRestored.current) return;
+    listStateRestored.current = true;
+
+    const saved = readProductsListState();
+    if (!saved) {
+      listStateReady.current = true;
+      return;
+    }
+
+    pendingRestoredSearch.current = saved.q ?? "";
+
+    const urlQ = (searchParams.get("q") ?? "").trim();
+    if (!urlQ && saved.q) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("q", saved.q);
+      router.replace(`/products?${params.toString()}`, { scroll: false });
+    } else if (urlQ) {
+      pendingRestoredSearch.current = null;
+    }
+
+    if (saved.categoryFilter) setCategoryFilter(saved.categoryFilter);
+    if (saved.subCategoryFilter) setSubCategoryFilter(saved.subCategoryFilter);
+    if (saved.stockFilter) setStockFilter(saved.stockFilter);
+    if (saved.pricingFilter) setPricingFilter(saved.pricingFilter);
+    if (saved.activeFilter) setActiveFilter(saved.activeFilter);
+    if (saved.stockBranchId && !user?.branch_id) setStockBranchId(saved.stockBranchId);
+    if (saved.pageSize) setPageSize(saved.pageSize);
+    if (saved.page && saved.page > 1) setPage(saved.page);
+    listStateReady.current = true;
+  }, [router, searchParams, setPageSize, user?.branch_id]);
+
+  useEffect(() => {
+    if (!listStateReady.current) return;
+    writeProductsListState({
+      q: debouncedSearch.trim(),
+      categoryFilter,
+      subCategoryFilter,
+      stockFilter,
+      pricingFilter,
+      activeFilter,
+      stockBranchId,
+      page,
+      pageSize,
+    });
+  }, [
+    debouncedSearch,
+    categoryFilter,
+    subCategoryFilter,
+    stockFilter,
+    pricingFilter,
+    activeFilter,
+    stockBranchId,
+    page,
+    pageSize,
+  ]);
 
   useEffect(() => {
     setVisibleColumnIds(readStoredColumnIds());
@@ -586,6 +649,12 @@ export default function ProductsPage() {
   }, [subCategories, categoryFilter]);
 
   useEffect(() => {
+    if (pendingRestoredSearch.current !== null) {
+      if (debouncedSearch.trim() === pendingRestoredSearch.current.trim()) {
+        pendingRestoredSearch.current = null;
+      }
+      return;
+    }
     setPage(1);
   }, [debouncedSearch, categoryFilter, subCategoryFilter, stockFilter, pricingFilter, activeFilter, effectiveStockBranchId, pageSize, sort, sortDir]);
 

@@ -86,21 +86,10 @@ export function StockHealthBadge({ totalQty, productAlert }) {
   );
 }
 
+import { inventoryTransactionTypeLabel } from "@/lib/user-facing-labels";
+
 export function transactionTypeLabel(type) {
-  const map = {
-    PURCHASE: "Purchase",
-    POS_SALE: "Sale",
-    MOBILE_SALE: "Sale",
-    BACKEND_SALE: "Sale",
-    RETURN: "Return",
-    DAMAGE: "Damage",
-    ADJUSTMENT: "Adjustment",
-    STOCK_TAKE: "Stock take",
-    TRANSFER: "Transfer",
-    WRITE_OFF: "Write-off",
-    SUPPLIER_RETURN: "Supplier return",
-  };
-  return map[String(type ?? "").toUpperCase()] ?? type ?? "—";
+  return inventoryTransactionTypeLabel(type);
 }
 
 export function InventoryTrendChart({ points }) {

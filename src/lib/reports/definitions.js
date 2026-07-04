@@ -1,3 +1,5 @@
+import { inventoryTransactionTypeLabel, salesChannelLabel } from "@/lib/user-facing-labels";
+
 /** @typedef {{ key: string, label: string, accessor: (row: object) => unknown, align?: 'left'|'right', badge?: (row: object) => { label: string, tone: string } | null, total?: boolean }} ReportColumn */
 
 /** @typedef {{ id: string, label: string, compute: (rows: object[]) => { value: string, hint?: string, tone?: string } }} ReportKpi */
@@ -33,7 +35,7 @@ export const REPORT_DEFINITIONS = {
     columns: [
       { key: "sale_day", label: "Date", accessor: (r) => r.sale_day },
       { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
-      { key: "channel", label: "Channel", accessor: (r) => r.channel },
+      { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
       { key: "orders", label: "Transactions", accessor: (r) => r.orders, align: "right", total: true },
       { key: "gross", label: "Gross Sales", accessor: (r) => r.gross, align: "right", total: true },
       { key: "vat", label: "VAT", accessor: (r) => r.vat, align: "right", total: true },
@@ -85,7 +87,7 @@ export const REPORT_DEFINITIONS = {
     columns: [
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
-      { key: "channel", label: "Channel", accessor: (r) => r.channel },
+      { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
       { key: "qty_sold", label: "Qty Sold", accessor: (r) => r.qty_sold, align: "right", total: true },
       {
         key: "net_ex_vat",
@@ -113,7 +115,7 @@ export const REPORT_DEFINITIONS = {
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "supplier_code", label: "Supplier Code", accessor: (r) => r.supplier_code || "—", link: "supplier" },
       { key: "supplier_name", label: "Supplier", accessor: (r) => r.supplier_name, link: "supplier" },
-      { key: "channel", label: "Channel", accessor: (r) => r.channel },
+      { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
       { key: "order_count", label: "Orders", accessor: (r) => r.order_count, align: "right", total: true },
       { key: "products_sold", label: "Products", accessor: (r) => r.products_sold, align: "right", total: true },
       { key: "qty_sold", label: "Qty Sold", accessor: (r) => r.qty_sold, align: "right", total: true },
@@ -143,7 +145,7 @@ export const REPORT_DEFINITIONS = {
     columns: [
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
-      { key: "channel", label: "Channel", accessor: (r) => r.channel },
+      { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
       { key: "payment_status", label: "Payment", accessor: (r) => r.payment_status },
       { key: "order_count", label: "Orders", accessor: (r) => r.order_count, align: "right", total: true },
       { key: "net_sales", label: "Net (ex VAT)", accessor: (r) => r.net_sales, align: "right", total: true },
@@ -165,7 +167,7 @@ export const REPORT_DEFINITIONS = {
     columns: [
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "salesperson", label: "User", accessor: (r) => r.salesperson },
-      { key: "channel", label: "Channel", accessor: (r) => r.channel },
+      { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
       { key: "order_count", label: "Orders", accessor: (r) => r.order_count, align: "right", total: true },
       {
         key: "net_ex_vat",
@@ -352,7 +354,7 @@ export const REPORT_DEFINITIONS = {
     columns: [
       { key: "created_at", label: "Date", accessor: (r) => r.created_at },
       { key: "reference", label: "Reference", accessor: (r) => `${r.reference_type ?? "—"} #${r.reference_id ?? "—"}` },
-      { key: "transaction_type", label: "Type", accessor: (r) => r.transaction_type },
+      { key: "transaction_type", label: "Type", accessor: (r) => inventoryTransactionTypeLabel(r.transaction_type) },
       {
         key: "product_name",
         label: "Product",
@@ -403,7 +405,7 @@ export const REPORT_DEFINITIONS = {
     columns: [
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "branch_name", label: "Branch", accessor: (r) => r.branch_name },
-      { key: "channel", label: "Channel", accessor: (r) => r.channel },
+      { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
       { key: "orders", label: "Orders", accessor: (r) => r.orders, align: "right", total: true },
       { key: "gross_sales", label: "Taxable Sales", accessor: (r) => r.gross_sales, align: "right", total: true },
       { key: "vat_collected", label: "VAT Collected", accessor: (r) => r.vat_collected, align: "right", total: true },

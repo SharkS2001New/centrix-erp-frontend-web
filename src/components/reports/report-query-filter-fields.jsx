@@ -1,7 +1,9 @@
 "use client";
 
 import { Field, FILTER_CONTROL_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
+import { ReportFilterSearchSelect, reportFilterSearchControlClass } from "@/components/reports/report-filter-search-select";
 import { REPORT_EXTRA_FILTERS } from "@/lib/reports/report-filter-config";
+import { REPORT_SHORT_SELECT_KEYS } from "@/lib/reports/report-filter-search";
 
 /**
  * @param {{
@@ -41,7 +43,7 @@ export function ReportQueryFilterFields({
         <Field key={filter.id} label={filter.label}>
           <input
             type="text"
-            className={controlClassName}
+            className={reportFilterSearchControlClass(controlClassName)}
             value={values[filter.id] ?? ""}
             placeholder={filter.placeholder}
             onChange={(e) => onChange(filter.id, e.target.value)}
@@ -52,6 +54,22 @@ export function ReportQueryFilterFields({
 
     if (filter.type === "select") {
       const options = optionsByKey[filter.optionsKey] ?? [{ value: "", label: "All" }];
+      const useNativeSelect = REPORT_SHORT_SELECT_KEYS.has(filter.optionsKey ?? "");
+
+      if (!useNativeSelect) {
+        return (
+          <Field key={filter.id} label={filter.label}>
+            <ReportFilterSearchSelect
+              filter={filter}
+              value={values[filter.id] ?? ""}
+              onChange={(nextValue) => onChange(filter.id, nextValue)}
+              options={options}
+              controlClassName={controlClassName}
+            />
+          </Field>
+        );
+      }
+
       return (
         <Field key={filter.id} label={filter.label}>
           <select

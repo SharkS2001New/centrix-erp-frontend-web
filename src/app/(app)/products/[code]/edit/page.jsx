@@ -20,7 +20,7 @@ import {
   useProductFormResources,
   validateRetailPackage,
 } from "@/components/products/product-form";
-import { SubcategoryCreateModal } from "@/components/products/subcategory-create-modal";
+import { productsCatalogHref } from "@/lib/products-list-state";
 
 export default function EditProductPage() {
   const params = useParams();
@@ -168,7 +168,7 @@ export default function EditProductPage() {
       ) : error ? (
         <div>
           <p className="text-sm text-red-600">{error}</p>
-          <Link href="/products" className="mt-3 inline-block text-sm text-[#185FA5] hover:underline">
+          <Link href={productsCatalogHref()} className="mt-3 inline-block text-sm text-[#185FA5] hover:underline">
             Back to products
           </Link>
         </div>

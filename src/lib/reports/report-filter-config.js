@@ -68,18 +68,11 @@ export const INVENTORY_LOCATION_OPTIONS = [
   { value: "store", label: "Store only" },
 ];
 
+import { INVENTORY_TRANSACTION_TYPE_LABELS } from "@/lib/user-facing-labels";
+
 export const INVENTORY_TXN_TYPE_OPTIONS = [
   { value: "", label: "All types" },
-  { value: "PURCHASE", label: "Purchase" },
-  { value: "POS_SALE", label: "POS sale" },
-  { value: "MOBILE_SALE", label: "Mobile sale" },
-  { value: "BACKEND_SALE", label: "Backoffice sale" },
-  { value: "RETURN", label: "Return" },
-  { value: "DAMAGE", label: "Damage" },
-  { value: "ADJUSTMENT", label: "Adjustment" },
-  { value: "STOCK_TAKE", label: "Stock take" },
-  { value: "TRANSFER", label: "Transfer" },
-  { value: "SUPPLIER_RETURN", label: "Supplier return" },
+  ...Object.entries(INVENTORY_TRANSACTION_TYPE_LABELS).map(([value, label]) => ({ value, label })),
 ];
 
 export const REPORT_DATE_COLUMNS = {
@@ -130,14 +123,12 @@ export const REPORT_DATE_COLUMNS = {
 export const REPORT_EXTRA_FILTERS = {
   "sales-by-product": [
     { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },
-    { id: "product_code", label: "Product", type: "select", optionsKey: "products" },
-    { id: "category_id", label: "Category", type: "select", optionsKey: "categories" },
+    { id: "sub_category_id", label: "Subcategory", type: "select", optionsKey: "subcategories" },
     { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
   ],
   "sales-by-supplier": [
     { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },
-    { id: "supplier_id", label: "Supplier", type: "select", optionsKey: "suppliers" },
-    { id: "product_code", label: "Product", type: "select", optionsKey: "products" },
+    { id: "q", label: "Search", type: "text", placeholder: "Supplier or product name…" },
   ],
   "sales-by-user": [
     { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },
@@ -154,7 +145,6 @@ export const REPORT_EXTRA_FILTERS = {
   "daily-sales": [{ id: "channel", label: "Channel", type: "select", optionsKey: "channels" }],
   "category-sales": [
     { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },
-    { id: "category_id", label: "Category", type: "select", optionsKey: "categories" },
     { id: "sub_category_id", label: "Subcategory", type: "select", optionsKey: "subcategories" },
   ],
   "vat-collected": [{ id: "channel", label: "Channel", type: "select", optionsKey: "channels" }],
@@ -175,7 +165,7 @@ export const REPORT_EXTRA_FILTERS = {
     { id: "payment_status", label: "Payment", type: "select", optionsKey: "paymentStatuses" },
   ],
   "low-stock": [
-    { id: "category_id", label: "Category", type: "select", optionsKey: "categories" },
+    { id: "sub_category_id", label: "Subcategory", type: "select", optionsKey: "subcategories" },
     { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
   ],
   "stock-movement": [

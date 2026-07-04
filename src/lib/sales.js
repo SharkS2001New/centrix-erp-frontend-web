@@ -1,3 +1,4 @@
+import { humanizeBackendTerm, salesChannelLabel } from "@/lib/user-facing-labels";
 import { formatOrgCurrency } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 import { getSaleTimestamp, isSameCalendarDay } from "@/components/catalog/catalog-shared";
@@ -34,7 +35,8 @@ export const ORDER_SOURCE_LABELS = {
 
 export function orderSourceLabel(source, fallbackChannel) {
   const key = String(source ?? fallbackChannel ?? "").toLowerCase();
-  return ORDER_SOURCE_LABELS[key] ?? key ?? "—";
+  if (ORDER_SOURCE_LABELS[key]) return ORDER_SOURCE_LABELS[key];
+  return salesChannelLabel(key) ?? humanizeBackendTerm(key) ?? key ?? "—";
 }
 
 /** Mobile field sales or POS route-order mode (route assigned, channel mobile|pos). */

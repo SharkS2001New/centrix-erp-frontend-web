@@ -14,6 +14,7 @@ import {
 } from "@/lib/reports/export";
 import { resolveReportBranding } from "@/lib/reports/report-branding";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { ReportFilterSearchSelect } from "@/components/reports/report-filter-search-select";
 import {
   ReportKpiGrid,
   ReportPageShell,
@@ -27,18 +28,11 @@ export function SupplierStatementScreen() {
   const { organization, generalSettings } = useAuth();
   const initialSupplier = searchParams.get("supplier_id") ?? searchParams.get("supplier") ?? "";
 
-  const [suppliers, setSuppliers] = useState([]);
   const [supplierId, setSupplierId] = useState(initialSupplier);
   const [appliedSupplierId, setAppliedSupplierId] = useState(initialSupplier);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    apiRequest("/suppliers", { searchParams: { per_page: 200 } })
-      .then((res) => setSuppliers(res.data ?? []))
-      .catch(() => setSuppliers([]));
-  }, []);
 
   useEffect(() => {
     const fromUrl = searchParams.get("supplier_id") ?? searchParams.get("supplier");
@@ -192,21 +186,14 @@ export function SupplierStatementScreen() {
         }}
       >
         <Field label="Supplier" className="min-w-[240px]">
-          <select
+          <ReportFilterSearchSelect
+            filter={{ id: "supplier_id", label: "Supplier", optionsKey: "suppliers" }}
             value={supplierId}
-            onChange={(e) => setSupplierId(e.target.value)}
-            className={inputClassName()}
+            onChange={setSupplierId}
+            options={[]}
+            controlClassName={inputClassName()}
             required
-          >
-            <option value="" disabled>
-              Select supplier
-            </option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={String(s.id)}>
-                {s.supplier_name}
-              </option>
-            ))}
-          </select>
+          />
         </Field>
         <button
           type="submit"

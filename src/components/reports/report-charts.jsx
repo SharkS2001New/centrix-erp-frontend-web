@@ -2,6 +2,7 @@
 
 import { formatKesCompact, formatShortDate } from "@/components/catalog/catalog-shared";
 import { formatReportKes } from "@/lib/reports/format";
+import { salesChannelLabel } from "@/lib/user-facing-labels";
 
 const CHART_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#06b6d4", "#8b5cf6", "#64748b"];
 
@@ -193,14 +194,8 @@ function ChartPlaceholder({ height, message }) {
 }
 
 export function channelLabel(channel) {
-  const map = {
-    pos: "POS",
-    wholesale: "Wholesale",
-    mobile: "Mobile Sales",
-    online: "Online",
-    route: "Route",
-  };
-  return map[channel?.toLowerCase?.()] ?? channel ?? "Other";
+  if (!channel) return "Other";
+  return salesChannelLabel(channel);
 }
 
 export { CHART_COLORS };

@@ -29,20 +29,14 @@ import {
   transactionTypeLabel,
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
-import { STOCK_MOVEMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { INVENTORY_TRANSACTION_TYPE_LABELS } from "@/lib/user-facing-labels";
 
 const TYPE_OPTIONS = [
   { value: "all", label: "All types" },
-  { value: "PURCHASE", label: "Purchase" },
-  { value: "POS_SALE", label: "POS sale" },
-  { value: "MOBILE_SALE", label: "Mobile sale" },
-  { value: "BACKEND_SALE", label: "Backend sale" },
-  { value: "DAMAGE", label: "Damage" },
-  { value: "ADJUSTMENT", label: "Adjustment" },
-  { value: "STOCK_TAKE", label: "Stock take" },
-  { value: "TRANSFER", label: "Transfer" },
+  ...Object.entries(INVENTORY_TRANSACTION_TYPE_LABELS)
+    .filter(([value]) => value !== "RETURN")
+    .map(([value, label]) => ({ value, label })),
   { value: "RETURN", label: "Customer return" },
-  { value: "SUPPLIER_RETURN", label: "Supplier return" },
 ];
 
 function groupMovementsByProduct(rows) {

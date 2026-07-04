@@ -20,6 +20,7 @@ export function ProductSearchSelect({
   disabled = false,
   required = false,
   placeholder = "Search by product name or code…",
+  inputClassName: inputClassNameProp,
 }) {
   const listId = useId();
   const rootRef = useRef(null);
@@ -154,8 +155,10 @@ export function ProductSearchSelect({
     setOpen(false);
   }
 
+  const fieldClassName = inputClassNameProp ?? inputClassName();
+
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="relative w-full">
       <div className="relative">
         <input
           type="text"
@@ -175,7 +178,7 @@ export function ProductSearchSelect({
           onFocus={() => {
             if (!disabled) setOpen(true);
           }}
-          className={inputClassName()}
+          className={fieldClassName}
         />
         {value && !disabled ? (
           <button

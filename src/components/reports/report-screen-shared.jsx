@@ -18,6 +18,7 @@ import {
 import { formatReportCell } from "@/lib/reports/format";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { ReportQueryFilterFieldsStructured } from "@/components/reports/report-query-filter-fields";
+import { ReportBranchSearchSelect } from "@/components/reports/report-filter-search-select";
 import { ReportCellLink } from "@/components/reports/report-cell-link";
 
 const BADGE_TONES = {
@@ -100,14 +101,12 @@ export function ReportFilterBar({
         ) : null}
         {showBranchFilter ? (
           <Field label="Branch">
-            <select className={inputClassName()} value={branchId} onChange={(e) => onBranchChange(e.target.value)}>
-              <option value="">All branches</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.branch_name}
-                </option>
-              ))}
-            </select>
+            <ReportBranchSearchSelect
+              value={branchId}
+              onChange={onBranchChange}
+              branches={branches}
+              controlClassName={inputClassName()}
+            />
           </Field>
         ) : null}
         {reportKey && onQueryFilterChange ? (

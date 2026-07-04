@@ -221,7 +221,6 @@ export const P = {
   },
 };
 
-export { ORDER_QUEUE_VIEW_PERMISSIONS };
 export function reportPermissionCode(reportKey) {
   const map = {
     "daily-sales": P.reports.daily_sales.view,

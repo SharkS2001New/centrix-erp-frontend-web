@@ -1,5 +1,6 @@
 "use client";
 
+import { humanizeBackendTerm } from "@/lib/user-facing-labels";
 import { PROVISIONABLE_WORKSPACES, applicationsFromEnabledModules } from "@/lib/workspace-modules";
 
 const APPLICATION_LABELS = Object.fromEntries(
@@ -20,7 +21,7 @@ export function enabledApplicationLabels(enabledModules = {}) {
 }
 
 export function channelLabels(channels = []) {
-  return channels.map((channel) => CHANNEL_LABELS[channel] ?? channel);
+  return channels.map((channel) => CHANNEL_LABELS[channel] ?? humanizeBackendTerm(channel) ?? channel);
 }
 
 export function ProvisionSetupPreview({ preview, loading = false, className = "" }) {

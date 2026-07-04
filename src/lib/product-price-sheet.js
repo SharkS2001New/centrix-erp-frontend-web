@@ -69,6 +69,7 @@ export function buildPriceSheetRow({
   uom,
   retailPackage,
   categoryName = "Uncategorized",
+  subcategoryName = "Uncategorized",
   retailPricingEnabled = true,
   lastCostPrice = null,
 }) {
@@ -103,6 +104,7 @@ export function buildPriceSheetRow({
     product_code: product?.product_code,
     product_name: product?.product_name ?? product?.product_code ?? "—",
     category_name: categoryName,
+    subcategory_name: subcategoryName,
     packaging: priceSheetPackagingLabel(uom),
     unit_price: unitPrice,
     last_cost_price: costPrice > 0 ? costPrice : null,
@@ -144,6 +146,25 @@ export function priceSheetColumnVisibility(rows, { retailPricingEnabled = true }
     aboveDozens: showAboveDozens,
     wholesale: showWholesale,
   };
+}
+
+/** Group rows by subcategory name (sorted). */
+export function groupPriceSheetBySubcategory(rows) {
+  const map = new Map();
+  for (const row of rows ?? []) {
+    const key = row.subcategory_name || row.category_name || "Uncategorized";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(row);
+  }
+
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([subcategory, items]) => ({
+      category: subcategory,
+      items: items.sort((a, b) =>
+        String(a.product_name).localeCompare(String(b.product_name)),
+      ),
+    }));
 }
 
 /** Group rows by category name (sorted). */

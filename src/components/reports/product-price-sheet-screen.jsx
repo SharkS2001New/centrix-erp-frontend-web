@@ -8,7 +8,7 @@ import { fetchAllPaginated } from "@/lib/paginated-api";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import {
   buildPriceSheetRow,
-  groupPriceSheetByCategory,
+  groupPriceSheetBySubcategory,
   priceSheetCellValue,
   priceSheetColumnVisibility,
   priceSheetPriceWithMargin,
@@ -17,13 +17,17 @@ import { openPrintWindow } from "@/lib/open-print-window";
 import {
   CatalogPageShell,
   Field,
-  FilterSelect,
   PrimaryButton,
   SearchInput,
   TABLE_BODY_ROW_CLASS,
   TABLE_SECTION_ROW_CLASS,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
+import {
+  REPORT_FILTER_SEARCH_WRAPPER_CLASS,
+  reportFilterSearchControlClass,
+} from "@/components/reports/report-filter-search-select";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -75,7 +79,7 @@ function buildPriceSheetPrintHtml({
 
   const body = groups
     .map((group) => {
-      const categoryRow = `<tr class="category"><td colspan="${colCount}">Category: ${escapeHtml(group.category)}</td></tr>`;
+      const categoryRow = `<tr class="category"><td colspan="${colCount}">Subcategory: ${escapeHtml(group.category)}</td></tr>`;
       const itemRows = group.items
         .map((row) => {
           const cells = [
@@ -172,9 +176,9 @@ export function ProductPriceSheetScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [subcategoryFilter, setSubcategoryFilter] = useState("all");
   const [rows, setRows] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const [subcategories, setSubcategories] = useState([]);
   const [printColumns, setPrintColumns] = useState(DEFAULT_PRINT_COLUMNS);
 
   const load = useCallback(async () => {
@@ -196,6 +200,11 @@ export function ProductPriceSheetScreen() {
       const catById = new Map((catRes.data ?? []).map((c) => [c.id, c]));
       const subById = new Map((subRes.data ?? []).map((s) => [s.id, s]));
 
+      const subcategoryNameFor = (product) => {
+        const sub = subById.get(product.subcategory_id);
+        return sub?.subcategory_name ?? "Uncategorized";
+      };
+
       const categoryNameFor = (product) => {
         const sub = subById.get(product.subcategory_id);
         if (!sub) return "Uncategorized";
@@ -211,14 +220,15 @@ export function ProductPriceSheetScreen() {
             uom: uomById.get(product.unit_id),
             retailPackage: retailByCode.get(product.product_code),
             categoryName: categoryNameFor(product),
+            subcategoryName: subcategoryNameFor(product),
             retailPricingEnabled,
           }),
         );
 
       setRows(built);
-      setCategories(
-        [...catById.values()].sort((a, b) =>
-          String(a.category_name).localeCompare(String(b.category_name)),
+      setSubcategories(
+        [...subById.values()].sort((a, b) =>
+          String(a.subcategory_name).localeCompare(String(b.subcategory_name)),
         ),
       );
     } catch (e) {
@@ -232,20 +242,31 @@ export function ProductPriceSheetScreen() {
     load();
   }, [load]);
 
+  const subcategoryOptions = useMemo(
+    () => [
+      { value: "all", label: "All subcategories" },
+      ...subcategories.map((subcategory) => ({
+        value: subcategory.subcategory_name,
+        label: subcategory.subcategory_name,
+      })),
+    ],
+    [subcategories],
+  );
+
   const filteredRows = useMemo(() => {
     const q = String(search ?? "").trim().toLowerCase();
     return rows.filter((row) => {
-      if (categoryFilter !== "all" && row.category_name !== categoryFilter) return false;
+      if (subcategoryFilter !== "all" && row.subcategory_name !== subcategoryFilter) return false;
       if (!q) return true;
       return (
         String(row.product_name).toLowerCase().includes(q) ||
         String(row.product_code).toLowerCase().includes(q)
       );
     });
-  }, [rows, search, categoryFilter]);
+  }, [rows, search, subcategoryFilter]);
 
   const groups = useMemo(
-    () => groupPriceSheetByCategory(filteredRows),
+    () => groupPriceSheetBySubcategory(filteredRows),
     [filteredRows],
   );
 
@@ -291,7 +312,7 @@ export function ProductPriceSheetScreen() {
   });
 
   const subtitle = retailPricingEnabled
-    ? "Pricing in pieces, dozens, and cartons with expected profit margins (grouped by category)"
+    ? "Pricing in pieces, dozens, and cartons with expected profit margins (grouped by subcategory)"
     : "Wholesale pricing and expected profit margins by packaging";
 
   function handlePrint() {
@@ -334,20 +355,23 @@ export function ProductPriceSheetScreen() {
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="Search products">
-          <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or code…" />
-        </Field>
-        <Field label="Category">
-          <FilterSelect
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            options={[
-              { value: "all", label: "All categories" },
-              ...categories.map((c) => ({
-                value: c.category_name,
-                label: c.category_name,
-              })),
-            ]}
+          <SearchInput
+            className={REPORT_FILTER_SEARCH_WRAPPER_CLASS}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Name or code…"
           />
+        </Field>
+        <Field label="Subcategory">
+          <div className={REPORT_FILTER_SEARCH_WRAPPER_CLASS}>
+            <HrSearchableSelect
+              value={subcategoryFilter}
+              onChange={setSubcategoryFilter}
+              options={subcategoryOptions}
+              placeholder="All subcategories"
+              inputClassName={reportFilterSearchControlClass(inputClassName())}
+            />
+          </div>
         </Field>
         <Field label="Prepared by">
           <input
@@ -459,7 +483,7 @@ export function ProductPriceSheetScreen() {
                         colSpan={visibleColumnCount}
                         className="px-3 py-2 text-xs font-bold uppercase tracking-wide"
                       >
-                        Category: {group.category}
+                        Subcategory: {group.category}
                       </td>
                     </tr>
                     {group.items.map((row) => (

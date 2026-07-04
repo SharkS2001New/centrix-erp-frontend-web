@@ -16,6 +16,7 @@ import {
 } from "@/lib/reports/report-filter-config";
 import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options";
 import { ReportQueryFilterFields } from "@/components/reports/report-query-filter-fields";
+import { ReportBranchSearchSelect } from "@/components/reports/report-filter-search-select";
 import { reportVatKpis } from "@/lib/reports/vat-summary";
 import { formatReportKes } from "@/lib/reports/format";
 import { ReportKpiGrid } from "@/components/reports/report-screen-shared";
@@ -227,21 +228,15 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
           ) : null}
           {multiBranch ? (
             <Field label="Branch">
-              <select
-                className={FILTER_CONTROL_CLASS}
+              <ReportBranchSearchSelect
                 value={branchId}
-                onChange={(e) => {
+                onChange={(nextBranchId) => {
                   setPage(1);
-                  setBranchId(e.target.value);
+                  setBranchId(nextBranchId);
                 }}
-              >
-                <option value="">All branches</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.branch_name}
-                  </option>
-                ))}
-              </select>
+                branches={branches}
+                controlClassName={FILTER_CONTROL_CLASS}
+              />
             </Field>
           ) : null}
           <ReportQueryFilterFields

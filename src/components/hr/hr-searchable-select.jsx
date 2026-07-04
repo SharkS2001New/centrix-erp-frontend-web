@@ -14,6 +14,7 @@ export function HrSearchableSelect({
   required = false,
   disabled = false,
   emptyLabel = "No matches",
+  inputClassName: inputClassNameProp,
 }) {
   const listId = useId();
   const rootRef = useRef(null);
@@ -60,9 +61,10 @@ export function HrSearchableSelect({
   }
 
   const inputValue = open ? search : (selected?.label ?? "");
+  const fieldClassName = inputClassNameProp ?? inputClassName();
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="relative w-full">
       <div className="relative">
         <input
           type="text"
@@ -83,7 +85,7 @@ export function HrSearchableSelect({
             setOpen(true);
             setSearch("");
           }}
-          className={inputClassName()}
+          className={fieldClassName}
         />
         {value ? (
           <button

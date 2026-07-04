@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { productsCatalogHref } from "@/lib/products-list-state";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
-import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
+import { inventoryTransactionTypeLabel } from "@/lib/user-facing-labels";
 import {
   formatShortDate,
   PencilIcon,
@@ -183,7 +184,7 @@ function movementLabel(row, uom) {
     return `+${absText} Purchase / receipt`;
   }
   if (type === "POS_SALE" || type === "MOBILE_SALE" || type === "BACKEND_SALE") {
-    return `−${absText} Sale`;
+    return `−${absText} ${inventoryTransactionTypeLabel(type)}`;
   }
   if (type === "SUPPLIER_RETURN") {
     return `−${absText} Supplier return`;
@@ -708,7 +709,7 @@ export default function ProductDetailPage() {
     setDeleteError(null);
     try {
       await apiRequest(`/products/${encodeURIComponent(productCode)}`, { method: "DELETE" });
-      router.push("/products");
+      router.push(productsCatalogHref());
     } catch (e) {
       setDeleteError(e instanceof ApiError ? e.message : "Delete failed");
     } finally {
@@ -723,7 +724,7 @@ export default function ProductDetailPage() {
   if (error || !enriched) {
     return (
       <div className="p-8">
-        <Link href="/products" className="theme-link text-sm hover:underline">
+        <Link href={productsCatalogHref()} className="theme-link text-sm hover:underline">
           ← Back to products
         </Link>
         <p className="mt-4 text-sm text-red-600">{error ?? "Product not found"}</p>
@@ -749,7 +750,7 @@ export default function ProductDetailPage() {
   return (
     <div className="theme-workspace min-h-full">
       <div className="mb-6">
-        <Link href="/products" className="theme-link text-sm hover:underline">
+        <Link href={productsCatalogHref()} className="theme-link text-sm hover:underline">
           ← Back to products
         </Link>
       </div>

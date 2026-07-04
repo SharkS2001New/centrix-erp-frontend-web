@@ -15,6 +15,16 @@ import {
 } from "@/lib/reports/export";
 import { resolveReportBranding } from "@/lib/reports/report-branding";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
+import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
+import {
+  REPORT_FILTER_SEARCH_WRAPPER_CLASS,
+  reportFilterSearchControlClass,
+} from "@/components/reports/report-filter-search-select";
+import {
+  creditCustomerToOption,
+  fetchCreditCustomerByNum,
+  searchCreditCustomers,
+} from "@/lib/credit-customer-search";
 import {
   ReportKpiGrid,
   ReportPageShell,
@@ -26,16 +36,23 @@ export function CustomerStatementScreen() {
   const { organization, generalSettings } = useAuth();
   const initialCustomer = searchParams.get("customer") ?? "";
 
-  const [customers, setCustomers] = useState([]);
   const [customerNum, setCustomerNum] = useState(initialCustomer);
   const [appliedCustomer, setAppliedCustomer] = useState(initialCustomer);
+  const [customerOptions, setCustomerOptions] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+
   useEffect(() => {
-    apiRequest("/customers", { searchParams: { per_page: 200 } })
-      .then((res) => setCustomers(res.data ?? []))
-      .catch(() => setCustomers([]));
-  }, []);
+    if (!initialCustomer) return undefined;
+    let cancelled = false;
+    void fetchCreditCustomerByNum(initialCustomer).then((row) => {
+      if (cancelled || !row) return;
+      setCustomerOptions([creditCustomerToOption(row)]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialCustomer]);
 
   useEffect(() => {
     const fromUrl = searchParams.get("customer");
@@ -171,18 +188,40 @@ export function CustomerStatementScreen() {
       <div className="mb-6 theme-panel rounded-xl border p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-4">
           <Field label="Customer">
-            <select
-              className={`${inputClassName()} min-w-[240px]`}
-              value={customerNum}
-              onChange={(e) => setCustomerNum(e.target.value)}
-            >
-              <option value="">Select customer…</option>
-              {customers.map((c) => (
-                <option key={c.customer_num} value={c.customer_num}>
-                  {c.customer_name} ({c.customer_num})
-                </option>
-              ))}
-            </select>
+            <div className={REPORT_FILTER_SEARCH_WRAPPER_CLASS}>
+              <PosSearchableSelect
+                value={customerNum}
+                onChange={(value, option) => {
+                  setCustomerNum(value);
+                  if (option) {
+                    setCustomerOptions((prev) => {
+                      if (prev.some((row) => String(row.value) === String(option.value))) return prev;
+                      return [...prev, option];
+                    });
+                  }
+                }}
+                options={customerOptions}
+                loadOptions={async (query) => {
+                  const rows = await searchCreditCustomers(query);
+                  setCustomerOptions((prev) => {
+                    const merged = [...prev];
+                    for (const row of rows) {
+                      if (!merged.some((item) => String(item.value) === String(row.value))) {
+                        merged.push(row);
+                      }
+                    }
+                    return merged;
+                  });
+                  return rows;
+                }}
+                minSearchLength={1}
+                placeholder="Search customer by name, phone, or #"
+                searchPlaceholder="Search by name, phone, or customer #…"
+                idleSearchLabel="Type a name, phone number, or customer #"
+                emptyLabel="No matching customers"
+                inputClassName={reportFilterSearchControlClass(inputClassName())}
+              />
+            </div>
           </Field>
           <button
             type="button"
