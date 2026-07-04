@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
+import { routeOrderSourcesText } from "@/lib/distribution-settings";
 import { formatOrderNumber } from "@/lib/sales";
 import {
   aggregateSalesByRoute,
@@ -23,6 +25,7 @@ import {
 
 export default function RouteDetailPage() {
   const params = useParams();
+  const { capabilities } = useAuth();
   const routeId = Number(params.id);
 
   const [route, setRoute] = useState(null);
@@ -142,7 +145,7 @@ export default function RouteDetailPage() {
                   Sales · {periodLabel.toLowerCase()}
                 </h3>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Active route orders in this period (backoffice, mobile, and POS)
+                  Active route orders in this period ({routeOrderSourcesText(capabilities).toLowerCase()})
                 </p>
               </div>
               {recentSales.length === 0 ? (

@@ -9,6 +9,11 @@ import { Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName } from "@/com
 import { ExternalAccountingIntegrationPanel } from "@/components/admin/external-accounting-integration-panel";
 import { AccountingAutoPostPanel } from "@/components/admin/accounting-auto-post-panel";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
+import { FinanceDebtorPaymentAlerts } from "@/components/admin/customer-notification-fields";
+import {
+  financeDebtorAlertPayloadFromForm,
+  notificationsFormFromApi,
+} from "@/lib/notifications-settings";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
@@ -45,6 +50,7 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
   const { settingsPath } = useSettingsApi();
   const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
   const [form, setForm] = useState(financeFormFromApi({}));
+  const [alertForm, setAlertForm] = useState(notificationsFormFromApi({}));
   const [autoPostForm, setAutoPostForm] = useState(null);
   const [loading, setLoading] = useState(true);
   const [kraHealthTesting, setKraHealthTesting] = useState(false);
@@ -61,6 +67,12 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
       .finally(() => setLoading(false));
   }, [setError, settingsPath]);
 
+  useEffect(() => {
+    apiRequest(settingsPath("notifications"))
+      .then((res) => setAlertForm(notificationsFormFromApi(res)))
+      .catch(() => {});
+  }, [settingsPath]);
+
   function setMpesa(field, value) {
     setForm((f) => ({ ...f, mpesa: { ...f.mpesa, [field]: value } }));
   }
@@ -75,6 +87,7 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
     if (kraAllowed) tabs.push({ id: "kra", label: "Tax receipts (KRA)" });
     if (hasAccounting) tabs.push({ id: "accounting", label: "Books & accounting" });
     if (mpesaAllowed) tabs.push({ id: "mpesa", label: "M-Pesa payments" });
+    tabs.push({ id: "alerts", label: "Customer alerts" });
     return tabs;
   }, [hasAccounting, kraAllowed, mpesaAllowed]);
 
@@ -133,6 +146,13 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
         body: financePayloadFromForm(form, { includeMpesa: mpesaAllowed }),
       });
       setForm(financeFormFromApi(res));
+
+      await apiRequest(settingsPath("notifications"), {
+        method: "PATCH",
+        body: financeDebtorAlertPayloadFromForm(alertForm),
+      });
+      const notificationsRes = await apiRequest(settingsPath("notifications"));
+      setAlertForm(notificationsFormFromApi(notificationsRes));
 
       if (hasAccounting && form.accounting_mode !== "external" && autoPostForm) {
         const accountingRes = await apiRequest("/accounting/settings", {
@@ -615,6 +635,10 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
               organization by paybill or till number.
             </p>
           </div>
+          ) : null}
+
+          {activeTab === "alerts" ? (
+            <FinanceDebtorPaymentAlerts form={alertForm} setForm={setAlertForm} />
           ) : null}
 
           <PrimaryButton type="button" showIcon={false} disabled={saving} onClick={() => void saveFinanceSettings()}>

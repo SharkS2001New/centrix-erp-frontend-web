@@ -1,4 +1,5 @@
 import { loadingSheetPrintFormFromApi, loadingSheetPrintPayloadFromForm } from "@/lib/loading-sheet-print-settings";
+import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 
 export const DISTRIBUTION_DEFAULTS = {
   enable_distribution_ops: true,
@@ -238,4 +239,20 @@ export function buildFulfillmentTransitionBody(targetStatus, fulfillmentMeta = {
     body.fulfillment_meta = fulfillmentMeta;
   }
   return body;
+}
+
+/** Human-readable route-order channel list for Distribution UI copy. */
+export function routeOrderChannelLabels(capabilities) {
+  const labels = ["Mobile", "Backoffice"];
+  if (isExternalPosEnabled(capabilities)) {
+    labels.splice(1, 0, "POS");
+  }
+  return labels;
+}
+
+export function routeOrderSourcesText(capabilities) {
+  const labels = routeOrderChannelLabels(capabilities);
+  if (labels.length <= 1) return labels[0] ?? "";
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
 }

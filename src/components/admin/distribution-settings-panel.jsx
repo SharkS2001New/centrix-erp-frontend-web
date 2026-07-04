@@ -11,7 +11,12 @@ import {
 } from "@/lib/distribution-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { LoadingListPrintSettingsFields } from "@/components/admin/loading-list-print-settings-fields";
+import { DistributionDeliveryAlerts } from "@/components/admin/customer-notification-fields";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
+import {
+  distributionDeliveryAlertPayloadFromForm,
+  notificationsFormFromApi,
+} from "@/lib/notifications-settings";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
@@ -41,6 +46,7 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
   const { settingsPath } = useSettingsApi();
   const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
   const [form, setForm] = useState(distributionFormFromApi({}));
+  const [alertForm, setAlertForm] = useState(notificationsFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("routes");
 
@@ -57,8 +63,11 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
 
   useEffect(() => {
     setLoading(true);
-    apiRequest(settingsPath("distribution"))
-      .then((res) => setForm(distributionFormFromApi(res)))
+    Promise.all([apiRequest(settingsPath("distribution")), apiRequest(settingsPath("notifications"))])
+      .then(([distributionRes, notificationsRes]) => {
+        setForm(distributionFormFromApi(distributionRes));
+        setAlertForm(notificationsFormFromApi(notificationsRes));
+      })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load distribution settings"))
       .finally(() => setLoading(false));
   }, [setError, settingsPath]);
@@ -69,11 +78,18 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest(settingsPath("distribution"), {
-        method: "PATCH",
-        body: distributionPayloadFromForm(form),
-      });
-      setForm(distributionFormFromApi(res));
+      const [distributionRes, notificationsRes] = await Promise.all([
+        apiRequest(settingsPath("distribution"), {
+          method: "PATCH",
+          body: distributionPayloadFromForm(form),
+        }),
+        apiRequest(settingsPath("notifications"), {
+          method: "PATCH",
+          body: distributionDeliveryAlertPayloadFromForm(alertForm),
+        }),
+      ]);
+      setForm(distributionFormFromApi(distributionRes));
+      setAlertForm(notificationsFormFromApi(notificationsRes));
       if (afterSave) await afterSave();
       setMessage("Distribution settings saved.");
     } catch (e) {
@@ -265,6 +281,7 @@ export function DistributionSettingsPanel({ saving, setSaving, setError, setMess
               onChange={(v) => setForm((f) => ({ ...f, require_trip_cash_settlement: v }))}
               disabled={!form.enable_distribution_ops || !form.enable_cod_reconciliation}
             />
+            <DistributionDeliveryAlerts form={alertForm} setForm={setAlertForm} />
           </div>
             ) : null}
           </div>

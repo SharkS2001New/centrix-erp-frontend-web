@@ -18,11 +18,17 @@ import {
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { SalesOrderPlacedAlerts } from "@/components/admin/customer-notification-fields";
+import {
+  notificationsFormFromApi,
+  salesOrderAlertPayloadFromForm,
+} from "@/lib/notifications-settings";
 
 const SALES_SETTINGS_TABS = [
   { id: "checkout", label: "Prices & discounts" },
   { id: "payment", label: "Recording payments" },
   { id: "pos", label: "Tills & checkout" },
+  { id: "alerts", label: "Customer alerts" },
 ];
 
 function SalesSettingsTabBar({ tabs, activeTab, onTabChange }) {
@@ -531,6 +537,7 @@ export function SalesSettingsPanel({
   const { refreshCapabilities } = useAuth();
   const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
   const [salesForm, setSalesForm] = useState(EMPTY_SALES_ORGANIZATION_FORM);
+  const [alertForm, setAlertForm] = useState(notificationsFormFromApi({}));
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("checkout");
 
@@ -550,10 +557,14 @@ export function SalesSettingsPanel({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest(settingsPath("sales"));
+      const [salesRes, notificationsRes] = await Promise.all([
+        apiRequest(settingsPath("sales")),
+        apiRequest(settingsPath("notifications")),
+      ]);
       setSalesForm(
-        sanitizeSalesOrganizationFormForModules(salesOrganizationFormFromApi(res), capabilities),
+        sanitizeSalesOrganizationFormForModules(salesOrganizationFormFromApi(salesRes), capabilities),
       );
+      setAlertForm(notificationsFormFromApi(notificationsRes));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load settings");
     } finally {
@@ -569,14 +580,24 @@ export function SalesSettingsPanel({
     e.preventDefault();
     setSaving(true);
     try {
-      await apiRequest(settingsPath("sales"), {
-        method: "PATCH",
-        body: salesOrganizationPayloadFromForm(salesForm, capabilities),
-      });
-      const res = await apiRequest(settingsPath("sales"));
+      await Promise.all([
+        apiRequest(settingsPath("sales"), {
+          method: "PATCH",
+          body: salesOrganizationPayloadFromForm(salesForm, capabilities),
+        }),
+        apiRequest(settingsPath("notifications"), {
+          method: "PATCH",
+          body: salesOrderAlertPayloadFromForm(alertForm),
+        }),
+      ]);
+      const [salesRes, notificationsRes] = await Promise.all([
+        apiRequest(settingsPath("sales")),
+        apiRequest(settingsPath("notifications")),
+      ]);
       setSalesForm(
-        sanitizeSalesOrganizationFormForModules(salesOrganizationFormFromApi(res), capabilities),
+        sanitizeSalesOrganizationFormForModules(salesOrganizationFormFromApi(salesRes), capabilities),
       );
+      setAlertForm(notificationsFormFromApi(notificationsRes));
       if (afterSave) await afterSave();
       setMessage("Sales settings saved.");
     } catch (e) {
@@ -645,6 +666,10 @@ export function SalesSettingsPanel({
                 hasPosSales={hasPosSales}
                 posCheckoutEnabled={posCheckoutEnabled}
               />
+            ) : null}
+
+            {activeTab === "alerts" ? (
+              <SalesOrderPlacedAlerts form={alertForm} setForm={setAlertForm} />
             ) : null}
           </div>
         )}

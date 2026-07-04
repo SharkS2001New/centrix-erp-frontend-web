@@ -104,7 +104,7 @@ export function notificationsFormFromApi(res) {
   };
 }
 
-export function notificationsPayloadFromForm(form) {
+export function notificationChannelsPayloadFromForm(form) {
   return {
     sms_enabled: Boolean(form.sms_enabled),
     sms_provider: form.sms_provider || "africas_talking",
@@ -120,20 +120,40 @@ export function notificationsPayloadFromForm(form) {
     smtp_username: form.smtp_username?.trim() ?? "",
     smtp_password: form.smtp_password?.trim() ?? "",
     smtp_encryption: form.smtp_encryption || "tls",
-    notify_on_dispatch: Boolean(form.notify_on_dispatch),
-    notify_on_delivery: Boolean(form.notify_on_delivery),
+  };
+}
+
+export function salesOrderAlertPayloadFromForm(form) {
+  return {
     notify_on_order_placed: Boolean(form.notify_on_order_placed),
     order_placed_scope: form.order_placed_scope || "all",
+    order_placed_sms_template: form.order_placed_sms_template?.trim() ?? "",
+    order_placed_email_template: form.order_placed_email_template?.trim() ?? "",
+  };
+}
+
+export function financeDebtorAlertPayloadFromForm(form) {
+  return {
     notify_on_debtor_payment: Boolean(form.notify_on_debtor_payment),
     debtor_payment_scope: form.debtor_payment_scope || "debtors",
+    debtor_payment_sms_template: form.debtor_payment_sms_template?.trim() ?? "",
+    debtor_payment_email_template: form.debtor_payment_email_template?.trim() ?? "",
+  };
+}
+
+export function distributionDeliveryAlertPayloadFromForm(form) {
+  return {
+    notify_on_dispatch: Boolean(form.notify_on_dispatch),
+    notify_on_delivery: Boolean(form.notify_on_delivery),
     dispatch_sms_template: form.dispatch_sms_template?.trim() ?? "",
     delivery_sms_template: form.delivery_sms_template?.trim() ?? "",
     dispatch_email_template: form.dispatch_email_template?.trim() ?? "",
     delivery_email_template: form.delivery_email_template?.trim() ?? "",
-    order_placed_sms_template: form.order_placed_sms_template?.trim() ?? "",
-    order_placed_email_template: form.order_placed_email_template?.trim() ?? "",
-    debtor_payment_sms_template: form.debtor_payment_sms_template?.trim() ?? "",
-    debtor_payment_email_template: form.debtor_payment_email_template?.trim() ?? "",
+  };
+}
+
+export function managerApprovalEmailPayloadFromForm(form) {
+  return {
     notify_on_approval_request: Boolean(form.notify_on_approval_request),
     notify_on_approval_outcome: Boolean(form.notify_on_approval_outcome),
     approval_request_email_subject: form.approval_request_email_subject?.trim() ?? "",
@@ -143,12 +163,22 @@ export function notificationsPayloadFromForm(form) {
   };
 }
 
+export function notificationsPayloadFromForm(form) {
+  return {
+    ...notificationChannelsPayloadFromForm(form),
+    ...salesOrderAlertPayloadFromForm(form),
+    ...financeDebtorAlertPayloadFromForm(form),
+    ...distributionDeliveryAlertPayloadFromForm(form),
+    ...managerApprovalEmailPayloadFromForm(form),
+  };
+}
+
 export function channelHint(form) {
   const channels = [];
   if (form.sms_enabled) channels.push("SMS");
   if (form.email_enabled) channels.push("email");
   if (channels.length === 0) {
-    return "Enable SMS and/or email above for automatic delivery.";
+    return "Enable SMS and/or email under Organization settings → Notifications for automatic delivery.";
   }
   return `Auto-sends via ${channels.join(" and ")} when the customer has a phone number and/or email on file.`;
 }

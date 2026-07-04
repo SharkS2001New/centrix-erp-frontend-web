@@ -46,6 +46,7 @@ import {
 } from "@/components/sales/sales-orders-shared";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
+import { routeOrderSourcesText } from "@/lib/distribution-settings";
 import {
   defaultOrderListPrintDocumentType,
   getOrdersListDefaultDateRange,
@@ -617,15 +618,16 @@ export default function SalesOrdersListScreen({
       hasExternalPos,
       canEdit: Boolean(sale.can_edit_lines),
       balanceDue: saleBalanceDue(sale),
+      disableWorkflowActions: routeOrdersOnly,
       onView: () => viewOrder(sale),
       onEdit: () => openEditOrder(sale),
       onCollectPayment: canRecordOrderPayment(sale) ? () => openCollectPayment(sale) : null,
       onPrintThermal: () => void printOrder(sale, "receipt"),
       onPrintA4: () => void printOrder(sale, "invoice"),
-      onAdvance: (status) => void handleAdvance(sale, status),
-      onCancel: () => void handleAdvance(sale, "cancelled"),
+      onAdvance: routeOrdersOnly ? null : (status) => void handleAdvance(sale, status),
+      onCancel: routeOrdersOnly ? null : () => void handleAdvance(sale, "cancelled"),
     });
-  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos]);
+  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos, routeOrdersOnly]);
 
   useEffect(() => {
     setPage(1);
@@ -669,12 +671,12 @@ export default function SalesOrdersListScreen({
           ? (queueConfig?.title ?? "Route orders")
           : queueConfig?.title ?? "View All Orders"
       }
-      subtitle={
-        routeOrdersOnly
-          ? (queueConfig?.subtitle
-            ?? "Route orders for customers on a delivery route — mobile, POS, and backoffice")
-          : queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"
-      }
+        subtitle={
+          routeOrdersOnly
+            ? (queueConfig?.subtitle
+              ?? `Route orders from ${routeOrderSourcesText(capabilities).toLowerCase()}. View only — change status in Sales → Orders.`)
+            : queueConfig?.subtitle ?? "Browse and manage every sales order in your workflow"
+        }
       action={
         routeOrdersOnly ? (
           <div className="flex flex-wrap items-center gap-2">

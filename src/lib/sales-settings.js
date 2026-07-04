@@ -54,7 +54,7 @@ const SALES_DEFAULTS = {
   mobile_checkout_mode: 'save_only',
   mobile_product_list_mode: 'in_stock_only',
   mobile_enable_field_attendance: false,
-  mobile_show_customer_phone: true,
+  mobile_show_customer_phone: false,
   require_pos_till_float: false,
   require_backoffice_till_float: false,
   blind_till_close: false,
@@ -234,7 +234,7 @@ export const EMPTY_MOBILE_APPLICATION_FORM = {
   mobile_checkout_location_radius_metres: "5",
   mobile_checkout_mode: "save_only",
   mobile_product_list_mode: "in_stock_only",
-  mobile_show_customer_phone: true,
+  mobile_show_customer_phone: false,
 };
 
 export function mobileApplicationFormFromApi(res) {
@@ -249,7 +249,7 @@ export function mobileApplicationFormFromApi(res) {
     ),
     mobile_checkout_mode: normalizeMobileCheckoutMode(sales.mobile_checkout_mode),
     mobile_product_list_mode: normalizeMobileProductListMode(sales.mobile_product_list_mode),
-    mobile_show_customer_phone: sales.mobile_show_customer_phone !== false,
+    mobile_show_customer_phone: sales.mobile_show_customer_phone === true,
   };
 }
 
@@ -263,13 +263,13 @@ export function mobileApplicationPayloadFromForm(form) {
       Number(form.mobile_checkout_location_radius_metres) || 5,
     mobile_checkout_mode: normalizeMobileCheckoutMode(form.mobile_checkout_mode),
     mobile_product_list_mode: normalizeMobileProductListMode(form.mobile_product_list_mode),
-    mobile_show_customer_phone: form.mobile_show_customer_phone !== false,
+    mobile_show_customer_phone: form.mobile_show_customer_phone === true,
   };
 }
 
-/** Whether the mobile app should display customer phone numbers (defaults to true). */
+/** Whether the mobile app should display customer phone numbers (off by default). */
 export function isMobileCustomerPhoneVisible(moduleSettings) {
-  return mergeSalesSettings(moduleSettings).mobile_show_customer_phone !== false;
+  return mergeSalesSettings(moduleSettings).mobile_show_customer_phone === true;
 }
 
 /** Org-admin sales settings form (excludes mobile application keys — see Mobile application tab). */
@@ -563,6 +563,10 @@ export function isStockAdjustmentApprovalEnabled(moduleSettings) {
 
 export function isStockTransferApprovalEnabled(moduleSettings) {
   return Boolean(moduleSettings?.inventory?.stock_transfer_approval_enabled);
+}
+
+export function isDamageWriteOffApprovalEnabled(moduleSettings) {
+  return Boolean(moduleSettings?.inventory?.damage_write_off_approval_enabled);
 }
 
 export const ORDER_DOCUMENT_TYPES = ["receipt", "invoice", "both"];

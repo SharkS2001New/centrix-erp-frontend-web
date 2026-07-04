@@ -78,12 +78,22 @@ export function tripDispatchStatusCopy(status) {
  */
 export function resolveTripDetailGuidance({ trip, loadingList, pickingList, distributionSettings = {} }) {
   const status = String(trip?.status ?? "draft");
-  const lines = loadingList?.lines ?? [];
+  const orders = loadingList?.orders ?? [];
+  const lineCount =
+    loadingList?.line_count ??
+    orders.reduce((sum, order) => sum + (order.lines?.length ?? 0), 0) ??
+    loadingList?.lines?.length ??
+    0;
   const pickLines = pickingList?.lines ?? [];
   const loadingLocked = loadingList?.status && loadingList.status !== "open";
   const pickingComplete =
     pickingList?.status === "completed" || pickingList?.status === "locked" || loadingLocked;
-  const orderCount = trip?.financial_summary?.order_count ?? trip?.sales?.length ?? 0;
+  const orderCount =
+    trip?.financial_summary?.order_count ??
+    trip?.sales?.length ??
+    loadingList?.order_count ??
+    orders.length ??
+    0;
   const workflowIndex = tripWorkflowIndex(status);
 
   const steps = [
@@ -104,14 +114,14 @@ export function resolveTripDetailGuidance({ trip, loadingList, pickingList, dist
       id: "review",
       label: "Review loading list",
       hint: "Check the vehicle load manifest matches what was picked.",
-      done: lines.length > 0 || workflowIndex >= 1,
+      done: lineCount > 0 || workflowIndex >= 1,
     },
     {
       id: "lock",
       label: "Lock loading list",
       hint: "Enter prepared by and checked by to confirm loading is ready.",
       done: loadingLocked || workflowIndex >= 2,
-      skipWhen: lines.length === 0,
+      skipWhen: lineCount === 0,
     },
     {
       id: "dispatch",

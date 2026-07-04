@@ -10,6 +10,7 @@ import {
   shouldShowDistributionHelp,
 } from "@/lib/workspaces";
 import { FULFILLMENT_WORKFLOW_SCREENS } from "@/lib/fulfillment-guidance";
+import { routeOrderSourcesText } from "@/lib/distribution-settings";
 import { DistributionWorkflowFlowchart } from "@/components/fulfillment/distribution-workflow-flowchart";
 
 const WORKFLOW_STEPS = [
@@ -23,7 +24,7 @@ const WORKFLOW_STEPS = [
   },
   {
     title: "Capture route orders",
-    body: "Route orders are sales tied to a delivery route — from mobile reps, POS, or backoffice.",
+    bodyKey: "route_order_sources",
     details: [
       "Review them under Fulfillment → Route orders.",
       "The Routes screen shows order counts and sales totals per route for the selected period.",
@@ -157,7 +158,20 @@ export function DistributionHelpTopbarButton() {
 }
 
 export function DistributionHelpDialog() {
+  const { capabilities } = useAuth();
   const [open, setOpen] = useState(false);
+
+  const workflowSteps = useMemo(
+    () =>
+      WORKFLOW_STEPS.map((step) => ({
+        ...step,
+        body:
+          step.bodyKey === "route_order_sources"
+            ? `Route orders are sales tied to a delivery route — from ${routeOrderSourcesText(capabilities).toLowerCase()}.`
+            : step.body,
+      })),
+    [capabilities],
+  );
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -217,7 +231,7 @@ export function DistributionHelpDialog() {
           <section>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step by step</h3>
             <ol className="mt-3 space-y-4">
-              {WORKFLOW_STEPS.map((step, index) => (
+              {workflowSteps.map((step, index) => (
                 <li key={step.title} className="flex gap-3">
                   <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#185FA5]/10 text-xs font-bold text-[#185FA5]">
                     {index + 1}

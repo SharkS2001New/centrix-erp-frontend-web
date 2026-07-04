@@ -17,8 +17,8 @@ import {
   PAYMENT_STEP_KEYS,
   resolveOrderWorkflowActions,
   shouldShowPaymentStatusBadge,
+  orderPaymentStatusHint,
   saleBalanceDue,
-  saleNeedsPaymentCollection,
   canRecordOrderPayment,
 } from "@/lib/order-workflow";
 import {
@@ -523,6 +523,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const confirm = useConfirm();
   const { capabilities, organization, user, hasPermission } = useAuth();
   const { floatSessionId } = usePosSession();
+  const readOnlyWorkflow = String(backHref ?? "").startsWith("/fulfillment");
 
   const [sale, setSale] = useState(null);
   const [payments, setPayments] = useState([]);
@@ -604,7 +605,8 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     [payments],
   );
   const balanceDue = saleBalanceDue(sale, totalPaid);
-  const canRecordPayment = canRecordOrderPayment(sale, totalPaid);
+  const canRecordPayment = !readOnlyWorkflow && canRecordOrderPayment(sale, totalPaid);
+  const paymentStatusHint = orderPaymentStatusHint(sale, totalPaid, capabilities);
   const cancellationAllowed = useMemo(
     () => canCancelOrder(sale, saleWorkflow, capabilities),
     [sale, saleWorkflow, capabilities],
@@ -837,10 +839,13 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                     canRecordPayment ? () => setPaymentModalOpen(true) : null
                   }
                   onAdvance={
-                    sale.status !== "cancelled" && sale.status !== "completed"
+                    !readOnlyWorkflow
+                    && sale.status !== "cancelled"
+                    && sale.status !== "completed"
                       ? (status) => handleAdvance(status)
                       : null
                   }
+                  readOnlyWorkflow={readOnlyWorkflow}
                   canCancel={cancellationAllowed}
                   busyStatus={transitionBusy || fulfillment.busy ? sale.status : null}
                   capabilities={capabilities}
@@ -891,7 +896,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
             <SummaryInfoCard
               label="Status"
               value={saleStatusLabel(sale.status, saleWorkflow)}
-              hint={PAYMENT_STATUS_LABELS[sale.payment_status] ?? null}
+              hint={paymentStatusHint}
               linkLabel="View timeline"
               onLinkClick={() => setActiveTab("timeline")}
             />
@@ -904,7 +909,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
             <SummaryInfoCard
               label="Total amount"
               value={formatSaleKes(sale.order_total)}
-              hint={PAYMENT_STATUS_LABELS[sale.payment_status] ?? sale.payment_status}
+              hint={paymentStatusHint}
               hintClassName={
                 String(sale.payment_status).toLowerCase() === "paid"
                   ? "font-medium text-emerald-600"

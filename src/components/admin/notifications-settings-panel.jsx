@@ -3,11 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
-  NOTIFICATION_SCOPE_OPTIONS,
   SMTP_ENCRYPTION_OPTIONS,
-  channelHint,
+  notificationChannelsPayloadFromForm,
   notificationsFormFromApi,
-  notificationsPayloadFromForm,
 } from "@/lib/notifications-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
@@ -35,33 +33,6 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
   );
 }
 
-function TemplateFields({ form, setForm, smsKey, emailKey, placeholders, smsDisabled, emailDisabled }) {
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Field label="SMS template">
-        <textarea
-          className={`${inputClassName()} min-h-[72px]`}
-          value={form[smsKey]}
-          disabled={smsDisabled}
-          onChange={(e) => setForm((f) => ({ ...f, [smsKey]: e.target.value }))}
-        />
-      </Field>
-      <Field label="Email template (optional)">
-        <textarea
-          className={`${inputClassName()} min-h-[72px]`}
-          value={form[emailKey]}
-          disabled={emailDisabled}
-          placeholder="Uses SMS template if left blank"
-          onChange={(e) => setForm((f) => ({ ...f, [emailKey]: e.target.value }))}
-        />
-      </Field>
-      {placeholders ? (
-        <p className="lg:col-span-2 text-xs text-slate-500">Placeholders: {placeholders}</p>
-      ) : null}
-    </div>
-  );
-}
-
 export function NotificationsSettingsPanel({ saving, setSaving, setError, setMessage }) {
   const { settingsPath } = useSettingsApi();
   const [form, setForm] = useState(notificationsFormFromApi({}));
@@ -72,7 +43,6 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
     () => [
       { id: "sms", label: "Text messages (SMS)" },
       { id: "email", label: "Email setup" },
-      { id: "alerts", label: "Customer alerts" },
     ],
     [],
   );
@@ -95,7 +65,7 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
     try {
       const res = await apiRequest(settingsPath("notifications"), {
         method: "PATCH",
-        body: notificationsPayloadFromForm(form),
+        body: notificationChannelsPayloadFromForm(form),
       });
       setForm(notificationsFormFromApi(res));
       setMessage("Notification settings saved.");
@@ -107,16 +77,16 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
   }
 
   const status = form.notifications_status;
-  const autoHint = channelHint(form);
 
   return (
     <form onSubmit={handleSave}>
       <section className="theme-panel rounded-xl border p-6 shadow-sm">
-        <h2 className="text-lg font-medium text-slate-900">SMS &amp; email notifications</h2>
+        <h2 className="text-lg font-medium text-slate-900">Messaging channels</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Settings for{" "}
+          SMS and email delivery for{" "}
           <span className="font-medium text-slate-700">{form.organization_name || "this organization"}</span>.
-          Event toggles send automatically through each enabled channel — SMS and email work independently.
+          Customer alert toggles and templates live under each module — Sales, Finance, Distribution, and
+          Manager approvals.
         </p>
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">Loading…</p>
@@ -288,119 +258,6 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
                   ) : null}
                 </>
               ) : null}
-            </div>
-            ) : null}
-
-            {activeTab === "alerts" ? (
-            <div className="space-y-6">
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-slate-800">Order placement</p>
-              <p className="text-xs text-slate-500">{autoHint}</p>
-              <Toggle
-                label="Notify customer when order is placed"
-                checked={form.notify_on_order_placed}
-                onChange={(v) => setForm((f) => ({ ...f, notify_on_order_placed: v }))}
-              />
-              {form.notify_on_order_placed ? (
-                <>
-                  <Field label="Apply to">
-                    <select
-                      className={inputClassName()}
-                      value={form.order_placed_scope}
-                      onChange={(e) => setForm((f) => ({ ...f, order_placed_scope: e.target.value }))}
-                    >
-                      {NOTIFICATION_SCOPE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <TemplateFields
-                    form={form}
-                    setForm={setForm}
-                    smsKey="order_placed_sms_template"
-                    emailKey="order_placed_email_template"
-                    placeholders="{order_num}, {order_total}, {amount_paid}, {balance_due}"
-                    smsDisabled={!form.sms_enabled}
-                    emailDisabled={!form.email_enabled}
-                  />
-                </>
-              ) : null}
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-slate-800">Debtor payments</p>
-              <p className="text-xs text-slate-500">{autoHint}</p>
-              <Toggle
-                label="Notify customer when payment is received"
-                checked={form.notify_on_debtor_payment}
-                onChange={(v) => setForm((f) => ({ ...f, notify_on_debtor_payment: v }))}
-              />
-              {form.notify_on_debtor_payment ? (
-                <>
-                  <Field label="Apply to">
-                    <select
-                      className={inputClassName()}
-                      value={form.debtor_payment_scope}
-                      onChange={(e) => setForm((f) => ({ ...f, debtor_payment_scope: e.target.value }))}
-                    >
-                      {NOTIFICATION_SCOPE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <TemplateFields
-                    form={form}
-                    setForm={setForm}
-                    smsKey="debtor_payment_sms_template"
-                    emailKey="debtor_payment_email_template"
-                    placeholders="{order_num}, {amount}, {amount_paid}, {balance_due}"
-                    smsDisabled={!form.sms_enabled}
-                    emailDisabled={!form.email_enabled}
-                  />
-                </>
-              ) : null}
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-slate-800">Delivery updates</p>
-              <p className="text-xs text-slate-500">{autoHint}</p>
-              <Toggle
-                label="Notify customers when trip departs"
-                checked={form.notify_on_dispatch}
-                onChange={(v) => setForm((f) => ({ ...f, notify_on_dispatch: v }))}
-              />
-              {form.notify_on_dispatch ? (
-                <TemplateFields
-                  form={form}
-                  setForm={setForm}
-                  smsKey="dispatch_sms_template"
-                  emailKey="dispatch_email_template"
-                  placeholders="{order_num}, {route_name}, {trip_code}"
-                  smsDisabled={!form.sms_enabled}
-                  emailDisabled={!form.email_enabled}
-                />
-              ) : null}
-              <Toggle
-                label="Notify customers on delivery (POD captured)"
-                checked={form.notify_on_delivery}
-                onChange={(v) => setForm((f) => ({ ...f, notify_on_delivery: v }))}
-              />
-              {form.notify_on_delivery ? (
-                <TemplateFields
-                  form={form}
-                  setForm={setForm}
-                  smsKey="delivery_sms_template"
-                  emailKey="delivery_email_template"
-                  placeholders="{order_num}"
-                  smsDisabled={!form.sms_enabled}
-                  emailDisabled={!form.email_enabled}
-                />
-              ) : null}
-            </div>
             </div>
             ) : null}
           </div>

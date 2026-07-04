@@ -1,11 +1,12 @@
 "use client";
 
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { isDamageWriteOffApprovalEnabled } from "@/lib/sales-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
 import {
@@ -31,7 +32,7 @@ function lineFromProduct(product) {
 
 export default function RecordDamagePage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, capabilities, hasPermission } = useAuth();
   const branchId = user?.branch_id ?? 1;
 
   const [uoms, setUoms] = useState([]);
@@ -67,21 +68,32 @@ export default function RecordDamagePage() {
 
     setSaving(true);
     const reasonText = [reason.trim(), notes.trim()].filter(Boolean).join(" — ");
+    const useRequestFlow =
+      isDamageWriteOffApprovalEnabled(capabilities?.module_settings) &&
+      !user?.is_admin &&
+      !hasPermission("inventory.manage");
     try {
       for (const line of toPost) {
         const uom = uomById.get(line.unit_id);
-        await apiRequest("/damages", {
+        const body = {
+          product_code: line.product_code,
+          branch_id: branchId,
+          quantity: damageQtyToBase(line.quantity, line.package_type, uom),
+          package_type: line.package_type,
+          uom_label: damageMeasureLabel(uom, line.package_type),
+          stock_location: line.stock_location,
+          reason: reasonText || null,
+        };
+        const res = await apiRequest(useRequestFlow ? "/damages/request" : "/damages", {
           method: "POST",
-          body: {
-            product_code: line.product_code,
-            branch_id: branchId,
-            quantity: damageQtyToBase(line.quantity, line.package_type, uom),
-            package_type: line.package_type,
-            uom_label: damageMeasureLabel(uom, line.package_type),
-            stock_location: line.stock_location,
-            reason: reasonText || null,
-          },
+          body,
         });
+        if (res?.pending_approval) {
+          notifySuccess("Write-off submitted for manager approval.");
+        }
+      }
+      if (!useRequestFlow) {
+        notifySuccess("Damage recorded.");
       }
       router.push("/inventory/damages");
     } catch (err) {

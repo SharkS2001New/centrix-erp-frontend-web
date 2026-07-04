@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useConfirm } from "@/lib/use-confirm";
+import { P } from "@/lib/permission-codes";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
   CatalogPageShell,
@@ -47,7 +49,9 @@ function PrintIcon() {
 
 export default function TripDetailPage() {
   const { id } = useParams();
-  const { organization, generalSettings, capabilities, user } = useAuth();
+  const router = useRouter();
+  const confirm = useConfirm();
+  const { organization, generalSettings, capabilities, user, hasPermission } = useAuth();
   const distributionSettings = useMemo(() => mergeDistributionSettings(capabilities), [capabilities]);
   const guidanceEnabled = isFulfillmentGuidanceEnabled(capabilities);
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
@@ -178,6 +182,45 @@ export default function TripDetailPage() {
       await loadTrip();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Action failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const canDeleteTrip =
+    Boolean(user?.is_admin) ||
+    hasPermission(P.fulfillment.trips.delete) ||
+    hasPermission("fulfillment.manage");
+
+  async function deleteTripChart() {
+    if (!trip || !canDeleteTrip) return;
+
+    if (trip.status === "completed") {
+      notifyError("Completed trip charts cannot be deleted.");
+      return;
+    }
+
+    const needsCancel = !["draft", "cancelled"].includes(trip.status);
+    const ok = await confirm({
+      title: needsCancel ? "Cancel and delete trip chart" : "Delete trip chart",
+      message: needsCancel
+        ? "This trip must be cancelled before it can be removed. Cancel it now and delete permanently?"
+        : `Permanently delete trip chart ${trip.trip_code ?? id}? This cannot be undone.`,
+      confirmLabel: needsCancel ? "Cancel & delete" : "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBusy(true);
+    try {
+      if (needsCancel) {
+        await apiRequest(`/dispatch-trips/${id}/cancel`, { method: "POST" });
+      }
+      await apiRequest(`/dispatch-trips/${id}`, { method: "DELETE" });
+      notifySuccess("Trip chart deleted.");
+      router.push("/fulfillment/trips");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not delete trip chart");
     } finally {
       setBusy(false);
     }
@@ -588,6 +631,16 @@ export default function TripDetailPage() {
               onClick={() => runAction(`/dispatch-trips/${id}/cancel`)}
             >
               Cancel trip
+            </button>
+          ) : null}
+          {canDeleteTrip && trip.status !== "completed" ? (
+            <button
+              type="button"
+              className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-800 hover:bg-red-100"
+              disabled={busy}
+              onClick={() => void deleteTripChart()}
+            >
+              Delete trip chart
             </button>
           ) : null}
         </div>

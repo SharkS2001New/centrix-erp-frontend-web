@@ -1,8 +1,9 @@
-import { getToken, clearSession, isScreenLocked } from "./auth-storage";
+import { getToken, clearSession, isScreenLocked, getStoredUser, getStoredCapabilities } from "./auth-storage";
 import { apiFetchCredentials, useCookieAuth } from "./auth-config";
 import { beginAppLoading, endAppLoading, isPageNavigationLoading } from "./app-loading";
 import { emitSystemIssue } from "./system-issue-dispatcher";
 import { logApiErrorIssue, logSlowRequestIssue } from "./system-issue-reports";
+import { notifyError as showErrorToast } from "./notify";
 
 const baseUrl = () =>
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
@@ -80,12 +81,36 @@ export function resolveCustomerMediaUrl(url) {
 }
 
 export class ApiError extends Error {
-  constructor(message, status, body) {
+  constructor(message, status, body, options = {}) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.body = body;
+    this.systemIssuePrompted = Boolean(options.systemIssuePrompted);
   }
+}
+
+/** Platform super admin or org admin — may see server error detail in UI. */
+export function canSeeServerErrorDetail() {
+  const user = getStoredUser();
+  const capabilities = getStoredCapabilities();
+  return Boolean(
+    user?.is_super_admin
+      || user?.is_admin
+      || capabilities?.is_super_admin,
+  );
+}
+
+/** Message for the system-issue popup (generic for staff; technical for admins). */
+export function formatSystemIssueMessage(data, statusText, apiPath) {
+  if (canSeeServerErrorDetail() || (data && typeof data === "object" && data.expose_detail === true)) {
+    const detail = formatApiErrorMessage(data, statusText);
+    if (detail && !/^request failed$/i.test(detail)) {
+      return detail;
+    }
+  }
+
+  return `An error occurred in ${apiModuleLabel(apiPath)}. Please report this to your system administrator.`;
 }
 
 /** @param {unknown} error */
@@ -200,6 +225,8 @@ export function apiModuleLabel(path) {
     expenses: "Expenses",
     reports: "Reports",
     erp: "Settings",
+    notifications: "Notifications",
+    "action-requests": "Approvals",
   };
 
   return labels[first] ?? first.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -212,10 +239,15 @@ export function apiModuleLabel(path) {
 export function resolveSubmitErrorMessage(error, options = {}) {
   const { isSuperAdmin = false, moduleName, apiPath } = options;
   const moduleLabel = moduleName || (apiPath ? apiModuleLabel(apiPath) : "this module");
+  const technicalViewer = isSuperAdmin || canSeeServerErrorDetail();
 
   if (error instanceof ApiError) {
+    if (error.systemIssuePrompted && !technicalViewer) {
+      return `An error occurred in ${moduleLabel}. Please report this to your system administrator.`;
+    }
+
     const body = error.body && typeof error.body === "object" ? error.body : null;
-    if (body?.expose_detail === true || isSuperAdmin) {
+    if (body?.expose_detail === true || technicalViewer) {
       const detail = typeof body?.detail === "string" && body.detail.trim()
         ? body.detail.trim()
         : formatApiErrorMessage(body, "");
@@ -229,11 +261,25 @@ export function resolveSubmitErrorMessage(error, options = {}) {
     }
   }
 
-  if (isSuperAdmin && error instanceof Error && error.message?.trim()) {
+  if (technicalViewer && error instanceof Error && error.message?.trim()) {
     return error.message.trim();
   }
 
   return `An error occurred in ${moduleLabel}. Please report this to your system administrator.`;
+}
+
+/** Prefer this over notifyError for API failures — skips toast when the system popup already opened. */
+export function notifyActionError(error, fallback = "Request failed") {
+  if (error instanceof ApiError && error.systemIssuePrompted) {
+    return;
+  }
+  const message =
+    error instanceof ApiError
+      ? formatApiErrorMessage(error.body, error.message || fallback)
+      : error instanceof Error
+        ? error.message
+        : fallback;
+  showErrorToast(message || fallback);
 }
 
 function shouldTrackNavigationFetch(options, method) {
@@ -314,18 +360,21 @@ export async function apiRequest(path, options = {}) {
       }
 
       const errorMessage = formatApiErrorMessage(data, res.statusText);
+      const issueMessage = formatSystemIssueMessage(data, res.statusText, apiPath);
+      let systemIssuePrompted = false;
       if (trackIssues) {
         const report = await logApiErrorIssue({
           path: apiPath,
           method,
           status: res.status,
-          message: errorMessage,
+          message: issueMessage,
           durationMs,
         });
         if (report?.id) {
+          systemIssuePrompted = true;
           emitSystemIssue({
             type: "error",
-            message: errorMessage,
+            message: issueMessage,
             reportId: report.id,
             apiPath,
             httpMethod: method,
@@ -334,7 +383,7 @@ export async function apiRequest(path, options = {}) {
           });
         }
       }
-      throw new ApiError(errorMessage, res.status, data);
+      throw new ApiError(errorMessage, res.status, data, { systemIssuePrompted });
     }
 
     if (trackIssues) {
@@ -361,24 +410,30 @@ export async function apiRequest(path, options = {}) {
   } catch (error) {
     if (trackIssues && !(error instanceof ApiError)) {
       const durationMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
-      const message = error instanceof Error ? error.message : "Network request failed";
+      const rawMessage = error instanceof Error ? error.message : "Network request failed";
+      const issueMessage = canSeeServerErrorDetail()
+        ? rawMessage
+        : `An error occurred in ${apiModuleLabel(apiPath)}. Please report this to your system administrator.`;
       const report = await logApiErrorIssue({
         path: apiPath,
         method,
         status: 0,
-        message,
+        message: issueMessage,
         durationMs,
       });
       if (report?.id) {
         emitSystemIssue({
           type: "error",
-          message,
+          message: issueMessage,
           reportId: report.id,
           apiPath,
           httpMethod: method,
           httpStatus: 0,
           durationMs,
         });
+        if (error instanceof ApiError) {
+          error.systemIssuePrompted = true;
+        }
       }
     }
     throw error;

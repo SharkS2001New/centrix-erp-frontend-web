@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError, notifyActionError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { ApprovalNotificationDetails } from "@/components/notifications/approval-notification-details";
 
@@ -33,9 +33,10 @@ function severityDotClass(severity) {
   }
 }
 
-function NotificationRow({ item, busy, onApprove, onReject, onOpen }) {
+function NotificationRow({ item, busy, onApprove, onReject, onOpen, onDismiss }) {
   const requester = item.requester?.full_name ?? item.requester?.username ?? "System";
   const canApprove = item.type === "approval" && item.action_request?.can_approve && item.action_request?.status === "pending";
+  const canDismiss = !canApprove;
 
   return (
     <div className="border-b px-4 py-3 last:border-b-0">
@@ -84,6 +85,17 @@ function NotificationRow({ item, busy, onApprove, onReject, onOpen }) {
             </Link>
           ) : null}
         </div>
+      ) : canDismiss ? (
+        <div className="mt-2 pl-4">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onDismiss(item)}
+            className="text-xs font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50"
+          >
+            Clear
+          </button>
+        </div>
       ) : null}
     </div>
   );
@@ -96,6 +108,7 @@ export function NotificationBell() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [clearing, setClearing] = useState(false);
   const rootRef = useRef(null);
 
   const fetchCount = useCallback(async () => {
@@ -113,7 +126,7 @@ export function NotificationBell() {
       const res = await apiRequest("/notifications?limit=15", { loading: false });
       setItems(Array.isArray(res?.data) ? res.data : []);
     } catch (err) {
-      notifyError(err instanceof ApiError ? err.message : "Could not load notifications.");
+      notifyActionError(err instanceof ApiError ? err : new ApiError("Could not load notifications.", 0), "Could not load notifications.");
     } finally {
       setLoading(false);
     }
@@ -203,6 +216,46 @@ export function NotificationBell() {
     [refreshAll],
   );
 
+  const dismissItem = useCallback(
+    async (item) => {
+      setBusyId(item.id);
+      try {
+        await apiRequest(`/notifications/${item.id}/dismiss`, { method: "POST", loading: false });
+        await refreshAll();
+      } catch (err) {
+        notifyError(err instanceof ApiError ? err.message : "Could not clear notification.");
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [refreshAll],
+  );
+
+  const clearAll = useCallback(async () => {
+    setClearing(true);
+    try {
+      await apiRequest("/notifications/clear-all", { method: "POST", loading: false });
+      notifySuccess("Notifications cleared.");
+      await refreshAll();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not clear notifications.");
+    } finally {
+      setClearing(false);
+    }
+  }, [refreshAll]);
+
+  const markAllRead = useCallback(async () => {
+    setClearing(true);
+    try {
+      await apiRequest("/notifications/read-all", { method: "POST", loading: false });
+      await refreshAll();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not mark notifications as read.");
+    } finally {
+      setClearing(false);
+    }
+  }, [refreshAll]);
+
   const displayCount = count > 99 ? "99+" : String(count);
 
   return (
@@ -235,6 +288,26 @@ export function NotificationBell() {
               <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                 Notifications {count > 0 ? `(${count})` : ""}
               </h2>
+              {items.length > 0 ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={clearing}
+                    onClick={() => void markAllRead()}
+                    className="text-xs font-medium text-[#185FA5] hover:underline disabled:opacity-50"
+                  >
+                    Mark read
+                  </button>
+                  <button
+                    type="button"
+                    disabled={clearing}
+                    onClick={() => void clearAll()}
+                    className="text-xs font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50"
+                  >
+                    Clear all
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <div className="max-h-[min(24rem,60vh)] overflow-y-auto">
@@ -251,6 +324,7 @@ export function NotificationBell() {
                     onApprove={approveItem}
                     onReject={rejectItem}
                     onOpen={openItem}
+                    onDismiss={dismissItem}
                   />
                 ))
               )}

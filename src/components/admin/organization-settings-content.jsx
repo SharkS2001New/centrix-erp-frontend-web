@@ -35,7 +35,7 @@ const TABS = [
   { id: "finance", label: "Finance" },
   { id: "ai", label: "AI" },
   { id: "hr", label: "HR & Payroll" },
-  { id: "notifications", label: "Notifications" },
+  { id: "notifications", label: "Messaging" },
   { id: "security", label: "Security" },
   { id: "legacy-archive", label: "Legacy archive" },
 ];

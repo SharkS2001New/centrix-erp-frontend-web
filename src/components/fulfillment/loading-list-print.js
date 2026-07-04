@@ -83,60 +83,95 @@ function priceGhostText(line) {
   return Number.isInteger(n) ? String(Math.trunc(n)) : String(n);
 }
 
-/** Sample data with separate wholesale and retail price rows. */
+/** Sample data grouped by customer order for loading at the door. */
 export function sampleLoadingListPreviewData() {
-  const lines = [
+  const orders = [
     {
-      line_no: 1,
-      product_name: "THAI RICE BIRIYANI",
-      quantity_label: "66 bag",
-      pack_breakdown: "66 bag",
-      unit_price: 2250,
-      line_total: 148500,
-      on_wholesale_retail: 0,
-      price_tier: "wholesale",
+      stop_no: 1,
+      order_num: 1042,
+      customer_name: "ABC Supermarket",
+      payment_status: "unpaid",
+      subtotal: 69000,
+      lines: [
+        {
+          line_no: 1,
+          product_name: "THAI RICE BIRIYANI",
+          quantity_label: "20 bag",
+          pack_breakdown: "20 bag",
+          unit_price: 2250,
+          line_total: 45000,
+        },
+        {
+          line_no: 2,
+          product_name: "SUGAR 50 KG",
+          quantity_label: "4 bag",
+          pack_breakdown: "4 bag",
+          unit_price: 6000,
+          line_total: 24000,
+        },
+      ],
     },
     {
-      line_no: 2,
-      product_name: "BANJAB RICE 25KG",
-      quantity_label: "25 bag",
-      pack_breakdown: "25 bag",
-      unit_price: 2250,
-      line_total: 56250,
-      on_wholesale_retail: 0,
-      price_tier: "wholesale",
+      stop_no: 2,
+      order_num: 1045,
+      customer_name: "XYZ Wholesalers",
+      payment_status: "partially_paid",
+      subtotal: 231750,
+      lines: [
+        {
+          line_no: 1,
+          product_name: "THAI RICE BIRIYANI",
+          quantity_label: "46 bag",
+          pack_breakdown: "46 bag",
+          unit_price: 2250,
+          line_total: 103500,
+        },
+        {
+          line_no: 2,
+          product_name: "BANJAB RICE 25KG",
+          quantity_label: "25 bag",
+          pack_breakdown: "25 bag",
+          unit_price: 2250,
+          line_total: 56250,
+        },
+        {
+          line_no: 3,
+          product_name: "SUGAR 50 KG",
+          quantity_label: "12 bag",
+          pack_breakdown: "12 bag",
+          unit_price: 6000,
+          line_total: 72000,
+        },
+      ],
     },
     {
-      line_no: 3,
-      product_name: "SUGAR 50 KG",
-      quantity_label: "16 bag",
-      pack_breakdown: "16 bag",
-      unit_price: 6000,
-      line_total: 96000,
-      on_wholesale_retail: 0,
-      price_tier: "wholesale",
-    },
-    {
-      line_no: 4,
-      product_name: "SUGAR 50 KG",
-      quantity_label: "4 bag",
-      pack_breakdown: "4 bag",
-      unit_price: 6200,
-      line_total: 24800,
-      on_wholesale_retail: 1,
-      price_tier: "retail",
-    },
-    {
-      line_no: 5,
-      product_name: "MT. KENYA ESL 500ML",
-      quantity_label: "10",
-      pack_breakdown: "",
-      unit_price: 580,
-      line_total: 5800,
-      on_wholesale_retail: 1,
-      price_tier: "retail",
+      stop_no: 3,
+      order_num: 1048,
+      customer_name: "Quick Mart",
+      payment_status: "paid",
+      subtotal: 30600,
+      lines: [
+        {
+          line_no: 1,
+          product_name: "SUGAR 50 KG",
+          quantity_label: "4 bag",
+          pack_breakdown: "4 bag",
+          unit_price: 6200,
+          line_total: 24800,
+        },
+        {
+          line_no: 2,
+          product_name: "MT. KENYA ESL 500ML",
+          quantity_label: "10",
+          pack_breakdown: "",
+          unit_price: 580,
+          line_total: 5800,
+        },
+      ],
     },
   ];
+
+  const totalAmount = orders.reduce((sum, order) => sum + Number(order.subtotal || 0), 0);
 
   return {
     loadingList: {
@@ -145,12 +180,19 @@ export function sampleLoadingListPreviewData() {
       trip: { trip_code: "TRIP-20260130-001", route_names: ["C"] },
       prepared_by_name: "Preview",
       checked_by_name: "",
-      total_amount: lines.reduce((sum, line) => sum + Number(line.line_total || 0), 0),
-      lines,
+      total_amount: totalAmount,
+      order_count: orders.length,
+      orders,
+    },
+    trip: {
+      trip_code: "TRIP-20260130-001",
+      route: { route_name: "C" },
+      driver: { full_name: "John Kamau" },
+      vehicle: { plate_number: "KCA 123X" },
     },
     financialSummary: {
-      order_count: 5,
-      total_amount: 331350,
+      order_count: orders.length,
+      total_amount: totalAmount,
       total_profit: 82500,
       profit_margin_percent: 24.9,
       expenses: [
@@ -178,6 +220,109 @@ function buildLoadingListHeaderHtml({ branding, companyName }) {
   }
 
   return parts.length ? `<div class="org-header">${parts.join("")}</div>` : "";
+}
+
+function normalizeLoadingListOrders(loadingList) {
+  if (Array.isArray(loadingList?.orders) && loadingList.orders.length > 0) {
+    return loadingList.orders.map((order, index) => ({
+      ...order,
+      stop_no: order.stop_no ?? index + 1,
+      lines: normalizeLoadingListLines(order.lines ?? []),
+    }));
+  }
+
+  const flatLines = normalizeLoadingListLines(loadingList?.lines ?? []);
+  if (flatLines.length === 0) return [];
+
+  return [
+    {
+      stop_no: 1,
+      order_num: "—",
+      customer_name: "All orders",
+      subtotal: flatLines.reduce((sum, line) => sum + Number(line.line_total || 0), 0),
+      lines: flatLines,
+    },
+  ];
+}
+
+function loadingListLineCount(loadingList) {
+  const orders = normalizeLoadingListOrders(loadingList);
+  return orders.reduce((sum, order) => sum + (order.lines?.length ?? 0), 0);
+}
+
+function formatPaymentStatusLabel(status) {
+  const key = String(status ?? "").trim();
+  if (!key) return "";
+  return key.replace(/_/g, " ");
+}
+
+function buildCustomerStopHtml(order, { showQtyColumn, showPriceColumns, showPriceColumnsForSubtotal }) {
+  const lines = order.lines ?? [];
+  const columnCount = loadingListColumnCount({ showQtyColumn, showPriceColumns });
+  const tableLayoutClass = loadingListTableLayoutClass({ showQtyColumn, showPriceColumns });
+  const tableHead = buildLoadingListTableHead({ showQtyColumn, showPriceColumns });
+  const rowHtml =
+    buildLoadingListLineRows(lines, { showQtyColumn, showPriceColumns }) ||
+    `<tr><td colspan="${columnCount}" class="empty">No line items</td></tr>`;
+
+  const orderLabel = order.order_num ? `#${order.order_num}` : "Order";
+  const paymentLabel = formatPaymentStatusLabel(order.payment_status);
+  const metaParts = [orderLabel];
+  if (paymentLabel) metaParts.push(paymentLabel);
+
+  const subtotalRow =
+    showPriceColumnsForSubtotal && showPriceColumns
+      ? `
+      <tfoot>
+        <tr class="customer-stop-subtotal">
+          <td colspan="${columnCount - 1}" style="text-align:right;">Subtotal</td>
+          <td class="col-total">${formatKes(order.subtotal ?? lines.reduce((sum, line) => sum + Number(line.line_total || 0), 0))}</td>
+        </tr>
+      </tfoot>`
+      : "";
+
+  return `
+  <section class="customer-stop">
+    <div class="customer-stop-header">
+      <p class="customer-stop-title">Stop ${order.stop_no} — ${escapeHtml(order.customer_name ?? "Customer")}</p>
+      <p class="customer-stop-meta">${escapeHtml(metaParts.join(" · "))}</p>
+    </div>
+    <table class="${tableLayoutClass} customer-stop-table">
+      <thead>${tableHead}</thead>
+      <tbody>${rowHtml}</tbody>
+      ${subtotalRow}
+    </table>
+  </section>`;
+}
+
+function buildLoadingListOrdersHtml(orders, { showQtyColumn, showPriceColumns }) {
+  if (!orders.length) {
+    const columnCount = loadingListColumnCount({ showQtyColumn, showPriceColumns });
+    return `<p class="empty">No orders on this loading list.</p>`;
+  }
+
+  return orders
+    .map((order) =>
+      buildCustomerStopHtml(order, {
+        showQtyColumn,
+        showPriceColumns,
+        showPriceColumnsForSubtotal: true,
+      }),
+    )
+    .join("");
+}
+
+function buildTripSummaryHtml({ orders, total, showPriceColumns }) {
+  const orderCount = orders.length;
+  const lineCount = orders.reduce((sum, order) => sum + (order.lines?.length ?? 0), 0);
+
+  return `
+  <div class="trip-summary">
+    <p class="trip-summary-title">Trip summary</p>
+    <p>Orders: ${orderCount} · Product lines: ${lineCount}${
+      showPriceColumns ? ` · Trip total: KES ${formatKes(total)}` : ""
+    }</p>
+  </div>`;
 }
 
 function normalizeLoadingListLines(lines) {
@@ -400,6 +545,56 @@ function loadingSheetPrintStyles(generalSettings = null) {
       text-transform: uppercase;
       line-height: 1.35;
     }
+    .trip-meta {
+      margin: 8px 0 0;
+      font-size: ${px(11)};
+      color: #475569;
+      line-height: 1.45;
+    }
+    .customer-stop {
+      margin-top: 24px;
+      page-break-inside: avoid;
+    }
+    .customer-stop:first-of-type { margin-top: 0; }
+    .customer-stop-header {
+      border-top: 2px solid #333;
+      border-bottom: 1px solid #c9c9c9;
+      padding: 10px 0 8px;
+      margin-bottom: 4px;
+    }
+    .customer-stop-title {
+      margin: 0;
+      font-size: ${px(12)};
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      line-height: 1.35;
+    }
+    .customer-stop-meta {
+      margin: 4px 0 0;
+      font-size: ${px(11)};
+      color: #475569;
+    }
+    .customer-stop-table { margin-bottom: 0; }
+    .customer-stop-subtotal td {
+      padding-top: 10px;
+      font-weight: 700;
+      border-top: 1px dashed #cbd5e1;
+    }
+    .trip-summary {
+      margin-top: 28px;
+      padding-top: 14px;
+      border-top: 2px solid #333;
+      font-size: ${px(12)};
+      line-height: 1.5;
+    }
+    .trip-summary-title {
+      margin: 0 0 8px;
+      font-size: ${px(12)};
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     thead th {
       background: #ececec;
@@ -593,7 +788,7 @@ export function buildLoadingListHtml({
     showTripProfit,
   } = columnFlags;
 
-  const lines = normalizeLoadingListLines(loadingList?.lines ?? []);
+  const orders = normalizeLoadingListOrders(loadingList);
   const routeHeader = resolveLoadingSheetRouteHeader({ loadingList, trip, distributionEnabled });
   const routeName = routeHeader.value;
   const listDate = loadingList?.list_date ?? trip?.scheduled_date;
@@ -604,27 +799,29 @@ export function buildLoadingListHtml({
     printSettings?.loading_sheet_default_checked_by ??
     "";
   const total =
-    loadingList?.total_amount ?? lines.reduce((sum, line) => sum + Number(line.line_total || 0), 0);
+    loadingList?.total_amount ??
+    orders.reduce(
+      (sum, order) => sum + Number(order.subtotal ?? order.lines?.reduce((s, line) => s + Number(line.line_total || 0), 0) ?? 0),
+      0,
+    );
   const resolvedFinancialSummary =
     financialSummary ?? loadingList?.financial_summary ?? trip?.financial_summary ?? null;
   const dateLabel = formatPrintDisplayDate(listDate, { emptyLabel: "—" });
-  const columnCount = loadingListColumnCount({ showQtyColumn, showPriceColumns });
-  const tableLayoutClass = loadingListTableLayoutClass({ showQtyColumn, showPriceColumns });
-  const rowHtml =
-    buildLoadingListLineRows(lines, { showQtyColumn, showPriceColumns }) ||
-    `<tr><td colspan="${columnCount}" class="empty">No line items</td></tr>`;
-
-  const tableHead = buildLoadingListTableHead({ showQtyColumn, showPriceColumns });
-
-  const tableFoot = showPriceColumns
-    ? `
-      <tfoot>
-        <tr>
-          <td colspan="${columnCount - 1}" style="text-align:right;">TOTAL</td>
-          <td class="col-total">${formatKes(total)}</td>
-        </tr>
-      </tfoot>`
+  const driverName = trip?.driver?.full_name ?? loadingList?.trip?.driver?.full_name ?? "";
+  const vehicleLabel =
+    trip?.vehicle?.plate_number ??
+    trip?.vehicle?.vehicle_name ??
+    loadingList?.trip?.vehicle?.plate_number ??
+    "";
+  const tripMetaParts = [];
+  if (vehicleLabel) tripMetaParts.push(`Vehicle: ${vehicleLabel}`);
+  if (driverName) tripMetaParts.push(`Driver: ${driverName}`);
+  const tripMetaHtml = tripMetaParts.length
+    ? `<p class="trip-meta">${escapeHtml(tripMetaParts.join(" · "))}</p>`
     : "";
+
+  const ordersHtml = buildLoadingListOrdersHtml(orders, { showQtyColumn, showPriceColumns });
+  const tripSummaryHtml = buildTripSummaryHtml({ orders, total, showPriceColumns: showPriceColumns && showTotal });
 
   const totalsHtml = buildLoadingSheetTotalsHtml({
     loadingListTotal: total,
@@ -684,12 +881,10 @@ export function buildLoadingListHtml({
     <div class="title-block">
       <p class="doc-title">Loading List, Date: ${escapeHtml(dateLabel)}</p>
       <p class="route-name">${escapeHtml(routeHeader.label)}: ${escapeHtml(routeName)}</p>
+      ${tripMetaHtml}
     </div>
-    <table class="${tableLayoutClass}">
-      <thead>${tableHead}</thead>
-      <tbody>${rowHtml}</tbody>
-      ${tableFoot}
-    </table>
+    ${ordersHtml}
+    ${tripSummaryHtml}
     ${totalsHtml}
     ${signaturesHtml}
     ${footerLinesHtml}

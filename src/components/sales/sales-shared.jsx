@@ -131,6 +131,7 @@ export function OrderWorkflowPipeline({
   channel,
   canCancel = false,
   capabilities = null,
+  readOnlyWorkflow = false,
 }) {
   const steps = workflowPipelineSteps(workflow);
   const currentIdx = pipelineStatusIndex(status, workflow);
@@ -141,7 +142,9 @@ export function OrderWorkflowPipeline({
   const paidTotal =
     totalPaid != null ? Number(totalPaid) : Math.max(0, Number(sale?.order_total ?? 0) - balanceDue);
   const actions = sale
-    ? resolveOrderWorkflowActions(sale, workflow, paidTotal, capabilities)
+    ? resolveOrderWorkflowActions(sale, workflow, paidTotal, capabilities, {
+        disableWorkflowActions: readOnlyWorkflow,
+      })
     : { showCollectPayment: false, advanceStatus: null };
   const showCollectPayment = Boolean(onCollectPayment) && actions.showCollectPayment;
   const advanceTarget = actions.advanceStatus;
@@ -151,6 +154,7 @@ export function OrderWorkflowPipeline({
         label: workflowStatusLabel(workflow, advanceTarget),
       }
     : null;
+  const showWorkflowActions = Boolean(onAdvance) && !readOnlyWorkflow;
 
   return (
     <div className="theme-panel rounded-xl border p-5 shadow-sm">
@@ -197,7 +201,7 @@ export function OrderWorkflowPipeline({
               );
             })}
           </div>
-          {onAdvance ? (
+          {showWorkflowActions ? (
             <div className="mt-4 flex flex-wrap gap-2">
               {prevStep ? (
                 <button

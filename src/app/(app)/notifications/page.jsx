@@ -30,9 +30,10 @@ function severityDotClass(severity) {
   }
 }
 
-function NotificationCard({ item, busy, onApprove, onReject, onOpen }) {
+function NotificationCard({ item, busy, onApprove, onReject, onOpen, onDismiss }) {
   const requester = item.requester?.full_name ?? item.requester?.username ?? "System";
   const canApprove = item.type === "approval" && item.action_request?.can_approve && item.action_request?.status === "pending";
+  const canDismiss = !canApprove;
 
   return (
     <article className="rounded-lg border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -88,6 +89,18 @@ function NotificationCard({ item, busy, onApprove, onReject, onOpen }) {
           <Link href={item.action_url} className="text-xs font-medium text-[#185FA5] hover:underline">
             Open related screen
           </Link>
+        </div>
+      ) : null}
+      {canDismiss ? (
+        <div className="mt-3 pl-5">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onDismiss(item)}
+            className="text-xs font-medium text-slate-500 hover:text-slate-700 disabled:opacity-50"
+          >
+            Clear
+          </button>
         </div>
       ) : null}
     </article>
@@ -198,18 +211,52 @@ export default function NotificationsPage() {
     }
   }, [load]);
 
+  const clearAll = useCallback(async () => {
+    try {
+      await apiRequest("/notifications/clear-all", { method: "POST", loading: false });
+      notifySuccess("Notifications cleared.");
+      await load();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not clear notifications.");
+    }
+  }, [load]);
+
+  const dismissItem = useCallback(
+    async (item) => {
+      setBusyId(item.id);
+      try {
+        await apiRequest(`/notifications/${item.id}/dismiss`, { method: "POST", loading: false });
+        await load();
+      } catch (err) {
+        notifyError(err instanceof ApiError ? err.message : "Could not clear notification.");
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [load],
+  );
+
   return (
     <CatalogPageShell
       title="Notifications"
       description="Approvals, updates, and alerts that need your attention."
       actions={
-        <button
-          type="button"
-          onClick={() => void markAllRead()}
-          className="rounded-md border px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-        >
-          Mark all read
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void markAllRead()}
+            className="rounded-md border px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            Mark all read
+          </button>
+          <button
+            type="button"
+            onClick={() => void clearAll()}
+            className="rounded-md border px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            Clear all
+          </button>
+        </div>
       }
     >
       <div className="mb-4 flex flex-wrap gap-2">
@@ -248,6 +295,7 @@ export default function NotificationsPage() {
               onApprove={approveItem}
               onReject={rejectItem}
               onOpen={openItem}
+              onDismiss={dismissItem}
             />
           ))}
         </div>

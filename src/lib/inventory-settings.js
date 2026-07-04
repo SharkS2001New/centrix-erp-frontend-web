@@ -30,6 +30,7 @@ export function inventoryFormFromApi(res) {
         : "",
     stock_adjustment_approval_enabled: Boolean(inv.stock_adjustment_approval_enabled),
     stock_transfer_approval_enabled: Boolean(inv.stock_transfer_approval_enabled),
+    damage_write_off_approval_enabled: Boolean(inv.damage_write_off_approval_enabled),
   };
 }
 
@@ -46,6 +47,7 @@ export function inventoryPayloadFromForm(form) {
     stock_alert_mode: form.stock_alert_mode,
     stock_adjustment_approval_enabled: Boolean(form.stock_adjustment_approval_enabled),
     stock_transfer_approval_enabled: Boolean(form.stock_transfer_approval_enabled),
+    damage_write_off_approval_enabled: Boolean(form.damage_write_off_approval_enabled),
   };
   if (form.global_low_stock_threshold !== "") {
     payload.global_low_stock_threshold = Number(form.global_low_stock_threshold) || 0;

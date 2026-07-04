@@ -57,6 +57,7 @@ const nextConfig = {
       { source: "/admin/organizations/new", destination: "/platform/organizations/new", permanent: false },
       { source: "/admin/organizations/:id", destination: "/platform/organizations/:id", permanent: false },
       { source: "/pos-login", destination: "/login", permanent: false },
+      { source: "/orders/:id", destination: "/sales/orders/:id", permanent: false },
     ];
   },
 };

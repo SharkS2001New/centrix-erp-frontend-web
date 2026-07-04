@@ -9,6 +9,8 @@ import {
   isSameCalendarMonth,
 } from "@/components/catalog/catalog-shared";
 import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
+import { useAuth } from "@/contexts/auth-context";
+import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import { receiptPaymentDetailsFromApi } from "@/lib/receipt-payment-details";
 
 export const EMPTY_ROUTE_FORM = {
@@ -69,6 +71,9 @@ export function updateRouteFormField(form, key, value) {
 }
 
 export function RouteFormFields({ form, onChange, onPatch }) {
+  const { capabilities } = useAuth();
+  const posRouteOrdersEnabled = isExternalPosEnabled(capabilities);
+
   function applyPatch(updates) {
     if (onPatch) {
       onPatch(updates);
@@ -166,7 +171,9 @@ export function RouteFormFields({ form, onChange, onPatch }) {
             </span>
             <span className="mt-0.5 block text-xs text-slate-500">
               Overrides organization mobile/route receipt paybill details for orders on this route
-              (mobile field sales and POS route orders).
+              {posRouteOrdersEnabled
+                ? " (mobile field sales and POS route orders)."
+                : " (mobile field sales and backoffice route orders)."}
             </span>
           </span>
         </label>

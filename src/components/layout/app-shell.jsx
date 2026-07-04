@@ -7,6 +7,8 @@ import { WorkspaceGuard } from "@/components/auth/workspace-guard";
 import { RoutePermissionGuard } from "@/components/route-permission-guard";
 import { BackgroundTaskProvider } from "@/contexts/background-task-context";
 import { SystemIssueProvider } from "@/contexts/system-issue-context";
+import { AppErrorBoundary } from "@/components/shared/app-error-boundary";
+import { GlobalErrorCapture } from "@/components/shared/global-error-capture";
 import { WorkspaceNavigationTracker } from "@/components/layout/workspace-navigation-tracker";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
@@ -84,6 +86,7 @@ export function AppShell({ children }) {
       <WorkspaceGuard>
         <RoutePermissionGuard>
           <SystemIssueProvider>
+          <GlobalErrorCapture />
           <BackgroundTaskProvider>
           <div className="app-shell-bg flex h-screen overflow-hidden">
             <Sidebar
@@ -114,9 +117,11 @@ export function AppShell({ children }) {
                 }
                 aria-busy={navigationBusy || undefined}
               >
-                <div className={isPos ? "flex min-h-0 min-w-0 flex-1 flex-col" : undefined}>
-                  {children}
-                </div>
+                <AppErrorBoundary>
+                  <div className={isPos ? "flex min-h-0 min-w-0 flex-1 flex-col" : undefined}>
+                    {children}
+                  </div>
+                </AppErrorBoundary>
                 {navigationBusy ? (
                   <div
                     className={

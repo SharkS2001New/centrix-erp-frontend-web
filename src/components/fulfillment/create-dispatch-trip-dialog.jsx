@@ -21,6 +21,14 @@ function sortRoutes(routes) {
   );
 }
 
+function dedupeById(rows) {
+  const byId = new Map();
+  for (const row of rows) {
+    if (row?.id != null) byId.set(row.id, row);
+  }
+  return [...byId.values()];
+}
+
 function sortByName(rows, key = "full_name") {
   return [...rows].sort((a, b) =>
     String(a[key] ?? a.vehicle_name ?? a.plate_number ?? "").localeCompare(
@@ -127,11 +135,11 @@ export function CreateDispatchTripDialog({
   }, [routesFromProps, routesLoaded]);
 
   const drivers = useMemo(
-    () => sortByName([...driversFromProps, ...driversLoaded]),
+    () => sortByName(dedupeById([...driversFromProps, ...driversLoaded])),
     [driversFromProps, driversLoaded],
   );
   const vehicles = useMemo(
-    () => sortByName([...vehiclesFromProps, ...vehiclesLoaded], "plate_number"),
+    () => sortByName(dedupeById([...vehiclesFromProps, ...vehiclesLoaded]), "plate_number"),
     [vehiclesFromProps, vehiclesLoaded],
   );
   const employees = useMemo(

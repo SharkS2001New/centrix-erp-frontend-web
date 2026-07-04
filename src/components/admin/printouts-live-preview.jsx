@@ -139,7 +139,7 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
       : [],
     printedBy: "Preview",
     distributionEnabled: Boolean(capabilities?.modules?.distribution),
-    trip: { trip_code: "TRIP-20260130-001", route_names: ["C"] },
+    trip: sample.trip,
   });
 }
 

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { isDamageWriteOffApprovalEnabled } from "@/lib/sales-settings";
+import { notifySuccess } from "@/lib/notify";
 import {
   Field,
   FormDrawer,
@@ -20,7 +22,7 @@ import {
 } from "@/lib/stock-uom";
 
 export function RecordDamageDrawer({ open, onClose, onSaved }) {
-  const { user } = useAuth();
+  const { user, capabilities, hasPermission } = useAuth();
   const branchId = user?.branch_id ?? 1;
 
   const [products, setProducts] = useState([]);
@@ -103,18 +105,26 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
       const uom = selectedProduct?.uom;
       const baseQty = damageQtyToBase(form.quantity, form.package_type, uom);
       const reason = [form.reason.trim(), form.notes.trim()].filter(Boolean).join(" — ");
-      await apiRequest("/damages", {
+      const body = {
+        product_code: form.product_code,
+        branch_id: branchId,
+        quantity: baseQty,
+        package_type: form.package_type,
+        uom_label: damageMeasureLabel(uom, form.package_type),
+        stock_location: form.stock_location,
+        reason: reason || null,
+      };
+      const useRequestFlow =
+        isDamageWriteOffApprovalEnabled(capabilities?.module_settings) &&
+        !user?.is_admin &&
+        !hasPermission("inventory.manage");
+      const res = await apiRequest(useRequestFlow ? "/damages/request" : "/damages", {
         method: "POST",
-        body: {
-          product_code: form.product_code,
-          branch_id: branchId,
-          quantity: baseQty,
-          package_type: form.package_type,
-          uom_label: damageMeasureLabel(uom, form.package_type),
-          stock_location: form.stock_location,
-          reason: reason || null,
-        },
+        body,
       });
+      if (res?.pending_approval) {
+        notifySuccess("Write-off submitted for manager approval.");
+      }
       reset();
       onSaved?.();
       onClose();

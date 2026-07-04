@@ -225,7 +225,7 @@ export function DistributionLoadingListsScreen() {
   return (
     <CatalogPageShell
       title="Loading lists"
-      subtitle="Preview and print picking and loading lists from dispatch trips"
+      subtitle="Preview and print picking lists (by product) and loading lists (by customer order)"
     >
       {error ? <DashboardErrorBanner message={error} className="mb-4" /> : null}
 
@@ -317,9 +317,18 @@ export function DistributionLoadingListsScreen() {
                     {selectedTrip?.trip_code ?? "Trip"}
                   </p>
                   <p className="theme-text-muted text-xs">
-                    {loadingList.lines?.length ?? 0} line
-                    {(loadingList.lines?.length ?? 0) === 1 ? "" : "s"} ·{" "}
-                    {formatSaleKes(loadingList.total_amount)}
+                    {loadingList.order_count ?? loadingList.orders?.length ?? 0} order
+                    {(loadingList.order_count ?? loadingList.orders?.length ?? 0) === 1 ? "" : "s"} ·{" "}
+                    {loadingList.line_count ??
+                      loadingList.orders?.reduce((sum, order) => sum + (order.lines?.length ?? 0), 0) ??
+                      0}{" "}
+                    line
+                    {(loadingList.line_count ??
+                      loadingList.orders?.reduce((sum, order) => sum + (order.lines?.length ?? 0), 0) ??
+                      0) === 1
+                      ? ""
+                      : "s"}{" "}
+                    · {formatSaleKes(loadingList.total_amount)}
                     {loadingList.status ? (
                       <>
                         {" "}

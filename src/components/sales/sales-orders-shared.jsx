@@ -348,6 +348,7 @@ export function buildOrderContextMenuItems({
   onCollectPayment,
   includePrint = true,
   hasExternalPos = false,
+  disableWorkflowActions = false,
 }) {
   const items = [
     { key: "view", label: "View Order Summary", icon: "view", onClick: onView },
@@ -362,10 +363,11 @@ export function buildOrderContextMenuItems({
     });
   }
 
-  const canCollect = sale && onCollectPayment && canRecordOrderPayment(sale);
+  const canCollect =
+    !disableWorkflowActions && sale && onCollectPayment && canRecordOrderPayment(sale);
   const workflowActions =
     sale && workflow
-      ? resolveOrderWorkflowActions(sale, workflow, null, capabilities)
+      ? resolveOrderWorkflowActions(sale, workflow, null, capabilities, { disableWorkflowActions })
       : { showCollectPayment: false, advanceStatus: null };
 
   if (canCollect) {
@@ -401,7 +403,7 @@ export function buildOrderContextMenuItems({
     }
   }
 
-  if (!sale || sale.status === "cancelled" || sale.status === "expired" || sale.status === "completed") {
+  if (disableWorkflowActions || !sale || sale.status === "cancelled" || sale.status === "expired" || sale.status === "completed") {
     return items;
   }
 

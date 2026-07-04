@@ -3,7 +3,7 @@ export const DISTRIBUTION_REPORT_DEFS = [
   {
     key: "mobile-route-sales",
     label: "Route order sales",
-    subtitle: "Mobile and POS route orders by route and loading date",
+    subtitle: "Mobile and backoffice route orders by route and loading date",
     icon: "logistics",
   },
   {

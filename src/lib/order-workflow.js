@@ -4,7 +4,6 @@ import {
   ORDER_CANCELLABLE_STATUSES,
   orgDefersPaymentToFulfillment,
 } from "@/lib/platform-org-features";
-import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 
 export const DEFAULT_ORDER_WORKFLOW = {
   steps: [
@@ -820,15 +819,16 @@ export function saleBalanceDue(sale, totalPaid = null) {
 
 /**
  * Whether staff should be offered "Collect payment" for this order.
- * Includes orders that advanced through fulfillment while payment remains outstanding.
+ * Only when workflow status is Unpaid or Partially paid.
  */
 export function saleNeedsPaymentCollection(sale, totalPaid = null) {
   return canRecordOrderPayment(sale, totalPaid);
 }
 
-/** Whether payment can be recorded from order summary / AR (any active workflow step). */
+/** Whether payment can be recorded from order summary / AR. */
 export function canRecordOrderPayment(sale, totalPaid = null) {
   if (!sale || sale.status === "cancelled" || sale.status === "expired") return false;
+  if (!isPaymentCollectWorkflowStatus(sale.status)) return false;
   const balance = saleBalanceDue(sale, totalPaid);
   if (balance <= 0.01) return false;
   const paymentStatus = String(sale.payment_status ?? "unpaid").toLowerCase();
@@ -890,12 +890,7 @@ const WORKFLOW_ONLY_BADGE_STATUSES = new Set(["cancelled", "expired", "draft", "
 const PAYMENT_WORKFLOW_STATUSES = new Set(["unpaid", "pending_payment", "paid"]);
 
 /** Fulfillment steps that may show a payment badge when balance remains. */
-const FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE = new Set([
-  "booked",
-  "pending",
-  "processed",
-  "delivered",
-]);
+const FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE = new Set(["processed", "delivered"]);
 
 /** Route / field-sales orders stop at delivered; completed follows payment in backoffice. */
 export function isFieldFulfillmentOrder(sale, capabilities = null) {
@@ -928,30 +923,48 @@ export function shouldShowPaymentStatusBadge(sale, totalPaid = null, capabilitie
   return FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE.has(workflowStatus);
 }
 
-/**
- * Collect payment and workflow advance can both be shown when payment was deferred
- * (e.g. delivered + unpaid still offers Collect payment alongside Confirm → Completed).
- */
-/** Backoffice/sales UI must not offer distribution-only fulfillment transitions. */
-export function isBackofficeDistributionTransitionBlocked(fromStatus, toStatus, capabilities = null) {
-  if (!isDistributionOpsEnabled(capabilities)) return false;
-
-  const from = String(fromStatus ?? "").toLowerCase();
-  const to = String(toStatus ?? "").toLowerCase();
-
-  if (from === "processed" && to === "delivered") return true;
-  if (to === "completed") return true;
-
-  return false;
+/** Distribution route-order views are read-only; workflow moves happen in backoffice Sales only. */
+export function isDistributionOrderViewContext(context) {
+  if (context === true) return true;
+  if (typeof context === "string") {
+    return context.startsWith("/fulfillment");
+  }
+  return Boolean(context?.routeOrdersOnly || context?.readOnlyWorkflow);
 }
 
-export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null, capabilities = null) {
+/**
+ * Secondary payment hint for summary cards — only when workflow status alone does not convey payment.
+ */
+export function orderPaymentStatusHint(sale, totalPaid = null, capabilities = null) {
+  if (!sale?.payment_status) return null;
+  if (shouldShowPaymentStatusBadge(sale, totalPaid, capabilities)) {
+    const key = String(sale.payment_status).toLowerCase();
+    if (key === "unpaid") return "Unpaid";
+    if (key === "partial") return "Partially paid";
+    return null;
+  }
+  return null;
+}
+
+export function resolveOrderWorkflowActions(
+  sale,
+  workflow,
+  totalPaid = null,
+  capabilities = null,
+  options = {},
+) {
+  const { disableWorkflowActions = false } = options;
   const status = String(sale?.status ?? "").toLowerCase();
   if (!sale || status === "cancelled" || status === "expired" || status === "completed") {
     return { showCollectPayment: false, advanceStatus: null, balanceDue: 0 };
   }
 
   const balanceDue = saleBalanceDue(sale, totalPaid);
+
+  if (disableWorkflowActions) {
+    return { showCollectPayment: false, advanceStatus: null, balanceDue };
+  }
+
   let advanceStatus = primaryWorkflowAdvanceStatus(status, workflow, sale, capabilities);
 
   if (advanceStatus && isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {
@@ -962,11 +975,7 @@ export function resolveOrderWorkflowActions(sale, workflow, totalPaid = null, ca
   const showCollectPayment = canRecordOrderPayment(sale, totalPaid);
 
   let resolvedAdvance = null;
-  if (
-    advanceStatus
-    && !isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)
-    && !isBackofficeDistributionTransitionBlocked(status, advanceStatus, capabilities)
-  ) {
+  if (advanceStatus && !isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {
     resolvedAdvance = advanceStatus;
   }
 

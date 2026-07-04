@@ -216,7 +216,7 @@ export function MobileApplicationSettingsPanel({
                   <Toggle
                     label="Show customer phone number in the mobile app"
                     description="When off, the app shows only the customer name — phone numbers are hidden and call, SMS, and WhatsApp shortcuts are disabled for reps and drivers."
-                    checked={form.mobile_show_customer_phone !== false}
+                    checked={form.mobile_show_customer_phone === true}
                     onChange={(v) =>
                       setForm((f) => ({ ...f, mobile_show_customer_phone: v }))
                     }

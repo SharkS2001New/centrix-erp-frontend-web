@@ -258,6 +258,12 @@ export function ManagerApprovalsSettingsPanel({
                       checked={form.stock_transfer_approval_enabled}
                       onChange={(v) => setForm((f) => ({ ...f, stock_transfer_approval_enabled: v }))}
                     />
+                    <Toggle
+                      label="Damage / write-off approval"
+                      description="Write-offs and damage records by non-managers require approval before stock is deducted."
+                      checked={form.damage_write_off_approval_enabled}
+                      onChange={(v) => setForm((f) => ({ ...f, damage_write_off_approval_enabled: v }))}
+                    />
                   </div>
                 ) : null}
 
