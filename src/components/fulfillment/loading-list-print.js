@@ -250,11 +250,6 @@ function loadingListLineCount(loadingList) {
   return orders.reduce((sum, order) => sum + (order.lines?.length ?? 0), 0);
 }
 
-function formatPaymentStatusLabel(status) {
-  const key = String(status ?? "").trim();
-  if (!key) return "";
-  return key.replace(/_/g, " ");
-}
 
 function buildCustomerStopHtml(order, { showQtyColumn, showPriceColumns, showPriceColumnsForSubtotal }) {
   const lines = order.lines ?? [];
@@ -266,9 +261,6 @@ function buildCustomerStopHtml(order, { showQtyColumn, showPriceColumns, showPri
     `<tr><td colspan="${columnCount}" class="empty">No line items</td></tr>`;
 
   const orderLabel = order.order_num ? `#${order.order_num}` : "Order";
-  const paymentLabel = formatPaymentStatusLabel(order.payment_status);
-  const metaParts = [orderLabel];
-  if (paymentLabel) metaParts.push(paymentLabel);
 
   const subtotalRow =
     showPriceColumnsForSubtotal && showPriceColumns
@@ -285,7 +277,7 @@ function buildCustomerStopHtml(order, { showQtyColumn, showPriceColumns, showPri
   <section class="customer-stop">
     <div class="customer-stop-header">
       <p class="customer-stop-title">Stop ${order.stop_no} — ${escapeHtml(order.customer_name ?? "Customer")}</p>
-      <p class="customer-stop-meta">${escapeHtml(metaParts.join(" · "))}</p>
+      <p class="customer-stop-meta">${escapeHtml(orderLabel)}</p>
     </div>
     <table class="${tableLayoutClass} customer-stop-table">
       <thead>${tableHead}</thead>

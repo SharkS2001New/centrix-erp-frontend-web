@@ -1,6 +1,10 @@
 import { isNavItemVisible, navSections } from "@/lib/nav-config";
 import { canViewReport, P } from "@/lib/permission-codes";
 import {
+  canViewAnySalesOrderQueue,
+  canViewOrderQueue,
+} from "@/lib/order-queue-permissions";
+import {
   canAccessTenantOrganizationSettings,
   isAdministrationModuleEnabled,
   isOrgAdminSettingsPath,
@@ -110,6 +114,19 @@ export function canAccessRoute(pathname, ctx) {
     !isLegacyArchiveEnabled(ctx.capabilities)
   ) {
     return false;
+  }
+
+  const salesOrderQueueMatch = pathname.match(/^\/sales\/orders\/queues\/([^/]+)$/);
+  if (salesOrderQueueMatch) {
+    return canViewOrderQueue(salesOrderQueueMatch[1], ctx.hasPermission);
+  }
+
+  if (pathname === "/sales/orders") {
+    return canViewOrderQueue("all", ctx.hasPermission);
+  }
+
+  if (/^\/sales\/orders\/[^/]+$/.test(pathname)) {
+    return canViewAnySalesOrderQueue(ctx.hasPermission);
   }
 
   if (

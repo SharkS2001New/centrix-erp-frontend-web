@@ -16,7 +16,6 @@ import {
   pipelineStatusIndex,
   resolveOrderWorkflowActions,
   canCancelOrder,
-  canRecordOrderPayment,
   shouldShowPaymentStatusBadge,
   workflowPipelineSteps,
   workflowStatusLabel,
@@ -363,8 +362,7 @@ export function buildOrderContextMenuItems({
     });
   }
 
-  const canCollect =
-    !disableWorkflowActions && sale && onCollectPayment && canRecordOrderPayment(sale);
+  const canCollect = !disableWorkflowActions && sale && onCollectPayment;
   const workflowActions =
     sale && workflow
       ? resolveOrderWorkflowActions(sale, workflow, null, capabilities, { disableWorkflowActions })
@@ -611,9 +609,41 @@ function MoreIcon() {
   );
 }
 
-export function OrderRowActions({ onView, onPrint, onOpenMenu, busy = false, printAriaLabel = "Print" }) {
+function CollectPaymentIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path strokeLinecap="round" d="M2 10h20" />
+      <path strokeLinecap="round" d="M6 15h4" />
+    </svg>
+  );
+}
+
+export function OrderRowActions({
+  onView,
+  onPrint,
+  onCollectPayment,
+  onOpenMenu,
+  busy = false,
+  printAriaLabel = "Print",
+}) {
   return (
     <div className="flex items-center justify-end gap-0.5">
+      {onCollectPayment ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={(event) => {
+            event.stopPropagation();
+            onCollectPayment();
+          }}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+          aria-label="Collect payment"
+          title="Collect payment"
+        >
+          <CollectPaymentIcon />
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={(event) => {
@@ -691,6 +721,7 @@ export function OrderListTableRow({
   onPrint,
   onView,
   onOpenActionsMenu,
+  onCollectPayment = null,
   actionBusy = false,
   printAriaLabel = "Print",
   showBranchColumn = false,
@@ -773,6 +804,7 @@ export function OrderListTableRow({
             busy={actionBusy}
             onView={onView}
             onPrint={onPrint}
+            onCollectPayment={onCollectPayment}
             onOpenMenu={onOpenActionsMenu}
             printAriaLabel={printAriaLabel}
           />

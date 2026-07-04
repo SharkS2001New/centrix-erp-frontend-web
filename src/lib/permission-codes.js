@@ -1,6 +1,18 @@
 /** Feature permission codes — aligned with API config/permission_registry.php */
 
 import { HR_REPORT_KEYS } from "@/lib/reports/hr-reports";
+import {
+  ORDER_QUEUE_SLUGS,
+  orderQueuePermissionCode,
+  SALES_ORDERS_VIEW_ALL_QUEUES,
+} from "@/lib/order-queue-permissions";
+
+const ORDER_QUEUE_VIEW_PERMISSIONS = [
+  ...ORDER_QUEUE_SLUGS.map((slug) => orderQueuePermissionCode(slug)),
+  SALES_ORDERS_VIEW_ALL_QUEUES,
+];
+
+export { ORDER_QUEUE_VIEW_PERMISSIONS };
 
 export const P = {
   dashboard: {
@@ -35,7 +47,26 @@ export const P = {
   },
   sales: {
     dashboard: { view: "sales.dashboard.view" },
-    orders: { view: "sales.orders.view", create: "sales.orders.create", edit: "sales.orders.edit", approve: "sales.orders.approve" },
+    order_queues: {
+      all: { view: "sales.order_queue_all.view" },
+      booked: { view: "sales.order_queue_booked.view" },
+      pending: { view: "sales.order_queue_pending.view" },
+      unpaid: { view: "sales.order_queue_unpaid.view" },
+      pending_payment: { view: "sales.order_queue_pending_payment.view" },
+      paid: { view: "sales.order_queue_paid.view" },
+      processed: { view: "sales.order_queue_processed.view" },
+      delivered: { view: "sales.order_queue_delivered.view" },
+      completed: { view: "sales.order_queue_completed.view" },
+      cancelled: { view: "sales.order_queue_cancelled.view" },
+      expired: { view: "sales.order_queue_expired.view" },
+      mobile: { view: "sales.order_queue_mobile.view" },
+    },
+    orders: {
+      view: SALES_ORDERS_VIEW_ALL_QUEUES,
+      create: "sales.orders.create",
+      edit: "sales.orders.edit",
+      approve: "sales.orders.approve",
+    },
     vouchers: { view: "sales.vouchers.view" },
     loyalty_cards: { view: "sales.loyalty_cards.view" },
     reservations: { view: "sales.reservations.view" },
@@ -190,7 +221,7 @@ export const P = {
   },
 };
 
-/** @param {string} reportKey kebab-case report route key */
+export { ORDER_QUEUE_VIEW_PERMISSIONS };
 export function reportPermissionCode(reportKey) {
   const map = {
     "daily-sales": P.reports.daily_sales.view,

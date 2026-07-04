@@ -1,5 +1,5 @@
 import { buildCatalogReportNavItems } from "@/lib/reports/report-nav";
-import { canViewReport, P } from "@/lib/permission-codes";
+import { canViewReport, ORDER_QUEUE_VIEW_PERMISSIONS, P } from "@/lib/permission-codes";
 import { hasOperationalModule, shouldHideOrgAdminFromPlatformSuperAdmin } from "@/lib/admin-scope";
 import { anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-registry";
 import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled, isVouchersEnabled, isRedeemablePointsEnabled, shouldShowLoadingListNav } from "@/lib/sales-settings";
@@ -183,7 +183,7 @@ const NAV_SECTION_DEFINITIONS = [
         href: "/sales/orders",
         label: "All orders",
         module: "sales.backend",
-        permission: P.sales.orders.view,
+        permission: P.sales.order_queues.all.view,
         ordersNav: true,
       },
     ],
@@ -199,7 +199,7 @@ const NAV_SECTION_DEFINITIONS = [
         href: "/sales/orders/queues/mobile",
         label: "Mobile orders",
         module: "sales.backend",
-        permission: P.sales.orders.view,
+        permission: P.sales.order_queues.mobile.view,
         mobileOrdersNav: true,
         requireUserMobileChannel: true,
       },
@@ -714,7 +714,7 @@ const NAV_SECTION_DEFINITIONS = [
         href: "/fulfillment/orders",
         label: "Route orders",
         module: "distribution",
-        permission: P.sales.orders.view,
+        permissionAny: ORDER_QUEUE_VIEW_PERMISSIONS,
       },
     ],
   },

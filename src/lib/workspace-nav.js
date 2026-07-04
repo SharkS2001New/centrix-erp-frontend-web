@@ -13,14 +13,18 @@ import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { isNavItemVisible, isNavSectionVisible, navSections } from "@/lib/nav-config";
 import { withNavItemIcon } from "@/lib/nav-item-icons";
 import { formatNavLabel } from "@/lib/nav-label-format";
-import { filterNavSectionsForWorkspace, defaultWorkspaceId } from "@/lib/workspaces";
+import {
+  canViewOrderQueue,
+  orderQueuePermissionCode,
+} from "@/lib/order-queue-permissions";
 
 function mapSalesOrderNavItem(item) {
   return withNavItemIcon({
     href: item.href,
     label: formatNavLabel(item.label),
     module: "sales.backend",
-    permission: "sales.orders.view",
+    permission: orderQueuePermissionCode(item.slug),
+    orderQueueSlug: item.slug,
     exact: item.slug === "all",
     ordersNav: false,
   });
@@ -53,7 +57,8 @@ export function buildWorkspaceNavSections({
           href: "/sales/orders/queues/mobile",
           label: "Mobile Orders",
           module: "sales.backend",
-          permission: "sales.orders.view",
+          permission: orderQueuePermissionCode("mobile"),
+          orderQueueSlug: "mobile",
           ordersNav: false,
         }),
       ]
@@ -65,10 +70,18 @@ export function buildWorkspaceNavSections({
       ...section,
       items: section.items.flatMap((item) => {
         if (item.ordersNav) {
-          return salesOrderNavItems.filter((navItem) => isNavItemVisible(navItem, navContext));
+          return salesOrderNavItems.filter(
+            (navItem) =>
+              isNavItemVisible(navItem, navContext) &&
+              canViewOrderQueue(navItem.orderQueueSlug, navContext.hasPermission),
+          );
         }
         if (item.mobileOrdersNav) {
-          return mobileOrderNavItems.filter((navItem) => isNavItemVisible(navItem, navContext));
+          return mobileOrderNavItems.filter(
+            (navItem) =>
+              isNavItemVisible(navItem, navContext) &&
+              canViewOrderQueue(navItem.orderQueueSlug, navContext.hasPermission),
+          );
         }
         if (!isNavItemVisible(item, navContext)) return [];
         if (item.requireLoadingListNav) {

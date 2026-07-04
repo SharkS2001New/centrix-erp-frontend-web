@@ -765,7 +765,8 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, c
       showDeliveryDateColumn: true,
       lockStatusFilter: true,
       lockSourceFilter: false,
-      excludeTerminalStatuses: true,
+      excludeStatuses: ["cancelled", "expired", "completed"],
+      requireOutstandingBalance: true,
     };
   }
 
@@ -825,14 +826,26 @@ export function saleNeedsPaymentCollection(sale, totalPaid = null) {
   return canRecordOrderPayment(sale, totalPaid);
 }
 
-/** Whether payment can be recorded from order summary / AR. */
+/** Whether payment can be recorded (outstanding balance on an unpaid/partial sale). */
 export function canRecordOrderPayment(sale, totalPaid = null) {
-  if (!sale || sale.status === "cancelled" || sale.status === "expired") return false;
-  if (!isPaymentCollectWorkflowStatus(sale.status)) return false;
+  if (!sale) return false;
+
+  const workflowStatus = String(sale.status ?? "").toLowerCase();
+  if (workflowStatus === "cancelled" || workflowStatus === "expired" || workflowStatus === "completed") {
+    return false;
+  }
+
   const balance = saleBalanceDue(sale, totalPaid);
   if (balance <= 0.01) return false;
+
   const paymentStatus = String(sale.payment_status ?? "unpaid").toLowerCase();
   return paymentStatus === "unpaid" || paymentStatus === "partial";
+}
+
+/** Collect payment is offered on Unpaid / Partially paid queues only. */
+export function canCollectPaymentOnQueue(sale, queueSlug, totalPaid = null) {
+  if (!isPaymentCollectionQueueSlug(queueSlug)) return false;
+  return canRecordOrderPayment(sale, totalPaid);
 }
 
 /** Block manual workflow moves that skip recording payment. */

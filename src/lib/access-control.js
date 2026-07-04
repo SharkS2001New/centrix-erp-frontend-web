@@ -3,6 +3,7 @@ import { isNavItemVisible, navSections } from "@/lib/nav-config";
 import { P } from "@/lib/permission-codes";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { canAccessRoute } from "@/lib/route-access";
+import { firstAccessibleRouteInWorkspace } from "@/lib/workspace-navigation";
 import {
   defaultWorkspaceId,
   resolvePostLoginPath,
@@ -129,6 +130,11 @@ export function resolveHomePath(ctx) {
     const home = workspaceHomePath(workspaceId, ctx.capabilities);
     if (canAccessRoute(home, ctx)) {
       return home;
+    }
+
+    const workspaceRoute = firstAccessibleRouteInWorkspace(workspaceId, ctx.capabilities, ctx);
+    if (workspaceRoute) {
+      return workspaceRoute;
     }
   }
 

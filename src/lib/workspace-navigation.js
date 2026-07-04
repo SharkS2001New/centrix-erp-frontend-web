@@ -1,5 +1,10 @@
+import { navSections } from "@/lib/nav-config";
 import { canAccessRoute } from "@/lib/route-access";
-import { pathBelongsToWorkspace, workspaceHomePath } from "@/lib/workspaces";
+import {
+  filterNavSectionsForWorkspace,
+  pathBelongsToWorkspace,
+  workspaceHomePath,
+} from "@/lib/workspaces";
 
 const STORAGE_PREFIX = "pos_erp_workspace_routes";
 
@@ -63,10 +68,47 @@ export function persistWorkspaceRouteBeforeSwitch(
 }
 
 /**
+ * First route in the workspace sidebar the user can open (e.g. dispatch when overview is off).
+ * @param {string} workspaceId
+ * @param {object} capabilities
+ * @param {object | null} ctx access context from buildAccessContext
+ */
+export function firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx) {
+  if (!workspaceId || !ctx) return null;
+
+  const navContext = { capabilities, ...ctx };
+  const sections = filterNavSectionsForWorkspace(navSections, workspaceId, navContext);
+
+  for (const section of sections) {
+    for (const item of section.items) {
+      if (canAccessRoute(item.href, ctx)) {
+        return item.href;
+      }
+    }
+  }
+
+  return null;
+}
+
+function resolveWorkspaceFallbackPath(workspaceId, capabilities, ctx) {
+  const home = workspaceHomePath(workspaceId, capabilities);
+  if (ctx && canAccessRoute(home, ctx)) {
+    return home;
+  }
+
+  const firstAccessible = firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx);
+  if (firstAccessible) {
+    return firstAccessible;
+  }
+
+  return home;
+}
+
+/**
  * Resume path when re-opening a workspace — falls back to module home when unknown or inaccessible.
  */
 export function recallWorkspacePath(userId, organizationId, workspaceId, capabilities, ctx = null) {
-  const fallback = workspaceHomePath(workspaceId, capabilities);
+  const fallback = resolveWorkspaceFallbackPath(workspaceId, capabilities, ctx);
   if (!workspaceId) return fallback;
 
   const stored = readRouteMap(userId, organizationId)[workspaceId];
@@ -81,7 +123,11 @@ export function recallWorkspacePath(userId, organizationId, workspaceId, capabil
 
 /** Landing route after a workspace switch or when the URL belongs to another module. */
 export function workspaceLandingPath(userId, organizationId, workspaceId, capabilities, ctx = null) {
-  return recallWorkspacePath(userId, organizationId, workspaceId, capabilities, ctx);
+  if (!workspaceId) {
+    return workspaceHomePath(workspaceId, capabilities);
+  }
+
+  return resolveWorkspaceFallbackPath(workspaceId, capabilities, ctx);
 }
 
 export function clearWorkspaceRouteMemory(userId, organizationId) {

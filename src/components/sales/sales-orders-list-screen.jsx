@@ -18,7 +18,8 @@ import {
   isPaymentGatedWorkflowTransition,
   resolveSalesOrderQueue,
   saleBalanceDue,
-  canRecordOrderPayment,
+  canCollectPaymentOnQueue,
+  isPaymentCollectionQueueSlug,
   workflowStatusFilterOptions,
 } from "@/lib/order-workflow";
 import {
@@ -274,8 +275,13 @@ export default function SalesOrdersListScreen({
         with_items: 1,
         sort: ordersListSort,
       };
-      if (queueConfig?.excludeTerminalStatuses) {
+      if (queueConfig?.excludeStatuses?.length) {
+        extra.exclude_statuses = queueConfig.excludeStatuses.join(",");
+      } else if (queueConfig?.excludeTerminalStatuses) {
         extra.exclude_statuses = "cancelled,expired";
+      }
+      if (queueConfig?.requireOutstandingBalance) {
+        extra.outstanding_balance = 1;
       }
       if (routeOrdersOnly) {
         extra.route_orders = 1;
@@ -562,10 +568,12 @@ export default function SalesOrdersListScreen({
   }
 
   function openCollectPayment(sale) {
-    if (!sale?.id || !canRecordOrderPayment(sale)) return;
+    if (!sale?.id || !canCollectPaymentOnQueue(sale, queueSlug)) return;
     setContextMenu(null);
     setPaySale(sale);
   }
+
+  const showCollectPaymentAction = isPaymentCollectionQueueSlug(queueSlug);
 
   function applyDateFilter() {
     setAppliedFromDate(fromDate);
@@ -621,13 +629,13 @@ export default function SalesOrdersListScreen({
       disableWorkflowActions: routeOrdersOnly,
       onView: () => viewOrder(sale),
       onEdit: () => openEditOrder(sale),
-      onCollectPayment: canRecordOrderPayment(sale) ? () => openCollectPayment(sale) : null,
+      onCollectPayment: canCollectPaymentOnQueue(sale, queueSlug) ? () => openCollectPayment(sale) : null,
       onPrintThermal: () => void printOrder(sale, "receipt"),
       onPrintA4: () => void printOrder(sale, "invoice"),
       onAdvance: routeOrdersOnly ? null : (status) => void handleAdvance(sale, status),
       onCancel: routeOrdersOnly ? null : () => void handleAdvance(sale, "cancelled"),
     });
-  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos, routeOrdersOnly]);
+  }, [contextMenu, capabilities, transitionBusyId, fulfillment.busy, hasExternalPos, routeOrdersOnly, queueSlug]);
 
   useEffect(() => {
     setPage(1);
@@ -851,6 +859,11 @@ export default function SalesOrdersListScreen({
                           onPrint={() => void printOrder(sale)}
                           printAriaLabel={orderPrintAriaLabel}
                           onOpenActionsMenu={(event) => openActionsMenuFromButton(event, sale)}
+                          onCollectPayment={
+                            showCollectPaymentAction && canCollectPaymentOnQueue(sale, queueSlug)
+                              ? () => openCollectPayment(sale)
+                              : null
+                          }
                           actionBusy={transitionBusyId === sale.id}
                           showBranchColumn={showBranchColumn}
                           branchName={saleBranchLabel(sale, branchById)}
