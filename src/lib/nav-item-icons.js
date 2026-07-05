@@ -43,6 +43,7 @@ export const NAV_HREF_ICONS = {
 
   // Sales & orders
   "/sales/orders": "list",
+  "/sales/whatsapp": "chat",
 
   // Field sales
   "/sales/orders/queues/mobile": "mobile",

@@ -8,7 +8,7 @@ import { userHasMobileChannel } from "@/lib/mobile-order-scope";
 import { isKraDeviceConfigured } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
 import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
-import { isReportNavEnabled } from "@/lib/nav-feature-gates";
+import { isPlatformWhatsappEnabled } from "@/lib/platform-org-features";
 import { withNavItemIcons } from "@/lib/nav-item-icons";
 import { platformNavItems } from "@/lib/platform-nav";
 
@@ -177,6 +177,13 @@ const NAV_SECTION_DEFINITIONS = [
         module: "sales.backend",
         permission: P.sales.order_queues.all.view,
         ordersNav: true,
+      },
+      {
+        href: "/sales/whatsapp",
+        label: "WhatsApp",
+        module: "sales.backend",
+        permission: P.sales.orders.view,
+        requireWhatsappOrders: true,
       },
     ],
   },
@@ -923,6 +930,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   if (item.requireSalesVouchers && !isVouchersEnabled(capabilities?.module_settings)) return false;
   if (item.requireRedeemablePoints && !isRedeemablePointsEnabled(capabilities?.module_settings)) return false;
   if (item.requireKraDevice && !isKraDeviceConfigured(capabilities?.module_settings, capabilities)) return false;
+  if (item.requireWhatsappOrders && !isPlatformWhatsappEnabled(capabilities)) return false;
   if (item.reportKey && !isReportNavEnabled(item.reportKey, capabilities)) return false;
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;
   if (item.requireOperationalModule && !hasOperationalModule(capabilities)) return false;
