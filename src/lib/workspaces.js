@@ -1,4 +1,3 @@
-import { isNavItemVisible } from "@/lib/nav-config";
 import { POS_LOGIN_CHANNEL, WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
 import {
   WORKSPACE_ANALYTICS_HREFS,

@@ -12,9 +12,10 @@ import {
   inventoryManagerApprovalsPayload,
   managerApprovalsEmailPayload,
   managerApprovalsFormFromApiResponses,
+  managerApprovalsNotificationsPayload,
   procurementManagerApprovalsPayload,
   salesManagerApprovalsPayload,
-  visibleAlwaysOnEvents,
+  visibleApprovalRequestEvents,
 } from "@/lib/manager-approvals-settings";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
@@ -44,7 +45,6 @@ function InfoEvent({ label, description }) {
     <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-4 py-3">
       <p className="theme-heading text-sm font-medium">{label}</p>
       <p className="theme-subtext mt-0.5 text-xs">{description}</p>
-      <p className="mt-2 text-xs font-medium text-emerald-700">Always notifies managers · in-app bell</p>
     </div>
   );
 }
@@ -71,7 +71,7 @@ export function ManagerApprovalsSettingsPanel({
   const showHr = Boolean(modules.hr_payroll);
   const showAccounting = Boolean(modules.accounting);
   const showEmail = Boolean(modules.admin);
-  const alwaysOnEvents = useMemo(() => visibleAlwaysOnEvents(capabilities), [capabilities]);
+  const approvalRequestEvents = useMemo(() => visibleApprovalRequestEvents(capabilities), [capabilities]);
 
   const loadSections = useMemo(() => {
     const sections = [];
@@ -156,7 +156,7 @@ export function ManagerApprovalsSettingsPanel({
         saves.push(
           apiRequest(settingsPath("notifications"), {
             method: "PATCH",
-            body: managerApprovalsEmailPayload(form),
+            body: managerApprovalsNotificationsPayload(form),
           }),
         );
       }
@@ -178,25 +178,42 @@ export function ManagerApprovalsSettingsPanel({
         <h2 className="theme-heading text-lg font-medium">Manager approvals</h2>
         <p className="theme-subtext mt-1 text-sm">
           Internal system notifications for managers — supplier returns, customer returns, discount requests,
-          cancellations, stock adjustments, LPOs, payroll, and journal entries. Approvers see alerts in the
-          bell icon; optional email copies can be enabled below.
+          cancellations, stock adjustments, LPOs, payroll, and journal entries. Configure the in-app bell
+          under Notifications → In-app alerts; optional email copies below.
         </p>
 
         {loading ? (
           <p className="theme-subtext mt-4 text-sm">Loading…</p>
         ) : (
           <div className="mt-5 space-y-6">
-            {alwaysOnEvents.length ? (
+            {approvalRequestEvents.length ? (
               <div className="space-y-3">
                 <div>
-                  <h3 className="theme-heading text-sm font-semibold">Always-on internal alerts</h3>
+                  <h3 className="theme-heading text-sm font-semibold">Approval bell alerts</h3>
                   <p className="theme-subtext mt-1 text-xs">
-                    These events always create in-app notifications for the relevant managers when submitted.
+                    Control whether managers and requesters receive in-app notifications for approval
+                    workflows. More staff alerts (trips, inventory, accounting) are under Notifications →
+                    In-app alerts.
                   </p>
                 </div>
-                {alwaysOnEvents.map((event) => (
-                  <InfoEvent key={event.id} label={event.label} description={event.description} />
-                ))}
+                <Toggle
+                  label="Notify approvers on new requests"
+                  description="Supplier returns, customer returns, leave, and other submitted approval requests."
+                  checked={form.in_app_notify_on_approval_request}
+                  onChange={(v) => setForm((f) => ({ ...f, in_app_notify_on_approval_request: v }))}
+                />
+                <Toggle
+                  label="Notify requester on outcome"
+                  description="When a manager approves or rejects a pending request."
+                  checked={form.in_app_notify_on_approval_outcome}
+                  onChange={(v) => setForm((f) => ({ ...f, in_app_notify_on_approval_outcome: v }))}
+                />
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Includes</p>
+                  {approvalRequestEvents.map((event) => (
+                    <InfoEvent key={event.id} label={event.label} description={event.description} />
+                  ))}
+                </div>
               </div>
             ) : null}
 
@@ -206,7 +223,7 @@ export function ManagerApprovalsSettingsPanel({
                   <h3 className="theme-heading text-sm font-semibold">Optional approval workflows</h3>
                   <p className="theme-subtext mt-1 text-xs">
                     When enabled, staff must request manager approval. Managers receive an in-app notification
-                    (and email if configured below).
+                    when approval bell alerts are on (and email if configured below).
                   </p>
                 </div>
 

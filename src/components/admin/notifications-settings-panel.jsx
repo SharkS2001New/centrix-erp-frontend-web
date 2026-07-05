@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
+  IN_APP_ALERT_GROUPS,
   SMTP_ENCRYPTION_OPTIONS,
+  inAppAlertsPayloadFromForm,
   notificationChannelsPayloadFromForm,
   notificationsFormFromApi,
 } from "@/lib/notifications-settings";
@@ -43,6 +45,7 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
     () => [
       { id: "sms", label: "Text messages (SMS)" },
       { id: "email", label: "Email setup" },
+      { id: "in_app", label: "In-app alerts" },
     ],
     [],
   );
@@ -65,7 +68,10 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
     try {
       const res = await apiRequest(settingsPath("notifications"), {
         method: "PATCH",
-        body: notificationChannelsPayloadFromForm(form),
+        body: {
+          ...notificationChannelsPayloadFromForm(form),
+          ...inAppAlertsPayloadFromForm(form),
+        },
       });
       setForm(notificationsFormFromApi(res));
       setMessage("Notification settings saved.");
@@ -86,7 +92,7 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
           SMS and email delivery for{" "}
           <span className="font-medium text-slate-700">{form.organization_name || "this organization"}</span>.
           Customer alert toggles and templates live under each module — Sales, Finance, Distribution, and
-          Manager approvals.
+          Manager approvals. Staff bell notifications are configured under In-app alerts.
         </p>
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">Loading…</p>
@@ -259,6 +265,29 @@ export function NotificationsSettingsPanel({ saving, setSaving, setError, setMes
                 </>
               ) : null}
             </div>
+            ) : null}
+
+            {activeTab === "in_app" ? (
+              <div className="space-y-6">
+                <p className="text-sm text-slate-600">
+                  Choose which events create notifications in the bell icon for managers and staff. Disabled
+                  events are not sent to anyone in this organization.
+                </p>
+                {IN_APP_ALERT_GROUPS.map((group) => (
+                  <div key={group.id} className="space-y-3">
+                    <h3 className="text-sm font-semibold text-slate-900">{group.label}</h3>
+                    {group.items.map((item) => (
+                      <Toggle
+                        key={item.key}
+                        label={item.label}
+                        description={item.description}
+                        checked={Boolean(form[item.key])}
+                        onChange={(v) => setForm((f) => ({ ...f, [item.key]: v }))}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
             ) : null}
           </div>
         )}

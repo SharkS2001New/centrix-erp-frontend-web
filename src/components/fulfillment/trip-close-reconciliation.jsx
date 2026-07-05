@@ -13,7 +13,7 @@ import {
 import { DashboardKpiGrid, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
 import { TripExpensesPanel } from "@/components/fulfillment/trip-expenses-panel";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
+import { formatCollectedCashDefault } from "@/lib/trip-cod";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 
 function varianceTone(variance) {
@@ -74,7 +74,7 @@ export function TripCloseReconciliation({ tripId }) {
       const res = await apiRequest(`/dispatch-trips/${tripId}/reconciliation`);
       setData(res);
       setCollectedCash(
-        res.cash?.collected_cash != null ? String(res.cash.collected_cash) : "",
+        formatCollectedCashDefault(res.cash?.expected_cash, res.cash?.collected_cash),
       );
       setPreparedBy(res.loading_list?.prepared_by_name ?? "");
       setCheckedBy(res.loading_list?.checked_by_name ?? "");

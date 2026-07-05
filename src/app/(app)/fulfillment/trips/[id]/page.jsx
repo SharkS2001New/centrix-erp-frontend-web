@@ -36,6 +36,7 @@ import {
   resolveTripDetailGuidance,
 } from "@/lib/fulfillment-guidance";
 import { mergeDistributionSettings } from "@/lib/distribution-settings";
+import { formatCollectedCashDefault, resolveTripExpectedCash } from "@/lib/trip-cod";
 import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
 import {
   buildUomByProductCode,
@@ -102,8 +103,9 @@ export default function TripDetailPage() {
       setPreparedBy(listRes.loading_list?.prepared_by_name ?? tripRes.prepared_by_name ?? "");
       setCheckedBy(listRes.loading_list?.checked_by_name ?? tripRes.checked_by_name ?? "");
       setPickerName(nextPicking?.picker_name ?? user?.full_name ?? user?.username ?? "");
+      const expectedCash = resolveTripExpectedCash(tripRes);
       setCollectedCash(
-        tripRes.collected_cash != null ? String(tripRes.collected_cash) : "",
+        formatCollectedCashDefault(expectedCash, tripRes.collected_cash),
       );
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load trip");
@@ -323,10 +325,12 @@ export default function TripDetailPage() {
   const canComplete = trip.status === "in_transit";
   const showCloseReconciliation = ["in_transit", "completed"].includes(trip.status);
   const canReorder = !["completed", "cancelled"].includes(trip.status);
+  const codEnabled = Boolean(distributionSettings.enableCodReconciliation);
+  const expectedCash = resolveTripExpectedCash(trip);
   const showCashSettlement =
-    trip.expected_cash != null &&
-    Number(trip.expected_cash) > 0 &&
-    ["in_transit", "completed"].includes(trip.status);
+    codEnabled &&
+    ["in_transit", "completed"].includes(trip.status) &&
+    (expectedCash > 0 || !trip.settled_at);
   async function printStopDeliveryNote(sale, stopNumber) {
     setBusy(true);
     try {
@@ -507,9 +511,11 @@ export default function TripDetailPage() {
         <div>
           <p className="text-xs uppercase text-slate-500">Expected COD</p>
           <p className="mt-1 font-medium text-slate-900">
-            {trip.expected_cash != null && Number(trip.expected_cash) > 0
-              ? formatSaleKes(trip.expected_cash)
-              : "—"}
+            {codEnabled && expectedCash > 0
+              ? formatSaleKes(expectedCash)
+              : codEnabled && (trip.sales?.length ?? 0) > 0
+                ? formatSaleKes(0)
+                : "—"}
           </p>
         </div>
       </div>
@@ -682,12 +688,12 @@ export default function TripDetailPage() {
         <section className="mb-8 theme-panel rounded-xl border p-5 shadow-sm">
           <h2 className="text-lg font-medium text-slate-900">Cash settlement</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Expected COD from unpaid order balances on this trip.
+            Expected COD is calculated from unpaid balances on orders assigned to this trip.
           </p>
           <dl className="mt-4 grid gap-3 sm:grid-cols-3 text-sm">
             <div>
               <dt className="text-slate-500">Expected cash</dt>
-              <dd className="font-medium text-slate-900">{formatSaleKes(trip.expected_cash)}</dd>
+              <dd className="font-medium text-slate-900">{formatSaleKes(expectedCash)}</dd>
             </div>
             <div>
               <dt className="text-slate-500">Collected</dt>

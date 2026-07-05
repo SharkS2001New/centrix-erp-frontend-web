@@ -805,6 +805,7 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Local printing",
         module: "admin",
         permission: P.admin.till_printing.view,
+        orgAdminOnly: true,
         requireAdmin: true,
       },
       {

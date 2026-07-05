@@ -35,7 +35,101 @@ export const NOTIFICATIONS_DEFAULTS = {
   approval_request_email_template: "{message}\n\nOpen in Centrix: {link}",
   approval_outcome_email_subject: "{title}",
   approval_outcome_email_template: "{message}\n\nOpen in Centrix: {link}",
+  in_app_notify_on_trip_activity: false,
+  in_app_notify_on_whatsapp_handoff: true,
+  in_app_notify_on_order_status_change: false,
+  in_app_notify_on_fiscal_period_change: true,
+  in_app_notify_on_stock_receipt: false,
+  in_app_notify_on_stock_transfer: true,
+  in_app_notify_on_bank_reconciliation: true,
+  in_app_notify_on_year_end_close: true,
+  in_app_notify_on_approval_request: true,
+  in_app_notify_on_approval_outcome: true,
 };
+
+export const IN_APP_ALERT_GROUPS = [
+  {
+    id: "approvals",
+    label: "Manager approvals",
+    items: [
+      {
+        key: "in_app_notify_on_approval_request",
+        label: "Approval requests",
+        description:
+          "Notifies approvers when staff submit returns, leave, discounts, stock adjustments, LPOs, payroll, and other requests.",
+      },
+      {
+        key: "in_app_notify_on_approval_outcome",
+        label: "Approval outcomes",
+        description: "Notifies the requester when their approval request is approved or rejected.",
+      },
+    ],
+  },
+  {
+    id: "sales",
+    label: "Sales & WhatsApp",
+    items: [
+      {
+        key: "in_app_notify_on_whatsapp_handoff",
+        label: "WhatsApp help requests",
+        description: "When a WhatsApp customer asks to talk to someone on your team.",
+      },
+      {
+        key: "in_app_notify_on_order_status_change",
+        label: "Order status changes",
+        description: "When any order moves between workflow statuses (can be noisy on busy teams).",
+      },
+    ],
+  },
+  {
+    id: "distribution",
+    label: "Distribution",
+    items: [
+      {
+        key: "in_app_notify_on_trip_activity",
+        label: "Trip chart activity",
+        description: "When trips are started, settled, closed, or cancelled.",
+      },
+    ],
+  },
+  {
+    id: "inventory",
+    label: "Inventory",
+    items: [
+      {
+        key: "in_app_notify_on_stock_receipt",
+        label: "Stock receipts",
+        description: "When goods are received into stock.",
+      },
+      {
+        key: "in_app_notify_on_stock_transfer",
+        label: "Branch stock transfers",
+        description: "When stock is transferred between branches.",
+      },
+    ],
+  },
+  {
+    id: "accounting",
+    label: "Accounting",
+    items: [
+      {
+        key: "in_app_notify_on_fiscal_period_change",
+        label: "Fiscal period close / reopen",
+        description: "When an accounting period is closed or reopened.",
+      },
+      {
+        key: "in_app_notify_on_bank_reconciliation",
+        label: "Bank reconciliation completed",
+        description: "When a bank reconciliation is marked complete.",
+      },
+      {
+        key: "in_app_notify_on_year_end_close",
+        label: "Year-end close",
+        description: "When year-end close is run for the organization.",
+      },
+    ],
+  },
+];
 
 export const NOTIFICATION_SCOPE_OPTIONS = [
   { value: "all", label: "All orders (customer must have phone and/or email)" },
@@ -99,6 +193,16 @@ export function notificationsFormFromApi(res) {
       notifications.approval_outcome_email_subject ?? NOTIFICATIONS_DEFAULTS.approval_outcome_email_subject,
     approval_outcome_email_template:
       notifications.approval_outcome_email_template ?? NOTIFICATIONS_DEFAULTS.approval_outcome_email_template,
+    in_app_notify_on_trip_activity: Boolean(notifications.in_app_notify_on_trip_activity),
+    in_app_notify_on_whatsapp_handoff: Boolean(notifications.in_app_notify_on_whatsapp_handoff),
+    in_app_notify_on_order_status_change: Boolean(notifications.in_app_notify_on_order_status_change),
+    in_app_notify_on_fiscal_period_change: Boolean(notifications.in_app_notify_on_fiscal_period_change),
+    in_app_notify_on_stock_receipt: Boolean(notifications.in_app_notify_on_stock_receipt),
+    in_app_notify_on_stock_transfer: Boolean(notifications.in_app_notify_on_stock_transfer),
+    in_app_notify_on_bank_reconciliation: Boolean(notifications.in_app_notify_on_bank_reconciliation),
+    in_app_notify_on_year_end_close: Boolean(notifications.in_app_notify_on_year_end_close),
+    in_app_notify_on_approval_request: Boolean(notifications.in_app_notify_on_approval_request),
+    in_app_notify_on_approval_outcome: Boolean(notifications.in_app_notify_on_approval_outcome),
     notifications_status: res?.notifications_status ?? null,
     mail_from_preview: res?.mail_from ?? null,
   };
@@ -152,6 +256,21 @@ export function distributionDeliveryAlertPayloadFromForm(form) {
   };
 }
 
+export function inAppAlertsPayloadFromForm(form) {
+  return {
+    in_app_notify_on_trip_activity: Boolean(form.in_app_notify_on_trip_activity),
+    in_app_notify_on_whatsapp_handoff: Boolean(form.in_app_notify_on_whatsapp_handoff),
+    in_app_notify_on_order_status_change: Boolean(form.in_app_notify_on_order_status_change),
+    in_app_notify_on_fiscal_period_change: Boolean(form.in_app_notify_on_fiscal_period_change),
+    in_app_notify_on_stock_receipt: Boolean(form.in_app_notify_on_stock_receipt),
+    in_app_notify_on_stock_transfer: Boolean(form.in_app_notify_on_stock_transfer),
+    in_app_notify_on_bank_reconciliation: Boolean(form.in_app_notify_on_bank_reconciliation),
+    in_app_notify_on_year_end_close: Boolean(form.in_app_notify_on_year_end_close),
+    in_app_notify_on_approval_request: Boolean(form.in_app_notify_on_approval_request),
+    in_app_notify_on_approval_outcome: Boolean(form.in_app_notify_on_approval_outcome),
+  };
+}
+
 export function managerApprovalEmailPayloadFromForm(form) {
   return {
     notify_on_approval_request: Boolean(form.notify_on_approval_request),
@@ -170,6 +289,7 @@ export function notificationsPayloadFromForm(form) {
     ...financeDebtorAlertPayloadFromForm(form),
     ...distributionDeliveryAlertPayloadFromForm(form),
     ...managerApprovalEmailPayloadFromForm(form),
+    ...inAppAlertsPayloadFromForm(form),
   };
 }
 

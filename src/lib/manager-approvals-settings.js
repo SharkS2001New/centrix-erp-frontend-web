@@ -1,8 +1,8 @@
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import { notificationsFormFromApi } from "@/lib/notifications-settings";
 
-/** Internal events that always notify managers (no org toggle yet). */
-export const ALWAYS_ON_INTERNAL_EVENTS = [
+/** Internal approval events covered by the approval-request in-app toggle. */
+export const APPROVAL_REQUEST_EVENTS = [
   {
     id: "supplier_return",
     label: "Supplier return submitted",
@@ -56,6 +56,8 @@ export function managerApprovalsFormFromApiResponses(responses = {}) {
     email_enabled: Boolean(notifications.email_enabled),
     notify_on_approval_request: Boolean(notifications.notify_on_approval_request),
     notify_on_approval_outcome: Boolean(notifications.notify_on_approval_outcome),
+    in_app_notify_on_approval_request: Boolean(notifications.in_app_notify_on_approval_request),
+    in_app_notify_on_approval_outcome: Boolean(notifications.in_app_notify_on_approval_outcome),
     approval_request_email_subject:
       notifications.approval_request_email_subject ?? "Approval required: {title}",
     approval_request_email_template:
@@ -105,10 +107,23 @@ export function managerApprovalsEmailPayload(form) {
   };
 }
 
-export function visibleAlwaysOnEvents(capabilities) {
+export function managerApprovalsNotificationsPayload(form) {
+  return {
+    ...managerApprovalsEmailPayload(form),
+    in_app_notify_on_approval_request: Boolean(form.in_app_notify_on_approval_request),
+    in_app_notify_on_approval_outcome: Boolean(form.in_app_notify_on_approval_outcome),
+  };
+}
+
+export function visibleApprovalRequestEvents(capabilities) {
   const modules = capabilities?.modules ?? {};
-  return ALWAYS_ON_INTERNAL_EVENTS.filter((event) => {
+  return APPROVAL_REQUEST_EVENTS.filter((event) => {
     if (event.module === "customers_suppliers") return Boolean(modules.customers_suppliers);
     return Boolean(modules[event.module]);
   });
+}
+
+/** @deprecated Use visibleApprovalRequestEvents */
+export function visibleAlwaysOnEvents(capabilities) {
+  return visibleApprovalRequestEvents(capabilities);
 }
