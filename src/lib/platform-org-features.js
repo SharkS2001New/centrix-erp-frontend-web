@@ -40,6 +40,13 @@ export function isPlatformAiEnabled(capabilities) {
   return true;
 }
 
+export function isPlatformWhatsappEnabled(capabilities) {
+  return (
+    capabilities?.platform_whatsapp_enabled === true ||
+    capabilities?.whatsapp_orders?.platform_enabled === true
+  );
+}
+
 export function isPlatformAdvancedDataImportEnabled(capabilities) {
   return capabilities?.platform_advanced_data_import_enabled === true;
 }

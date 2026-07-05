@@ -9,6 +9,8 @@ export const NAV_HREF_ICONS = {
   "/platform": "platform",
   "/platform/ai-training": "star",
   "/platform/ai-training/credentials": "shield",
+  "/platform/whatsapp": "chat",
+  "/platform/invoices": "receipt",
   "/platform/active-users": "users",
   "/platform/system-issues": "alert",
   "/platform/database-backups": "database",

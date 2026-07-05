@@ -226,6 +226,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     enable_mpesa_stk: true,
     enable_kra_integration: true,
     enable_ai: true,
+    enable_whatsapp_orders: false,
     enable_advanced_data_import: false,
     advanced_data_import_pages: defaultAdvancedDataImportPages(),
     stock_deduct_on: {
@@ -259,6 +260,7 @@ export function salesPlatformFromApi(apiPayload) {
     enable_mpesa_stk: apiPayload.enable_mpesa_stk !== false,
     enable_kra_integration: apiPayload.enable_kra_integration !== false,
     enable_ai: apiPayload.enable_ai !== false,
+    enable_whatsapp_orders: Boolean(apiPayload.enable_whatsapp_orders ?? false),
     enable_advanced_data_import: Boolean(apiPayload.enable_advanced_data_import ?? false),
     advanced_data_import_pages: advancedDataImportPagesFromApi(apiPayload.advanced_data_import_pages),
     stock_deduct_on: normalizeStockDeductOn(apiPayload.stock_deduct_on, {
@@ -390,6 +392,12 @@ export function OrganizationPlatformSalesSettings({
             description="When off, this organization cannot configure or use the floating AI assistant, regardless of user permissions."
             checked={salesPlatform?.enable_ai !== false}
             onChange={(v) => patch({ enable_ai: v })}
+          />
+          <Toggle
+            label="Enable WhatsApp ordering"
+            description="When off, this organization cannot configure WhatsApp credentials or receive orders through the shared platform webhook."
+            checked={Boolean(salesPlatform?.enable_whatsapp_orders)}
+            onChange={(v) => patch({ enable_whatsapp_orders: v })}
           />
           <Toggle
             label="Advanced data import"

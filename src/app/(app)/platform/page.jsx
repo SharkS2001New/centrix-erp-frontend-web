@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
+import { PlatformQuickLinks } from "@/components/platform/platform-quick-links";
 
 export default function PlatformOverviewPage() {
   const [organizations, setOrganizations] = useState([]);
@@ -31,44 +32,16 @@ export default function PlatformOverviewPage() {
       title="Platform administration"
       subtitle="Register and manage tenant organizations — profile, sales behaviour, modules, and users."
       action={
-        <div className="flex flex-wrap gap-2">
-          <Link href="/platform/ai-training">
-            <PrimaryButton type="button" showIcon={false} className="!bg-indigo-600 hover:!bg-indigo-700">
-              AI training
-            </PrimaryButton>
-          </Link>
-          <Link href="/platform/active-users">
-            <PrimaryButton type="button" showIcon={false} className="!bg-amber-500 hover:!bg-amber-600">
-              Active users
-            </PrimaryButton>
-          </Link>
-          <Link href="/platform/system-issues">
-            <PrimaryButton type="button" showIcon={false} className="!bg-red-600 hover:!bg-red-700">
-              System errors & reports
-            </PrimaryButton>
-          </Link>
-          <Link href="/platform/database-backups">
-            <PrimaryButton type="button" showIcon={false} className="!bg-slate-700 hover:!bg-slate-800">
-              Database backups
-            </PrimaryButton>
-          </Link>
-          <Link href="/platform/legacy-import-converter">
-            <PrimaryButton type="button" showIcon={false} className="!bg-emerald-700 hover:!bg-emerald-800">
-              Legacy data converter
-            </PrimaryButton>
-          </Link>
-          <Link href="/platform/invoices">
-            <PrimaryButton type="button" showIcon={false} className="!bg-violet-600 hover:!bg-violet-700">
-              Invoices
-            </PrimaryButton>
-          </Link>
-          <Link href="/platform/organizations/new">
-            <PrimaryButton type="button">Register organization</PrimaryButton>
-          </Link>
-        </div>
+        <Link href="/platform/organizations/new">
+          <PrimaryButton type="button">Register organization</PrimaryButton>
+        </Link>
       }
     >
       <AdminBreadcrumb items={[{ label: "Platform" }]} />
+
+      <div className="mb-6">
+        <PlatformQuickLinks />
+      </div>
 
       <div className="theme-panel rounded-xl border shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">

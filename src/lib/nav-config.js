@@ -10,6 +10,7 @@ import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
 import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
 import { isReportNavEnabled } from "@/lib/nav-feature-gates";
 import { withNavItemIcons } from "@/lib/nav-item-icons";
+import { platformNavItems } from "@/lib/platform-nav";
 
 function buildReportNavItems() {
   return [
@@ -46,16 +47,7 @@ const NAV_SECTION_DEFINITIONS = [
     icon: "🌐",
     superAdminOnly: true,
     collapsible: true,
-    items: [
-      { href: "/platform", label: "Overview", exact: true, superAdminOnly: true },
-      { href: "/platform/ai-training", label: "AI training", superAdminOnly: true },
-      { href: "/platform/active-users", label: "Active users", superAdminOnly: true },
-      { href: "/platform/system-issues", label: "System errors & reports", superAdminOnly: true },
-      { href: "/platform/database-backups", label: "Database backups", superAdminOnly: true },
-      { href: "/platform/legacy-import-converter", label: "Legacy data converter", superAdminOnly: true },
-      { href: "/platform/invoices", label: "Invoices", superAdminOnly: true },
-      { href: "/platform/organizations/new", label: "Register organization", superAdminOnly: true },
-    ],
+    items: platformNavItems(),
   },
   {
     id: "dashboard",
@@ -747,12 +739,6 @@ const NAV_SECTION_DEFINITIONS = [
         label: "Loading lists",
         module: "distribution",
         permission: P.fulfillment.loading_lists.view,
-      },
-      {
-        href: "/admin/till-printing",
-        label: "Local printing",
-        module: "distribution",
-        permission: P.admin.till_printing.view,
       },
       {
         href: "/fulfillment/pod-records",

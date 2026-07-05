@@ -5,6 +5,7 @@ import {
   isPlatformKraIntegrationEnabled,
   isPlatformMobileOrdersEnabled,
   isPlatformMpesaStkEnabled,
+  isPlatformWhatsappEnabled,
 } from "@/lib/platform-org-features";
 
 /** Map organization settings tabs to ERP module keys (platform super-admin controlled). */
@@ -28,6 +29,7 @@ export const ORG_SETTINGS_TAB_MODULES = {
   procurement: ["customers_suppliers"],
   finance: ["accounting", "payments"],
   ai: ["admin"],
+  whatsapp: ["sales", "admin"],
   hr: ["hr_payroll"],
   notifications: ["admin"],
   security: ["admin"],
@@ -100,6 +102,15 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
       }
       return moduleEnabled(capabilities, "admin");
 
+    case "whatsapp":
+      if (!isPlatformWhatsappEnabled(capabilities)) {
+        return false;
+      }
+      if (platformManaged) {
+        return true;
+      }
+      return moduleEnabled(capabilities, "admin") || moduleEnabled(capabilities, "sales");
+
     case "hr":
       return moduleEnabled(capabilities, "hr_payroll");
 
@@ -137,6 +148,7 @@ export function capabilitiesFromOrganizationPayload(payload) {
   const modules = payload?.effective_modules ?? payload?.capabilities?.modules ?? {};
   const finance = moduleSettings.finance ?? {};
   const ai = moduleSettings.ai ?? {};
+  const whatsapp = moduleSettings.whatsapp ?? {};
   const sales = moduleSettings.sales ?? {};
   const distribution = moduleSettings.distribution ?? {};
   const driverMobileEnabled = Boolean(modules.distribution)
@@ -164,10 +176,16 @@ export function capabilitiesFromOrganizationPayload(payload) {
     platform_mpesa_stk_enabled: finance.enable_mpesa_stk !== false,
     platform_kra_integration_enabled: finance.enable_kra_integration !== false,
     platform_ai_enabled: ai.enable_ai !== false,
+    platform_whatsapp_enabled: Boolean(whatsapp.enable_whatsapp_orders),
     ai_assistant: {
       platform_enabled: ai.enable_ai !== false,
       enabled: Boolean(ai.enabled),
       available: false,
+    },
+    whatsapp_orders: {
+      platform_enabled: Boolean(whatsapp.enable_whatsapp_orders),
+      enabled: Boolean(whatsapp.enabled),
+      configured: false,
     },
   };
 }

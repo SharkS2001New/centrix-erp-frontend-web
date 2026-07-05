@@ -235,9 +235,6 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
     if (item.href?.startsWith("/fulfillment")) {
       return true;
     }
-    if (item.href === "/admin/till-printing") {
-      return true;
-    }
     // Allow opening a specific sales order from distribution workflows (dispatch, POD, trips).
     if (item.href?.match(/^\/sales\/orders\/[^/]+/)) {
       return true;
@@ -286,10 +283,6 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
   }
 
   if (workspaceId === "distribution" && /^\/sales\/orders\/[^/]+/.test(pathname)) {
-    return true;
-  }
-
-  if (workspaceId === "distribution" && pathname === "/admin/till-printing") {
     return true;
   }
 

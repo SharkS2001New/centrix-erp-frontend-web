@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { FinanceSettingsPanel } from "@/components/admin/finance-settings-panel";
 import { AiSettingsPanel } from "@/components/admin/ai-settings-panel";
+import { WhatsappSettingsPanel } from "@/components/admin/whatsapp-settings-panel";
 import { InventorySettingsPanel } from "@/components/admin/inventory-settings-panel";
 import { DistributionSettingsPanel } from "@/components/admin/distribution-settings-panel";
 import { MobileApplicationSettingsPanel } from "@/components/admin/mobile-application-settings-panel";
@@ -34,6 +35,7 @@ const TABS = [
   { id: "procurement", label: "Procurement" },
   { id: "finance", label: "Finance" },
   { id: "ai", label: "AI" },
+  { id: "whatsapp", label: "WhatsApp" },
   { id: "hr", label: "HR & Payroll" },
   { id: "notifications", label: "Messaging" },
   { id: "security", label: "Security" },
@@ -132,6 +134,7 @@ export function OrganizationSettingsContent({
           {tab === "procurement" ? <ProcurementSettingsPanel {...panelProps} /> : null}
           {tab === "finance" ? <FinanceSettingsPanel {...panelProps} /> : null}
           {tab === "ai" ? <AiSettingsPanel {...panelProps} /> : null}
+          {tab === "whatsapp" ? <WhatsappSettingsPanel {...panelProps} /> : null}
           {tab === "hr" ? <HrSettingsPanel {...panelProps} /> : null}
           {tab === "notifications" ? <NotificationsSettingsPanel {...panelProps} /> : null}
           {tab === "security" ? <SecuritySettingsPanel {...panelProps} /> : null}
