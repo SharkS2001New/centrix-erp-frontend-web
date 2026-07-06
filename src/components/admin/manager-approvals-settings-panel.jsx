@@ -232,7 +232,7 @@ export function ManagerApprovalsSettingsPanel({
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sales</p>
                     <Toggle
                       label="Discount approval for staff"
-                      description="Staff without sales approve permission must request manager approval for any manual line or order discount. Orders save under Pending approval until approved (then Booked) or rejected (then Editable for the user to fix pricing)."
+                      description="When enabled, all staff can enter line and order discounts on backoffice and mobile sales. Non-approvers submit discounts for manager review — orders save under Pending approval, then Booked when approved or Editable when rejected. When disabled, normal discount settings apply with no approval step."
                       checked={form.discount_approval_enabled}
                       onChange={(v) => setForm((f) => ({ ...f, discount_approval_enabled: v }))}
                     />

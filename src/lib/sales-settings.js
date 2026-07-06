@@ -781,8 +781,14 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     retailShopWholesaleStoreStock,
     enableRetailPricing,
     allowDiscounts: Boolean(sales.allow_discounts),
-    allowEditLineDiscount: Boolean(sales.allow_edit_line_discount),
-    enableOrderDiscount: Boolean(sales.enable_order_discount),
+    allowEditLineDiscount:
+      Boolean(sales.allow_edit_line_discount) ||
+      Boolean(sales.effective_allow_edit_line_discount) ||
+      isDiscountApprovalEnabled(moduleSettings),
+    enableOrderDiscount:
+      Boolean(sales.enable_order_discount) ||
+      Boolean(sales.effective_enable_order_discount) ||
+      isDiscountApprovalEnabled(moduleSettings),
     enableVouchers: Boolean(sales.enable_vouchers),
     enableRedeemablePoints: Boolean(sales.enable_redeemable_points),
     pointCashValue: Number(sales.point_cash_value ?? 1),

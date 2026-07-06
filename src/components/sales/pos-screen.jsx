@@ -210,7 +210,7 @@ export function PosScreen({ standalone = false }) {
   const allowEditLineDiscount = posSalesConfig.allowEditLineDiscount;
   const showCartLineType = posSalesConfig.enableRetailPricing;
   const cartTableColSpan =
-    6 + (showCartLineType ? 1 : 0) + (allowDiscounts ? 1 : 0);
+    6 + (showCartLineType ? 1 : 0) + (showLineDiscountField ? 1 : 0);
   const enableOrderDiscount = posSalesConfig.enableOrderDiscount;
   const discountApprovalActive = isDiscountApprovalEnabled(capabilities?.module_settings);
   const canAutoApproveDiscount =
@@ -218,8 +218,8 @@ export function PosScreen({ standalone = false }) {
     hasPermission(P.sales.orders.approve) ||
     hasPermission("sales.manage");
   const staffDiscountApprovalMode = discountApprovalActive && !canAutoApproveDiscount;
-  const showOrderDiscountInput = enableOrderDiscount || staffDiscountApprovalMode;
-  const showLineDiscountField = allowDiscounts || staffDiscountApprovalMode;
+  const showOrderDiscountInput = enableOrderDiscount;
+  const showLineDiscountField = allowDiscounts || allowEditLineDiscount;
   const enableVouchers = posSalesConfig.enableVouchers;
   const enableRedeemablePoints = posSalesConfig.enableRedeemablePoints;
   const mpesaStkPlatformEnabled = isPlatformMpesaStkEnabled(
@@ -938,26 +938,24 @@ export function PosScreen({ standalone = false }) {
       allowDiscounts && productHasConfiguredDiscount(product);
     let discountAmount = 0;
 
-    if (allowDiscounts) {
-      if (autoProductDiscount) {
-        const preDiscount = computePosLine({
-          product,
-          entryQty,
-          sellWholesale: sellMode,
-          retailPackage,
-          discount: 0,
-          unitPriceOverride: overridePrice,
-          routeMarkupPerUnit,
-          retailLine: lineRetailFlag,
-        });
-        discountAmount = computeProductLineDiscount(
-          product,
-          preDiscount.lineAmountBeforeDiscount,
-          preDiscount.packQty,
-        );
-      } else if (allowEditLineDiscount) {
-        discountAmount = parseDecimalInput(discount);
-      }
+    if (allowDiscounts && autoProductDiscount) {
+      const preDiscount = computePosLine({
+        product,
+        entryQty,
+        sellWholesale: sellMode,
+        retailPackage,
+        discount: 0,
+        unitPriceOverride: overridePrice,
+        routeMarkupPerUnit,
+        retailLine: lineRetailFlag,
+      });
+      discountAmount = computeProductLineDiscount(
+        product,
+        preDiscount.lineAmountBeforeDiscount,
+        preDiscount.packQty,
+      );
+    } else if (allowEditLineDiscount || staffDiscountApprovalMode) {
+      discountAmount = parseDecimalInput(discount);
     }
 
     const computed = computePosLine({
@@ -1094,7 +1092,8 @@ export function PosScreen({ standalone = false }) {
       unit_price: finalComputed.unitPricePerBase,
       uom: finalComputed.uomLabel || product.package_name,
       on_wholesale_retail: onWholesaleRetailFlag ? 1 : 0,
-      discount_given: allowDiscounts ? finalComputed.discountApplied : 0,
+      discount_given:
+        allowDiscounts || staffDiscountApprovalMode ? finalComputed.discountApplied : 0,
       product_vat: lineProductVat(product, finalComputed.lineAmount),
     };
 
@@ -1320,13 +1319,12 @@ export function PosScreen({ standalone = false }) {
     );
     setLineForm((prev) => {
       const nextPrice = String(computed.displayUnitPrice);
-      const nextDiscount = allowDiscounts
-        ? computed.autoProductDiscount
+      const nextDiscount =
+        allowDiscounts && computed.autoProductDiscount
           ? String(computed.discountAmount ?? 0)
-          : allowEditLineDiscount
+          : allowEditLineDiscount || staffDiscountApprovalMode
             ? prev.discount
-            : "0"
-        : "0";
+            : "0";
       if (
         prev.unit_price === nextPrice &&
         prev.package === computed.packagingLabel &&
@@ -1349,6 +1347,7 @@ export function PosScreen({ standalone = false }) {
     unitPriceTouched,
     allowDiscounts,
     allowEditLineDiscount,
+    staffDiscountApprovalMode,
     routeMarkupPerUnit,
     editingLineId,
   ]);

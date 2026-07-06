@@ -4,6 +4,7 @@ import {
   displayToBaseQty,
   formatDisplayQty,
   formatMixedStockDisplay,
+  uomConversionFactor,
 } from "@/lib/stock-uom";
 
 /** Map UOM id → record (string-normalized keys). */
@@ -40,7 +41,7 @@ export function uomForFulfillmentLine(line, uomByProductCode) {
   return uomByProductCode.get(String(code)) ?? null;
 }
 
-/** Total base units with small-unit label (e.g. "300 pcs") for loading list "Total items". */
+/** Total base units with small-unit label (e.g. "300 pcs") — secondary breakdown on loading lists. */
 export function fulfillmentBaseItemCount(baseQty, line, uomByProductCode) {
   const uom = uomForFulfillmentLine(line, uomByProductCode);
   const base = Number(baseQty ?? 0);
@@ -104,4 +105,30 @@ export function formatFulfillmentQty(baseQty, line, uomByProductCode) {
     return String(fallback).trim();
   }
   return formatDisplayQty(baseQty);
+}
+
+/** Loading list row labels: primary packaging qty + optional base-unit breakdown. */
+export function fulfillmentLoadingListLabels(baseQty, line, uomByProductCode) {
+  const packaging = formatFulfillmentQty(baseQty, line, uomByProductCode);
+  const baseCount = fulfillmentBaseItemCount(baseQty, line, uomByProductCode);
+
+  return {
+    quantityLabel: packaging,
+    packBreakdown: packaging !== baseCount ? baseCount : "",
+  };
+}
+
+/** Unit price per packaging level shown on loading lists (e.g. per carton, not per piece). */
+export function fulfillmentPackageUnitPrice(line, uomByProductCode) {
+  const baseQty = Number(line?.quantity ?? 0);
+  const displayQty = fulfillmentPickedDisplayQty(baseQty, line, uomByProductCode);
+  const lineTotal = Number(line?.line_total ?? 0);
+  if (displayQty > 0 && lineTotal > 0) {
+    return Math.round((lineTotal / displayQty) * 100) / 100;
+  }
+
+  const basePrice = Number(line?.unit_price ?? 0);
+  const uom = uomForFulfillmentLine(line, uomByProductCode);
+  const factor = uomConversionFactor(uom);
+  return factor > 1 ? Math.round(basePrice * factor * 100) / 100 : basePrice;
 }

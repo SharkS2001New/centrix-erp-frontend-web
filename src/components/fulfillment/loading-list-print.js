@@ -12,7 +12,7 @@ import {
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
 import { documentFooterHtmlFromText } from "@/lib/footer-line-format";
-import { formatFulfillmentQty, fulfillmentBaseItemCount } from "@/lib/fulfillment-quantity";
+import { formatFulfillmentQty, fulfillmentLoadingListLabels, fulfillmentPackageUnitPrice } from "@/lib/fulfillment-quantity";
 import {
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
@@ -79,7 +79,12 @@ function quantityGhostText(line) {
 }
 
 function priceGhostText(line) {
-  const n = Number(line.unit_price) || 0;
+  const display = Number(line.display_unit_price ?? line.unit_price) || 0;
+  const base = Number(line.unit_price) || 0;
+  if (display > 0 && base > 0 && Math.abs(display - base) > 0.0001) {
+    return `Ksh ${formatKes(base)} per piece`;
+  }
+  const n = base;
   if (!n) return "";
   return Number.isInteger(n) ? String(Math.trunc(n)) : String(n);
 }
@@ -329,8 +334,9 @@ function normalizeLoadingListLines(lines, uomByProductCode = null) {
     let packBreakdown;
 
     if (uomByProductCode) {
-      quantityLabel = fulfillmentBaseItemCount(baseQty, line, uomByProductCode);
-      packBreakdown = formatFulfillmentQty(baseQty, line, uomByProductCode);
+      const labels = fulfillmentLoadingListLabels(baseQty, line, uomByProductCode);
+      quantityLabel = labels.quantityLabel;
+      packBreakdown = labels.packBreakdown;
     } else if (
       line.quantity_label &&
       line.pack_breakdown &&
@@ -353,6 +359,7 @@ function normalizeLoadingListLines(lines, uomByProductCode = null) {
       product_name: resolvedName,
       quantity_label: quantityLabel,
       pack_breakdown: packBreakdown,
+      display_unit_price: fulfillmentPackageUnitPrice(line, uomByProductCode),
     };
   });
 }
@@ -374,7 +381,7 @@ function buildLoadingListLineRows(lines, { showQtyColumn = true, showPriceColumn
       const priceCells = showPriceColumns
         ? `
         <td class="col-price">
-          <div class="main">Ksh ${formatKes(line.unit_price)}</div>
+          <div class="main">Ksh ${formatKes(line.display_unit_price ?? line.unit_price)}</div>
           ${priceGhostText(line) ? `<div class="ghost">${escapeHtml(priceGhostText(line))}</div>` : ""}
         </td>
         <td class="col-total">${formatKes(line.line_total)}</td>`

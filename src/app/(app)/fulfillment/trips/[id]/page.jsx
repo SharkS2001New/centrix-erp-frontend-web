@@ -42,7 +42,8 @@ import {
   buildUomByProductCode,
   fetchCatalogForProductCodes,
   formatFulfillmentQty,
-  fulfillmentBaseItemCount,
+  fulfillmentLoadingListLabels,
+  fulfillmentPackageUnitPrice,
   fulfillmentPickedBaseQty,
   fulfillmentPickedDisplayQty,
   fulfillmentPickedInputUnit,
@@ -895,13 +896,12 @@ export default function TripDetailPage() {
               { key: "line_total", label: "Total", align: "right" },
             ]}
             rows={lines.map((line) => {
-              const packaging = formatFulfillmentQty(line.quantity, line, uomByProductCode);
-              const totalItems = fulfillmentBaseItemCount(line.quantity, line, uomByProductCode);
+              const labels = fulfillmentLoadingListLabels(line.quantity, line, uomByProductCode);
               return {
                 ...line,
-                quantity_label: totalItems,
-                pack_breakdown: packaging !== totalItems ? packaging : "—",
-                unit_price: formatSaleKes(line.unit_price),
+                quantity_label: labels.quantityLabel,
+                pack_breakdown: labels.packBreakdown || "—",
+                unit_price: formatSaleKes(fulfillmentPackageUnitPrice(line, uomByProductCode)),
                 line_total: formatSaleKes(line.line_total),
               };
             })}
