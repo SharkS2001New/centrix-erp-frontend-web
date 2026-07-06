@@ -103,6 +103,7 @@ import {
   PosPriceCheckerModal,
 } from "./pos-utility-modals";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
+import { P } from "@/lib/permission-codes";
 import {
   createBranchTill,
   indexOpenSessionsByTill,

@@ -358,6 +358,10 @@ export default function TripDetailPage() {
   const canComplete = trip.status === "in_transit";
   const showCloseReconciliation = ["in_transit", "completed"].includes(trip.status);
   const canReorder = !["completed", "cancelled"].includes(trip.status);
+  const canRemoveOrders =
+    trip.status === "draft" &&
+    !loadingLocked &&
+    !["completed", "locked"].includes(String(pickingList?.status ?? ""));
   const codEnabled = Boolean(distributionSettings.enableCodReconciliation);
   const expectedCash = resolveTripExpectedCash(trip);
   const showCashSettlement =
@@ -421,6 +425,30 @@ export default function TripDetailPage() {
       await loadTrip();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Could not reorder stops");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeStop(sale) {
+    if (!sale?.id) return;
+    const ok = await confirm({
+      title: "Remove order from trip chart",
+      message: `Remove order ${formatOrderNumber(sale)} from trip ${trip.trip_code}? You can add it back later from the dispatch board if needed.`,
+      confirmLabel: "Remove order",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBusy(true);
+    try {
+      await apiRequest(`/dispatch-trips/${id}/orders/${sale.id}`, {
+        method: "DELETE",
+      });
+      notifySuccess("Order removed from trip chart.");
+      await loadTrip();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not remove order from trip chart");
     } finally {
       setBusy(false);
     }
@@ -938,6 +966,24 @@ export default function TripDetailPage() {
                   </button>
                 ),
               },
+              ...(canRemoveOrders
+                ? [
+                    {
+                      key: "remove",
+                      label: "",
+                      render: (row) => (
+                        <button
+                          type="button"
+                          className="rounded border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-40"
+                          disabled={busy}
+                          onClick={() => removeStop(row.sale)}
+                        >
+                          Remove
+                        </button>
+                      ),
+                    },
+                  ]
+                : []),
               ...(canReorder
                 ? [
                     {
@@ -969,6 +1015,7 @@ export default function TripDetailPage() {
             ]}
             rows={orderedSales.map((sale, index) => ({
               id: sale.id,
+              sale,
               stop: index + 1,
               order_num: sale.order_num ?? sale.id,
               customer: saleCustomerLabel(sale),
