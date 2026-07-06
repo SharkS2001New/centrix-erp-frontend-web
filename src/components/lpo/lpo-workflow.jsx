@@ -6,6 +6,9 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
 import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
+import { printGrnForLpoSummary } from "@/components/lpo/grn-print";
+import { lpoHasReceivedStock } from "@/lib/grn-document";
+import { mergeGeneralSettings } from "@/lib/general-settings";
 import { formatLpoKes, lpoCanDelete, lpoCanEdit, lpoDisplayNumber } from "./lpo-shared";
 import { notifySuccess } from "@/lib/notify";
 
@@ -59,6 +62,34 @@ function useLpoPrintActions(lpoNo, printContext = {}) {
   }
 
   return { printing, printError, printDocument };
+}
+
+function useGrnPrint(lpoNo, printContext = {}) {
+  const { user, organization, capabilities } = useAuth();
+  const [printingGrn, setPrintingGrn] = useState(false);
+  const [grnError, setGrnError] = useState(null);
+
+  async function printGrn() {
+    setPrintingGrn(true);
+    setGrnError(null);
+    try {
+      let summary = printContext.lpoSummary;
+      if (!summary?.lpo) {
+        summary = await apiRequest(`/lpo-mst/${lpoNo}/summary`);
+      }
+      await printGrnForLpoSummary(summary, printContext.uomById ?? new Map(), {
+        organization,
+        generalSettings: mergeGeneralSettings(capabilities?.module_settings),
+        user,
+      });
+    } catch (e) {
+      setGrnError(e instanceof Error ? e.message : "Could not print goods received note");
+    } finally {
+      setPrintingGrn(false);
+    }
+  }
+
+  return { printingGrn, grnError, printGrn };
 }
 
 export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null }) {
@@ -250,11 +281,13 @@ export function LpoDetailActions({ lpo, lpoNo, onDelete, deleting, printContext 
   const canEdit = hasPermission(P.purchasing.lpo.edit) && lpoCanEdit(lpo);
   const canDelete = hasPermission(P.purchasing.lpo.delete) && lpoCanDelete(lpo);
   const { printing, printError, printDocument } = useLpoPrintActions(lpoNo, printContext);
+  const { printingGrn, grnError, printGrn } = useGrnPrint(lpoNo, printContext);
+  const showGrn = lpoHasReceivedStock(printContext?.lpoSummary);
 
   return (
     <div className="flex flex-col gap-2">
-      {printError ? (
-        <p className="theme-alert-error rounded-lg px-3 py-2 text-sm">{printError}</p>
+      {printError || grnError ? (
+        <p className="theme-alert-error rounded-lg px-3 py-2 text-sm">{printError ?? grnError}</p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
         {canEdit ? (
@@ -334,11 +367,21 @@ export function LpoDetailActions({ lpo, lpoNo, onDelete, deleting, printContext 
             <button
               type="button"
               onClick={() => printDocument("delivery_note")}
-              disabled={Boolean(printing)}
+              disabled={Boolean(printing) || Boolean(printingGrn)}
               className="theme-secondary-btn rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50"
             >
               {printing === "delivery_note" ? "Printing…" : "Delivery note"}
             </button>
+            {showGrn ? (
+              <button
+                type="button"
+                onClick={printGrn}
+                disabled={Boolean(printing) || Boolean(printingGrn)}
+                className="theme-secondary-btn rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+              >
+                {printingGrn ? "Printing…" : "Goods received note"}
+              </button>
+            ) : null}
           </>
         ) : null}
       </div>

@@ -1,9 +1,11 @@
 "use client";
 
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { buildGrnFromReceiveSession } from "@/lib/grn-document";
+import { printGoodsReceivedNote } from "@/components/lpo/grn-print";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
@@ -43,8 +45,7 @@ function formatReturnedCell(line, uom) {
 
 export default function LpoReceivePage() {
   const params = useParams();
-  const router = useRouter();
-  const { user } = useAuth();
+  const { user, organization, generalSettings } = useAuth();
   const lpoNo = params.lpoNo;
 
   const [data, setData] = useState(null);
@@ -52,6 +53,8 @@ export default function LpoReceivePage() {
   const [receiveCounts, setReceiveCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [postedGrn, setPostedGrn] = useState(null);
+  const [printingGrn, setPrintingGrn] = useState(false);
   const { uomById } = useInventoryCatalogMaps(uoms);
   const showReturned = useMemo(
     () => lpoHasSupplierReturns(data?.lines ?? [], data?.supplier_returns ?? []),
@@ -112,6 +115,9 @@ export default function LpoReceivePage() {
 
     setSaving(true);
     try {
+      const priorReceivedByLineId = Object.fromEntries(
+        toPost.map((line) => [String(line.id), Number(line.received_qty ?? 0)]),
+      );
       for (const line of toPost) {
         const uom = line.unit_id ? uomById.get(line.unit_id) : null;
         const lineKey = String(line.id);
@@ -135,14 +141,39 @@ export default function LpoReceivePage() {
           },
         });
       }
+      const grn = buildGrnFromReceiveSession(data, receiveCounts, uomById, {
+        supplierInvoiceNumber,
+        receiptDate: new Date().toISOString().slice(0, 10),
+        stockLocation: "store",
+        receivedBy: user?.full_name ?? user?.username ?? null,
+        priorReceivedByLineId,
+      });
+      setPostedGrn(grn);
+      notifySuccess("Stock receipt posted. Print the goods received note for your records.");
       await load();
       if (!partial) {
-        router.push(`/lpo/${lpoNo}`);
+        setReceiveCounts(buildInitialReceiveCounts(data?.lines, uomById, 0));
       }
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : err.message ?? "Receipt failed");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function printPostedGrn() {
+    if (!postedGrn) return;
+    setPrintingGrn(true);
+    try {
+      await printGoodsReceivedNote(postedGrn, {
+        organization,
+        generalSettings: generalSettings(),
+        user,
+      });
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : "Could not print goods received note");
+    } finally {
+      setPrintingGrn(false);
     }
   }
 
@@ -319,6 +350,32 @@ export default function LpoReceivePage() {
               </table>
             </div>
           </section>
+
+          {postedGrn ? (
+            <section className="rounded-xl border border-emerald-200 bg-emerald-50 px-6 py-5 text-base text-emerald-950">
+              <p className="font-medium">Receipt posted successfully.</p>
+              <p className="mt-1 text-sm">
+                GRN total {formatLpoKes(postedGrn.grn_total)} · Match status:{" "}
+                {postedGrn.reconciliation?.status ?? "—"}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  disabled={printingGrn}
+                  onClick={printPostedGrn}
+                  className="rounded-lg bg-[#185FA5] px-5 py-2 text-sm font-medium text-white hover:bg-[#144f8a] disabled:opacity-50"
+                >
+                  {printingGrn ? "Preparing…" : "Print goods received note"}
+                </button>
+                <Link
+                  href={`/lpo/${lpoNo}`}
+                  className="rounded-lg border border-slate-200 bg-white px-5 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+                >
+                  Back to purchase order
+                </Link>
+              </div>
+            </section>
+          ) : null}
 
           <div className="flex flex-wrap gap-3">
             <button

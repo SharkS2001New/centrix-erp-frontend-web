@@ -83,6 +83,7 @@ export default function PlatformOrganizationSettingsPage() {
             <OrganizationSettingsContent
               capabilities={capabilities}
               platformManaged
+              onAfterSave={load}
               breadcrumbItems={null}
               showShell={false}
             />

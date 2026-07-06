@@ -16,6 +16,7 @@ const SALES_DEFAULTS = {
   enable_retail_pricing: false,
   allow_discounts: true,
   allow_edit_line_discount: false,
+  allow_pos_edit_line_discount: false,
   enable_order_discount: false,
   discount_approval_enabled: true,
   discount_approval_threshold_percent: 10,
@@ -277,6 +278,7 @@ export function isMobileCustomerPhoneVisible(moduleSettings) {
 export const EMPTY_SALES_ORGANIZATION_FORM = {
   allow_discounts: true,
   allow_edit_line_discount: false,
+  allow_pos_edit_line_discount: false,
   enable_order_discount: false,
   discount_approval_enabled: true,
   discount_approval_threshold_percent: "10",
@@ -338,6 +340,7 @@ export function salesOrganizationFormFromApi(res) {
   return {
     allow_discounts: Boolean(sales.allow_discounts),
     allow_edit_line_discount: Boolean(sales.allow_edit_line_discount),
+    allow_pos_edit_line_discount: Boolean(sales.allow_pos_edit_line_discount),
     enable_order_discount: Boolean(sales.enable_order_discount),
     discount_approval_enabled: Boolean(sales.discount_approval_enabled),
     discount_approval_threshold_percent: String(sales.discount_approval_threshold_percent ?? 10),
@@ -410,7 +413,7 @@ export function sanitizeSalesOrganizationFormForModules(form, capabilities) {
   if (!hasPosSales) {
     next.enable_credit_payment = false;
     next.enable_checkout_customer_name = false;
-    next.allow_edit_line_discount = false;
+    next.allow_pos_edit_line_discount = false;
     next.allow_pos_edit_unit_price = false;
     next.enable_barcode_scanner = false;
     next.blind_till_close = false;
@@ -670,6 +673,13 @@ export function resolveAllowEditUnitPrice(sales, { standalone = false } = {}) {
   return Boolean(sales?.allow_edit_unit_price);
 }
 
+export function resolveAllowEditLineDiscount(sales, { standalone = false } = {}) {
+  if (standalone) {
+    return Boolean(sales?.allow_pos_edit_line_discount);
+  }
+  return Boolean(sales?.allow_edit_line_discount);
+}
+
 export function resolveRouteOrderTypeMode(sales, { standalone = false } = {}) {
   if (!sales?.add_route_markup_prices) {
     return "normal";
@@ -782,8 +792,7 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     enableRetailPricing,
     allowDiscounts: Boolean(sales.allow_discounts),
     allowEditLineDiscount:
-      Boolean(sales.allow_edit_line_discount) ||
-      Boolean(sales.effective_allow_edit_line_discount) ||
+      resolveAllowEditLineDiscount(sales, { standalone: Boolean(options.standalone) }) ||
       isDiscountApprovalEnabled(moduleSettings),
     enableOrderDiscount:
       Boolean(sales.enable_order_discount) ||

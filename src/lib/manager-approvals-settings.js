@@ -69,11 +69,16 @@ export function managerApprovalsFormFromApiResponses(responses = {}) {
 }
 
 export function salesManagerApprovalsPayload(form) {
-  return {
+  const payload = {
     discount_approval_enabled: Boolean(form.discount_approval_enabled),
     discount_approval_threshold_percent: Number(form.discount_approval_threshold_percent) || 10,
     order_cancellation_approval_enabled: Boolean(form.order_cancellation_approval_enabled),
   };
+  if (form.discount_approval_enabled) {
+    payload.allow_edit_line_discount = true;
+    payload.allow_pos_edit_line_discount = true;
+  }
+  return payload;
 }
 
 export function inventoryManagerApprovalsPayload(form) {

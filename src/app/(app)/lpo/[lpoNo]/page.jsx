@@ -15,6 +15,7 @@ import {
   LpoStatusBadge,
   LPO_STATUS,
 } from "@/components/lpo/lpo-shared";
+import { buildGrnFromLpoSummary } from "@/lib/grn-document";
 import { LpoDetailOrderItemsTable } from "@/components/lpo/lpo-detail-order-items";
 import { LpoDetailActions, LpoWorkflowPanel } from "@/components/lpo/lpo-workflow";
 import { LpoAttachmentsPanel } from "@/components/lpo/lpo-attachments-panel";
@@ -91,15 +92,20 @@ export default function LpoDetailPage() {
     [data?.supplier_invoices, lpoNo],
   );
   const supplierReturns = data?.supplier_returns ?? [];
+  const grnReconciliation = useMemo(() => {
+    if (!data?.lpo || !lines.some((line) => Number(line.received_qty ?? 0) > 0)) return null;
+    return buildGrnFromLpoSummary(data, uomById).reconciliation;
+  }, [data, lines, uomById]);
   const canRecordReturn = lpo ? lpoCanRecordReturn(lpo, lines) : false;
   const printContext = useMemo(
     () =>
-      lpo
+      data
         ? {
-            lpoSummary: { lpo, lines },
+            lpoSummary: data,
+            uomById,
           }
         : null,
-    [lpo, lines],
+    [data, uomById],
   );
 
   return (
@@ -170,6 +176,37 @@ export default function LpoDetailPage() {
               Payable for received stock: {formatLpoKes(lpo.received_payable_total)} (LPO total{" "}
               {formatLpoKes(lpo.net_amount)}). You may pay partially as items are received.
             </p>
+          ) : null}
+          {grnReconciliation ? (
+            <section className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+              <p className="font-medium text-slate-900">Goods received vs invoice</p>
+              <dl className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <dt className="text-xs text-slate-500">GRN received value</dt>
+                  <dd className="font-medium">{formatLpoKes(grnReconciliation.grn_total)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Supplier invoice</dt>
+                  <dd className="font-medium">
+                    {grnReconciliation.supplier_invoice_amount != null
+                      ? formatLpoKes(grnReconciliation.supplier_invoice_amount)
+                      : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Variance</dt>
+                  <dd className="font-medium">
+                    {grnReconciliation.invoice_variance != null
+                      ? formatLpoKes(grnReconciliation.invoice_variance)
+                      : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-slate-500">Match status</dt>
+                  <dd className="font-medium">{grnReconciliation.status}</dd>
+                </div>
+              </dl>
+            </section>
           ) : null}
           {lpoIsCancelledReturned(lpo) ? (
             <p className="rounded-lg border border-[var(--theme-accent-orange)]/35 bg-[color-mix(in_srgb,var(--theme-accent-orange)_10%,var(--theme-page-bg))] px-4 py-3 text-sm text-[var(--theme-accent-text)]">

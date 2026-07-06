@@ -234,7 +234,18 @@ export function ManagerApprovalsSettingsPanel({
                       label="Discount approval for staff"
                       description="When enabled, all staff can enter line and order discounts on backoffice and mobile sales. Non-approvers submit discounts for manager review — orders save under Pending approval, then Booked when approved or Editable when rejected. When disabled, normal discount settings apply with no approval step."
                       checked={form.discount_approval_enabled}
-                      onChange={(v) => setForm((f) => ({ ...f, discount_approval_enabled: v }))}
+                      onChange={(v) =>
+                        setForm((f) => ({
+                          ...f,
+                          discount_approval_enabled: v,
+                          ...(v
+                            ? {
+                                allow_edit_line_discount: true,
+                                allow_pos_edit_line_discount: true,
+                              }
+                            : {}),
+                        }))
+                      }
                     />
                     {form.discount_approval_enabled ? (
                       <Field label="Reference threshold (%) — legacy">

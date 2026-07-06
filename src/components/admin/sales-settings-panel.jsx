@@ -15,8 +15,7 @@ import {
   isPlatformCheckoutOnCreateEnabled,
   isPlatformMpesaStkEnabled,
 } from "@/lib/platform-org-features";
-import { useSettingsApi } from "@/contexts/settings-api-context";
-import { useAuth } from "@/contexts/auth-context";
+import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { SalesOrderPlacedAlerts } from "@/components/admin/customer-notification-fields";
 import {
@@ -213,16 +212,26 @@ function CheckoutPricingTab({
             ...f,
             allow_discounts: v,
             allow_edit_line_discount: v ? f.allow_edit_line_discount : false,
+            allow_pos_edit_line_discount: v ? f.allow_pos_edit_line_discount : false,
           }))
         }
       />
       <Toggle
-        label="Allow manual line discount"
-        description="Lets staff type a discount when adding a line on external POS and Sales → Create order. When discount approval is enabled, managers must approve before it applies."
+        label="Allow manual line discount on create order"
+        description="Sales → Create new order. Lets staff type a discount when adding a line. When discount approval is enabled, managers must approve before it applies."
         checked={salesForm.allow_edit_line_discount}
-        disabled={!salesForm.allow_discounts}
+        disabled={!salesForm.allow_discounts && !salesForm.discount_approval_enabled}
         onChange={(v) => setSalesForm((f) => ({ ...f, allow_edit_line_discount: v }))}
       />
+      {hasPosSales ? (
+        <Toggle
+          label="Allow manual line discount on external POS"
+          description="External POS cashier terminal (/pos). Lets cashiers type a discount when adding a line. When discount approval is enabled, managers must approve before it applies."
+          checked={salesForm.allow_pos_edit_line_discount}
+          disabled={!salesForm.allow_discounts && !salesForm.discount_approval_enabled}
+          onChange={(v) => setSalesForm((f) => ({ ...f, allow_pos_edit_line_discount: v }))}
+        />
+      ) : null}
       <Toggle
         label="Enable full order discount"
         description="Shows a discount field on the cart total before checkout (external POS and Sales → Create order). With discount approval enabled, staff can still request order discounts even if this is off."
@@ -532,8 +541,7 @@ export function SalesSettingsPanel({
   platformManaged = false,
 }) {
   const { settingsPath } = useSettingsApi();
-  const { refreshCapabilities } = useAuth();
-  const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
+  const afterSave = useSettingsAfterSave(onAfterSave);
   const [salesForm, setSalesForm] = useState(EMPTY_SALES_ORGANIZATION_FORM);
   const [alertForm, setAlertForm] = useState(notificationsFormFromApi({}));
   const [loading, setLoading] = useState(true);

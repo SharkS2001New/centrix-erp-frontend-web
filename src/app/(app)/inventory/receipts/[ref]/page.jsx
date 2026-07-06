@@ -5,7 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
+import { buildGrnFromStockReceiptGroup } from "@/lib/grn-document";
+import { printGoodsReceivedNote } from "@/components/lpo/grn-print";
 import { useAuth } from "@/contexts/auth-context";
+import { mergeGeneralSettings } from "@/lib/general-settings";
 import {
   formatReceiptDate,
   formatStockQty,
@@ -20,13 +23,14 @@ import {
 export default function StockReceiptDetailPage() {
   const params = useParams();
   const ref = decodeURIComponent(params.ref);
-  const { user } = useAuth();
+  const { user, organization, capabilities } = useAuth();
   const branchId = user?.branch_id ?? 1;
 
   const [rows, setRows] = useState([]);
   const [products, setProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [printing, setPrinting] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -73,9 +77,57 @@ export default function StockReceiptDetailPage() {
 
   const header = rows[0];
   const receiptDate = header?.created_at ?? header?.receipt_date;
+  const receiptGroup = useMemo(
+    () =>
+      rows.length
+        ? {
+            ref,
+            date: receiptDate,
+            received_by: header?.received_by_name ?? user?.full_name ?? user?.username,
+            stock_location: header?.stock_location,
+            lines: rows,
+          }
+        : null,
+    [rows, ref, receiptDate, header, user],
+  );
+
+  async function printGrn() {
+    if (!receiptGroup) return;
+    setPrinting(true);
+    try {
+      const grn = buildGrnFromStockReceiptGroup(receiptGroup, {
+        productByCode,
+        uomByProduct,
+      });
+      await printGoodsReceivedNote(grn, {
+        organization,
+        generalSettings: mergeGeneralSettings(capabilities?.module_settings),
+        user,
+      });
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : "Could not print goods received note");
+    } finally {
+      setPrinting(false);
+    }
+  }
 
   return (
-    <InventoryPageShell title={ref} subtitle="Stock receipt details">
+    <InventoryPageShell
+      title={ref}
+      subtitle="Stock receipt details"
+      action={
+        rows.length ? (
+          <button
+            type="button"
+            disabled={printing}
+            onClick={printGrn}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {printing ? "Preparing…" : "Print GRN"}
+          </button>
+        ) : null
+      }
+    >
       <div className="mb-4">
         <Link href="/inventory/receipts" className="text-sm text-[#185FA5] hover:underline">
           ← Back to stock receipts
