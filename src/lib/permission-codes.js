@@ -59,6 +59,8 @@ export const P = {
       completed: { view: "sales.order_queue_completed.view" },
       cancelled: { view: "sales.order_queue_cancelled.view" },
       expired: { view: "sales.order_queue_expired.view" },
+      pending_approval: { view: "sales.order_queue_pending_approval.view" },
+      editable: { view: "sales.order_queue_editable.view" },
       mobile: { view: "sales.order_queue_mobile.view" },
     },
     orders: {

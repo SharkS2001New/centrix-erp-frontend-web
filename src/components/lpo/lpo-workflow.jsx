@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
 import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
 import { formatLpoKes, lpoCanDelete, lpoCanEdit, lpoDisplayNumber } from "./lpo-shared";
+import { notifySuccess } from "@/lib/notify";
 
 function normalizePhone(phone) {
   const digits = String(phone ?? "").replace(/\D/g, "");
@@ -66,12 +67,19 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
   const [awaitingMarkSent, setAwaitingMarkSent] = useState(false);
   const { hasPermission } = useAuth();
   const canApprove = hasPermission(P.purchasing.lpo.approve);
+  const canSubmit =
+    hasPermission(P.purchasing.lpo.edit) ||
+    hasPermission(P.purchasing.lpo.create) ||
+    canApprove;
   const canView = hasPermission(P.purchasing.lpo.view);
   const { printing, printError, printDocument } = useLpoPrintActions(lpoNo, printContext);
 
   const actions = (lpo.workflow_actions ?? []).filter((action) => {
-    if (action === "mark_checked" || action === "approve") {
+    if (action === "approve" || action === "mark_checked") {
       return canApprove;
+    }
+    if (action === "submit_for_approval") {
+      return canSubmit;
     }
     return canView;
   });
@@ -85,6 +93,13 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
         body: { action },
       });
       setAwaitingMarkSent(false);
+      if (action === "submit_for_approval") {
+        notifySuccess(
+          lpo.approval_pending
+            ? "Approval request sent again to managers."
+            : "LPO submitted for manager approval.",
+        );
+      }
       await onUpdated?.();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Action failed");
@@ -124,6 +139,12 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
         LPO Cleared automatically when a supplier payment is recorded (partial or full).
       </p>
 
+      {lpo.approval_pending ? (
+        <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Waiting for manager approval. You can resend the request if needed.
+        </p>
+      ) : null}
+
       {error || printError ? (
         <p className="theme-alert-error mb-3 rounded-lg px-3 py-2 text-sm">
           {error ?? printError}
@@ -131,6 +152,20 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
       ) : null}
 
       <div className="flex flex-wrap gap-2">
+        {actions.includes("submit_for_approval") ? (
+          <ActionButton
+            label={
+              busy === "submit_for_approval"
+                ? "Sending…"
+                : lpo.approval_pending || Number(lpo.lpo_status_code) === 1
+                  ? "Resend approval request"
+                  : "Submit for approval"
+            }
+            onClick={() => runAction("submit_for_approval")}
+            disabled={Boolean(busy) || Boolean(printing)}
+            primary={!canApprove}
+          />
+        ) : null}
         {actions.includes("mark_checked") ? (
           <ActionButton
             label={busy === "mark_checked" ? "Saving…" : "Mark as checked"}

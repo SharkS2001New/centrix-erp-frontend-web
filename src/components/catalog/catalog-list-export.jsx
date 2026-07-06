@@ -4,7 +4,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { useBackgroundTasks } from "@/contexts/background-task-context";
-import { queueReportExport, serializeExportMeta } from "@/lib/report-export-api";
+import { queueReportExport, serializeExportMeta, buildReportExportRequest } from "@/lib/report-export-api";
 import { reportPrintedAt } from "@/lib/reports/export";
 import { ImportExportIcons } from "@/components/catalog/catalog-import-export-shared";
 
@@ -14,9 +14,10 @@ import { ImportExportIcons } from "@/components/catalog/catalog-import-export-sh
  * @param {object} props
  * @param {string} props.title
  * @param {string} [props.filename]
- * @param {string} props.apiPath
+ * @param {string} [props.apiPath]
  * @param {Array<{ key: string, label: string, align?: string }>} props.columns
  * @param {() => Record<string, unknown>} [props.getSearchParams]
+ * @param {() => Promise<object[]>} [props.getInlineRows]
  * @param {number} [props.totalCount]
  * @param {boolean} [props.disabled]
  */
@@ -26,6 +27,7 @@ export function CatalogListExport({
   apiPath,
   columns,
   getSearchParams,
+  getInlineRows,
   totalCount = 0,
   disabled = false,
 }) {
@@ -39,8 +41,24 @@ export function CatalogListExport({
     const exportFormat = format === "pdf" ? "pdf" : format === "csv" ? "csv" : "xlsx";
     setOpen(false);
     void runBackgroundTask(
-      () =>
-        queueReportExport({
+      () => {
+        if (getInlineRows) {
+          const body = buildReportExportRequest({
+            format: exportFormat,
+            filename: `${slug}-${stamp}`,
+            title,
+            columns,
+            meta: {
+              title,
+              subtitle: `${title} export`,
+              printedAt: reportPrintedAt(),
+            },
+            getRows: getInlineRows,
+          });
+          return queueReportExport(body, getInlineRows);
+        }
+
+        return queueReportExport({
           format: exportFormat,
           source: "api",
           path: apiPath,
@@ -53,7 +71,8 @@ export function CatalogListExport({
           }),
           search_params: getSearchParams?.() ?? {},
           estimated_row_count: totalCount,
-        }),
+        });
+      },
       {
         label: `Exporting ${title}`,
         message: "Started fetching…",

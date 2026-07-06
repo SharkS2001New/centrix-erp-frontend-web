@@ -2,7 +2,21 @@
 
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 
-export const ORDER_CANCELLABLE_STATUSES = new Set(["booked", "pending", "unpaid"]);
+export const ORDER_CANCELLABLE_STATUSES = new Set([
+  "booked",
+  "pending",
+  "unpaid",
+  "processed",
+  "pending_approval",
+  "editable",
+]);
+
+export const ORDER_NON_CANCELLABLE_STATUSES = new Set([
+  "paid",
+  "delivered",
+  "completed",
+  "pending_payment",
+]);
 
 export function isPlatformCheckoutOnCreateEnabled(capabilities) {
   return capabilities?.module_settings?.sales?.show_checkout_on_create_order !== false;
@@ -61,4 +75,8 @@ export function isOrderCancellationEnabled(capabilities) {
 
 export function isOrderCancellationNavEnabled(capabilities) {
   return isOrderCancellationEnabled(capabilities);
+}
+
+export function isDiscountApprovalNavEnabled(capabilities) {
+  return Boolean(capabilities?.module_settings?.sales?.discount_approval_enabled);
 }

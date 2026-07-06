@@ -12,7 +12,7 @@ import {
   documentPrintEdgeFooterStyles,
 } from "@/lib/document-print-edge-footer";
 import { documentFooterHtmlFromText } from "@/lib/footer-line-format";
-import { formatFulfillmentQty } from "@/lib/fulfillment-quantity";
+import { formatFulfillmentQty, fulfillmentBaseItemCount } from "@/lib/fulfillment-quantity";
 import {
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
@@ -324,17 +324,35 @@ function normalizeLoadingListLines(lines, uomByProductCode = null) {
     const productName = String(line.product_name ?? "").trim();
     const resolvedName =
       productName && productName !== productCode ? productName : productName || productCode;
-    const packaging = uomByProductCode
-      ? formatFulfillmentQty(line.quantity, line, uomByProductCode)
-      : (line.quantity_label ?? String(line.quantity ?? ""));
+    const baseQty = Number(line.quantity ?? 0);
+    let quantityLabel;
+    let packBreakdown;
+
+    if (uomByProductCode) {
+      quantityLabel = fulfillmentBaseItemCount(baseQty, line, uomByProductCode);
+      packBreakdown = formatFulfillmentQty(baseQty, line, uomByProductCode);
+    } else if (
+      line.quantity_label &&
+      line.pack_breakdown &&
+      line.quantity_label !== line.pack_breakdown
+    ) {
+      quantityLabel = String(line.quantity_label).trim();
+      packBreakdown = String(line.pack_breakdown).trim();
+    } else {
+      quantityLabel = String(line.quantity_label ?? baseQty).trim();
+      packBreakdown = String(line.pack_breakdown ?? "").trim();
+    }
+
+    if (packBreakdown && packBreakdown === quantityLabel) {
+      packBreakdown = "";
+    }
 
     return {
       ...line,
       line_no: line.line_no ?? index + 1,
       product_name: resolvedName,
-      quantity_label: packaging,
-      pack_breakdown:
-        line.pack_breakdown && line.pack_breakdown !== packaging ? line.pack_breakdown : "",
+      quantity_label: quantityLabel,
+      pack_breakdown: packBreakdown,
     };
   });
 }

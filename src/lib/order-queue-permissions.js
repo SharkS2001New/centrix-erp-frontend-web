@@ -12,6 +12,8 @@ const ORDER_QUEUE_SLUGS = [
   "completed",
   "cancelled",
   "expired",
+  "pending_approval",
+  "editable",
   "mobile",
 ];
 

@@ -216,18 +216,16 @@ function CheckoutPricingTab({
           }))
         }
       />
-      {hasPosSales ? (
-        <Toggle
-          label="Allow manual line discount at POS"
-          description="Lets cashiers type a discount when adding a line instead of relying only on product discount settings."
-          checked={salesForm.allow_edit_line_discount}
-          disabled={!salesForm.allow_discounts}
-          onChange={(v) => setSalesForm((f) => ({ ...f, allow_edit_line_discount: v }))}
-        />
-      ) : null}
+      <Toggle
+        label="Allow manual line discount"
+        description="Lets staff type a discount when adding a line on external POS and Sales → Create order. When discount approval is enabled, managers must approve before it applies."
+        checked={salesForm.allow_edit_line_discount}
+        disabled={!salesForm.allow_discounts}
+        onChange={(v) => setSalesForm((f) => ({ ...f, allow_edit_line_discount: v }))}
+      />
       <Toggle
         label="Enable full order discount"
-        description="Shows a discount field on the cart total so cashiers can reduce the whole order before checkout."
+        description="Shows a discount field on the cart total before checkout (external POS and Sales → Create order). With discount approval enabled, staff can still request order discounts even if this is off."
         checked={salesForm.enable_order_discount}
         onChange={(v) => setSalesForm((f) => ({ ...f, enable_order_discount: v }))}
       />

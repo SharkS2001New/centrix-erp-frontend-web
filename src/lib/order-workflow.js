@@ -2,6 +2,7 @@
 import {
   isOrderCancellationEnabled,
   ORDER_CANCELLABLE_STATUSES,
+  ORDER_NON_CANCELLABLE_STATUSES,
   orgDefersPaymentToFulfillment,
 } from "@/lib/platform-org-features";
 
@@ -20,9 +21,9 @@ export const DEFAULT_ORDER_WORKFLOW = {
     booked: ["pending", "unpaid", "processed", "cancelled"],
     pending: ["unpaid", "pending_payment", "processed", "cancelled"],
     unpaid: ["pending_payment", "paid", "processed", "cancelled"],
-    pending_payment: ["paid", "processed", "cancelled"],
+    pending_payment: ["paid", "processed"],
     paid: ["processed", "delivered", "completed"],
-    processed: ["delivered", "completed"],
+    processed: ["delivered", "completed", "cancelled"],
     delivered: ["completed"],
     draft: ["held", "completed", "booked", "cancelled"],
     held: ["draft", "booked", "completed", "cancelled"],
@@ -62,6 +63,8 @@ export const ORDER_STATUS_OPTIONS = [
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
   { value: "expired", label: "Expired" },
+  { value: "pending_approval", label: "Pending approval" },
+  { value: "editable", label: "Editable" },
 ];
 
 const STOCK_CHANNELS = ["pos", "mobile", "backend"];
@@ -377,19 +380,27 @@ export function alignStatusToWorkflow(status, workflow) {
   return pickEnabledStatus(key, workflow);
 }
 
-/** Whether this pipeline status may be cancelled (booked, pending, unpaid only). */
+/** Whether this pipeline status may be cancelled (booked, pending, unpaid, processed). */
 export function canCancelOrderStatus(status, workflow) {
   const key = String(status ?? "").toLowerCase();
   if (!key || key === "cancelled" || key === "expired" || key === "held" || key === "draft") {
     return false;
   }
+  if (ORDER_NON_CANCELLABLE_STATUSES.has(key)) {
+    return false;
+  }
   const aligned = alignStatusToWorkflow(key, workflow);
-  return ORDER_CANCELLABLE_STATUSES.has(aligned);
+  if (ORDER_NON_CANCELLABLE_STATUSES.has(aligned)) {
+    return false;
+  }
+  return ORDER_CANCELLABLE_STATUSES.has(key) || ORDER_CANCELLABLE_STATUSES.has(aligned);
 }
 
 /** Whether staff should be offered cancel for this order (settings + status). */
 export function canCancelOrder(saleOrStatus, workflow, capabilities) {
   if (capabilities && !isOrderCancellationEnabled(capabilities)) return false;
+  if (typeof saleOrStatus === "object" && saleOrStatus?.can_cancel === false) return false;
+  if (typeof saleOrStatus === "object" && saleOrStatus?.can_cancel === true) return true;
   const status = typeof saleOrStatus === "object" ? saleOrStatus?.status : saleOrStatus;
   return canCancelOrderStatus(status, workflow);
 }
@@ -598,6 +609,8 @@ export function workflowListableStatusKeys(workflow) {
   }
   keys.add("cancelled");
   keys.add("expired");
+  keys.add("pending_approval");
+  keys.add("editable");
   return keys;
 }
 
@@ -659,9 +672,28 @@ export function salesOrderQueueNavItems(workflow, { includeMobile = false } = {}
   return items;
 }
 
-/** Backoffice sales sidebar — terminal order queues (cancelled / expired). */
-export function salesTerminalOrderQueueNavItems({ showCancelled = false, showExpired = false } = {}) {
+/** Backoffice sales sidebar — terminal order queues (cancelled / expired / discount approval). */
+export function salesTerminalOrderQueueNavItems({
+  showCancelled = false,
+  showExpired = false,
+  showPendingApproval = false,
+  showEditable = false,
+} = {}) {
   const items = [];
+  if (showPendingApproval) {
+    items.push({
+      slug: "pending_approval",
+      label: salesOrderQueueTitle("Pending approval"),
+      href: "/sales/orders/queues/pending-approval",
+    });
+  }
+  if (showEditable) {
+    items.push({
+      slug: "editable",
+      label: salesOrderQueueTitle("Editable"),
+      href: "/sales/orders/queues/editable",
+    });
+  }
   if (showCancelled) {
     items.push({
       slug: "cancelled",
@@ -745,6 +777,34 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, c
       excludeFromMetrics: true,
     };
   }
+  if (slug === "pending_approval" || slug === "pending-approval") {
+    return {
+      slug: "pending_approval",
+      title: salesOrderQueueTitle("Pending approval"),
+      subtitle: "Orders saved with discounts awaiting manager approval before booking",
+      fixedStatusFilter: "pending_approval",
+      fixedSourceFilter: null,
+      showRouteColumn: true,
+      showDeliveryDateColumn: true,
+      lockStatusFilter: true,
+      lockSourceFilter: false,
+      excludeFromMetrics: true,
+    };
+  }
+  if (slug === "editable") {
+    return {
+      slug: "editable",
+      title: salesOrderQueueTitle("Editable"),
+      subtitle: "Orders returned after a rejected discount — edit pricing and resubmit",
+      fixedStatusFilter: "editable",
+      fixedSourceFilter: null,
+      showRouteColumn: true,
+      showDeliveryDateColumn: true,
+      lockStatusFilter: true,
+      lockSourceFilter: false,
+      excludeFromMetrics: true,
+    };
+  }
   const step = workflowPipelineSteps(workflow).find((s) => s.key === slug);
   if (!step) return null;
 
@@ -800,6 +860,12 @@ export function workflowStatusFilterOptionsFromConfig(config) {
   }
   if (!seen.has("expired")) {
     options.push({ value: "expired", label: "Expired" });
+  }
+  if (!seen.has("pending_approval")) {
+    options.push({ value: "pending_approval", label: "Pending approval" });
+  }
+  if (!seen.has("editable")) {
+    options.push({ value: "editable", label: "Editable" });
   }
   return options;
 }

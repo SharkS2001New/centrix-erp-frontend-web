@@ -168,13 +168,17 @@ export function AccountingDashboardContent() {
               <DashboardSummaryTable
                 columns={[
                   { key: "invoice_number", label: "Invoice" },
-                  { key: "customer_num", label: "Customer" },
+                  { key: "customer_name", label: "Customer" },
                   { key: "balance_due", label: "Balance", align: "right" },
                 ]}
                 rows={recentInvoices.map(normalizeCustomerInvoice)}
-                formatValue={(key, value) =>
-                  key === "balance_due" ? formatAccountingAmount(value) : value
-                }
+                formatValue={(key, value, row) => {
+                  if (key === "balance_due") return formatAccountingAmount(value);
+                  if (key === "customer_name") {
+                    return value ? String(value) : row?.customer_num ? `#${row.customer_num}` : "—";
+                  }
+                  return value;
+                }}
                 viewAllHref="/accounting/customer-invoices"
                 emptyMessage="No customer invoices yet. Invoices are created when orders are placed for registered customers."
               />

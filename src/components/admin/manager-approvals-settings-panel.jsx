@@ -231,13 +231,13 @@ export function ManagerApprovalsSettingsPanel({
                   <div className="space-y-3 rounded-xl border border-[var(--theme-border)] p-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sales</p>
                     <Toggle
-                      label="Large discount approval"
-                      description="Discounts above the threshold require manager approval before applying."
+                      label="Discount approval for staff"
+                      description="Staff without sales approve permission must request manager approval for any manual line or order discount. Orders save under Pending approval until approved (then Booked) or rejected (then Editable for the user to fix pricing)."
                       checked={form.discount_approval_enabled}
                       onChange={(v) => setForm((f) => ({ ...f, discount_approval_enabled: v }))}
                     />
                     {form.discount_approval_enabled ? (
-                      <Field label="Discount threshold (%)">
+                      <Field label="Reference threshold (%) — legacy">
                         <input
                           type="number"
                           min="0"
@@ -249,6 +249,9 @@ export function ManagerApprovalsSettingsPanel({
                             setForm((f) => ({ ...f, discount_approval_threshold_percent: e.target.value }))
                           }
                         />
+                        <p className="mt-1 text-xs text-slate-500">
+                          Reserved for reporting; staff discounts always require approval when this setting is on.
+                        </p>
                       </Field>
                     ) : null}
                     <Toggle

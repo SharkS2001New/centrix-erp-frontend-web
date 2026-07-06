@@ -48,6 +48,17 @@ function isoDate(d = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
+function daysAgoIso(days) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return isoDate(d);
+}
+
+/** Inclusive range: today plus the previous two calendar days. */
+function defaultTripsDateRange() {
+  return { from: daysAgoIso(2), to: isoDate() };
+}
+
 function formatTripCash(trip) {
   const expected = Number(trip.expected_cash ?? 0);
   if (trip.cash_variance != null && trip.settled_at) {
@@ -68,7 +79,8 @@ export default function TripsPage() {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState(() => isoDate());
+  const [fromDate, setFromDate] = useState(() => defaultTripsDateRange().from);
+  const [toDate, setToDate] = useState(() => defaultTripsDateRange().to);
   const [createTripOpen, setCreateTripOpen] = useState(false);
   const [mergeTripOpen, setMergeTripOpen] = useState(false);
   const {
@@ -89,8 +101,8 @@ export default function TripsPage() {
         apiRequest("/dispatch-trips", {
           searchParams: {
             per_page: 200,
-            from_date: dateFilter,
-            to_date: dateFilter,
+            from_date: fromDate,
+            to_date: toDate,
             ...(statusFilter !== "all" ? { "filter[status]": statusFilter } : {}),
           },
         }),
@@ -103,7 +115,7 @@ export default function TripsPage() {
     } finally {
       setLoading(false);
     }
-  }, [dateFilter, statusFilter]);
+  }, [fromDate, toDate, statusFilter]);
 
   useEffect(() => {
     loadData();
@@ -167,8 +179,8 @@ export default function TripsPage() {
             totalCount={filtered.length}
             getSearchParams={() => ({
               per_page: 200,
-              from_date: dateFilter,
-              to_date: dateFilter,
+              from_date: fromDate,
+              to_date: toDate,
               ...(statusFilter !== "all" ? { "filter[status]": statusFilter } : {}),
             })}
             disabled={loading}
@@ -184,7 +196,7 @@ export default function TripsPage() {
         open={createTripOpen}
         onClose={() => setCreateTripOpen(false)}
         routes={routes}
-        defaultDate={dateFilter}
+        defaultDate={toDate}
       />
       <MergeDispatchTripsDialog
         open={mergeTripOpen}
@@ -198,15 +210,18 @@ export default function TripsPage() {
       <DashboardErrorBanner message={error} />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <StatCard label="Trips today" value={stats.total} />
+        <StatCard label="Trips in range" value={stats.total} />
         <StatCard label="Active" value={stats.active} />
         <StatCard label="Completed" value={stats.completed} />
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search trip, route, driver…" />
-        <Field label="Date">
-          <input type="date" className={inputClassName()} value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} />
+        <Field label="From date">
+          <input type="date" className={inputClassName()} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </Field>
+        <Field label="To date">
+          <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </Field>
         <Field label="Status">
           <FilterSelect
@@ -223,7 +238,7 @@ export default function TripsPage() {
       {loading ? (
         <p className="text-sm text-slate-500">Loading trips…</p>
       ) : filtered.length === 0 ? (
-        <p className="text-sm text-slate-500">No trips for this date. Create one manually or from the dispatch board.</p>
+        <p className="text-sm text-slate-500">No trips in this date range. Create one manually or from the dispatch board.</p>
       ) : (
         <div className="theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm">
           <table className="min-w-full text-sm">

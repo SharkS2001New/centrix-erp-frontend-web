@@ -23,7 +23,10 @@ import { formatTripRoutesLabel } from "@/lib/trip-routes";
 import { tripStatusLabel } from "@/lib/trip-status";
 import {
   buildUomByProductCode,
+  fetchCatalogForProductCodes,
   formatFulfillmentQty,
+  fulfillmentPickedBaseQty,
+  fulfillmentPickedDisplayQty,
 } from "@/lib/fulfillment-quantity";
 
 function todayIso() {
@@ -101,23 +104,26 @@ export function MobilePickingScreen() {
       setDetailLoading(true);
       setDetailError(null);
       try {
-        const [tripRes, pickRes, prodRes, uomRes] = await Promise.all([
+        const [tripRes, pickRes] = await Promise.all([
           apiRequest(`/dispatch-trips/${tripId}`),
           apiRequest(`/dispatch-trips/${tripId}/picking-list`),
-          apiRequest("/products", { searchParams: { per_page: 500 } }),
-          apiRequest("/uoms", { searchParams: { per_page: 200 } }),
         ]);
         const nextPick = pickRes.picking_list ?? pickRes;
+        const productCodes = (nextPick?.lines ?? []).map((line) => line.product_code);
+        const { products, uoms: uomRows } = await fetchCatalogForProductCodes(apiRequest, productCodes);
+        const uomMap = buildUomByProductCode(products, uomRows);
         setTrip(tripRes);
         setPickingList(nextPick);
-        setCatalogProducts(prodRes.data ?? []);
-        setUoms(uomRes.data ?? []);
+        setCatalogProducts(products);
+        setUoms(uomRows);
         setPickerName(nextPick?.picker_name ?? user?.full_name ?? user?.username ?? "");
         setPickedDraft(
           Object.fromEntries(
             (nextPick?.lines ?? []).map((line) => [
               line.id,
-              String(line.picked_qty ?? line.required_qty ?? ""),
+              String(
+                fulfillmentPickedDisplayQty(line.picked_qty ?? line.required_qty, line, uomMap),
+              ),
             ]),
           ),
         );
@@ -166,7 +172,11 @@ export function MobilePickingScreen() {
   const pickingEditable = pickingList?.status === "open" || pickingList?.status === "completed";
   const totalShortage = pickLines.reduce((sum, line) => {
     const required = Number(line.required_qty) || 0;
-    const picked = Number(pickedDraft[line.id] ?? line.picked_qty) || 0;
+    const picked = fulfillmentPickedBaseQty(
+      pickedDraft[line.id] ?? line.picked_qty,
+      line,
+      uomByProductCode,
+    );
     return sum + shortageQty(required, picked);
   }, 0);
 
@@ -185,7 +195,12 @@ export function MobilePickingScreen() {
     try {
       const lines = pickLines.map((line) => ({
         id: line.id,
-        picked_qty: Number(pickedDraft[line.id] ?? line.picked_qty ?? line.required_qty) || 0,
+        picked_qty:
+          fulfillmentPickedBaseQty(
+            pickedDraft[line.id] ?? line.picked_qty ?? line.required_qty,
+            line,
+            uomByProductCode,
+          ) || 0,
       }));
       const res = await apiRequest(`/dispatch-trips/${selectedTripId}/picking-list/lines`, {
         method: "PATCH",
@@ -195,7 +210,10 @@ export function MobilePickingScreen() {
       setPickingList(updated);
       setPickedDraft(
         Object.fromEntries(
-          (updated?.lines ?? []).map((line) => [line.id, String(line.picked_qty ?? "")]),
+          (updated?.lines ?? []).map((line) => [
+            line.id,
+            String(fulfillmentPickedDisplayQty(line.picked_qty, line, uomByProductCode)),
+          ]),
         ),
       );
       notifySuccess("Picked quantities saved.");
@@ -342,8 +360,12 @@ export function MobilePickingScreen() {
             <div className="space-y-3 pb-28">
               {pickLines.map((line) => {
                 const required = Number(line.required_qty) || 0;
-                const picked = Number(pickedDraft[line.id] ?? line.picked_qty) || 0;
-                const shortage = shortageQty(required, picked);
+                const pickedBase = fulfillmentPickedBaseQty(
+                  pickedDraft[line.id] ?? line.picked_qty,
+                  line,
+                  uomByProductCode,
+                );
+                const shortage = shortageQty(required, pickedBase);
 
                 return (
                   <article
@@ -389,7 +411,16 @@ export function MobilePickingScreen() {
                               step="any"
                               inputMode="decimal"
                               className={`${inputClassName()} h-11 w-24 text-center text-lg font-semibold`}
-                              value={pickedDraft[line.id] ?? String(line.picked_qty ?? required)}
+                              value={
+                                pickedDraft[line.id] ??
+                                String(
+                                  fulfillmentPickedDisplayQty(
+                                    line.picked_qty ?? required,
+                                    line,
+                                    uomByProductCode,
+                                  ),
+                                )
+                              }
                               onChange={(e) =>
                                 setPickedDraft((prev) => ({ ...prev, [line.id]: e.target.value }))
                               }
@@ -404,16 +435,12 @@ export function MobilePickingScreen() {
                             </button>
                             </div>
                             <span className="text-[11px] text-slate-500">
-                              {formatFulfillmentQty(
-                                Number(pickedDraft[line.id] ?? line.picked_qty ?? required) || 0,
-                                line,
-                                uomByProductCode,
-                              )}
+                              {formatFulfillmentQty(pickedBase, line, uomByProductCode)}
                             </span>
                           </div>
                         ) : (
                           <p className="mt-1 text-2xl font-semibold text-slate-900">
-                            {formatFulfillmentQty(picked, line, uomByProductCode)}
+                            {formatFulfillmentQty(pickedBase, line, uomByProductCode)}
                           </p>
                         )}
                       </div>

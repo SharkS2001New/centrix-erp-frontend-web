@@ -26,7 +26,6 @@ import {
   StockHealthBadge,
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
-import { STOCK_ON_HAND_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import {
   priceListRowsForProduct,
   priceListToCsv,
@@ -57,6 +56,72 @@ const STOCK_COLUMNS = [
   { id: "reorder", label: "Reorder", defaultVisible: false, align: "right" },
   { id: "status", label: "Status", defaultVisible: true },
 ];
+
+const STOCK_EXPORT_COLUMN_DEFS = {
+  product: { key: "product_name", label: "Product" },
+  sku: { key: "product_code", label: "SKU" },
+  shop: { key: "shop", label: "Shop", align: "right" },
+  store: { key: "store", label: "Store", align: "right" },
+  shop_value: { key: "shop_value", label: "Shop value", align: "right" },
+  store_value: { key: "store_value", label: "Store value", align: "right" },
+  profit_margin: { key: "profit_margin", label: "Profit margin", align: "right" },
+  reorder: { key: "reorder", label: "Reorder", align: "right" },
+  status: { key: "status", label: "Status" },
+};
+
+function enrichStockRow(row, valuationByCode, retailByCode) {
+  const val = valuationByCode.get(row.product_code);
+  const factor = Number(row.conversion_factor ?? 1);
+  const uomName = row.uom_name ?? "units";
+  const uomObj = {
+    full_name: uomName,
+    conversion_factor: factor,
+  };
+  const retailPackage = retailByCode.get(row.product_code) ?? null;
+  const cost = Number(val?.last_cost_price ?? 0);
+  const sell = Number(val?.unit_price ?? row.wholesale_price ?? 0);
+  const shopQty = Number(row.shop_quantity ?? 0);
+  const storeQty = Number(row.store_quantity ?? 0);
+  const totalBase = shopQty + storeQty;
+  const shopValue = stockSellingValue(shopQty, sell, uomObj, retailPackage, false);
+  const storeValue = stockSellingValue(storeQty, sell, uomObj, retailPackage, false);
+  const profitMargin = sell > 0 ? Math.round(((sell - cost) / sell) * 100) : null;
+  const reorderPoint = Number(row.reorder_point ?? 0);
+
+  return {
+    product_code: row.product_code,
+    product_name: row.product_name,
+    shop_quantity: shopQty,
+    store_quantity: storeQty,
+    total_base_units: totalBase,
+    reorder_point: reorderPoint,
+    product_alert: row.product_alert ?? (reorderPoint > 0 && totalBase <= reorderPoint ? "REORDER" : "OK"),
+    shopDisplay: baseToDisplayQty(shopQty, factor),
+    storeDisplay: baseToDisplayQty(storeQty, factor),
+    reorderDisplay: baseToDisplayQty(reorderPoint, factor),
+    uomName,
+    factor,
+    uom: uomObj,
+    shopValue,
+    storeValue,
+    profitMargin,
+  };
+}
+
+function stockRowToExport(row) {
+  return {
+    product_name: row.product_name,
+    product_code: row.product_code,
+    shop: formatMixedStockDisplay(row.shop_quantity, row.uom ?? row.factor, row.uomName).text,
+    store: formatMixedStockDisplay(row.store_quantity, row.uom ?? row.factor, row.uomName).text,
+    shop_value: formatInventoryKes(row.shopValue),
+    store_value: formatInventoryKes(row.storeValue),
+    profit_margin: row.profitMargin != null ? `${row.profitMargin}%` : "—",
+    reorder:
+      row.reorder_point > 0 ? `${formatQty(row.reorderDisplay)} ${row.uomName}` : "—",
+    status: row.product_alert ?? "OK",
+  };
+}
 
 function defaultVisibleColumnIds() {
   return STOCK_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.id);
@@ -199,49 +264,21 @@ export default function CurrentStockPage() {
     const valuationByCode = new Map(valuationRows.map((r) => [r.product_code, r]));
 
     return stockRows.map((row) => {
-      const val = valuationByCode.get(row.product_code);
-      const factor = Number(row.conversion_factor ?? 1);
-      const uomName = row.uom_name ?? "units";
-      const uomObj = {
-        full_name: uomName,
-        conversion_factor: factor,
-      };
-      const retailPackage = retailByCode.get(row.product_code) ?? null;
-      const cost = Number(val?.last_cost_price ?? 0);
-      const sell = Number(val?.unit_price ?? row.wholesale_price ?? 0);
-      const shopQty = Number(row.shop_quantity ?? 0);
-      const storeQty = Number(row.store_quantity ?? 0);
-      const totalBase = shopQty + storeQty;
-      const shopValue = stockSellingValue(shopQty, sell, uomObj, retailPackage, false);
-      const storeValue = stockSellingValue(storeQty, sell, uomObj, retailPackage, false);
-      const profitMargin = sell > 0 ? Math.round(((sell - cost) / sell) * 100) : null;
-      const reorderPoint = Number(row.reorder_point ?? 0);
-
+      const base = enrichStockRow(row, valuationByCode, retailByCode);
       return {
-        product_code: row.product_code,
-        product_name: row.product_name,
-        shop_quantity: shopQty,
-        store_quantity: storeQty,
-        total_base_units: totalBase,
-        reorder_point: reorderPoint,
-        product_alert: row.product_alert ?? (reorderPoint > 0 && totalBase <= reorderPoint ? "REORDER" : "OK"),
-        shopDisplay: baseToDisplayQty(shopQty, factor),
-        storeDisplay: baseToDisplayQty(storeQty, factor),
-        reorderDisplay: baseToDisplayQty(reorderPoint, factor),
-        uomName,
-        factor,
-        uom: uomObj,
-        shopValue,
-        storeValue,
-        profitMargin,
-        cost,
-        sell,
+        ...base,
+        cost: Number(valuationByCode.get(row.product_code)?.last_cost_price ?? 0),
+        sell: Number(
+          valuationByCode.get(row.product_code)?.unit_price ?? row.wholesale_price ?? 0,
+        ),
         sellOnRetail: false,
-        retailPackage,
+        retailPackage: retailByCode.get(row.product_code) ?? null,
         product: {
           product_code: row.product_code,
           product_name: row.product_name,
-          unit_price: sell,
+          unit_price: Number(
+            valuationByCode.get(row.product_code)?.unit_price ?? row.wholesale_price ?? 0,
+          ),
           sell_on_retail: false,
         },
         hasStockRecord: true,
@@ -252,6 +289,31 @@ export default function CurrentStockPage() {
   const safePage = Math.min(page, totalPages);
   const pageSlice = enriched;
   const visibleColumns = STOCK_COLUMNS.filter((c) => visibleColumnIds.includes(c.id));
+  const exportColumns = useMemo(
+    () => visibleColumns.map((col) => STOCK_EXPORT_COLUMN_DEFS[col.id]).filter(Boolean),
+    [visibleColumns],
+  );
+
+  const fetchStockExportRows = useCallback(async () => {
+    const searchParams = buildPageParams({
+      page: 1,
+      perPage: 200,
+      q: debouncedSearch,
+      extra: {
+        branch_id: branchId,
+        in_stock_only: 1,
+        subcategory_id: subcategoryFilter !== "all" ? subcategoryFilter : undefined,
+        location: locationFilter !== "all" ? locationFilter : undefined,
+      },
+    });
+    const [stockRes, valRes] = await Promise.all([
+      apiRequest("/reports/stock-on-hand", { searchParams }),
+      apiRequest("/reports/stock-valuation", { searchParams }),
+    ]);
+    const valuationByCode = new Map((valRes.data ?? []).map((r) => [r.product_code, r]));
+    const rows = parsePaginator(stockRes).items;
+    return rows.map((row) => stockRowToExport(enrichStockRow(row, valuationByCode, retailByCode)));
+  }, [branchId, debouncedSearch, subcategoryFilter, locationFilter, retailByCode]);
   const pageRowIds = useMemo(() => pageSlice.map((row) => row.product_code), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
@@ -382,18 +444,10 @@ export default function CurrentStockPage() {
         <CatalogListExport
           title={ITEMS_CURRENTLY_IN_STOCK_LABEL}
           filename="stock-on-hand"
-          apiPath="/reports/stock-on-hand"
-          columns={STOCK_ON_HAND_EXPORT_COLUMNS}
+          columns={exportColumns}
           totalCount={totalStockRows}
-          getSearchParams={() => ({
-            per_page: 200,
-            branch_id: branchId,
-            in_stock_only: 1,
-            ...(subcategoryFilter !== "all" ? { subcategory_id: subcategoryFilter } : {}),
-            ...(locationFilter !== "all" ? { location: locationFilter } : {}),
-            ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
-          })}
-          disabled={loading || listLoading || !branchId}
+          getInlineRows={fetchStockExportRows}
+          disabled={loading || listLoading || !branchId || exportColumns.length === 0}
         />
       }
     >

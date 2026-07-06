@@ -3,7 +3,7 @@ import {
   salesOrderSidebarNavItems,
   salesTerminalOrderQueueNavItems,
 } from "@/lib/order-workflow";
-import { isOrderCancellationNavEnabled, isOrderExpiryNavEnabled } from "@/lib/platform-org-features";
+import { isOrderCancellationNavEnabled, isOrderExpiryNavEnabled, isDiscountApprovalNavEnabled } from "@/lib/platform-org-features";
 import {
   isOrgMobileSalesEnabled,
   isTillFloatWorkflowEnabled,
@@ -48,6 +48,8 @@ export function buildWorkspaceNavSections({
   const salesOrderNavItems = [
     ...salesOrderSidebarNavItems(workflow, { excludeMobile: true }),
     ...salesTerminalOrderQueueNavItems({
+      showPendingApproval: isDiscountApprovalNavEnabled(capabilities),
+      showEditable: isDiscountApprovalNavEnabled(capabilities),
       showCancelled: isOrderCancellationNavEnabled(capabilities),
       showExpired: isOrderExpiryNavEnabled(capabilities),
     }),

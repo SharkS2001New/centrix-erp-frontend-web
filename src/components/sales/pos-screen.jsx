@@ -44,7 +44,6 @@ import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
 import { getChannelWorkflow, workflowPipelineSteps, checkoutCompleteStatuses, isCheckoutCompleteStatus, saleNeedsPaymentCollection } from "@/lib/order-workflow";
 import {
   getPosSalesConfig,
-  discountApprovalThresholdPercent,
   isDiscountApprovalEnabled,
   isWorkspaceTillFloatRequired,
   salesCartChannelForWorkspace,
@@ -168,7 +167,7 @@ function withPosCheckoutTimeout(promise, message) {
 export function PosScreen({ standalone = false }) {
   const router = useRouter();
   const confirm = useConfirm();
-  const { user, capabilities, refreshCapabilities, organization } = useAuth();
+  const { user, capabilities, refreshCapabilities, organization, hasPermission } = useAuth();
   const {
     activeSession,
     tillId,
@@ -212,6 +211,14 @@ export function PosScreen({ standalone = false }) {
   const cartTableColSpan =
     6 + (showCartLineType ? 1 : 0) + (allowDiscounts ? 1 : 0);
   const enableOrderDiscount = posSalesConfig.enableOrderDiscount;
+  const discountApprovalActive = isDiscountApprovalEnabled(capabilities?.module_settings);
+  const canAutoApproveDiscount =
+    Boolean(user?.is_admin) ||
+    hasPermission(P.sales.orders.approve) ||
+    hasPermission("sales.manage");
+  const staffDiscountApprovalMode = discountApprovalActive && !canAutoApproveDiscount;
+  const showOrderDiscountInput = enableOrderDiscount || staffDiscountApprovalMode;
+  const showLineDiscountField = allowDiscounts || staffDiscountApprovalMode;
   const enableVouchers = posSalesConfig.enableVouchers;
   const enableRedeemablePoints = posSalesConfig.enableRedeemablePoints;
   const mpesaStkPlatformEnabled = isPlatformMpesaStkEnabled(
@@ -663,7 +670,7 @@ export function PosScreen({ standalone = false }) {
     const net = rows.reduce((sum, line) => sum + Number(line.amount ?? 0), 0);
     const vat = rows.reduce((sum, line) => sum + Number(line.product_vat ?? 0), 0);
     const orderDiscountRaw =
-      enableOrderDiscount || enableVouchers
+      showOrderDiscountInput || enableVouchers
         ? orderDiscountDraft !== ""
           ? Math.max(0, parseDecimalInput(orderDiscountDraft))
           : Number(cart?.order_discount ?? 0)
@@ -693,13 +700,18 @@ export function PosScreen({ standalone = false }) {
     cart?.points_payment_amount,
     cart?.mpesa_payment_amount,
     orderDiscountDraft,
-    enableOrderDiscount,
+    showOrderDiscountInput,
   ]);
 
   useEffect(() => {
+    if (cart?.discount_approval_pending && cart?.discount_approval_request?.discount_amount != null) {
+      const pending = Number(cart.discount_approval_request.discount_amount);
+      setOrderDiscountDraft(pending > 0 ? String(pending) : "");
+      return;
+    }
     const value = Number(cart?.order_discount ?? 0);
     setOrderDiscountDraft(value > 0 ? String(value) : "");
-  }, [cart?.id, cart?.order_discount]);
+  }, [cart?.id, cart?.order_discount, cart?.discount_approval_pending, cart?.discount_approval_request]);
 
   const loadHeldOrdersCount = useCallback(async () => {
     try {
@@ -1086,17 +1098,10 @@ export function PosScreen({ standalone = false }) {
     };
 
     const discountAmount = Number(lineBody.discount_given ?? 0);
-    const lineGross = Number(finalComputed.lineAmount ?? 0) + discountAmount;
-    const discountThreshold = discountApprovalThresholdPercent(capabilities?.module_settings);
-    const needsLineDiscountApproval =
-      posSalesConfig.allowEditLineDiscount &&
-      isDiscountApprovalEnabled(capabilities?.module_settings) &&
-      discountAmount > 0 &&
-      lineGross > 0 &&
-      (discountAmount / lineGross) * 100 >= discountThreshold;
+    const needsLineDiscountApproval = staffDiscountApprovalMode && discountAmount > 0;
 
     if (needsLineDiscountApproval) {
-      const reason = window.prompt("Reason for discount request (required):");
+      const reason = window.prompt("Reason for discount approval request (required):");
       if (!reason || reason.trim().length < 3) {
         if (reason !== null) setStatusMessage("Discount reason must be at least 3 characters.");
         return false;
@@ -1132,7 +1137,9 @@ export function PosScreen({ standalone = false }) {
         });
         if (res.cart) setCart(res.cart);
         setStatusMessage(
-          res.pending_approval ? "Line discount submitted for manager approval." : "Discount applied.",
+          res.pending_approval
+            ? "Line discount submitted for approval. Save the order to send it to Pending approval orders."
+            : "Discount applied.",
         );
         if (clearEntry) {
           setLineForm(EMPTY_LINE);
@@ -1512,44 +1519,44 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function commitOrderDiscount(rawValue = orderDiscountDraft) {
-    if (!cart?.id || !enableOrderDiscount) return;
+    if (!cart?.id || !showOrderDiscountInput) return;
     const parsed = Math.max(0, parseDecimalInput(rawValue));
     const net = (cart.lines ?? []).reduce((sum, line) => sum + Number(line.amount ?? 0), 0);
     const next = Math.min(parsed, net);
-    if (next === Number(cart.order_discount ?? 0)) {
+    if (
+      !cart.discount_approval_pending &&
+      next === Number(cart.order_discount ?? 0)
+    ) {
       setOrderDiscountDraft(next > 0 ? String(next) : "");
       return;
     }
     setBusy(true);
     try {
-      if (isDiscountApprovalEnabled(capabilities?.module_settings) && next > 0) {
-        let reason = undefined;
-        const threshold = discountApprovalThresholdPercent(capabilities?.module_settings);
-        if (net > 0 && (next / net) * 100 >= threshold) {
-          const entered = window.prompt("Reason for discount request (required):");
-          if (!entered || entered.trim().length < 3) {
-            if (entered !== null) setStatusMessage("Discount reason must be at least 3 characters.");
-            setOrderDiscountDraft(
-              Number(cart.order_discount ?? 0) > 0 ? String(cart.order_discount) : "",
-            );
-            return;
-          }
-          reason = entered.trim();
-        }
-        const res = await apiRequest(`/sales/carts/${cart.id}/discount-requests`, {
-          method: "POST",
-          body: { scope: "order", discount_amount: next, reason },
-          ...POS_CART_REQUEST,
-        });
-        if (res.pending_approval) {
-          setStatusMessage("Discount submitted for manager approval.");
+      if (staffDiscountApprovalMode && next > 0) {
+        const entered = window.prompt("Reason for discount approval request (required):");
+        if (!entered || entered.trim().length < 3) {
+          if (entered !== null) setStatusMessage("Discount reason must be at least 3 characters.");
           setOrderDiscountDraft(
-            Number(cart.order_discount ?? 0) > 0 ? String(cart.order_discount) : "",
+            cart.discount_approval_pending && cart.discount_approval_request?.discount_amount != null
+              ? String(cart.discount_approval_request.discount_amount)
+              : Number(cart.order_discount ?? 0) > 0
+                ? String(cart.order_discount)
+                : "",
           );
           return;
         }
-        if (res.cart) {
-          setCart(res.cart);
+        const res = await apiRequest(`/sales/carts/${cart.id}/discount-requests`, {
+          method: "POST",
+          body: { scope: "order", discount_amount: next, reason: entered.trim() },
+          ...POS_CART_REQUEST,
+        });
+        if (res.cart) setCart(res.cart);
+        setStatusMessage(
+          res.pending_approval
+            ? "Discount submitted for approval. You can save the order — it will appear under Pending approval orders until a manager approves."
+            : "Discount applied.",
+        );
+        if (!res.pending_approval && res.cart) {
           setOrderDiscountDraft(next > 0 ? String(next) : "");
         }
         return;
@@ -1740,6 +1747,10 @@ export function PosScreen({ standalone = false }) {
   }
 
   function canEditManualLineDiscount(product = selectedProduct) {
+    if (staffDiscountApprovalMode) {
+      return true;
+    }
+
     return (
       allowDiscounts &&
       allowEditLineDiscount &&
@@ -3285,7 +3296,7 @@ export function PosScreen({ standalone = false }) {
                 <p className="mt-0.5 text-[10px] font-medium text-red-700">{lineStockMessage}</p>
               ) : null}
             </div>
-            {allowDiscounts ? (
+            {showLineDiscountField ? (
               <div className="col-span-2 space-y-1">
                 <PosLabel>Discount</PosLabel>
                 <input
@@ -3304,9 +3315,9 @@ export function PosScreen({ standalone = false }) {
                   <p className="theme-subtext mt-0.5 text-[10px]">
                     From product: {formatProductDiscountLabel(selectedProduct)}
                   </p>
-                ) : allowEditLineDiscount ? (
+                ) : staffDiscountApprovalMode || allowEditLineDiscount ? (
                   <p className="theme-subtext mt-0.5 text-[10px]">
-                    Enter a manual discount for this line. Press Enter to continue.
+                    Enter a manual discount for this line. Manager approval is required before checkout.
                   </p>
                 ) : (
                   <p className="theme-subtext mt-0.5 text-[10px]">
@@ -3491,7 +3502,7 @@ export function PosScreen({ standalone = false }) {
                   <th className="px-3 py-2.5">Package</th>
                   <th className="px-3 py-2.5 text-center">Qty</th>
                   <th className="px-3 py-2.5 text-right">Unit price</th>
-                  {allowDiscounts ? (
+                  {showLineDiscountField ? (
                     <th className="px-3 py-2.5 text-right">Discount</th>
                   ) : null}
                   <th className="px-3 py-2.5 text-right">Amount</th>
@@ -3592,7 +3603,7 @@ export function PosScreen({ standalone = false }) {
                             cartLineDisplayUnitPrice(line, uom, isRetailLine),
                           ).toLocaleString()}
                         </td>
-                        {allowDiscounts ? (
+                        {showLineDiscountField ? (
                           <td className="px-3 py-2 text-right">
                             {Number(line.discount_given ?? 0).toLocaleString()}
                           </td>
@@ -3610,8 +3621,20 @@ export function PosScreen({ standalone = false }) {
 
           <div className="pos-cart-footer mt-auto shrink-0">
           <div className="pos-cart-summary shrink-0 border-t border-[var(--theme-border)] px-4 py-4">
+            {cart?.discount_approval_pending ? (
+              <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
+                <p className="font-semibold">Discount pending manager approval</p>
+                <p className="mt-1 text-xs text-amber-900">
+                  {cart.discount_approval_request?.scope === "line"
+                    ? "A line discount request is awaiting approval."
+                    : `Order discount of ${formatSaleKes(cart.discount_approval_request?.discount_amount ?? 0)} is awaiting approval.`}
+                  {" "}You can still save this order — it will be listed under Pending approval orders until approved.
+                  If rejected, edit the order from Editable orders.
+                </p>
+              </div>
+            ) : null}
             <div className="mb-3 border-b border-[var(--theme-border)] pb-3 text-sm">
-              {enableOrderDiscount ? (
+              {showOrderDiscountInput ? (
                 <div className="theme-panel mb-2.5 rounded-lg border border-[var(--theme-primary)]/20 px-3 py-2.5">
                   <div className="grid grid-cols-12 items-center gap-3">
                     <label
@@ -3669,7 +3692,7 @@ export function PosScreen({ standalone = false }) {
                   <span>Subtotal</span>
                   <span>{formatSaleKes(cartSummary.subtotal)}</span>
                 </div>
-                {allowDiscounts || enableOrderDiscount ? (
+                {showLineDiscountField || showOrderDiscountInput ? (
                   <div className="theme-text-muted flex justify-between">
                     <span>Line discounts</span>
                     <span>
@@ -3679,7 +3702,7 @@ export function PosScreen({ standalone = false }) {
                     </span>
                   </div>
                 ) : null}
-                {((enableOrderDiscount || enableVouchers) && cartSummary.orderDiscount > 0) ? (
+                {((showOrderDiscountInput || enableVouchers) && cartSummary.orderDiscount > 0) ? (
                   <div className="theme-text-muted flex justify-between">
                     <span>Order discount</span>
                     <span>−{formatSaleKes(cartSummary.orderDiscount)}</span>

@@ -40,7 +40,12 @@ import { formatCollectedCashDefault, resolveTripExpectedCash } from "@/lib/trip-
 import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
 import {
   buildUomByProductCode,
+  fetchCatalogForProductCodes,
   formatFulfillmentQty,
+  fulfillmentBaseItemCount,
+  fulfillmentPickedBaseQty,
+  fulfillmentPickedDisplayQty,
+  fulfillmentPickedInputUnit,
 } from "@/lib/fulfillment-quantity";
 
 function PrintIcon() {
@@ -82,22 +87,33 @@ export default function TripDetailPage() {
   const loadTrip = useCallback(async () => {
     setLoading(true);
     try {
-      const [tripRes, listRes, pickRes, prodRes, uomRes] = await Promise.all([
+      const [tripRes, listRes, pickRes] = await Promise.all([
         apiRequest(`/dispatch-trips/${id}`),
         apiRequest(`/dispatch-trips/${id}/loading-list`),
         apiRequest(`/dispatch-trips/${id}/picking-list`),
-        apiRequest("/products", { searchParams: { per_page: 500 } }),
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
       ]);
-      setTrip(tripRes);
-      setLoadingList(listRes.loading_list ?? listRes);
-      setCatalogProducts(prodRes.data ?? []);
-      setUoms(uomRes.data ?? []);
       const nextPicking = pickRes.picking_list ?? pickRes;
+      const nextLoading = listRes.loading_list ?? listRes;
+      const productCodes = [
+        ...(nextPicking?.lines ?? []).map((line) => line.product_code),
+        ...(nextLoading?.lines ?? []).map((line) => line.product_code),
+      ];
+      const { products, uoms: uomRows } = await fetchCatalogForProductCodes(apiRequest, productCodes);
+      const uomMap = buildUomByProductCode(products, uomRows);
+
+      setTrip(tripRes);
+      setLoadingList(nextLoading);
+      setCatalogProducts(products);
+      setUoms(uomRows);
       setPickingList(nextPicking);
       setPickedDraft(
         Object.fromEntries(
-          (nextPicking?.lines ?? []).map((line) => [line.id, String(line.picked_qty ?? line.required_qty ?? "")]),
+          (nextPicking?.lines ?? []).map((line) => [
+            line.id,
+            String(
+              fulfillmentPickedDisplayQty(line.picked_qty ?? line.required_qty, line, uomMap),
+            ),
+          ]),
         ),
       );
       setPreparedBy(listRes.loading_list?.prepared_by_name ?? tripRes.prepared_by_name ?? "");
@@ -136,7 +152,11 @@ export default function TripDetailPage() {
         label: "Picked",
         align: "right",
         render: (row) => {
-          const baseQty = Number(pickedDraft[row.id] ?? row.picked_qty ?? row.required_qty) || 0;
+          const pickedBase = fulfillmentPickedBaseQty(
+            pickedDraft[row.id] ?? row.picked_qty ?? row.required_qty,
+            row,
+            uomByProductCode,
+          );
           if (pickingEditable) {
             return (
               <div className="flex flex-col items-end gap-1">
@@ -144,15 +164,18 @@ export default function TripDetailPage() {
                   type="number"
                   min="0"
                   step="any"
-                  title="Quantity in base stock units"
+                  title={`Quantity in ${fulfillmentPickedInputUnit(row, uomByProductCode)}`}
                   className={`${inputClassName()} w-24 text-right`}
-                  value={pickedDraft[row.id] ?? String(row.picked_qty ?? row.required_qty ?? "")}
+                  value={
+                    pickedDraft[row.id] ??
+                    String(fulfillmentPickedDisplayQty(row.picked_qty ?? row.required_qty, row, uomByProductCode))
+                  }
                   onChange={(e) =>
                     setPickedDraft((prev) => ({ ...prev, [row.id]: e.target.value }))
                   }
                 />
                 <span className="text-[11px] text-slate-500">
-                  {formatFulfillmentQty(baseQty, row, uomByProductCode)}
+                  {formatFulfillmentQty(pickedBase, row, uomByProductCode)}
                 </span>
               </div>
             );
@@ -166,9 +189,11 @@ export default function TripDetailPage() {
         align: "right",
         render: (row) => {
           const required = Number(row.required_qty) || 0;
-          const picked = Number(
+          const picked = fulfillmentPickedBaseQty(
             pickingEditable ? pickedDraft[row.id] ?? row.picked_qty : row.picked_qty,
-          ) || 0;
+            row,
+            uomByProductCode,
+          );
           const shortage = Math.max(0, required - picked);
           return shortage > 0 ? (
             <span className="font-medium text-amber-700">
@@ -262,7 +287,12 @@ export default function TripDetailPage() {
     const lines = (pickingList?.lines ?? [])
       .map((line) => ({
         id: line.id,
-        picked_qty: Number(pickedDraft[line.id] ?? line.picked_qty ?? line.required_qty) || 0,
+        picked_qty:
+          fulfillmentPickedBaseQty(
+            pickedDraft[line.id] ?? line.picked_qty ?? line.required_qty,
+            line,
+            uomByProductCode,
+          ) || 0,
       }))
       .filter((line) => line.id);
     if (!lines.length) return;
@@ -277,7 +307,10 @@ export default function TripDetailPage() {
       setPickingList(updated);
       setPickedDraft(
         Object.fromEntries(
-          (updated?.lines ?? []).map((line) => [line.id, String(line.picked_qty ?? "")]),
+          (updated?.lines ?? []).map((line) => [
+            line.id,
+            String(fulfillmentPickedDisplayQty(line.picked_qty, line, uomByProductCode)),
+          ]),
         ),
       );
       notifySuccess("Picked quantities saved.");
@@ -835,11 +868,11 @@ export default function TripDetailPage() {
             ]}
             rows={lines.map((line) => {
               const packaging = formatFulfillmentQty(line.quantity, line, uomByProductCode);
+              const totalItems = fulfillmentBaseItemCount(line.quantity, line, uomByProductCode);
               return {
                 ...line,
-                quantity_label: packaging,
-                pack_breakdown:
-                  line.pack_breakdown && line.pack_breakdown !== packaging ? line.pack_breakdown : "—",
+                quantity_label: totalItems,
+                pack_breakdown: packaging !== totalItems ? packaging : "—",
                 unit_price: formatSaleKes(line.unit_price),
                 line_total: formatSaleKes(line.line_total),
               };
