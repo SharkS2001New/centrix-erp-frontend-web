@@ -2,6 +2,9 @@ import { postSystemIssueReportRaw } from "./system-issue-api";
 
 export const SLOW_REQUEST_THRESHOLD_MS = 12000;
 
+const GENERIC_ISSUE_MESSAGE =
+  /^an error occurred in .+ please report this to your system administrator\.?$/i;
+
 const recentFingerprints = new Map();
 const DEDUPE_MS = 60_000;
 
@@ -21,6 +24,22 @@ function shouldDedupe(payload) {
 function currentPageUrl() {
   if (typeof window === "undefined") return null;
   return window.location.pathname + window.location.search;
+}
+
+/** Extract technical error detail from an API error body for super-admin issue logs. */
+export function extractTechnicalDetailFromApiBody(data) {
+  if (!data || typeof data !== "object") return null;
+
+  const parts = [];
+  if (data.exception_class) parts.push(String(data.exception_class));
+  if (data.detail) parts.push(String(data.detail));
+  else if (data.message && data.expose_detail) parts.push(String(data.message));
+  if (data.file) parts.push(`at ${data.file}${data.line != null ? `:${data.line}` : ""}`);
+  if (data.technical_detail) return String(data.technical_detail);
+  if (data.trace) return String(data.trace);
+  if (data.stack) return String(data.stack);
+
+  return parts.length ? parts.join(" ") : null;
 }
 
 /**
@@ -82,17 +101,37 @@ export async function logApiErrorIssue({
   message,
   durationMs,
   context,
+  issueReportId,
+  apiBody,
 }) {
   if (!shouldAutoLogApiError(path, status)) return null;
 
+  // Server-side reporter owns HTTP 500 logs with full stack traces.
+  if (status >= 500) {
+    return issueReportId ? { id: issueReportId } : null;
+  }
+
+  const technicalDetail = extractTechnicalDetailFromApiBody(apiBody);
+  const logMessage = technicalDetail
+    ? String(technicalDetail).split("\n")[0].slice(0, 500)
+    : String(message ?? "Request failed").slice(0, 500);
+
+  if (!technicalDetail && GENERIC_ISSUE_MESSAGE.test(String(message ?? "").trim())) {
+    return null;
+  }
+
   return submitSystemIssueReport({
     kind: "error",
-    message: String(message ?? "Request failed").slice(0, 500),
+    message: logMessage,
     api_path: path,
     http_method: method,
     http_status: status,
     duration_ms: durationMs ?? null,
-    context,
+    context: {
+      ...(context ?? {}),
+      user_message: message,
+      ...(technicalDetail ? { technical_detail: technicalDetail } : {}),
+    },
   });
 }
 

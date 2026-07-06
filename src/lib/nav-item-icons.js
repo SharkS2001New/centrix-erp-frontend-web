@@ -94,6 +94,7 @@ export const NAV_HREF_ICONS = {
   "/accounting/chart-of-accounts": "layers",
   "/accounting/journal-entries": "book",
   "/accounting/general-ledger": "accounting",
+  "/accounting/bank-register": "wallet",
   "/accounting/bank-reconciliation": "link",
   "/expenses": "tag",
   "/accounting/trial-balance": "measure",

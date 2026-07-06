@@ -8,6 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { usePathname } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   clearStoredActiveSession,
@@ -20,7 +21,23 @@ import { useAuth } from "@/contexts/auth-context";
 
 const PosSessionContext = createContext(null);
 
+const POS_SESSION_PATH_PREFIXES = [
+  "/pos",
+  "/sales/pos",
+  "/sales/till-management",
+  "/sales/orders",
+  "/fulfillment/orders",
+];
+
+function pathNeedsPosSession(pathname) {
+  if (!pathname) return false;
+  return POS_SESSION_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
 export function PosSessionProvider({ children }) {
+  const pathname = usePathname();
   const { user, capabilities } = useAuth();
   const [activeSession, setActiveSession] = useState(null);
   const [suspendedSession, setSuspendedSession] = useState(null);
@@ -123,9 +140,17 @@ export function PosSessionProvider({ children }) {
       return undefined;
     }
 
+    const stored = getStoredActiveSession();
+    if (!pathNeedsPosSession(pathname) && !stored) {
+      setActiveSession(null);
+      setSuspendedSession(null);
+      setSessionReport(null);
+      setLoading(false);
+      return undefined;
+    }
+
     async function init() {
       setLoading(true);
-      const stored = getStoredActiveSession();
       let verified = stored ? await verifySession(stored) : null;
       if (!verified && user?.id) {
         const recovered = await findOpenSessionForUser(user.id);
@@ -154,6 +179,7 @@ export function PosSessionProvider({ children }) {
     findOpenSessionForUser,
     findSuspendedSessionForUser,
     user?.id,
+    pathname,
   ]);
 
   const openSession = useCallback(

@@ -32,6 +32,19 @@ function userLabel(user) {
   return user.full_name?.trim() || user.username || "—";
 }
 
+function issueSummary(row) {
+  if (row.technical_detail) {
+    return String(row.technical_detail).split("\n")[0];
+  }
+  return row.message;
+}
+
+function issueSummary(row) {
+  const technical = row.technical_detail || row.context?.technical_detail;
+  if (technical) return String(technical).split("\n")[0];
+  return row.message;
+}
+
 export default function PlatformSystemIssuesPage() {
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -285,8 +298,8 @@ export default function PlatformSystemIssuesPage() {
                     ) : null}
                   </td>
                   <td className="px-4 py-3">{userLabel(row.user)}</td>
-                  <td className="theme-text-muted max-w-xs truncate px-4 py-3" title={row.message}>
-                    {row.message}
+                  <td className="theme-text-muted max-w-xs truncate px-4 py-3 font-mono text-xs" title={issueSummary(row)}>
+                    {issueSummary(row)}
                   </td>
                   <td className="px-4 py-3">{STATUS_LABELS[row.status] ?? row.status}</td>
                   <td className="px-4 py-3 text-right">
@@ -361,9 +374,17 @@ export default function PlatformSystemIssuesPage() {
                 <dd>{userLabel(selected.user)}</dd>
               </div>
               <div className="sm:col-span-2">
-                <dt className="theme-subtext text-xs uppercase">Message</dt>
-                <dd className="theme-panel mt-1 rounded-lg border px-3 py-2">{selected.message}</dd>
+                <dt className="theme-subtext text-xs uppercase">Summary</dt>
+                <dd className="theme-panel mt-1 rounded-lg border px-3 py-2 font-mono text-xs">{selected.message}</dd>
               </div>
+              {selected.context?.user_message ? (
+                <div className="sm:col-span-2">
+                  <dt className="theme-subtext text-xs uppercase">User-facing message</dt>
+                  <dd className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900/40">
+                    {selected.context.user_message}
+                  </dd>
+                </div>
+              ) : null}
               {selected.user_notes ? (
                 <div className="sm:col-span-2">
                   <dt className="theme-subtext text-xs uppercase">User notes</dt>
@@ -391,10 +412,24 @@ export default function PlatformSystemIssuesPage() {
               ) : null}
             </dl>
 
+            {selected.technical_detail || selected.context?.technical_detail ? (
+              <div className="mt-4">
+                <p className="theme-subtext mb-2 text-xs font-semibold uppercase tracking-wide">Technical detail</p>
+                <pre className="max-h-96 overflow-auto rounded-lg border bg-slate-950 p-3 text-xs leading-relaxed text-slate-100">
+                  {selected.technical_detail || selected.context?.technical_detail}
+                </pre>
+              </div>
+            ) : null}
+
             {selected.context ? (
-              <pre className="mt-4 max-h-48 overflow-auto rounded-lg border bg-slate-950 p-3 text-xs text-slate-100">
-                {JSON.stringify(selected.context, null, 2)}
-              </pre>
+              <details className="mt-4">
+                <summary className="theme-subtext cursor-pointer text-xs font-semibold uppercase tracking-wide">
+                  Raw context
+                </summary>
+                <pre className="mt-2 max-h-48 overflow-auto rounded-lg border bg-slate-950 p-3 text-xs text-slate-100">
+                  {JSON.stringify(selected.context, null, 2)}
+                </pre>
+              </details>
             ) : null}
 
             <label className="mt-4 block text-sm">

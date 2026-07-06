@@ -492,6 +492,16 @@ const NAV_SECTION_DEFINITIONS = [
         group: "General ledger",
       },
       {
+        href: "/accounting/bank-register",
+        label: "Bank register",
+        module: "accounting",
+        permissionAny: [
+          P.accounting.bank_reconciliation.view,
+          P.accounting.general_ledger.view,
+        ],
+        group: "General ledger",
+      },
+      {
         href: "/accounting/bank-reconciliation",
         label: "Bank reconciliation",
         module: "accounting",

@@ -97,13 +97,21 @@ export default function BankReconciliationListPage() {
       title="Bank reconciliation"
       subtitle="Accounting > Match bank statements to the general ledger"
       action={
-        <button
-          type="button"
-          onClick={() => setShowForm((open) => !open)}
-          className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#134a84]"
-        >
-          {showForm ? "Cancel" : "New reconciliation"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/accounting/bank-register"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Bank register
+          </Link>
+          <button
+            type="button"
+            onClick={() => setShowForm((open) => !open)}
+            className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#134a84]"
+          >
+            {showForm ? "Cancel" : "New reconciliation"}
+          </button>
+        </div>
       }
     >
       <div className="mb-6 grid gap-4 md:grid-cols-3">

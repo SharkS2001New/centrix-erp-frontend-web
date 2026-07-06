@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
 import {
   Field,
@@ -19,13 +19,11 @@ import { P } from "@/lib/permission-codes";
 import {
   defaultDateRange,
   formatStockQty,
-  buildUomByProductCode,
   buildUomById,
   uomForInventoryRow,
   InventoryPageShell,
   InventoryTableShell,
   productDisplayName,
-  rowInDateRange,
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { DAMAGE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
@@ -41,9 +39,12 @@ export default function DamagesPage() {
   const initialRange = defaultDateRange(7);
 
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [products, setProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
   const [page, setPage] = useState(1);
@@ -51,50 +52,59 @@ export default function DamagesPage() {
   const [deletingId, setDeletingId] = useState(null);
   const [editingDamage, setEditingDamage] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadReferenceData = useCallback(async () => {
     try {
-      const all = await fetchAllPaginatedRowsSmart("/damages", {
-        "filter[branch_id]": branchId,
-      });
-      setRows(all);
       const [prodRes, uomRes] = await Promise.all([
         apiRequest("/products", { searchParams: { per_page: 500 } }),
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
       ]);
       setProducts(prodRes.data ?? []);
       setUoms(uomRes.data ?? []);
+    } catch {
+      /* non-blocking */
+    }
+  }, []);
+
+  const loadRows = useCallback(async () => {
+    setListLoading(true);
+    try {
+      const searchParams = buildPageParams({
+        page,
+        perPage: pageSize,
+        filters: { branch_id: branchId },
+        extra: { from_date: fromDate, to_date: toDate },
+      });
+      const res = await apiRequest("/damages", { searchParams });
+      const parsed = parsePaginator(res);
+      setRows(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load damages");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [branchId]);
+  }, [branchId, fromDate, toDate, page, pageSize]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadReferenceData();
+  }, [loadReferenceData]);
+
+  useEffect(() => {
+    loadRows();
+  }, [loadRows]);
 
   const uomById = useMemo(() => buildUomById(uoms), [uoms]);
-  const uomByProduct = useMemo(() => buildUomByProductCode(products, uoms), [products, uoms]);
 
   const productByCode = useMemo(
     () => new Map(products.map((p) => [p.product_code, p])),
     [products],
   );
 
-  const filtered = useMemo(
-    () => rows.filter((row) => rowInDateRange(row, fromDate, toDate, ["created_at"])),
-    [rows, fromDate, toDate],
-  );
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-
   useEffect(() => {
     setPage(1);
-  }, [fromDate, toDate]);
+  }, [fromDate, toDate, pageSize]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -105,7 +115,7 @@ export default function DamagesPage() {
     const label = productDisplayName(row, productByCode);
     const qtyLabel = formatStockQty(
       row.quantity,
-      uomForInventoryRow(row, uomById, uomByProduct),
+      uomForInventoryRow(row, uomById),
     );
     const ok = await confirm({
       title: "Delete damage record",
@@ -118,7 +128,7 @@ export default function DamagesPage() {
     setDeletingId(row.id);
     try {
       await apiRequest(`/damages/${row.id}`, { method: "DELETE" });
-      await load();
+      await loadRows();
       notifySuccess("Damage record deleted and stock restored");
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to delete damage");
@@ -137,10 +147,12 @@ export default function DamagesPage() {
             title="Damages"
             apiPath="/damages"
             columns={DAMAGE_EXPORT_COLUMNS}
-            totalCount={filtered.length}
+            totalCount={total}
             getSearchParams={() => ({
               per_page: 200,
               "filter[branch_id]": branchId,
+              from_date: fromDate,
+              to_date: toDate,
             })}
             disabled={loading}
           />
@@ -168,7 +180,7 @@ export default function DamagesPage() {
           />
         </Field>
         <p className="pb-2 text-xs text-slate-500">
-          {filtered.length} record{filtered.length === 1 ? "" : "s"} in range
+          {total} record{total === 1 ? "" : "s"} in range
         </p>
       </div>
 
@@ -190,14 +202,14 @@ export default function DamagesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageSlice.length === 0 ? (
+                  {rows.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                         No damages in this date range.
                       </td>
                     </tr>
                   ) : (
-                    pageSlice.map((row) => {
+                    rows.map((row) => {
                       return (
                         <tr key={row.id} className="border-b border-slate-100">
                           <td className="px-4 py-3 text-slate-600">
@@ -213,7 +225,7 @@ export default function DamagesPage() {
                           <td className="px-4 py-3 text-right tabular-nums text-red-700">
                             −{formatStockQty(
                               row.quantity,
-                              uomForInventoryRow(row, uomById, uomByProduct),
+                              uomForInventoryRow(row, uomById),
                             )}
                           </td>
                           <td className="px-4 py-3 capitalize text-slate-600">
@@ -244,10 +256,13 @@ export default function DamagesPage() {
                 </tbody>
               </table>
             </div>
+            {listLoading ? (
+              <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">Refreshing…</p>
+            ) : null}
             <PaginationBar
-              page={safePage}
+              page={page}
               totalPages={totalPages}
-              total={filtered.length}
+              total={total}
               pageSize={pageSize}
               onChange={setPage}
               onPageSizeChange={handlePageSizeChange}
@@ -262,7 +277,7 @@ export default function DamagesPage() {
         products={products}
         uoms={uoms}
         onClose={() => setEditingDamage(null)}
-        onSaved={load}
+        onSaved={loadRows}
       />
     </InventoryPageShell>
   );

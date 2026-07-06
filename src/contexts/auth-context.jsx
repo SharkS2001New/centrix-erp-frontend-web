@@ -225,7 +225,7 @@ export function AuthProvider({ children }) {
     }
     setLoading(false);
 
-    refreshCapabilities({ force: true })
+    refreshCapabilities()
       .then((caps) => {
         syncStoredWorkspace(caps?.workspaces ?? []);
       })

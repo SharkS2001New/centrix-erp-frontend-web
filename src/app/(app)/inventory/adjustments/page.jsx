@@ -4,7 +4,7 @@ import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
-import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
 import {
   Field,
@@ -18,14 +18,12 @@ import {
   defaultDateRange,
   formatMovementDateTime,
   formatStockQty,
-  buildUomByProductCode,
   buildUomById,
   uomForInventoryRow,
   InventoryPageShell,
   InventoryTableShell,
   movementLocationLabel,
   productDisplayName,
-  rowInDateRange,
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_MOVEMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
@@ -37,61 +35,67 @@ export default function StockAdjustmentsPage() {
   const initialRange = defaultDateRange(30);
 
   const [rows, setRows] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [uoms, setUoms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(15);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadReferenceData = useCallback(async () => {
     try {
-      const all = await fetchAllPaginatedRowsSmart("/inventory-transactions", {
-        "filter[branch_id]": branchId,
-        "filter[transaction_type]": "ADJUSTMENT",
-        "filter[reference_type]": "adjustment",
-      });
-      setRows(all);
-
-      const [prodRes, uomRes] = await Promise.all([
-        apiRequest("/products", { searchParams: { per_page: 500, branch_id: branchId } }),
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
-      ]);
-      setProducts(prodRes.data ?? []);
+      const uomRes = await apiRequest("/uoms", { searchParams: { per_page: 200 } });
       setUoms(uomRes.data ?? []);
+    } catch {
+      /* non-blocking */
+    }
+  }, []);
+
+  const loadRows = useCallback(async () => {
+    setListLoading(true);
+    try {
+      const searchParams = buildPageParams({
+        page,
+        perPage: pageSize,
+        filters: {
+          branch_id: branchId,
+          transaction_type: "ADJUSTMENT",
+          reference_type: "adjustment",
+        },
+        extra: {
+          from_date: fromDate,
+          to_date: toDate,
+        },
+      });
+      const res = await apiRequest("/inventory-transactions", { searchParams });
+      const parsed = parsePaginator(res);
+      setRows(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load adjustments");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [branchId]);
+  }, [branchId, fromDate, toDate, page, pageSize]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadReferenceData();
+  }, [loadReferenceData]);
 
-  const uomById = useMemo(() => buildUomById(uoms), [uoms]);
-  const uomByProduct = useMemo(() => buildUomByProductCode(products, uoms), [products, uoms]);
-
-  const productByCode = useMemo(
-    () => new Map(products.map((p) => [p.product_code, p])),
-    [products],
-  );
-
-  const filtered = useMemo(
-    () => rows.filter((row) => rowInDateRange(row, fromDate, toDate, ["created_at"])),
-    [rows, fromDate, toDate],
-  );
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  useEffect(() => {
+    loadRows();
+  }, [loadRows]);
 
   useEffect(() => {
     setPage(1);
-  }, [fromDate, toDate]);
+  }, [fromDate, toDate, pageSize]);
+
+  const uomById = useMemo(() => buildUomById(uoms), [uoms]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -109,12 +113,14 @@ export default function StockAdjustmentsPage() {
             filename="stock-adjustments"
             apiPath="/inventory-transactions"
             columns={STOCK_MOVEMENT_EXPORT_COLUMNS}
-            totalCount={filtered.length}
+            totalCount={total}
             getSearchParams={() => ({
               per_page: 200,
               "filter[branch_id]": branchId,
               "filter[transaction_type]": "ADJUSTMENT",
               "filter[reference_type]": "adjustment",
+              from_date: fromDate,
+              to_date: toDate,
             })}
             disabled={loading}
           />
@@ -142,7 +148,7 @@ export default function StockAdjustmentsPage() {
           />
         </Field>
         <p className="pb-2 text-xs text-slate-500">
-          {filtered.length} adjustment{filtered.length === 1 ? "" : "s"} in range
+          {total} adjustment{total === 1 ? "" : "s"} in range
         </p>
       </div>
 
@@ -165,7 +171,7 @@ export default function StockAdjustmentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageSlice.length === 0 ? (
+                  {rows.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                         No adjustments in this date range.{" "}
@@ -175,9 +181,9 @@ export default function StockAdjustmentsPage() {
                       </td>
                     </tr>
                   ) : (
-                    pageSlice.map((row) => {
+                    rows.map((row) => {
                       const change = Number(row.quantity_change ?? 0);
-                      const uom = uomForInventoryRow(row, uomById, uomByProduct);
+                      const uom = uomForInventoryRow(row, uomById);
                       return (
                         <tr key={row.id} className="border-b border-slate-100">
                           <td className="px-4 py-3 text-slate-600">
@@ -185,7 +191,7 @@ export default function StockAdjustmentsPage() {
                           </td>
                           <td className="px-4 py-3">
                             <span className="font-medium text-slate-900">
-                              {productDisplayName(row, productByCode)}
+                              {productDisplayName(row)}
                             </span>
                           </td>
                           <td
@@ -213,10 +219,13 @@ export default function StockAdjustmentsPage() {
                 </tbody>
               </table>
             </div>
+            {listLoading ? (
+              <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">Refreshing…</p>
+            ) : null}
             <PaginationBar
-              page={safePage}
+              page={page}
               totalPages={totalPages}
-              total={filtered.length}
+              total={total}
               pageSize={pageSize}
               onChange={setPage}
               onPageSizeChange={handlePageSizeChange}

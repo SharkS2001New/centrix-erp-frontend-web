@@ -4,7 +4,7 @@ import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
-import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PaginationBar, PrimaryLink, inputClassName } from "@/components/catalog/catalog-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
@@ -16,7 +16,6 @@ import {
   InventoryPageShell,
   InventoryTableShell,
   receiptDetailHref,
-  rowInDateRange,
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_RECEIPT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
@@ -28,44 +27,46 @@ export default function StockReceiptsPage() {
   const initialRange = defaultDateRange(7);
 
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(15);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadRows = useCallback(async () => {
+    setListLoading(true);
     try {
-      const all = await fetchAllPaginatedRowsSmart("/stock-receipts", {
-        "filter[branch_id]": branchId,
+      const searchParams = buildPageParams({
+        page,
+        perPage: pageSize,
+        filters: { branch_id: branchId },
+        extra: { from_date: fromDate, to_date: toDate },
       });
-      setRows(all);
+      const res = await apiRequest("/stock-receipts", { searchParams });
+      const parsed = parsePaginator(res);
+      setRows(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load stock receipts");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [branchId]);
+  }, [branchId, fromDate, toDate, page, pageSize]);
 
   useEffect(() => {
-    load();
-  }, [load]);
-
-  const filtered = useMemo(
-    () => rows.filter((row) => rowInDateRange(row, fromDate, toDate, ["created_at"])),
-    [rows, fromDate, toDate],
-  );
-
-  const grouped = useMemo(() => groupStockReceipts(filtered), [filtered]);
-
-  const totalPages = Math.max(1, Math.ceil(grouped.length / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = grouped.slice((safePage - 1) * pageSize, safePage * pageSize);
+    loadRows();
+  }, [loadRows]);
 
   useEffect(() => {
     setPage(1);
-  }, [fromDate, toDate]);
+  }, [fromDate, toDate, pageSize]);
+
+  const grouped = useMemo(() => groupStockReceipts(rows), [rows]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -82,10 +83,12 @@ export default function StockReceiptsPage() {
             title="Stock receipts"
             apiPath="/stock-receipts"
             columns={STOCK_RECEIPT_EXPORT_COLUMNS}
-            totalCount={grouped.length}
+            totalCount={total}
             getSearchParams={() => ({
               per_page: 200,
               "filter[branch_id]": branchId,
+              from_date: fromDate,
+              to_date: toDate,
             })}
             disabled={loading}
           />
@@ -113,7 +116,7 @@ export default function StockReceiptsPage() {
           />
         </Field>
         <p className="pb-2 text-xs text-slate-500">
-          {grouped.length} receipt{grouped.length === 1 ? "" : "s"} in range
+          {grouped.length} receipt{grouped.length === 1 ? "" : "s"} on this page · {total} line{total === 1 ? "" : "s"} in range
         </p>
       </div>
 
@@ -136,7 +139,7 @@ export default function StockReceiptsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageSlice.map((group) => (
+                  {grouped.map((group) => (
                     <tr key={group.ref} className="border-b border-slate-100">
                       <td className="px-4 py-3">
                         <Link
@@ -163,10 +166,13 @@ export default function StockReceiptsPage() {
                 </tbody>
               </table>
             </div>
+            {listLoading ? (
+              <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">Refreshing…</p>
+            ) : null}
             <PaginationBar
-              page={safePage}
+              page={page}
               totalPages={totalPages}
-              total={grouped.length}
+              total={total}
               pageSize={pageSize}
               onChange={setPage}
               onPageSizeChange={handlePageSizeChange}

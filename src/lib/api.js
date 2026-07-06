@@ -369,6 +369,8 @@ export async function apiRequest(path, options = {}) {
           status: res.status,
           message: issueMessage,
           durationMs,
+          issueReportId: data?.issue_report_id ?? null,
+          apiBody: data,
         });
         if (report?.id) {
           systemIssuePrompted = true;
