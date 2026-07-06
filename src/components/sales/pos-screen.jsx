@@ -50,7 +50,11 @@ import {
   resolveCheckoutStatus,
   resolveSaveOrderStatus,
   resolveSaveOrderStatusLabel,
+  existingOrderDiscountApprovalReason,
 } from "@/lib/sales-settings";
+import {
+  DiscountApprovalReasonDialog,
+} from "@/components/sales/discount-approval-reason-dialog";
 import {
   isPlatformMpesaStkEnabled,
   isStkPushEnabled,
@@ -217,9 +221,8 @@ export function PosScreen({ standalone = false }) {
     Boolean(user?.is_admin) ||
     hasPermission(P.sales.orders.approve) ||
     hasPermission("sales.manage");
-  const staffDiscountApprovalMode = discountApprovalActive && !canAutoApproveDiscount;
   const showOrderDiscountInput = enableOrderDiscount;
-  const showLineDiscountField = allowDiscounts || allowEditLineDiscount;
+  const showLineDiscountField = allowDiscounts || allowEditLineDiscount || discountApprovalActive;
   const enableVouchers = posSalesConfig.enableVouchers;
   const enableRedeemablePoints = posSalesConfig.enableRedeemablePoints;
   const mpesaStkPlatformEnabled = isPlatformMpesaStkEnabled(
@@ -282,6 +285,24 @@ export function PosScreen({ standalone = false }) {
   const [preferredTillId, setPreferredTillId] = useState(null);
   const [pendingTillSuggestion, setPendingTillSuggestion] = useState(null);
   const [posTillMetaLoading, setPosTillMetaLoading] = useState(false);
+  const [discountReasonDialogOpen, setDiscountReasonDialogOpen] = useState(false);
+  const discountReasonResolverRef = useRef(null);
+
+  const requestDiscountApprovalReason = useCallback(async (cart) => {
+    const existing = existingOrderDiscountApprovalReason(cart);
+    if (existing) return existing;
+    return new Promise((resolve) => {
+      discountReasonResolverRef.current = resolve;
+      setDiscountReasonDialogOpen(true);
+    });
+  }, []);
+
+  const closeDiscountReasonDialog = useCallback((result = null) => {
+    setDiscountReasonDialogOpen(false);
+    const resolve = discountReasonResolverRef.current;
+    discountReasonResolverRef.current = null;
+    resolve?.(result);
+  }, []);
 
   const loadPosTillMeta = useCallback(async () => {
     if (!organizationId || !requireTillFloat) return;
@@ -954,7 +975,7 @@ export function PosScreen({ standalone = false }) {
         preDiscount.lineAmountBeforeDiscount,
         preDiscount.packQty,
       );
-    } else if (allowEditLineDiscount || staffDiscountApprovalMode) {
+    } else if (allowEditLineDiscount || discountApprovalActive) {
       discountAmount = parseDecimalInput(discount);
     }
 
@@ -1093,17 +1114,19 @@ export function PosScreen({ standalone = false }) {
       uom: finalComputed.uomLabel || product.package_name,
       on_wholesale_retail: onWholesaleRetailFlag ? 1 : 0,
       discount_given:
-        allowDiscounts || staffDiscountApprovalMode ? finalComputed.discountApplied : 0,
+        allowDiscounts || discountApprovalActive ? finalComputed.discountApplied : 0,
       product_vat: lineProductVat(product, finalComputed.lineAmount),
     };
 
     const discountAmount = Number(lineBody.discount_given ?? 0);
-    const needsLineDiscountApproval = staffDiscountApprovalMode && discountAmount > 0;
+    const needsLineDiscountApproval =
+      discountApprovalActive &&
+      !finalComputed.autoProductDiscount &&
+      discountAmount > 0;
 
     if (needsLineDiscountApproval) {
-      const reason = window.prompt("Reason for discount approval request (required):");
-      if (!reason || reason.trim().length < 3) {
-        if (reason !== null) setStatusMessage("Discount reason must be at least 3 characters.");
+      const reason = await requestDiscountApprovalReason(activeCart);
+      if (!reason) {
         return false;
       }
       try {
@@ -1131,14 +1154,14 @@ export function PosScreen({ standalone = false }) {
             scope: "line",
             line_ref: String(lineRef),
             discount_amount: discountAmount,
-            reason: reason.trim(),
+            reason: reason,
           },
           ...POS_CART_REQUEST,
         });
         if (res.cart) setCart(res.cart);
         setStatusMessage(
           res.pending_approval
-            ? "Line discount submitted for approval. Save the order to send it to Pending approval orders."
+            ? "Discount added to this order's approval request. Save when ready — it will appear under Pending approval orders."
             : "Discount applied.",
         );
         if (clearEntry) {
@@ -1322,7 +1345,7 @@ export function PosScreen({ standalone = false }) {
       const nextDiscount =
         allowDiscounts && computed.autoProductDiscount
           ? String(computed.discountAmount ?? 0)
-          : allowEditLineDiscount || staffDiscountApprovalMode
+          : allowEditLineDiscount || discountApprovalActive
             ? prev.discount
             : "0";
       if (
@@ -1347,7 +1370,7 @@ export function PosScreen({ standalone = false }) {
     unitPriceTouched,
     allowDiscounts,
     allowEditLineDiscount,
-    staffDiscountApprovalMode,
+    discountApprovalActive,
     routeMarkupPerUnit,
     editingLineId,
   ]);
@@ -1532,10 +1555,9 @@ export function PosScreen({ standalone = false }) {
     }
     setBusy(true);
     try {
-      if (staffDiscountApprovalMode && next > 0) {
-        const entered = window.prompt("Reason for discount approval request (required):");
-        if (!entered || entered.trim().length < 3) {
-          if (entered !== null) setStatusMessage("Discount reason must be at least 3 characters.");
+      if (discountApprovalActive && next > 0) {
+        const entered = await requestDiscountApprovalReason(cart);
+        if (!entered) {
           setOrderDiscountDraft(
             cart.discount_approval_pending && cart.discount_approval_request?.discount_amount != null
               ? String(cart.discount_approval_request.discount_amount)
@@ -1547,13 +1569,13 @@ export function PosScreen({ standalone = false }) {
         }
         const res = await apiRequest(`/sales/carts/${cart.id}/discount-requests`, {
           method: "POST",
-          body: { scope: "order", discount_amount: next, reason: entered.trim() },
+          body: { scope: "order", discount_amount: next, reason: entered },
           ...POS_CART_REQUEST,
         });
         if (res.cart) setCart(res.cart);
         setStatusMessage(
           res.pending_approval
-            ? "Discount submitted for approval. You can save the order — it will appear under Pending approval orders until a manager approves."
+            ? "Order discount added to approval request. Save when ready — it will appear under Pending approval orders."
             : "Discount applied.",
         );
         if (!res.pending_approval && res.cart) {
@@ -1747,7 +1769,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   function canEditManualLineDiscount(product = selectedProduct) {
-    if (staffDiscountApprovalMode) {
+    if (discountApprovalActive) {
       return true;
     }
 
@@ -3315,7 +3337,7 @@ export function PosScreen({ standalone = false }) {
                   <p className="theme-subtext mt-0.5 text-[10px]">
                     From product: {formatProductDiscountLabel(selectedProduct)}
                   </p>
-                ) : staffDiscountApprovalMode || allowEditLineDiscount ? (
+                ) : discountApprovalActive || allowEditLineDiscount ? (
                   <p className="theme-subtext mt-0.5 text-[10px]">
                     Enter a manual discount for this line. Manager approval is required before checkout.
                   </p>
@@ -3895,6 +3917,12 @@ export function PosScreen({ standalone = false }) {
           onClearAndLeave={() => void clearCartAndLeave()}
         />
       ) : null}
+
+      <DiscountApprovalReasonDialog
+        open={discountReasonDialogOpen}
+        onSubmit={closeDiscountReasonDialog}
+        onCancel={() => closeDiscountReasonDialog(null)}
+      />
 
       <PosPriceCheckerModal
         open={priceCheckerOpen}

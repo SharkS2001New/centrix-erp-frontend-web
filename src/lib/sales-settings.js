@@ -553,6 +553,12 @@ export function discountApprovalThresholdPercent(moduleSettings) {
   return Math.min(100, Math.max(0, value));
 }
 
+/** Reuse reason already stored on the cart approval request, if any. */
+export function existingOrderDiscountApprovalReason(cart) {
+  const existing = String(cart?.discount_approval_request?.reason ?? "").trim();
+  return existing.length >= 3 ? existing : null;
+}
+
 export function isOrderCancellationApprovalEnabled(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).order_cancellation_approval_enabled);
 }
