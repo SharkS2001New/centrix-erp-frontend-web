@@ -371,6 +371,49 @@ export default function SalesOrdersListScreen({
     }
   }
 
+  const approveActionRequest = useCallback(
+    async (requestId) => {
+      if (!requestId) return;
+      setListLoading(true);
+      try {
+        await apiRequest(`/action-requests/${requestId}/approve`, { method: "POST", loading: false });
+        setActionMessage("Request approved.");
+        void loadOrders();
+      } catch (e) {
+        setActionMessage(e instanceof ApiError ? e.message : "Could not approve request.");
+      } finally {
+        setListLoading(false);
+      }
+    },
+    [loadOrders],
+  );
+
+  const rejectActionRequest = useCallback(
+    async (requestId) => {
+      if (!requestId) return;
+      const reason = window.prompt("Reason for rejection (required):");
+      if (!reason || reason.trim().length < 3) {
+        if (reason !== null) setActionMessage("Rejection reason must be at least 3 characters.");
+        return;
+      }
+      setListLoading(true);
+      try {
+        await apiRequest(`/action-requests/${requestId}/reject`, {
+          method: "POST",
+          body: { reason: reason.trim() },
+          loading: false,
+        });
+        setActionMessage("Request rejected.");
+        void loadOrders();
+      } catch (e) {
+        setActionMessage(e instanceof ApiError ? e.message : "Could not reject request.");
+      } finally {
+        setListLoading(false);
+      }
+    },
+    [loadOrders],
+  );
+
   function toggleExpand(saleId) {
     const key = String(saleId);
     setExpandedIds((prev) => {
@@ -839,13 +882,14 @@ export default function SalesOrdersListScreen({
                       showDeliveryDateColumn={showDeliveryDateColumn}
                       showConnectivityColumn={showConnectivityColumn}
                       showSourceColumn={showSourceColumn}
+                      showDiscountColumn={Boolean(capabilities?.module_settings?.sales?.discount_approval_enabled)}
                     />
                   </thead>
                   <tbody>
                     {pageSlice.map((sale) => {
                       const key = String(sale.id);
                       return (
-                        <OrderListTableRow
+                          <OrderListTableRow
                           key={sale.id}
                           sale={sale}
                           workflow={workflowBySaleId.get(sale.id)}
@@ -874,6 +918,10 @@ export default function SalesOrdersListScreen({
                           routeById={routeById}
                           paymentRefsBySaleId={paymentRefsBySaleId}
                           columnCount={columnCount}
+                          showDiscountColumn={Boolean(capabilities?.module_settings?.sales?.discount_approval_enabled)}
+                          queueSlug={queueSlug}
+                          onApproveActionRequest={approveActionRequest}
+                          onRejectActionRequest={rejectActionRequest}
                           capabilities={capabilities}
                         />
                       );
@@ -942,6 +990,7 @@ export default function SalesOrdersListScreen({
         sale={editSale}
         uomById={uomById}
         onClose={() => setEditSale(null)}
+        capabilities={capabilities}
         onSaved={handleEditSaved}
       />
       <SalePosPaymentPanel

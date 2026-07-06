@@ -32,7 +32,7 @@ function indexRetailPackages(rows) {
   return map;
 }
 
-export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved }) {
+export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved, capabilities = null }) {
   const [lines, setLines] = useState([]);
   const [retailByCode, setRetailByCode] = useState({});
   const [loading, setLoading] = useState(false);
@@ -68,6 +68,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
           };
           return {
             ...editLine,
+            draftDiscount: Number(editLine.discount_given ?? 0),
             draftQty: saleLineEntryQtyForEdit(editLine, uomById, retailMap),
           };
         }),
@@ -108,6 +109,10 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     );
   }
 
+  function updateDiscount(lineId, value) {
+    setLines((prev) => prev.map((line) => (line.id === lineId ? { ...line, draftDiscount: value } : line)));
+  }
+
   async function handleSave() {
     if (!sale?.id) return;
     const payload = [];
@@ -122,7 +127,12 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
         setError("Each line needs a quantity greater than zero.");
         return;
       }
-      payload.push({ id: line.id, quantity: baseQty });
+      const item = { id: line.id, quantity: baseQty };
+      if (capabilities?.module_settings?.sales?.allow_edit_line_discount) {
+        const d = Number(line.draftDiscount ?? line.discount_given ?? 0);
+        if (Number.isFinite(d)) item.discount_given = d;
+      }
+      payload.push(item);
     }
 
     setSaving(true);
@@ -183,11 +193,14 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                   <th className="px-3 py-2">Item</th>
                   <th className="w-28 px-3 py-2 text-right">Qty</th>
                   <th className="w-32 px-3 py-2 text-right">Unit price</th>
+                  {capabilities?.module_settings?.sales?.allow_edit_line_discount ? (
+                    <th className="w-28 px-3 py-2 text-right">Discount</th>
+                  ) : null}
                   <th className="w-32 px-3 py-2 text-right">Amount</th>
                 </tr>
               </thead>
               <tbody>
-                {lines.map((line) => {
+                    {lines.map((line) => {
                   const oldQty = Number(line.quantity);
                   const draftQty = line.draftQty ?? "";
                   const entryQty = Number(draftQty);
@@ -199,7 +212,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                   const amount = scaleAmount(line.amount, displayQty, oldQty || displayQty);
                   const unitPrice = saleLineDisplayUnitPrice(line, uomById);
 
-                  return (
+                      return (
                     <tr key={line.id} className="theme-table-row border-b last:border-b-0">
                       <td className="px-3 py-2.5 text-slate-800">{lineLabel(line)}</td>
                       <td className="px-3 py-2.5 text-right">
@@ -217,6 +230,20 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                       <td className="px-3 py-2.5 text-right text-slate-700">
                         {formatSaleKes(unitPrice)}
                       </td>
+                          {capabilities?.module_settings?.sales?.allow_edit_line_discount ? (
+                            <td className="px-3 py-2.5 text-right">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={line.draftDiscount ?? 0}
+                                disabled={saving}
+                                onChange={(e) => updateDiscount(line.id, e.target.value)}
+                                className={`${inputClassName()} w-28 text-right text-sm`}
+                                aria-label={`Discount for ${lineLabel(line)}`}
+                              />
+                            </td>
+                          ) : null}
                       <td className="px-3 py-2.5 text-right font-medium text-slate-900">
                         {formatSaleKes(amount)}
                       </td>

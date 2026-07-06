@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { apiFetchBlob, ApiError, resolveProtectedFileUrl } from "@/lib/api";
 import { notifyError } from "@/lib/notify";
 
@@ -63,7 +64,7 @@ export function DiscountApprovalItemsTable({ item }) {
                 {line.product_name ?? line.product_code ?? "Item"}
               </td>
               <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
-                {formatKes(line.unit_price ?? line.selling_price)}
+                {formatKes(line.selling_price ?? line.unit_price)}
               </td>
               <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
                 {formatKes(line.discount_given)}
@@ -110,7 +111,16 @@ export function ApprovalNotificationDetails({ item }) {
 
   return (
     <div className="mt-2 space-y-2 rounded-md bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/60">
-      {showDiscountTable ? <DiscountApprovalItemsTable item={item} /> : null}
+      {showDiscountTable ? (
+        <>
+          <DiscountApprovalItemsTable item={item} />
+          <p className="mt-2 text-xs text-slate-500">
+            <Link href="/sales/orders/queues/pending-approval" className="font-medium text-[#185FA5] hover:underline">
+              Open pending approval orders
+            </Link>
+          </p>
+        </>
+      ) : null}
       {reason ? (
         <p className="text-slate-700 dark:text-slate-200">
           <span className="font-medium text-slate-500 dark:text-slate-400">Reason: </span>

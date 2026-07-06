@@ -690,6 +690,7 @@ export function OrderListTableHead({
   showDeliveryDateColumn = false,
   showConnectivityColumn = false,
   showSourceColumn = true,
+  showDiscountColumn = false,
 }) {
   return (
     <tr className={TABLE_HEAD_ROW_CLASS}>
@@ -701,6 +702,7 @@ export function OrderListTableHead({
       {showDeliveryDateColumn ? <th className="px-4 py-2.5">Delivery date</th> : null}
       {showConnectivityColumn ? <th className="px-4 py-2.5">Connectivity</th> : null}
       <th className="px-4 py-2.5 text-right">Amount</th>
+      {showDiscountColumn ? <th className="px-4 py-2.5 text-right">Discount</th> : null}
       <th className="px-4 py-2.5 text-right">VAT</th>
       <th className="px-4 py-2.5">Status</th>
       <th className="px-4 py-2.5">Method</th>
@@ -736,6 +738,10 @@ export function OrderListTableRow({
   paymentRefsBySaleId,
   columnCount = 10,
   capabilities = null,
+  showDiscountColumn = false,
+  queueSlug = null,
+  onApproveActionRequest = null,
+  onRejectActionRequest = null,
 }) {
   const href = `/sales/orders/${sale.id}`;
   const items = detail?.items ?? sale.items ?? [];
@@ -778,6 +784,11 @@ export function OrderListTableRow({
         <td className="px-4 py-3 text-right font-medium text-slate-900">
           {formatSaleKes(sale.order_total)}
         </td>
+        {showDiscountColumn ? (
+          <td className="px-4 py-3 text-right text-slate-700">
+            {Number(sale.order_discount ?? 0) > 0 ? formatSaleKes(sale.order_discount) : "—"}
+          </td>
+        ) : null}
         <td className="px-4 py-3 text-right text-slate-700">{saleVatCell(sale)}</td>
         <td className="px-4 py-3">
           <SaleStatusBadge status={sale.status} workflow={workflow} workflowStatus={sale.workflow_status} />
@@ -801,16 +812,50 @@ export function OrderListTableRow({
         <td className="px-4 py-3 text-slate-700">
           <SaleCreatedByCell sale={sale} />
         </td>
-        <td className="px-4 py-3">
-          <OrderRowActions
-            busy={actionBusy}
-            onView={onView}
-            onPrint={onPrint}
-            onCollectPayment={onCollectPayment}
-            onOpenMenu={onOpenActionsMenu}
-            printAriaLabel={printAriaLabel}
-          />
-        </td>
+        {queueSlug === "pending-approval" && sale?.action_request?.id ? (
+          <td className="px-4 py-3 text-right">
+            <div className="flex items-center justify-end gap-2">
+              <div className="text-xs text-slate-600 truncate max-w-[18rem]">{sale.action_request?.reason ?? "No reason"}</div>
+              {sale.action_request?.can_approve && sale.action_request?.status === "pending" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onApproveActionRequest?.(sale.action_request.id);
+                    }}
+                    disabled={actionBusy}
+                    className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRejectActionRequest?.(sale.action_request.id);
+                    }}
+                    disabled={actionBusy}
+                    className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    Reject
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </td>
+        ) : (
+          <td className="px-4 py-3">
+            <OrderRowActions
+              busy={actionBusy}
+              onView={onView}
+              onPrint={onPrint}
+              onCollectPayment={onCollectPayment}
+              onOpenMenu={onOpenActionsMenu}
+              printAriaLabel={printAriaLabel}
+            />
+          </td>
+        )}
       </tr>
       {expanded ? (
         <tr className="border-b border-slate-100 bg-slate-50/50">
