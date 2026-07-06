@@ -33,13 +33,6 @@ function userLabel(user) {
 }
 
 function issueSummary(row) {
-  if (row.technical_detail) {
-    return String(row.technical_detail).split("\n")[0];
-  }
-  return row.message;
-}
-
-function issueSummary(row) {
   const technical = row.technical_detail || row.context?.technical_detail;
   if (technical) return String(technical).split("\n")[0];
   return row.message;
