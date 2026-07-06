@@ -8,7 +8,7 @@ import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-contro
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { resolveNotificationLinkAccess } from "@/lib/notification-action-url";
-import { ApprovalNotificationDetails } from "@/components/notifications/approval-notification-details";
+import { ApprovalNotificationDetails, isDiscountApprovalNotification } from "@/components/notifications/approval-notification-details";
 import { NotificationActionLink } from "@/components/notifications/notification-action-link";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 
@@ -38,6 +38,7 @@ function NotificationCard({ item, busy, onApprove, onReject, onOpen, onDismiss }
   const requester = item.requester?.full_name ?? item.requester?.username ?? "System";
   const canApprove = item.type === "approval" && item.action_request?.can_approve && item.action_request?.status === "pending";
   const canDismiss = !canApprove;
+  const hideActionLink = isDiscountApprovalNotification(item);
 
   return (
     <article className="rounded-lg border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -82,16 +83,8 @@ function NotificationCard({ item, busy, onApprove, onReject, onOpen, onDismiss }
           >
             Reject
           </button>
-          {item.action_url ? (
-            <NotificationActionLink
-              actionUrl={item.action_url}
-              label="View document"
-              className="rounded-md px-3 py-1.5 text-xs font-medium text-[#185FA5] hover:bg-[#185FA5]/10"
-              disabledClassName="rounded-md px-3 py-1.5 text-xs font-medium text-slate-400 cursor-not-allowed"
-            />
-          ) : null}
         </div>
-      ) : item.action_url ? (
+      ) : item.action_url && !hideActionLink ? (
         <div className="mt-3 pl-5">
           <NotificationActionLink actionUrl={item.action_url} />
         </div>
@@ -157,6 +150,9 @@ export default function NotificationsPage() {
   const openItem = useCallback(
     async (item) => {
       await markRead(item);
+      if (isDiscountApprovalNotification(item)) {
+        return;
+      }
       if (!item.action_url) return;
 
       const access = resolveNotificationLinkAccess(item.action_url, {
