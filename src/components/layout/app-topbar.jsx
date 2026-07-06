@@ -4,6 +4,7 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { GlobalModuleSearch } from "@/components/layout/global-module-search";
 import { BackgroundTaskHeaderBar } from "@/components/shared/background-task-header-bar";
+import { AccountingHelpTopbarButton } from "@/components/accounting/accounting-help";
 import { DistributionHelpTopbarButton } from "@/components/fulfillment/distribution-help";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
@@ -48,6 +49,7 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <AccountingHelpTopbarButton />
           <DistributionHelpTopbarButton />
           <NotificationBell />
           <WorkspaceSwitcher />

@@ -331,6 +331,14 @@ export function shouldShowDistributionHelp(workspaces, storedId, pathname) {
 }
 
 /**
+ * Accounting help belongs in the app header only while the Accounting workspace is active.
+ */
+export function shouldShowAccountingHelp(workspaces, storedId, pathname) {
+  const active = resolveActiveWorkspace(workspaces, storedId, pathname);
+  return active?.id === "accounting";
+}
+
+/**
  * Resolve the workspace the user is in (stored preference, else infer from route).
  * @param {Array<{ id: string }>} workspaces
  * @param {string | null | undefined} storedId

@@ -12,6 +12,7 @@ import { GlobalErrorCapture } from "@/components/shared/global-error-capture";
 import { WorkspaceNavigationTracker } from "@/components/layout/workspace-navigation-tracker";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
+import { AccountingHelpDialog } from "@/components/accounting/accounting-help";
 import { OrderPrintTypePickerHost } from "@/components/sales/order-print-type-picker-host";
 import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
 import { AppRouteLoading } from "@/components/shared/app-route-loading";
@@ -137,6 +138,7 @@ export function AppShell({ children }) {
             </div>
             <AiAssistPanel />
             <OrderPrintTypePickerHost />
+            <AccountingHelpDialog />
           </div>
           </BackgroundTaskProvider>
           </SystemIssueProvider>
