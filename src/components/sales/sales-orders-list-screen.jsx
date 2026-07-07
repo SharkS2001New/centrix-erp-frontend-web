@@ -64,6 +64,7 @@ import {
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
 import { useConfirm } from "@/lib/use-confirm";
+import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
 import { formatOrderNumber } from "@/lib/sales";
 import {
@@ -145,6 +146,7 @@ export default function SalesOrdersListScreen({
   const [contextMenu, setContextMenu] = useState(null);
   const [editSale, setEditSale] = useState(null);
   const [paySale, setPaySale] = useState(null);
+  const [rejectRequestId, setRejectRequestId] = useState(null);
 
   const effectiveStatusFilter = queueConfig?.lockStatusFilter
     ? queueConfig.fixedStatusFilter
@@ -393,21 +395,22 @@ export default function SalesOrdersListScreen({
     [loadOrders],
   );
 
-  const rejectActionRequest = useCallback(
-    async (requestId) => {
-      if (!requestId) return;
-      const reason = window.prompt("Reason for rejection (required):");
-      if (!reason || reason.trim().length < 3) {
-        if (reason !== null) setActionMessage("Rejection reason must be at least 3 characters.");
-        return;
-      }
+  const rejectActionRequest = useCallback((requestId) => {
+    if (!requestId) return;
+    setRejectRequestId(requestId);
+  }, []);
+
+  const submitRejectActionRequest = useCallback(
+    async (reason) => {
+      if (!rejectRequestId) return;
       setListLoading(true);
       try {
-        await apiRequest(`/action-requests/${requestId}/reject`, {
+        await apiRequest(`/action-requests/${rejectRequestId}/reject`, {
           method: "POST",
           body: { reason: reason.trim() },
           loading: false,
         });
+        setRejectRequestId(null);
         setActionMessage("Request rejected.");
         void loadOrders();
       } catch (e) {
@@ -416,7 +419,7 @@ export default function SalesOrdersListScreen({
         setListLoading(false);
       }
     },
-    [loadOrders],
+    [rejectRequestId, loadOrders],
   );
 
   function toggleExpand(saleId) {
@@ -1016,6 +1019,16 @@ export default function SalesOrdersListScreen({
               : "Payment recorded.",
           );
           void loadOrders();
+        }}
+      />
+      <ActionRequestRejectionDialog
+        open={Boolean(rejectRequestId)}
+        busy={listLoading}
+        title="Reject discount request"
+        description="Enter a reason for rejecting this discount approval request."
+        onSubmit={submitRejectActionRequest}
+        onCancel={() => {
+          if (!listLoading) setRejectRequestId(null);
         }}
       />
     </CatalogPageShell>

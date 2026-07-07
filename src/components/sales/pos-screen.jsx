@@ -52,6 +52,7 @@ import {
   resolveSaveOrderStatus,
   resolveSaveOrderStatusLabel,
   existingOrderDiscountApprovalReason,
+  canGiveDiscountDirectly,
 } from "@/lib/sales-settings";
 import {
   DiscountApprovalReasonDialog,
@@ -208,8 +209,9 @@ export function PosScreen({ standalone = false }) {
         allowNegativeStock: capabilities?.allow_negative_stock,
         capabilities,
         standalone,
+        canAutoApprove: canGiveDiscountDirectly({ user, hasPermission }),
       }),
-    [capabilities?.module_settings, capabilities?.allow_negative_stock, capabilities, standalone],
+    [capabilities?.module_settings, capabilities?.allow_negative_stock, capabilities, standalone, hasPermission, user],
   );
   const allowDiscounts = posSalesConfig.allowDiscounts;
   const allowEditLineDiscount = posSalesConfig.allowEditLineDiscount;
@@ -218,10 +220,7 @@ export function PosScreen({ standalone = false }) {
     6 + (showCartLineType ? 1 : 0) + (showLineDiscountField ? 1 : 0);
   const enableOrderDiscount = posSalesConfig.enableOrderDiscount;
   const discountApprovalActive = isDiscountApprovalEnabled(capabilities?.module_settings);
-  const canAutoApproveDiscount =
-    Boolean(user?.is_admin) ||
-    hasPermission(P.sales.orders.approve) ||
-    hasPermission("sales.manage");
+  const canAutoApproveDiscount = canGiveDiscountDirectly({ user, hasPermission });
   const showOrderDiscountInput = enableOrderDiscount;
   const showLineDiscountField = allowDiscounts || allowEditLineDiscount || discountApprovalActive;
   const enableVouchers = posSalesConfig.enableVouchers;
@@ -1122,6 +1121,7 @@ export function PosScreen({ standalone = false }) {
     const discountAmount = Number(lineBody.discount_given ?? 0);
     const needsLineDiscountApproval =
       discountApprovalActive &&
+      !canAutoApproveDiscount &&
       !finalComputed.autoProductDiscount &&
       discountAmount > 0;
 
@@ -1556,7 +1556,7 @@ export function PosScreen({ standalone = false }) {
     }
     setBusy(true);
     try {
-      if (discountApprovalActive && next > 0) {
+      if (discountApprovalActive && !canAutoApproveDiscount && next > 0) {
         const entered = await requestDiscountApprovalReason(cart);
         if (!entered) {
           setOrderDiscountDraft(

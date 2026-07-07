@@ -234,7 +234,7 @@ function CheckoutPricingTab({
       ) : null}
       <Toggle
         label="Enable full order discount"
-        description="Shows a discount field on the cart total before checkout (external POS and Sales → Create order). With discount approval enabled, staff can still request order discounts even if this is off."
+        description="Shows a discount field on the cart total before checkout (external POS and Sales → Create order). Not available to staff when discount-for-approval is enabled."
         checked={salesForm.enable_order_discount}
         onChange={(v) => setSalesForm((f) => ({ ...f, enable_order_discount: v }))}
       />

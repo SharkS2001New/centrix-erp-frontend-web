@@ -715,7 +715,9 @@ export function OrderListTableHead({
       <th className="px-4 py-2.5">Method</th>
       {showSourceColumn ? <th className="px-4 py-2.5">Source</th> : null}
       <th className="px-4 py-2.5">Created by</th>
-      <th className="w-28 px-4 py-2.5 text-right">{showApprovalColumn ? "Approval" : "Actions"}</th>
+      <th className={`px-4 py-2.5 ${showApprovalColumn ? "min-w-[22rem] text-left" : "w-28 text-right"}`}>
+        {showApprovalColumn ? "Approval" : "Actions"}
+      </th>
     </tr>
   );
 }
@@ -835,14 +837,14 @@ export function OrderListTableRow({
           <SaleCreatedByCell sale={sale} />
         </td>
         {showApprovalColumn ? (
-          <td className="px-4 py-3 text-right">
-            <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:justify-end">
-              <div className="max-w-[18rem] text-left text-xs text-slate-600 sm:text-right">
+          <td className="min-w-[22rem] px-4 py-3">
+            <div className="flex w-full items-center justify-between gap-4">
+              <p className="min-w-0 flex-1 text-left text-xs text-slate-600">
                 <span className="font-medium text-slate-500">Reason: </span>
                 {approvalReason?.trim() ? approvalReason : "No reason provided"}
-              </div>
+              </p>
               {canResolveRequest ? (
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   <button
                     type="button"
                     onClick={(e) => {
@@ -867,9 +869,9 @@ export function OrderListTableRow({
                   </button>
                 </div>
               ) : requestId ? (
-                <span className="text-xs text-slate-500">Awaiting approver</span>
+                <span className="shrink-0 text-xs text-slate-500">Awaiting approver</span>
               ) : (
-                <span className="text-xs text-amber-700">Approval request missing</span>
+                <span className="shrink-0 text-xs text-amber-700">Approval request missing</span>
               )}
             </div>
           </td>

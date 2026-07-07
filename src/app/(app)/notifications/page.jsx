@@ -11,6 +11,7 @@ import { resolveNotificationLinkAccess } from "@/lib/notification-action-url";
 import { ApprovalNotificationDetails, isDiscountApprovalNotification } from "@/components/notifications/approval-notification-details";
 import { NotificationActionLink } from "@/components/notifications/notification-action-link";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
+import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
 
 const BUCKETS = [
   { key: "pending_approvals", label: "Pending approvals" },
@@ -113,6 +114,7 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [meta, setMeta] = useState(null);
+  const [rejectTarget, setRejectTarget] = useState(null);
 
   const bucketLabel = useMemo(() => BUCKETS.find((b) => b.key === bucket)?.label ?? "Notifications", [bucket]);
 
@@ -197,23 +199,24 @@ export default function NotificationsPage() {
     [load],
   );
 
-  const rejectItem = useCallback(
-    async (item) => {
-      const requestId = item.action_request?.id;
-      if (!requestId) return;
-      const reason = window.prompt("Reason for rejection (required):");
-      if (!reason || reason.trim().length < 3) {
-        if (reason !== null) notifyError("Rejection reason must be at least 3 characters.");
-        return;
-      }
-      setBusyId(item.id);
+  const rejectItem = useCallback((item) => {
+    const requestId = item.action_request?.id;
+    if (!requestId) return;
+    setRejectTarget({ requestId, notificationId: item.id });
+  }, []);
+
+  const submitRejectItem = useCallback(
+    async (reason) => {
+      if (!rejectTarget) return;
+      setBusyId(rejectTarget.notificationId);
       try {
-        await apiRequest(`/action-requests/${requestId}/reject`, {
+        await apiRequest(`/action-requests/${rejectTarget.requestId}/reject`, {
           method: "POST",
           body: { reason: reason.trim() },
           loading: false,
         });
         notifySuccess("Request rejected.");
+        setRejectTarget(null);
         await load();
       } catch (err) {
         notifyError(err instanceof ApiError ? err.message : "Could not reject request.");
@@ -221,7 +224,7 @@ export default function NotificationsPage() {
         setBusyId(null);
       }
     },
-    [load],
+    [rejectTarget, load],
   );
 
   const markAllRead = useCallback(async () => {
@@ -323,6 +326,16 @@ export default function NotificationsPage() {
           ))}
         </div>
       )}
+      <ActionRequestRejectionDialog
+        open={Boolean(rejectTarget)}
+        busy={Boolean(rejectTarget && busyId === rejectTarget.notificationId)}
+        title="Reject request"
+        description="Enter a reason for rejecting this approval request."
+        onSubmit={submitRejectItem}
+        onCancel={() => {
+          if (!busyId) setRejectTarget(null);
+        }}
+      />
     </CatalogPageShell>
   );
 }

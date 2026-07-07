@@ -69,6 +69,9 @@ export const P = {
       edit: "sales.orders.edit",
       approve: "sales.orders.approve",
     },
+    discounts: {
+      give: "sales.discounts.give",
+    },
     vouchers: { view: "sales.vouchers.view" },
     loyalty_cards: { view: "sales.loyalty_cards.view" },
     reservations: { view: "sales.reservations.view" },

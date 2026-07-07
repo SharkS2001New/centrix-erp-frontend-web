@@ -9,6 +9,7 @@ import {
   receiptPaymentDetailsFromApi,
 } from "@/lib/receipt-payment-details";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { P } from "@/lib/permission-codes";
 
 const SALES_DEFAULTS = {
   allow_sell_from_shop: true,
@@ -547,6 +548,11 @@ export function isDiscountApprovalEnabled(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).discount_approval_enabled);
 }
 
+/** True when the user may apply discounts directly without approval workflow or reason. */
+export function canGiveDiscountDirectly({ user = null, hasPermission = () => false } = {}) {
+  return Boolean(user?.is_admin) || hasPermission(P.sales.discounts.give);
+}
+
 /** List/detail/print tables show a discount column when approval workflow is on. */
 export function shouldShowSalesDiscountColumn(moduleSettings) {
   const sales = mergeSalesSettings(moduleSettings);
@@ -815,9 +821,12 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
       resolveAllowEditLineDiscount(sales, { standalone: Boolean(options.standalone) }) ||
       isDiscountApprovalEnabled(moduleSettings),
     enableOrderDiscount:
-      Boolean(sales.enable_order_discount) ||
       Boolean(sales.effective_enable_order_discount) ||
-      isDiscountApprovalEnabled(moduleSettings),
+      (Boolean(sales.enable_order_discount) &&
+        !(
+          isDiscountApprovalEnabled(moduleSettings) &&
+          options.canAutoApprove === false
+        )),
     enableVouchers: Boolean(sales.enable_vouchers),
     enableRedeemablePoints: Boolean(sales.enable_redeemable_points),
     pointCashValue: Number(sales.point_cash_value ?? 1),
