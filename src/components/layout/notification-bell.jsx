@@ -41,7 +41,7 @@ function severityDotClass(severity) {
   }
 }
 
-function NotificationRow({ item, busy, onApprove, onReject, onOpen, onDismiss, canApproveDiscounts }) {
+function NotificationRow({ item, busy, onApprove, onReject, onOpen, onDismiss, canApproveDiscounts, canApproveLpos }) {
   const requester = item.requester?.full_name ?? item.requester?.username ?? "System";
   const discountApproval = isDiscountApprovalNotification(item);
   const lpoApproval = isLpoApprovalNotification(item);
@@ -411,6 +411,7 @@ export function NotificationBell() {
                     onOpen={openItem}
                     onDismiss={dismissItem}
                     canApproveDiscounts={canApproveDiscounts}
+                    canApproveLpos={canApproveLpos}
                   />
                 ))
               )}
