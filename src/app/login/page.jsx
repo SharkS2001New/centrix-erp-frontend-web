@@ -134,7 +134,7 @@ function LoginForm() {
         : null;
 
   return (
-    <AuthShell subtitle="Sign in with your email or username and password.">
+    <AuthShell title="Sign in" subtitle="Sign in with your email or username and password.">
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
         {showOrgField ? (
           <AuthField label="Organization code">
