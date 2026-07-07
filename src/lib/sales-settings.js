@@ -530,15 +530,21 @@ export function isBlindTillCloseEnabled(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).blind_till_close);
 }
 
+/** Org-level sales discount toggles (aligned with backend DiscountApprovalService). */
+export function orgSalesDiscountFeaturesActive(sales) {
+  const s = sales ?? {};
+  return Boolean(
+    s.allow_discounts ||
+      s.allow_edit_line_discount ||
+      s.allow_pos_edit_line_discount ||
+      s.discount_approval_enabled ||
+      s.enable_order_discount,
+  );
+}
+
 /** True when any org-level sales discount feature is enabled. */
 export function areSalesDiscountFeaturesEnabled(moduleSettings) {
-  const sales = mergeSalesSettings(moduleSettings);
-  return Boolean(
-    sales.allow_discounts ||
-    sales.allow_edit_line_discount ||
-    sales.discount_approval_enabled ||
-    sales.enable_order_discount,
-  );
+  return orgSalesDiscountFeaturesActive(mergeSalesSettings(moduleSettings));
 }
 
 /** True when any sales discount feature is enabled in settings. */
@@ -573,14 +579,14 @@ export function shouldShowSalesDiscountColumn(moduleSettings) {
   return areSalesDiscountFeaturesEnabled(moduleSettings);
 }
 
-/** POS line discount field — product, manual, or approval workflow discounts. */
-export function showPosLineDiscountField(moduleSettings, { canAutoApprove = false } = {}) {
+/** POS line discount field — product rules, manual line (channel-specific), or approval workflow. */
+export function showPosLineDiscountField(moduleSettings, { standalone = false } = {}) {
   if (!areSalesDiscountFeaturesEnabled(moduleSettings)) return false;
   const sales = mergeSalesSettings(moduleSettings);
   return Boolean(
     sales.allow_discounts ||
-    sales.allow_edit_line_discount ||
-    sales.discount_approval_enabled,
+      sales.discount_approval_enabled ||
+      resolveAllowEditLineDiscount(sales, { standalone }),
   );
 }
 
@@ -599,9 +605,9 @@ export function showBackofficeLineDiscountEdit(moduleSettings, { hasPermission =
   }
   return Boolean(
     sales.allow_discounts ||
-    sales.allow_edit_line_discount ||
-    sales.effective_allow_edit_line_discount ||
-    sales.discount_approval_enabled,
+      sales.allow_edit_line_discount ||
+      sales.allow_pos_edit_line_discount ||
+      sales.discount_approval_enabled,
   );
 }
 

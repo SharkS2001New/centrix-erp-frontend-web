@@ -226,7 +226,7 @@ export function PosScreen({ standalone = false }) {
   const discountFeaturesEnabled = areSalesDiscountFeaturesEnabled(capabilities?.module_settings);
   const canAutoApproveDiscount = canGiveDiscountDirectly({ hasPermission });
   const showLineDiscountField = showPosLineDiscountField(capabilities?.module_settings, {
-    canAutoApprove: canAutoApproveDiscount,
+    standalone,
   });
   const showOrderDiscountInput = showPosOrderDiscountInput(capabilities?.module_settings, {
     canAutoApprove: canAutoApproveDiscount,
