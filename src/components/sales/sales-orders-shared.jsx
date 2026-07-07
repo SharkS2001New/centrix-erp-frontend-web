@@ -769,14 +769,14 @@ export function OrderListTableRow({
   return (
     <>
       {showRejectionStrip && rejection?.rejected ? (
-        <tr className="border-b border-slate-100 bg-amber-50/70 theme-table-body-row dark:bg-amber-950/20">
+        <tr className="border-b border-[var(--theme-border)] bg-[color-mix(in_srgb,#f59e0b_12%,var(--theme-surface-muted))] theme-table-body-row">
           <td colSpan={columnCount} className="px-4 py-2.5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="min-w-0 text-left text-sm text-slate-700 dark:text-slate-300">
-                <span className="font-medium text-slate-900 dark:text-slate-100">Reason for discount rejection: </span>
+              <p className="min-w-0 text-left text-sm text-[var(--theme-text-muted)]">
+                <span className="font-medium text-[var(--theme-text)]">Reason for discount rejection: </span>
                 {rejectionReason || "No reason provided"}
               </p>
-              <p className="ml-auto shrink-0 text-right text-sm font-medium text-amber-800 dark:text-amber-200">
+              <p className="ml-auto shrink-0 text-right text-sm font-medium text-[color-mix(in_srgb,#f59e0b_70%,var(--theme-text))]">
                 {rejectionGuidance || "Remove all discounts from this order"}
               </p>
             </div>
@@ -785,14 +785,16 @@ export function OrderListTableRow({
       ) : null}
       {showApprovalColumn ? (
         <tr
-          className={`border-b border-slate-100 bg-slate-50/70 theme-table-body-row dark:bg-slate-800/40${
-            sale?.discount_rejected ? " bg-amber-50/80 dark:bg-amber-950/20" : ""
+          className={`border-b border-[var(--theme-border)] theme-table-body-row ${
+            sale?.discount_rejected
+              ? "bg-[color-mix(in_srgb,#f59e0b_12%,var(--theme-surface-muted))]"
+              : "bg-[var(--theme-surface-muted)]"
           }`}
         >
           <td colSpan={columnCount} className="px-4 py-2.5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="min-w-0 text-left text-sm text-slate-700 dark:text-slate-300">
-                <span className="font-medium text-slate-900 dark:text-slate-100">Reason for approval: </span>
+              <p className="min-w-0 text-left text-sm text-[var(--theme-text-muted)]">
+                <span className="font-medium text-[var(--theme-text)]">Reason for approval: </span>
                 {approvalReason?.trim() ? approvalReason : "No reason provided"}
               </p>
               {canResolveRequest ? (
@@ -815,15 +817,15 @@ export function OrderListTableRow({
                       onRejectActionRequest?.(requestId);
                     }}
                     disabled={actionBusy}
-                    className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/40"
+                    className="rounded-md border border-[color-mix(in_srgb,#ef4444_35%,var(--theme-border))] px-2.5 py-1 text-xs font-medium text-[color-mix(in_srgb,#ef4444_75%,var(--theme-text))] hover:bg-[var(--theme-hover)] disabled:opacity-50"
                   >
                     Reject
                   </button>
                 </div>
               ) : requestId ? (
-                <span className="ml-auto shrink-0 text-xs text-slate-500">Awaiting approver</span>
+                <span className="ml-auto shrink-0 text-xs text-[var(--theme-text-subtle)]">Awaiting approver</span>
               ) : (
-                <span className="ml-auto shrink-0 text-xs text-amber-700 dark:text-amber-300">
+                <span className="ml-auto shrink-0 text-xs text-[color-mix(in_srgb,#f59e0b_70%,var(--theme-text))]">
                   Approval request missing
                 </span>
               )}
@@ -832,8 +834,8 @@ export function OrderListTableRow({
         </tr>
       ) : null}
       <tr
-        className={`border-b border-slate-100 theme-table-body-row${
-          sale?.discount_rejected ? " bg-amber-50/80 dark:bg-amber-950/20" : ""
+        className={`border-b border-[var(--theme-border)] theme-table-body-row${
+          sale?.discount_rejected ? " bg-[color-mix(in_srgb,#f59e0b_12%,var(--theme-surface-muted))]" : ""
         }`}
         onContextMenu={(event) => {
           event.preventDefault();
@@ -914,7 +916,7 @@ export function OrderListTableRow({
         </td>
       </tr>
       {expanded ? (
-        <tr className="border-b border-slate-100 bg-slate-50/50">
+        <tr className="border-b border-[var(--theme-border)] bg-[var(--theme-surface-muted)]">
           <td colSpan={columnCount} className="p-0">
             <OrderInlineItems
               items={items}
