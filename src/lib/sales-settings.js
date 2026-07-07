@@ -549,8 +549,13 @@ export function isDiscountApprovalEnabled(moduleSettings) {
 }
 
 /** True when the user may apply discounts directly without approval workflow or reason. */
-export function canGiveDiscountDirectly({ user = null, hasPermission = () => false } = {}) {
-  return Boolean(user?.is_admin) || hasPermission(P.sales.discounts.give);
+export function canGiveDiscountDirectly({ hasPermission = () => false } = {}) {
+  return hasPermission(P.sales.discounts.give);
+}
+
+/** True when the user may approve or reject discount approval requests. */
+export function canApproveDiscountRequests({ hasPermission = () => false } = {}) {
+  return hasPermission(P.sales.orders.approve);
 }
 
 /** List/detail/print tables show a discount column when approval workflow is on. */

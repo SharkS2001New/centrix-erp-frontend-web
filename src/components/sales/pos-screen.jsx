@@ -103,6 +103,7 @@ import { dedupeErrorMessage, buildExpensesHref } from "@/lib/expenses-link";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
+import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { PosStatusFooter } from "./pos-status-footer";
 import {
@@ -209,7 +210,7 @@ export function PosScreen({ standalone = false }) {
         allowNegativeStock: capabilities?.allow_negative_stock,
         capabilities,
         standalone,
-        canAutoApprove: canGiveDiscountDirectly({ user, hasPermission }),
+        canAutoApprove: canGiveDiscountDirectly({ hasPermission }),
       }),
     [capabilities?.module_settings, capabilities?.allow_negative_stock, capabilities, standalone, hasPermission, user],
   );
@@ -220,7 +221,7 @@ export function PosScreen({ standalone = false }) {
     6 + (showCartLineType ? 1 : 0) + (showLineDiscountField ? 1 : 0);
   const enableOrderDiscount = posSalesConfig.enableOrderDiscount;
   const discountApprovalActive = isDiscountApprovalEnabled(capabilities?.module_settings);
-  const canAutoApproveDiscount = canGiveDiscountDirectly({ user, hasPermission });
+  const canAutoApproveDiscount = canGiveDiscountDirectly({ hasPermission });
   const showOrderDiscountInput = enableOrderDiscount;
   const showLineDiscountField = allowDiscounts || allowEditLineDiscount || discountApprovalActive;
   const enableVouchers = posSalesConfig.enableVouchers;
@@ -2943,6 +2944,7 @@ export function PosScreen({ standalone = false }) {
                 ) : null}
               </div>
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+                <NotificationBell />
                 <WorkspaceSwitcher />
                 <ThemeToggle showLabel className="pos-header-theme-btn hidden sm:inline-flex" />
                 <UserAccountMenu

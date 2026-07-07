@@ -32,7 +32,24 @@ function discountApprovalLines(item) {
 }
 
 function isDiscountApproval(item) {
-  return item?.action_request?.type === "discount";
+  return item?.type === "approval" && item?.action_request?.type === "discount";
+}
+
+export function isDiscountApprovalOutcomeNotification(item) {
+  if (item?.type === "approval_outcome") {
+    return /discount/i.test(item?.message ?? "") || /discount/i.test(item?.title ?? "");
+  }
+  if (item?.type !== "info") return false;
+  const title = String(item?.title ?? "").trim().toLowerCase();
+  if (
+    title !== "request approved" &&
+    title !== "request rejected" &&
+    title !== "discount approved" &&
+    title !== "discount rejected"
+  ) {
+    return false;
+  }
+  return /discount/i.test(item?.message ?? "") || /discount/i.test(item?.title ?? "");
 }
 
 export function DiscountApprovalItemsTable({ item }) {

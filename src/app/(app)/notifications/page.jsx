@@ -7,11 +7,12 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { resolveNotificationLinkAccess } from "@/lib/notification-action-url";
+import { canApproveDiscountRequests } from "@/lib/sales-settings";
 import { ApprovalNotificationDetails, isDiscountApprovalNotification } from "@/components/notifications/approval-notification-details";
 import { NotificationActionLink } from "@/components/notifications/notification-action-link";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
+import { DiscountRejectionDialog } from "@/components/discount-rejection-dialog";
 
 const BUCKETS = [
   { key: "pending_approvals", label: "Pending approvals" },
@@ -35,9 +36,14 @@ function severityDotClass(severity) {
   }
 }
 
-function NotificationCard({ item, busy, onApprove, onReject, onOpen, onDismiss }) {
+function NotificationCard({ item, busy, onApprove, onReject, onOpen, onDismiss, canApproveDiscounts }) {
   const requester = item.requester?.full_name ?? item.requester?.username ?? "System";
-  const canApprove = item.type === "approval" && item.action_request?.can_approve && item.action_request?.status === "pending";
+  const discountApproval = isDiscountApprovalNotification(item);
+  const canApprove =
+    item.type === "approval" &&
+    item.action_request?.can_approve &&
+    item.action_request?.status === "pending" &&
+    (!discountApproval || canApproveDiscounts);
   const canDismiss = !canApprove;
   const hideActionLink = isDiscountApprovalNotification(item);
 
@@ -108,7 +114,8 @@ function NotificationCard({ item, busy, onApprove, onReject, onOpen, onDismiss }
 
 export default function NotificationsPage() {
   const router = useRouter();
-  const { capabilities, user, organization, isSuperAdmin } = useAuth();
+  const { capabilities, user, organization, isSuperAdmin, hasPermission } = useAuth();
+  const canApproveDiscounts = canApproveDiscountRequests({ hasPermission });
   const [bucket, setBucket] = useState("pending_approvals");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -202,17 +209,29 @@ export default function NotificationsPage() {
   const rejectItem = useCallback((item) => {
     const requestId = item.action_request?.id;
     if (!requestId) return;
-    setRejectTarget({ requestId, notificationId: item.id });
+    setRejectTarget({
+      requestId,
+      notificationId: item.id,
+      isDiscount: isDiscountApprovalNotification(item),
+    });
   }, []);
 
   const submitRejectItem = useCallback(
-    async (reason) => {
+    async (payload) => {
       if (!rejectTarget) return;
       setBusyId(rejectTarget.notificationId);
       try {
+        const body =
+          typeof payload === "string"
+            ? { reason: payload.trim() }
+            : {
+                reason: payload.reason.trim(),
+                discount_guidance: payload.discount_guidance,
+                advised_discount_amount: payload.advised_discount_amount,
+              };
         await apiRequest(`/action-requests/${rejectTarget.requestId}/reject`, {
           method: "POST",
-          body: { reason: reason.trim() },
+          body,
           loading: false,
         });
         notifySuccess("Request rejected.");
@@ -322,20 +341,32 @@ export default function NotificationsPage() {
               onReject={rejectItem}
               onOpen={openItem}
               onDismiss={dismissItem}
+              canApproveDiscounts={canApproveDiscounts}
             />
           ))}
         </div>
       )}
-      <ActionRequestRejectionDialog
-        open={Boolean(rejectTarget)}
-        busy={Boolean(rejectTarget && busyId === rejectTarget.notificationId)}
-        title="Reject request"
-        description="Enter a reason for rejecting this approval request."
-        onSubmit={submitRejectItem}
-        onCancel={() => {
-          if (!busyId) setRejectTarget(null);
-        }}
-      />
+      {rejectTarget?.isDiscount ? (
+        <DiscountRejectionDialog
+          open={Boolean(rejectTarget)}
+          busy={Boolean(rejectTarget && busyId === rejectTarget.notificationId)}
+          onSubmit={submitRejectItem}
+          onCancel={() => {
+            if (!busyId) setRejectTarget(null);
+          }}
+        />
+      ) : (
+        <ActionRequestRejectionDialog
+          open={Boolean(rejectTarget)}
+          busy={Boolean(rejectTarget && busyId === rejectTarget.notificationId)}
+          title="Reject request"
+          description="Enter a reason for rejecting this approval request."
+          onSubmit={submitRejectItem}
+          onCancel={() => {
+            if (!busyId) setRejectTarget(null);
+          }}
+        />
+      )}
     </CatalogPageShell>
   );
 }

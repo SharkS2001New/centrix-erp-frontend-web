@@ -7,10 +7,11 @@ import { apiRequest, ApiError, notifyActionError } from "@/lib/api";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { resolveNotificationLinkAccess } from "@/lib/notification-action-url";
-import { ApprovalNotificationDetails, isDiscountApprovalNotification } from "@/components/notifications/approval-notification-details";
+import { canApproveDiscountRequests } from "@/lib/sales-settings";
+import { ApprovalNotificationDetails, isDiscountApprovalNotification, isDiscountApprovalOutcomeNotification } from "@/components/notifications/approval-notification-details";
 import { NotificationActionLink } from "@/components/notifications/notification-action-link";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
+import { DiscountRejectionDialog } from "@/components/discount-rejection-dialog";
 
 const POLL_MS = 60_000;
 
@@ -38,9 +39,14 @@ function severityDotClass(severity) {
   }
 }
 
-function NotificationRow({ item, busy, onApprove, onReject, onOpen, onDismiss }) {
+function NotificationRow({ item, busy, onApprove, onReject, onOpen, onDismiss, canApproveDiscounts }) {
   const requester = item.requester?.full_name ?? item.requester?.username ?? "System";
-  const canApprove = item.type === "approval" && item.action_request?.can_approve && item.action_request?.status === "pending";
+  const discountApproval = isDiscountApprovalNotification(item);
+  const canApprove =
+    item.type === "approval" &&
+    item.action_request?.can_approve &&
+    item.action_request?.status === "pending" &&
+    (!discountApproval || canApproveDiscounts);
   const canDismiss = !canApprove;
   const hideActionLink = isDiscountApprovalNotification(item);
 
@@ -110,7 +116,8 @@ function NotificationRow({ item, busy, onApprove, onReject, onOpen, onDismiss })
 
 export function NotificationBell() {
   const router = useRouter();
-  const { capabilities, user, organization, isSuperAdmin } = useAuth();
+  const { capabilities, user, organization, isSuperAdmin, hasPermission } = useAuth();
+  const canApproveDiscounts = canApproveDiscountRequests({ hasPermission });
   const [open, setOpen] = useState(false);
   const [count, setCount] = useState(0);
   const [items, setItems] = useState([]);
@@ -119,15 +126,39 @@ export function NotificationBell() {
   const [clearing, setClearing] = useState(false);
   const [rejectTarget, setRejectTarget] = useState(null);
   const rootRef = useRef(null);
+  const countInitializedRef = useRef(false);
+  const previousCountRef = useRef(0);
+
+  const maybeToastNewOutcomes = useCallback(async () => {
+    try {
+      const res = await apiRequest("/notifications?limit=10", { loading: false });
+      const rows = Array.isArray(res?.data) ? res.data : [];
+      const latestOutcome = rows.find((item) => isDiscountApprovalOutcomeNotification(item) && !item.is_read);
+      if (!latestOutcome) return;
+      if (latestOutcome.severity === "danger") {
+        notifyError(latestOutcome.message);
+      } else {
+        notifySuccess(latestOutcome.message);
+      }
+    } catch {
+      /* non-blocking */
+    }
+  }, []);
 
   const fetchCount = useCallback(async () => {
     try {
       const res = await apiRequest("/notifications/unread-count", { loading: false });
-      setCount(Number(res?.count ?? 0));
+      const nextCount = Number(res?.count ?? 0);
+      if (countInitializedRef.current && nextCount > previousCountRef.current) {
+        void maybeToastNewOutcomes();
+      }
+      previousCountRef.current = nextCount;
+      countInitializedRef.current = true;
+      setCount(nextCount);
     } catch {
       /* ignore polling errors */
     }
-  }, []);
+  }, [maybeToastNewOutcomes]);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -228,17 +259,29 @@ export function NotificationBell() {
   const rejectItem = useCallback((item) => {
     const requestId = item.action_request?.id;
     if (!requestId) return;
-    setRejectTarget({ requestId, notificationId: item.id });
+    setRejectTarget({
+      requestId,
+      notificationId: item.id,
+      isDiscount: isDiscountApprovalNotification(item),
+    });
   }, []);
 
   const submitRejectItem = useCallback(
-    async (reason) => {
+    async (payload) => {
       if (!rejectTarget) return;
       setBusyId(rejectTarget.notificationId);
       try {
+        const body =
+          typeof payload === "string"
+            ? { reason: payload.trim() }
+            : {
+                reason: payload.reason.trim(),
+                discount_guidance: payload.discount_guidance,
+                advised_discount_amount: payload.advised_discount_amount,
+              };
         await apiRequest(`/action-requests/${rejectTarget.requestId}/reject`, {
           method: "POST",
-          body: { reason: reason.trim() },
+          body,
           loading: false,
         });
         notifySuccess("Request rejected.");
@@ -362,6 +405,7 @@ export function NotificationBell() {
                     onReject={rejectItem}
                     onOpen={openItem}
                     onDismiss={dismissItem}
+                    canApproveDiscounts={canApproveDiscounts}
                   />
                 ))
               )}
@@ -382,16 +426,27 @@ export function NotificationBell() {
           </div>
         </>
       ) : null}
-      <ActionRequestRejectionDialog
-        open={Boolean(rejectTarget)}
-        busy={Boolean(rejectTarget && busyId === rejectTarget.notificationId)}
-        title="Reject request"
-        description="Enter a reason for rejecting this approval request."
-        onSubmit={submitRejectItem}
-        onCancel={() => {
-          if (!busyId) setRejectTarget(null);
-        }}
-      />
+      {rejectTarget?.isDiscount ? (
+        <DiscountRejectionDialog
+          open={Boolean(rejectTarget)}
+          busy={Boolean(rejectTarget && busyId === rejectTarget.notificationId)}
+          onSubmit={submitRejectItem}
+          onCancel={() => {
+            if (!busyId) setRejectTarget(null);
+          }}
+        />
+      ) : (
+        <ActionRequestRejectionDialog
+          open={Boolean(rejectTarget)}
+          busy={Boolean(rejectTarget && busyId === rejectTarget.notificationId)}
+          title="Reject request"
+          description="Enter a reason for rejecting this approval request."
+          onSubmit={submitRejectItem}
+          onCancel={() => {
+            if (!busyId) setRejectTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 }

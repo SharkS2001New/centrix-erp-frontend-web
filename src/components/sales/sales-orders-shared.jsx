@@ -697,7 +697,6 @@ export function OrderListTableHead({
   showConnectivityColumn = false,
   showSourceColumn = true,
   showDiscountColumn = false,
-  showApprovalColumn = false,
 }) {
   return (
     <tr className={TABLE_HEAD_ROW_CLASS}>
@@ -715,9 +714,7 @@ export function OrderListTableHead({
       <th className="px-4 py-2.5">Method</th>
       {showSourceColumn ? <th className="px-4 py-2.5">Source</th> : null}
       <th className="px-4 py-2.5">Created by</th>
-      <th className={`px-4 py-2.5 ${showApprovalColumn ? "min-w-[22rem] text-left" : "w-28 text-right"}`}>
-        {showApprovalColumn ? "Approval" : "Actions"}
-      </th>
+      <th className="px-4 py-2.5 w-28 text-right">Actions</th>
     </tr>
   );
 }
@@ -749,6 +746,8 @@ export function OrderListTableRow({
   capabilities = null,
   showDiscountColumn = false,
   showApprovalColumn = false,
+  showRejectionStrip = false,
+  canApproveDiscounts = false,
   queueSlug = null,
   onApproveActionRequest = null,
   onRejectActionRequest = null,
@@ -760,11 +759,78 @@ export function OrderListTableRow({
   const requestId = sale?.action_request?.id ?? null;
   const canResolveRequest =
     Boolean(requestId) &&
+    canApproveDiscounts &&
     sale?.action_request?.can_approve &&
     sale?.action_request?.status === "pending";
+  const rejection = sale?.discount_rejection;
+  const rejectionReason = rejection?.rejection_reason?.trim() || null;
+  const rejectionGuidance = rejection?.guidance_message?.trim() || null;
 
   return (
     <>
+      {showRejectionStrip && rejection?.rejected ? (
+        <tr className="border-b border-slate-100 bg-amber-50/70 theme-table-body-row dark:bg-amber-950/20">
+          <td colSpan={columnCount} className="px-4 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="min-w-0 text-left text-sm text-slate-700 dark:text-slate-300">
+                <span className="font-medium text-slate-900 dark:text-slate-100">Reason for discount rejection: </span>
+                {rejectionReason || "No reason provided"}
+              </p>
+              <p className="ml-auto shrink-0 text-right text-sm font-medium text-amber-800 dark:text-amber-200">
+                {rejectionGuidance || "Remove all discounts from this order"}
+              </p>
+            </div>
+          </td>
+        </tr>
+      ) : null}
+      {showApprovalColumn ? (
+        <tr
+          className={`border-b border-slate-100 bg-slate-50/70 theme-table-body-row dark:bg-slate-800/40${
+            sale?.discount_rejected ? " bg-amber-50/80 dark:bg-amber-950/20" : ""
+          }`}
+        >
+          <td colSpan={columnCount} className="px-4 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="min-w-0 text-left text-sm text-slate-700 dark:text-slate-300">
+                <span className="font-medium text-slate-900 dark:text-slate-100">Reason for approval: </span>
+                {approvalReason?.trim() ? approvalReason : "No reason provided"}
+              </p>
+              {canResolveRequest ? (
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onApproveActionRequest?.(requestId);
+                    }}
+                    disabled={actionBusy}
+                    className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRejectActionRequest?.(requestId);
+                    }}
+                    disabled={actionBusy}
+                    className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/40"
+                  >
+                    Reject
+                  </button>
+                </div>
+              ) : requestId ? (
+                <span className="ml-auto shrink-0 text-xs text-slate-500">Awaiting approver</span>
+              ) : (
+                <span className="ml-auto shrink-0 text-xs text-amber-700 dark:text-amber-300">
+                  Approval request missing
+                </span>
+              )}
+            </div>
+          </td>
+        </tr>
+      ) : null}
       <tr
         className={`border-b border-slate-100 theme-table-body-row${
           sale?.discount_rejected ? " bg-amber-50/80 dark:bg-amber-950/20" : ""
@@ -836,57 +902,16 @@ export function OrderListTableRow({
         <td className="px-4 py-3 text-slate-700">
           <SaleCreatedByCell sale={sale} />
         </td>
-        {showApprovalColumn ? (
-          <td className="min-w-[22rem] px-4 py-3">
-            <div className="flex w-full items-center justify-between gap-4">
-              <p className="min-w-0 flex-1 text-left text-xs text-slate-600">
-                <span className="font-medium text-slate-500">Reason: </span>
-                {approvalReason?.trim() ? approvalReason : "No reason provided"}
-              </p>
-              {canResolveRequest ? (
-                <div className="flex shrink-0 items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onApproveActionRequest?.(requestId);
-                    }}
-                    disabled={actionBusy}
-                    className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRejectActionRequest?.(requestId);
-                    }}
-                    disabled={actionBusy}
-                    className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    Reject
-                  </button>
-                </div>
-              ) : requestId ? (
-                <span className="shrink-0 text-xs text-slate-500">Awaiting approver</span>
-              ) : (
-                <span className="shrink-0 text-xs text-amber-700">Approval request missing</span>
-              )}
-            </div>
-          </td>
-        ) : (
-          <td className="px-4 py-3">
-            <OrderRowActions
-              busy={actionBusy}
-              onView={onView}
-              onPrint={onPrint}
-              onCollectPayment={onCollectPayment}
-              onOpenMenu={onOpenActionsMenu}
-              printAriaLabel={printAriaLabel}
-            />
-          </td>
-        )}
+        <td className="px-4 py-3">
+          <OrderRowActions
+            busy={actionBusy}
+            onView={onView}
+            onPrint={onPrint}
+            onCollectPayment={onCollectPayment}
+            onOpenMenu={onOpenActionsMenu}
+            printAriaLabel={printAriaLabel}
+          />
+        </td>
       </tr>
       {expanded ? (
         <tr className="border-b border-slate-100 bg-slate-50/50">

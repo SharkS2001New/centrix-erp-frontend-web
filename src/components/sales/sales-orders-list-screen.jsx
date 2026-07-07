@@ -32,7 +32,7 @@ import {
   SearchInput,
 } from "@/components/catalog/catalog-shared";
 import { defaultDateRange, isoDate } from "@/components/inventory/inventory-shared";
-import { shouldShowSalesDiscountColumn } from "@/lib/sales-settings";
+import { shouldShowSalesDiscountColumn, canApproveDiscountRequests } from "@/lib/sales-settings";
 import { orderTableColumnCount } from "@/components/sales/sales-orders-columns";
 import {
   orderSourceFilterOptions,
@@ -64,7 +64,7 @@ import {
   PRINT_BLOCKED_MESSAGE,
 } from "@/lib/open-print-window";
 import { useConfirm } from "@/lib/use-confirm";
-import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
+import { DiscountRejectionDialog } from "@/components/discount-rejection-dialog";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
 import { formatOrderNumber } from "@/lib/sales";
 import {
@@ -96,7 +96,7 @@ export default function SalesOrdersListScreen({
 }) {
   const router = useRouter();
   const confirm = useConfirm();
-  const { user, capabilities, organization } = useAuth();
+  const { user, capabilities, organization, hasPermission } = useAuth();
   const { floatSessionId } = usePosSession();
   const orgWorkflow = useMemo(
     () => getSalesOrderQueueWorkflow(capabilities, "backend"),
@@ -249,6 +249,8 @@ export default function SalesOrdersListScreen({
   const showDiscountColumn = shouldShowSalesDiscountColumn(capabilities?.module_settings);
   const showApprovalColumn =
     queueSlug === "pending-approval" || queueSlug === "pending_approval";
+  const showRejectionStrip = queueSlug === "editable";
+  const canApproveDiscounts = canApproveDiscountRequests({ hasPermission });
   const branchById = useMemo(
     () => new Map(branches.map((branch) => [branch.id, branch])),
     [branches],
@@ -401,13 +403,21 @@ export default function SalesOrdersListScreen({
   }, []);
 
   const submitRejectActionRequest = useCallback(
-    async (reason) => {
+    async (payload) => {
       if (!rejectRequestId) return;
       setListLoading(true);
       try {
+        const body =
+          typeof payload === "string"
+            ? { reason: payload.trim() }
+            : {
+                reason: payload.reason.trim(),
+                discount_guidance: payload.discount_guidance,
+                advised_discount_amount: payload.advised_discount_amount,
+              };
         await apiRequest(`/action-requests/${rejectRequestId}/reject`, {
           method: "POST",
-          body: { reason: reason.trim() },
+          body,
           loading: false,
         });
         setRejectRequestId(null);
@@ -891,7 +901,6 @@ export default function SalesOrdersListScreen({
                       showConnectivityColumn={showConnectivityColumn}
                       showSourceColumn={showSourceColumn}
                       showDiscountColumn={showDiscountColumn}
-                      showApprovalColumn={showApprovalColumn}
                     />
                   </thead>
                   <tbody>
@@ -929,9 +938,11 @@ export default function SalesOrdersListScreen({
                           columnCount={columnCount}
                           showDiscountColumn={showDiscountColumn}
                           showApprovalColumn={showApprovalColumn}
+                          showRejectionStrip={showRejectionStrip}
                           queueSlug={queueSlug}
                           onApproveActionRequest={approveActionRequest}
                           onRejectActionRequest={rejectActionRequest}
+                          canApproveDiscounts={canApproveDiscounts}
                           capabilities={capabilities}
                         />
                       );
@@ -1021,11 +1032,9 @@ export default function SalesOrdersListScreen({
           void loadOrders();
         }}
       />
-      <ActionRequestRejectionDialog
+      <DiscountRejectionDialog
         open={Boolean(rejectRequestId)}
         busy={listLoading}
-        title="Reject discount request"
-        description="Enter a reason for rejecting this discount approval request."
         onSubmit={submitRejectActionRequest}
         onCancel={() => {
           if (!listLoading) setRejectRequestId(null);
