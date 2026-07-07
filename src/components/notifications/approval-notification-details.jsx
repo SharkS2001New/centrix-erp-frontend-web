@@ -3,6 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { apiFetchBlob, ApiError, resolveProtectedFileUrl } from "@/lib/api";
+import {
+  discountRevisionConfirmationMessage,
+  isDiscountRevisionSubmitted,
+} from "@/lib/discount-approval-messages";
 import { notifyError } from "@/lib/notify";
 
 function formatKes(value) {
@@ -21,10 +25,6 @@ function approvalReason(item) {
   return value || null;
 }
 
-function advisedDiscountApplied(item) {
-  return item?.action_request?.payload?.advised_discount_applied === true;
-}
-
 function approvalProof(item) {
   return item?.action_request?.payload?.proof ?? null;
 }
@@ -34,6 +34,17 @@ function discountApprovalLines(item) {
   if (Array.isArray(fromTop) && fromTop.length > 0) return fromTop;
   const fromPayload = item?.action_request?.payload?.lines;
   return Array.isArray(fromPayload) ? fromPayload : [];
+}
+
+function discountApprovalQtyLabel(line) {
+  const qtyDisp = String(line?.qty_disp ?? "").trim();
+  if (qtyDisp) return qtyDisp;
+
+  const qty = Number(line?.quantity ?? 0);
+  if (!Number.isFinite(qty) || qty <= 0) return "—";
+
+  const uom = String(line?.uom ?? "").trim();
+  return `${qty.toLocaleString()}${uom ? ` ${uom}` : ""}`;
 }
 
 function isDiscountApproval(item) {
@@ -126,8 +137,7 @@ export function DiscountApprovalItemsTable({ item }) {
                 {line.product_name ?? line.product_code ?? "Item"}
               </td>
               <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
-                {Number(line.quantity ?? 0) > 0 ? Number(line.quantity).toLocaleString() : "—"}
-                {line.uom ? ` ${line.uom}` : ""}
+                {discountApprovalQtyLabel(line)}
               </td>
               <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
                 {formatKes(line.unit_price ?? line.selling_price)}
@@ -158,8 +168,12 @@ export function ApprovalNotificationDetails({ item }) {
   const [loadingProof, setLoadingProof] = useState(false);
   const showDiscountTable = isDiscountApproval(item);
   const showLpoSummary = isLpoApproval(item);
+  const discountRevisionSubmitted = isDiscountRevisionSubmitted(item);
+  const revisionConfirmationMessage = discountRevisionConfirmationMessage(item);
 
-  if (!reason && !proof && !showDiscountTable && !showLpoSummary) return null;
+  if (!reason && !proof && !showDiscountTable && !showLpoSummary && !discountRevisionSubmitted) {
+    return null;
+  }
 
   async function openProof() {
     if (!proof?.url) return;
@@ -189,11 +203,18 @@ export function ApprovalNotificationDetails({ item }) {
           </p>
         </>
       ) : null}
-      {reason ? (
+      {discountRevisionSubmitted ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-800/60 dark:bg-emerald-950/30">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-medium text-emerald-800 ring-1 ring-emerald-600/20 dark:bg-emerald-900/50 dark:text-emerald-300">
+              Revision submitted
+            </span>
+            <p className="text-emerald-800 dark:text-emerald-200">{revisionConfirmationMessage}</p>
+          </div>
+        </div>
+      ) : reason ? (
         <p className="text-slate-700 dark:text-slate-200">
-          <span className="font-medium text-slate-500 dark:text-slate-400">
-            {advisedDiscountApplied(item) ? "Update confirmation: " : "Reason: "}
-          </span>
+          <span className="font-medium text-slate-500 dark:text-slate-400">Reason: </span>
           {reason}
         </p>
       ) : null}

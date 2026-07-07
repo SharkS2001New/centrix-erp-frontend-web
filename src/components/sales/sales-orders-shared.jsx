@@ -12,6 +12,10 @@ import {
   saleLineQtyLabel,
 } from "@/lib/sale-line-items";
 import {
+  discountRevisionConfirmationMessage,
+  isDiscountRevisionSubmitted,
+} from "@/lib/discount-approval-messages";
+import {
   alignStatusToWorkflow,
   pipelineStatusIndex,
   resolveOrderWorkflowActions,
@@ -756,9 +760,8 @@ export function OrderListTableRow({
   const items = detail?.items ?? sale.items ?? [];
   const approvalReason =
     sale?.action_request?.reason ?? sale?.discount_approval_reason ?? null;
-  const advisedDiscountApplied =
-    sale?.advised_discount_applied === true
-    || sale?.action_request?.payload?.advised_discount_applied === true;
+  const discountRevisionSubmitted = isDiscountRevisionSubmitted(sale);
+  const revisionConfirmationMessage = discountRevisionConfirmationMessage(sale);
   const requestId = sale?.action_request?.id ?? null;
   const canResolveRequest =
     Boolean(requestId) &&
@@ -789,19 +792,30 @@ export function OrderListTableRow({
       {showApprovalColumn ? (
         <tr
           className={`border-b border-[var(--theme-border)] theme-table-body-row ${
-            sale?.discount_rejected
-              ? "bg-[color-mix(in_srgb,#f59e0b_12%,var(--theme-surface-muted))]"
-              : "bg-[var(--theme-surface-muted)]"
+            discountRevisionSubmitted
+              ? "bg-[color-mix(in_srgb,#10b981_12%,var(--theme-surface-muted))]"
+              : sale?.discount_rejected
+                ? "bg-[color-mix(in_srgb,#f59e0b_12%,var(--theme-surface-muted))]"
+                : "bg-[var(--theme-surface-muted)]"
           }`}
         >
           <td colSpan={columnCount} className="px-4 py-2.5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="min-w-0 text-left text-sm text-[var(--theme-text-muted)]">
-                <span className="font-medium text-[var(--theme-text)]">
-                  {advisedDiscountApplied ? "Update confirmation: " : "Reason for approval: "}
-                </span>
-                {approvalReason?.trim() ? approvalReason : "No reason provided"}
-              </p>
+              {discountRevisionSubmitted ? (
+                <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                  <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-600/20 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-500/30">
+                    Revision submitted
+                  </span>
+                  <p className="text-emerald-800 dark:text-emerald-200">
+                    {revisionConfirmationMessage}
+                  </p>
+                </div>
+              ) : (
+                <p className="min-w-0 text-left text-sm text-[var(--theme-text-muted)]">
+                  <span className="font-medium text-[var(--theme-text)]">Reason for approval: </span>
+                  {approvalReason?.trim() ? approvalReason : "No reason provided"}
+                </p>
+              )}
               {canResolveRequest ? (
                 <div className="ml-auto flex shrink-0 items-center gap-2">
                   <button

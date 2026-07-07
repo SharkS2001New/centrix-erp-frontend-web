@@ -10,7 +10,7 @@ import {
   isOrgAdminSettingsPath,
   shouldHideOrgAdminFromPlatformSuperAdmin,
 } from "@/lib/admin-scope";
-import { isPlatformShellRoute, isPlatformShellUser } from "@/lib/access-control";
+import { isPlatformShellRoute, isPlatformShellUser } from "@/lib/platform-shell-access";
 import { isReportModuleEnabled } from "@/lib/backoffice-finance-reports";
 import { anyReportsModuleEnabled } from "@/lib/module-registry";
 import { getStoredWorkspace } from "@/lib/auth-storage";
