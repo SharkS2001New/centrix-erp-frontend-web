@@ -547,6 +547,20 @@ export function isDiscountApprovalEnabled(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).discount_approval_enabled);
 }
 
+/** List/detail/print tables show a discount column when approval workflow is on. */
+export function shouldShowSalesDiscountColumn(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  return Boolean(sales.discount_approval_enabled || sales.discount_for_approval_mode);
+}
+
+/** POS / cart line discount field label when approval workflow is active for staff. */
+export function lineDiscountInputLabel(moduleSettings, { canAutoApprove = false } = {}) {
+  if (isDiscountApprovalEnabled(moduleSettings) && !canAutoApprove) {
+    return "Discount for approval";
+  }
+  return "Discount";
+}
+
 export function discountApprovalThresholdPercent(moduleSettings) {
   const value = Number(mergeSalesSettings(moduleSettings).discount_approval_threshold_percent ?? 10);
   if (!Number.isFinite(value)) return 10;

@@ -45,6 +45,7 @@ import { getChannelWorkflow, workflowPipelineSteps, checkoutCompleteStatuses, is
 import {
   getPosSalesConfig,
   isDiscountApprovalEnabled,
+  lineDiscountInputLabel,
   isWorkspaceTillFloatRequired,
   salesCartChannelForWorkspace,
   resolveCheckoutStatus,
@@ -3320,7 +3321,7 @@ export function PosScreen({ standalone = false }) {
             </div>
             {showLineDiscountField ? (
               <div className="col-span-2 space-y-1">
-                <PosLabel>Discount</PosLabel>
+                <PosLabel>{lineDiscountInputLabel(capabilities?.module_settings, { canAutoApprove: canAutoApproveDiscount })}</PosLabel>
                 <input
                   ref={discountInputRef}
                   className={`${fieldInput} font-semibold text-[var(--theme-primary)] disabled:cursor-not-allowed theme-input-readonly`}

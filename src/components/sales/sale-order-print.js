@@ -285,8 +285,14 @@ export async function printSaleOrder(sale, options = {}) {
       organization,
       printedBy,
       generalSettings: general,
-      productDiscountsEnabled: Boolean(sales.allow_discounts),
-      orderDiscountEnabled: Boolean(sales.enable_order_discount),
+      productDiscountsEnabled: Boolean(
+        sales.effective_allow_discounts || sales.allow_discounts || sales.discount_approval_enabled,
+      ),
+      orderDiscountEnabled: Boolean(
+        sales.effective_enable_order_discount ||
+          sales.enable_order_discount ||
+          sales.discount_approval_enabled,
+      ),
       customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
       showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),
       documentFooterText: resolvePrintFooter(

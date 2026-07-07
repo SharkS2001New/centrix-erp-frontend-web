@@ -32,6 +32,7 @@ import {
   SearchInput,
 } from "@/components/catalog/catalog-shared";
 import { defaultDateRange, isoDate } from "@/components/inventory/inventory-shared";
+import { shouldShowSalesDiscountColumn } from "@/lib/sales-settings";
 import { orderTableColumnCount } from "@/components/sales/sales-orders-columns";
 import {
   orderSourceFilterOptions,
@@ -243,6 +244,9 @@ export default function SalesOrdersListScreen({
   const showConnectivityColumn = Boolean(queueConfig?.showConnectivityColumn);
   const showSourceColumn = !routeOrdersOnly && sourceOptions.length > 2;
   const showSourceFilter = !routeOrdersOnly && sourceOptions.length > 2;
+  const showDiscountColumn = shouldShowSalesDiscountColumn(capabilities?.module_settings);
+  const showApprovalColumn =
+    queueSlug === "pending-approval" || queueSlug === "pending_approval";
   const branchById = useMemo(
     () => new Map(branches.map((branch) => [branch.id, branch])),
     [branches],
@@ -253,6 +257,7 @@ export default function SalesOrdersListScreen({
     showDeliveryDateColumn,
     showConnectivityColumn,
     showSourceColumn,
+    showDiscountColumn,
   });
 
   const loadOrders = useCallback(async () => {
@@ -882,7 +887,8 @@ export default function SalesOrdersListScreen({
                       showDeliveryDateColumn={showDeliveryDateColumn}
                       showConnectivityColumn={showConnectivityColumn}
                       showSourceColumn={showSourceColumn}
-                      showDiscountColumn={Boolean(capabilities?.module_settings?.sales?.discount_approval_enabled)}
+                      showDiscountColumn={showDiscountColumn}
+                      showApprovalColumn={showApprovalColumn}
                     />
                   </thead>
                   <tbody>
@@ -918,7 +924,8 @@ export default function SalesOrdersListScreen({
                           routeById={routeById}
                           paymentRefsBySaleId={paymentRefsBySaleId}
                           columnCount={columnCount}
-                          showDiscountColumn={Boolean(capabilities?.module_settings?.sales?.discount_approval_enabled)}
+                          showDiscountColumn={showDiscountColumn}
+                          showApprovalColumn={showApprovalColumn}
                           queueSlug={queueSlug}
                           onApproveActionRequest={approveActionRequest}
                           onRejectActionRequest={rejectActionRequest}

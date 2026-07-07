@@ -285,7 +285,7 @@ export function OrderExpandIcon() {
   );
 }
 
-export function OrderInlineItems({ items, loading, uomById, legacyPrint = false }) {
+export function OrderInlineItems({ items, loading, uomById, legacyPrint = false, showDiscountColumn = false }) {
   if (loading) {
     return <p className="px-4 py-3 text-xs text-slate-500">Loading items…</p>;
   }
@@ -300,6 +300,7 @@ export function OrderInlineItems({ items, loading, uomById, legacyPrint = false 
           <th className="px-4 py-2">Product</th>
           <th className="px-4 py-2 text-center">Qty</th>
           <th className="px-4 py-2 text-right">Price</th>
+          {showDiscountColumn ? <th className="px-4 py-2 text-right">Discount</th> : null}
           <th className="px-4 py-2 text-right">Amount</th>
         </tr>
       </thead>
@@ -323,6 +324,11 @@ export function OrderInlineItems({ items, loading, uomById, legacyPrint = false 
             <td className="px-4 py-2.5 text-right text-slate-700">
               {formatSaleKes(saleLineDisplayUnitPrice(line, uomById, { legacyPrint }))}
             </td>
+            {showDiscountColumn ? (
+              <td className="px-4 py-2.5 text-right text-slate-700">
+                {Number(line.discount_given ?? 0) > 0 ? formatSaleKes(line.discount_given) : "—"}
+              </td>
+            ) : null}
             <td className="px-4 py-2.5 text-right font-medium text-slate-900">
               {formatSaleKes(line.amount)}
             </td>
@@ -691,6 +697,7 @@ export function OrderListTableHead({
   showConnectivityColumn = false,
   showSourceColumn = true,
   showDiscountColumn = false,
+  showApprovalColumn = false,
 }) {
   return (
     <tr className={TABLE_HEAD_ROW_CLASS}>
@@ -708,7 +715,7 @@ export function OrderListTableHead({
       <th className="px-4 py-2.5">Method</th>
       {showSourceColumn ? <th className="px-4 py-2.5">Source</th> : null}
       <th className="px-4 py-2.5">Created by</th>
-      <th className="w-28 px-4 py-2.5 text-right">Actions</th>
+      <th className="w-28 px-4 py-2.5 text-right">{showApprovalColumn ? "Approval" : "Actions"}</th>
     </tr>
   );
 }
@@ -739,17 +746,27 @@ export function OrderListTableRow({
   columnCount = 10,
   capabilities = null,
   showDiscountColumn = false,
+  showApprovalColumn = false,
   queueSlug = null,
   onApproveActionRequest = null,
   onRejectActionRequest = null,
 }) {
   const href = `/sales/orders/${sale.id}`;
   const items = detail?.items ?? sale.items ?? [];
+  const approvalReason =
+    sale?.action_request?.reason ?? sale?.discount_approval_reason ?? null;
+  const requestId = sale?.action_request?.id ?? null;
+  const canResolveRequest =
+    Boolean(requestId) &&
+    sale?.action_request?.can_approve &&
+    sale?.action_request?.status === "pending";
 
   return (
     <>
       <tr
-        className="border-b border-slate-100 theme-table-body-row"
+        className={`border-b border-slate-100 theme-table-body-row${
+          sale?.discount_rejected ? " bg-amber-50/80 dark:bg-amber-950/20" : ""
+        }`}
         onContextMenu={(event) => {
           event.preventDefault();
           onContextMenu?.(event);
@@ -786,12 +803,17 @@ export function OrderListTableRow({
         </td>
         {showDiscountColumn ? (
           <td className="px-4 py-3 text-right text-slate-700">
-            {Number(sale.order_discount ?? 0) > 0 ? formatSaleKes(sale.order_discount) : "—"}
+            {Number(sale.total_discount ?? sale.order_discount ?? 0) > 0
+              ? formatSaleKes(sale.total_discount ?? sale.order_discount)
+              : "—"}
           </td>
         ) : null}
         <td className="px-4 py-3 text-right text-slate-700">{saleVatCell(sale)}</td>
         <td className="px-4 py-3">
           <SaleStatusBadge status={sale.status} workflow={workflow} workflowStatus={sale.workflow_status} />
+          {sale?.discount_rejected ? (
+            <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">Discount rejected</p>
+          ) : null}
           {shouldShowPaymentStatusBadge(sale, null, capabilities) ? (
             <div className="mt-1.5">
               <PaymentStatusBadge status={sale.payment_status} />
@@ -812,17 +834,20 @@ export function OrderListTableRow({
         <td className="px-4 py-3 text-slate-700">
           <SaleCreatedByCell sale={sale} />
         </td>
-        {queueSlug === "pending-approval" && sale?.action_request?.id ? (
+        {showApprovalColumn ? (
           <td className="px-4 py-3 text-right">
-            <div className="flex items-center justify-end gap-2">
-              <div className="text-xs text-slate-600 truncate max-w-[18rem]">{sale.action_request?.reason ?? "No reason"}</div>
-              {sale.action_request?.can_approve && sale.action_request?.status === "pending" ? (
-                <>
+            <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:justify-end">
+              <div className="max-w-[18rem] text-left text-xs text-slate-600 sm:text-right">
+                <span className="font-medium text-slate-500">Reason: </span>
+                {approvalReason?.trim() ? approvalReason : "No reason provided"}
+              </div>
+              {canResolveRequest ? (
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onApproveActionRequest?.(sale.action_request.id);
+                      onApproveActionRequest?.(requestId);
                     }}
                     disabled={actionBusy}
                     className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
@@ -833,15 +858,19 @@ export function OrderListTableRow({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onRejectActionRequest?.(sale.action_request.id);
+                      onRejectActionRequest?.(requestId);
                     }}
                     disabled={actionBusy}
                     className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
                   >
                     Reject
                   </button>
-                </>
-              ) : null}
+                </div>
+              ) : requestId ? (
+                <span className="text-xs text-slate-500">Awaiting approver</span>
+              ) : (
+                <span className="text-xs text-amber-700">Approval request missing</span>
+              )}
             </div>
           </td>
         ) : (
@@ -865,6 +894,7 @@ export function OrderListTableRow({
               loading={itemsLoading}
               uomById={uomById}
               legacyPrint={isLegacySale(sale)}
+              showDiscountColumn={showDiscountColumn}
             />
           </td>
         </tr>
@@ -993,7 +1023,7 @@ export function OrderFinancialSummary({ sale, payments, totalPaid, balanceDue })
   );
 }
 
-export function OrderLineItemsTable({ items, uomById, legacyPrint = false }) {
+export function OrderLineItemsTable({ items, uomById, legacyPrint = false, showDiscountColumn = true }) {
   const rows = items ?? [];
 
   return (
@@ -1012,7 +1042,7 @@ export function OrderLineItemsTable({ items, uomById, legacyPrint = false }) {
                 <th className="px-4 py-2.5">Product</th>
                 <th className="px-4 py-2.5 text-right">Qty</th>
                 <th className="px-4 py-2.5 text-right">Unit price</th>
-                <th className="px-4 py-2.5 text-right">Discount</th>
+                {showDiscountColumn ? <th className="px-4 py-2.5 text-right">Discount</th> : null}
                 <th className="px-4 py-2.5 text-right">Amount</th>
               </tr>
             </thead>
@@ -1031,11 +1061,13 @@ export function OrderLineItemsTable({ items, uomById, legacyPrint = false }) {
                   <td className="px-4 py-3 text-right text-slate-700">
                     {formatCustomerKes(line.selling_price)}
                   </td>
-                  <td className="px-4 py-3 text-right text-slate-700">
-                    {Number(line.discount_given ?? 0) > 0
-                      ? formatCustomerKes(line.discount_given)
-                      : "—"}
-                  </td>
+                  {showDiscountColumn ? (
+                    <td className="px-4 py-3 text-right text-slate-700">
+                      {Number(line.discount_given ?? 0) > 0
+                        ? formatCustomerKes(line.discount_given)
+                        : "—"}
+                    </td>
+                  ) : null}
                   <td className="px-4 py-3 text-right font-medium text-slate-900">
                     {formatCustomerKes(line.amount)}
                   </td>

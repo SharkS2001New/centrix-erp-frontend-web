@@ -8,6 +8,7 @@ import {
   saleLineEntryQtyForEdit,
   saleLineEntryQtyToBase,
 } from "@/lib/sale-line-items";
+import { isDiscountApprovalEnabled } from "@/lib/sales-settings";
 import { inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 
@@ -92,7 +93,14 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     void loadItems();
   }, [open, sale?.id, loadItems]);
 
-  const totals = useMemo(() => {
+  const discountEditEnabled = useMemo(() => {
+    const sales = capabilities?.module_settings?.sales ?? {};
+    return Boolean(
+      sales.effective_allow_edit_line_discount ||
+        sales.allow_edit_line_discount ||
+        isDiscountApprovalEnabled(capabilities?.module_settings),
+    );
+  }, [capabilities]);
     return lines.reduce((sum, line) => {
       const oldQty = Number(line.quantity);
       const draftQty = Number(line.draftQty);
@@ -128,7 +136,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
         return;
       }
       const item = { id: line.id, quantity: baseQty };
-      if (capabilities?.module_settings?.sales?.allow_edit_line_discount) {
+      if (discountEditEnabled) {
         const d = Number(line.draftDiscount ?? line.discount_given ?? 0);
         if (Number.isFinite(d)) item.discount_given = d;
       }
@@ -169,7 +177,9 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
             <h2 id="backoffice-order-edit-title" className="theme-heading text-base font-semibold">
               Edit order {formatOrderNumber(sale)}
             </h2>
-            <p className="theme-subtext mt-0.5 text-xs">Adjust quantities and save.</p>
+            <p className="theme-subtext mt-0.5 text-xs">
+              Adjust quantities{discountEditEnabled ? " and discounts" : ""} and save.
+            </p>
           </div>
           <button
             type="button"
@@ -193,7 +203,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                   <th className="px-3 py-2">Item</th>
                   <th className="w-28 px-3 py-2 text-right">Qty</th>
                   <th className="w-32 px-3 py-2 text-right">Unit price</th>
-                  {capabilities?.module_settings?.sales?.allow_edit_line_discount ? (
+                  {discountEditEnabled ? (
                     <th className="w-28 px-3 py-2 text-right">Discount</th>
                   ) : null}
                   <th className="w-32 px-3 py-2 text-right">Amount</th>
@@ -230,7 +240,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                       <td className="px-3 py-2.5 text-right text-slate-700">
                         {formatSaleKes(unitPrice)}
                       </td>
-                          {capabilities?.module_settings?.sales?.allow_edit_line_discount ? (
+                          {discountEditEnabled ? (
                             <td className="px-3 py-2.5 text-right">
                               <input
                                 type="number"

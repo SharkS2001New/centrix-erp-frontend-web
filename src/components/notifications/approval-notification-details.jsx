@@ -49,6 +49,7 @@ export function DiscountApprovalItemsTable({ item }) {
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400">
             <th className="px-3 py-2 font-medium">Item</th>
+            <th className="px-3 py-2 text-right font-medium">Qty</th>
             <th className="px-3 py-2 text-right font-medium">Unit price</th>
             <th className="px-3 py-2 text-right font-medium">Discount</th>
             <th className="px-3 py-2 text-right font-medium">Amount</th>
@@ -64,7 +65,11 @@ export function DiscountApprovalItemsTable({ item }) {
                 {line.product_name ?? line.product_code ?? "Item"}
               </td>
               <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
-                {formatKes(line.selling_price ?? line.unit_price)}
+                {Number(line.quantity ?? 0) > 0 ? Number(line.quantity).toLocaleString() : "—"}
+                {line.uom ? ` ${line.uom}` : ""}
+              </td>
+              <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
+                {formatKes(line.unit_price ?? line.selling_price)}
               </td>
               <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
                 {formatKes(line.discount_given)}

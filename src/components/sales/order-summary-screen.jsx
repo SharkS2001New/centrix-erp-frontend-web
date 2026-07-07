@@ -34,7 +34,7 @@ import {
 import { isLegacySale, saleLineProductLabel } from "@/lib/sale-line-items";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
-import { orderDocumentPrintLabel, defaultOrderListPrintDocumentType, isOrderCancellationApprovalEnabled } from "@/lib/sales-settings";
+import { orderDocumentPrintLabel, defaultOrderListPrintDocumentType, isOrderCancellationApprovalEnabled, shouldShowSalesDiscountColumn } from "@/lib/sales-settings";
 import {
   disposePrintWindow,
   openBlankPrintWindow,
@@ -223,7 +223,7 @@ function SummaryInfoCard({ label, value, hint, hintClassName, href, linkLabel, o
   );
 }
 
-function OrderSummaryItemsTable({ items, subById, catById, limit, onViewAll }) {
+function OrderSummaryItemsTable({ items, subById, catById, limit, onViewAll, showDiscountColumn = true }) {
   const rows = limit ? (items ?? []).slice(0, limit) : (items ?? []);
 
   return (
@@ -242,7 +242,7 @@ function OrderSummaryItemsTable({ items, subById, catById, limit, onViewAll }) {
                 <th className="px-4 py-2.5">SKU</th>
                 <th className="px-4 py-2.5 text-right">Qty</th>
                 <th className="px-4 py-2.5 text-right">Unit price</th>
-                <th className="px-4 py-2.5 text-right">Discount</th>
+                {showDiscountColumn ? <th className="px-4 py-2.5 text-right">Discount</th> : null}
                 <th className="px-4 py-2.5 text-right">Total</th>
               </tr>
             </thead>
@@ -270,11 +270,13 @@ function OrderSummaryItemsTable({ items, subById, catById, limit, onViewAll }) {
                     <td className="px-4 py-3 text-right text-slate-700">
                       {formatCustomerKes(line.selling_price)}
                     </td>
-                    <td className="px-4 py-3 text-right text-slate-700">
-                      {Number(line.discount_given ?? 0) > 0
-                        ? formatCustomerKes(line.discount_given)
-                        : "—"}
-                    </td>
+                    {showDiscountColumn ? (
+                      <td className="px-4 py-3 text-right text-slate-700">
+                        {Number(line.discount_given ?? 0) > 0
+                          ? formatCustomerKes(line.discount_given)
+                          : "—"}
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3 text-right font-medium text-slate-900">
                       {formatCustomerKes(line.amount)}
                     </td>
@@ -766,6 +768,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   }
 
   const printLabel = orderDocumentPrintLabel(capabilities?.module_settings, capabilities);
+  const showDiscountColumn = shouldShowSalesDiscountColumn(capabilities?.module_settings);
   const createReturnHref =
     sale?.id && sale?.status === "completed" ? `/sales/returns/new?sale_id=${sale.id}` : null;
   const totalReturned = useMemo(
@@ -950,6 +953,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                 catById={catById}
                 limit={5}
                 onViewAll={() => setActiveTab("items")}
+                showDiscountColumn={showDiscountColumn}
               />
               <OrderTotalsPanel sale={sale} totalPaid={totalPaid} balanceDue={balanceDue} />
               <OrderReturnsPanel returns={orderReturns} saleId={sale.id} totalReturned={totalReturned} />
@@ -970,6 +974,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               items={sale.items}
               uomById={uomById}
               legacyPrint={isLegacySale(sale)}
+              showDiscountColumn={showDiscountColumn}
             />
           ) : null}
 
