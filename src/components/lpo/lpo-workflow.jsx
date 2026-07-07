@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
 import { canApproveLpoRequests } from "@/lib/procurement-settings";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
+import { ApprovalPendingNotice, ApprovalReminderButton } from "@/components/approval-reminder-button";
 import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
 import { printGrnForLpoSummary } from "@/components/lpo/grn-print";
 import { lpoHasReceivedStock } from "@/lib/grn-document";
@@ -158,6 +159,12 @@ export function LpoApprovalStripRow({
                     Reject
                   </button>
                 </div>
+              ) : lpo?.action_request?.can_remind ? (
+                <ApprovalReminderButton
+                  actionRequestId={requestId}
+                  canRemind={lpo.action_request.can_remind}
+                  className="ml-auto shrink-0"
+                />
               ) : requestId ? (
                 <span className="ml-auto shrink-0 text-xs text-[var(--theme-text-subtle)]">Awaiting approver</span>
               ) : null}
@@ -292,9 +299,12 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
       </p>
 
       {lpo.approval_pending ? (
-        <p className="mb-3 rounded-lg border border-[color-mix(in_srgb,#f59e0b_35%,var(--theme-border))] bg-[color-mix(in_srgb,#f59e0b_12%,var(--theme-surface-muted))] px-3 py-2 text-sm text-[var(--theme-text)]">
-          Waiting for manager approval. You can resend the request if needed.
-        </p>
+        <ApprovalPendingNotice
+          className="mb-3"
+          message="Waiting for manager approval."
+          actionRequest={lpo.action_request}
+          onReminded={onUpdated}
+        />
       ) : null}
 
       {lpo?.approval_rejection?.rejected ? (
@@ -311,15 +321,9 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        {actions.includes("submit_for_approval") ? (
+        {actions.includes("submit_for_approval") && !lpo.approval_pending ? (
           <ActionButton
-            label={
-              busy === "submit_for_approval"
-                ? "Sending…"
-                : lpo.approval_pending || Number(lpo.lpo_status_code) === 1
-                  ? "Resend approval request"
-                  : "Submit for approval"
-            }
+            label={busy === "submit_for_approval" ? "Sending…" : "Submit for approval"}
             onClick={() => runAction("submit_for_approval")}
             disabled={Boolean(busy) || Boolean(printing)}
             primary={!canApprove}

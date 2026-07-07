@@ -41,9 +41,11 @@ import {
   payrollGraceDays,
   payrollRunFormDefaults,
 } from "@/lib/hr-settings";
+import { useConfirm } from "@/lib/use-confirm";
 
 export default function PayrollPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const { user, capabilities } = useAuth();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
   const admin = isAdminUser(user);
@@ -226,13 +228,13 @@ export default function PayrollPage() {
       );
       return;
     }
-    if (
-      !confirm(
-        `Delete pay period ${periodLabel(period)} (${formatPeriodRange(period)})? This cannot be undone.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete pay period",
+      message: `Delete pay period ${periodLabel(period)} (${formatPeriodRange(period)})? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/pay-periods/${period.id}`, { method: "DELETE" });
       await loadData();
@@ -248,13 +250,13 @@ export default function PayrollPage() {
     }
     const period = periodById.get(run.pay_period_id) ?? run.pay_period;
     const label = periodLabel(period);
-    if (
-      !confirm(
-        `Delete payroll run for ${label}? Payroll lines are removed and attendance, overtime, leave, and advance deductions for that cycle are reopened (records are kept for reports).`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Delete payroll run",
+      message: `Delete payroll run for ${label}? Payroll lines are removed and attendance, overtime, leave, and advance deductions for that cycle are reopened (records are kept for reports).`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/payroll-runs/${run.id}`, { method: "DELETE" });
       await loadData();

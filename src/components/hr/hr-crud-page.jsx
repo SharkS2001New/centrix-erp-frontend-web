@@ -17,6 +17,7 @@ import {
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { exportColumnsFromHrCrud } from "@/lib/catalog-list-exports";
+import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
 /**
  * Lightweight HR list + create/edit sidebar drawer (Retail Package Manager pattern).
@@ -45,6 +46,7 @@ export function HrCrudPage({
   exportFilename,
 }) {
   const { user, capabilities } = useAuth();
+  const confirm = useConfirm();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
 
   const [rows, setRows] = useState([]);
@@ -139,7 +141,9 @@ export function HrCrudPage({
   }
 
   async function remove(row) {
-    if (!confirm("Delete this record?")) return;
+    const entityLabel = title ? `${title.toLowerCase()} record` : "this record";
+    const ok = await confirm(confirmDeleteOptions(entityLabel));
+    if (!ok) return;
     try {
       await apiRequest(`${apiPath}/${row.id}`, { method: "DELETE" });
       await load();

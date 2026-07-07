@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { canApprovePayrollRuns } from "@/lib/approval-permissions";
 import { P } from "@/lib/permission-codes";
 import { Field, DetailDrawer, IconButton, PrimaryButton, StatCard, inputClassName } from "@/components/catalog/catalog-shared";
 import {
@@ -20,13 +21,17 @@ import {
   periodLabel,
 } from "@/components/hr/hr-shared";
 import { mergeHrPayrollSettings } from "@/lib/hr-settings";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
+import { ApprovalPendingNotice } from "@/components/approval-reminder-button";
+import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
 export default function PayrollRunDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const confirm = useConfirm();
   const { user, hasPermission, capabilities } = useAuth();
   const admin = isAdminUser(user);
-  const canApprove = hasPermission(P.hr.payroll.approve);
+  const canApprove = canApprovePayrollRuns({ hasPermission, capabilities });
   const canProcess = hasPermission(P.hr.payroll.create) || hasPermission(P.hr.manage);
   const runId = Number(params.id);
 
@@ -108,7 +113,13 @@ export default function PayrollRunDetailPage() {
   }
 
   async function rejectRun() {
-    if (!confirm("Reject this payroll run?")) return;
+    const ok = await confirm({
+      title: "Reject payroll run",
+      message: "Reject this payroll run? It will return to draft so you can revise and resubmit.",
+      confirmLabel: "Reject",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/payroll/runs/${runId}/reject`, { method: "POST" });
       await loadData();
@@ -118,6 +129,13 @@ export default function PayrollRunDetailPage() {
   }
 
   async function processRun() {
+    const ok = await confirm({
+      title: "Process payroll",
+      message:
+        "Process this payroll run? Employee lines will be calculated and attendance, leave, and advance deductions for this cycle will be locked.",
+      confirmLabel: "Process payroll",
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/payroll/runs/${runId}/process-auto`, { method: "POST", body: {} });
       await loadData();
@@ -162,13 +180,14 @@ export default function PayrollRunDetailPage() {
       notifyError(payrollRunDeleteLockHint(run) ?? "This payroll run can no longer be deleted.");
       return;
     }
-    if (
-      !confirm(
+    const ok = await confirm({
+      title: "Delete payroll run",
+      message:
         "Delete this payroll run? Lines are removed and closed attendance, overtime, leave, and advance deductions for that cycle are reopened. Historical records stay for reports.",
-      )
-    ) {
-      return;
-    }
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiRequest(`/payroll-runs/${runId}`, { method: "DELETE" });
       router.push("/hr/payroll");
@@ -187,11 +206,12 @@ export default function PayrollRunDetailPage() {
 
   return (
     <div className="theme-workspace min-h-full">
-      <div className="mb-6">
-        <Link href="/hr/payroll" className="text-sm text-[#185FA5] hover:text-[#144f8a]">
-          ← Back to payroll
-        </Link>
-      </div>
+      <AppBreadcrumb
+        items={[
+          { label: "Payroll", href: "/hr/payroll" },
+          { label: run ? `Run — ${periodLabel(period)}` : "Payroll run" },
+        ]}
+      />
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading payroll run…</p>
@@ -274,6 +294,15 @@ export default function PayrollRunDetailPage() {
               ) : null}
             </div>
           </div>
+
+          {run.status === "pending_approval" && run.action_request?.status === "pending" ? (
+            <ApprovalPendingNotice
+              className="mb-4"
+              message="This payroll run is waiting for manager approval."
+              actionRequest={run.action_request}
+              onReminded={loadData}
+            />
+          ) : null}
 
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Employees" value={String(employeeCount)} />

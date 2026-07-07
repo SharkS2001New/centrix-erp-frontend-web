@@ -570,7 +570,9 @@ export function canGiveDiscountDirectly({ hasPermission = () => false } = {}) {
 }
 
 /** True when the user may approve or reject discount approval requests. */
-export function canApproveDiscountRequests({ hasPermission = () => false } = {}) {
+export function canApproveDiscountRequests({ hasPermission = () => false, capabilities } = {}) {
+  const explicit = capabilities?.approval_permissions?.discount_requests;
+  if (typeof explicit === "boolean") return explicit;
   return (
     hasPermission(P.admin.discount_approvals.approve) ||
     hasPermission(P.sales.orders.approve)

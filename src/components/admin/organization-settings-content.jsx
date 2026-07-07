@@ -17,6 +17,7 @@ import { SecuritySettingsPanel } from "@/components/admin/security-settings-pane
 import { LegacyArchiveSettingsPanel } from "@/components/admin/legacy-archive-settings-panel";
 import { SalesSettingsPanel } from "@/components/admin/sales-settings-panel";
 import { ManagerApprovalsSettingsPanel } from "@/components/admin/manager-approvals-settings-panel";
+import { RbacHelpDialog } from "@/components/admin/rbac-help";
 import { visibleOrgSettingsTabs } from "@/lib/org-settings-tabs";
 import { ORG_SETTINGS_PLATFORM_MESSAGE, TENANT_ORG_SETTINGS_SUBTITLE } from "@/lib/org-settings-access";
 import { toastErrorSetter, toastMessageSetter } from "@/lib/notify";
@@ -143,6 +144,7 @@ export function OrganizationSettingsContent({
           </>
         )}
       </div>
+      <RbacHelpDialog />
     </>
   );
 

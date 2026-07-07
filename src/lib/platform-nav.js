@@ -36,6 +36,12 @@ export const PLATFORM_LINK_GROUPS = [
         description: "Platform test console and OpenAI credentials for super-admin knowledge training.",
       },
       {
+        href: "/platform/push",
+        label: "Mobile push",
+        icon: "bell",
+        description: "Firebase Cloud Messaging for Centrix Manager and Centrix Mobile field sales apps.",
+      },
+      {
         href: "/platform/whatsapp",
         label: "WhatsApp",
         icon: "chat",

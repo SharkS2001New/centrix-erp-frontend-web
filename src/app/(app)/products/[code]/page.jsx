@@ -14,6 +14,7 @@ import {
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
 import { DeleteProductDialog } from "@/components/products/delete-product-dialog";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { formatUomOption } from "@/components/products/product-form";
 import { formatPoNumber, lpoDisplayNumber, lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import {
@@ -725,9 +726,12 @@ export default function ProductDetailPage() {
   if (error || !enriched) {
     return (
       <div className="p-8">
-        <Link href={productsCatalogHref()} className="theme-link text-sm hover:underline">
-          ← Back to products
-        </Link>
+        <AppBreadcrumb
+          items={[
+            { label: "Products", href: productsCatalogHref() },
+            { label: productCode },
+          ]}
+        />
         <p className="mt-4 text-sm text-red-600">{error ?? "Product not found"}</p>
       </div>
     );
@@ -750,11 +754,12 @@ export default function ProductDetailPage() {
 
   return (
     <div className="theme-workspace min-h-full">
-      <div className="mb-6">
-        <Link href={productsCatalogHref()} className="theme-link text-sm hover:underline">
-          ← Back to products
-        </Link>
-      </div>
+      <AppBreadcrumb
+        items={[
+          { label: "Products", href: productsCatalogHref() },
+          { label: enriched.product_name || enriched.product_code },
+        ]}
+      />
 
       {/* Hero */}
       <div className="mb-6 theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">

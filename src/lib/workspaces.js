@@ -260,6 +260,10 @@ export function navItemBelongsToWorkspace(item, workspaceId) {
 
 /** @param {import("@/lib/nav-config").NavSection} section */
 export function sectionBelongsToWorkspace(section, workspaceId) {
+  if (section.sharedAcrossWorkspaces) {
+    return workspaceId !== "pos";
+  }
+
   return (WORKSPACE_SECTION_IDS[workspaceId] ?? []).includes(section.id);
 }
 

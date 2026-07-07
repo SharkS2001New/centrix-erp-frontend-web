@@ -205,7 +205,7 @@ const NAV_SECTION_DEFINITIONS = [
       },
       {
         href: "/sales/loading-sheets",
-        label: "Loading list",
+        label: "Loading lists",
         module: "sales.backend",
         permission: P.sales.loading_sheets.view,
         requireLoadingListNav: true,
@@ -884,6 +884,20 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.admin.kra_responses.view,
         orgAdminOnly: true,
         requireKraDevice: true,
+      },
+    ],
+  },
+  {
+    id: "account",
+    label: "Account",
+    icon: "👤",
+    collapsible: true,
+    sharedAcrossWorkspaces: true,
+    items: [
+      {
+        href: "/notifications",
+        label: "Notifications",
+        module: null,
       },
     ],
   },

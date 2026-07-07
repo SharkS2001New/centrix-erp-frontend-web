@@ -2,7 +2,7 @@
 
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { P } from "@/lib/permission-codes";
+import { canApproveCashAdvances } from "@/lib/approval-permissions";
 import {
   Field,
   formatShortDate,
@@ -11,10 +11,11 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { HrCrudPage, HrSelectField } from "@/components/hr/hr-crud-page";
 import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-shared";
+import { ApprovalReminderButton } from "@/components/approval-reminder-button";
 
 export default function HrCashAdvancesPage() {
   const { hasPermission } = useAuth();
-  const canApprove = hasPermission(P.hr.cash_advances.approve);
+  const canApprove = canApproveCashAdvances({ hasPermission });
 
   return (
     <HrCrudPage
@@ -55,32 +56,49 @@ export default function HrCashAdvancesPage() {
         },
         { key: "status", label: "Status" },
       ]}
-      renderRowActions={(row, { reload }) =>
-        canApprove && row.status === "pending" ? (
+      renderRowActions={(row, { reload }) => {
+        const reminder = row.action_request?.can_remind ? (
+          <ApprovalReminderButton
+            actionRequestId={row.action_request.id}
+            canRemind
+            onReminded={reload}
+            className="mr-3"
+          />
+        ) : null;
+        const approval =
+          canApprove && row.status === "pending" ? (
+            <>
+              <button
+                type="button"
+                className="text-emerald-700 hover:underline"
+                onClick={async () => {
+                  await apiRequest(`/employee-cash-advances/${row.id}/approve`, { method: "POST" });
+                  reload();
+                }}
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                className="ml-3 text-red-600 hover:underline"
+                onClick={async () => {
+                  await apiRequest(`/employee-cash-advances/${row.id}/reject`, { method: "POST" });
+                  reload();
+                }}
+              >
+                Reject
+              </button>
+            </>
+          ) : null;
+
+        if (!reminder && !approval) return null;
+        return (
           <>
-            <button
-              type="button"
-              className="text-emerald-700 hover:underline"
-              onClick={async () => {
-                await apiRequest(`/employee-cash-advances/${row.id}/approve`, { method: "POST" });
-                reload();
-              }}
-            >
-              Approve
-            </button>
-            <button
-              type="button"
-              className="ml-3 text-red-600 hover:underline"
-              onClick={async () => {
-                await apiRequest(`/employee-cash-advances/${row.id}/reject`, { method: "POST" });
-                reload();
-              }}
-            >
-              Reject
-            </button>
+            {reminder}
+            {approval}
           </>
-        ) : null
-      }
+        );
+      }}
       buildEmptyForm={(_, row) => ({
         employee_id: row?.employee_id != null ? String(row.employee_id) : "",
         advance_date: row?.advance_date?.slice?.(0, 10) ?? new Date().toISOString().slice(0, 10),

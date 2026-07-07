@@ -1,7 +1,8 @@
 export const LOGIN_CHANNELS = [
   { value: "backoffice", label: "Backoffice (web ERP)" },
   { value: "pos", label: "POS (external terminal)" },
-  { value: "mobile", label: "Mobile app" },
+  { value: "mobile", label: "Mobile app (field sales / driver)" },
+  { value: "manager", label: "Manager app" },
 ];
 
 export const DEFAULT_LOGIN_CHANNELS = LOGIN_CHANNELS.map((c) => c.value);
@@ -28,6 +29,12 @@ export function allowedLoginChannelValues(capabilities) {
     capabilities?.driver_mobile_enabled === true
   ) {
     allowed.add("mobile");
+  }
+  if (
+    capabilities?.modules?.["sales.backend"] !== false &&
+    capabilities?.module_settings?.sales?.enable_manager_app !== false
+  ) {
+    allowed.add("manager");
   }
 
   return allowed.size > 0 ? allowed : new Set(["backoffice"]);

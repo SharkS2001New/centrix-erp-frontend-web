@@ -6,8 +6,10 @@ import {
 } from "@/lib/lpo-print-settings";
 import { P } from "@/lib/permission-codes";
 
-export function canApproveLpoRequests({ hasPermission = () => false } = {}) {
-  return hasPermission(P.purchasing.lpo.approve);
+export function canApproveLpoRequests({ hasPermission = () => false, capabilities } = {}) {
+  const explicit = capabilities?.approval_permissions?.lpo_requests;
+  if (typeof explicit === "boolean") return explicit;
+  return hasPermission(P.purchasing.lpo.approve) || hasPermission("purchasing.manage");
 }
 
 export const PROCUREMENT_DEFAULTS = {

@@ -20,6 +20,8 @@ import {
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { isJournalEntryApprovalEnabled } from "@/lib/sales-settings";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
+import { ApprovalPendingNotice } from "@/components/approval-reminder-button";
 
 export default function JournalEntryDetailPage() {
   const params = useParams();
@@ -61,6 +63,7 @@ export default function JournalEntryDetailPage() {
           method: "POST",
         });
         notifySuccess("Journal entry submitted for posting approval.");
+        await load();
         return;
       }
       const updated = await apiRequest(`/accounting/journal-entries/${entry.id}/post`, {
@@ -124,12 +127,21 @@ export default function JournalEntryDetailPage() {
     <CatalogPageShell
       title={`Journal Entry ${entry.entry_number}`}
       subtitle="Accounting > Journal Entries"
-      actions={
-        <Link href="/accounting/journal-entries" className="text-sm font-medium text-[#185FA5] hover:underline">
-          Back to list
-        </Link>
-      }
     >
+      <AppBreadcrumb
+        items={[
+          { label: "Journal entries", href: "/accounting/journal-entries" },
+          { label: entry.entry_number },
+        ]}
+      />
+      {entry.action_request?.status === "pending" ? (
+        <ApprovalPendingNotice
+          className="mb-4"
+          message="Waiting for manager approval before this journal entry can be posted."
+          actionRequest={entry.action_request}
+          onReminded={load}
+        />
+      ) : null}
       <div className="theme-panel rounded-xl border p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

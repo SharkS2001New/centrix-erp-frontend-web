@@ -11,6 +11,7 @@ import {
   deliveryStatsFromSales,
   driverInitials,
 } from "@/components/fulfillment/fulfillment-shared";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
 export default function DriverProfilePage() {
   const params = useParams();
@@ -51,11 +52,13 @@ export default function DriverProfilePage() {
 
   return (
     <div className="theme-workspace min-h-full">
-      <div className="mb-6">
-        <Link href="/fulfillment/drivers" className="text-sm text-[#185FA5] hover:text-[#144f8a]">
-          ← Back to drivers
-        </Link>
-      </div>
+      <AppBreadcrumb
+        items={[
+          { label: "Distribution", href: "/fulfillment" },
+          { label: "Drivers", href: "/fulfillment/drivers" },
+          { label: driver?.full_name ?? "Driver" },
+        ]}
+      />
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading driver…</p>

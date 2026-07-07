@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
 import { isDamageWriteOffApprovalEnabled } from "@/lib/sales-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
@@ -70,8 +71,7 @@ export default function RecordDamagePage() {
     const reasonText = [reason.trim(), notes.trim()].filter(Boolean).join(" — ");
     const useRequestFlow =
       isDamageWriteOffApprovalEnabled(capabilities?.module_settings) &&
-      !user?.is_admin &&
-      !hasPermission("inventory.manage");
+      !canDirectInventoryAction({ hasPermission, capabilities });
     try {
       for (const line of toPost) {
         const uom = uomById.get(line.unit_id);

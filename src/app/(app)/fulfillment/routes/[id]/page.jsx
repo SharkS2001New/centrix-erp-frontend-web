@@ -22,6 +22,7 @@ import {
   formatShortDate,
   getSaleTimestamp,
 } from "@/components/catalog/catalog-shared";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
 export default function RouteDetailPage() {
   const params = useParams();
@@ -89,14 +90,16 @@ export default function RouteDetailPage() {
 
   return (
     <div className="theme-workspace min-h-full">
+      <AppBreadcrumb
+        items={[
+          { label: "Distribution", href: "/fulfillment" },
+          { label: "Routes", href: "/fulfillment/routes" },
+          { label: route?.route_name ?? "Route" },
+        ]}
+      />
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <Link href="/fulfillment/routes" className="text-sm text-[#185FA5] hover:text-[#144f8a]">
-            ← Back to routes
-          </Link>
-          <div className="mt-2">
-            <h1 className="text-xl font-medium text-slate-900">Route details</h1>
-          </div>
+          <h1 className="text-xl font-medium text-slate-900">Route details</h1>
         </div>
         {route && (
           <Link

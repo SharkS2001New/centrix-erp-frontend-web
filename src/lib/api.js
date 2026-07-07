@@ -4,6 +4,7 @@ import { beginAppLoading, endAppLoading, isPageNavigationLoading } from "./app-l
 import { emitSystemIssue } from "./system-issue-dispatcher";
 import { logApiErrorIssue, logSlowRequestIssue } from "./system-issue-reports";
 import { notifyError as showErrorToast } from "./notify";
+import { mayAffectInAppNotifications, notifyNotificationsChanged } from "./notification-events";
 
 const baseUrl = () =>
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
@@ -406,6 +407,10 @@ export async function apiRequest(path, options = {}) {
           durationMs,
         });
       }
+    }
+
+    if (mayAffectInAppNotifications(method, apiPath, data)) {
+      notifyNotificationsChanged();
     }
 
     return data;

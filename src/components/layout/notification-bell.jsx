@@ -15,8 +15,10 @@ import { NotificationActionLink } from "@/components/notifications/notification-
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
 import { DiscountRejectionDialog } from "@/components/discount-rejection-dialog";
 import { discountApprovalLinesFromSource } from "@/lib/advised-discount-lines";
+import { subscribeNotificationsChanged } from "@/lib/notification-events";
 
-const POLL_MS = 60_000;
+const POLL_VISIBLE_MS = 12_000;
+const POLL_HIDDEN_MS = 60_000;
 
 function BellIcon({ className }) {
   return (
@@ -122,8 +124,8 @@ function NotificationRow({ item, busy, onApprove, onReject, onOpen, onDismiss, c
 export function NotificationBell() {
   const router = useRouter();
   const { capabilities, user, organization, isSuperAdmin, hasPermission } = useAuth();
-  const canApproveDiscounts = canApproveDiscountRequests({ hasPermission });
-  const canApproveLpos = canApproveLpoRequests({ hasPermission });
+  const canApproveDiscounts = canApproveDiscountRequests({ hasPermission, capabilities });
+  const canApproveLpos = canApproveLpoRequests({ hasPermission, capabilities });
   const [open, setOpen] = useState(false);
   const [count, setCount] = useState(0);
   const [items, setItems] = useState([]);
@@ -180,9 +182,37 @@ export function NotificationBell() {
 
   useEffect(() => {
     void fetchCount();
-    const timer = setInterval(() => void fetchCount(), POLL_MS);
-    return () => clearInterval(timer);
-  }, [fetchCount]);
+
+    let timer = null;
+    const schedule = () => {
+      if (timer) clearInterval(timer);
+      const interval = document.visibilityState === "visible" ? POLL_VISIBLE_MS : POLL_HIDDEN_MS;
+      timer = setInterval(() => void fetchCount(), interval);
+    };
+
+    schedule();
+
+    const onVisibility = () => schedule();
+    const onFocus = () => {
+      void fetchCount();
+      if (open) void fetchList();
+    };
+    const onNotificationsChanged = () => {
+      void fetchCount();
+      if (open) void fetchList();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onFocus);
+    const unsubscribe = subscribeNotificationsChanged(onNotificationsChanged);
+
+    return () => {
+      if (timer) clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onFocus);
+      unsubscribe();
+    };
+  }, [fetchCount, fetchList, open]);
 
   useEffect(() => {
     if (open) {

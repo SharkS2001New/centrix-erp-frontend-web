@@ -29,6 +29,7 @@ import {
   uomForManualReceiveLine,
 } from "@/components/inventory/lpo-receive-stock";
 import { formatQty, InventoryPageShell } from "@/components/inventory/inventory-shared";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { uomStockTakeLevels } from "@/lib/uom-packaging";
 import { baseToDisplayQty, displayToBaseQty } from "@/lib/stock-uom";
 
@@ -250,11 +251,12 @@ export default function ReceiveStockPage() {
       title="Receive stock"
       subtitle="Record goods received against a purchase order or as a manual delivery"
     >
-      <div className="mb-4">
-        <Link href="/inventory/receipts" className="text-sm text-[#185FA5] hover:underline">
-          ← Back to stock receipts
-        </Link>
-      </div>
+      <AppBreadcrumb
+        items={[
+          { label: "Stock receipts", href: "/inventory/receipts" },
+          { label: "Receive stock" },
+        ]}
+      />
 
       <div className="mb-4 flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 max-w-md">
         <button

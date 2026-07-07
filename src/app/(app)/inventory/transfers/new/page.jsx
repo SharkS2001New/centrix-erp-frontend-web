@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
 import { isStockTransferApprovalEnabled } from "@/lib/sales-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
@@ -16,6 +17,7 @@ import {
   uomMeasureLabel,
 } from "@/components/inventory/damage-measure-select";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import {
   TRANSFER_FROM_OPTIONS,
   isLocationTransferTarget,
@@ -53,8 +55,7 @@ export default function StockTransferPage() {
   const useRequestFlow =
     isStockTransferApprovalEnabled(capabilities?.module_settings) &&
     !isStoreToShop &&
-    !user?.is_admin &&
-    !hasPermission("inventory.manage");
+    !canDirectInventoryAction({ hasPermission, capabilities });
 
   useEffect(() => {
     if (!toOptions.some((opt) => opt.value === toLocation)) {
@@ -122,11 +123,12 @@ export default function StockTransferPage() {
       title="Transfer stock"
       subtitle="Move stock between locations or record stock leaving for internal use, donations, and more"
     >
-      <div className="mb-4">
-        <Link href="/inventory/transactions" className="text-sm text-[#185FA5] hover:underline">
-          ← Back to movements
-        </Link>
-      </div>
+      <AppBreadcrumb
+        items={[
+          { label: "Stock movements", href: "/inventory/transactions" },
+          { label: "New transfer" },
+        ]}
+      />
 
       <form
         onSubmit={submit}

@@ -120,8 +120,8 @@ function NotificationCard({ item, busy, onApprove, onReject, onOpen, onDismiss, 
 export default function NotificationsPage() {
   const router = useRouter();
   const { capabilities, user, organization, isSuperAdmin, hasPermission } = useAuth();
-  const canApproveDiscounts = canApproveDiscountRequests({ hasPermission });
-  const canApproveLpos = canApproveLpoRequests({ hasPermission });
+  const canApproveDiscounts = canApproveDiscountRequests({ hasPermission, capabilities });
+  const canApproveLpos = canApproveLpoRequests({ hasPermission, capabilities });
   const [bucket, setBucket] = useState("pending_approvals");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);

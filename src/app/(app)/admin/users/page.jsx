@@ -8,6 +8,8 @@ import { AdminGuard } from "@/components/admin/admin-guard";
 import { PasswordInput } from "@/components/auth/password-input";
 import { UserDetailModal } from "@/components/admin/user-detail-modal";
 import { UserPermissionMatrix, toggleUserPermissionOverride } from "@/components/admin/user-permission-matrix";
+import { RbacHelpButton } from "@/components/admin/rbac-help";
+import { RbacHelpDialog } from "@/components/admin/rbac-help";
 import { permissionIdSet } from "@/lib/permission-ids";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
@@ -553,6 +555,7 @@ export default function AdminUsersPage() {
             getSearchParams={() => buildPageParams({ page: 1, perPage: 200, q: debouncedSearch })}
             disabled={loading}
           />
+          <RbacHelpButton />
           <PrimaryButton type="button" onClick={openCreate}>
             Create user
           </PrimaryButton>
@@ -877,7 +880,19 @@ export default function AdminUsersPage() {
       </CatalogPageShell>
   );
 
-  if (isPlatformManaged) return pageContent;
+  if (isPlatformManaged) {
+    return (
+      <>
+        {pageContent}
+        <RbacHelpDialog />
+      </>
+    );
+  }
 
-  return <AdminGuard strict>{pageContent}</AdminGuard>;
+  return (
+    <AdminGuard strict>
+      {pageContent}
+      <RbacHelpDialog />
+    </AdminGuard>
+  );
 }

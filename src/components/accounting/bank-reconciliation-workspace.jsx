@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { CatalogPageShell, formatShortDate } from "@/components/catalog/catalog-shared";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { formatAccountingAmount } from "@/lib/accounting-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
@@ -126,6 +127,13 @@ export function BankReconciliationWorkspace({ reconciliationId }) {
   }
 
   async function removeMatch(matchId) {
+    const ok = await confirm({
+      title: "Remove match",
+      message: "Remove this reconciliation match?",
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await apiRequest(
@@ -142,6 +150,13 @@ export function BankReconciliationWorkspace({ reconciliationId }) {
   }
 
   async function excludeLine(lineId) {
+    const ok = await confirm({
+      title: "Exclude statement line",
+      message: "Exclude this bank statement line from reconciliation?",
+      confirmLabel: "Exclude",
+      destructive: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await apiRequest(
@@ -263,12 +278,6 @@ export function BankReconciliationWorkspace({ reconciliationId }) {
       subtitle={`${reconciliation.account_code} ${reconciliation.account_name ?? ""}`.trim()}
       action={
         <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/accounting/bank-reconciliation"
-            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Back
-          </Link>
           {editable && !varianceOk ? (
             <button
               type="button"
@@ -292,6 +301,12 @@ export function BankReconciliationWorkspace({ reconciliationId }) {
         </div>
       }
     >
+      <AppBreadcrumb
+        items={[
+          { label: "Bank reconciliation", href: "/accounting/bank-reconciliation" },
+          { label: title },
+        ]}
+      />
       <DifferenceBanner reconciliation={reconciliation} varianceOk={varianceOk} />
 
       <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-200 pb-2">

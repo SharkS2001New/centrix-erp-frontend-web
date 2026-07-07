@@ -9,6 +9,7 @@ import {
   employeeDocumentFilePath,
 } from "@/lib/api";
 import { Field, FormModal, inputClassName } from "@/components/catalog/catalog-shared";
+import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
 const DOC_TYPES = [
   { value: "contract", label: "Employment contract" },
@@ -21,6 +22,7 @@ const DOC_TYPES = [
 ];
 
 export function EmployeeDocuments({ employeeId }) {
+  const confirm = useConfirm();
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -86,7 +88,8 @@ export function EmployeeDocuments({ employeeId }) {
   }
 
   async function remove(doc) {
-    if (!confirm(`Delete "${doc.title}"?`)) return;
+    const ok = await confirm(confirmDeleteOptions(`"${doc.title}"`));
+    if (!ok) return;
     await apiRequest(`/employees/${employeeId}/documents/${doc.id}`, { method: "DELETE" });
     await load();
   }

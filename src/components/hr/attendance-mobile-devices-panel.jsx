@@ -5,6 +5,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useSettingsApi } from "@/contexts/settings-api-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { AttendanceMobileDeviceIdHelpModal } from "@/components/hr/attendance-mobile-device-id-help-modal";
+import { confirmRemoveOptions, useConfirm } from "@/lib/use-confirm";
 
 function normalizeDeviceIdentifier(identifier, platform) {
   const id = String(identifier ?? "").trim().toLowerCase();
@@ -17,6 +18,7 @@ function normalizeDeviceIdentifier(identifier, platform) {
 
 export function AttendanceMobileDevicesPanel({ embedded = false }) {
   const { organizationApiPath } = useSettingsApi();
+  const confirm = useConfirm();
   const [devices, setDevices] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -118,7 +120,9 @@ export function AttendanceMobileDevicesPanel({ embedded = false }) {
   }
 
   async function removeDevice(device) {
-    if (!confirm(`Remove attendance phone "${device.device_label || device.device_identifier}"?`)) return;
+    const label = device.device_label || device.device_identifier || "this phone";
+    const ok = await confirm(confirmRemoveOptions(`attendance phone "${label}"`));
+    if (!ok) return;
     setError(null);
     try {
       await apiRequest(organizationApiPath(`/attendance-mobile-devices/${device.id}`), {

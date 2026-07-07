@@ -15,6 +15,7 @@ import {
   ReportPageShell,
   ReportTable,
 } from "@/components/reports/report-screen-shared";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
 import { filterStructuredReportColumns } from "@/lib/reports/report-column-visibility";
 
@@ -155,7 +156,15 @@ export function CustomReportScreen({ templateId }) {
   }
 
   return (
-    <ReportPageShell
+    <>
+      <AppBreadcrumb
+        items={[
+          { label: "Reports", href: "/reports" },
+          { label: "Custom reports", href: "/reports/custom" },
+          { label: definition.title },
+        ]}
+      />
+      <ReportPageShell
       section={definition.section}
       title={definition.title}
       subtitle={definition.subtitle}
@@ -249,6 +258,7 @@ export function CustomReportScreen({ templateId }) {
         </>
       )}
     </ReportPageShell>
+    </>
   );
 }
 

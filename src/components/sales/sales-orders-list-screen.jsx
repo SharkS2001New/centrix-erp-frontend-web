@@ -251,7 +251,7 @@ export default function SalesOrdersListScreen({
   const showApprovalColumn =
     queueSlug === "pending-approval" || queueSlug === "pending_approval";
   const showRejectionStrip = queueSlug === "editable";
-  const canApproveDiscounts = canApproveDiscountRequests({ hasPermission });
+  const canApproveDiscounts = canApproveDiscountRequests({ hasPermission, capabilities });
   const branchById = useMemo(
     () => new Map(branches.map((branch) => [branch.id, branch])),
     [branches],

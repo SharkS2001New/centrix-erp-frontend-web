@@ -6,23 +6,32 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:permissions": "node scripts/check-permission-codes.mjs scripts/permission-registry.snapshot.json",
+    "sync:permission-snapshot": "node scripts/sync-permission-snapshot.mjs"
   },
   "dependencies": {
     "bootstrap-icons": "^1.13.1",
     "exceljs": "^4.4.0",
+    "laravel-echo": "^2.3.7",
     "leaflet": "^1.9.4",
     "next": "16.2.7",
+    "pusher-js": "^8.5.0",
     "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "sonner": "^2.0.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@tailwindcss/postcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
-    "tailwindcss": "^4"
+    "tailwindcss": "^4",
+    "vitest": "^3.2.7"
   },
   "overrides": {
     "postcss": "^8.5.15"

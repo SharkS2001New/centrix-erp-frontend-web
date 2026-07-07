@@ -5,6 +5,9 @@
  *   php ../centrix-erp-backend-api/artisan erp:export-permission-registry > /tmp/registry.json
  *   node scripts/check-permission-codes.mjs /tmp/registry.json
  *
+ * Or with committed snapshot (CI):
+ *   node scripts/check-permission-codes.mjs scripts/permission-registry.snapshot.json
+ *
  * Or with inline registry from artisan (requires API checkout):
  *   node scripts/check-permission-codes.mjs --from-artisan
  */

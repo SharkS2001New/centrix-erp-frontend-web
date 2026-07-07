@@ -20,9 +20,12 @@ import { LpoDetailOrderItemsTable } from "@/components/lpo/lpo-detail-order-item
 import { LpoDetailActions, LpoWorkflowPanel } from "@/components/lpo/lpo-workflow";
 import { LpoAttachmentsPanel } from "@/components/lpo/lpo-attachments-panel";
 import { PaymentStatusBadge } from "@/components/suppliers/suppliers-shared";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
+import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
 export default function LpoDetailPage() {
   const params = useParams();
+  const confirm = useConfirm();
   const lpoNo = params.lpoNo;
 
   const [data, setData] = useState(null);
@@ -57,7 +60,10 @@ export default function LpoDetailPage() {
   }, [load]);
 
   async function deleteLpo() {
-    if (!confirm("Delete this purchase order? This cannot be undone.")) return;
+    const ok = await confirm(
+      confirmDeleteOptions("this purchase order", "Delete this purchase order? This cannot be undone."),
+    );
+    if (!ok) return;
     setDeletingLpo(true);
     setError(null);
     try {
@@ -70,7 +76,8 @@ export default function LpoDetailPage() {
   }
 
   async function deleteInvoice(id) {
-    if (!confirm("Delete this supplier invoice?")) return;
+    const ok = await confirm(confirmDeleteOptions("this supplier invoice"));
+    if (!ok) return;
     setDeletingId(id);
     try {
       await apiRequest(`/lpo-supplier-invoices/${id}`, { method: "DELETE" });
@@ -110,11 +117,16 @@ export default function LpoDetailPage() {
 
   return (
     <div className="theme-workspace min-h-full">
+      <AppBreadcrumb
+        items={[
+          { label: "Purchase orders", href: "/lpo" },
+          {
+            label: lpo ? lpoDisplayNumber(lpo) : "Purchase order",
+          },
+        ]}
+      />
       <div className="mb-6">
-        <Link href="/lpo" className="theme-link text-sm hover:underline">
-          ← Back to purchase orders
-        </Link>
-        <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="theme-heading text-xl font-medium">
               {lpo ? lpoDisplayNumber(lpo) : "Purchase order"}

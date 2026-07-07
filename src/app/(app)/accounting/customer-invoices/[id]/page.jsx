@@ -15,6 +15,7 @@ import {
   PrimaryButton,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
 export default function CustomerInvoiceDetailPage() {
   const params = useParams();
@@ -130,9 +131,12 @@ export default function CustomerInvoiceDetailPage() {
           : `Customer #${invoice.customer_num} · ${date(invoice.invoice_date)}`
       }
     >
-      <Link href="/accounting/customer-invoices" className="text-sm text-[#185FA5] hover:underline">
-        ← All invoices
-      </Link>
+      <AppBreadcrumb
+        items={[
+          { label: "Customer invoices", href: "/accounting/customer-invoices" },
+          { label: invoice.invoice_number },
+        ]}
+      />
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border bg-white p-4 shadow-sm">

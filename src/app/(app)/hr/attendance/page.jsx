@@ -20,6 +20,7 @@ import {
 import { HrSelectField } from "@/components/hr/hr-crud-page";
 import { HrTimePickerField } from "@/components/hr/hr-time-picker";
 import { FieldRepHrLinkageBanner } from "@/components/hr/field-rep-hr-linkage-banner";
+import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 import {
   composeEmployeeDisplayName,
   computeAttendanceHours,
@@ -81,6 +82,7 @@ function attendanceRecordMatchesSearch(record, query) {
 
 export default function HrAttendancePage() {
   const { capabilities, hasPermission } = useAuth();
+  const confirm = useConfirm();
   const canManageSettings = hasPermission(P.hr.manage);
   const companyMobileEnabled = isCompanyMobileAttendanceEnabled(capabilities?.module_settings);
   const fieldAttendanceEnabled = shouldShowMobileFieldAttendance(capabilities);
@@ -274,7 +276,8 @@ export default function HrAttendancePage() {
   }
 
   async function deleteRecord(record) {
-    if (!confirm("Delete this attendance record?")) return;
+    const ok = await confirm(confirmDeleteOptions("this attendance record"));
+    if (!ok) return;
     try {
       await apiRequest(`/employee-attendance/${record.id}`, { method: "DELETE" });
       await loadHistory();

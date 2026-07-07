@@ -19,10 +19,12 @@ import {
   useCustomerFormResources,
   validateCustomerLocationFields,
 } from "@/components/customers/customer-form";
+import { confirmRemoveOptions, useConfirm } from "@/lib/use-confirm";
 
 export default function EditCustomerPage() {
   const params = useParams();
   const router = useRouter();
+  const confirm = useConfirm();
   const customerNum = params.id;
   const { capabilities } = useAuth();
   const routeCustomersOnly = isRouteOnlyCustomers(capabilities);
@@ -80,6 +82,8 @@ export default function EditCustomerPage() {
   }
 
   async function removeShopImage() {
+    const ok = await confirm(confirmRemoveOptions("the shop photo"));
+    if (!ok) return;
     setRemovingShopImage(true);
     setFormError(null);
     try {

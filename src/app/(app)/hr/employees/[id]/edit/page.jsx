@@ -16,10 +16,12 @@ import {
   useEmployeeFormResources,
 } from "@/components/hr/employee-form";
 import { composeEmployeeDisplayName } from "@/components/hr/hr-shared";
+import { confirmRemoveOptions, useConfirm } from "@/lib/use-confirm";
 
 export default function EditEmployeePage() {
   const params = useParams();
   const router = useRouter();
+  const confirm = useConfirm();
   const employeeId = params.id;
 
   const {
@@ -78,6 +80,8 @@ export default function EditEmployeePage() {
   }
 
   async function removePhoto() {
+    const ok = await confirm(confirmRemoveOptions("the employee photo"));
+    if (!ok) return;
     setRemovingPhoto(true);
     setFormError(null);
     try {

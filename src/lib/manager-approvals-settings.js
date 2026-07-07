@@ -6,20 +6,87 @@ export const APPROVAL_REQUEST_EVENTS = [
   {
     id: "supplier_return",
     label: "Supplier return submitted",
-    description: "Notifies users with purchasing manager permission when a supplier return is submitted for approval.",
+    description: "Notifies users with Purchasing manage when a supplier return is submitted for approval.",
     module: "customers_suppliers",
   },
   {
     id: "customer_return",
     label: "Customer return submitted",
-    description: "Notifies sales managers when a customer return is submitted for approval.",
+    description: "Notifies users with Sales manage when a customer return is submitted for approval.",
+    module: "sales",
+  },
+  {
+    id: "discount",
+    label: "Discount approval requested",
+    description:
+      "Notifies users with Administration → Discount approvals → Approve (or legacy Sales → Order actions → Approve).",
+    module: "sales",
+  },
+  {
+    id: "order_cancel",
+    label: "Order cancellation requested",
+    description: "Notifies users with Sales → Order actions → Approve or Sales manage.",
     module: "sales",
   },
   {
     id: "leave",
     label: "Leave request submitted",
-    description: "Notifies HR managers when an employee submits a leave request.",
+    description: "Notifies users with HR → Leave → Approve or HR manage.",
     module: "hr_payroll",
+  },
+  {
+    id: "cash_advance",
+    label: "Cash advance submitted",
+    description: "Notifies users with HR → Cash advances → Approve or HR manage.",
+    module: "hr_payroll",
+  },
+  {
+    id: "payroll_run",
+    label: "Payroll run submitted",
+    description: "Notifies users with HR → Payroll runs → Approve or HR manage.",
+    module: "hr_payroll",
+  },
+  {
+    id: "lpo_approval",
+    label: "LPO submitted for approval",
+    description: "Notifies users with Purchasing → Purchase orders (LPO) → Approve.",
+    module: "customers_suppliers",
+  },
+  {
+    id: "stock_adjustment",
+    label: "Stock adjustment submitted",
+    description: "Notifies users with Inventory manage when adjustment approval is enabled.",
+    module: "inventory",
+  },
+  {
+    id: "stock_transfer",
+    label: "Stock transfer submitted",
+    description: "Notifies users with Inventory manage when transfer approval is enabled.",
+    module: "inventory",
+  },
+  {
+    id: "damage_write_off",
+    label: "Damage / write-off submitted",
+    description: "Notifies users with Inventory manage when write-off approval is enabled.",
+    module: "inventory",
+  },
+  {
+    id: "stock_take_completion",
+    label: "Stock take completion submitted",
+    description: "Notifies users with Inventory → Stock take → Approve or Inventory manage.",
+    module: "inventory",
+  },
+  {
+    id: "journal_entry",
+    label: "Journal entry posting requested",
+    description: "Notifies users with Accounting → Journal entries → Approve or Accounting manage.",
+    module: "accounting",
+  },
+  {
+    id: "expense_action",
+    label: "Expense create/delete requested",
+    description: "Notifies users with Accounting manage.",
+    module: "accounting",
   },
 ];
 

@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/contexts/theme-context";
 import { PosSessionProvider } from "@/contexts/pos-session-context";
 import { ConfirmProvider } from "@/contexts/confirm-context";
 import { AppToaster } from "@/components/shared/app-toaster";
+import { NotificationRealtimeProvider } from "@/components/realtime/notification-realtime-provider";
 
 export function Providers({ children }) {
   return (
@@ -14,8 +15,10 @@ export function Providers({ children }) {
         <LockScreenProvider>
           <PosSessionProvider>
             <ConfirmProvider>
-              {children}
-              <AppToaster />
+              <NotificationRealtimeProvider>
+                {children}
+                <AppToaster />
+              </NotificationRealtimeProvider>
             </ConfirmProvider>
           </PosSessionProvider>
         </LockScreenProvider>

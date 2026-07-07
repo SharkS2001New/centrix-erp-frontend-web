@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { isAdminUser } from "@/components/hr/hr-shared";
+import { canApproveSupplierReturns } from "@/lib/approval-permissions";
 import {
   CatalogPageShell,
   Field,
@@ -25,6 +25,7 @@ import { SUPPLIER_RETURN_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { formatPoNumber, lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import { printSupplierReturn } from "@/components/suppliers/supplier-return-print";
 import { formatReturnQty, formatStockLocationLabel, statusBadgeClass } from "@/components/suppliers/supplier-return-shared";
+import { ApprovalReminderButton } from "@/components/approval-reminder-button";
 
 
 const COLS = [
@@ -218,17 +219,29 @@ function ReturnActionDialog({
   );
 }
 
-function ReturnOrderActions({ row, busyId, onRequestAction, onPrint }) {
+function ReturnOrderActions({ row, busyId, onRequestAction, onPrint, onReminded }) {
   const disabled = busyId === row.id;
   const hasActions =
-    row.can_approve || row.can_reject || row.can_delete || row.can_edit || onPrint;
+    row.can_approve ||
+    row.can_reject ||
+    row.can_delete ||
+    row.can_edit ||
+    row.action_request?.can_remind ||
+    onPrint;
 
   if (!hasActions) {
     return <span className="text-xs text-slate-400">—</span>;
   }
 
   return (
-    <div className="flex items-center justify-end gap-0.5">
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      {row.action_request?.can_remind ? (
+        <ApprovalReminderButton
+          actionRequestId={row.action_request.id}
+          canRemind
+          onReminded={onReminded}
+        />
+      ) : null}
       {onPrint ? (
         <IconActionButton
           label="Print return"
@@ -329,7 +342,7 @@ function LineItemsTable({ row }) {
 }
 
 export default function SupplierReturnsPage() {
-  const { user, organization, generalSettings } = useAuth();
+  const { user, organization, generalSettings, hasPermission, capabilities } = useAuth();
   const searchParams = useSearchParams();
   const presetSupplier = searchParams.get("supplier_id") ?? searchParams.get("supplier");
 
@@ -523,7 +536,10 @@ export default function SupplierReturnsPage() {
   );
 
   const pendingCount = filtered.filter((r) => r.status === "pending_approval").length;
-  const adminHint = isAdminUser(user) ? null : " Approve/reject requires a senior (admin) user.";
+  const canApproveReturns = canApproveSupplierReturns({ hasPermission, capabilities });
+  const approvalHint = canApproveReturns
+    ? null
+    : " Approve/reject requires Purchasing manage or an assigned purchasing approver role.";
 
   return (
     <CatalogPageShell
@@ -631,7 +647,7 @@ export default function SupplierReturnsPage() {
         <p className="mb-4 text-sm text-slate-600">
           Showing {filtered.length} return{filtered.length === 1 ? "" : "s"}
           {pendingCount > 0 ? ` · ${pendingCount} awaiting approval` : ""}
-          {adminHint ?? ""}
+          {approvalHint ?? ""}
           {" · "}
           Products expanded by default — use − to collapse
         </p>
@@ -773,6 +789,7 @@ export default function SupplierReturnsPage() {
                               busyId={busyId}
                               onRequestAction={openActionDialog}
                               onPrint={handlePrint}
+                              onReminded={loadData}
                             />
                           </td>
                         </tr>

@@ -27,6 +27,7 @@ import {
   EntityPhotoDisplay,
   employeePhotoFileUrl,
 } from "@/components/media/entity-photo-display";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
 export default function EmployeeProfilePage() {
   const params = useParams();
@@ -106,11 +107,14 @@ export default function EmployeeProfilePage() {
 
   return (
     <div className="theme-workspace min-h-full">
-      <div className="mb-6">
-        <Link href="/hr/employees" className="text-sm text-[#185FA5] hover:text-[#144f8a]">
-          ← Back to employees
-        </Link>
-      </div>
+      <AppBreadcrumb
+        items={[
+          { label: "Employees", href: "/hr/employees" },
+          {
+            label: employee ? composeEmployeeDisplayName(employee) : "Employee",
+          },
+        ]}
+      />
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading employee…</p>

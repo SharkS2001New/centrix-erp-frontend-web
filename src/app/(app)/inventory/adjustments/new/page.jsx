@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
 import { isStockAdjustmentApprovalEnabled } from "@/lib/sales-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
@@ -18,6 +19,7 @@ import {
   useInventoryCatalogMaps,
 } from "@/components/inventory/inventory-product-lines";
 import { InventoryPageShell } from "@/components/inventory/inventory-shared";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { damageQtyToBase } from "@/lib/stock-uom";
 
 function lineFromProduct(product) {
@@ -94,8 +96,7 @@ export default function RecordStockAdjustmentPage() {
     const noteText = notes.trim();
     const useRequestFlow =
       isStockAdjustmentApprovalEnabled(capabilities?.module_settings) &&
-      !user?.is_admin &&
-      !hasPermission("inventory.manage");
+      !canDirectInventoryAction({ hasPermission, capabilities });
     try {
       for (const line of toPost) {
         const uom = uomById.get(line.unit_id);
@@ -132,11 +133,12 @@ export default function RecordStockAdjustmentPage() {
       title="Adjust stock"
       subtitle="Increase or decrease shop or store quantities without a purchase order or stock take"
     >
-      <div className="mb-4">
-        <Link href="/inventory/adjustments" className="text-sm text-[#185FA5] hover:underline">
-          ← Back to adjustments
-        </Link>
-      </div>
+      <AppBreadcrumb
+        items={[
+          { label: "Stock adjustments", href: "/inventory/adjustments" },
+          { label: "New adjustment" },
+        ]}
+      />
 
       <form
         onSubmit={submit}

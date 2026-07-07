@@ -47,6 +47,7 @@ export const NAV_BOOTSTRAP_ICONS = {
   shield: "shield-lock",
   archive: "archive",
   chat: "chat-dots",
+  bell: "bell",
 };
 
 const HREF_ICON_FALLBACK_RULES = [
@@ -87,6 +88,7 @@ const SECTION_FALLBACK_ICON = {
   admin_users: "users",
   admin_finance_tax: "accounting",
   admin_settings: "settings",
+  account: "bell",
   users: "users",
   settings: "settings",
 };

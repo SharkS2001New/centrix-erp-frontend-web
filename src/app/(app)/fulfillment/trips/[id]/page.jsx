@@ -7,7 +7,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useConfirm } from "@/lib/use-confirm";
 import { P } from "@/lib/permission-codes";
-import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import {
   CatalogPageShell,
   Field,
@@ -475,9 +475,9 @@ export default function TripDetailPage() {
         ) : null
       }
     >
-      <AdminBreadcrumb
+      <AppBreadcrumb
         items={[
-          { label: "Fulfillment", href: "/fulfillment" },
+          { label: "Distribution", href: "/fulfillment" },
           { label: "Trips", href: "/fulfillment/trips" },
           { label: trip.trip_code },
         ]}

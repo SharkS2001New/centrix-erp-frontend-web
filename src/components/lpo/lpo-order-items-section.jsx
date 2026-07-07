@@ -18,6 +18,7 @@ import {
 } from "./lpo-shared";
 import { StockTakeCountInputs } from "@/components/inventory/stock-take-count-inputs";
 import { uomStockTakeLevels } from "@/lib/uom-packaging";
+import { useConfirm } from "@/lib/use-confirm";
 
 export function LpoOrderItemsSection({
   lines,
@@ -26,6 +27,7 @@ export function LpoOrderItemsSection({
   vatById,
   readOnly = false,
 }) {
+  const confirm = useConfirm();
   const [selectedLineIndex, setSelectedLineIndex] = useState(null);
 
   const totals = useMemo(() => computeLpoTotals(lines), [lines]);
@@ -40,9 +42,15 @@ export function LpoOrderItemsSection({
     setSelectedLineIndex(null);
   }
 
-  function clearAllLines() {
+  async function clearAllLines() {
     if (!lines.length) return;
-    if (!confirm("Remove all items from this purchase order?")) return;
+    const ok = await confirm({
+      title: "Remove all items",
+      message: "Remove all items from this purchase order?",
+      confirmLabel: "Remove all",
+      destructive: true,
+    });
+    if (!ok) return;
     onChange([]);
     setSelectedLineIndex(null);
   }

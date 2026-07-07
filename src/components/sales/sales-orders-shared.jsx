@@ -15,6 +15,7 @@ import {
   discountRevisionConfirmationMessage,
   isDiscountRevisionSubmitted,
 } from "@/lib/discount-approval-messages";
+import { ApprovalReminderButton } from "@/components/approval-reminder-button";
 import {
   alignStatusToWorkflow,
   pipelineStatusIndex,
@@ -844,6 +845,12 @@ export function OrderListTableRow({
                     Reject
                   </button>
                 </div>
+              ) : sale?.action_request?.can_remind ? (
+                <ApprovalReminderButton
+                  actionRequestId={requestId}
+                  canRemind={sale.action_request.can_remind}
+                  className="ml-auto shrink-0"
+                />
               ) : requestId ? (
                 <span className="ml-auto shrink-0 text-xs text-[var(--theme-text-subtle)]">Awaiting approver</span>
               ) : (

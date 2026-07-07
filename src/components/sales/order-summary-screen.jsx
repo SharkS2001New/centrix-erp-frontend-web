@@ -35,6 +35,8 @@ import { isLegacySale, saleLineProductLabel } from "@/lib/sale-line-items";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { orderDocumentPrintLabel, defaultOrderListPrintDocumentType, isOrderCancellationApprovalEnabled, shouldShowSalesDiscountColumn } from "@/lib/sales-settings";
+import { canDirectCancelOrders } from "@/lib/approval-permissions";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import {
   disposePrintWindow,
   openBlankPrintWindow,
@@ -615,7 +617,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     () => canCancelOrder(sale, saleWorkflow, capabilities),
     [sale, saleWorkflow, capabilities],
   );
-  const canDirectCancel = Boolean(user?.is_admin || hasPermission("sales.manage"));
+  const canDirectCancel = canDirectCancelOrders({ hasPermission, capabilities });
   const canRequestCancellation = useMemo(
     () =>
       cancellationAllowed &&
@@ -798,18 +800,17 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const customerProfileHref = sale?.customer_num ? `/customers/${sale.customer_num}` : null;
   const customerCardName = customer?.customer_name ?? saleCustomerLabel(sale);
   const orderDateRaw = sale?.completed_at ?? sale?.created_at;
+  const breadcrumbParent = orderDetailBreadcrumbParent(backHref);
+  const orderCrumbLabel = sale ? `Order #${formatOrderNumber(sale)}` : "Order …";
 
   return (
     <div className="theme-workspace min-h-full">
-      <nav className="theme-subtext mb-4 text-sm" aria-label="Breadcrumb">
-        <Link href={backHref} className="theme-link">
-          Sales orders
-        </Link>
-        <span className="mx-2 opacity-40">›</span>
-        <span className="theme-heading font-medium">
-          Order #{sale ? formatOrderNumber(sale) : "…"}
-        </span>
-      </nav>
+      <AppBreadcrumb
+        items={[
+          breadcrumbParent,
+          { label: orderCrumbLabel },
+        ]}
+      />
 
       {loading ? (
         <p className="theme-subtext text-sm">Loading order…</p>

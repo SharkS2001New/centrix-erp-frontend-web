@@ -17,6 +17,8 @@ import {
   salesManagerApprovalsPayload,
   visibleApprovalRequestEvents,
 } from "@/lib/manager-approvals-settings";
+import { PERMISSIONS_DEPLOY_CHECKLIST } from "@/lib/rbac-guidance";
+import { RbacHelpButton } from "@/components/admin/rbac-help";
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
   return (
@@ -176,11 +178,14 @@ export function ManagerApprovalsSettingsPanel({
     <form onSubmit={handleSave}>
       <section className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-6 shadow-sm">
         <h2 className="theme-heading text-lg font-medium">Manager approvals</h2>
-        <p className="theme-subtext mt-1 text-sm">
-          Internal system notifications for managers — supplier returns, customer returns, discount requests,
-          cancellations, stock adjustments, LPOs, payroll, and journal entries. Configure the in-app bell
-          under Notifications → In-app alerts; optional email copies below.
-        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <p className="theme-subtext text-sm">
+            Internal system notifications for managers — supplier returns, customer returns, discount requests,
+            cancellations, stock adjustments, LPOs, payroll, and journal entries. Configure the in-app bell
+            under Notifications → In-app alerts; optional email copies below.
+          </p>
+          <RbacHelpButton />
+        </div>
 
         {loading ? (
           <p className="theme-subtext mt-4 text-sm">Loading…</p>
@@ -247,6 +252,20 @@ export function ManagerApprovalsSettingsPanel({
                         }))
                       }
                     />
+                    {form.discount_approval_enabled ? (
+                      <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-4 py-3">
+                        <p className="theme-heading text-sm font-medium">Who can approve discounts?</p>
+                        <p className="theme-subtext mt-1 text-xs">
+                          Assign{" "}
+                          <span className="font-medium text-slate-700">
+                            Administration → Discount approvals → Approve
+                          </span>{" "}
+                          on the approver&apos;s role under Admin → Roles. Users with the legacy{" "}
+                          <span className="font-medium text-slate-700">Sales → Order actions → Approve</span>{" "}
+                          permission can also approve discount requests.
+                        </p>
+                      </div>
+                    ) : null}
                     {form.discount_approval_enabled ? (
                       <Field label="Reference threshold (%) — legacy">
                         <input
@@ -348,6 +367,15 @@ export function ManagerApprovalsSettingsPanel({
                 <ApprovalAlertsFields form={form} setForm={setForm} />
               </div>
             ) : null}
+
+            <div className="space-y-2 rounded-xl border border-[var(--theme-border)] p-4">
+              <h3 className="theme-heading text-sm font-semibold">After deploy or upgrade</h3>
+              <ul className="theme-subtext list-disc space-y-1 pl-5 text-xs">
+                {PERMISSIONS_DEPLOY_CHECKLIST.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
           </div>
         )}
 

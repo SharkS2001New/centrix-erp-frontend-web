@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
-import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import {
   PLATFORM_INVOICE_DESIGN_TEMPLATES,
   PLATFORM_INVOICE_STATUSES,
@@ -288,7 +288,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <AdminBreadcrumb
+        <AppBreadcrumb
           items={[
             { label: "Platform", href: "/platform" },
             { label: "Invoices", href: "/platform/invoices" },

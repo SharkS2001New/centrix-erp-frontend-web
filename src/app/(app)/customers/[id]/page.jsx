@@ -18,6 +18,7 @@ import {
   saleLineProductLabel,
 } from "@/lib/sale-line-items";
 import { formatOrderNumber, orderSourceLabel } from "@/lib/sales";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -128,15 +129,19 @@ export default function CustomerDetailPage() {
 
   return (
     <div className="theme-workspace min-h-full">
+      <AppBreadcrumb
+        items={[
+          { label: "Customers", href: "/customers" },
+          {
+            label: customer
+              ? customer.customer_name || `Customer #${customer.customer_num}`
+              : "Customer",
+          },
+        ]}
+      />
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <Link
-            href="/customers"
-            className="text-sm text-[#185FA5] hover:text-[#144f8a]"
-          >
-            ← Back to customers
-          </Link>
-          <h1 className="mt-2 text-xl font-medium text-slate-900">Customer Profile</h1>
+          <h1 className="text-xl font-medium text-slate-900">Customer Profile</h1>
         </div>
         {customer && (
           <div className="flex flex-wrap items-center gap-2">

@@ -16,7 +16,7 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
-import { isAdminUser } from "@/components/hr/hr-shared";
+import { canManageSalesReturns } from "@/lib/approval-permissions";
 import {
   CustomerReturnActionDialog,
   CustomerReturnRowActions,
@@ -37,7 +37,7 @@ export default function SalesReturnsPage() {
     "Please wait while the credit note is submitted to the KRA device…",
   );
   const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
-  const canManageReturns = Boolean(user?.is_admin || hasPermission?.("sales.manage"));
+  const canManageReturns = canManageSalesReturns({ hasPermission, capabilities });
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -221,9 +221,9 @@ export default function SalesReturnsPage() {
     [generalSettings, kraDeviceEnabled, organization, user],
   );
 
-  const adminHint = isAdminUser(user) || canManageReturns
+  const manageHint = canManageReturns
     ? null
-    : " Approve, reject, edit, and delete require sales management permission.";
+    : " Approve, reject, edit, and delete require Sales manage or an assigned sales approver role.";
 
   return (
     <div className="theme-workspace min-h-full">
@@ -231,7 +231,7 @@ export default function SalesReturnsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Returns</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Manage product returns and refunds.{adminHint}
+            Manage product returns and refunds.{manageHint}
           </p>
         </div>
         <PrimaryLink href="/sales/returns/new">Create return</PrimaryLink>

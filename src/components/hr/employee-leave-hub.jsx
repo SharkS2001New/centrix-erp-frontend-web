@@ -9,7 +9,9 @@ import {
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { useAuth } from "@/contexts/auth-context";
-import { P } from "@/lib/permission-codes";
+import { canApproveLeaveRequests } from "@/lib/approval-permissions";
+import { ApprovalReminderButton } from "@/components/approval-reminder-button";
+import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 import {
   buildOffDayBody,
   buildOffDayEmptyForm,
@@ -53,8 +55,9 @@ export function EmployeeLeaveHub({
   highlightLeaveDayId = null,
 }) {
   const { user, capabilities, hasPermission } = useAuth();
+  const confirm = useConfirm();
   const organizationId = user?.organization_id ?? capabilities?.organization_id;
-  const canApproveLeave = hasPermission(P.hr.leave.approve);
+  const canApproveLeave = canApproveLeaveRequests({ hasPermission, capabilities });
 
   const [balances, setBalances] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -206,7 +209,10 @@ export function EmployeeLeaveHub({
   }
 
   async function remove(row) {
-    if (!confirm("Delete this leave / off day record?")) return;
+    const ok = await confirm(
+      confirmDeleteOptions("this leave / off day record", "Delete this leave / off day record?"),
+    );
+    if (!ok) return;
     try {
       await apiRequest(`/employee-leave-days/${row.id}`, { method: "DELETE" });
       await load();
@@ -339,6 +345,15 @@ export function EmployeeLeaveHub({
                                   {record.approval_status ?? "approved"}
                                 </td>
                                 <td className="px-3 py-2 text-right">
+                                  {record.action_request?.can_remind ? (
+                                    <span className="mr-3 inline-block">
+                                      <ApprovalReminderButton
+                                        actionRequestId={record.action_request.id}
+                                        canRemind
+                                        onReminded={load}
+                                      />
+                                    </span>
+                                  ) : null}
                                   {canApproveLeave && record.approval_status === "pending" ? (
                                     <>
                                       <button

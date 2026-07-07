@@ -41,6 +41,7 @@ import {
   printStockTakeSheet,
   stockTakePrintRowsFromLines,
 } from "@/components/inventory/stock-take-print";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
 function varianceClass(value) {
   if (value > 0) return "text-emerald-700";
@@ -417,10 +418,13 @@ export default function StockTakeSessionPage() {
         </div>
       }
     >
+      <AppBreadcrumb
+        items={[
+          { label: "Stock take", href: "/inventory/stock-take" },
+          { label: session?.session_code ?? "Session" },
+        ]}
+      />
       <div className="mb-4 space-y-1">
-        <Link href="/inventory/stock-take" className="text-sm text-[#185FA5] hover:underline">
-          ← Back to sessions
-        </Link>
         {!readOnly ? (
           <p className="text-sm text-slate-500">
             Count using each product&apos;s UOM packaging — full packs, outers (if set), or base

@@ -2,7 +2,6 @@
 
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { buildGrnFromStockReceiptGroup } from "@/lib/grn-document";
@@ -19,6 +18,7 @@ import {
   InventoryTableShell,
   productDisplayName,
 } from "@/components/inventory/inventory-shared";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
 export default function StockReceiptDetailPage() {
   const params = useParams();
@@ -128,11 +128,12 @@ export default function StockReceiptDetailPage() {
         ) : null
       }
     >
-      <div className="mb-4">
-        <Link href="/inventory/receipts" className="text-sm text-[#185FA5] hover:underline">
-          ← Back to stock receipts
-        </Link>
-      </div>
+      <AppBreadcrumb
+        items={[
+          { label: "Stock receipts", href: "/inventory/receipts" },
+          { label: ref },
+        ]}
+      />
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading receipt…</p>

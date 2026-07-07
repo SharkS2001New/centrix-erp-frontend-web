@@ -13,6 +13,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { EntityPhotoDisplay } from "@/components/media/entity-photo-display";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { confirmRemoveOptions, useConfirm } from "@/lib/use-confirm";
 
 const EMPTY_FORM = {
   org_name: "",
@@ -53,6 +54,7 @@ const readOnlyClass = `${inputClassName()} cursor-not-allowed bg-slate-50 text-s
 
 export default function AdminCompanyPage() {
   const { organization: authOrganization, loading: authLoading } = useAuth();
+  const confirm = useConfirm();
   const {
     organizationId: platformOrgId,
     organizationPath,
@@ -151,6 +153,8 @@ export default function AdminCompanyPage() {
 
   async function handleRemoveLogo() {
     if (!orgId || !hasLogo) return;
+    const ok = await confirm(confirmRemoveOptions("the company logo"));
+    if (!ok) return;
     setUploadingLogo(true);
     try {
       await apiRequest(logoUploadPath(orgId), { method: "DELETE" });

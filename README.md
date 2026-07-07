@@ -39,6 +39,20 @@ Login: **admin** / **password** (demo seeder).
 | `NEXT_PUBLIC_USE_COOKIE_AUTH` | `false` locally; set `true` in production with API `WEB_COOKIE_AUTH=true` |
 | `NEXT_PUBLIC_COMPANY_CODE` | `DEMO` (organization for this install) |
 | `NEXT_PUBLIC_COMPANY_NAME` | Optional display name on login screen |
+| `NEXT_PUBLIC_REVERB_APP_KEY` | Reverb app key (must match API `REVERB_APP_KEY`) |
+| `NEXT_PUBLIC_REVERB_HOST` | WebSocket host (e.g. `localhost` or your API host) |
+| `NEXT_PUBLIC_REVERB_PORT` | WebSocket port (default `8080` local, `443` HTTPS) |
+| `NEXT_PUBLIC_REVERB_SCHEME` | `http` or `https` |
+
+### Real-time notifications (optional)
+
+With [Laravel Reverb](https://laravel.com/docs/reverb) enabled on the API, the notification bell updates instantly when another user triggers an approval.
+
+**API** (`.env`): set `BROADCAST_CONNECTION=reverb` and matching `REVERB_*` keys, then run `php artisan reverb:start`.
+
+**Web** (`.env.local`): set the `NEXT_PUBLIC_REVERB_*` variables from `.env.local.example`.
+
+If Reverb is not configured, the app keeps using polling (no breakage).
 
 Set the same organization on the API with `APP_COMPANY_CODE=DEMO` in `.env` so login can omit company code server-side.
 
@@ -74,6 +88,24 @@ Branding constants live in `src/lib/branding.js` (`Centrix ERP`, `Alpac Software
 ```bash
 npm run build
 npm start
+```
+
+## Testing
+
+Vitest covers RBAC helpers (`approval-permissions`, route access). CI runs `npm test` on every pull request.
+
+```bash
+npm test              # run once (CI)
+npm run test:watch    # local watch mode
+npm run lint
+```
+
+When the API sibling checkout is available, verify frontend permission codes against the backend registry:
+
+```bash
+npm run test:permissions
+# refresh snapshot after registry changes on the API:
+npm run sync:permission-snapshot
 ```
 
 ## Docker

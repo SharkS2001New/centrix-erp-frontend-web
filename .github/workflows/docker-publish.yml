@@ -67,6 +67,10 @@ jobs:
             NEXT_PUBLIC_USE_COOKIE_AUTH=${{ vars.NEXT_PUBLIC_USE_COOKIE_AUTH || 'true' }}
             NEXT_PUBLIC_COMPANY_CODE=${{ vars.NEXT_PUBLIC_COMPANY_CODE || 'DEMO' }}
             NEXT_PUBLIC_COMPANY_NAME=${{ vars.NEXT_PUBLIC_COMPANY_NAME || 'Centrix ERP' }}
+            NEXT_PUBLIC_REVERB_APP_KEY=${{ vars.NEXT_PUBLIC_REVERB_APP_KEY || 'centrix-prod-reverb' }}
+            NEXT_PUBLIC_REVERB_HOST=${{ vars.NEXT_PUBLIC_REVERB_HOST || 'centrixapi.betsassured.com' }}
+            NEXT_PUBLIC_REVERB_PORT=${{ vars.NEXT_PUBLIC_REVERB_PORT || '443' }}
+            NEXT_PUBLIC_REVERB_SCHEME=${{ vars.NEXT_PUBLIC_REVERB_SCHEME || 'https' }}
 
       - name: Check out pitchpredk3ssetup
         if: github.event_name != 'pull_request'

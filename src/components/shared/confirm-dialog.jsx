@@ -24,8 +24,13 @@ export function ConfirmDialog({
       if (event.key === "Escape" && !busy) onCancel();
     }
 
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [open, busy, onCancel]);
 
   if (!open || typeof document === "undefined") return null;

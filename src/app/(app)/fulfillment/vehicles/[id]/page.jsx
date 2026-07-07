@@ -12,6 +12,7 @@ import {
   vehicleEmoji,
   vehicleRecentTrips,
 } from "@/components/fulfillment/fulfillment-shared";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
 export default function VehicleProfilePage() {
   const params = useParams();
@@ -57,11 +58,17 @@ export default function VehicleProfilePage() {
 
   return (
     <div className="theme-workspace min-h-full">
-      <div className="mb-6">
-        <Link href="/fulfillment/vehicles" className="text-sm text-[#185FA5] hover:text-[#144f8a]">
-          ← Back to vehicles
-        </Link>
-      </div>
+      <AppBreadcrumb
+        items={[
+          { label: "Distribution", href: "/fulfillment" },
+          { label: "Vehicles", href: "/fulfillment/vehicles" },
+          {
+            label: vehicle
+              ? vehicle.registration_number || vehicle.vehicle_name || "Vehicle"
+              : "Vehicle",
+          },
+        ]}
+      />
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading vehicle…</p>

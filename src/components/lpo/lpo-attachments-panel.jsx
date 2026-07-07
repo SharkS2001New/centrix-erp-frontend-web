@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchBlob, apiRequest, apiUploadForm, ApiError, lpoAttachmentFilePath } from "@/lib/api";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
 function formatFileSize(bytes) {
   if (!bytes) return "";
@@ -12,6 +13,7 @@ function formatFileSize(bytes) {
 }
 
 export function LpoAttachmentsPanel({ lpoNo }) {
+  const confirm = useConfirm();
   const [rows, setRows] = useState([]);
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -74,7 +76,8 @@ export function LpoAttachmentsPanel({ lpoNo }) {
   }
 
   async function remove(id) {
-    if (!confirm("Delete this attachment?")) return;
+    const ok = await confirm(confirmDeleteOptions("this attachment"));
+    if (!ok) return;
     await apiRequest(`/lpo-attachments/${id}`, { method: "DELETE" });
     await load();
   }

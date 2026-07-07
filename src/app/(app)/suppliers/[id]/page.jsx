@@ -17,6 +17,7 @@ import {
   formatSupplierKes,
 } from "@/components/suppliers/suppliers-shared";
 import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
 const TABS = [
   { id: "overview", label: "Overview" },
@@ -77,15 +78,19 @@ export default function SupplierProfilePage() {
 
   return (
     <div className="theme-workspace min-h-full">
+      <AppBreadcrumb
+        items={[
+          { label: "Suppliers", href: "/suppliers" },
+          {
+            label: supplier
+              ? supplier.supplier_name || supplier.supplier_code || "Supplier"
+              : "Supplier",
+          },
+        ]}
+      />
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <Link
-            href="/suppliers"
-            className="text-sm text-[#185FA5] hover:text-[#144f8a]"
-          >
-            ← Back to suppliers
-          </Link>
-          <h1 className="mt-2 text-xl font-medium text-slate-900">Supplier Profile</h1>
+          <h1 className="text-xl font-medium text-slate-900">Supplier Profile</h1>
         </div>
         {supplier && (
           <div className="flex flex-wrap gap-2">

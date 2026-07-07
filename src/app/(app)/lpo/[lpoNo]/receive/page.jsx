@@ -34,6 +34,7 @@ import {
   lpoOrderDate,
 } from "@/components/lpo/lpo-shared";
 import { baseToDisplayQty } from "@/lib/stock-uom";
+import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
 function formatReturnedCell(line, uom) {
   const returned = lpoLineReturnedQty(line);
@@ -183,11 +184,18 @@ export default function LpoReceivePage() {
 
   return (
     <div className="theme-workspace min-h-full">
+      <AppBreadcrumb
+        items={[
+          { label: "Purchase orders", href: "/lpo" },
+          {
+            label: lpo ? lpoDisplayNumber(lpo) : "Purchase order",
+            href: `/lpo/${lpoNo}`,
+          },
+          { label: "Receive stock" },
+        ]}
+      />
       <div className="mb-6">
-        <Link href={`/lpo/${lpoNo}`} className="text-base text-[#185FA5] hover:text-[#144f8a]">
-          ← Back to {lpo ? lpoDisplayNumber(lpo) : "PO"}
-        </Link>
-        <h1 className="mt-2 text-2xl font-medium text-slate-900">Stock receipt from LPO</h1>
+        <h1 className="text-2xl font-medium text-slate-900">Stock receipt from LPO</h1>
         <p className="mt-1 text-base text-slate-500">
           Posts inventory and updates received quantities on the purchase order.
         </p>
