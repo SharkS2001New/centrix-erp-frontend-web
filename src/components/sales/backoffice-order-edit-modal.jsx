@@ -101,6 +101,8 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
         isDiscountApprovalEnabled(capabilities?.module_settings),
     );
   }, [capabilities]);
+
+  const totals = useMemo(() => {
     return lines.reduce((sum, line) => {
       const oldQty = Number(line.quantity);
       const draftQty = Number(line.draftQty);
