@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { hasAuthSession, getStoredUser } from "@/lib/auth-storage";
+import { hasAuthSession, getStoredUser, readCachedAuthSnapshot } from "@/lib/auth-storage";
+import { buildAccessContext, resolveHomePath } from "@/lib/access-control";
 import { ApiError, isSessionConflictError } from "@/lib/api";
 import {
   clearStoredCompanyCode,
@@ -56,9 +57,21 @@ function LoginForm() {
   useEffect(() => {
     if (hasAuthSession()) {
       const storedUser = getStoredUser();
-      router.replace(
-        storedUser?.must_change_password ? "/change-password" : "/dashboard",
+      if (storedUser?.must_change_password) {
+        router.replace("/change-password");
+        return;
+      }
+      const cached = readCachedAuthSnapshot();
+      const homePath = resolveHomePath(
+        buildAccessContext({
+          user: storedUser ?? cached?.user ?? null,
+          organization: cached?.organization ?? null,
+          capabilities: cached?.capabilities ?? null,
+          isSuperAdmin: () =>
+            Boolean(storedUser?.is_super_admin || cached?.capabilities?.is_super_admin),
+        }),
       );
+      router.replace(homePath);
     }
   }, [router]);
 

@@ -283,7 +283,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
               </p>
             ) : null}
             <PrimaryButton type="button" showIcon={false} disabled={saving || loading || !lines.length} onClick={() => void handleSave()}>
-              {saving ? "Saving…" : isEditableResubmit ? "Save & resubmit" : "Save"}
+              {saving ? "Saving…" : isEditableResubmit ? "Save & Resubmit for approval" : "Save"}
             </PrimaryButton>
           </div>
         </div>

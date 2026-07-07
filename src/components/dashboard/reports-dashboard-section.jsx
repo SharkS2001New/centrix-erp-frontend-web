@@ -18,6 +18,7 @@ import {
   DashboardPanel,
 } from "@/components/dashboard/dashboard-shared";
 import { WORKSPACE_DASHBOARD_SCOPES } from "@/lib/workspace-reports";
+import { P } from "@/lib/permission-codes";
 
 export function useReportsDashboard({ fromDate, toDate, branchId, enabled = true }) {
   const [dashboard, setDashboard] = useState(null);
@@ -48,8 +49,11 @@ export function ReportsDashboardSection({
   compact = false,
   workspaceScope = "backoffice",
   onError,
+  enabled: enabledProp,
 }) {
-  const { user, isOrgWide } = useAuth();
+  const { user, isOrgWide, hasPermission } = useAuth();
+  const canViewReports = hasPermission(P.reports.hub.view);
+  const enabled = enabledProp ?? canViewReports;
   const defaults = defaultDashboardDateRange();
   const branchInitialized = useRef(false);
   const [fromDate, setFromDate] = useState(controlledFrom ?? defaults.from);
@@ -65,13 +69,15 @@ export function ReportsDashboardSection({
     fromDate: effectiveFrom,
     toDate: effectiveTo,
     branchId: effectiveBranch,
+    enabled,
   });
 
   useEffect(() => {
-    if (error) onError?.(error);
-  }, [error, onError]);
+    if (error && enabled) onError?.(error);
+  }, [error, enabled, onError]);
 
   useEffect(() => {
+    if (!enabled) return;
     apiRequest("/branches", { searchParams: { per_page: 100 } })
       .then((res) => setBranches(res.data ?? []))
       .catch(() => setBranches([]));
@@ -81,7 +87,7 @@ export function ReportsDashboardSection({
     if (controlledBranch !== undefined || !user || branchInitialized.current) return;
     branchInitialized.current = true;
     setBranchId(defaultReportBranchId(user, isOrgWide));
-  }, [user, isOrgWide, controlledBranch]);
+  }, [user, isOrgWide, controlledBranch, enabled]);
 
   const topProductSegments = useMemo(
     () =>
@@ -137,6 +143,10 @@ export function ReportsDashboardSection({
   const showSalesTrend = scope.charts.includes("sales_trend");
   const showTopProducts = scope.charts.includes("top_products");
   const showSalesByChannel = scope.charts.includes("sales_by_channel");
+
+  if (!enabled) {
+    return null;
+  }
 
   if (!kpiItems.length && !showSalesTrend && !showTopProducts && !showSalesByChannel) {
     return null;
