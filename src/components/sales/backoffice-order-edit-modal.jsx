@@ -124,6 +124,8 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     setLines((prev) => prev.map((line) => (line.id === lineId ? { ...line, draftDiscount: value } : line)));
   }
 
+  const isEditableResubmit = sale?.status === "editable";
+
   async function handleSave() {
     if (!sale?.id) return;
     const payload = [];
@@ -181,7 +183,9 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
               Edit order {formatOrderNumber(sale)}
             </h2>
             <p className="theme-subtext mt-0.5 text-xs">
-              Adjust quantities{discountEditEnabled ? " and discounts" : ""} and save.
+              {isEditableResubmit
+                ? "Adjust pricing per manager guidance, then save to resubmit for approval."
+                : `Adjust quantities${discountEditEnabled ? " and discounts" : ""} and save.`}
             </p>
           </div>
           <button
@@ -279,7 +283,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
               </p>
             ) : null}
             <PrimaryButton type="button" showIcon={false} disabled={saving || loading || !lines.length} onClick={() => void handleSave()}>
-              {saving ? "Saving…" : "Save"}
+              {saving ? "Saving…" : isEditableResubmit ? "Save & resubmit" : "Save"}
             </PrimaryButton>
           </div>
         </div>

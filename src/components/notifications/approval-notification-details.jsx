@@ -21,6 +21,10 @@ function approvalReason(item) {
   return value || null;
 }
 
+function advisedDiscountApplied(item) {
+  return item?.action_request?.payload?.advised_discount_applied === true;
+}
+
 function approvalProof(item) {
   return item?.action_request?.payload?.proof ?? null;
 }
@@ -187,7 +191,9 @@ export function ApprovalNotificationDetails({ item }) {
       ) : null}
       {reason ? (
         <p className="text-slate-700 dark:text-slate-200">
-          <span className="font-medium text-slate-500 dark:text-slate-400">Reason: </span>
+          <span className="font-medium text-slate-500 dark:text-slate-400">
+            {advisedDiscountApplied(item) ? "Update confirmation: " : "Reason: "}
+          </span>
           {reason}
         </p>
       ) : null}

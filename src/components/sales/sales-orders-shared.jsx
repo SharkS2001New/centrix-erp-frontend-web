@@ -756,6 +756,9 @@ export function OrderListTableRow({
   const items = detail?.items ?? sale.items ?? [];
   const approvalReason =
     sale?.action_request?.reason ?? sale?.discount_approval_reason ?? null;
+  const advisedDiscountApplied =
+    sale?.advised_discount_applied === true
+    || sale?.action_request?.payload?.advised_discount_applied === true;
   const requestId = sale?.action_request?.id ?? null;
   const canResolveRequest =
     Boolean(requestId) &&
@@ -794,7 +797,9 @@ export function OrderListTableRow({
           <td colSpan={columnCount} className="px-4 py-2.5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="min-w-0 text-left text-sm text-[var(--theme-text-muted)]">
-                <span className="font-medium text-[var(--theme-text)]">Reason for approval: </span>
+                <span className="font-medium text-[var(--theme-text)]">
+                  {advisedDiscountApplied ? "Update confirmation: " : "Reason for approval: "}
+                </span>
                 {approvalReason?.trim() ? approvalReason : "No reason provided"}
               </p>
               {canResolveRequest ? (
