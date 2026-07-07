@@ -22,6 +22,9 @@ export const QUICKBOOKS_DEFAULTS = {
 
 export const MPESA_DEFAULTS = {
   enable_stk_push: true,
+  enable_c2b_reconciliation: false,
+  auto_apply_order_reference: true,
+  payment_account_hint: "Enter your order number (e.g. S12)",
   env: "sandbox",
   consumer_key: "",
   consumer_secret: "",
@@ -106,6 +109,11 @@ export function isStkPushEnabled(moduleSettings, capabilities = null) {
   return parseBooleanSetting(finance.mpesa.enable_stk_push, true);
 }
 
+export function isMpesaC2bReconciliationEnabled(moduleSettings) {
+  const finance = mergeFinanceSettings(moduleSettings);
+  return parseBooleanSetting(finance.mpesa?.enable_c2b_reconciliation, false);
+}
+
 export function accountingMode(moduleSettings) {
   const finance = mergeFinanceSettings(moduleSettings);
   return finance.accounting_mode === "external" ? "external" : "native";
@@ -186,6 +194,9 @@ export function financeFormFromApi(res) {
     accounting_sync_direction: finance.accounting_sync_direction ?? "export",
     mpesa: {
       enable_stk_push: mpesa.enable_stk_push !== false,
+      enable_c2b_reconciliation: Boolean(mpesa.enable_c2b_reconciliation),
+      auto_apply_order_reference: mpesa.auto_apply_order_reference !== false,
+      payment_account_hint: String(mpesa.payment_account_hint ?? "Enter your order number (e.g. S12)"),
       env: mpesa.env === "live" ? "live" : "sandbox",
       consumer_key: String(mpesa.consumer_key ?? ""),
       consumer_secret: String(mpesa.consumer_secret ?? ""),
@@ -267,6 +278,9 @@ export function financePayloadFromForm(form, options = {}) {
     payload.mpesa = {
       ...mpesa,
       enable_stk_push: Boolean(form.mpesa?.enable_stk_push),
+      enable_c2b_reconciliation: Boolean(form.mpesa?.enable_c2b_reconciliation),
+      auto_apply_order_reference: form.mpesa?.auto_apply_order_reference !== false,
+      payment_account_hint: String(form.mpesa?.payment_account_hint ?? "").trim(),
       consumer_key: mpesa.consumer_key.trim(),
       shortcode: mpesa.shortcode.trim(),
       till_number: mpesa.till_number.trim(),

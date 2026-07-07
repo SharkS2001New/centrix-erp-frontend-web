@@ -74,12 +74,14 @@ export const ORDER_SOURCE_FILTER_OPTIONS = [
   { value: "backoffice", label: "Backoffice" },
   { value: "pos", label: "Point of sale" },
   { value: "mobile", label: "Mobile" },
+  { value: "whatsapp", label: "WhatsApp" },
 ];
 
-export function orderSourceFilterOptions(includeMobile = true, includePos = true) {
+export function orderSourceFilterOptions(includeMobile = true, includePos = true, includeWhatsapp = false) {
   return ORDER_SOURCE_FILTER_OPTIONS.filter((o) => {
     if (o.value === "mobile" && !includeMobile) return false;
     if (o.value === "pos" && !includePos) return false;
+    if (o.value === "whatsapp" && !includeWhatsapp) return false;
     return true;
   });
 }

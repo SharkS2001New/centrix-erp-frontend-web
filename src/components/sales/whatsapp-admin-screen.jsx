@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { useAuth } from "@/contexts/auth-context";
 import { isPlatformWhatsappEnabled } from "@/lib/platform-org-features";
+import { isWhatsappOrdersConfigured, isWhatsappOrdersEnabledForOrg } from "@/lib/whatsapp-settings";
+import { formatOrderNumber } from "@/lib/sales";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
 const TABS = [
@@ -24,9 +27,24 @@ function formatWhen(value) {
   }
 }
 
+function OrderLink({ saleId, orderNum }) {
+  if (!saleId) return <span className="text-slate-400">—</span>;
+  return (
+    <Link
+      href={`/sales/orders/${saleId}`}
+      className="font-medium text-[#185FA5] hover:underline"
+      onClick={(event) => event.stopPropagation()}
+    >
+      {orderNum != null ? formatOrderNumber(orderNum) : `Order #${saleId}`}
+    </Link>
+  );
+}
+
 export function WhatsappAdminScreen() {
   const { capabilities } = useAuth();
   const searchParams = useSearchParams();
+  const highlightedHandoffId = searchParams.get("handoff");
+  const handoffRowRef = useRef(null);
   const [tab, setTab] = useState("conversations");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -37,10 +55,13 @@ export function WhatsappAdminScreen() {
   const [messages, setMessages] = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const enabled = isPlatformWhatsappEnabled(capabilities);
+  const platformEnabled = isPlatformWhatsappEnabled(capabilities);
+  const orgEnabled = isWhatsappOrdersEnabledForOrg(capabilities);
+  const configured = isWhatsappOrdersConfigured(capabilities);
+  const orgReady = orgEnabled && configured;
 
   const loadList = useCallback(async () => {
-    if (!enabled) return;
+    if (!platformEnabled) return;
     setLoading(true);
     setError(null);
     try {
@@ -57,7 +78,7 @@ export function WhatsappAdminScreen() {
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, [platformEnabled]);
 
   const loadConversation = useCallback(async (id) => {
     setDetailLoading(true);
@@ -77,17 +98,21 @@ export function WhatsappAdminScreen() {
   }, [loadList]);
 
   useEffect(() => {
-    const handoffId = searchParams.get("handoff");
     const conversationId = searchParams.get("conversation");
     if (conversationId) {
       setTab("conversations");
       void loadConversation(Number(conversationId));
       return;
     }
-    if (handoffId) {
+    if (highlightedHandoffId) {
       setTab("handoffs");
     }
-  }, [searchParams, loadConversation]);
+  }, [searchParams, loadConversation, highlightedHandoffId]);
+
+  useEffect(() => {
+    if (tab !== "handoffs" || !highlightedHandoffId || loading) return;
+    handoffRowRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [tab, highlightedHandoffId, handoffs, loading]);
 
   async function resolveHandoff(id) {
     try {
@@ -101,7 +126,7 @@ export function WhatsappAdminScreen() {
 
   const openHandoffs = useMemo(() => handoffs.filter((h) => h.status === "open"), [handoffs]);
 
-  if (!enabled) {
+  if (!platformEnabled) {
     return (
       <CatalogPageShell title="WhatsApp" subtitle="Customer WhatsApp ordering is not enabled for this organization.">
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
@@ -117,6 +142,16 @@ export function WhatsappAdminScreen() {
       subtitle="Customer conversations, help requests from chat, and failed order attempts."
     >
       <AdminBreadcrumb items={[{ label: "Sales", href: "/sales/orders" }, { label: "WhatsApp" }]} />
+
+      {!orgReady ? (
+        <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+          WhatsApp ordering is not fully configured for this organization.{" "}
+          <Link href="/admin/settings" className="font-medium text-[#185FA5] hover:underline">
+            Complete WhatsApp settings
+          </Link>{" "}
+          (enable ordering, Meta credentials, and bot user) before customers can place orders.
+        </p>
+      ) : null}
 
       <div className="mb-4 flex flex-wrap gap-2">
         {TABS.map((item) => (
@@ -149,6 +184,7 @@ export function WhatsappAdminScreen() {
                   <th className="px-4 py-2">Customer</th>
                   <th className="px-4 py-2">Phone</th>
                   <th className="px-4 py-2">State</th>
+                  <th className="px-4 py-2">Last order</th>
                   <th className="px-4 py-2">Last message</th>
                 </tr>
               </thead>
@@ -162,6 +198,9 @@ export function WhatsappAdminScreen() {
                     <td className="px-4 py-2">{row.customer?.customer_name ?? "—"}</td>
                     <td className="px-4 py-2 font-mono text-xs">{row.phone}</td>
                     <td className="px-4 py-2">{row.state}</td>
+                    <td className="px-4 py-2">
+                      <OrderLink saleId={row.last_sale_id} orderNum={row.last_order_num} />
+                    </td>
                     <td className="px-4 py-2 text-slate-600">{formatWhen(row.last_message_at)}</td>
                   </tr>
                 ))}
@@ -174,6 +213,15 @@ export function WhatsappAdminScreen() {
 
           <div className="theme-panel rounded-xl border p-4 shadow-sm">
             <h3 className="text-sm font-semibold text-slate-900">Message log</h3>
+            {selectedConversation?.last_sale_id ? (
+              <p className="mt-2 text-xs text-slate-600">
+                Last order:{" "}
+                <OrderLink
+                  saleId={selectedConversation.last_sale_id}
+                  orderNum={selectedConversation.last_order_num}
+                />
+              </p>
+            ) : null}
             {detailLoading ? <p className="mt-3 text-sm text-slate-500">Loading…</p> : null}
             {!detailLoading && !selectedConversation ? (
               <p className="mt-3 text-sm text-slate-500">Select a conversation to view messages.</p>
@@ -215,27 +263,48 @@ export function WhatsappAdminScreen() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {handoffs.map((row) => (
-                <tr key={row.id}>
-                  <td className="px-4 py-2">{row.customer?.customer_name ?? "—"}</td>
-                  <td className="px-4 py-2 font-mono text-xs">{row.phone}</td>
-                  <td className="px-4 py-2 text-slate-600">{row.customer_message ?? "—"}</td>
-                  <td className="px-4 py-2 text-slate-600">{formatWhen(row.created_at)}</td>
-                  <td className="px-4 py-2 text-right">
-                    {row.status === "open" ? (
-                      <button
-                        type="button"
-                        className="text-sm font-medium text-[#185FA5] hover:underline"
-                        onClick={() => void resolveHandoff(row.id)}
-                      >
-                        Mark resolved
-                      </button>
-                    ) : (
-                      <span className="text-xs text-emerald-700">Resolved</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {handoffs.map((row) => {
+                const isHighlighted = highlightedHandoffId && String(row.id) === highlightedHandoffId;
+                return (
+                  <tr
+                    key={row.id}
+                    ref={isHighlighted ? handoffRowRef : null}
+                    className={isHighlighted ? "bg-amber-50" : undefined}
+                  >
+                    <td className="px-4 py-2">{row.customer?.customer_name ?? "—"}</td>
+                    <td className="px-4 py-2 font-mono text-xs">{row.phone}</td>
+                    <td className="px-4 py-2 text-slate-600">{row.customer_message ?? "—"}</td>
+                    <td className="px-4 py-2 text-slate-600">{formatWhen(row.created_at)}</td>
+                    <td className="px-4 py-2 text-right">
+                      <div className="flex flex-col items-end gap-1">
+                        {row.conversation_id ? (
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-[#185FA5] hover:underline"
+                            onClick={() => {
+                              setTab("conversations");
+                              void loadConversation(row.conversation_id);
+                            }}
+                          >
+                            View conversation
+                          </button>
+                        ) : null}
+                        {row.status === "open" ? (
+                          <button
+                            type="button"
+                            className="text-sm font-medium text-[#185FA5] hover:underline"
+                            onClick={() => void resolveHandoff(row.id)}
+                          >
+                            Mark resolved
+                          </button>
+                        ) : (
+                          <span className="text-xs text-emerald-700">Resolved</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {handoffs.length === 0 ? (
@@ -250,16 +319,33 @@ export function WhatsappAdminScreen() {
             <thead className="border-b bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-2">Phone</th>
+                <th className="px-4 py-2">Customer</th>
                 <th className="px-4 py-2">Error</th>
                 <th className="px-4 py-2">When</th>
+                <th className="px-4 py-2" />
               </tr>
             </thead>
             <tbody className="divide-y">
               {failures.map((row) => (
                 <tr key={row.id}>
                   <td className="px-4 py-2 font-mono text-xs">{row.from_phone ?? "—"}</td>
+                  <td className="px-4 py-2">{row.conversation?.customer?.customer_name ?? "—"}</td>
                   <td className="px-4 py-2 text-red-800">{row.body ?? row.meta?.error ?? "—"}</td>
                   <td className="px-4 py-2 text-slate-600">{formatWhen(row.created_at)}</td>
+                  <td className="px-4 py-2 text-right">
+                    {row.conversation_id ? (
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-[#185FA5] hover:underline"
+                        onClick={() => {
+                          setTab("conversations");
+                          void loadConversation(row.conversation_id);
+                        }}
+                      >
+                        View conversation
+                      </button>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>

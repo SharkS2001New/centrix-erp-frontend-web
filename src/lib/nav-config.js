@@ -513,6 +513,16 @@ const NAV_SECTION_DEFINITIONS = [
         group: "General ledger",
       },
       {
+        href: "/accounting/mpesa-reconciliation",
+        label: "M-Pesa reconciliation",
+        module: "accounting",
+        permissionAny: [
+          P.accounting.bank_reconciliation.view,
+          P.payments.sale_payments.view,
+        ],
+        group: "General ledger",
+      },
+      {
         href: "/accounting/trial-balance",
         label: "Trial balance",
         module: "accounting",

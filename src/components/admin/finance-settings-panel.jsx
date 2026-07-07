@@ -541,6 +541,36 @@ export function FinanceSettingsPanel({ saving, setSaving, setError, setMessage, 
               />
             </div>
 
+            <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+              <Toggle
+                label="Enable paybill / till reconciliation"
+                description="Match incoming C2B M-Pesa payments to sales orders using the account reference customers enter at paybill or till. Unmatched payments appear on Accounting → M-Pesa reconciliation."
+                checked={Boolean(mpesa.enable_c2b_reconciliation)}
+                onChange={(v) => setMpesa("enable_c2b_reconciliation", v)}
+              />
+              {mpesa.enable_c2b_reconciliation ? (
+                <>
+                  <Toggle
+                    label="Auto-apply when order reference matches"
+                    description="When a customer pays with their order number (e.g. S12) and the amount matches the balance, apply the payment automatically. Lower-confidence matches stay in the reconciliation queue."
+                    checked={mpesa.auto_apply_order_reference !== false}
+                    onChange={(v) => setMpesa("auto_apply_order_reference", v)}
+                  />
+                  <Field label="Customer account reference hint">
+                    <input
+                      className={inputClassName()}
+                      value={mpesa.payment_account_hint ?? ""}
+                      onChange={(e) => setMpesa("payment_account_hint", e.target.value)}
+                      placeholder="Enter your order number (e.g. S12)"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Tell customers what to enter in the paybill account number field. Use your order number format, e.g. S12 for order #12.
+                    </p>
+                  </Field>
+                </>
+              ) : null}
+            </div>
+
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <Field label="Environment">
                 <select

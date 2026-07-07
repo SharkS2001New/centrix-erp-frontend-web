@@ -48,6 +48,7 @@ import {
 } from "@/components/sales/sales-orders-shared";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
+import { isPlatformWhatsappEnabled } from "@/lib/platform-org-features";
 import { routeOrderSourcesText } from "@/lib/distribution-settings";
 import {
   defaultOrderListPrintDocumentType,
@@ -104,6 +105,7 @@ export default function SalesOrdersListScreen({
     [capabilities],
   );
   const includeMobileOrders = isOrgMobileSalesEnabled(capabilities);
+  const includeWhatsappOrders = isPlatformWhatsappEnabled(capabilities);
   const queueConfig = useMemo(
     () => resolveSalesOrderQueue(queueSlug, orgWorkflow, { includeMobile: includeMobileOrders, capabilities }),
     [queueSlug, orgWorkflow, includeMobileOrders, capabilities],
@@ -113,8 +115,8 @@ export default function SalesOrdersListScreen({
     [orgWorkflow],
   );
   const sourceOptions = useMemo(
-    () => orderSourceFilterOptions(includeMobileOrders, true),
-    [includeMobileOrders],
+    () => orderSourceFilterOptions(includeMobileOrders, true, includeWhatsappOrders),
+    [includeMobileOrders, includeWhatsappOrders],
   );
 
   const [rows, setRows] = useState([]);

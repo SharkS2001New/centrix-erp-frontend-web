@@ -31,6 +31,7 @@ export const ORDER_SOURCE_LABELS = {
   mobile: "Mobile",
   backoffice: "Backoffice",
   backend: "Backoffice",
+  whatsapp: "WhatsApp",
 };
 
 export function orderSourceLabel(source, fallbackChannel) {
