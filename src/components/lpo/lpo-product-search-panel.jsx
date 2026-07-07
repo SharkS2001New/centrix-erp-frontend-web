@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { inputClassName } from "@/components/catalog/catalog-shared";
+import { TABLE_ROW_CHECKBOX_CLASS } from "@/components/catalog/table-row-selection";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { enrichProductForLpo } from "./lpo-product-utils";
 
@@ -22,8 +23,11 @@ export function LpoProductSearchPanel({
   uomById,
   vatById = new Map(),
   onSelect,
+  onSelectMany,
   actionLabel = "Add selected to order",
   hint = "Click a row to select, double-click or use the button to add.",
+  /** "multiple" allows checkboxes and batch add; "single" keeps one highlighted row. */
+  selectionMode = "single",
   /** When false, search stays open after choose (caller shows add bar). */
   clearOnSelect = true,
   disabled = false,
@@ -36,9 +40,11 @@ export function LpoProductSearchPanel({
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState(null);
   const [selectedCode, setSelectedCode] = useState(null);
+  const [selectedCodes, setSelectedCodes] = useState(() => new Set());
   const searchSeq = useRef(0);
   const uomByIdRef = useRef(uomById);
   const vatByIdRef = useRef(vatById);
+  const multiple = selectionMode === "multiple";
 
   useEffect(() => {
     uomByIdRef.current = uomById;
@@ -82,13 +88,36 @@ export function LpoProductSearchPanel({
     return () => clearTimeout(t);
   }, [query, searchProducts]);
 
+  useEffect(() => {
+    if (!multiple) return;
+    const visible = new Set(results.map((p) => p.product_code));
+    setSelectedCodes((prev) => {
+      const next = new Set([...prev].filter((code) => visible.has(code)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [results, multiple]);
+
   function clearProductSearch() {
     searchSeq.current += 1;
     setSearching(false);
     setQuery("");
     setResults([]);
     setSelectedCode(null);
+    setSelectedCodes(new Set());
     setSearchError(null);
+  }
+
+  function toggleProductSelection(productCode) {
+    if (multiple) {
+      setSelectedCodes((prev) => {
+        const next = new Set(prev);
+        if (next.has(productCode)) next.delete(productCode);
+        else next.add(productCode);
+        return next;
+      });
+      return;
+    }
+    setSelectedCode(productCode);
   }
 
   function confirmSelect(product) {
@@ -98,9 +127,49 @@ export function LpoProductSearchPanel({
   }
 
   function confirmSelected() {
+    if (multiple) {
+      const selected = results.filter((p) => selectedCodes.has(p.product_code));
+      if (!selected.length || disabled) return;
+      if (typeof onSelectMany === "function") {
+        onSelectMany(selected);
+      } else {
+        for (const product of selected) {
+          onSelect?.(product);
+        }
+      }
+      if (clearOnSelect) clearProductSearch();
+      else setSelectedCodes(new Set());
+      return;
+    }
+
     const product = results.find((p) => p.product_code === selectedCode);
     if (product) confirmSelect(product);
   }
+
+  const selectedCount = multiple ? selectedCodes.size : selectedCode ? 1 : 0;
+  const resultCodes = useMemo(() => results.map((p) => p.product_code), [results]);
+  const allResultsSelected =
+    multiple && resultCodes.length > 0 && resultCodes.every((code) => selectedCodes.has(code));
+  const someResultsSelected =
+    multiple &&
+    resultCodes.some((code) => selectedCodes.has(code)) &&
+    !allResultsSelected;
+
+  function toggleAllResults(checked) {
+    setSelectedCodes((prev) => {
+      const next = new Set(prev);
+      for (const code of resultCodes) {
+        if (checked) next.add(code);
+        else next.delete(code);
+      }
+      return next;
+    });
+  }
+
+  const addButtonLabel =
+    multiple && selectedCount > 1
+      ? `Add ${selectedCount} selected to order`
+      : actionLabel;
 
   const scrollClass = compactHalfPage
     ? "max-h-[min(42vh,400px)] overflow-auto"
@@ -146,6 +215,22 @@ export function LpoProductSearchPanel({
           <table className="theme-table w-full border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-[var(--theme-surface-muted)]">
               <tr className="theme-table-head-row text-left font-semibold">
+                {multiple ? (
+                  <th className="w-10 px-2 py-2">
+                    <input
+                      type="checkbox"
+                      className={TABLE_ROW_CHECKBOX_CLASS}
+                      checked={allResultsSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someResultsSelected;
+                      }}
+                      onChange={(e) => toggleAllResults(e.target.checked)}
+                      disabled={disabled || !resultCodes.length}
+                      title="Select all results"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </th>
+                ) : null}
                 <th className="px-2 py-2">Product Name</th>
                 <th className="px-2 py-2 text-right">Current Stock in Shop</th>
                 <th className="px-2 py-2 text-right">Current Stock in Store</th>
@@ -154,22 +239,36 @@ export function LpoProductSearchPanel({
             <tbody>
               {showEmpty ? (
                 <tr>
-                  <td colSpan={3} className="theme-subtext px-2 py-6 text-center">
+                  <td colSpan={multiple ? 4 : 3} className="theme-subtext px-2 py-6 text-center">
                     {searching && query.trim() ? "Searching…" : emptyMessage}
                   </td>
                 </tr>
               ) : (
                 results.map((product) => {
-                  const selected = selectedCode === product.product_code;
+                  const selected = multiple
+                    ? selectedCodes.has(product.product_code)
+                    : selectedCode === product.product_code;
                   return (
                     <tr
                       key={product.product_code}
-                      onClick={() => setSelectedCode(product.product_code)}
+                      onClick={() => toggleProductSelection(product.product_code)}
                       onDoubleClick={() => confirmSelect(product)}
                       className={`theme-table-body-row cursor-pointer border-b border-[var(--theme-border)] ${
                         selected ? "bg-[var(--theme-primary-subtle)]" : "hover:bg-[var(--theme-hover)]"
                       }`}
                     >
+                      {multiple ? (
+                        <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className={TABLE_ROW_CHECKBOX_CLASS}
+                            checked={selected}
+                            onChange={() => toggleProductSelection(product.product_code)}
+                            disabled={disabled}
+                            aria-label={`Select ${product.product_name}`}
+                          />
+                        </td>
+                      ) : null}
                       <td className="px-2 py-2 font-medium">
                         {product.product_name}
                         <span className="theme-subtext mt-0.5 block font-mono text-[10px] font-normal">
@@ -193,10 +292,10 @@ export function LpoProductSearchPanel({
       <button
         type="button"
         onClick={confirmSelected}
-        disabled={!selectedCode || disabled}
+        disabled={selectedCount === 0 || disabled}
         className="theme-primary-btn mt-2 w-full shrink-0 rounded-lg py-2 text-sm font-medium shadow-sm disabled:opacity-40"
       >
-        {actionLabel}
+        {addButtonLabel}
       </button>
       <p className="theme-subtext mt-1 shrink-0 text-[11px]">{hint}</p>
     </div>

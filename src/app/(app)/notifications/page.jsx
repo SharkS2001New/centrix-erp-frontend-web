@@ -15,6 +15,7 @@ import { NotificationActionLink } from "@/components/notifications/notification-
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
 import { DiscountRejectionDialog } from "@/components/discount-rejection-dialog";
+import { discountApprovalLinesFromSource } from "@/lib/advised-discount-lines";
 
 const BUCKETS = [
   { key: "pending_approvals", label: "Pending approvals" },
@@ -218,6 +219,7 @@ export default function NotificationsPage() {
       requestId,
       notificationId: item.id,
       isDiscount: isDiscountApprovalNotification(item),
+      approvalLines: discountApprovalLinesFromSource(item),
     });
   }, []);
 
@@ -232,6 +234,7 @@ export default function NotificationsPage() {
             : {
                 reason: payload.reason.trim(),
                 discount_guidance: payload.discount_guidance,
+                advised_discount_lines: payload.advised_discount_lines,
                 advised_discount_amount: payload.advised_discount_amount,
               };
         await apiRequest(`/action-requests/${rejectTarget.requestId}/reject`, {
@@ -356,6 +359,7 @@ export default function NotificationsPage() {
         <DiscountRejectionDialog
           open={Boolean(rejectTarget)}
           busy={Boolean(rejectTarget && busyId === rejectTarget.notificationId)}
+          approvalLines={rejectTarget?.approvalLines ?? []}
           onSubmit={submitRejectItem}
           onCancel={() => {
             if (!busyId) setRejectTarget(null);

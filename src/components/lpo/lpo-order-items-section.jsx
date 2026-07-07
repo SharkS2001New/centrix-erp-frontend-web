@@ -59,27 +59,43 @@ export function LpoOrderItemsSection({
   }
 
   function addProduct(product) {
-    const code = product.product_code;
-    const existingIndex = lines.findIndex((l) => l.product_code === code);
-    if (existingIndex >= 0) {
-      const row = lines[existingIndex];
-      const uom = uomById.get(row.unit_id) ?? product.uom;
-      const counts = {
-        ...(row.order_counts ??
-          orderCountsObjectFromPackQty(Number(row.ordered_qty) || 0, uom)),
-      };
-      const primaryKey = uomStockTakeLevels(uom)[0]?.key ?? "full";
-      counts[primaryKey] = String((Number(counts[primaryKey]) || 0) + 1);
-      const packQty = orderCountsToPackQty(counts, uom);
-      updateLine(existingIndex, {
-        order_counts: counts,
-        ordered_qty: formatPackQtyString(packQty),
-      });
-      setSelectedLineIndex(existingIndex);
-      return;
+    addProducts([product]);
+  }
+
+  function addProducts(products) {
+    if (!products.length) return;
+
+    let nextLines = [...lines];
+    let lastIndex = selectedLineIndex;
+
+    for (const product of products) {
+      const code = product.product_code;
+      const existingIndex = nextLines.findIndex((l) => l.product_code === code);
+      if (existingIndex >= 0) {
+        const row = nextLines[existingIndex];
+        const uom = uomById.get(row.unit_id) ?? product.uom;
+        const counts = {
+          ...(row.order_counts ??
+            orderCountsObjectFromPackQty(Number(row.ordered_qty) || 0, uom)),
+        };
+        const primaryKey = uomStockTakeLevels(uom)[0]?.key ?? "full";
+        counts[primaryKey] = String((Number(counts[primaryKey]) || 0) + 1);
+        const packQty = orderCountsToPackQty(counts, uom);
+        nextLines[existingIndex] = {
+          ...row,
+          order_counts: counts,
+          ordered_qty: formatPackQtyString(packQty),
+        };
+        lastIndex = existingIndex;
+        continue;
+      }
+
+      nextLines = [...nextLines, lineFromEnrichedProduct(product)];
+      lastIndex = nextLines.length - 1;
     }
-    onChange([...lines, lineFromEnrichedProduct(product)]);
-    setSelectedLineIndex(lines.length);
+
+    onChange(nextLines);
+    setSelectedLineIndex(lastIndex);
   }
 
   return (
@@ -90,6 +106,9 @@ export function LpoOrderItemsSection({
             uomById={uomById}
             vatById={vatById}
             onSelect={addProduct}
+            onSelectMany={addProducts}
+            selectionMode="multiple"
+            hint="Select one or more products, then add them to the order. Double-click a row to add it immediately."
           />
         </div>
       ) : null}

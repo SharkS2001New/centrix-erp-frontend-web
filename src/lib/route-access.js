@@ -196,7 +196,34 @@ export function canAccessRoute(pathname, ctx) {
     rule.exact ? pathname === rule.href : pathname === rule.href || pathname.startsWith(`${rule.href}/`),
   );
 
-  if (!item) return true;
+  if (!item) {
+    if (pathname === "/profile" || pathname.startsWith("/profile/")) {
+      return true;
+    }
+
+    if (pathname === "/notifications" || pathname.startsWith("/notifications/")) {
+      return true;
+    }
+
+    const strictModulePrefixes = [
+      "/sales/",
+      "/inventory/",
+      "/fulfillment/",
+      "/hr/",
+      "/accounting/",
+      "/lpo/",
+      "/customers/",
+      "/products/",
+      "/suppliers/",
+      "/purchasing/",
+    ];
+
+    if (strictModulePrefixes.some((prefix) => pathname.startsWith(prefix))) {
+      return false;
+    }
+
+    return true;
+  }
 
   return isNavItemVisible(item, ctx);
 }

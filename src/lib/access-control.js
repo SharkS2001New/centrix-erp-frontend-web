@@ -40,6 +40,19 @@ export function resolveHasPermission({ user, organization, capabilities, code, i
   return capabilities?.permissions?.[code] ?? false;
 }
 
+/** Whether the user may create or edit payment records (invoices, customer payments, sale payments). */
+export function canManagePayments({ hasPermission = () => false } = {}) {
+  return (
+    hasPermission("payments.manage") ||
+    hasPermission(P.payments.customer_invoices.create) ||
+    hasPermission(P.payments.customer_invoices.edit) ||
+    hasPermission(P.payments.customer_payments.create) ||
+    hasPermission(P.payments.customer_payments.edit) ||
+    hasPermission(P.payments.sale_payments.create) ||
+    hasPermission(P.payments.sale_payments.edit)
+  );
+}
+
 export function buildAccessContext({
   user,
   organization,

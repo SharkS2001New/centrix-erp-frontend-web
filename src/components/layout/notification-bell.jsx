@@ -14,6 +14,7 @@ import { ApprovalNotificationDetails, isDiscountApprovalNotification, isDiscount
 import { NotificationActionLink } from "@/components/notifications/notification-action-link";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
 import { DiscountRejectionDialog } from "@/components/discount-rejection-dialog";
+import { discountApprovalLinesFromSource } from "@/lib/advised-discount-lines";
 
 const POLL_MS = 60_000;
 
@@ -268,6 +269,7 @@ export function NotificationBell() {
       requestId,
       notificationId: item.id,
       isDiscount: isDiscountApprovalNotification(item),
+      approvalLines: discountApprovalLinesFromSource(item),
     });
   }, []);
 
@@ -282,6 +284,7 @@ export function NotificationBell() {
             : {
                 reason: payload.reason.trim(),
                 discount_guidance: payload.discount_guidance,
+                advised_discount_lines: payload.advised_discount_lines,
                 advised_discount_amount: payload.advised_discount_amount,
               };
         await apiRequest(`/action-requests/${rejectTarget.requestId}/reject`, {
@@ -436,6 +439,7 @@ export function NotificationBell() {
         <DiscountRejectionDialog
           open={Boolean(rejectTarget)}
           busy={Boolean(rejectTarget && busyId === rejectTarget.notificationId)}
+          approvalLines={rejectTarget?.approvalLines ?? []}
           onSubmit={submitRejectItem}
           onCancel={() => {
             if (!busyId) setRejectTarget(null);

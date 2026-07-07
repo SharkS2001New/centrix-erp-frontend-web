@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { canManagePayments } from "@/lib/access-control";
 import { P } from "@/lib/permission-codes";
 import { useOrgFormat } from "@/lib/org-format";
 import { normalizeCustomerInvoice } from "@/lib/customer-invoices";
@@ -21,8 +22,7 @@ export default function CustomerInvoiceDetailPage() {
   const { hasPermission, user } = useAuth();
   const { currency, date } = useOrgFormat();
   const canPay =
-    hasPermission(P.payments.customer_payments.manage)
-    || hasPermission(P.payments.customer_invoices.manage)
+    canManagePayments({ hasPermission })
     || hasPermission(P.accounting.accounts_receivable.view);
 
   const [invoice, setInvoice] = useState(null);

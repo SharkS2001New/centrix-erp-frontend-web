@@ -41,9 +41,9 @@ export const P = {
     statements: { view: "customers.statements.view" },
   },
   payments: {
-    sale_payments: { view: "payments.sale_payments.view", manage: "payments.sale_payments.manage" },
-    customer_invoices: { view: "payments.customer_invoices.view", manage: "payments.customer_invoices.manage" },
-    customer_payments: { view: "payments.customer_payments.view", manage: "payments.customer_payments.manage" },
+    sale_payments: { view: "payments.sale_payments.view", create: "payments.sale_payments.create", edit: "payments.sale_payments.edit" },
+    customer_invoices: { view: "payments.customer_invoices.view", create: "payments.customer_invoices.create", edit: "payments.customer_invoices.edit" },
+    customer_payments: { view: "payments.customer_payments.view", create: "payments.customer_payments.create", edit: "payments.customer_payments.edit" },
   },
   sales: {
     dashboard: { view: "sales.dashboard.view" },
@@ -189,7 +189,7 @@ export const P = {
   },
   hr: {
     manage: "hr.manage",
-    employees: { view: "hr.employees.view", edit: "hr.manage" },
+    employees: { view: "hr.employees.view", create: "hr.employees.create", edit: "hr.employees.edit", delete: "hr.employees.delete" },
     departments: { view: "hr.departments.view" },
     positions: { view: "hr.positions.view" },
     kpis: {
@@ -223,6 +223,7 @@ export const P = {
       edit: "admin.payment_methods.edit",
       delete: "admin.payment_methods.delete",
     },
+    discount_approvals: { approve: "admin.discount_approvals.approve" },
   },
 };
 

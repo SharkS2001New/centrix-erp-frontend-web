@@ -833,7 +833,10 @@ export function OrderListTableRow({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onRejectActionRequest?.(requestId);
+                      onRejectActionRequest?.(
+                        requestId,
+                        sale?.action_request?.payload?.lines ?? [],
+                      );
                     }}
                     disabled={actionBusy}
                     className="rounded-md border border-[color-mix(in_srgb,#ef4444_35%,var(--theme-border))] px-2.5 py-1 text-xs font-medium text-[color-mix(in_srgb,#ef4444_75%,var(--theme-text))] hover:bg-[var(--theme-hover)] disabled:opacity-50"

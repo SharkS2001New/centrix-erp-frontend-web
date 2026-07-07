@@ -1,29 +1,47 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { inputClassName } from "@/components/catalog/catalog-shared";
+import { formatAdvisedDiscountKes } from "@/lib/advised-discount-lines";
+
+function linesForAdvisedInput(approvalLines) {
+  const withDiscount = (approvalLines ?? []).filter(
+    (line) => Number(line?.discount_given ?? 0) > 0.001,
+  );
+  return withDiscount.length > 0 ? withDiscount : approvalLines ?? [];
+}
 
 export function DiscountRejectionDialog({
   open,
   onSubmit,
   onCancel,
   busy = false,
+  approvalLines = [],
   title = "Reject discount request",
   description = "Tell the salesperson why the discount was rejected and what they should do next.",
 }) {
   const [reason, setReason] = useState("");
   const [guidance, setGuidance] = useState("remove_discount");
-  const [advisedAmount, setAdvisedAmount] = useState("");
+  const [advisedByCode, setAdvisedByCode] = useState(() => new Map());
   const [error, setError] = useState("");
   const fieldId = useId();
   const reasonRef = useRef(null);
+
+  const advisedInputLines = useMemo(() => linesForAdvisedInput(approvalLines), [approvalLines]);
 
   useEffect(() => {
     if (!open) return undefined;
     setReason("");
     setGuidance("remove_discount");
-    setAdvisedAmount("");
+    const initial = new Map();
+    for (const line of advisedInputLines) {
+      const code = String(line?.product_code ?? "").trim();
+      if (!code) continue;
+      const current = Number(line?.discount_given ?? 0);
+      initial.set(code, Number.isFinite(current) ? String(current) : "");
+    }
+    setAdvisedByCode(initial);
     setError("");
     const timer = window.setTimeout(() => reasonRef.current?.focus(), 0);
 
@@ -36,7 +54,7 @@ export function DiscountRejectionDialog({
       window.clearTimeout(timer);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, busy, onCancel]);
+  }, [open, busy, onCancel, advisedInputLines]);
 
   if (!open || typeof document === "undefined") return null;
 
@@ -48,19 +66,46 @@ export function DiscountRejectionDialog({
       return;
     }
 
+    let advisedDiscountLines = null;
     let advisedDiscountAmount = null;
+
     if (guidance === "advised_amount") {
-      const parsed = Number(advisedAmount);
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        setError("Enter the advised discount amount.");
+      if (!advisedInputLines.length) {
+        setError("No order lines are available to advise discounts for.");
         return;
       }
-      advisedDiscountAmount = parsed;
+
+      advisedDiscountLines = [];
+      for (const line of advisedInputLines) {
+        const code = String(line?.product_code ?? "").trim();
+        if (!code) continue;
+        const raw = String(advisedByCode.get(code) ?? "").trim();
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed) || parsed < 0) {
+          setError(`Enter a valid advised discount for ${line.product_name ?? code}.`);
+          return;
+        }
+        advisedDiscountLines.push({
+          product_code: code,
+          advised_discount: parsed,
+        });
+      }
+
+      if (!advisedDiscountLines.length) {
+        setError("Enter the advised discount for each item.");
+        return;
+      }
+
+      advisedDiscountAmount = advisedDiscountLines.reduce(
+        (sum, line) => sum + Number(line.advised_discount ?? 0),
+        0,
+      );
     }
 
     onSubmit({
       reason: trimmedReason,
       discount_guidance: guidance,
+      advised_discount_lines: advisedDiscountLines,
       advised_discount_amount: advisedDiscountAmount,
     });
   }
@@ -74,7 +119,7 @@ export function DiscountRejectionDialog({
       }}
     >
       <div
-        className="theme-modal w-full max-w-lg rounded-xl border p-6 shadow-2xl"
+        className="theme-modal max-h-[min(92vh,760px)] w-full max-w-3xl overflow-y-auto rounded-xl border p-6 shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby={`${fieldId}-title`}
@@ -117,21 +162,63 @@ export function DiscountRejectionDialog({
               />
               <span className="min-w-0 flex-1">
                 <span className="font-medium text-slate-900 dark:text-slate-100">Advise discount amount</span>
-                <span className="mt-0.5 block text-slate-500">Tell staff the discount amount they may apply.</span>
+                <span className="mt-0.5 block text-slate-500">
+                  Enter the discount staff may apply for each item.
+                </span>
                 {guidance === "advised_amount" ? (
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={advisedAmount}
-                    disabled={busy}
-                    placeholder="e.g. 50"
-                    className={`${inputClassName()} mt-2 w-full max-w-xs`}
-                    onChange={(event) => {
-                      setAdvisedAmount(event.target.value);
-                      if (error) setError("");
-                    }}
-                  />
+                  advisedInputLines.length > 0 ? (
+                    <div className="mt-3 overflow-x-auto rounded-lg border">
+                      <table className="w-full min-w-[520px] border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b bg-slate-50 text-left text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+                            <th className="px-3 py-2 font-medium">Item</th>
+                            <th className="px-3 py-2 text-right font-medium">Unit price</th>
+                            <th className="px-3 py-2 text-right font-medium">Requested</th>
+                            <th className="px-3 py-2 text-right font-medium">Advised discount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {advisedInputLines.map((line) => {
+                            const code = String(line?.product_code ?? "").trim();
+                            return (
+                              <tr key={code || line.product_name} className="border-b last:border-b-0">
+                                <td className="px-3 py-2 text-slate-800 dark:text-slate-100">
+                                  {line.product_name ?? code ?? "Item"}
+                                </td>
+                                <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
+                                  {formatAdvisedDiscountKes(line.unit_price ?? line.selling_price)}
+                                </td>
+                                <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
+                                  {formatAdvisedDiscountKes(line.discount_given)}
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    value={advisedByCode.get(code) ?? ""}
+                                    disabled={busy || !code}
+                                    className={`${inputClassName()} w-28 text-right`}
+                                    onChange={(event) => {
+                                      const value = event.target.value;
+                                      setAdvisedByCode((prev) => {
+                                        const next = new Map(prev);
+                                        next.set(code, value);
+                                        return next;
+                                      });
+                                      if (error) setError("");
+                                    }}
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-slate-500">No discounted items found on this request.</p>
+                  )
                 ) : null}
               </span>
             </label>

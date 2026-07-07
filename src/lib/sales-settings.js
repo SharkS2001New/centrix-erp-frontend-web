@@ -571,7 +571,10 @@ export function canGiveDiscountDirectly({ hasPermission = () => false } = {}) {
 
 /** True when the user may approve or reject discount approval requests. */
 export function canApproveDiscountRequests({ hasPermission = () => false } = {}) {
-  return hasPermission(P.sales.orders.approve);
+  return (
+    hasPermission(P.admin.discount_approvals.approve) ||
+    hasPermission(P.sales.orders.approve)
+  );
 }
 
 /** List/detail/print tables show a discount column when any discount feature is on. */

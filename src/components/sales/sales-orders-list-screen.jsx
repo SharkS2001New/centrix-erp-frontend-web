@@ -65,6 +65,7 @@ import {
 } from "@/lib/open-print-window";
 import { useConfirm } from "@/lib/use-confirm";
 import { DiscountRejectionDialog } from "@/components/discount-rejection-dialog";
+import { discountApprovalLinesFromSource } from "@/lib/advised-discount-lines";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
 import { formatOrderNumber } from "@/lib/sales";
 import {
@@ -146,7 +147,7 @@ export default function SalesOrdersListScreen({
   const [contextMenu, setContextMenu] = useState(null);
   const [editSale, setEditSale] = useState(null);
   const [paySale, setPaySale] = useState(null);
-  const [rejectRequestId, setRejectRequestId] = useState(null);
+  const [rejectContext, setRejectContext] = useState(null);
 
   const effectiveStatusFilter = queueConfig?.lockStatusFilter
     ? queueConfig.fixedStatusFilter
@@ -397,14 +398,14 @@ export default function SalesOrdersListScreen({
     [loadOrders],
   );
 
-  const rejectActionRequest = useCallback((requestId) => {
+  const rejectActionRequest = useCallback((requestId, approvalLines = []) => {
     if (!requestId) return;
-    setRejectRequestId(requestId);
+    setRejectContext({ requestId, approvalLines });
   }, []);
 
   const submitRejectActionRequest = useCallback(
     async (payload) => {
-      if (!rejectRequestId) return;
+      if (!rejectContext?.requestId) return;
       setListLoading(true);
       try {
         const body =
@@ -413,14 +414,15 @@ export default function SalesOrdersListScreen({
             : {
                 reason: payload.reason.trim(),
                 discount_guidance: payload.discount_guidance,
+                advised_discount_lines: payload.advised_discount_lines,
                 advised_discount_amount: payload.advised_discount_amount,
               };
-        await apiRequest(`/action-requests/${rejectRequestId}/reject`, {
+        await apiRequest(`/action-requests/${rejectContext.requestId}/reject`, {
           method: "POST",
           body,
           loading: false,
         });
-        setRejectRequestId(null);
+        setRejectContext(null);
         setActionMessage("Request rejected.");
         void loadOrders();
       } catch (e) {
@@ -429,7 +431,7 @@ export default function SalesOrdersListScreen({
         setListLoading(false);
       }
     },
-    [rejectRequestId, loadOrders],
+    [rejectContext, loadOrders],
   );
 
   function toggleExpand(saleId) {
@@ -500,11 +502,15 @@ export default function SalesOrdersListScreen({
     if (updated?.id) {
       patchSaleInState(updated);
     }
-    setActionMessage(
-      updated?.order_num != null
-        ? `Order ${formatOrderNumber(updated)} updated.`
-        : "Order updated.",
-    );
+    const orderLabel =
+      updated?.order_num != null ? formatOrderNumber(updated) : "Order";
+    const message =
+      updated?.status === "pending_approval"
+        ? `${orderLabel} resubmitted for manager approval.`
+        : updated?.status === "booked"
+          ? `${orderLabel} saved and booked.`
+          : `${orderLabel} updated.`;
+    setActionMessage(message);
     setEditSale(null);
     void loadOrders();
   }
@@ -1033,11 +1039,12 @@ export default function SalesOrdersListScreen({
         }}
       />
       <DiscountRejectionDialog
-        open={Boolean(rejectRequestId)}
+        open={Boolean(rejectContext)}
         busy={listLoading}
+        approvalLines={rejectContext?.approvalLines ?? []}
         onSubmit={submitRejectActionRequest}
         onCancel={() => {
-          if (!listLoading) setRejectRequestId(null);
+          if (!listLoading) setRejectContext(null);
         }}
       />
     </CatalogPageShell>

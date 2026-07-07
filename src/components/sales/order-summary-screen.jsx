@@ -1056,7 +1056,13 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
             setSale((prev) => ({ ...prev, ...updated }));
           }
           void loadSale();
-          notifySuccess("Order updated.");
+          const message =
+            updated?.status === "pending_approval"
+              ? "Order resubmitted for manager approval."
+              : updated?.status === "booked"
+                ? "Order saved and booked."
+                : "Order updated.";
+          notifySuccess(message);
         }}
       />
 

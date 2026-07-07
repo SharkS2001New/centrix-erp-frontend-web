@@ -12,6 +12,12 @@ import { showBackofficeLineDiscountEdit } from "@/lib/sales-settings";
 import { useAuth } from "@/contexts/auth-context";
 import { inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
+import {
+  advisedDiscountLinesFromRejection,
+  applyAdvisedDiscountsToDraftLines,
+  draftLinesMatchAdvisedDiscounts,
+  hasPerLineAdvisedDiscounts,
+} from "@/lib/advised-discount-lines";
 
 function lineLabel(line) {
   const code = line?.product_code ?? line?.product?.product_code ?? "";
@@ -125,6 +131,18 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
   }
 
   const isEditableResubmit = sale?.status === "editable";
+  const advisedDiscountLines = advisedDiscountLinesFromRejection(sale?.discount_rejection);
+  const canApplyAdvisedDiscounts =
+    isEditableResubmit && hasPerLineAdvisedDiscounts(sale?.discount_rejection) && discountEditEnabled;
+  const matchesAdvisedDiscounts =
+    isEditableResubmit &&
+    draftLinesMatchAdvisedDiscounts(lines, advisedDiscountLines, {
+      getDraftDiscount: (line) => line.draftDiscount,
+    });
+
+  function applyAdvisedDiscounts() {
+    setLines((prev) => applyAdvisedDiscountsToDraftLines(prev, advisedDiscountLines));
+  }
 
   async function handleSave() {
     if (!sale?.id) return;
@@ -184,7 +202,9 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
             </h2>
             <p className="theme-subtext mt-0.5 text-xs">
               {isEditableResubmit
-                ? "Adjust pricing per manager guidance, then save to resubmit for approval."
+                ? matchesAdvisedDiscounts
+                  ? "Approver-advised discounts are applied. Save to book this order."
+                  : "Adjust pricing per manager guidance, then save to resubmit for approval."
                 : `Adjust quantities${discountEditEnabled ? " and discounts" : ""} and save.`}
             </p>
           </div>
@@ -199,6 +219,21 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
         </div>
 
         <div className="max-h-[min(60vh,480px)] overflow-auto px-5 py-4">
+          {canApplyAdvisedDiscounts ? (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-800/50 dark:bg-amber-950/20">
+              <p className="text-sm text-amber-900 dark:text-amber-100">
+                Manager advised per-item discounts on this order.
+              </p>
+              <button
+                type="button"
+                disabled={saving || loading}
+                onClick={applyAdvisedDiscounts}
+                className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
+              >
+                Apply advised discounts
+              </button>
+            </div>
+          ) : null}
           {loading ? (
             <p className="theme-subtext py-8 text-center text-sm">Loading order lines…</p>
           ) : lines.length === 0 ? (
@@ -283,7 +318,13 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
               </p>
             ) : null}
             <PrimaryButton type="button" showIcon={false} disabled={saving || loading || !lines.length} onClick={() => void handleSave()}>
-              {saving ? "Saving…" : isEditableResubmit ? "Save & Resubmit for approval" : "Save"}
+              {saving
+                ? "Saving…"
+                : isEditableResubmit
+                  ? matchesAdvisedDiscounts
+                    ? "Save & book order"
+                    : "Save & resubmit for approval"
+                  : "Save"}
             </PrimaryButton>
           </div>
         </div>

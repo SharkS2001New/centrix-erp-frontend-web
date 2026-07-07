@@ -8,6 +8,7 @@ import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
+import { canManagePayments } from "@/lib/access-control";
 import { P } from "@/lib/permission-codes";
 import { useOrgFormat } from "@/lib/org-format";
 import { normalizeCustomerInvoice } from "@/lib/customer-invoices";
@@ -32,7 +33,7 @@ export default function CustomerInvoicesPage() {
   const presetCustomer = searchParams.get("customer");
   const { hasPermission } = useAuth();
   const { currency, date } = useOrgFormat();
-  const canManage = hasPermission(P.payments.customer_invoices.manage)
+  const canManage = canManagePayments({ hasPermission });
     || hasPermission(P.accounting.accounts_receivable.view);
 
   const [invoices, setInvoices] = useState([]);
