@@ -5,6 +5,8 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { P } from "@/lib/permission-codes";
+import { canApproveLpoRequests } from "@/lib/procurement-settings";
+import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
 import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
 import { printGrnForLpoSummary } from "@/components/lpo/grn-print";
 import { lpoHasReceivedStock } from "@/lib/grn-document";
@@ -92,12 +94,88 @@ function useGrnPrint(lpoNo, printContext = {}) {
   return { printingGrn, grnError, printGrn };
 }
 
+function lpoApprovalSummaryText(lpo) {
+  const poNumber = lpo?.po_number ?? lpo?.action_request?.payload?.po_number;
+  const supplier = lpo?.supplier_name ?? lpo?.action_request?.payload?.supplier_name;
+  const parts = [poNumber, supplier].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "Manager approval required";
+}
+
+export function LpoApprovalStripRow({
+  lpo,
+  columnCount = 7,
+  canApproveLpos = false,
+  onApprove,
+  onReject,
+  actionBusy = false,
+  showRejectionStrip = false,
+}) {
+  const rejection = lpo?.approval_rejection;
+  const requestId = lpo?.action_request?.id;
+  const approvalLabel = lpoApprovalSummaryText(lpo);
+  const canResolveRequest =
+    Boolean(requestId) &&
+    canApproveLpos &&
+    lpo?.action_request?.can_approve &&
+    lpo?.action_request?.status === "pending";
+
+  return (
+    <>
+      {showRejectionStrip && rejection?.rejected ? (
+        <tr className="border-b border-[var(--theme-border)] bg-[color-mix(in_srgb,#f59e0b_12%,var(--theme-surface-muted))] theme-table-body-row">
+          <td colSpan={columnCount} className="px-4 py-2.5">
+            <p className="text-sm text-[var(--theme-text-muted)]">
+              <span className="font-medium text-[var(--theme-text)]">Reason for LPO rejection: </span>
+              {rejection.reason?.trim() || "No reason provided"}
+            </p>
+          </td>
+        </tr>
+      ) : null}
+      {lpo?.approval_pending ? (
+        <tr className="border-b border-[var(--theme-border)] bg-[var(--theme-surface-muted)] theme-table-body-row">
+          <td colSpan={columnCount} className="px-4 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="min-w-0 text-left text-sm text-[var(--theme-text-muted)]">
+                <span className="font-medium text-[var(--theme-text)]">Approval required: </span>
+                {approvalLabel}
+              </p>
+              {canResolveRequest ? (
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onApprove?.(requestId)}
+                    disabled={actionBusy}
+                    className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onReject?.(requestId)}
+                    disabled={actionBusy}
+                    className="rounded-md border border-[color-mix(in_srgb,#ef4444_35%,var(--theme-border))] px-2.5 py-1 text-xs font-medium text-[color-mix(in_srgb,#ef4444_75%,var(--theme-text))] hover:bg-[var(--theme-hover)] disabled:opacity-50"
+                  >
+                    Reject
+                  </button>
+                </div>
+              ) : requestId ? (
+                <span className="ml-auto shrink-0 text-xs text-[var(--theme-text-subtle)]">Awaiting approver</span>
+              ) : null}
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
+
 export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [awaitingMarkSent, setAwaitingMarkSent] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
   const { hasPermission } = useAuth();
-  const canApprove = hasPermission(P.purchasing.lpo.approve);
+  const canApprove = canApproveLpoRequests({ hasPermission });
   const canSubmit =
     hasPermission(P.purchasing.lpo.edit) ||
     hasPermission(P.purchasing.lpo.create) ||
@@ -139,6 +217,49 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
     }
   }
 
+  async function approveViaRequest() {
+    const requestId = lpo?.action_request?.id;
+    if (!requestId) return;
+    setBusy("approve");
+    setError(null);
+    try {
+      await apiRequest(`/action-requests/${requestId}/approve`, { method: "POST" });
+      notifySuccess("LPO approved.");
+      await onUpdated?.();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not approve LPO.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function submitReject(reason) {
+    const requestId = lpo?.action_request?.id;
+    if (!requestId) return;
+    setBusy("reject");
+    setError(null);
+    try {
+      await apiRequest(`/action-requests/${requestId}/reject`, {
+        method: "POST",
+        body: { reason },
+      });
+      setRejectOpen(false);
+      notifySuccess("LPO rejected.");
+      await onUpdated?.();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not reject LPO.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const requestId = lpo?.action_request?.id;
+  const canResolveRequest =
+    Boolean(requestId) &&
+    canApprove &&
+    lpo?.action_request?.can_approve &&
+    lpo?.action_request?.status === "pending";
+
   function openEmail() {
     const to = lpo.supplier_email?.trim();
     const subject = encodeURIComponent(`LPO ${lpoDisplayNumber(lpo)}`);
@@ -171,8 +292,15 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
       </p>
 
       {lpo.approval_pending ? (
-        <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <p className="mb-3 rounded-lg border border-[color-mix(in_srgb,#f59e0b_35%,var(--theme-border))] bg-[color-mix(in_srgb,#f59e0b_12%,var(--theme-surface-muted))] px-3 py-2 text-sm text-[var(--theme-text)]">
           Waiting for manager approval. You can resend the request if needed.
+        </p>
+      ) : null}
+
+      {lpo?.approval_rejection?.rejected ? (
+        <p className="mb-3 rounded-lg border border-[color-mix(in_srgb,#f59e0b_35%,var(--theme-border))] bg-[color-mix(in_srgb,#f59e0b_12%,var(--theme-surface-muted))] px-3 py-2 text-sm text-[var(--theme-text)]">
+          <span className="font-medium">Approval rejected: </span>
+          {lpo.approval_rejection.reason?.trim() || "No reason provided"}. Revise the LPO and submit again.
         </p>
       ) : null}
 
@@ -205,12 +333,21 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
           />
         ) : null}
         {actions.includes("approve") ? (
-          <ActionButton
-            label={busy === "approve" ? "Saving…" : "Approve LPO"}
-            onClick={() => runAction("approve")}
-            disabled={Boolean(busy) || Boolean(printing)}
-            primary
-          />
+          <>
+            <ActionButton
+              label={busy === "approve" ? "Saving…" : "Approve LPO"}
+              onClick={() => (canResolveRequest ? approveViaRequest() : runAction("approve"))}
+              disabled={Boolean(busy) || Boolean(printing)}
+              primary
+            />
+            {canResolveRequest ? (
+              <ActionButton
+                label={busy === "reject" ? "Saving…" : "Reject LPO"}
+                onClick={() => setRejectOpen(true)}
+                disabled={Boolean(busy) || Boolean(printing)}
+              />
+            ) : null}
+          </>
         ) : null}
         {actions.includes("send_email") || actions.includes("send_whatsapp") ? (
           <>
@@ -254,6 +391,16 @@ export function LpoWorkflowPanel({ lpo, lpoNo, onUpdated, printContext = null })
           </button>
         </div>
       ) : null}
+      <ActionRequestRejectionDialog
+        open={rejectOpen}
+        busy={busy === "reject"}
+        title="Reject LPO"
+        description="Enter a reason for rejecting this purchase order approval request."
+        onSubmit={submitReject}
+        onCancel={() => {
+          if (busy !== "reject") setRejectOpen(false);
+        }}
+      />
     </section>
   );
 }

@@ -302,7 +302,7 @@ function OrderSummaryItemsTable({ items, subById, catById, limit, onViewAll, sho
   );
 }
 
-function OrderTotalsPanel({ sale, totalPaid, balanceDue }) {
+function OrderTotalsPanel({ sale, totalPaid, balanceDue, showDiscountColumn = true }) {
   const items = sale?.items ?? [];
   const subtotal = items.reduce((sum, line) => sum + Number(line.amount ?? 0), 0);
   const orderDiscount = Number(sale?.order_discount ?? 0);
@@ -315,10 +315,12 @@ function OrderTotalsPanel({ sale, totalPaid, balanceDue }) {
       <h2 className="text-sm font-medium text-slate-900">Order totals</h2>
       <dl className="mt-4 space-y-2 text-sm">
         <TotalsRow label="Subtotal" value={formatSaleKes(subtotal)} />
-        <TotalsRow
-          label="Discount"
-          value={orderDiscount > 0 ? `− ${formatSaleKes(orderDiscount)}` : formatSaleKes(0)}
-        />
+        {showDiscountColumn ? (
+          <TotalsRow
+            label="Discount"
+            value={orderDiscount > 0 ? `− ${formatSaleKes(orderDiscount)}` : formatSaleKes(0)}
+          />
+        ) : null}
         <TotalsRow label={`Tax (VAT ${vatRate}%)`} value={formatSaleKes(vat)} />
         <TotalsRow label="Total amount" value={formatSaleKes(sale?.order_total)} bold />
         <TotalsRow label="Amount paid" value={formatSaleKes(amountPaid)} paid />
@@ -955,7 +957,12 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                 onViewAll={() => setActiveTab("items")}
                 showDiscountColumn={showDiscountColumn}
               />
-              <OrderTotalsPanel sale={sale} totalPaid={totalPaid} balanceDue={balanceDue} />
+              <OrderTotalsPanel
+                sale={sale}
+                totalPaid={totalPaid}
+                balanceDue={balanceDue}
+                showDiscountColumn={showDiscountColumn}
+              />
               <OrderReturnsPanel returns={orderReturns} saleId={sale.id} totalReturned={totalReturned} />
               <OrderTimelinePanel events={timelineEvents} />
               <CustomerOrderDetailsPanel

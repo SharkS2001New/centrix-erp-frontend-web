@@ -24,7 +24,13 @@ export function formatPrintAmount(value) {
 }
 
 /** Line Disc column — only when discounts are enabled in sales settings. */
-export function shouldShowPrintDiscountColumn({ allowDiscounts = false } = {}) {
+export function shouldShowPrintDiscountColumn({
+  allowDiscounts = false,
+  moduleSettings = null,
+} = {}) {
+  if (moduleSettings) {
+    return areSalesDiscountFeaturesEnabled(moduleSettings);
+  }
   return Boolean(allowDiscounts);
 }
 

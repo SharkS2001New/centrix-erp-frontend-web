@@ -112,6 +112,7 @@ export function buildSaleReceiptHtml(
     customer = null,
     productDiscountsEnabled = true,
     orderDiscountEnabled = false,
+    moduleSettings = null,
     customerNameEnabled = true,
     showBranchOnReceipt = true,
     branding = null,
@@ -150,7 +151,8 @@ export function buildSaleReceiptHtml(
   const cashierName = sale.cashier_name ?? sale.user?.full_name ?? "—";
 
   const showDiscountColumn = shouldShowPrintDiscountColumn({
-    allowDiscounts: productDiscountsEnabled,
+    moduleSettings,
+    allowDiscounts: productDiscountsEnabled || orderDiscountEnabled,
   });
   const discountTotals = saleDocumentDiscountTotals({
     items,

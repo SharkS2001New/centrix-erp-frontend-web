@@ -8,7 +8,9 @@ import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-contro
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { canApproveDiscountRequests } from "@/lib/sales-settings";
-import { ApprovalNotificationDetails, isDiscountApprovalNotification, isDiscountApprovalOutcomeNotification } from "@/components/notifications/approval-notification-details";
+import { canApproveLpoRequests } from "@/lib/procurement-settings";
+import { resolveNotificationLinkAccess } from "@/lib/notification-action-url";
+import { ApprovalNotificationDetails, isDiscountApprovalNotification, isDiscountApprovalOutcomeNotification, isLpoApprovalNotification } from "@/components/notifications/approval-notification-details";
 import { NotificationActionLink } from "@/components/notifications/notification-action-link";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
 import { DiscountRejectionDialog } from "@/components/discount-rejection-dialog";
@@ -42,13 +44,15 @@ function severityDotClass(severity) {
 function NotificationRow({ item, busy, onApprove, onReject, onOpen, onDismiss, canApproveDiscounts }) {
   const requester = item.requester?.full_name ?? item.requester?.username ?? "System";
   const discountApproval = isDiscountApprovalNotification(item);
+  const lpoApproval = isLpoApprovalNotification(item);
   const canApprove =
     item.type === "approval" &&
     item.action_request?.can_approve &&
     item.action_request?.status === "pending" &&
-    (!discountApproval || canApproveDiscounts);
+    (!discountApproval || canApproveDiscounts) &&
+    (!lpoApproval || canApproveLpos);
   const canDismiss = !canApprove;
-  const hideActionLink = isDiscountApprovalNotification(item);
+  const hideActionLink = discountApproval || lpoApproval;
 
   return (
     <div className="border-b px-4 py-3 last:border-b-0">
@@ -118,6 +122,7 @@ export function NotificationBell() {
   const router = useRouter();
   const { capabilities, user, organization, isSuperAdmin, hasPermission } = useAuth();
   const canApproveDiscounts = canApproveDiscountRequests({ hasPermission });
+  const canApproveLpos = canApproveLpoRequests({ hasPermission });
   const [open, setOpen] = useState(false);
   const [count, setCount] = useState(0);
   const [items, setItems] = useState([]);

@@ -44,6 +44,7 @@ import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
 import { getChannelWorkflow, workflowPipelineSteps, checkoutCompleteStatuses, isCheckoutCompleteStatus, saleNeedsPaymentCollection } from "@/lib/order-workflow";
 import {
   getPosSalesConfig,
+  areSalesDiscountFeaturesEnabled,
   isDiscountApprovalEnabled,
   lineDiscountInputLabel,
   isWorkspaceTillFloatRequired,
@@ -52,7 +53,10 @@ import {
   resolveSaveOrderStatus,
   resolveSaveOrderStatusLabel,
   existingOrderDiscountApprovalReason,
+  cartNeedsDiscountApprovalAtCheckout,
   canGiveDiscountDirectly,
+  showPosLineDiscountField,
+  showPosOrderDiscountInput,
 } from "@/lib/sales-settings";
 import {
   DiscountApprovalReasonDialog,
@@ -217,13 +221,18 @@ export function PosScreen({ standalone = false }) {
   const allowDiscounts = posSalesConfig.allowDiscounts;
   const allowEditLineDiscount = posSalesConfig.allowEditLineDiscount;
   const showCartLineType = posSalesConfig.enableRetailPricing;
-  const cartTableColSpan =
-    6 + (showCartLineType ? 1 : 0) + (showLineDiscountField ? 1 : 0);
   const enableOrderDiscount = posSalesConfig.enableOrderDiscount;
   const discountApprovalActive = isDiscountApprovalEnabled(capabilities?.module_settings);
+  const discountFeaturesEnabled = areSalesDiscountFeaturesEnabled(capabilities?.module_settings);
   const canAutoApproveDiscount = canGiveDiscountDirectly({ hasPermission });
-  const showOrderDiscountInput = enableOrderDiscount;
-  const showLineDiscountField = allowDiscounts || allowEditLineDiscount || discountApprovalActive;
+  const showLineDiscountField = showPosLineDiscountField(capabilities?.module_settings, {
+    canAutoApprove: canAutoApproveDiscount,
+  });
+  const showOrderDiscountInput = showPosOrderDiscountInput(capabilities?.module_settings, {
+    canAutoApprove: canAutoApproveDiscount,
+  });
+  const cartTableColSpan =
+    6 + (showCartLineType ? 1 : 0) + (showLineDiscountField ? 1 : 0);
   const enableVouchers = posSalesConfig.enableVouchers;
   const enableRedeemablePoints = posSalesConfig.enableRedeemablePoints;
   const mpesaStkPlatformEnabled = isPlatformMpesaStkEnabled(
@@ -304,6 +313,40 @@ export function PosScreen({ standalone = false }) {
     discountReasonResolverRef.current = null;
     resolve?.(result);
   }, []);
+
+  const attachDiscountApprovalReasonToCheckoutBody = useCallback(
+    async (body) => {
+      if (!cart || !discountFeaturesEnabled) return body;
+
+      const savedReason = existingOrderDiscountApprovalReason(cart);
+      const needsReason =
+        cartNeedsDiscountApprovalAtCheckout(cart, {
+          discountApprovalActive,
+          canAutoApproveDiscount,
+          moduleSettings: capabilities?.module_settings,
+        }) || (cart.discount_approval_pending && !savedReason);
+
+      if (needsReason) {
+        const reason = await requestDiscountApprovalReason(cart);
+        if (!reason) return null;
+        return { ...body, discount_approval_reason: reason };
+      }
+
+      if (savedReason) {
+        return { ...body, discount_approval_reason: savedReason };
+      }
+
+      return body;
+    },
+    [
+      cart,
+      capabilities?.module_settings,
+      canAutoApproveDiscount,
+      discountApprovalActive,
+      discountFeaturesEnabled,
+      requestDiscountApprovalReason,
+    ],
+  );
 
   const loadPosTillMeta = useCallback(async () => {
     if (!organizationId || !requireTillFloat) return;
@@ -1127,17 +1170,15 @@ export function PosScreen({ standalone = false }) {
       discountAmount > 0;
 
     if (needsLineDiscountApproval) {
-      const reason = await requestDiscountApprovalReason(activeCart);
-      if (!reason) {
-        return false;
-      }
       try {
         let lineRef = targetLineRef;
         let cartState = activeCart;
+        const deferredLineBody = { ...lineBody, discount_given: 0 };
+
         if (!lineRef) {
           const added = await apiRequest(`/sales/carts/${activeCart.id}/lines`, {
             method: "POST",
-            body: { ...lineBody, discount_given: 0 },
+            body: deferredLineBody,
             ...POS_CART_REQUEST,
           });
           cartState = applyCartMutationResponse(activeCart, added);
@@ -1145,6 +1186,16 @@ export function PosScreen({ standalone = false }) {
             .reverse()
             .find((line) => line.product_code === product.product_code);
           lineRef = newLine ? cartLineRef(newLine) : null;
+        } else {
+          const updated = await apiRequest(`/sales/carts/${activeCart.id}/lines/${lineRef}`, {
+            method: "PATCH",
+            body: {
+              ...deferredLineBody,
+              update_no: activeCart.update_no,
+            },
+            ...POS_CART_REQUEST,
+          });
+          cartState = applyCartMutationResponse(activeCart, updated, { targetLineRef: lineRef });
         }
         if (!lineRef) {
           setStatusMessage("Could not resolve cart line for discount request.");
@@ -1156,15 +1207,13 @@ export function PosScreen({ standalone = false }) {
             scope: "line",
             line_ref: String(lineRef),
             discount_amount: discountAmount,
-            reason: reason,
+            defer_approval: true,
           },
           ...POS_CART_REQUEST,
         });
         if (res.cart) setCart(res.cart);
         setStatusMessage(
-          res.pending_approval
-            ? "Discount added to this order's approval request. Save when ready — it will appear under Pending approval orders."
-            : "Discount applied.",
+          "Discount saved on this line. Manager approval is requested when you save the order.",
         );
         if (clearEntry) {
           setLineForm(EMPTY_LINE);
@@ -1558,31 +1607,16 @@ export function PosScreen({ standalone = false }) {
     setBusy(true);
     try {
       if (discountApprovalActive && !canAutoApproveDiscount && next > 0) {
-        const entered = await requestDiscountApprovalReason(cart);
-        if (!entered) {
-          setOrderDiscountDraft(
-            cart.discount_approval_pending && cart.discount_approval_request?.discount_amount != null
-              ? String(cart.discount_approval_request.discount_amount)
-              : Number(cart.order_discount ?? 0) > 0
-                ? String(cart.order_discount)
-                : "",
-          );
-          return;
-        }
         const res = await apiRequest(`/sales/carts/${cart.id}/discount-requests`, {
           method: "POST",
-          body: { scope: "order", discount_amount: next, reason: entered },
+          body: { scope: "order", discount_amount: next, defer_approval: true },
           ...POS_CART_REQUEST,
         });
         if (res.cart) setCart(res.cart);
         setStatusMessage(
-          res.pending_approval
-            ? "Order discount added to approval request. Save when ready — it will appear under Pending approval orders."
-            : "Discount applied.",
+          "Order discount saved. Manager approval is requested when you save the order.",
         );
-        if (!res.pending_approval && res.cart) {
-          setOrderDiscountDraft(next > 0 ? String(next) : "");
-        }
+        setOrderDiscountDraft(next > 0 ? String(next) : "");
         return;
       }
 
@@ -1771,6 +1805,7 @@ export function PosScreen({ standalone = false }) {
   }
 
   function canEditManualLineDiscount(product = selectedProduct) {
+    if (!discountFeaturesEnabled) return false;
     if (discountApprovalActive) {
       return true;
     }
@@ -2297,13 +2332,17 @@ export function PosScreen({ standalone = false }) {
         }
       }
 
-      const checkoutBody = {
+      const checkoutBody = await attachDiscountApprovalReasonToCheckoutBody({
         ...body,
         sales_workspace: salesWorkspace,
         submit_kra: submitKra,
         ...(cart?.held_order_num ? { order_num: cart.held_order_num } : {}),
         ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
-      };
+      });
+      if (!checkoutBody) {
+        setPaymentError("Enter a discount reason to save this order for manager approval.");
+        return null;
+      }
       const checkoutRequest = () =>
         apiRequest(`/sales/carts/${cart.id}/checkout`, {
           method: "POST",
@@ -2452,14 +2491,19 @@ export function PosScreen({ standalone = false }) {
           });
         }
       }
+      const checkoutBody = await attachDiscountApprovalReasonToCheckoutBody({
+        ...body,
+        sales_workspace: salesWorkspace,
+        ...(cart?.held_order_num ? { order_num: cart.held_order_num } : {}),
+        ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
+      });
+      if (!checkoutBody) {
+        setSaveOrderError("Enter a discount reason to save this order for manager approval.");
+        return;
+      }
       const sale = await apiRequest(`/sales/carts/${cart.id}/checkout`, {
         method: "POST",
-        body: {
-          ...body,
-          sales_workspace: salesWorkspace,
-          ...(cart?.held_order_num ? { order_num: cart.held_order_num } : {}),
-          ...(requireTillFloat && floatSessionId ? { float_session_id: floatSessionId } : {}),
-        },
+        body: checkoutBody,
       });
       setCompletedSale(sale);
       setSaveOrderOpen(false);
@@ -3342,7 +3386,7 @@ export function PosScreen({ standalone = false }) {
                   </p>
                 ) : discountApprovalActive || allowEditLineDiscount ? (
                   <p className="theme-subtext mt-0.5 text-[10px]">
-                    Enter a manual discount for this line. Manager approval is required before checkout.
+                    Discount is saved on this line; manager approval is requested when you save the order.
                   </p>
                 ) : (
                   <p className="theme-subtext mt-0.5 text-[10px]">
@@ -3646,7 +3690,7 @@ export function PosScreen({ standalone = false }) {
 
           <div className="pos-cart-footer mt-auto shrink-0">
           <div className="pos-cart-summary shrink-0 border-t border-[var(--theme-border)] px-4 py-4">
-            {cart?.discount_approval_pending ? (
+            {discountFeaturesEnabled && cart?.discount_approval_pending ? (
               <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
                 <p className="font-semibold">Discount pending manager approval</p>
                 <p className="mt-1 text-xs text-amber-900">
@@ -3655,6 +3699,18 @@ export function PosScreen({ standalone = false }) {
                     : `Order discount of ${formatSaleKes(cart.discount_approval_request?.discount_amount ?? 0)} is awaiting approval.`}
                   {" "}You can still save this order — it will be listed under Pending approval orders until approved.
                   If rejected, edit the order from Editable orders.
+                </p>
+              </div>
+            ) : discountFeaturesEnabled &&
+              cartNeedsDiscountApprovalAtCheckout(cart, {
+                discountApprovalActive,
+                canAutoApproveDiscount,
+                moduleSettings: capabilities?.module_settings,
+              }) ? (
+              <div className="mb-3 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2.5 text-sm text-sky-950">
+                <p className="font-semibold">Discount on this order</p>
+                <p className="mt-1 text-xs text-sky-900">
+                  This order has discounts that need manager approval when you save or complete it.
                 </p>
               </div>
             ) : null}

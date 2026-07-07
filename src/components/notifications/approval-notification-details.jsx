@@ -14,6 +14,7 @@ function formatKes(value) {
 function approvalReason(item) {
   const request = item?.action_request;
   if (!request) return null;
+  if (request.type === "lpo_approval") return null;
   const fromPayload = request.payload?.return_reason ?? request.payload?.reason;
   const direct = request.reason;
   const value = (fromPayload ?? direct ?? "").trim();
@@ -33,6 +34,45 @@ function discountApprovalLines(item) {
 
 function isDiscountApproval(item) {
   return item?.type === "approval" && item?.action_request?.type === "discount";
+}
+
+function isLpoApproval(item) {
+  return item?.type === "approval" && item?.action_request?.type === "lpo_approval";
+}
+
+export function isLpoApprovalNotification(item) {
+  return isLpoApproval(item);
+}
+
+export function isLpoApprovalOutcomeNotification(item) {
+  if (item?.type === "approval_outcome") {
+    return /lpo/i.test(item?.title ?? "") || /purchase order/i.test(item?.message ?? "");
+  }
+  return false;
+}
+
+function LpoApprovalSummary({ item }) {
+  const payload = item?.lpo_approval ?? item?.action_request?.payload ?? {};
+  const poNumber = payload.po_number ?? "—";
+  const supplier = payload.supplier_name ?? "—";
+  const netAmount = formatKes(payload.net_amount);
+
+  return (
+    <div className="mt-2 rounded-md border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-3 py-2 text-xs">
+      <p className="text-[var(--theme-text-muted)]">
+        <span className="font-medium text-[var(--theme-text)]">PO: </span>
+        {poNumber}
+      </p>
+      <p className="mt-1 text-[var(--theme-text-muted)]">
+        <span className="font-medium text-[var(--theme-text)]">Supplier: </span>
+        {supplier}
+      </p>
+      <p className="mt-1 text-[var(--theme-text-muted)]">
+        <span className="font-medium text-[var(--theme-text)]">Net amount: </span>
+        {netAmount}
+      </p>
+    </div>
+  );
 }
 
 export function isDiscountApprovalOutcomeNotification(item) {
@@ -113,8 +153,9 @@ export function ApprovalNotificationDetails({ item }) {
   const proof = approvalProof(item);
   const [loadingProof, setLoadingProof] = useState(false);
   const showDiscountTable = isDiscountApproval(item);
+  const showLpoSummary = isLpoApproval(item);
 
-  if (!reason && !proof && !showDiscountTable) return null;
+  if (!reason && !proof && !showDiscountTable && !showLpoSummary) return null;
 
   async function openProof() {
     if (!proof?.url) return;
@@ -132,7 +173,8 @@ export function ApprovalNotificationDetails({ item }) {
   }
 
   return (
-    <div className="mt-2 space-y-2 rounded-md bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800/60">
+    <div className="mt-2 space-y-2 rounded-md bg-[var(--theme-surface-muted)] px-3 py-2 text-xs">
+      {showLpoSummary ? <LpoApprovalSummary item={item} /> : null}
       {showDiscountTable ? (
         <>
           <DiscountApprovalItemsTable item={item} />

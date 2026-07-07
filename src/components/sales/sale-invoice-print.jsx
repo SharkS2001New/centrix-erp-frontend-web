@@ -88,6 +88,7 @@ export function buildSaleInvoiceHtml(
     branding = null,
     productDiscountsEnabled = false,
     orderDiscountEnabled = false,
+    moduleSettings = null,
     kraData = null,
     kraQrDataUrl = null,
     documentFooterText = "",
@@ -134,7 +135,8 @@ export function buildSaleInvoiceHtml(
   const paymentTerms = customer?.terms_of_payment ?? paymentLine;
 
   const showDiscountColumn = shouldShowPrintDiscountColumn({
-    allowDiscounts: productDiscountsEnabled,
+    moduleSettings,
+    allowDiscounts: productDiscountsEnabled || orderDiscountEnabled,
   });
   const discountTotals = saleDocumentDiscountTotals({
     items,

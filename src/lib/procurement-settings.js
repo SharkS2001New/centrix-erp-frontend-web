@@ -4,6 +4,11 @@ import {
   DEFAULT_LPO_VAT_NOTE,
   lpoPrintFormFromApi,
 } from "@/lib/lpo-print-settings";
+import { P } from "@/lib/permission-codes";
+
+export function canApproveLpoRequests({ hasPermission = () => false } = {}) {
+  return hasPermission(P.purchasing.lpo.approve);
+}
 
 export const PROCUREMENT_DEFAULTS = {
   default_payment_terms_days: 30,

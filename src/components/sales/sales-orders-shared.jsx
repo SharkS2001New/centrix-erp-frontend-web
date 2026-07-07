@@ -997,7 +997,7 @@ export function OrderDetailHeader({ sale, workflow, capabilities = null }) {
   );
 }
 
-export function OrderFinancialSummary({ sale, payments, totalPaid, balanceDue }) {
+export function OrderFinancialSummary({ sale, payments, totalPaid, balanceDue, showDiscountColumn = true }) {
   if (!sale) return null;
 
   const voucher = Number(sale.voucher_payment_amount ?? 0);
@@ -1014,7 +1014,7 @@ export function OrderFinancialSummary({ sale, payments, totalPaid, balanceDue })
       <dl className="mt-4 space-y-2 text-sm">
         <SummaryRow label="Order total" value={formatSaleKes(sale.order_total)} bold />
         <SummaryRow label="VAT" value={formatSaleKes(sale.total_vat)} />
-        {orderDiscount > 0 ? (
+        {showDiscountColumn && orderDiscount > 0 ? (
           <SummaryRow label="Order discount" value={`−${formatSaleKes(orderDiscount)}`} />
         ) : null}
         {voucher > 0 ? <SummaryRow label="Voucher applied" value={formatSaleKes(voucher)} /> : null}

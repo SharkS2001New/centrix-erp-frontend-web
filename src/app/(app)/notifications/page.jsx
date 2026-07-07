@@ -8,7 +8,9 @@ import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-contro
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { canApproveDiscountRequests } from "@/lib/sales-settings";
-import { ApprovalNotificationDetails, isDiscountApprovalNotification } from "@/components/notifications/approval-notification-details";
+import { canApproveLpoRequests } from "@/lib/procurement-settings";
+import { ApprovalNotificationDetails, isDiscountApprovalNotification, isLpoApprovalNotification } from "@/components/notifications/approval-notification-details";
+import { resolveNotificationLinkAccess } from "@/lib/notification-action-url";
 import { NotificationActionLink } from "@/components/notifications/notification-action-link";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
@@ -39,13 +41,15 @@ function severityDotClass(severity) {
 function NotificationCard({ item, busy, onApprove, onReject, onOpen, onDismiss, canApproveDiscounts }) {
   const requester = item.requester?.full_name ?? item.requester?.username ?? "System";
   const discountApproval = isDiscountApprovalNotification(item);
+  const lpoApproval = isLpoApprovalNotification(item);
   const canApprove =
     item.type === "approval" &&
     item.action_request?.can_approve &&
     item.action_request?.status === "pending" &&
-    (!discountApproval || canApproveDiscounts);
+    (!discountApproval || canApproveDiscounts) &&
+    (!lpoApproval || canApproveLpos);
   const canDismiss = !canApprove;
-  const hideActionLink = isDiscountApprovalNotification(item);
+  const hideActionLink = discountApproval || lpoApproval;
 
   return (
     <article className="rounded-lg border bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -116,6 +120,7 @@ export default function NotificationsPage() {
   const router = useRouter();
   const { capabilities, user, organization, isSuperAdmin, hasPermission } = useAuth();
   const canApproveDiscounts = canApproveDiscountRequests({ hasPermission });
+  const canApproveLpos = canApproveLpoRequests({ hasPermission });
   const [bucket, setBucket] = useState("pending_approvals");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);

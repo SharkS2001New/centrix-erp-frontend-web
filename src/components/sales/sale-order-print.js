@@ -277,6 +277,7 @@ export async function printSaleOrder(sale, options = {}) {
 
     const printOptions = {
       ...options,
+      moduleSettings,
       seller,
       branch,
       customer,

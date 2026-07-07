@@ -8,7 +8,8 @@ import {
   saleLineEntryQtyForEdit,
   saleLineEntryQtyToBase,
 } from "@/lib/sale-line-items";
-import { isDiscountApprovalEnabled } from "@/lib/sales-settings";
+import { showBackofficeLineDiscountEdit } from "@/lib/sales-settings";
+import { useAuth } from "@/contexts/auth-context";
 import { inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 
@@ -34,6 +35,7 @@ function indexRetailPackages(rows) {
 }
 
 export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved, capabilities = null }) {
+  const { hasPermission } = useAuth();
   const [lines, setLines] = useState([]);
   const [retailByCode, setRetailByCode] = useState({});
   const [loading, setLoading] = useState(false);
@@ -93,14 +95,13 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     void loadItems();
   }, [open, sale?.id, loadItems]);
 
-  const discountEditEnabled = useMemo(() => {
-    const sales = capabilities?.module_settings?.sales ?? {};
-    return Boolean(
-      sales.effective_allow_edit_line_discount ||
-        sales.allow_edit_line_discount ||
-        isDiscountApprovalEnabled(capabilities?.module_settings),
-    );
-  }, [capabilities]);
+  const discountEditEnabled = useMemo(
+    () =>
+      showBackofficeLineDiscountEdit(capabilities?.module_settings, {
+        hasPermission,
+      }),
+    [capabilities?.module_settings, hasPermission],
+  );
 
   const totals = useMemo(() => {
     return lines.reduce((sum, line) => {

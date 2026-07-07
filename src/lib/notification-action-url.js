@@ -16,6 +16,11 @@ export function normalizeNotificationActionUrl(actionUrl) {
     return `/fulfillment/trips/${tripMatch[1]}${suffix}`;
   }
 
+  const legacyLpoMatch = path.match(/^\/suppliers\/lpos\/(\d+)$/);
+  if (legacyLpoMatch) {
+    return `/lpo/${legacyLpoMatch[1]}${suffix}`;
+  }
+
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 

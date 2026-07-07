@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
@@ -25,7 +25,9 @@ import {
   LpoListRowActions,
   useLpoListPermissions,
 } from "@/components/lpo/lpo-list-actions";
-import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
+import { LpoApprovalStripRow } from "@/components/lpo/lpo-workflow";
+import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
+import { canApproveLpoRequests } from "@/lib/procurement-settings";
 import { formatLpoKes, formatPoNumber, lpoDisplayNumber, lpoOrderDate, LpoStatusBadge } from "@/components/lpo/lpo-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
@@ -43,8 +45,9 @@ function PlusIcon() {
 export default function LpoListPage() {
   const router = useAppRouter();
   const confirm = useConfirm();
-  const { user, capabilities, organization } = useAuth();
-  const { canView, canCreate, canEdit, canDelete } = useLpoListPermissions();
+  const { user, capabilities, organization, hasPermission } = useAuth();
+  const { canView, canCreate, canEdit, canDelete, canApprove } = useLpoListPermissions();
+  const canApproveLpos = canApproveLpoRequests({ hasPermission });
 
   const [dashboard, setDashboard] = useState(null);
   const [rows, setRows] = useState([]);
@@ -57,6 +60,8 @@ export default function LpoListPage() {
   const [contextMenu, setContextMenu] = useState(null);
   const [printingLpoNo, setPrintingLpoNo] = useState(null);
   const [deletingLpoNo, setDeletingLpoNo] = useState(null);
+  const [approvalBusyId, setApprovalBusyId] = useState(null);
+  const [rejectRequestId, setRejectRequestId] = useState(null);
 
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [supplierFilter, setSupplierFilter] = useState("all");
@@ -88,7 +93,11 @@ export default function LpoListPage() {
     try {
       const extra = {};
       if (supplierFilter !== "all") extra.supplier_id = supplierFilter;
-      if (statusFilter !== "all") extra.status_code = statusFilter;
+      if (statusFilter === "approval_pending") {
+        extra.approval_pending = 1;
+      } else if (statusFilter !== "all") {
+        extra.status_code = statusFilter;
+      }
 
       const searchParams = buildPageParams({
         page,
@@ -128,12 +137,51 @@ export default function LpoListPage() {
   const statusOptions = useMemo(
     () => [
       { value: "all", label: "All statuses" },
+      { value: "approval_pending", label: "Awaiting approval" },
       ...statuses.map((s) => ({
         value: String(s.status_code),
         label: s.status_name,
       })),
     ],
     [statuses],
+  );
+
+  const approveActionRequest = useCallback(
+    async (requestId) => {
+      if (!requestId) return;
+      setApprovalBusyId(requestId);
+      try {
+        await apiRequest(`/action-requests/${requestId}/approve`, { method: "POST" });
+        notifySuccess("LPO approved.");
+        await loadRows();
+      } catch (e) {
+        notifyError(e instanceof ApiError ? e.message : "Could not approve LPO.");
+      } finally {
+        setApprovalBusyId(null);
+      }
+    },
+    [loadRows],
+  );
+
+  const submitRejectActionRequest = useCallback(
+    async (reason) => {
+      if (!rejectRequestId) return;
+      setApprovalBusyId(rejectRequestId);
+      try {
+        await apiRequest(`/action-requests/${rejectRequestId}/reject`, {
+          method: "POST",
+          body: { reason },
+        });
+        notifySuccess("LPO rejected.");
+        setRejectRequestId(null);
+        await loadRows();
+      } catch (e) {
+        notifyError(e instanceof ApiError ? e.message : "Could not reject LPO.");
+      } finally {
+        setApprovalBusyId(null);
+      }
+    },
+    [rejectRequestId, loadRows],
   );
 
   function viewLpo(row) {
@@ -328,12 +376,21 @@ export default function LpoListPage() {
                     </tr>
                   ) : (
                     rows.map((row) => (
-                      <tr
-                        key={row.lpo_no}
-                        className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
-                        onContextMenu={(event) => openLpoContextMenu(event, row)}
-                        title="Right-click for actions"
-                      >
+                      <Fragment key={row.lpo_no}>
+                        <LpoApprovalStripRow
+                          lpo={row}
+                          columnCount={7}
+                          canApproveLpos={canApproveLpos}
+                          onApprove={approveActionRequest}
+                          onReject={setRejectRequestId}
+                          actionBusy={approvalBusyId === row.action_request?.id}
+                          showRejectionStrip={Number(row.lpo_status_code) === 0}
+                        />
+                        <tr
+                          className="theme-table-body-row hover:bg-[var(--theme-hover)]"
+                          onContextMenu={(event) => openLpoContextMenu(event, row)}
+                          title="Right-click for actions"
+                        >
                         <td className="px-4 py-3 font-mono font-medium text-[#185FA5]">
                           <Link href={`/lpo/${row.lpo_no}`} className="hover:underline">
                             {lpoDisplayNumber(row)}
@@ -378,6 +435,11 @@ export default function LpoListPage() {
                             statusCode={row.lpo_status_code}
                             paymentStatus={row.payment_status}
                           />
+                          {row.approval_pending ? (
+                            <p className="mt-1 text-xs font-medium text-[color-mix(in_srgb,#f59e0b_70%,var(--theme-text))]">
+                              Awaiting approval
+                            </p>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3">
                           {canView ? (
@@ -394,6 +456,7 @@ export default function LpoListPage() {
                           )}
                         </td>
                       </tr>
+                      </Fragment>
                     ))
                   )}
                 </tbody>
@@ -416,6 +479,16 @@ export default function LpoListPage() {
             />
         </div>
       )}
+      <ActionRequestRejectionDialog
+        open={Boolean(rejectRequestId)}
+        busy={Boolean(rejectRequestId && approvalBusyId === rejectRequestId)}
+        title="Reject LPO"
+        description="Enter a reason for rejecting this purchase order approval request."
+        onSubmit={submitRejectActionRequest}
+        onCancel={() => {
+          if (!approvalBusyId) setRejectRequestId(null);
+        }}
+      />
     </CatalogPageShell>
   );
 }

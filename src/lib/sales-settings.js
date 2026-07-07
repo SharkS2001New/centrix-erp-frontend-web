@@ -530,10 +530,20 @@ export function isBlindTillCloseEnabled(moduleSettings) {
   return Boolean(mergeSalesSettings(moduleSettings).blind_till_close);
 }
 
+/** True when any org-level sales discount feature is enabled. */
+export function areSalesDiscountFeaturesEnabled(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  return Boolean(
+    sales.allow_discounts ||
+    sales.allow_edit_line_discount ||
+    sales.discount_approval_enabled ||
+    sales.enable_order_discount,
+  );
+}
+
 /** True when any sales discount feature is enabled in settings. */
 export function areSalesDiscountsEnabled(moduleSettings) {
-  const sales = mergeSalesSettings(moduleSettings);
-  return Boolean(sales.allow_discounts || sales.enable_order_discount);
+  return areSalesDiscountFeaturesEnabled(moduleSettings);
 }
 
 export function isVouchersEnabled(moduleSettings) {
@@ -558,10 +568,41 @@ export function canApproveDiscountRequests({ hasPermission = () => false } = {})
   return hasPermission(P.sales.orders.approve);
 }
 
-/** List/detail/print tables show a discount column when approval workflow is on. */
+/** List/detail/print tables show a discount column when any discount feature is on. */
 export function shouldShowSalesDiscountColumn(moduleSettings) {
+  return areSalesDiscountFeaturesEnabled(moduleSettings);
+}
+
+/** POS line discount field — product, manual, or approval workflow discounts. */
+export function showPosLineDiscountField(moduleSettings, { canAutoApprove = false } = {}) {
+  if (!areSalesDiscountFeaturesEnabled(moduleSettings)) return false;
   const sales = mergeSalesSettings(moduleSettings);
-  return Boolean(sales.discount_approval_enabled || sales.discount_for_approval_mode);
+  return Boolean(
+    sales.allow_discounts ||
+    sales.allow_edit_line_discount ||
+    sales.discount_approval_enabled,
+  );
+}
+
+/** POS full order discount input. */
+export function showPosOrderDiscountInput(moduleSettings, options = {}) {
+  if (!areSalesDiscountFeaturesEnabled(moduleSettings)) return false;
+  return Boolean(getPosSalesConfig(moduleSettings, options).enableOrderDiscount);
+}
+
+/** Backoffice editable-order modal: direct discount edits (not via POS restore). */
+export function showBackofficeLineDiscountEdit(moduleSettings, { hasPermission = () => false } = {}) {
+  if (!areSalesDiscountFeaturesEnabled(moduleSettings)) return false;
+  const sales = mergeSalesSettings(moduleSettings);
+  if (isDiscountApprovalEnabled(moduleSettings) && !canGiveDiscountDirectly({ hasPermission })) {
+    return false;
+  }
+  return Boolean(
+    sales.allow_discounts ||
+    sales.allow_edit_line_discount ||
+    sales.effective_allow_edit_line_discount ||
+    sales.discount_approval_enabled,
+  );
 }
 
 /** POS / cart line discount field label when approval workflow is active for staff. */
@@ -582,6 +623,21 @@ export function discountApprovalThresholdPercent(moduleSettings) {
 export function existingOrderDiscountApprovalReason(cart) {
   const existing = String(cart?.discount_approval_request?.reason ?? "").trim();
   return existing.length >= 3 ? existing : null;
+}
+
+/** True when checkout must collect a discount reason and create the approval request on save. */
+export function cartNeedsDiscountApprovalAtCheckout(
+  cart,
+  { discountApprovalActive = false, canAutoApproveDiscount = false, moduleSettings = null } = {},
+) {
+  if (moduleSettings && !areSalesDiscountFeaturesEnabled(moduleSettings)) return false;
+  if (!discountApprovalActive || canAutoApproveDiscount) return false;
+  if (cart?.discount_approval_pending) return false;
+
+  const orderDiscount = Number(cart?.order_discount ?? 0);
+  if (orderDiscount > 0.01) return true;
+
+  return (cart?.lines ?? []).some((line) => Number(line.discount_given ?? 0) > 0.01);
 }
 
 export function isOrderCancellationApprovalEnabled(moduleSettings) {
