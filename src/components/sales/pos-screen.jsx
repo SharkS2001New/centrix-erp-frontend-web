@@ -314,40 +314,6 @@ export function PosScreen({ standalone = false }) {
     resolve?.(result);
   }, []);
 
-  const attachDiscountApprovalReasonToCheckoutBody = useCallback(
-    async (body) => {
-      if (!cart || !discountFeaturesEnabled) return body;
-
-      const savedReason = existingOrderDiscountApprovalReason(cart);
-      const needsReason =
-        cartNeedsDiscountApprovalAtCheckout(cart, {
-          discountApprovalActive,
-          canAutoApproveDiscount,
-          moduleSettings: capabilities?.module_settings,
-        }) || (cart.discount_approval_pending && !savedReason);
-
-      if (needsReason) {
-        const reason = await requestDiscountApprovalReason(cart);
-        if (!reason) return null;
-        return { ...body, discount_approval_reason: reason };
-      }
-
-      if (savedReason) {
-        return { ...body, discount_approval_reason: savedReason };
-      }
-
-      return body;
-    },
-    [
-      cart,
-      capabilities?.module_settings,
-      canAutoApproveDiscount,
-      discountApprovalActive,
-      discountFeaturesEnabled,
-      requestDiscountApprovalReason,
-    ],
-  );
-
   const loadPosTillMeta = useCallback(async () => {
     if (!organizationId || !requireTillFloat) return;
     setPosTillMetaLoading(true);
@@ -661,6 +627,40 @@ export function PosScreen({ standalone = false }) {
   const floatModalDismissedRef = useRef(false);
 
   const [orderDiscountDraft, setOrderDiscountDraft] = useState("");
+
+  const attachDiscountApprovalReasonToCheckoutBody = useCallback(
+    async (body) => {
+      if (!cart || !discountFeaturesEnabled) return body;
+
+      const savedReason = existingOrderDiscountApprovalReason(cart);
+      const needsReason =
+        cartNeedsDiscountApprovalAtCheckout(cart, {
+          discountApprovalActive,
+          canAutoApproveDiscount,
+          moduleSettings: capabilities?.module_settings,
+        }) || (cart.discount_approval_pending && !savedReason);
+
+      if (needsReason) {
+        const reason = await requestDiscountApprovalReason(cart);
+        if (!reason) return null;
+        return { ...body, discount_approval_reason: reason };
+      }
+
+      if (savedReason) {
+        return { ...body, discount_approval_reason: savedReason };
+      }
+
+      return body;
+    },
+    [
+      cart,
+      capabilities?.module_settings,
+      canAutoApproveDiscount,
+      discountApprovalActive,
+      discountFeaturesEnabled,
+      requestDiscountApprovalReason,
+    ],
+  );
 
   const cartLineCount = cart?.lines?.length ?? 0;
   const cartHasReservedItems = cartLineCount > 0;
