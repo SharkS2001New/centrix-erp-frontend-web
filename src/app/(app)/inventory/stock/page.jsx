@@ -29,7 +29,6 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import {
   priceListRowsForProduct,
   priceListToCsv,
-  stockSellingValue,
 } from "@/lib/retail-pricing";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import {
@@ -50,8 +49,8 @@ const STOCK_COLUMNS = [
   { id: "sku", label: "SKU", defaultVisible: false },
   { id: "shop", label: "Shop", defaultVisible: true, align: "right" },
   { id: "store", label: "Store", defaultVisible: true, align: "right" },
-  { id: "shop_value", label: "Shop value", defaultVisible: true, align: "right" },
-  { id: "store_value", label: "Store value", defaultVisible: true, align: "right" },
+  { id: "shop_value", label: "Shop cost", defaultVisible: true, align: "right" },
+  { id: "store_value", label: "Store cost", defaultVisible: true, align: "right" },
   { id: "profit_margin", label: "Profit margin", defaultVisible: false, align: "right" },
   { id: "reorder", label: "Reorder", defaultVisible: false, align: "right" },
   { id: "status", label: "Status", defaultVisible: true },
@@ -62,14 +61,14 @@ const STOCK_EXPORT_COLUMN_DEFS = {
   sku: { key: "product_code", label: "SKU" },
   shop: { key: "shop", label: "Shop", align: "right" },
   store: { key: "store", label: "Store", align: "right" },
-  shop_value: { key: "shop_value", label: "Shop value", align: "right" },
-  store_value: { key: "store_value", label: "Store value", align: "right" },
+  shop_value: { key: "shop_value", label: "Shop cost", align: "right" },
+  store_value: { key: "store_value", label: "Store cost", align: "right" },
   profit_margin: { key: "profit_margin", label: "Profit margin", align: "right" },
   reorder: { key: "reorder", label: "Reorder", align: "right" },
   status: { key: "status", label: "Status" },
 };
 
-function enrichStockRow(row, valuationByCode, retailByCode) {
+function enrichStockRow(row, valuationByCode) {
   const val = valuationByCode.get(row.product_code);
   const factor = Number(row.conversion_factor ?? 1);
   const uomName = row.uom_name ?? "units";
@@ -77,14 +76,14 @@ function enrichStockRow(row, valuationByCode, retailByCode) {
     full_name: uomName,
     conversion_factor: factor,
   };
-  const retailPackage = retailByCode.get(row.product_code) ?? null;
   const cost = Number(val?.last_cost_price ?? 0);
   const sell = Number(val?.unit_price ?? row.wholesale_price ?? 0);
   const shopQty = Number(row.shop_quantity ?? 0);
   const storeQty = Number(row.store_quantity ?? 0);
   const totalBase = shopQty + storeQty;
-  const shopValue = stockSellingValue(shopQty, sell, uomObj, retailPackage, false);
-  const storeValue = stockSellingValue(storeQty, sell, uomObj, retailPackage, false);
+  // Stock value = qty × cost only (not retail/wholesale sell price). Zero qty ⇒ zero value.
+  const shopValue = Math.round(shopQty * cost * 100) / 100;
+  const storeValue = Math.round(storeQty * cost * 100) / 100;
   const profitMargin = sell > 0 ? Math.round(((sell - cost) / sell) * 100) : null;
   const reorderPoint = Number(row.reorder_point ?? 0);
 
@@ -102,6 +101,7 @@ function enrichStockRow(row, valuationByCode, retailByCode) {
     uomName,
     factor,
     uom: uomObj,
+    cost,
     shopValue,
     storeValue,
     profitMargin,
@@ -264,10 +264,9 @@ export default function CurrentStockPage() {
     const valuationByCode = new Map(valuationRows.map((r) => [r.product_code, r]));
 
     return stockRows.map((row) => {
-      const base = enrichStockRow(row, valuationByCode, retailByCode);
+      const base = enrichStockRow(row, valuationByCode);
       return {
         ...base,
-        cost: Number(valuationByCode.get(row.product_code)?.last_cost_price ?? 0),
         sell: Number(
           valuationByCode.get(row.product_code)?.unit_price ?? row.wholesale_price ?? 0,
         ),
@@ -312,8 +311,8 @@ export default function CurrentStockPage() {
     ]);
     const valuationByCode = new Map((valRes.data ?? []).map((r) => [r.product_code, r]));
     const rows = parsePaginator(stockRes).items;
-    return rows.map((row) => stockRowToExport(enrichStockRow(row, valuationByCode, retailByCode)));
-  }, [branchId, debouncedSearch, subcategoryFilter, locationFilter, retailByCode]);
+    return rows.map((row) => stockRowToExport(enrichStockRow(row, valuationByCode)));
+  }, [branchId, debouncedSearch, subcategoryFilter, locationFilter]);
   const pageRowIds = useMemo(() => pageSlice.map((row) => row.product_code), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
@@ -439,7 +438,7 @@ export default function CurrentStockPage() {
   return (
     <InventoryPageShell
       title={ITEMS_CURRENTLY_IN_STOCK_LABEL}
-      subtitle="Quantities in packaging hierarchy — values use retail tier prices when configured"
+      subtitle="Quantities in packaging hierarchy — stock value is qty × cost price"
       action={
         <CatalogListExport
           title={ITEMS_CURRENTLY_IN_STOCK_LABEL}
@@ -523,7 +522,7 @@ export default function CurrentStockPage() {
 
       {!loading && pageSlice.length > 0 ? (
         <p className="mb-3 text-xs text-slate-500">
-          Stock value totals (this page){listLoading ? " · updating…" : ""} — Shop: {formatInventoryKes(totals.shop)} · Store:{" "}
+          Stock cost totals (this page){listLoading ? " · updating…" : ""} — Shop: {formatInventoryKes(totals.shop)} · Store:{" "}
           {formatInventoryKes(totals.store)} · Combined: {formatInventoryKes(totals.all)}
         </p>
       ) : null}

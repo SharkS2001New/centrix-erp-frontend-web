@@ -134,7 +134,7 @@ export function ReportsDashboardSection({
     },
     {
       id: "inventory_value",
-      label: "Inventory Value",
+      label: "Stock Value",
       value: dashboard?.kpis?.inventory_value?.value,
       changePct: dashboard?.kpis?.inventory_value?.change_pct,
     },

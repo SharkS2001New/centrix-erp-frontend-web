@@ -99,7 +99,7 @@ export function InventoryDashboardContent() {
   );
 
   const kpiItems = [
-    { id: "value", label: "Inventory value", value: inventoryValue != null ? formatReportKes(inventoryValue) : "—" },
+    { id: "value", label: "Stock value", value: inventoryValue != null ? formatReportKes(inventoryValue) : "—" },
     { id: "skus", label: "SKUs in stock", value: stats.skus.toLocaleString(), hint: "With quantity on hand" },
     { id: "low", label: "Low stock", value: stats.low.toLocaleString(), hint: "Below reorder point" },
     { id: "out", label: "Out of stock", value: stats.out.toLocaleString(), hint: "Zero on hand" },
@@ -143,7 +143,7 @@ export function InventoryDashboardContent() {
                   <dd className="font-medium text-red-700">{stats.out}</dd>
                 </div>
                 <div className="flex justify-between gap-4 border-t border-slate-100 pt-3 dark:border-slate-800">
-                  <dt className="text-slate-500">Retail value</dt>
+                  <dt className="text-slate-500">Stock value (qty × cost)</dt>
                   <dd className="font-semibold text-slate-900 dark:text-slate-100">
                     {inventoryValue != null ? formatInventoryKes(inventoryValue) : "—"}
                   </dd>
