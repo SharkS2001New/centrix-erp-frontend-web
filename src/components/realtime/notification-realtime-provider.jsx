@@ -16,47 +16,52 @@ import {
 export function NotificationRealtimeProvider({ children }) {
   const { user } = useAuth();
   const echoRef = useRef(null);
-  const channelRef = useRef(null);
 
   useEffect(() => {
     if (!isRealtimeConfigured() || !user?.id) {
       disconnectNotificationEcho(echoRef.current);
       echoRef.current = null;
-      channelRef.current = null;
       return undefined;
     }
 
-    const echo = createNotificationEcho();
-    if (!echo) {
-      return undefined;
-    }
-
-    echoRef.current = echo;
-
+    let cancelled = false;
+    let channel = null;
     const channelName = `user.${user.id}`;
-    const channel = echo.private(channelName);
-    channelRef.current = channel;
 
-    channel.listen(".notification.created", () => {
-      notifyNotificationsChanged();
-    });
+    (async () => {
+      try {
+        const echo = await createNotificationEcho();
+        if (cancelled || !echo) return;
 
-    channel.error((error) => {
-      if (process.env.NODE_ENV === "development") {
-        console.warn("[realtime] notification channel error", error);
+        echoRef.current = echo;
+        channel = echo.private(channelName);
+
+        channel.listen(".notification.created", () => {
+          notifyNotificationsChanged();
+        });
+
+        channel.error((error) => {
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[realtime] notification channel error", error);
+          }
+        });
+      } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[realtime] failed to connect", error);
+        }
       }
-    });
+    })();
 
     return () => {
+      cancelled = true;
       try {
-        channel.stopListening(".notification.created");
-        echo.leave(channelName);
+        channel?.stopListening(".notification.created");
+        echoRef.current?.leave(channelName);
       } catch {
         /* ignore */
       }
-      disconnectNotificationEcho(echo);
+      disconnectNotificationEcho(echoRef.current);
       echoRef.current = null;
-      channelRef.current = null;
     };
   }, [user?.id]);
 

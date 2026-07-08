@@ -1,17 +1,15 @@
 import { getToken, clearSession, isScreenLocked, getStoredUser, getStoredCapabilities } from "./auth-storage";
 import { apiFetchCredentials, useCookieAuth } from "./auth-config";
+import { apiV1BaseUrl } from "./api-base-url";
 import { beginAppLoading, endAppLoading, isPageNavigationLoading } from "./app-loading";
 import { emitSystemIssue } from "./system-issue-dispatcher";
 import { logApiErrorIssue, logSlowRequestIssue } from "./system-issue-reports";
 import { notifyError as showErrorToast } from "./notify";
 import { mayAffectInAppNotifications, notifyNotificationsChanged } from "./notification-events";
 
-const baseUrl = () =>
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1";
+const baseUrl = () => apiV1BaseUrl();
 
-export function apiV1BaseUrl() {
-  return baseUrl();
-}
+export { apiV1BaseUrl };
 
 /** Clear HttpOnly session cookie on the API (cookie-auth mode only). */
 export async function revokeServerAuthSession() {

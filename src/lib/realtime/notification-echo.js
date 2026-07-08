@@ -1,8 +1,6 @@
-import Echo from "laravel-echo";
-import Pusher from "pusher-js";
-import { apiV1BaseUrl } from "@/lib/api";
 import { getToken } from "@/lib/auth-storage";
 import { useCookieAuth } from "@/lib/auth-config";
+import { apiV1BaseUrl } from "@/lib/api-base-url";
 
 export function isRealtimeConfigured() {
   return Boolean(
@@ -23,11 +21,16 @@ function reverbPort() {
   return Number(raw);
 }
 
-/** @returns {Echo | null} */
-export function createNotificationEcho() {
+/** @returns {Promise<import('laravel-echo').default | null>} */
+export async function createNotificationEcho() {
   if (!isRealtimeConfigured() || typeof window === "undefined") {
     return null;
   }
+
+  const [{ default: Echo }, { default: Pusher }] = await Promise.all([
+    import("laravel-echo"),
+    import("pusher-js"),
+  ]);
 
   window.Pusher = Pusher;
 
@@ -35,16 +38,22 @@ export function createNotificationEcho() {
   const port = reverbPort();
   const token = getToken();
   const authEndpoint = `${apiV1BaseUrl()}/broadcasting/auth`;
+  const transports = scheme === "https" ? ["wss"] : ["ws", "wss"];
+
+  const shared = {
+    broadcaster: "reverb",
+    key: process.env.NEXT_PUBLIC_REVERB_APP_KEY,
+    wsHost: process.env.NEXT_PUBLIC_REVERB_HOST,
+    wsPort: port,
+    wssPort: port,
+    forceTLS: scheme === "https",
+    enabledTransports: transports,
+    disableStats: true,
+  };
 
   if (useCookieAuth) {
     return new Echo({
-      broadcaster: "reverb",
-      key: process.env.NEXT_PUBLIC_REVERB_APP_KEY,
-      wsHost: process.env.NEXT_PUBLIC_REVERB_HOST,
-      wsPort: port,
-      wssPort: port,
-      forceTLS: scheme === "https",
-      enabledTransports: ["ws", "wss"],
+      ...shared,
       authorizer: (channel) => ({
         authorize: (socketId, callback) => {
           fetch(authEndpoint, {
@@ -73,13 +82,7 @@ export function createNotificationEcho() {
   }
 
   return new Echo({
-    broadcaster: "reverb",
-    key: process.env.NEXT_PUBLIC_REVERB_APP_KEY,
-    wsHost: process.env.NEXT_PUBLIC_REVERB_HOST,
-    wsPort: port,
-    wssPort: port,
-    forceTLS: scheme === "https",
-    enabledTransports: ["ws", "wss"],
+    ...shared,
     authEndpoint,
     auth: {
       headers: {
@@ -90,7 +93,7 @@ export function createNotificationEcho() {
   });
 }
 
-/** @param {Echo | null} echo */
+/** @param {import('laravel-echo').default | null} echo */
 export function disconnectNotificationEcho(echo) {
   if (!echo) return;
   try {
