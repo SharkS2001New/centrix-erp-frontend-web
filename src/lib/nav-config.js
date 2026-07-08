@@ -5,7 +5,7 @@ import { anyReportsModuleEnabled, isModuleEnabledForNav } from "@/lib/module-reg
 import { shouldShowMobileLoadingSheets, shouldShowMobileFieldAttendance, isOrgMobileSalesEnabled, isVouchersEnabled, isRedeemablePointsEnabled, shouldShowLoadingListNav } from "@/lib/sales-settings";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { userHasMobileChannel } from "@/lib/mobile-order-scope";
-import { isKraDeviceConfigured } from "@/lib/finance-settings";
+import { isKraDeviceConfigured, isMpesaC2bReconciliationEnabled } from "@/lib/finance-settings";
 import { isCashAdvanceDeductionsEnabled } from "@/lib/hr-settings";
 import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
 import { isReportNavEnabled } from "@/lib/nav-feature-gates";
@@ -516,6 +516,7 @@ const NAV_SECTION_DEFINITIONS = [
         href: "/accounting/mpesa-reconciliation",
         label: "M-Pesa reconciliation",
         module: "accounting",
+        requireMpesaC2bReconciliation: true,
         permissionAny: [
           P.accounting.bank_reconciliation.view,
           P.payments.sale_payments.view,
@@ -966,6 +967,7 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   if (item.requireSalesVouchers && !isVouchersEnabled(capabilities?.module_settings)) return false;
   if (item.requireRedeemablePoints && !isRedeemablePointsEnabled(capabilities?.module_settings)) return false;
   if (item.requireKraDevice && !isKraDeviceConfigured(capabilities?.module_settings, capabilities)) return false;
+  if (item.requireMpesaC2bReconciliation && !isMpesaC2bReconciliationEnabled(capabilities?.module_settings)) return false;
   if (item.requireWhatsappOrders && !isPlatformWhatsappEnabled(capabilities)) return false;
   if (item.reportKey && !isReportNavEnabled(item.reportKey, capabilities)) return false;
   if (item.requireAnyReportsModule && !anyReportsModuleEnabled(capabilities?.modules)) return false;

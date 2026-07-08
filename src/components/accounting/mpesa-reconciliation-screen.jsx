@@ -18,6 +18,7 @@ function confidenceBadge(confidence) {
 export function MpesaReconciliationScreen() {
   const confirm = useConfirm();
   const [data, setData] = useState(null);
+  const [disabledMessage, setDisabledMessage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
@@ -25,9 +26,13 @@ export function MpesaReconciliationScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setDisabledMessage(null);
     try {
       const res = await apiRequest("/accounting/mpesa-reconciliation");
       setData(res);
+      if (res?.enabled === false) {
+        setDisabledMessage(res.message ?? "M-Pesa reconciliation is not enabled.");
+      }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load M-Pesa reconciliation");
     } finally {
@@ -124,6 +129,21 @@ export function MpesaReconciliationScreen() {
         />
       }
     >
+      {disabledMessage ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-6 py-8 text-center">
+          <p className="text-sm text-slate-700">{disabledMessage}</p>
+          <p className="mt-3 text-sm text-slate-600">
+            Turn on <strong>Enable paybill / till reconciliation</strong> under Finance → M-Pesa payments, then save.
+          </p>
+          <Link
+            href="/admin/settings"
+            className="mt-5 inline-flex rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Open finance settings
+          </Link>
+        </div>
+      ) : (
+        <>
       <div className="mb-6 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
         <p>
           Account reference hint for customers: <strong>{hint || "Enter your order number (e.g. S12)"}</strong>
@@ -247,6 +267,8 @@ export function MpesaReconciliationScreen() {
             );
           })}
         </div>
+      )}
+        </>
       )}
     </CatalogPageShell>
   );
