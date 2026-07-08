@@ -13,7 +13,7 @@ const securityHeaders = [
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "frame-src 'self' https://www.openstreetmap.org",
-      "connect-src 'self' https: http://localhost:* http://127.0.0.1:* https://cloudflareinsights.com",
+      "connect-src 'self' https: wss: ws: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https://cloudflareinsights.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
