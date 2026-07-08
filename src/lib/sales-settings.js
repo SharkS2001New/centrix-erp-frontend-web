@@ -492,7 +492,11 @@ export function loadingListNavHref(capabilities) {
   return "/sales/loading-sheets";
 }
 
-/** Field attendance sessions for mobile sales reps (sign-in photo + GPS). */
+/** Backoffice picking list for mobile route orders when Distribution is not enabled. */
+export function shouldShowMobilePickingLists(capabilities) {
+  return shouldShowMobileLoadingSheets(capabilities);
+}
+
 export function shouldShowMobileFieldAttendance(capabilities) {
   if (!capabilities?.modules?.["sales.mobile"]) return false;
   if (!isOrgMobileSalesEnabled(capabilities)) return false;

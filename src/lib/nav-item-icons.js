@@ -48,6 +48,7 @@ export const NAV_HREF_ICONS = {
   // Field sales
   "/sales/orders/queues/mobile": "mobile",
   "/sales/loading-sheets": "clipboard",
+  "/sales/picking-lists": "clipboard",
   "/notifications": "bell",
   "/sales/field-attendance": "map",
 
