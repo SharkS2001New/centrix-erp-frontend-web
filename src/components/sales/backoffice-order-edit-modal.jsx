@@ -105,8 +105,9 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     () =>
       showBackofficeLineDiscountEdit(capabilities?.module_settings, {
         hasPermission,
+        sale,
       }),
-    [capabilities?.module_settings, hasPermission],
+    [capabilities?.module_settings, hasPermission, sale],
   );
 
   const totals = useMemo(() => {

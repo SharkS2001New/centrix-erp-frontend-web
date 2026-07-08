@@ -59,6 +59,11 @@ import {
   showPosOrderDiscountInput,
 } from "@/lib/sales-settings";
 import {
+  buildAdvisedDiscountMap,
+  draftLinesMatchAdvisedDiscounts,
+} from "@/lib/advised-discount-lines";
+import { PosAdvisedDiscountPanel } from "./pos-advised-discount-panel";
+import {
   DiscountApprovalReasonDialog,
 } from "@/components/sales/discount-approval-reason-dialog";
 import {
@@ -628,6 +633,7 @@ export function PosScreen({ standalone = false }) {
   const floatModalDismissedRef = useRef(false);
 
   const [orderDiscountDraft, setOrderDiscountDraft] = useState("");
+  const [applyingAdvisedDiscounts, setApplyingAdvisedDiscounts] = useState(false);
 
   const attachDiscountApprovalReasonToCheckoutBody = useCallback(
     async (body) => {
@@ -694,6 +700,45 @@ export function PosScreen({ standalone = false }) {
     const { customerNum } = getPosOrderCustomer(orderNum);
     return customerNum != null ? String(customerNum) : "";
   }, [cart?.held_order_num]);
+
+  const isCartEditSession = Boolean(cart?.held_order_num);
+  const isEditableResubmit = Boolean(cart?.discount_resubmit && isCartEditSession);
+  const advisedDiscountLines = useMemo(
+    () => (Array.isArray(cart?.advised_discount_lines) ? cart.advised_discount_lines : []),
+    [cart?.advised_discount_lines],
+  );
+  const advisedDiscountReady = Boolean(cart?.advised_discount_ready);
+  const matchesAdvisedDiscounts = useMemo(
+    () =>
+      draftLinesMatchAdvisedDiscounts(cart?.lines ?? [], advisedDiscountLines, {
+        getProductCode: (line) => line?.product_code,
+        getDraftDiscount: (line) => line?.discount_given,
+      }),
+    [cart?.lines, advisedDiscountLines],
+  );
+  const cartResubmitMessage = useMemo(() => {
+    if (!isEditableResubmit || !discountFeaturesEnabled) return null;
+    if (advisedDiscountReady) {
+      return isCartEditSession
+        ? `Revising order #${cart.held_order_num}. Approver-advised discounts are applied — complete checkout to book.`
+        : "Approver-advised discounts are applied. Complete checkout to book this order.";
+    }
+    if (advisedDiscountLines.length > 0) {
+      return isCartEditSession
+        ? `Revising order #${cart.held_order_num}. Apply advised discounts on each line, then complete checkout to resubmit.`
+        : "Manager advised discounts per item. Apply them, then complete checkout to resubmit.";
+    }
+    return isCartEditSession
+      ? `Revising order #${cart.held_order_num}. Update line discounts, then complete checkout to resubmit for approval.`
+      : "Update line discounts, then complete checkout to resubmit for approval.";
+  }, [
+    advisedDiscountLines.length,
+    advisedDiscountReady,
+    cart?.held_order_num,
+    discountFeaturesEnabled,
+    isCartEditSession,
+    isEditableResubmit,
+  ]);
 
   function rememberCompletedPosOrder(sale) {
     if (!sale?.id || !enablePosOrderEdit) return;
@@ -907,6 +952,41 @@ export function PosScreen({ standalone = false }) {
     setCart(updated);
     return updated;
   }, []);
+
+  const applyAdvisedDiscountsToCart = useCallback(async () => {
+    if (!cart?.id || !advisedDiscountLines.length || applyingAdvisedDiscounts) return;
+
+    setApplyingAdvisedDiscounts(true);
+    try {
+      const advisedByCode = buildAdvisedDiscountMap(advisedDiscountLines);
+      let latestCart = cart;
+
+      for (const line of cart.lines ?? []) {
+        const code = String(line.product_code ?? "").trim();
+        if (!code || !advisedByCode.has(code)) continue;
+
+        const lineRef = cartLineRef(line);
+        const updated = await apiRequest(`/sales/carts/${cart.id}/lines/${lineRef}`, {
+          method: "PATCH",
+          body: {
+            discount_given: advisedByCode.get(code),
+            quantity: line.quantity,
+            on_wholesale_retail: line.on_wholesale_retail,
+            update_no: latestCart.update_no,
+          },
+          ...POS_CART_REQUEST,
+        });
+        latestCart = applyCartMutationResponse(latestCart, updated, { targetLineRef: lineRef });
+      }
+
+      await refreshCart(cart.id);
+      notifySuccess("Advised discounts applied to each line.");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not apply advised discounts.");
+    } finally {
+      setApplyingAdvisedDiscounts(false);
+    }
+  }, [advisedDiscountLines, applyingAdvisedDiscounts, cart, refreshCart]);
 
   const ensureCart = useCallback(async () => {
     if (cart?.id && cart.channel === channel && Array.isArray(cart.lines)) {
@@ -3555,6 +3635,35 @@ export function PosScreen({ standalone = false }) {
               </>
             ) : null}
           </div>
+          ) : null}
+          {isCartEditSession || isEditableResubmit ? (
+            <div className={showCartToolbar ? "px-3 pt-3" : "px-3 pt-2"}>
+              {isCartEditSession && !isEditableResubmit ? (
+                <div className="mb-3 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-950">
+                  <p className="text-xs leading-relaxed">
+                    Editing order #{cart.held_order_num}. Update lines below, then complete checkout.
+                  </p>
+                </div>
+              ) : null}
+              {cartResubmitMessage ? (
+                <div
+                  className={`mb-3 rounded-lg border px-3 py-2.5 text-sm ${
+                    advisedDiscountReady && matchesAdvisedDiscounts
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-950"
+                      : "border-amber-300 bg-amber-50 text-amber-950"
+                  }`}
+                >
+                  <p className="text-xs leading-relaxed">{cartResubmitMessage}</p>
+                </div>
+              ) : null}
+              {isEditableResubmit && advisedDiscountLines.length > 0 && !advisedDiscountReady ? (
+                <PosAdvisedDiscountPanel
+                  lines={advisedDiscountLines}
+                  applying={applyingAdvisedDiscounts}
+                  onApply={() => void applyAdvisedDiscountsToCart()}
+                />
+              ) : null}
+            </div>
           ) : null}
           <div
             className={`pos-cart-table-wrap min-h-0 flex-1 overflow-auto${

@@ -602,10 +602,13 @@ export function showPosOrderDiscountInput(moduleSettings, options = {}) {
 }
 
 /** Backoffice editable-order modal: direct discount edits (not via POS restore). */
-export function showBackofficeLineDiscountEdit(moduleSettings, { hasPermission = () => false } = {}) {
+export function showBackofficeLineDiscountEdit(moduleSettings, { hasPermission = () => false, sale = null } = {}) {
   if (!areSalesDiscountFeaturesEnabled(moduleSettings)) return false;
   const sales = mergeSalesSettings(moduleSettings);
   if (isDiscountApprovalEnabled(moduleSettings) && !canGiveDiscountDirectly({ hasPermission })) {
+    if (sale?.status === "editable" && sale?.can_edit_lines) {
+      return true;
+    }
     return false;
   }
   return Boolean(
@@ -644,6 +647,12 @@ export function cartNeedsDiscountApprovalAtCheckout(
   if (moduleSettings && !areSalesDiscountFeaturesEnabled(moduleSettings)) return false;
   if (!discountApprovalActive || canAutoApproveDiscount) return false;
   if (cart?.discount_approval_pending) return false;
+  if (cart?.advised_discount_ready) return false;
+  if (cart?.discount_resubmit) return true;
+
+  if (typeof cart?.cart_has_manual_discount === "boolean") {
+    return cart.cart_has_manual_discount;
+  }
 
   const orderDiscount = Number(cart?.order_discount ?? 0);
   if (orderDiscount > 0.01) return true;
