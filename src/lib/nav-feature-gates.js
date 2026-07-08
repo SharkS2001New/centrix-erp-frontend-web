@@ -1,6 +1,13 @@
 import { isKraDeviceConfigured } from "@/lib/finance-settings";
 import { isLegacyArchiveEnabled } from "@/lib/legacy-archive-settings";
-import { isOrgMobileSalesEnabled } from "@/lib/sales-settings";
+
+/** Local copy to avoid importing sales-settings (circular via distribution-settings). */
+function orgMobileSalesEnabledForNav(capabilities) {
+  if (capabilities?.mobile_orders_enabled === false) return false;
+  if (!capabilities?.modules?.["sales.mobile"]) return false;
+  const sales = capabilities?.module_settings?.sales ?? capabilities?.module_settings ?? {};
+  return Boolean(sales.enable_mobile_orders);
+}
 
 /** Report slugs that require the External POS application (`sales.pos`). */
 export const POS_REPORT_KEYS = new Set([
@@ -58,7 +65,7 @@ export function isReportNavEnabled(reportKey, capabilities) {
     return isDistributionModuleEnabled(capabilities);
   }
 
-  if (reportKey === "mobile-route-sales" && !isOrgMobileSalesEnabled(capabilities)) {
+  if (reportKey === "mobile-route-sales" && !orgMobileSalesEnabledForNav(capabilities)) {
     return false;
   }
 

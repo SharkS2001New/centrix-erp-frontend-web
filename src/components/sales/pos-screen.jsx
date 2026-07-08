@@ -57,6 +57,7 @@ import {
   canGiveDiscountDirectly,
   showPosLineDiscountField,
   showPosOrderDiscountInput,
+  resolveOrderPrintDocumentType,
 } from "@/lib/sales-settings";
 import {
   buildAdvisedDiscountMap,
@@ -2354,12 +2355,15 @@ export function PosScreen({ standalone = false }) {
         return;
       }
       setReceiptPrintStatus("pending");
+      const documentType =
+        resolveOrderPrintDocumentType(capabilities?.module_settings) ?? "receipt";
       void printSaleOrder(sale, {
         capabilities,
         organization,
         organizationName: capabilities?.profile_label,
         uomById,
         user,
+        documentType,
       })
         .then((result) => {
           if (!result) {

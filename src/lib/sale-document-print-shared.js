@@ -7,6 +7,21 @@ import {
 } from "@/lib/sale-line-items";
 import { buildReportOrgHeaderHtml, resolveReportBranding } from "@/lib/reports/report-branding";
 
+/** Mirrors orgSalesDiscountFeaturesActive in sales-settings (inline to keep print path self-contained). */
+function discountFeaturesEnabledForPrint(moduleSettings) {
+  const sales = moduleSettings?.sales ?? moduleSettings ?? {};
+  const s = sales && typeof sales === "object" ? sales : {};
+  return Boolean(
+    s.allow_discounts ||
+      s.effective_allow_discounts ||
+      s.allow_edit_line_discount ||
+      s.allow_pos_edit_line_discount ||
+      s.discount_approval_enabled ||
+      s.enable_order_discount ||
+      s.effective_enable_order_discount,
+  );
+}
+
 export function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -29,7 +44,7 @@ export function shouldShowPrintDiscountColumn({
   moduleSettings = null,
 } = {}) {
   if (moduleSettings) {
-    return areSalesDiscountFeaturesEnabled(moduleSettings);
+    return discountFeaturesEnabledForPrint(moduleSettings);
   }
   return Boolean(allowDiscounts);
 }
