@@ -36,7 +36,7 @@ import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { orderDocumentPrintLabel, defaultOrderListPrintDocumentType, isOrderCancellationApprovalEnabled, shouldShowSalesDiscountColumn } from "@/lib/sales-settings";
 import { canDirectCancelOrders } from "@/lib/approval-permissions";
-import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
+import { AppBreadcrumb, orderDetailBreadcrumbParent } from "@/components/layout/app-breadcrumb";
 import {
   disposePrintWindow,
   openBlankPrintWindow,
