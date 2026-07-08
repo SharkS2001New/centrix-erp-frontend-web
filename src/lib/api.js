@@ -6,6 +6,7 @@ import { emitSystemIssue } from "./system-issue-dispatcher";
 import { logApiErrorIssue, logSlowRequestIssue } from "./system-issue-reports";
 import { notifyError as showErrorToast } from "./notify";
 import { mayAffectInAppNotifications, notifyNotificationsChanged } from "./notification-events";
+import { compressImageFileIfNeeded } from "./image-compress";
 
 const baseUrl = () => apiV1BaseUrl();
 
@@ -449,10 +450,11 @@ export async function apiRequest(path, options = {}) {
 
 /** Multipart upload (e.g. customer shop image). */
 export async function apiUpload(path, file, fieldName = "image") {
+  const uploadFile = await compressImageFileIfNeeded(file);
   const url = new URL(path.startsWith("http") ? path : `${baseUrl()}${path}`);
   const token = getToken();
   const formData = new FormData();
-  formData.append(fieldName, file);
+  formData.append(fieldName, uploadFile);
 
   const headers = { Accept: "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -532,7 +534,8 @@ export async function apiUploadFilesForBlob(path, files, fieldName = "files") {
   const token = getToken();
   const formData = new FormData();
   for (const file of files) {
-    formData.append(`${fieldName}[]`, file);
+    const uploadFile = await compressImageFileIfNeeded(file);
+    formData.append(`${fieldName}[]`, uploadFile);
   }
 
   const headers = { Accept: "application/zip, application/json" };
@@ -577,8 +580,12 @@ export async function capturePodDelivery(saleId, payload) {
   if (payload.gps_lat != null) formData.append("gps_lat", String(payload.gps_lat));
   if (payload.gps_lng != null) formData.append("gps_lng", String(payload.gps_lng));
   if (payload.lines?.length) formData.append("lines", JSON.stringify(payload.lines));
-  if (payload.photo instanceof File) formData.append("photo", payload.photo);
-  if (payload.signature instanceof File) formData.append("signature", payload.signature);
+  if (payload.photo instanceof File) {
+    formData.append("photo", await compressImageFileIfNeeded(payload.photo));
+  }
+  if (payload.signature instanceof File) {
+    formData.append("signature", await compressImageFileIfNeeded(payload.signature));
+  }
 
   const headers = { Accept: "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -624,7 +631,7 @@ export async function apiUploadForm(path, fields, fileField = "file") {
   for (const [key, value] of Object.entries(fields)) {
     if (value === undefined || value === null) continue;
     if (key === fileField && value instanceof File) {
-      formData.append(key, value);
+      formData.append(key, await compressImageFileIfNeeded(value));
     } else {
       formData.append(key, String(value));
     }

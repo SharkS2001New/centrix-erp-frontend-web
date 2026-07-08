@@ -42,6 +42,14 @@ import { productScopeLabel, isMultiBranchCatalog, defaultProductBranchId } from 
 import { useAuth } from "@/contexts/auth-context";
 import { loadReferenceDataPhased, fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import {
+  fetchBranchesCached,
+  fetchCategoriesCached,
+  fetchSubCategoriesCached,
+  fetchSuppliersCached,
+  fetchUomsCached,
+  fetchVatsCached,
+} from "@/lib/reference-data-cache";
+import {
   BatchActionBar,
   BatchDeleteButton,
   TableRowSelectCell,
@@ -399,15 +407,15 @@ export default function ProductsPage() {
     try {
       const { criticalResults, deferredResults } = await loadReferenceDataPhased({
         critical: [
-          () => apiRequest("/categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-          () => apiRequest("/sub-categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-          () => apiRequest("/branches", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+          () => fetchCategoriesCached().then((data) => ({ data })),
+          () => fetchSubCategoriesCached().then((data) => ({ data })),
+          () => fetchBranchesCached(user?.organization_id).then((data) => ({ data })),
         ],
         deferred: [
           () => apiRequest("/users", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-          () => apiRequest("/vats", { searchParams: { per_page: 50 } }).catch(() => ({ data: [] })),
-          () => apiRequest("/uoms", { searchParams: { per_page: 100 } }).catch(() => ({ data: [] })),
-          () => apiRequest("/suppliers", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+          () => fetchVatsCached().then((data) => ({ data })).catch(() => ({ data: [] })),
+          () => fetchUomsCached().then((data) => ({ data })),
+          () => fetchSuppliersCached().then((data) => ({ data })),
           () =>
             apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }).catch(() => ({
               data: [],
@@ -441,7 +449,7 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.organization_id]);
 
   const loadCatalogStats = useCallback(async () => {
     try {

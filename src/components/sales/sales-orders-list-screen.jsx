@@ -326,22 +326,6 @@ export default function SalesOrdersListScreen({
       setTotalOrders(parsed.total);
       setTotalPages(parsed.totalPages);
       setDetailsById(indexSalesWithItems(list));
-
-      const missing = list.filter((sale) => !sale?.items?.length);
-      if (missing.length) {
-        const loaded = await mapWithConcurrency(
-          missing,
-          (sale) => apiRequest(`/sales/${sale.id}`).catch(() => null),
-          3,
-        );
-        setDetailsById((prev) => {
-          const next = { ...prev };
-          for (const sale of loaded) {
-            if (sale?.id) next[String(sale.id)] = sale;
-          }
-          return next;
-        });
-      }
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load orders");
     } finally {
@@ -370,7 +354,7 @@ export default function SalesOrdersListScreen({
 
   async function loadOrderDetail(orderId) {
     const key = String(orderId);
-    if (detailsById[key]?.items?.length) return detailsById[key];
+    if (detailsById[key]?.items !== undefined) return detailsById[key];
     setDetailLoadingId(key);
     try {
       const sale = await apiRequest(`/sales/${orderId}`);
@@ -534,7 +518,7 @@ export default function SalesOrdersListScreen({
     try {
       const key = String(sale.id);
       let detail = detailsById[key] ?? sale;
-      if (!detail?.items?.length) {
+      if (detail?.items === undefined) {
         const loaded = await loadOrderDetail(sale.id);
         if (loaded) detail = loaded;
       }

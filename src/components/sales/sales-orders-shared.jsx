@@ -966,7 +966,7 @@ export function OrderListTableRow({
 export function indexSalesWithItems(list) {
   const map = {};
   for (const sale of list ?? []) {
-    if (sale?.items?.length) {
+    if (sale?.items !== undefined) {
       map[String(sale.id)] = sale;
     }
   }

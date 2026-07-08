@@ -38,9 +38,52 @@ async function fetchCached(key, loader) {
   return promise;
 }
 
-/** Drop cached branches/routes/uoms (e.g. on logout or org switch). */
+/** Drop cached reference lists (e.g. on logout or org switch). */
 export function invalidateReferenceDataCache() {
   entries.clear();
+}
+
+export function fetchCategoriesCached() {
+  const key = cacheKey("categories");
+  return fetchCached(key, async () => {
+    const res = await apiRequest("/categories", { searchParams: { per_page: 200 } });
+    return res.data ?? [];
+  });
+}
+
+export function fetchSubCategoriesCached() {
+  const key = cacheKey("sub-categories");
+  return fetchCached(key, async () => {
+    const res = await apiRequest("/sub-categories", { searchParams: { per_page: 500 } });
+    return res.data ?? [];
+  });
+}
+
+export function fetchVatsCached() {
+  const key = cacheKey("vats");
+  return fetchCached(key, async () => {
+    const res = await apiRequest("/vats", { searchParams: { per_page: 50 } });
+    return res.data ?? [];
+  });
+}
+
+export function fetchSuppliersCached() {
+  const key = cacheKey("suppliers");
+  return fetchCached(key, async () => {
+    const res = await apiRequest("/suppliers", { searchParams: { per_page: 200 } });
+    return res.data ?? [];
+  });
+}
+
+export async function fetchCatalogReferenceDataCached() {
+  const [categories, subCategories, vats, suppliers, uoms] = await Promise.all([
+    fetchCategoriesCached(),
+    fetchSubCategoriesCached(),
+    fetchVatsCached(),
+    fetchSuppliersCached(),
+    fetchUomsCached(),
+  ]);
+  return { categories, subCategories, vats, suppliers, uoms };
 }
 
 export function fetchBranchesCached(organizationId) {

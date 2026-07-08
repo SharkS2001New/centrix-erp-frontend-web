@@ -1,7 +1,7 @@
 import { openPrintWindow } from "@/lib/open-print-window";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import {
-  buildReportWatermarkHtml,
+  buildReportOrgHeaderHtml,
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
 import { formatPrintDisplayDate } from "@/lib/print-dates";
@@ -30,15 +30,6 @@ function formatQty(value) {
   return n % 1 === 0 ? String(Math.trunc(n)) : n.toLocaleString("en-KE", { maximumFractionDigits: 2 });
 }
 
-function resolveOrganizationName({ organization, organizationName, branding }) {
-  return (
-    branding?.organizationName ||
-    organization?.org_name ||
-    organization?.name ||
-    organizationName ||
-    "Picking List"
-  );
-}
 
 function resolveRouteHeader({ pickingList, trip }) {
   const routeNames =
@@ -61,20 +52,8 @@ function resolveRouteHeader({ pickingList, trip }) {
   return { routeNames, tripCode, vehicle, driver };
 }
 
-function buildPickingListHeaderHtml({ branding, companyName }) {
-  if (branding?.showHeader === false) return "";
-
-  const parts = [];
-  if ((branding?.display === "logo" || branding?.display === "logo_and_name") && branding?.logoUrl) {
-    parts.push(
-      `<img class="org-logo" src="${escapeHtml(branding.logoUrl)}" alt="${escapeHtml(companyName)}">`,
-    );
-  }
-  if (companyName) {
-    parts.push(`<div class="org-name">${escapeHtml(String(companyName).toUpperCase())}</div>`);
-  }
-
-  return parts.length ? `<div class="org-header">${parts.join("")}</div>` : "";
+function buildPickingListHeaderHtml({ branding }) {
+  return buildReportOrgHeaderHtml(branding);
 }
 
 function normalizePickingLines(lines, uomByProductCode) {
@@ -178,10 +157,8 @@ export function buildPickingListHtml({
   includeShelfLocation = true,
   uomByProductCode = null,
 } = {}) {
-  const branding = resolveReportBranding({ organization, generalSettings });
-  const companyName = resolveOrganizationName({ organization, organizationName, branding });
-  const orgHeader = buildPickingListHeaderHtml({ branding, companyName });
-  const watermark = buildReportWatermarkHtml(branding);
+  const branding = resolveReportBranding({ organization, generalSettings, organizationNameFallback: organizationName });
+  const orgHeader = buildPickingListHeaderHtml({ branding });
   const lines = normalizePickingLines(pickingList?.lines ?? [], uomByProductCode);
   const meta = resolveRouteHeader({ pickingList, trip });
   const listDate = pickingList?.list_date ?? trip?.scheduled_date;
@@ -211,10 +188,9 @@ export function buildPickingListHtml({
   <style>${pickingListPrintStyles(generalSettings, includeShelfLocation)}</style>
 </head>
 <body class="has-doc-print-edge-footer">
-  ${watermark}
   <div class="page">
     <div class="sheet">
-      ${orgHeader || `<div class="org-header"><div class="org-name">${escapeHtml(companyName)}</div></div>`}
+      ${orgHeader}
       <div class="title-block">
         <p class="doc-title">Picking List #${escapeHtml(listNumber)}</p>
         <p class="meta-line">Date: ${escapeHtml(dateLabel)}</p>

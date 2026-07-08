@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import { apiRequest } from "@/lib/api";
-import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { formatShortDate, INPUT_CLASS, TABLE_HEAD_ROW_CLASS, workspaceCardClassName } from "@/components/catalog/catalog-shared";
 import {
   saleLineDisplayUnitPrice,
@@ -11,7 +10,7 @@ import {
   saleLineQtyLabel,
 } from "@/lib/sale-line-items";
 import { formatReceiptNumber, formatSaleKes } from "@/components/sales/sales-shared";
-import { OrderExpandIcon } from "@/components/sales/sales-orders-shared";
+import { indexSalesWithItems, OrderExpandIcon } from "@/components/sales/sales-orders-shared";
 import { saleCustomerLabel } from "@/lib/sales";
 import { useConfirm } from "@/lib/use-confirm";
 
@@ -21,16 +20,6 @@ function orderKey(order) {
 
 function heldOrderTitle(order) {
   return `${formatReceiptNumber(order)} - ${saleCustomerLabel(order)}`;
-}
-
-function indexSalesWithItems(list) {
-  const map = {};
-  for (const sale of list ?? []) {
-    if (sale?.items?.length) {
-      map[orderKey(sale)] = sale;
-    }
-  }
-  return map;
 }
 
 export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange, embedded = false }) {
@@ -81,22 +70,6 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
       setTotalCount(count);
       setDetailsById(indexSalesWithItems(list));
       onCountChange?.(count);
-
-      const missing = list.filter((sale) => !sale?.items?.length);
-      if (missing.length) {
-        const loaded = await mapWithConcurrency(
-          missing,
-          (sale) => apiRequest(`/sales/${sale.id}`).catch(() => null),
-          3,
-        );
-        setDetailsById((prev) => {
-          const next = { ...prev };
-          for (const sale of loaded) {
-            if (sale?.id) next[orderKey(sale)] = sale;
-          }
-          return next;
-        });
-      }
     } catch (e) {
       setListError(e instanceof Error ? e.message : "Failed to load held orders");
     } finally {
@@ -131,7 +104,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
 
   async function loadOrderDetail(orderId) {
     const key = String(orderId);
-    if (detailsById[key]?.items?.length) return detailsById[key];
+    if (detailsById[key]?.items !== undefined) return detailsById[key];
     setDetailLoadingId(key);
     setActionError(null);
     try {

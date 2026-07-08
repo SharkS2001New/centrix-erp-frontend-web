@@ -266,24 +266,6 @@ export function ManagerApprovalsSettingsPanel({
                         </p>
                       </div>
                     ) : null}
-                    {form.discount_approval_enabled ? (
-                      <Field label="Reference threshold (%) — legacy">
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.1"
-                          className={`${inputClassName()} w-32`}
-                          value={form.discount_approval_threshold_percent}
-                          onChange={(e) =>
-                            setForm((f) => ({ ...f, discount_approval_threshold_percent: e.target.value }))
-                          }
-                        />
-                        <p className="mt-1 text-xs text-slate-500">
-                          Reserved for reporting; staff discounts always require approval when this setting is on.
-                        </p>
-                      </Field>
-                    ) : null}
                     <Toggle
                       label="Order cancellation approval"
                       description="Non-managers request cancellation; approvers resolve from notifications."

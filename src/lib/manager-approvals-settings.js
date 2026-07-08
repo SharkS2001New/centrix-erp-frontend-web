@@ -112,7 +112,6 @@ export function managerApprovalsFormFromApiResponses(responses = {}) {
 
   return {
     discount_approval_enabled: Boolean(sales.discount_approval_enabled),
-    discount_approval_threshold_percent: String(sales.discount_approval_threshold_percent ?? 10),
     order_cancellation_approval_enabled: Boolean(sales.order_cancellation_approval_enabled),
     stock_adjustment_approval_enabled: Boolean(inventory.stock_adjustment_approval_enabled),
     stock_transfer_approval_enabled: Boolean(inventory.stock_transfer_approval_enabled),
@@ -138,7 +137,6 @@ export function managerApprovalsFormFromApiResponses(responses = {}) {
 export function salesManagerApprovalsPayload(form) {
   const payload = {
     discount_approval_enabled: Boolean(form.discount_approval_enabled),
-    discount_approval_threshold_percent: Number(form.discount_approval_threshold_percent) || 10,
     order_cancellation_approval_enabled: Boolean(form.order_cancellation_approval_enabled),
   };
   if (form.discount_approval_enabled) {

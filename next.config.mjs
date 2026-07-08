@@ -1,4 +1,3 @@
-/** @type {import('next').NextConfig} */
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
@@ -28,9 +27,22 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
+const immutableAssetHeaders = [
+  { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+];
+
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   async headers() {
     return [
+      {
+        source: "/_next/static/:path*",
+        headers: immutableAssetHeaders,
+      },
+      {
+        source: "/branding/:path*",
+        headers: immutableAssetHeaders,
+      },
       {
         source: "/:path*",
         headers: securityHeaders,

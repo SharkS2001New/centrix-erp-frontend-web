@@ -68,6 +68,7 @@ import {
 } from "@/lib/finance-settings";
 import { useBlockingWait } from "@/lib/use-blocking-wait";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
+import { fetchUomsCached, fetchVatsCached } from "@/lib/reference-data-cache";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { LOCAL_PRINTING_ADMIN_LABEL } from "@/lib/local-printing";
 import {
@@ -810,17 +811,17 @@ export function PosScreen({ standalone = false }) {
   usePageNavigationReady(posShellReady);
 
   const loadPosReferenceData = useCallback(async () => {
-    const [uomRes, vatRes, retailRes] = await Promise.all([
-      apiRequest("/uoms", { searchParams: { per_page: 200 } }),
-      apiRequest("/vats", { searchParams: { per_page: 50 } }).catch(() => ({ data: [] })),
+    const [uoms, vats, retailRes] = await Promise.all([
+      fetchUomsCached(),
+      fetchVatsCached().catch(() => []),
       apiRequest("/retail-package-settings", { searchParams: { per_page: 500 } }).catch(() => ({
         data: [],
       })),
     ]);
     const uomMap = new Map();
-    for (const u of uomRes.data ?? []) uomMap.set(String(u.id), u);
+    for (const u of uoms) uomMap.set(String(u.id), u);
     const vatMap = new Map();
-    for (const v of vatRes.data ?? []) vatMap.set(String(v.id), v);
+    for (const v of vats) vatMap.set(String(v.id), v);
     const retailMap = {};
     for (const row of retailRes.data ?? []) {
       if (row.product_code) retailMap[row.product_code] = row;

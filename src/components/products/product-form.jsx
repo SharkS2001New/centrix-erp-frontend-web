@@ -31,6 +31,10 @@ import {
   defaultProductBranchId,
   isMultiBranchCatalog,
 } from "@/lib/catalog-scope";
+import {
+  fetchBranchesCached,
+  fetchCatalogReferenceDataCached,
+} from "@/lib/reference-data-cache";
 
 export const EMPTY_PRODUCT_FORM = {
   product_code: "",
@@ -262,6 +266,7 @@ export function validateRetailPackage(form) {
 }
 
 export function useProductFormResources() {
+  const { user } = useAuth();
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -275,20 +280,17 @@ export function useProductFormResources() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [catRes, subRes, supRes, uomRes, vatRes, branchRes, settingsRes] = await Promise.all([
-        apiRequest("/categories", { searchParams: { per_page: 200 } }),
-        apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
-        apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
-        apiRequest("/uoms", { searchParams: { per_page: 100 } }),
-        apiRequest("/vats", { searchParams: { per_page: 50 } }),
-        apiRequest("/branches", { searchParams: { per_page: 100 } }).catch(() => ({ data: [] })),
-        apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
-      ]);
-      setCategories(catRes.data ?? []);
-      setSubCategories(subRes.data ?? []);
-      setSuppliers(supRes.data ?? []);
-      setUoms(uomRes.data ?? []);
-      setVats(vatRes.data ?? vatRes ?? []);
+      const [{ categories, subCategories, suppliers, uoms, vats }, branchRes, settingsRes] =
+        await Promise.all([
+          fetchCatalogReferenceDataCached(),
+          fetchBranchesCached(user?.organization_id).then((data) => ({ data })),
+          apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
+        ]);
+      setCategories(categories);
+      setSubCategories(subCategories);
+      setSuppliers(suppliers);
+      setUoms(uoms);
+      setVats(vats ?? []);
       setBranches(branchRes.data ?? []);
       const settingsRows = settingsRes?.data ?? settingsRes ?? [];
       setSystemSettings(Array.isArray(settingsRows) ? settingsRows[0] : settingsRows);
@@ -297,7 +299,7 @@ export function useProductFormResources() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.organization_id]);
 
   useEffect(() => {
     load();
