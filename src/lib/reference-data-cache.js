@@ -96,11 +96,13 @@ export function fetchBranchesCached(organizationId) {
   });
 }
 
-export function fetchRoutesCached() {
-  const key = cacheKey("routes");
+export function fetchRoutesCached(organizationId) {
+  const key = cacheKey("routes", String(organizationId ?? "default"));
   return fetchCached(key, async () => {
     const res = await apiRequest("/routes", { searchParams: { per_page: 200 } });
-    return res.data ?? [];
+    return (res.data ?? []).filter(
+      (route) => !organizationId || route.organization_id === organizationId,
+    );
   });
 }
 
@@ -112,7 +114,10 @@ export function fetchUomsCached() {
   });
 }
 
-export async function fetchRoutesAndUomsCached() {
-  const [routes, uoms] = await Promise.all([fetchRoutesCached(), fetchUomsCached()]);
+export async function fetchRoutesAndUomsCached(organizationId) {
+  const [routes, uoms] = await Promise.all([
+    fetchRoutesCached(organizationId),
+    fetchUomsCached(),
+  ]);
   return { routes, uoms };
 }

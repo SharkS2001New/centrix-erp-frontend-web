@@ -211,7 +211,8 @@ export default function SalesOrdersListScreen({
   }, [user?.organization_id]);
 
   useEffect(() => {
-    fetchRoutesAndUomsCached()
+    const orgId = user?.organization_id;
+    fetchRoutesAndUomsCached(orgId)
       .then(({ routes, uoms }) => {
         const routeMap = new Map();
         for (const route of routes) {
@@ -228,7 +229,7 @@ export default function SalesOrdersListScreen({
         setRouteById(new Map());
         setUomById(new Map());
       });
-  }, []);
+  }, [user?.organization_id]);
 
   useEffect(() => {
     const saleIds = rows.map((sale) => sale.id).filter(Boolean);

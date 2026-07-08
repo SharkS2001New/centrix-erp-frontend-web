@@ -369,6 +369,7 @@ export function AuthProvider({ children }) {
       }
       router.replace(resolvePostLoginPath(ctx, caps));
       router.refresh();
+      invalidateReferenceDataCache();
     },
     [applyAuthPayload, router],
   );

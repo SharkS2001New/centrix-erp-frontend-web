@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError, capturePodDelivery, isMissingProductWeightsError, missingProductWeightsFromError } from "@/lib/api";
 import { fetchRoutesCached } from "@/lib/reference-data-cache";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@/lib/distribution-settings";
 
 export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
+  const { user } = useAuth();
   const distributionSettings = useMemo(
     () => mergeDistributionSettings(capabilities),
     [capabilities],
@@ -30,7 +32,7 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
     Promise.all([
       apiRequest("/drivers", { searchParams: { per_page: 200 } }),
       apiRequest("/vehicles", { searchParams: { per_page: 200 } }),
-      fetchRoutesCached(),
+      fetchRoutesCached(user?.organization_id),
     ])
       .then(([driverRes, vehicleRes, routes]) => {
         setDrivers(driverRes.data ?? []);
@@ -38,7 +40,7 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
         setRoutes(routes ?? []);
       })
       .catch(() => {});
-  }, [distributionSettings.enabled]);
+  }, [distributionSettings.enabled, user?.organization_id]);
 
   const openWeightDialog = useCallback((sale, targetStatus, products, fulfillmentMeta = null) => {
     setWeightDialog({

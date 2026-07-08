@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 import { fetchRoutesCached } from "@/lib/reference-data-cache";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { notifyError } from "@/lib/notify";
@@ -61,6 +62,7 @@ export function CreateDispatchTripDialog({
     [initialRouteIds],
   );
   const router = useRouter();
+  const { user } = useAuth();
   const [scheduledDate, setScheduledDate] = useState(() => defaultDate ?? isoDate());
   const [selectedRouteIds, setSelectedRouteIds] = useState(() => new Set());
   const [driverId, setDriverId] = useState("");
@@ -101,7 +103,12 @@ export function CreateDispatchTripDialog({
       .then((r) => r.data ?? [])
       .catch(() => []);
 
-    Promise.all([fetchRoutesCached(), loadDrivers, loadVehicles, loadEmployees])
+    Promise.all([
+      fetchRoutesCached(user?.organization_id),
+      loadDrivers,
+      loadVehicles,
+      loadEmployees,
+    ])
       .then(([routes, drivers, vehicles, employees]) => {
         if (cancelled) return;
         setRoutesLoaded(routes ?? []);
@@ -124,7 +131,7 @@ export function CreateDispatchTripDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, driversFromProps, vehiclesFromProps]);
+  }, [open, driversFromProps, vehiclesFromProps, user?.organization_id]);
 
   const routes = useMemo(() => {
     const byId = new Map();

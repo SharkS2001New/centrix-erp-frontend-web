@@ -127,7 +127,9 @@ export function useCustomerFormResources() {
       const orgBranches = (branchRes.data ?? []).filter(
         (b) => !orgId || b.organization_id === orgId,
       );
-      setRoutes(routeRes.data ?? []);
+      setRoutes((routeRes.data ?? []).filter(
+        (route) => !orgId || route.organization_id === orgId,
+      ));
       setBranches(orgBranches);
     } finally {
       setLoading(false);
