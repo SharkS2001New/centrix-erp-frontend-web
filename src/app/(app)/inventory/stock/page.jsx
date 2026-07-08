@@ -68,16 +68,15 @@ const STOCK_EXPORT_COLUMN_DEFS = {
   status: { key: "status", label: "Status" },
 };
 
-function enrichStockRow(row, valuationByCode) {
-  const val = valuationByCode.get(row.product_code);
+function enrichStockRow(row) {
   const factor = Number(row.conversion_factor ?? 1);
   const uomName = row.uom_name ?? "units";
   const uomObj = {
     full_name: uomName,
     conversion_factor: factor,
   };
-  const cost = Number(val?.last_cost_price ?? 0);
-  const sell = Number(val?.unit_price ?? row.wholesale_price ?? 0);
+  const cost = Number(row.effective_unit_cost ?? row.last_cost_price ?? 0);
+  const sell = Number(row.wholesale_price ?? 0);
   const shopQty = Number(row.shop_quantity ?? 0);
   const storeQty = Number(row.store_quantity ?? 0);
   const totalBase = shopQty + storeQty;
@@ -148,7 +147,6 @@ export default function CurrentStockPage() {
   const multiBranch = isMultiBranchCatalog(capabilities);
 
   const [stockRows, setStockRows] = useState([]);
-  const [valuationRows, setValuationRows] = useState([]);
   const [subcategories, setSubcategories] = useState([]);
   const [branches, setBranches] = useState([]);
   const [branchId, setBranchId] = useState("");
@@ -221,15 +219,11 @@ export default function CurrentStockPage() {
           location: locationFilter !== "all" ? locationFilter : undefined,
         },
       });
-      const [stockRes, valRes] = await Promise.all([
-        apiRequest("/reports/stock-on-hand", { searchParams }),
-        apiRequest("/reports/stock-valuation", { searchParams }),
-      ]);
+      const stockRes = await apiRequest("/reports/stock-on-hand", { searchParams });
       const parsed = parsePaginator(stockRes);
       setStockRows(parsed.items);
       setTotalStockRows(parsed.total);
       setTotalPages(parsed.totalPages);
-      setValuationRows(valRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load current stock");
     } finally {
@@ -261,29 +255,23 @@ export default function CurrentStockPage() {
   );
 
   const enriched = useMemo(() => {
-    const valuationByCode = new Map(valuationRows.map((r) => [r.product_code, r]));
-
     return stockRows.map((row) => {
-      const base = enrichStockRow(row, valuationByCode);
+      const base = enrichStockRow(row);
       return {
         ...base,
-        sell: Number(
-          valuationByCode.get(row.product_code)?.unit_price ?? row.wholesale_price ?? 0,
-        ),
+        sell: Number(row.wholesale_price ?? 0),
         sellOnRetail: false,
         retailPackage: retailByCode.get(row.product_code) ?? null,
         product: {
           product_code: row.product_code,
           product_name: row.product_name,
-          unit_price: Number(
-            valuationByCode.get(row.product_code)?.unit_price ?? row.wholesale_price ?? 0,
-          ),
+          unit_price: Number(row.wholesale_price ?? 0),
           sell_on_retail: false,
         },
         hasStockRecord: true,
       };
     });
-  }, [stockRows, valuationRows, retailByCode]);
+  }, [stockRows, retailByCode]);
 
   const safePage = Math.min(page, totalPages);
   const pageSlice = enriched;
@@ -305,13 +293,9 @@ export default function CurrentStockPage() {
         location: locationFilter !== "all" ? locationFilter : undefined,
       },
     });
-    const [stockRes, valRes] = await Promise.all([
-      apiRequest("/reports/stock-on-hand", { searchParams }),
-      apiRequest("/reports/stock-valuation", { searchParams }),
-    ]);
-    const valuationByCode = new Map((valRes.data ?? []).map((r) => [r.product_code, r]));
+    const stockRes = await apiRequest("/reports/stock-on-hand", { searchParams });
     const rows = parsePaginator(stockRes).items;
-    return rows.map((row) => stockRowToExport(enrichStockRow(row, valuationByCode)));
+    return rows.map((row) => stockRowToExport(enrichStockRow(row)));
   }, [branchId, debouncedSearch, subcategoryFilter, locationFilter]);
   const pageRowIds = useMemo(() => pageSlice.map((row) => row.product_code), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);

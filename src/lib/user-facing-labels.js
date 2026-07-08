@@ -17,8 +17,9 @@ export const INVENTORY_TRANSACTION_TYPE_LABELS = {
 export const SALES_CHANNEL_LABELS = {
   pos: "POS",
   mobile: "Mobile",
-  backend: "Backoffice",
-  backoffice: "Backoffice",
+  erp: "ERP",
+  backend: "ERP",
+  backoffice: "ERP",
   wholesale: "Wholesale",
   online: "Online",
   route: "Route",

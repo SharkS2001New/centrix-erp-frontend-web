@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 import { inputClassName } from "@/components/catalog/catalog-shared";
 import { TABLE_ROW_CHECKBOX_CLASS } from "@/components/catalog/table-row-selection";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
@@ -22,6 +23,7 @@ function formatStock(baseQty, product) {
 export function LpoProductSearchPanel({
   uomById,
   vatById = new Map(),
+  branchId: branchIdProp = null,
   onSelect,
   onSelectMany,
   actionLabel = "Add selected to order",
@@ -35,6 +37,10 @@ export function LpoProductSearchPanel({
   /** Cap scroll area ~half viewport; height grows with rows until cap (supplier return page). */
   compactHalfPage = false,
 }) {
+  const { user, isOrgWide } = useAuth();
+  const branchId =
+    branchIdProp ??
+    (user?.branch_id && !isOrgWide() ? user.branch_id : user?.branch_id ?? null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -65,8 +71,10 @@ export function LpoProductSearchPanel({
     setSearching(true);
     setSearchError(null);
     try {
+      const searchParams = { per_page: 80, q: trimmed };
+      if (branchId) searchParams.branch_id = branchId;
       const res = await apiRequest("/products", {
-        searchParams: { per_page: 80, q: trimmed },
+        searchParams,
       });
       if (seq !== searchSeq.current) return;
 
@@ -81,7 +89,7 @@ export function LpoProductSearchPanel({
     } finally {
       if (seq === searchSeq.current) setSearching(false);
     }
-  }, []);
+  }, [branchId]);
 
   useEffect(() => {
     const t = setTimeout(() => searchProducts(query), 280);

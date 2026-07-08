@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import { formatInventoryKes } from "@/components/inventory/inventory-shared";
 import {
@@ -38,26 +39,38 @@ const INVENTORY_LINKS = [
 ];
 
 export function InventoryDashboardContent() {
+  const { user, isOrgWide } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [stockRows, setStockRows] = useState([]);
   const [lowStockRows, setLowStockRows] = useState([]);
-  const [inventoryValue, setInventoryValue] = useState(null);
+  const [inventoryValue, setInventoryValue] = useState({ shop: null, store: null, total: null });
 
   useEffect(() => {
+    const valuationParams = {};
+    if (user?.branch_id && !isOrgWide()) {
+      valuationParams.branch_id = user.branch_id;
+    }
+
     Promise.all([
-      apiRequest("/reports/stock-on-hand", { searchParams: { per_page: 200 } }),
-      apiRequest("/reports/low-stock", { searchParams: { per_page: 10 } }),
-      apiRequest("/reports/dashboard"),
+      apiRequest("/reports/stock-on-hand", {
+        searchParams: { per_page: 200, ...valuationParams },
+      }),
+      apiRequest("/reports/low-stock", { searchParams: { per_page: 10, ...valuationParams } }),
+      apiRequest("/reports/inventory-valuation-summary", { searchParams: valuationParams }),
     ])
-      .then(([stockRes, lowRes, dashRes]) => {
+      .then(([stockRes, lowRes, valuationRes]) => {
         setStockRows(stockRes.data ?? []);
         setLowStockRows(lowRes.data ?? []);
-        setInventoryValue(dashRes?.kpis?.inventory_value?.value ?? null);
+        setInventoryValue({
+          shop: valuationRes?.shop_value ?? null,
+          store: valuationRes?.store_value ?? null,
+          total: valuationRes?.value ?? null,
+        });
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load inventory dashboard"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [user?.branch_id, user?.access_scope, user?.is_admin]);
 
   const stats = useMemo(() => {
     const inStock = stockRows.filter((r) => Number(r.total_base_units ?? 0) > 0);
@@ -99,7 +112,24 @@ export function InventoryDashboardContent() {
   );
 
   const kpiItems = [
-    { id: "value", label: "Stock value", value: inventoryValue != null ? formatReportKes(inventoryValue) : "—" },
+    {
+      id: "shop_value",
+      label: "Shop value",
+      value: inventoryValue.shop != null ? formatReportKes(inventoryValue.shop) : "—",
+      hint: "Qty × cost in shop",
+    },
+    {
+      id: "store_value",
+      label: "Store value",
+      value: inventoryValue.store != null ? formatReportKes(inventoryValue.store) : "—",
+      hint: "Qty × cost in store",
+    },
+    {
+      id: "total_value",
+      label: "Total stock value",
+      value: inventoryValue.total != null ? formatReportKes(inventoryValue.total) : "—",
+      hint: "Shop + store at cost",
+    },
     { id: "skus", label: "SKUs in stock", value: stats.skus.toLocaleString(), hint: "With quantity on hand" },
     { id: "low", label: "Low stock", value: stats.low.toLocaleString(), hint: "Below reorder point" },
     { id: "out", label: "Out of stock", value: stats.out.toLocaleString(), hint: "Zero on hand" },
@@ -143,9 +173,21 @@ export function InventoryDashboardContent() {
                   <dd className="font-medium text-red-700">{stats.out}</dd>
                 </div>
                 <div className="flex justify-between gap-4 border-t border-slate-100 pt-3 dark:border-slate-800">
-                  <dt className="text-slate-500">Stock value (qty × cost)</dt>
+                  <dt className="text-slate-500">Shop value (qty × cost)</dt>
+                  <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
+                    {inventoryValue.shop != null ? formatInventoryKes(inventoryValue.shop) : "—"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">Store value (qty × cost)</dt>
+                  <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
+                    {inventoryValue.store != null ? formatInventoryKes(inventoryValue.store) : "—"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+                  <dt className="text-slate-500">Total stock value</dt>
                   <dd className="font-semibold text-slate-900 dark:text-slate-100">
-                    {inventoryValue != null ? formatInventoryKes(inventoryValue) : "—"}
+                    {inventoryValue.total != null ? formatInventoryKes(inventoryValue.total) : "—"}
                   </dd>
                 </div>
               </dl>

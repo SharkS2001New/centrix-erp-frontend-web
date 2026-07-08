@@ -103,7 +103,7 @@ export function ReportsDashboardSection({
   const channelSegments = useMemo(
     () =>
       (dashboard?.sales_by_channel ?? []).map((c, i) => ({
-        label: channelLabel(c.channel),
+        label: c.channel_label ?? channelLabel(c.channel),
         value: c.revenue,
         sharePct: c.share_pct,
         color: CHART_COLORS[i % CHART_COLORS.length],

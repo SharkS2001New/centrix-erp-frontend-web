@@ -121,8 +121,18 @@ function enrichProduct(product, subById, catById, supplierById, uomById, vatById
   const supplier = supplierById.get(product.supplier_id);
   const uom = uomById.get(product.unit_id);
   const vat = vatById.get(product.vat_id);
-  const shop = Number(product.stock_available_shop ?? product.stock_in_shop ?? 0);
-  const store = Number(product.stock_available_store ?? product.stock_in_store ?? 0);
+  const shop = Number(
+    product.branch_stock?.shop_quantity ??
+      product.stock_on_hand_shop ??
+      product.stock_in_shop ??
+      0,
+  );
+  const store = Number(
+    product.branch_stock?.store_quantity ??
+      product.stock_on_hand_store ??
+      product.stock_in_store ??
+      0,
+  );
   const factor = Number(uom?.conversion_factor ?? 1);
   const sellOnRetail = product.sell_on_retail === 1 || product.sell_on_retail === true;
   const packLabel = fullPackageLabel(uom);
@@ -471,7 +481,7 @@ export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { capabilities } = useAuth();
+  const { capabilities, user } = useAuth();
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const productCode = decodeURIComponent(params.code);
 
@@ -528,8 +538,18 @@ export default function ProductDetailPage() {
 
   const stockValue = useMemo(() => {
     if (!enriched) return null;
-    const shop = Number(enriched.stock_in_shop ?? 0);
-    const store = Number(enriched.stock_in_store ?? 0);
+    const shop = Number(
+      enriched.branch_stock?.shop_quantity ??
+        enriched.stock_on_hand_shop ??
+        enriched.stock_in_shop ??
+        0,
+    );
+    const store = Number(
+      enriched.branch_stock?.store_quantity ??
+        enriched.stock_on_hand_store ??
+        enriched.stock_in_store ??
+        0,
+    );
     const total = shop + store;
     const cost = Number(enriched.last_cost_price ?? 0);
     const sell = Number(enriched.unit_price ?? 0);
@@ -603,9 +623,11 @@ export default function ProductDetailPage() {
   }, [productCode]);
 
   const loadProduct = useCallback(async () => {
-    const res = await apiRequest(`/products/${encodeURIComponent(productCode)}`);
+    const searchParams = {};
+    if (user?.branch_id) searchParams.branch_id = user.branch_id;
+    const res = await apiRequest(`/products/${encodeURIComponent(productCode)}`, { searchParams });
     setProduct(res.data ?? res);
-  }, [productCode]);
+  }, [productCode, user?.branch_id]);
 
   const loadTabData = useCallback(async () => {
     if (mainTab !== "activity") return;

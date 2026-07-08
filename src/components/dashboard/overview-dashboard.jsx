@@ -29,7 +29,7 @@ const MODULE_LINKS = [
 ];
 
 export function OverviewDashboard() {
-  const { user, capabilities, isModuleEnabled, hasPermission } = useAuth();
+  const { user, organization, capabilities, isModuleEnabled, hasPermission } = useAuth();
   const [dashError, setDashError] = useState(null);
 
   const enabledModules = useMemo(
@@ -71,7 +71,7 @@ export function OverviewDashboard() {
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div className="theme-panel rounded-xl border px-5 py-4 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Organization</p>
-          <p className="theme-heading mt-1 text-lg font-semibold">{user?.organization?.name ?? "—"}</p>
+          <p className="theme-heading mt-1 text-lg font-semibold">{organization?.org_name ?? organization?.name ?? "—"}</p>
           <p className="theme-subtext mt-0.5 text-xs">{capabilities?.profile_label ?? capabilities?.deployment_profile}</p>
         </div>
         <div className="theme-panel rounded-xl border px-5 py-4 shadow-sm">
