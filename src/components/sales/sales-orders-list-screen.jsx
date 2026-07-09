@@ -479,10 +479,44 @@ export default function SalesOrdersListScreen({
     router.push(`/sales/orders/${sale.id}?from=${encodeURIComponent(from)}`);
   }
 
-  function openEditOrder(sale) {
-    if (!sale?.id || !sale.can_edit_lines) return;
+  async function openEditOrder(sale, { replace = false } = {}) {
+    if (!sale?.id) return;
     setContextMenu(null);
-    setEditSale(sale);
+
+    if (sale.can_edit_lines) {
+      setEditSale(sale);
+      return;
+    }
+
+    if (!sale.can_edit) return;
+
+    setTransitionBusyId(sale.id);
+    setActionMessage(null);
+    try {
+      await apiRequest(`/sales/orders/${sale.id}/restore-to-cart`, {
+        method: "POST",
+        body: { replace },
+      });
+      router.push("/sales/pos");
+    } catch (e) {
+      const message = e instanceof ApiError ? e.message : "Could not load order for editing.";
+      if (!replace && message.toLowerCase().includes("already has items")) {
+        const ok = await confirm({
+          title: "Replace cart",
+          message: "Your cart already has items. Replace them with this order?",
+          confirmLabel: "Replace",
+          destructive: true,
+        });
+        if (ok) {
+          setTransitionBusyId(null);
+          await openEditOrder(sale, { replace: true });
+          return;
+        }
+      }
+      setActionMessage(message);
+    } finally {
+      setTransitionBusyId(null);
+    }
   }
 
   function handleEditSaved(updated) {
@@ -678,11 +712,11 @@ export default function SalesOrdersListScreen({
       busy: transitionBusyId === sale.id || fulfillment.busy,
       includePrint: contextMenu.includePrint !== false,
       hasExternalPos,
-      canEdit: Boolean(sale.can_edit_lines),
+      canEdit: Boolean(sale.can_edit_lines || sale.can_edit),
       balanceDue: saleBalanceDue(sale),
       disableWorkflowActions: routeOrdersOnly,
       onView: () => viewOrder(sale),
-      onEdit: () => openEditOrder(sale),
+      onEdit: () => void openEditOrder(sale),
       onCollectPayment: canCollectPaymentOnQueue(sale, queueSlug) ? () => openCollectPayment(sale) : null,
       onPrintThermal: () => void printOrder(sale, "receipt"),
       onPrintA4: () => void printOrder(sale, "invoice"),
