@@ -11,6 +11,7 @@ import {
   countCustomersByRoute,
   formatRouteKes,
   normalizeRouteId,
+  resolveRouteFormBranchId,
   routeToForm,
   sumRouteSales,
   updateRouteFormField,
@@ -55,7 +56,8 @@ export default function RoutesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const handledParams = useRef("");
-  const { branches, showBranchSelect, defaultBranch } = useRouteFormResources();
+  const { branches, showBranchSelect, defaultBranch, loading: branchesLoading, loadError: branchesLoadError, user } =
+    useRouteFormResources();
 
   const [routes, setRoutes] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -179,10 +181,21 @@ export default function RoutesPage() {
     if (page !== safePage) setPage(safePage);
   }, [page, safePage]);
 
+  useEffect(() => {
+    if (!drawerOpen || branches.length === 0) return;
+    setForm((prev) => {
+      if (prev.branch_id) return prev;
+      const nextBranch = defaultBranch || String(branches[0].id);
+      return nextBranch ? { ...prev, branch_id: nextBranch } : prev;
+    });
+  }, [drawerOpen, branches, defaultBranch]);
+
   function openCreateDrawer() {
     setDrawerMode("create");
     setEditingId(null);
-    setForm({ ...EMPTY_ROUTE_FORM, branch_id: defaultBranch });
+    const branchId =
+      defaultBranch || (branches.length === 1 ? String(branches[0].id) : "");
+    setForm({ ...EMPTY_ROUTE_FORM, branch_id: branchId });
     setFormError(null);
     setDrawerOpen(true);
   }
@@ -190,7 +203,11 @@ export default function RoutesPage() {
   function openEditDrawer(route) {
     setDrawerMode("edit");
     setEditingId(route.id);
-    setForm(routeToForm(route));
+    const nextForm = routeToForm(route);
+    if (!nextForm.branch_id && branches.length === 1) {
+      nextForm.branch_id = String(branches[0].id);
+    }
+    setForm(nextForm);
     setFormError(null);
     setDrawerOpen(true);
   }
@@ -210,9 +227,14 @@ export default function RoutesPage() {
 
   async function saveRoute(e) {
     e.preventDefault();
+    const branchId = resolveRouteFormBranchId(form, branches, user);
+    if (showBranchSelect && branches.length > 1 && !branchId) {
+      setFormError("Select a branch for this route.");
+      return;
+    }
     setSaving(true);
     setFormError(null);
-    const body = buildRouteBody(form, { includeBranch: showBranchSelect });
+    const body = buildRouteBody({ ...form, branch_id: branchId });
     try {
       if (drawerMode === "edit" && editingId != null) {
         await apiRequest(`/routes/${editingId}`, {
@@ -510,8 +532,15 @@ export default function RoutesPage() {
                   onPatch={patchForm}
                   branches={branches}
                   showBranchSelect={showBranchSelect}
+                  branchesLoading={branchesLoading}
                 />
               </div>
+
+              {branchesLoadError ? (
+                <div className="mx-5 mb-2">
+                  <InlineActionError message={branchesLoadError} />
+                </div>
+              ) : null}
 
               {formError ? (
                 <div className="mx-5 mb-2">

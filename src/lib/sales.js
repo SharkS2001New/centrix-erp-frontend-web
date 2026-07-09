@@ -62,19 +62,43 @@ export function isOrderEditVisible(sale, workflow = null) {
   return ORDER_EDIT_STATUSES.has(aligned);
 }
 
+export function isPosOrMobileSale(sale) {
+  const source = String(sale?.order_source ?? "").toLowerCase();
+  if (source === "backoffice" || source === "backend") return false;
+
+  const channel = String(sale?.channel ?? "").toLowerCase();
+  if (channel === "backend") return false;
+
+  const meta = sale?.fulfillment_meta;
+  if (meta?.sales_workspace === "backoffice") return false;
+
+  return channel === "pos" || channel === "mobile" || source === "pos" || source === "mobile";
+}
+
 export function isBackofficeSale(sale) {
   if (String(sale?.status ?? "").toLowerCase() === "editable") return true;
+  if (isPosOrMobileSale(sale)) return false;
+
   const source = String(sale?.order_source ?? "").toLowerCase();
-  if (source === "pos" || source === "mobile") return false;
   if (source === "backoffice" || source === "backend") return true;
   if (String(sale?.channel ?? "").toLowerCase() === "backend") return true;
+
   const meta = sale?.fulfillment_meta;
   return meta?.sales_workspace === "backoffice";
 }
 
+/** Line-edit popup for backoffice orders; POS/mobile booked orders restore to cart instead. */
 export function shouldOpenBackofficeOrderEdit(sale, workflow = null) {
   if (sale?.can_edit_lines) return true;
-  return isBackofficeSale(sale) && isOrderEditVisible(sale, workflow);
+  if (!isOrderEditVisible(sale, workflow)) return false;
+  return !isPosOrMobileSale(sale);
+}
+
+export function shouldRestoreOrderToCart(sale, workflow = null) {
+  if (sale?.can_edit_lines) return false;
+  if (sale?.can_edit === false) return false;
+  if (!isOrderEditVisible(sale, workflow)) return false;
+  return isPosOrMobileSale(sale) || Boolean(sale?.can_edit);
 }
 
 /** Visual pipeline steps for backend/mobile orders. */

@@ -10,14 +10,11 @@ import {
   isSameCalendarMonth,
 } from "@/components/catalog/catalog-shared";
 import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
-import {
-  defaultBranchId,
-  shouldShowBranchSelect,
-} from "@/components/customers/customer-form";
 import { useAuth } from "@/contexts/auth-context";
-import { apiRequest } from "@/lib/api";
+import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import { receiptPaymentDetailsFromApi } from "@/lib/receipt-payment-details";
+import { isAdminUser } from "@/components/customers/customer-form";
 
 export const EMPTY_ROUTE_FORM = {
   branch_id: "",
@@ -45,7 +42,7 @@ export function routeToForm(route) {
   };
 }
 
-export function buildRouteBody(form, { includeBranch = false } = {}) {
+export function buildRouteBody(form) {
   const body = {
     route_name: form.route_name.trim(),
     direction: form.direction.trim() || null,
@@ -53,7 +50,7 @@ export function buildRouteBody(form, { includeBranch = false } = {}) {
     is_active: form.is_active,
   };
 
-  if (includeBranch && form.branch_id) {
+  if (form.branch_id) {
     body.branch_id = Number(form.branch_id);
   }
 
@@ -82,12 +79,32 @@ export function updateRouteFormField(form, key, value) {
   return { ...form, [key]: value };
 }
 
+export function defaultRouteBranchId(user, branches) {
+  if (branches.length === 1) return String(branches[0].id);
+  if (user?.branch_id != null) return String(user.branch_id);
+  return "";
+}
+
+export function resolveRouteFormBranchId(form, branches, user) {
+  if (form?.branch_id) return String(form.branch_id);
+  return defaultRouteBranchId(user, branches);
+}
+
+/** Route create/edit: org-wide admins always pick a branch; others when multiple exist. */
+export function shouldShowRouteBranchSelect(user, branches, isOrgWide) {
+  if (!branches?.length) return false;
+  if (typeof isOrgWide === "function" && isOrgWide()) return true;
+  if (isAdminUser(user)) return true;
+  return branches.length > 1;
+}
+
 export function RouteFormFields({
   form,
   onChange,
   onPatch,
   branches = [],
   showBranchSelect = false,
+  branchesLoading = false,
 }) {
   const { capabilities } = useAuth();
   const posRouteOrdersEnabled = isExternalPosEnabled(capabilities);
@@ -105,22 +122,26 @@ export function RouteFormFields({
       {showBranchSelect ? (
         <div className="md:col-span-2">
           <Field label="Branch" required>
-            <select
-              value={form.branch_id}
-              onChange={(e) => onChange("branch_id", e.target.value)}
-              required
-              className={inputClassName()}
-            >
-              <option value="" disabled>
-                Select branch
-              </option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={String(branch.id)}>
-                  {branch.branch_name}
-                  {branch.branch_code ? ` (${branch.branch_code})` : ""}
+            {branchesLoading ? (
+              <p className="text-sm text-slate-500">Loading branches…</p>
+            ) : (
+              <select
+                value={form.branch_id}
+                onChange={(e) => onChange("branch_id", e.target.value)}
+                required
+                className={inputClassName()}
+              >
+                <option value="" disabled>
+                  Select branch
                 </option>
-              ))}
-            </select>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={String(branch.id)}>
+                    {branch.branch_name}
+                    {branch.branch_code ? ` (${branch.branch_code})` : ""}
+                  </option>
+                ))}
+              </select>
+            )}
           </Field>
         </div>
       ) : null}
@@ -233,33 +254,44 @@ export function RouteFormFields({
 }
 
 export function useRouteFormResources() {
-  const { user } = useAuth();
+  const { user, isOrgWide } = useAuth();
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const branchRes = await apiRequest("/branches", { searchParams: { per_page: 200 } });
-      const orgId = user?.organization_id;
-      setBranches((branchRes.data ?? []).filter((b) => !orgId || b.organization_id === orgId));
+      const list = await fetchBranchesCached(user?.organization_id);
+      let scoped = list ?? [];
+      if (!isOrgWide() && user?.branch_id) {
+        scoped = scoped.filter((branch) => Number(branch.id) === Number(user.branch_id));
+      }
+      setBranches(scoped);
+    } catch (e) {
+      setBranches([]);
+      setLoadError(e instanceof Error ? e.message : "Could not load branches");
     } finally {
       setLoading(false);
     }
-  }, [user?.organization_id]);
+  }, [user?.organization_id, user?.branch_id, isOrgWide]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const showBranchSelect = useMemo(
-    () => shouldShowBranchSelect(user, branches),
+    () => shouldShowRouteBranchSelect(user, branches, isOrgWide),
+    [user, branches, isOrgWide],
+  );
+
+  const defaultBranch = useMemo(
+    () => defaultRouteBranchId(user, branches),
     [user, branches],
   );
 
-  const defaultBranch = useMemo(() => defaultBranchId(user, branches), [user, branches]);
-
-  return { user, branches, loading, showBranchSelect, defaultBranch };
+  return { user, branches, loading, loadError, showBranchSelect, defaultBranch };
 }
 
 export function RouteFormCard({ children, onSubmit, actions }) {

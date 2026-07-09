@@ -72,6 +72,7 @@ import {
   formatOrderNumber,
   isOrderEditVisible,
   shouldOpenBackofficeOrderEdit,
+  shouldRestoreOrderToCart,
 } from "@/lib/sales";
 import {
   FulfillmentAssignmentDialog,
@@ -487,13 +488,15 @@ export default function SalesOrdersListScreen({
   async function openEditOrder(sale, { replace = false } = {}) {
     if (!sale?.id) return;
     const workflow = getOrderWorkflow(capabilities, sale);
-    if (!isOrderEditVisible(sale, workflow)) return;
+    if (!isOrderEditVisible(sale, workflow) && !sale.can_edit_lines && !sale.can_edit) return;
     setContextMenu(null);
 
     if (shouldOpenBackofficeOrderEdit(sale, workflow)) {
       setEditSale(sale);
       return;
     }
+
+    if (!shouldRestoreOrderToCart(sale, workflow)) return;
 
     setTransitionBusyId(sale.id);
     setActionMessage(null);

@@ -33,6 +33,7 @@ import {
   salePaymentMethodDisplay,
   saleStatusLabel,
   shouldOpenBackofficeOrderEdit,
+  shouldRestoreOrderToCart,
 } from "@/lib/sales";
 import { isLegacySale, saleLineProductLabel } from "@/lib/sale-line-items";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
@@ -810,13 +811,22 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const orderCrumbLabel = sale ? `Order #${formatOrderNumber(sale)}` : "Order …";
 
   async function openEditOrder({ replace = false } = {}) {
-    if (!sale?.id || !isOrderEditVisible(sale, saleWorkflow)) return;
+    if (!sale?.id) return;
+    if (
+      !isOrderEditVisible(sale, saleWorkflow)
+      && !sale.can_edit_lines
+      && !sale.can_edit
+    ) {
+      return;
+    }
 
     if (shouldOpenBackofficeOrderEdit(sale, saleWorkflow)) {
       setEditError(null);
       setEditOrderOpen(true);
       return;
     }
+
+    if (!shouldRestoreOrderToCart(sale, saleWorkflow)) return;
 
     setTransitionBusy(true);
     setEditError(null);
