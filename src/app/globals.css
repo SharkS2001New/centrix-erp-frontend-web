@@ -2184,9 +2184,9 @@ html[data-theme="dark"] [data-sonner-toaster] {
   --success-bg: color-mix(in srgb, #10b981 12%, var(--theme-page-bg));
   --success-border: color-mix(in srgb, #10b981 35%, var(--theme-border));
   --success-text: var(--theme-text);
-  --error-bg: color-mix(in srgb, #ef4444 12%, var(--theme-page-bg));
-  --error-border: color-mix(in srgb, #ef4444 35%, var(--theme-border));
-  --error-text: var(--theme-text);
+  --error-bg: color-mix(in srgb, #ef4444 14%, var(--theme-page-bg));
+  --error-border: color-mix(in srgb, #ef4444 45%, var(--theme-border));
+  --error-text: #b91c1c;
   --warning-bg: color-mix(in srgb, #f59e0b 12%, var(--theme-page-bg));
   --warning-border: color-mix(in srgb, #f59e0b 35%, var(--theme-border));
   --warning-text: var(--theme-text);
@@ -2206,6 +2206,16 @@ html[data-theme="dark"] .app-toast {
 
 .app-toast-title {
   font-weight: 600 !important;
+}
+
+[data-sonner-toast][data-type="error"] .app-toast-title,
+[data-sonner-toast][data-type="error"] [data-title] {
+  color: #b91c1c !important;
+}
+
+html[data-theme="dark"] [data-sonner-toast][data-type="error"] .app-toast-title,
+html[data-theme="dark"] [data-sonner-toast][data-type="error"] [data-title] {
+  color: #fca5a5 !important;
 }
 
 .app-toast-description {

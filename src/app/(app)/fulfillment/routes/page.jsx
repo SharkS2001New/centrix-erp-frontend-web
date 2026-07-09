@@ -14,6 +14,7 @@ import {
   routeToForm,
   sumRouteSales,
   updateRouteFormField,
+  useRouteFormResources,
 } from "@/components/routes/route-form";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import {
@@ -46,6 +47,7 @@ import {
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
 import { CreateDispatchTripDialog } from "@/components/fulfillment/create-dispatch-trip-dialog";
+import { InlineActionError } from "@/components/shared/inline-action-error";
 
 
 export default function RoutesPage() {
@@ -53,6 +55,7 @@ export default function RoutesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const handledParams = useRef("");
+  const { branches, showBranchSelect, defaultBranch } = useRouteFormResources();
 
   const [routes, setRoutes] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -179,7 +182,7 @@ export default function RoutesPage() {
   function openCreateDrawer() {
     setDrawerMode("create");
     setEditingId(null);
-    setForm({ ...EMPTY_ROUTE_FORM });
+    setForm({ ...EMPTY_ROUTE_FORM, branch_id: defaultBranch });
     setFormError(null);
     setDrawerOpen(true);
   }
@@ -209,14 +212,15 @@ export default function RoutesPage() {
     e.preventDefault();
     setSaving(true);
     setFormError(null);
+    const body = buildRouteBody(form, { includeBranch: showBranchSelect });
     try {
       if (drawerMode === "edit" && editingId != null) {
         await apiRequest(`/routes/${editingId}`, {
           method: "PUT",
-          body: buildRouteBody(form),
+          body,
         });
       } else {
-        await apiRequest("/routes", { method: "POST", body: buildRouteBody(form) });
+        await apiRequest("/routes", { method: "POST", body });
       }
       await loadData();
       closeDrawer();
@@ -500,14 +504,20 @@ export default function RoutesPage() {
 
             <form onSubmit={saveRoute} className="flex flex-1 flex-col overflow-hidden">
               <div className="flex-1 overflow-y-auto px-5 py-4">
-                <RouteFormFields form={form} onChange={updateField} onPatch={patchForm} />
+                <RouteFormFields
+                  form={form}
+                  onChange={updateField}
+                  onPatch={patchForm}
+                  branches={branches}
+                  showBranchSelect={showBranchSelect}
+                />
               </div>
 
-              {formError && (
-                <p className="mx-5 mb-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {formError}
-                </p>
-              )}
+              {formError ? (
+                <div className="mx-5 mb-2">
+                  <InlineActionError message={formError} />
+                </div>
+              ) : null}
 
               <div className="border-t border-slate-200 px-5 py-4">
                 <button

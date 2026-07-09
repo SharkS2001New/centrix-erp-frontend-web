@@ -12,6 +12,7 @@ import { showBackofficeLineDiscountEdit } from "@/lib/sales-settings";
 import { useAuth } from "@/contexts/auth-context";
 import { inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
+import { InlineActionError } from "@/components/shared/inline-action-error";
 import {
   advisedDiscountLinesFromRejection,
   applyAdvisedDiscountsToDraftLines,
@@ -320,9 +321,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
           </div>
           <div className="flex items-center gap-2">
             {error ? (
-              <p className="max-w-xs text-right text-sm text-red-600" role="alert">
-                {error}
-              </p>
+              <InlineActionError message={error} className="max-w-xs text-right text-xs" />
             ) : null}
             <PrimaryButton type="button" showIcon={false} disabled={saving || loading || !lines.length} onClick={() => void handleSave()}>
               {saving

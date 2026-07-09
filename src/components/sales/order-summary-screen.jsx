@@ -65,6 +65,7 @@ import {
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
 import { ProductWeightPromptDialog } from "@/components/fulfillment/product-weight-prompt-dialog";
 import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
+import { InlineActionError } from "@/components/shared/inline-action-error";
 import { getSaleDriverId, getSaleVehicleId } from "@/components/fulfillment/fulfillment-shared";
 
 const ORDER_TABS = [
@@ -553,6 +554,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [editOrderOpen, setEditOrderOpen] = useState(false);
+  const [editError, setEditError] = useState(null);
 
   const loadSale = useCallback(async () => {
     setLoading(true);
@@ -811,11 +813,13 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     if (!sale?.id || !isOrderEditVisible(sale, saleWorkflow)) return;
 
     if (shouldOpenBackofficeOrderEdit(sale, saleWorkflow)) {
+      setEditError(null);
       setEditOrderOpen(true);
       return;
     }
 
     setTransitionBusy(true);
+    setEditError(null);
     try {
       await apiRequest(`/sales/orders/${sale.id}/restore-to-cart`, {
         method: "POST",
@@ -837,6 +841,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
           return;
         }
       }
+      setEditError(message);
       notifyError(message);
     } finally {
       setTransitionBusy(false);
@@ -926,6 +931,12 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               </button>
             </div>
           </div>
+
+          {editError ? (
+            <div className="mb-4">
+              <InlineActionError message={editError} />
+            </div>
+          ) : null}
 
           <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <SummaryInfoCard

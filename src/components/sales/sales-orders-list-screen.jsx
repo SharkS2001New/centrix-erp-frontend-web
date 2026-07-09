@@ -80,6 +80,7 @@ import {
 import { ProductWeightPromptDialog } from "@/components/fulfillment/product-weight-prompt-dialog";
 import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
+import { ActionFeedbackBanner } from "@/components/shared/action-feedback-banner";
 import { usePosSession } from "@/contexts/pos-session-context";
 
 function indexPaymentRefs(payments) {
@@ -886,12 +887,7 @@ export default function SalesOrdersListScreen({
           </Field>
         </FilterToolbar>
       }
-      banner={actionMessage ? (
-          <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-            {actionMessage}
-          </p>
-        ) : null
-      }
+      banner={actionMessage ? <ActionFeedbackBanner message={actionMessage} /> : null}
     >
       <div className="mt-8 space-y-6">
         {!loading ? (

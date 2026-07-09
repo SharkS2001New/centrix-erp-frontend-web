@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Field,
   getSaleTimestamp,
@@ -9,11 +10,17 @@ import {
   isSameCalendarMonth,
 } from "@/components/catalog/catalog-shared";
 import { ReceiptPaymentDetailsEditor } from "@/components/admin/receipt-payment-details-editor";
+import {
+  defaultBranchId,
+  shouldShowBranchSelect,
+} from "@/components/customers/customer-form";
 import { useAuth } from "@/contexts/auth-context";
+import { apiRequest } from "@/lib/api";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import { receiptPaymentDetailsFromApi } from "@/lib/receipt-payment-details";
 
 export const EMPTY_ROUTE_FORM = {
+  branch_id: "",
   route_name: "",
   direction: "",
   route_markup_price: "0",
@@ -27,6 +34,7 @@ export function routeToForm(route) {
     ? receiptPaymentDetailsFromApi(route.receipt_payment_details)
     : null;
   return {
+    branch_id: route.branch_id != null ? String(route.branch_id) : "",
     route_name: route.route_name ?? "",
     direction: route.direction ?? "",
     route_markup_price:
@@ -37,13 +45,17 @@ export function routeToForm(route) {
   };
 }
 
-export function buildRouteBody(form) {
+export function buildRouteBody(form, { includeBranch = false } = {}) {
   const body = {
     route_name: form.route_name.trim(),
     direction: form.direction.trim() || null,
     route_markup_price: parseInt(form.route_markup_price, 10) || 0,
     is_active: form.is_active,
   };
+
+  if (includeBranch && form.branch_id) {
+    body.branch_id = Number(form.branch_id);
+  }
 
   if (form.use_route_payment_details && form.receipt_payment_details) {
     const lines = (form.receipt_payment_details.lines ?? []).filter(
@@ -70,7 +82,13 @@ export function updateRouteFormField(form, key, value) {
   return { ...form, [key]: value };
 }
 
-export function RouteFormFields({ form, onChange, onPatch }) {
+export function RouteFormFields({
+  form,
+  onChange,
+  onPatch,
+  branches = [],
+  showBranchSelect = false,
+}) {
   const { capabilities } = useAuth();
   const posRouteOrdersEnabled = isExternalPosEnabled(capabilities);
 
@@ -84,6 +102,29 @@ export function RouteFormFields({ form, onChange, onPatch }) {
 
   return (
     <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-2">
+      {showBranchSelect ? (
+        <div className="md:col-span-2">
+          <Field label="Branch" required>
+            <select
+              value={form.branch_id}
+              onChange={(e) => onChange("branch_id", e.target.value)}
+              required
+              className={inputClassName()}
+            >
+              <option value="" disabled>
+                Select branch
+              </option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={String(branch.id)}>
+                  {branch.branch_name}
+                  {branch.branch_code ? ` (${branch.branch_code})` : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      ) : null}
+
       <div className="md:col-span-2">
         <Field label="Route name">
           <input
@@ -189,6 +230,36 @@ export function RouteFormFields({ form, onChange, onPatch }) {
       </div>
     </div>
   );
+}
+
+export function useRouteFormResources() {
+  const { user } = useAuth();
+  const [branches, setBranches] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const branchRes = await apiRequest("/branches", { searchParams: { per_page: 200 } });
+      const orgId = user?.organization_id;
+      setBranches((branchRes.data ?? []).filter((b) => !orgId || b.organization_id === orgId));
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.organization_id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const showBranchSelect = useMemo(
+    () => shouldShowBranchSelect(user, branches),
+    [user, branches],
+  );
+
+  const defaultBranch = useMemo(() => defaultBranchId(user, branches), [user, branches]);
+
+  return { user, branches, loading, showBranchSelect, defaultBranch };
 }
 
 export function RouteFormCard({ children, onSubmit, actions }) {
