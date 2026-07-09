@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { isProductCodeInCatalogCached } from "@/lib/catalog-cache";
+import { getStoredOrganization } from "@/lib/auth-storage";
 import { Field, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
 import { RetailPricingTiersEditor, defaultRetailPricingTier } from "@/components/catalog/retail-pricing-tiers";
 import {
@@ -285,7 +287,7 @@ export function useProductFormResources() {
     try {
       const [{ categories, subCategories, suppliers, uoms, vats }, branchRes, settingsRes] =
         await Promise.all([
-          fetchCatalogReferenceDataCached(),
+          fetchCatalogReferenceDataCached(user?.organization_id),
           fetchBranchesCached(user?.organization_id).then((data) => ({ data })),
           apiRequest("/system-settings", {
             searchParams: { per_page: 1 },
@@ -335,10 +337,9 @@ export function useProductFormResources() {
 }
 
 async function isProductCodeAvailable(code) {
-  const res = await apiRequest("/products", {
-    searchParams: { per_page: 1, "filter[product_code]": code },
-  });
-  return !(res.data ?? []).length;
+  const orgId = getStoredOrganization()?.id;
+  const taken = await isProductCodeInCatalogCached(orgId, code);
+  return !taken;
 }
 
 export async function generateProductSku() {

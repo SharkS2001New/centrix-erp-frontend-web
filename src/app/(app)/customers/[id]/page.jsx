@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { useAuth } from "@/contexts/auth-context";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
 import { CustomerLocationSection } from "@/components/customers/customer-location-section";
 import {
@@ -23,6 +25,7 @@ import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 export default function CustomerDetailPage() {
   const params = useParams();
   const customerNum = params.id;
+  const { user } = useAuth();
 
   const [customer, setCustomer] = useState(null);
   const [branchName, setBranchName] = useState(null);
@@ -87,14 +90,14 @@ export default function CustomerDetailPage() {
     }
 
     try {
-      const productsRes = await apiRequest("/products", { searchParams: { per_page: 500 } });
-      setProductByCode(indexProductsByCode(productsRes.data ?? []));
+      const catalogProducts = await fetchProductCatalogCached(user?.organization_id, { status: "all" });
+      setProductByCode(indexProductsByCode(catalogProducts ?? []));
     } catch {
       setProductByCode({});
     }
 
     setLoading(false);
-  }, [customerNum]);
+  }, [customerNum, user?.organization_id]);
 
   useEffect(() => {
     loadData();

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchProductCatalogCached } from "@/lib/catalog-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { isDamageWriteOffApprovalEnabled } from "@/lib/sales-settings";
 import { notifySuccess } from "@/lib/notify";
@@ -41,18 +42,18 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
   useEffect(() => {
     if (!open) return;
     Promise.all([
-      apiRequest("/products", { searchParams: { per_page: 500 } }),
+      fetchProductCatalogCached(user?.organization_id, { status: "all" }),
       apiRequest("/uoms", { searchParams: { per_page: 200 } }),
     ])
-      .then(([prodRes, uomRes]) => {
-        setProducts(prodRes.data ?? []);
+      .then(([catalogProducts, uomRes]) => {
+        setProducts(catalogProducts ?? []);
         setUoms(uomRes.data ?? []);
       })
       .catch(() => {
         setProducts([]);
         setUoms([]);
       });
-  }, [open]);
+  }, [open, user?.organization_id]);
 
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
 

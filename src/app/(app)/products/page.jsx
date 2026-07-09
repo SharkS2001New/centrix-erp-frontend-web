@@ -39,7 +39,8 @@ import { P } from "@/lib/permission-codes";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
 import { productScopeLabel, isMultiBranchCatalog, defaultProductBranchId } from "@/lib/catalog-scope";
 import { useAuth } from "@/contexts/auth-context";
-import { loadReferenceDataPhased, fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
+import { loadReferenceDataPhased } from "@/lib/paginated-fetch";
+import { mergeProductsWithLiveStock, fetchStockLevelsMap } from "@/lib/catalog-cache";
 import {
   fetchBranchesCached,
   fetchCategoriesCached,
@@ -405,15 +406,15 @@ export default function ProductsPage() {
     try {
       const { criticalResults, deferredResults } = await loadReferenceDataPhased({
         critical: [
-          () => fetchCategoriesCached().then((data) => ({ data })),
-          () => fetchSubCategoriesCached().then((data) => ({ data })),
+          () => fetchCategoriesCached(user?.organization_id).then((data) => ({ data })),
+          () => fetchSubCategoriesCached(user?.organization_id).then((data) => ({ data })),
           () => fetchBranchesCached(user?.organization_id).then((data) => ({ data })),
         ],
         deferred: [
           () => apiRequest("/users", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-          () => fetchVatsCached().then((data) => ({ data })).catch(() => ({ data: [] })),
-          () => fetchUomsCached().then((data) => ({ data })),
-          () => fetchSuppliersCached().then((data) => ({ data })),
+          () => fetchVatsCached(user?.organization_id).then((data) => ({ data })).catch(() => ({ data: [] })),
+          () => fetchUomsCached(user?.organization_id).then((data) => ({ data })),
+          () => fetchSuppliersCached(user?.organization_id).then((data) => ({ data })),
           () =>
             apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }).catch(() => ({
               data: [],
@@ -484,7 +485,11 @@ export default function ProductsPage() {
       });
       const prodRes = await apiRequest("/products", { searchParams });
       const parsed = parsePaginator(prodRes);
-      setProducts(parsed.items);
+      const stockByCode = await fetchStockLevelsMap(
+        user?.organization_id,
+        effectiveStockBranchId,
+      );
+      setProducts(mergeProductsWithLiveStock(parsed.items, stockByCode));
       setTotalProducts(parsed.total);
       setTotalPages(parsed.totalPages);
     } catch (e) {
@@ -504,6 +509,7 @@ export default function ProductsPage() {
     effectiveStockBranchId,
     sort,
     sortDir,
+    user?.organization_id,
   ]);
 
   const reloadAll = useCallback(async () => {

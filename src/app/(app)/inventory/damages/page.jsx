@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchProductCatalogCached } from "@/lib/catalog-cache";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -54,16 +55,16 @@ export default function DamagesPage() {
 
   const loadReferenceData = useCallback(async () => {
     try {
-      const [prodRes, uomRes] = await Promise.all([
-        apiRequest("/products", { searchParams: { per_page: 500 } }),
+      const [catalogProducts, uomRes] = await Promise.all([
+        fetchProductCatalogCached(user?.organization_id, { status: "all" }),
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
       ]);
-      setProducts(prodRes.data ?? []);
+      setProducts(catalogProducts ?? []);
       setUoms(uomRes.data ?? []);
     } catch {
       /* non-blocking */
     }
-  }, []);
+  }, [user?.organization_id]);
 
   const loadRows = useCallback(async () => {
     setListLoading(true);

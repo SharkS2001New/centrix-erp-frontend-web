@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchProductCatalogCached } from "@/lib/catalog-cache";
 import { useOrgFormat } from "@/lib/org-format";
 import {
   CatalogPageShell,
@@ -24,7 +25,7 @@ import { P } from "@/lib/permission-codes";
 
 export default function InventoryTransfersPage() {
   const { date } = useOrgFormat();
-  const { capabilities } = useAuth();
+  const { capabilities, user } = useAuth();
   const showInterBranch = isMultiBranchCatalog(capabilities);
   const [rows, setRows] = useState([]);
   const [products, setProducts] = useState([]);
@@ -40,22 +41,22 @@ export default function InventoryTransfersPage() {
     setLoading(true);
     setError(null);
     try {
-      const [res, prodRes, uomRes] = await Promise.all([
+      const [res, catalogProducts, uomRes] = await Promise.all([
         apiRequest("/reports/stock-transfers", {
           searchParams: { from_date: fromDate, to_date: toDate, per_page: 200 },
         }),
-        apiRequest("/products", { searchParams: { per_page: 500 } }),
+        fetchProductCatalogCached(user?.organization_id, { status: "all" }),
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
       ]);
       setRows(res.data ?? []);
-      setProducts(prodRes.data ?? []);
+      setProducts(catalogProducts ?? []);
       setUoms(uomRes.data ?? []);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load transfers");
     } finally {
       setLoading(false);
     }
-  }, [fromDate, toDate]);
+  }, [fromDate, toDate, user?.organization_id]);
 
   const uomByProduct = useMemo(() => buildUomByProductCode(products, uoms), [products, uoms]);
 

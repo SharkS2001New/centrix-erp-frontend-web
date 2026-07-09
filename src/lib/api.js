@@ -5,6 +5,7 @@ import { beginAppLoading, endAppLoading, isPageNavigationLoading } from "./app-l
 import { emitSystemIssue } from "./system-issue-dispatcher";
 import { logApiErrorIssue, logSlowRequestIssue } from "./system-issue-reports";
 import { notifyError as showErrorToast } from "./notify";
+import { handleCacheInvalidation } from "./cache-invalidation";
 import { mayAffectInAppNotifications, notifyNotificationsChanged } from "./notification-events";
 import { compressImageFileIfNeeded } from "./image-compress";
 
@@ -456,6 +457,8 @@ async function performApiRequest(path, url, options = {}) {
       notifyNotificationsChanged();
     }
 
+    handleCacheInvalidation(method, apiPath);
+
     return data;
   } catch (error) {
     if (error?.name === "AbortError") {
@@ -752,6 +755,10 @@ export async function apiRequestMultipart(path, fields, options = {}) {
   if (!res.ok) {
     throw new ApiError(formatApiErrorMessage(data, res.statusText || "Request failed"), res.status, data);
   }
+
+  const method = options.method ?? "POST";
+  const apiPath = path.startsWith("http") ? new URL(path).pathname : path;
+  handleCacheInvalidation(method, apiPath);
 
   return data;
 }

@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
+import {
+  fetchProductByCodeCached,
+  searchProductCatalogCached,
+} from "@/lib/catalog-cache";
 import { inputClassName } from "@/components/catalog/catalog-shared";
 
 /**
- * Searchable product picker — queries the API so new products are always findable
- * (not limited to the first page of a bulk load).
+ * Searchable product picker — searches the org product catalog cache (master data only).
  */
 export function ProductSearchSelect({
   value,
@@ -22,6 +25,7 @@ export function ProductSearchSelect({
   placeholder = "Search by product name or code…",
   inputClassName: inputClassNameProp,
 }) {
+  const { user } = useAuth();
   const listId = useId();
   const rootRef = useRef(null);
   const [open, setOpen] = useState(false);
@@ -61,17 +65,18 @@ export function ProductSearchSelect({
     setSearching(true);
     setSearchError(null);
     try {
-      const res = await apiRequest("/products", {
-        searchParams: { per_page: 50, q: trimmed },
+      const list = await searchProductCatalogCached(user?.organization_id, trimmed, {
+        limit: 50,
+        status: "all",
       });
-      setResults(res.data ?? []);
+      setResults(list);
     } catch {
       setSearchError("Could not search products.");
       setResults([]);
     } finally {
       setSearching(false);
     }
-  }, []);
+  }, [user?.organization_id]);
 
   useEffect(() => {
     const t = setTimeout(() => searchProducts(query), 280);
@@ -99,7 +104,9 @@ export function ProductSearchSelect({
     let cancelled = false;
     (async () => {
       try {
-        const product = await apiRequest(`/products/${encodeURIComponent(code)}`);
+        const product = await fetchProductByCodeCached(user?.organization_id, code, {
+          status: "all",
+        });
         if (cancelled || !product?.product_code || !hasName(product)) return;
         onProductSelect?.(product);
         if (!open) {
@@ -113,7 +120,7 @@ export function ProductSearchSelect({
     return () => {
       cancelled = true;
     };
-  }, [value, disabled, lockedProduct?.product_code, lockedProduct?.product_name, onProductSelect, open, results]);
+  }, [value, disabled, lockedProduct?.product_code, lockedProduct?.product_name, onProductSelect, open, results, user?.organization_id]);
 
   useEffect(() => {
     if (!open && selected) {

@@ -3,8 +3,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
+import { fetchProductCatalogCached } from "@/lib/catalog-cache";
 import { useAuth } from "@/contexts/auth-context";
-import { fetchAllPaginated } from "@/lib/paginated-api";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import {
   buildPriceSheetRow,
@@ -186,7 +186,7 @@ export function ProductPriceSheetScreen() {
     setError(null);
     try {
       const [products, uomRes, retailRes, catRes, subRes] = await Promise.all([
-        fetchAllPaginated(apiRequest, "/products", { perPage: 200 }),
+        fetchProductCatalogCached(organization?.id, { status: "all" }),
         apiRequest("/uoms", { searchParams: { per_page: 300 } }),
         apiRequest("/retail-package-settings", { searchParams: { per_page: 500 } }),
         apiRequest("/categories", { searchParams: { per_page: 200 } }),
@@ -236,7 +236,7 @@ export function ProductPriceSheetScreen() {
     } finally {
       setLoading(false);
     }
-  }, [retailPricingEnabled]);
+  }, [retailPricingEnabled, organization?.id]);
 
   useEffect(() => {
     load();

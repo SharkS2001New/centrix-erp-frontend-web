@@ -4,6 +4,7 @@ import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
+import { fetchProductCatalogCached } from "@/lib/catalog-cache";
 import { buildGrnFromStockReceiptGroup } from "@/lib/grn-document";
 import { printGoodsReceivedNote } from "@/components/lpo/grn-print";
 import { useAuth } from "@/contexts/auth-context";
@@ -35,7 +36,7 @@ export default function StockReceiptDetailPage() {
     setLoading(true);
     try {
       const isSingleId = ref.startsWith("RCPT-");
-      const [receiptRes, prodRes, uomRes] = await Promise.all([
+      const [receiptRes, catalogProducts, uomRes] = await Promise.all([
         isSingleId
           ? apiRequest(`/stock-receipts/${ref.replace("RCPT-", "")}`)
           : apiRequest("/stock-receipts", {
@@ -45,7 +46,7 @@ export default function StockReceiptDetailPage() {
                 "filter[invoice_number]": ref,
               },
             }),
-        apiRequest("/products", { searchParams: { per_page: 500 } }),
+        fetchProductCatalogCached(user?.organization_id, { status: "all" }),
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
       ]);
       const filtered = isSingleId
@@ -54,14 +55,14 @@ export default function StockReceiptDetailPage() {
             (row) => (row.invoice_number ?? "").trim() === ref,
           );
       setRows(filtered);
-      setProducts(prodRes.data ?? []);
+      setProducts(catalogProducts ?? []);
       setUoms(uomRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load receipt");
     } finally {
       setLoading(false);
     }
-  }, [branchId, ref]);
+  }, [branchId, ref, user?.organization_id]);
 
   useEffect(() => {
     load();

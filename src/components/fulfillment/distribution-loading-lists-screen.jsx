@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchProductCatalogCached } from "@/lib/catalog-cache";
 import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
@@ -128,14 +129,14 @@ export function DistributionLoadingListsScreen() {
     setDetailError(null);
     setDetailLoading(true);
     try {
-      const [tripRes, listRes, pickRes, prodRes, uomRes] = await Promise.all([
+      const [tripRes, listRes, pickRes, catalogProducts, uomRes] = await Promise.all([
         apiRequest(`/dispatch-trips/${trip.id}`),
         apiRequest(`/dispatch-trips/${trip.id}/loading-list`),
         apiRequest(`/dispatch-trips/${trip.id}/picking-list`),
-        apiRequest("/products", { searchParams: { per_page: 500 } }),
+        fetchProductCatalogCached(organization?.id, { status: "all" }),
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
       ]);
-      setCatalogProducts(prodRes.data ?? []);
+      setCatalogProducts(catalogProducts ?? []);
       setUoms(uomRes.data ?? []);
       setDetail({
         trip: tripRes,

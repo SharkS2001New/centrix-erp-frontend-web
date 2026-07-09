@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { useAuth } from "@/contexts/auth-context";
 import {
   defaultSmallLabelForType,
   uomCategory,
@@ -140,6 +142,7 @@ function StockReportPreview({ form }) {
 }
 
 export default function UomsPage() {
+  const { user } = useAuth();
   const confirm = useConfirm();
   const [uoms, setUoms] = useState([]);
   const [products, setProducts] = useState([]);
@@ -170,18 +173,18 @@ export default function UomsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [uomRes, prodRes] = await Promise.all([
+      const [uomRes, catalogProducts] = await Promise.all([
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
-        apiRequest("/products", { searchParams: { per_page: 200 } }),
+        fetchProductCatalogCached(user?.organization_id, { status: "all" }),
       ]);
       setUoms(uomRes.data ?? []);
-      setProducts(prodRes.data ?? []);
+      setProducts(catalogProducts ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load units of measure");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.organization_id]);
 
   useEffect(() => {
     loadData();

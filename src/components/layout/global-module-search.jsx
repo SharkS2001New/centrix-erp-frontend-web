@@ -105,6 +105,7 @@ export function GlobalModuleSearch() {
         limitPerType: 4,
         adminPath,
         workspaceId,
+        organizationId: organization?.id ?? user?.organization_id,
       })
         .then((groups) => {
           if (entityRequestRef.current !== requestId) return;

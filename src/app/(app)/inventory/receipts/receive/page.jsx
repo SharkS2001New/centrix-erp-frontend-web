@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchProductCatalogCached } from "@/lib/catalog-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
@@ -65,12 +66,12 @@ export default function ReceiveStockPage() {
   useEffect(() => {
     Promise.all([
       apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
-      apiRequest("/products", { searchParams: { per_page: 500 } }),
+      fetchProductCatalogCached(user?.organization_id, { status: "all" }),
       apiRequest("/uoms", { searchParams: { per_page: 200 } }),
     ])
-      .then(([supRes, prodRes, uomRes]) => {
+      .then(([supRes, catalogProducts, uomRes]) => {
         setSuppliers(supRes.data ?? []);
-        setProducts(prodRes.data ?? []);
+        setProducts(catalogProducts ?? []);
         setUoms(uomRes.data ?? []);
       })
       .catch(() => {
@@ -78,7 +79,7 @@ export default function ReceiveStockPage() {
         setProducts([]);
         setUoms([]);
       });
-  }, []);
+  }, [user?.organization_id]);
 
   const { uomById } = useInventoryCatalogMaps(uoms);
   const productByCode = useMemo(

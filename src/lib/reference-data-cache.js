@@ -1,123 +1,110 @@
 import { apiRequest } from "@/lib/api";
+import { getStoredOrganization } from "@/lib/auth-storage";
+import {
+  fetchOrgCached,
+  invalidateOrgCacheResource,
+  orgCacheKey,
+  clearOrgCache,
+} from "@/lib/org-cache";
 
-const CACHE_MS = 5 * 60 * 1000;
-
-/** @type {Map<string, { data?: unknown, promise?: Promise<unknown>, fetchedAt?: number }>} */
-const entries = new Map();
-
-function cacheKey(name, scope = "default") {
-  return `${name}:${scope}`;
+function resolveOrgId(organizationId) {
+  return organizationId ?? getStoredOrganization()?.id ?? null;
 }
 
-function readFresh(key) {
-  const hit = entries.get(key);
-  if (!hit?.data || hit.fetchedAt == null) return null;
-  if (Date.now() - hit.fetchedAt > CACHE_MS) return null;
-  return hit.data;
-}
-
-async function fetchCached(key, loader) {
-  const fresh = readFresh(key);
-  if (fresh != null) return fresh;
-
-  const hit = entries.get(key);
-  if (hit?.promise) return hit.promise;
-
-  const promise = Promise.resolve()
-    .then(loader)
-    .then((data) => {
-      entries.set(key, { data, fetchedAt: Date.now() });
-      return data;
-    })
-    .catch((error) => {
-      entries.delete(key);
-      throw error;
-    });
-
-  entries.set(key, { promise });
-  return promise;
-}
-
-/** Drop cached reference lists (e.g. on logout or org switch). */
+/** Drop all org-scoped caches (logout, org switch, capabilities version bump). */
 export function invalidateReferenceDataCache() {
-  entries.clear();
+  clearOrgCache();
 }
 
-export function fetchCategoriesCached() {
-  const key = cacheKey("categories");
-  return fetchCached(key, async () => {
+/** Invalidate one reference resource after CUD (categories, uoms, etc.). */
+export function invalidateReferenceResource(resource, organizationId) {
+  invalidateOrgCacheResource(resolveOrgId(organizationId), resource);
+}
+
+export function fetchCategoriesCached(organizationId) {
+  const orgId = resolveOrgId(organizationId);
+  const key = orgCacheKey(orgId, "categories");
+  return fetchOrgCached(key, async () => {
     const res = await apiRequest("/categories", { searchParams: { per_page: 200 } });
     return res.data ?? [];
   });
 }
 
-export function fetchSubCategoriesCached() {
-  const key = cacheKey("sub-categories");
-  return fetchCached(key, async () => {
+export function fetchSubCategoriesCached(organizationId) {
+  const orgId = resolveOrgId(organizationId);
+  const key = orgCacheKey(orgId, "sub-categories");
+  return fetchOrgCached(key, async () => {
     const res = await apiRequest("/sub-categories", { searchParams: { per_page: 500 } });
     return res.data ?? [];
   });
 }
 
-export function fetchVatsCached() {
-  const key = cacheKey("vats");
-  return fetchCached(key, async () => {
+export function fetchVatsCached(organizationId) {
+  const orgId = resolveOrgId(organizationId);
+  const key = orgCacheKey(orgId, "vats");
+  return fetchOrgCached(key, async () => {
     const res = await apiRequest("/vats", { searchParams: { per_page: 50 } });
     return res.data ?? [];
   });
 }
 
-export function fetchSuppliersCached() {
-  const key = cacheKey("suppliers");
-  return fetchCached(key, async () => {
+export function fetchSuppliersCached(organizationId) {
+  const orgId = resolveOrgId(organizationId);
+  const key = orgCacheKey(orgId, "suppliers");
+  return fetchOrgCached(key, async () => {
     const res = await apiRequest("/suppliers", { searchParams: { per_page: 200 } });
     return res.data ?? [];
   });
 }
 
-export async function fetchCatalogReferenceDataCached() {
-  const [categories, subCategories, vats, suppliers, uoms] = await Promise.all([
-    fetchCategoriesCached(),
-    fetchSubCategoriesCached(),
-    fetchVatsCached(),
-    fetchSuppliersCached(),
-    fetchUomsCached(),
-  ]);
-  return { categories, subCategories, vats, suppliers, uoms };
-}
-
-export function fetchBranchesCached(organizationId) {
-  const key = cacheKey("branches", String(organizationId ?? "all"));
-  return fetchCached(key, async () => {
-    const res = await apiRequest("/branches", { searchParams: { per_page: 200 } });
-    return (res.data ?? []).filter(
-      (branch) => !organizationId || branch.organization_id === organizationId,
-    );
-  });
-}
-
-export function fetchRoutesCached(organizationId) {
-  const key = cacheKey("routes", String(organizationId ?? "default"));
-  return fetchCached(key, async () => {
-    const res = await apiRequest("/routes", { searchParams: { per_page: 200 } });
-    return (res.data ?? []).filter(
-      (route) => !organizationId || route.organization_id === organizationId,
-    );
-  });
-}
-
-export function fetchUomsCached() {
-  const key = cacheKey("uoms");
-  return fetchCached(key, async () => {
+export function fetchUomsCached(organizationId) {
+  const orgId = resolveOrgId(organizationId);
+  const key = orgCacheKey(orgId, "uoms");
+  return fetchOrgCached(key, async () => {
     const res = await apiRequest("/uoms", { searchParams: { per_page: 500 } });
     return res.data ?? [];
   });
 }
 
+export async function fetchCatalogReferenceDataCached(organizationId) {
+  const orgId = resolveOrgId(organizationId);
+  const [categories, subCategories, vats, suppliers, uoms] = await Promise.all([
+    fetchCategoriesCached(orgId),
+    fetchSubCategoriesCached(orgId),
+    fetchVatsCached(orgId),
+    fetchSuppliersCached(orgId),
+    fetchUomsCached(orgId),
+  ]);
+  return { categories, subCategories, vats, suppliers, uoms };
+}
+
+export function fetchBranchesCached(organizationId) {
+  const orgId = resolveOrgId(organizationId);
+  const key = orgCacheKey(orgId, "branches");
+  return fetchOrgCached(key, async () => {
+    const res = await apiRequest("/branches", { searchParams: { per_page: 200 } });
+    return (res.data ?? []).filter(
+      (branch) => !orgId || branch.organization_id === orgId,
+    );
+  });
+}
+
+export function fetchRoutesCached(organizationId) {
+  const orgId = resolveOrgId(organizationId);
+  const key = orgCacheKey(orgId, "routes");
+  return fetchOrgCached(key, async () => {
+    const res = await apiRequest("/routes", { searchParams: { per_page: 200 } });
+    return (res.data ?? []).filter(
+      (route) => !orgId || route.organization_id === orgId,
+    );
+  });
+}
+
 export async function fetchRoutesAndUomsCached(organizationId) {
+  const orgId = resolveOrgId(organizationId);
   const [routes, uoms] = await Promise.all([
-    fetchRoutesCached(organizationId),
-    fetchUomsCached(),
+    fetchRoutesCached(orgId),
+    fetchUomsCached(orgId),
   ]);
   return { routes, uoms };
 }

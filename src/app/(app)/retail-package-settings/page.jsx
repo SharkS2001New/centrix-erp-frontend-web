@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { useAuth } from "@/contexts/auth-context";
 import { RetailPricingTiersEditor } from "@/components/catalog/retail-pricing-tiers";
 import {
   CatalogPageShell,
@@ -63,6 +65,7 @@ function formatTiersSummary(tiers, uom) {
 }
 
 export default function RetailPackageSettingsPage() {
+  const { user } = useAuth();
   const confirm = useConfirm();
   const [settings, setSettings] = useState([]);
   const [products, setProducts] = useState([]);
@@ -95,15 +98,15 @@ export default function RetailPackageSettingsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [setRes, prodRes, uomRes, catRes, subRes] = await Promise.all([
+      const [setRes, catalogProducts, uomRes, catRes, subRes] = await Promise.all([
         apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }),
-        apiRequest("/products", { searchParams: { per_page: 200 } }),
+        fetchProductCatalogCached(user?.organization_id, { status: "all" }),
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
         apiRequest("/categories", { searchParams: { per_page: 200 } }),
         apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
       ]);
       setSettings(setRes.data ?? []);
-      setProducts(prodRes.data ?? []);
+      setProducts(catalogProducts ?? []);
       setUoms(uomRes.data ?? []);
       setCategories(catRes.data ?? []);
       setSubCategories(subRes.data ?? []);
@@ -112,7 +115,7 @@ export default function RetailPackageSettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.organization_id]);
 
   useEffect(() => {
     loadData();

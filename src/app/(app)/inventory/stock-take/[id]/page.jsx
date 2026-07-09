@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchProductCatalogCached } from "@/lib/catalog-cache";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useAuth } from "@/contexts/auth-context";
@@ -81,7 +82,7 @@ export default function StockTakeSessionPage() {
         fetchAllPaginatedRowsSmart("/stock-take-lines", {
           "filter[session_id]": sessionId,
         }),
-        fetchAllPaginatedRowsSmart("/products"),
+        fetchProductCatalogCached(organization?.id, { status: "all" }),
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
         apiRequest("/categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
         apiRequest("/sub-categories", { searchParams: { per_page: 500 } }).catch(() => ({ data: [] })),

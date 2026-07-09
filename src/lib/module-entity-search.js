@@ -1,4 +1,5 @@
 import { buildPageParams } from "@/lib/paginated-api";
+import { searchProductCatalogCached } from "@/lib/catalog-cache";
 import { P } from "@/lib/permission-codes";
 
 /**
@@ -29,6 +30,7 @@ export const WORKSPACE_ENTITY_SEARCH = {
       apiPath: "/products",
       listHref: "/products",
       permission: P.catalogue.products.view,
+      catalogCache: true,
       mapItem: (row) => ({
         id: `product:${row.product_code}`,
         label: String(row.product_name ?? row.product_code ?? "Product"),
@@ -231,7 +233,7 @@ export function workspaceSearchPlaceholder(workspaceId, workspaceLabel) {
  * @param {typeof import("@/lib/api").apiRequest} apiRequest
  * @param {EntitySearchConfig[]} configs
  * @param {string} query
- * @param {{ limitPerType?: number, adminPath?: (path: string) => string, workspaceId?: string }} [options]
+ * @param {{ limitPerType?: number, adminPath?: (path: string) => string, workspaceId?: string, organizationId?: string | number | null }} [options]
  */
 export async function searchWorkspaceEntities(apiRequest, configs, query, options = {}) {
   const q = query.trim();
@@ -242,26 +244,37 @@ export async function searchWorkspaceEntities(apiRequest, configs, query, option
   const limitPerType = options.limitPerType ?? 5;
   const adminPath = options.adminPath ?? ((path) => path);
   const workspaceId = options.workspaceId ?? "";
+  const organizationId = options.organizationId ?? null;
 
   const groups = await Promise.all(
     configs.map(async (config) => {
-      const path =
-        config.useAdminApi && workspaceId === "admin"
-          ? adminPath(config.apiPath)
-          : config.apiPath;
       const listHref = `${config.listHref}?q=${encodeURIComponent(q)}`;
 
       try {
-        const res = await apiRequest(path, {
-          searchParams: buildPageParams({ page: 1, perPage: limitPerType, q }),
-        });
-        const items = Array.isArray(res?.data) ? res.data : [];
+        let items;
+        if (config.catalogCache) {
+          const rows = await searchProductCatalogCached(organizationId, q, {
+            limit: limitPerType,
+            status: "all",
+          });
+          items = rows.map((row) => config.mapItem(row, q));
+        } else {
+          const path =
+            config.useAdminApi && workspaceId === "admin"
+              ? adminPath(config.apiPath)
+              : config.apiPath;
+          const res = await apiRequest(path, {
+            searchParams: buildPageParams({ page: 1, perPage: limitPerType, q }),
+          });
+          const rows = Array.isArray(res?.data) ? res.data : [];
+          items = rows.map((row) => config.mapItem(row, q));
+        }
 
         return {
           type: config.id,
           label: config.label,
           listHref,
-          items: items.map((row) => config.mapItem(row, q)),
+          items,
         };
       } catch {
         return {

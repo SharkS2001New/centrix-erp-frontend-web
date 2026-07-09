@@ -3,6 +3,8 @@
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { useAuth } from "@/contexts/auth-context";
 import {
   ActiveBadge,
   CatalogPageShell,
@@ -88,6 +90,7 @@ function buildTreeRows(categories, subCategories, collapsed, search, typeFilter)
 }
 
 export default function CategoriesPage() {
+  const { user } = useAuth();
   const confirm = useConfirm();
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
@@ -120,22 +123,22 @@ export default function CategoriesPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [catRes, subRes, prodRes, userRes] = await Promise.all([
+      const [catRes, subRes, catalogProducts, userRes] = await Promise.all([
         apiRequest("/categories", { searchParams: { per_page: 200 } }),
         apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
-        apiRequest("/products", { searchParams: { per_page: 200 } }),
+        fetchProductCatalogCached(user?.organization_id, { status: "all" }),
         apiRequest("/users", { searchParams: { per_page: 200 } }),
       ]);
       setCategories(catRes.data ?? []);
       setSubCategories(subRes.data ?? []);
-      setProducts(prodRes.data ?? []);
+      setProducts(catalogProducts ?? []);
       setUsers(userRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load categories");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.organization_id]);
 
   useEffect(() => {
     loadData();
