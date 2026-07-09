@@ -10,7 +10,7 @@ export const REPORTS_WITHOUT_DATE_FILTER = new Set([
 ]);
 
 /** Send from_date/to_date but omit date_column (backend applies custom date logic). */
-export const REPORTS_DATE_WITHOUT_COLUMN = new Set(["sales-by-customer"]);
+export const REPORTS_DATE_WITHOUT_COLUMN = new Set(["sales-by-customer", "stock-chain"]);
 
 /** AR / payment reports are org-scoped; branch filter applies via invoice branch. */
 export const REPORTS_WITHOUT_BRANCH_FILTER = new Set([]);
@@ -112,7 +112,6 @@ export const REPORT_DATE_COLUMNS = {
   headcount: "hire_date",
   "contract-expiry": "contract_end_date",
   "stock-receipts": "receipt_date",
-  "stock-chain": "entry_date",
   damages: "damage_date",
 };
 

@@ -134,6 +134,25 @@ export function transactionTypeLabel(type) {
   return inventoryTransactionTypeLabel(type);
 }
 
+export function netChangeClass(value) {
+  if (value > 0) return "text-emerald-700";
+  if (value < 0) return "text-red-700";
+  return "text-slate-500";
+}
+
+/** Sort movements newest-first and compute net qty + type summary for group headers. */
+export function summarizeStockMovements(movements = []) {
+  const sorted = [...movements].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+  const netChange = movements.reduce((sum, row) => sum + Number(row.quantity_change ?? 0), 0);
+  const types = new Set(movements.map((m) => m.transaction_type));
+  const typeSummary = [...types].map((t) => transactionTypeLabel(t)).join(", ");
+  const latestAt = sorted[0]?.created_at ?? null;
+
+  return { sorted, netChange, typeSummary, latestAt };
+}
+
 export function InventoryTrendChart({ points }) {
   if (!points?.length) {
     return (

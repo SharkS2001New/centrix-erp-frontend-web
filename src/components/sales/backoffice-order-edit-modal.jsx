@@ -32,6 +32,12 @@ function scaleAmount(value, newQty, oldQty) {
   return Math.round((Number(value) * Number(newQty)) / old * 100) / 100;
 }
 
+function toPerUnitDiscount(discountTotal, qty) {
+  const q = Number(qty);
+  if (!Number.isFinite(q) || q <= 0) return Number(discountTotal ?? 0);
+  return Number(discountTotal ?? 0) / q;
+}
+
 function indexRetailPackages(rows) {
   const map = {};
   for (const row of rows ?? []) {
@@ -77,7 +83,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
           };
           return {
             ...editLine,
-            draftDiscount: Number(editLine.discount_given ?? 0),
+            draftDiscount: toPerUnitDiscount(editLine.discount_given, editLine.quantity),
             draftQty: saleLineEntryQtyForEdit(editLine, uomById, retailMap),
           };
         }),
@@ -161,8 +167,8 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       }
       const item = { id: line.id, quantity: baseQty };
       if (discountEditEnabled) {
-        const d = Number(line.draftDiscount ?? line.discount_given ?? 0);
-        if (Number.isFinite(d)) item.discount_given = d;
+        const perUnit = Number(line.draftDiscount ?? 0);
+        if (Number.isFinite(perUnit)) item.discount_given = perUnit * baseQty;
       }
       payload.push(item);
     }

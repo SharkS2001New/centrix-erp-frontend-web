@@ -1102,7 +1102,19 @@ export function PosScreen({ standalone = false }) {
         preDiscount.packQty,
       );
     } else if (allowEditLineDiscount || discountApprovalActive) {
-      discountAmount = parseDecimalInput(discount);
+      const perUnitDiscount = parseDecimalInput(discount);
+      const qtyForDiscount = Math.max(1, Number(computePosLine({
+        product,
+        entryQty,
+        sellWholesale: sellMode,
+        retailPackage,
+        discount: 0,
+        unitPriceOverride: overridePrice,
+        routeMarkupPerUnit,
+        retailLine: lineRetailFlag,
+      }).packQty ?? 0));
+      // Cashier input is per sold pack/unit; convert to line-total discount.
+      discountAmount = perUnitDiscount * qtyForDiscount;
     }
 
     const computed = computePosLine({

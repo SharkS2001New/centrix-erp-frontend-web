@@ -7,7 +7,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { productsCatalogHref } from "@/lib/products-list-state";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
-import { inventoryTransactionTypeLabel } from "@/lib/user-facing-labels";
+import { ProductStockHistoryPanel } from "@/components/products/product-stock-history-panel";
 import {
   formatShortDate,
   PencilIcon,
@@ -119,7 +119,7 @@ function enrichProduct(product, subById, catById, supplierById, uomById, vatById
   const sub = subById.get(product.subcategory_id);
   const cat = sub ? catById.get(sub.category_id) : null;
   const supplier = supplierById.get(product.supplier_id);
-  const uom = uomById.get(product.unit_id);
+  const uom = uomById.get(product.unit_id) ?? uomById.get(String(product.unit_id ?? ""));
   const vat = vatById.get(product.vat_id);
   const shop = Number(
     product.branch_stock?.shop_quantity ??
@@ -188,34 +188,6 @@ function formatRetailTiersSummary(retailPackage, uom) {
   });
 }
 
-function movementLabel(row, uom) {
-  const type = String(row.transaction_type ?? "").toUpperCase();
-  const qty = Number(row.quantity_change ?? 0);
-  const absText = formatMixedStockDisplay(Math.abs(qty), uom).text;
-  if (type === "PURCHASE") {
-    return `+${absText} Purchase / receipt`;
-  }
-  if (type === "POS_SALE" || type === "MOBILE_SALE" || type === "BACKEND_SALE") {
-    return `−${absText} ${inventoryTransactionTypeLabel(type)}`;
-  }
-  if (type === "SUPPLIER_RETURN") {
-    return `−${absText} Supplier return`;
-  }
-  if (type === "RETURN") {
-    return `+${absText} Customer return`;
-  }
-  if (type === "TRANSFER") {
-    return `${qty > 0 ? "+" : "−"}${absText} Transfer`;
-  }
-  if (type === "ADJUSTMENT" || type === "STOCK_TAKE") {
-    return `${qty > 0 ? "+" : "−"}${absText} ${type === "STOCK_TAKE" ? "Stock take" : "Adjustment"}`;
-  }
-  if (type === "DAMAGE" || type === "WRITE_OFF") {
-    return `−${absText} ${type === "DAMAGE" ? "Damage" : "Write-off"}`;
-  }
-  return `${qty > 0 ? "+" : qty < 0 ? "−" : ""}${absText} ${type || "Movement"}`;
-}
-
 function buildPurchaseRows(lpoLines, receiptTxns, uom) {
   const packLabel = fullPackageLabel(uom);
   const rows = [];
@@ -267,7 +239,7 @@ function sellerDisplayName(cashier) {
   return cashier.full_name?.trim() || cashier.username || "Unknown seller";
 }
 
-function buildSaleRows(items, productCode) {
+function buildSaleRows(items, productCode, uom) {
   const from = encodeURIComponent(`/products/${productCode}?tab=activity&view=sales`);
 
   return items.map((row) => {
@@ -279,6 +251,7 @@ function buildSaleRows(items, productCode) {
     const dateLabel = saleDate
       ? formatShortDate(String(saleDate).slice(0, 10))
       : "—";
+    const qtyBase = Number(row.quantity ?? 0);
 
     return {
       id: row.id,
@@ -286,7 +259,7 @@ function buildSaleRows(items, productCode) {
       subtitle: `Sold by ${seller}`,
       href: `/sales/orders/${row.sale_id}?from=${from}`,
       date: dateLabel,
-      quantity: `${formatQty(row.quantity)} units`,
+      quantity: formatMixedStockDisplay(qtyBase, uom).text,
     };
   });
 }
@@ -378,21 +351,6 @@ function UserDateCell({ name, date }) {
       <p className="theme-subtext mt-0.5 text-xs font-normal">{formatShortDate(date)}</p>
     </div>
   );
-}
-
-function movementTone(row) {
-  const qty = Number(row.quantity_change ?? 0);
-  if (qty > 0) return "in";
-  if (qty < 0) return "out";
-  return "neutral";
-}
-
-function movementHref(row) {
-  const refType = String(row.reference_type ?? "").toLowerCase();
-  if (refType === "customer_return" && row.reference_id) {
-    return `/sales/returns?return_id=${row.reference_id}`;
-  }
-  return null;
 }
 
 function ActivityRow({ date, label, subtitle, tone, href }) {
@@ -498,7 +456,6 @@ export default function ProductDetailPage() {
   const [vats, setVats] = useState([]);
   const [retailPackage, setRetailPackage] = useState(null);
   const [globalReorderLevel, setGlobalReorderLevel] = useState(null);
-  const [stockRows, setStockRows] = useState([]);
   const [purchaseRows, setPurchaseRows] = useState([]);
   const [saleRows, setSaleRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -511,7 +468,15 @@ export default function ProductDetailPage() {
   const subById = useMemo(() => new Map(subCategories.map((s) => [s.id, s])), [subCategories]);
   const catById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
   const supplierById = useMemo(() => new Map(suppliers.map((s) => [s.id, s])), [suppliers]);
-  const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
+  const uomById = useMemo(() => {
+    const map = new Map();
+    for (const uom of uoms) {
+      if (uom?.id == null) continue;
+      map.set(uom.id, uom);
+      map.set(String(uom.id), uom);
+    }
+    return map;
+  }, [uoms]);
   const vatById = useMemo(() => new Map(vats.map((v) => [v.id, v])), [vats]);
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 
@@ -630,19 +595,11 @@ export default function ProductDetailPage() {
   }, [productCode, user?.branch_id]);
 
   const loadTabData = useCallback(async () => {
-    if (mainTab !== "activity") return;
+    if (mainTab !== "activity" || activityView === "stock") return;
 
     setTabLoading(true);
     try {
-      if (activityView === "stock") {
-        const res = await apiRequest("/inventory-transactions", {
-          searchParams: {
-            per_page: 50,
-            "filter[product_code]": productCode,
-          },
-        });
-        setStockRows(res.data ?? []);
-      } else if (activityView === "purchases") {
+      if (activityView === "purchases") {
         const [lpoRes, txnRes] = await Promise.all([
           apiRequest("/lpo-txn", {
             searchParams: {
@@ -668,7 +625,7 @@ export default function ProductDetailPage() {
             "filter[product_code]": productCode,
           },
         });
-        setSaleRows(buildSaleRows(itemsRes.data ?? [], productCode));
+        setSaleRows(buildSaleRows(itemsRes.data ?? [], productCode, enriched?.product_uom ?? null));
       }
     } finally {
       setTabLoading(false);
@@ -772,7 +729,7 @@ export default function ProductDetailPage() {
       ? saleRows.length
       : activityView === "purchases"
         ? purchaseRows.length
-        : stockRows.length;
+        : 0;
 
   return (
     <div className="theme-workspace min-h-full">
@@ -1019,7 +976,9 @@ export default function ProductDetailPage() {
                 ))}
               </div>
               <p className="theme-subtext text-xs">
-                {activeActivity.countLabel(activityCount)}
+                {activityView === "stock"
+                  ? "Movement ledger"
+                  : activeActivity.countLabel(activityCount)}
               </p>
             </div>
 
@@ -1030,29 +989,26 @@ export default function ProductDetailPage() {
 
             <div className="px-5 py-2">
               {activityView === "stock" ? (
-                tabLoading ? (
-                  <p className="theme-subtext py-8 text-center text-sm">
-                    {activeActivity.loadingMessage}
-                  </p>
-                ) : stockRows.length === 0 ? (
-                  <EmptyTabState message={activeActivity.emptyMessage} />
-                ) : (
-                  <ul className="divide-y divide-[var(--theme-border)]">
-                    {stockRows.map((row) => (
-                      <ActivityRow
-                        key={row.id}
-                        date={
-                          row.created_at
-                            ? formatShortDate(String(row.created_at).slice(0, 10))
-                            : "—"
-                        }
-                        label={movementLabel(row, enriched.product_uom)}
-                        tone={movementTone(row)}
-                        href={movementHref(row)}
-                      />
-                    ))}
-                  </ul>
-                )
+                <ProductStockHistoryPanel
+                  productCode={productCode}
+                  productName={enriched.product_name}
+                  uom={enriched.product_uom}
+                  uomById={uomById}
+                  shopStock={
+                    enriched.branch_stock?.shop_quantity ??
+                    enriched.stock_on_hand_shop ??
+                    enriched.stock_in_shop ??
+                    0
+                  }
+                  storeStock={
+                    enriched.branch_stock?.store_quantity ??
+                    enriched.stock_on_hand_store ??
+                    enriched.stock_in_store ??
+                    0
+                  }
+                  userById={userById}
+                  emptyMessage={activeActivity.emptyMessage}
+                />
               ) : null}
 
               {activityView === "purchases" ? (

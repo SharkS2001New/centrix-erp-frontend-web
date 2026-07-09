@@ -26,6 +26,7 @@ import {
   InventoryPageShell,
   InventoryTableShell,
   movementLocationLabel,
+  netChangeClass,
   productDisplayName,
   ProductCodeLink,
   transactionTypeLabel,
@@ -76,12 +77,6 @@ function groupMovementsByProduct(rows) {
   return [...map.values()].sort(
     (a, b) => new Date(b.latestAt).getTime() - new Date(a.latestAt).getTime(),
   );
-}
-
-function netChangeClass(value) {
-  if (value > 0) return "text-emerald-700";
-  if (value < 0) return "text-red-700";
-  return "text-slate-500";
 }
 
 export default function InventoryTransactionsPage() {
