@@ -4,6 +4,7 @@ import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 import { getSaleTimestamp, isSameCalendarDay } from "@/components/catalog/catalog-shared";
 import {
   DEFAULT_ORDER_WORKFLOW,
+  alignStatusToWorkflow,
   nextTransitionOptions as workflowNextTransitions,
   pipelineStepIndex as workflowPipelineIndex,
   workflowPipelineSteps,
@@ -45,6 +46,35 @@ export function isRouteOrderSale(sale) {
   if (!sale?.route_id) return false;
   const channel = String(sale.channel ?? sale.order_source ?? "").toLowerCase();
   return channel === "mobile" || channel === "pos";
+}
+
+const ORDER_EDIT_STATUSES = new Set(["booked", "pending"]);
+
+/** Show Edit Order when workflow status is Booked or Pending. */
+export function isOrderEditVisible(sale, workflow = null) {
+  if (!sale) return false;
+  const raw = String(sale.status ?? "").toLowerCase();
+  if (raw === "cancelled" || raw === "expired") return false;
+  if (ORDER_EDIT_STATUSES.has(raw)) return true;
+  const aligned = String(
+    sale.workflow_status ?? (workflow ? alignStatusToWorkflow(raw, workflow) : raw),
+  ).toLowerCase();
+  return ORDER_EDIT_STATUSES.has(aligned);
+}
+
+export function isBackofficeSale(sale) {
+  if (String(sale?.status ?? "").toLowerCase() === "editable") return true;
+  const source = String(sale?.order_source ?? "").toLowerCase();
+  if (source === "pos" || source === "mobile") return false;
+  if (source === "backoffice" || source === "backend") return true;
+  if (String(sale?.channel ?? "").toLowerCase() === "backend") return true;
+  const meta = sale?.fulfillment_meta;
+  return meta?.sales_workspace === "backoffice";
+}
+
+export function shouldOpenBackofficeOrderEdit(sale, workflow = null) {
+  if (sale?.can_edit_lines) return true;
+  return isBackofficeSale(sale) && isOrderEditVisible(sale, workflow);
 }
 
 /** Visual pipeline steps for backend/mobile orders. */

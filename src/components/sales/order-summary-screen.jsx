@@ -27,10 +27,12 @@ import {
   formatOrderNumber,
   formatReceiptNumber,
   formatSaleKes,
+  isOrderEditVisible,
   orderSourceLabel,
   saleCustomerLabel,
   salePaymentMethodDisplay,
   saleStatusLabel,
+  shouldOpenBackofficeOrderEdit,
 } from "@/lib/sales";
 import { isLegacySale, saleLineProductLabel } from "@/lib/sale-line-items";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
@@ -806,14 +808,12 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const orderCrumbLabel = sale ? `Order #${formatOrderNumber(sale)}` : "Order …";
 
   async function openEditOrder({ replace = false } = {}) {
-    if (!sale?.id) return;
+    if (!sale?.id || !isOrderEditVisible(sale, saleWorkflow)) return;
 
-    if (sale.can_edit_lines) {
+    if (shouldOpenBackofficeOrderEdit(sale, saleWorkflow)) {
       setEditOrderOpen(true);
       return;
     }
-
-    if (!sale.can_edit) return;
 
     setTransitionBusy(true);
     try {
@@ -899,7 +899,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {sale.can_edit_lines || sale.can_edit ? (
+              {isOrderEditVisible(sale, saleWorkflow) ? (
                 <button
                   type="button"
                   onClick={() => void openEditOrder()}

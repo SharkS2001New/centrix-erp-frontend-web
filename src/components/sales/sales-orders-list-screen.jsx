@@ -68,7 +68,11 @@ import { useConfirm } from "@/lib/use-confirm";
 import { DiscountRejectionDialog } from "@/components/discount-rejection-dialog";
 import { discountApprovalLinesFromSource } from "@/lib/advised-discount-lines";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
-import { formatOrderNumber } from "@/lib/sales";
+import {
+  formatOrderNumber,
+  isOrderEditVisible,
+  shouldOpenBackofficeOrderEdit,
+} from "@/lib/sales";
 import {
   FulfillmentAssignmentDialog,
   PodCaptureDialog,
@@ -481,14 +485,14 @@ export default function SalesOrdersListScreen({
 
   async function openEditOrder(sale, { replace = false } = {}) {
     if (!sale?.id) return;
+    const workflow = getOrderWorkflow(capabilities, sale);
+    if (!isOrderEditVisible(sale, workflow)) return;
     setContextMenu(null);
 
-    if (sale.can_edit_lines) {
+    if (shouldOpenBackofficeOrderEdit(sale, workflow)) {
       setEditSale(sale);
       return;
     }
-
-    if (!sale.can_edit) return;
 
     setTransitionBusyId(sale.id);
     setActionMessage(null);
@@ -712,7 +716,7 @@ export default function SalesOrdersListScreen({
       busy: transitionBusyId === sale.id || fulfillment.busy,
       includePrint: contextMenu.includePrint !== false,
       hasExternalPos,
-      canEdit: Boolean(sale.can_edit_lines || sale.can_edit),
+      canEdit: isOrderEditVisible(sale, workflow),
       balanceDue: saleBalanceDue(sale),
       disableWorkflowActions: routeOrdersOnly,
       onView: () => viewOrder(sale),
