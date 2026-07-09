@@ -14,7 +14,7 @@ import { reportCellHref } from "@/lib/reports/report-entity-links";
  */
 export function ReportCellLink({ columnKey, row, value, link }) {
   const href = reportCellHref(columnKey, row, link);
-  const display = formatReportCell(columnKey, value);
+  const display = formatReportCell(columnKey, value, undefined, row);
 
   if (!href || display === "—") {
     return display;

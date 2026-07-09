@@ -6,7 +6,7 @@ import { sanitizeExportSearchParams } from "@/lib/report-export-limits";
 const DEFAULT_PER_PAGE = 200;
 const QUEUED_PAGE_THRESHOLD = 3;
 const QUEUED_ROW_THRESHOLD = 200;
-const PAGE_DELAY_MS = 60;
+const PAGE_DELAY_MS = 120;
 
 async function resolveQueuedTaskRows(taskId, taskResult) {
   if (taskResult?.data_path) {

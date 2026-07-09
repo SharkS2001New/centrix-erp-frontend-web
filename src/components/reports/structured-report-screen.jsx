@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { formatReportCell } from "@/lib/reports/format";
+import { isInventoryQtyField } from "@/lib/inventory-qty-display";
 import { loadFullReportDataset } from "@/lib/paginated-fetch";
 import {
   ReportFilterBar,
@@ -145,7 +146,7 @@ function StandardReportScreen({ definition }) {
         const raw = col.accessor ? col.accessor(row) : row[col.key];
         return acc + (Number(raw) || 0);
       }, 0);
-      totals[col.key] = formatReportCell(col.key, sum);
+      totals[col.key] = isInventoryQtyField(col.key) ? "—" : formatReportCell(col.key, sum);
     }
     return totals;
   }, [rows, columns, definition.footerTotals]);
@@ -213,7 +214,7 @@ function StandardReportScreen({ definition }) {
               filename: definition.key ?? "report",
               columns: columns.map((col) => ({
                 ...col,
-                accessor: (row) => formatReportCell(col.key, col.accessor(row)),
+                accessor: (row) => formatReportCell(col.key, col.accessor(row), undefined, row),
               })),
               ...(definition.filterRows
                 ? { getRows: fetchAllReportRows }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { mergeSalesSettings } from "@/lib/sales-settings";
@@ -20,10 +20,14 @@ import {
 } from "@/components/products/product-form";
 import { resolveOpeningStockBranchId } from "@/components/products/product-inventory-fields";
 import { SubcategoryCreateModal } from "@/components/products/subcategory-create-modal";
+import { useTabFormDirty } from "@/hooks/use-tab-form-dirty";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 
 export default function NewProductPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const { capabilities, user } = useAuth();
+  const { enabled: tabWorkspaceEnabled, clearTabDirty } = useTabWorkspace();
   const allowDiscounts = Boolean(mergeSalesSettings(capabilities?.module_settings).allow_discounts);
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const {
@@ -46,6 +50,9 @@ export default function NewProductPage() {
   const [generatingSku, setGeneratingSku] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [isDirty, setIsDirty] = useState(false);
+
+  useTabFormDirty(isDirty);
 
   useEffect(() => {
     if (loading) return;
@@ -68,11 +75,13 @@ export default function NewProductPage() {
   }, [imagePreview]);
 
   function updateField(key, value) {
+    setIsDirty(true);
     setFormError(null);
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
   function onImageSelect(file) {
+    setIsDirty(true);
     if (imagePreview?.startsWith("blob:")) {
       URL.revokeObjectURL(imagePreview);
     }
@@ -139,6 +148,8 @@ export default function NewProductPage() {
       const saved = res.data ?? res;
       const code = saved.product_code ?? form.product_code.trim();
       await saveRetailPackageSetting(form, code);
+      setIsDirty(false);
+      if (tabWorkspaceEnabled) clearTabDirty(pathname);
       router.push(`/products/${encodeURIComponent(code)}`);
     } catch (e) {
       setFormError(e instanceof ApiError ? e.message : "Failed to save product");

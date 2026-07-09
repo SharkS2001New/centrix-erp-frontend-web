@@ -19,6 +19,7 @@ import { ReportQueryFilterFields } from "@/components/reports/report-query-filte
 import { ReportBranchSearchSelect } from "@/components/reports/report-filter-search-select";
 import { reportVatKpis } from "@/lib/reports/vat-summary";
 import { formatReportKes } from "@/lib/reports/format";
+import { formatInventoryQtyWithUom, isInventoryQtyField } from "@/lib/inventory-qty-display";
 import { ReportKpiGrid } from "@/components/reports/report-screen-shared";
 import { ReportCellLink } from "@/components/reports/report-cell-link";
 import {
@@ -33,10 +34,13 @@ import {
 
 const PAGE_SIZE = 20;
 
-function formatCell(key, value) {
+function formatCell(key, value, row) {
   if (value == null || value === "") return "—";
   if (typeof value === "number") {
-    if (/amount|total|paid|balance|vat|gross|net|price|cost|kes/i.test(key)) {
+    if (isInventoryQtyField(key)) {
+      return row ? formatInventoryQtyWithUom(value, row) : String(value);
+    }
+    if (/amount|total|paid|balance|vat|gross|net|price|cost|kes|value/i.test(key)) {
       return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
     return String(value);
@@ -130,6 +134,10 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       if (!/amount|total|paid|balance|vat|gross|net|qty|quantity|count|orders|revenue|collected|discount|credit|debit|sales|profit|expense|due|outstanding|variance|float/i.test(col)) {
         continue;
       }
+      if (isInventoryQtyField(col)) {
+        totals[col] = "—";
+        continue;
+      }
       const sum = rows.reduce((acc, row) => acc + (Number(row[col]) || 0), 0);
       totals[col] = formatCell(col, sum);
     }
@@ -145,7 +153,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     return filterReportColumnKeys(Object.keys(sample), { multiBranch }).map((key) => ({
       key,
       label: labelizeKey(key),
-      accessor: (row) => formatCell(key, row[key]),
+      accessor: (row) => formatCell(key, row[key], row),
     }));
   }, [rows, multiBranch]);
 

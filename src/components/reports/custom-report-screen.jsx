@@ -172,7 +172,7 @@ export function CustomReportScreen({ templateId }) {
         filename: definition.title,
         columns: columns.map((col) => ({
           ...col,
-          accessor: (row) => formatReportCell(col.key, col.accessor(row)),
+          accessor: (row) => formatReportCell(col.key, col.accessor(row), undefined, row),
         })),
         exportSource: {
           path: definition.apiPath,

@@ -1,5 +1,9 @@
 import { formatOrgCurrency, formatOrgDate, formatOrgNumber } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
+import {
+  formatInventoryQtyWithUom,
+  isInventoryQtyField,
+} from "@/lib/inventory-qty-display";
 
 export function formatReportKes(value, settings = GENERAL_DEFAULTS) {
   if (value == null || value === "") return "—";
@@ -15,10 +19,13 @@ export function formatReportNumber(value, decimals = 2, settings = GENERAL_DEFAU
   return formatOrgNumber(n, settings, { decimals });
 }
 
-export function formatReportCell(key, value, settings = GENERAL_DEFAULTS) {
+export function formatReportCell(key, value, settings = GENERAL_DEFAULTS, row = null) {
   if (value == null || value === "") return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") {
+    if (isInventoryQtyField(key)) {
+      return row ? formatInventoryQtyWithUom(value, row) : formatReportNumber(value, 0, settings);
+    }
     if (/amount|total|paid|balance|vat|gross|net|price|cost|kes|value|float|variance|expected|actual|sales|revenue|profit|expense|debit|credit|collected|outstanding|due/i.test(key)) {
       return formatReportKes(value, settings);
     }

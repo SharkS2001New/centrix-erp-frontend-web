@@ -40,7 +40,7 @@ import { invalidateReportBuilderTemplateCache } from "@/lib/report-builder-templ
 import { capabilitiesVersionChanged } from "@/lib/capabilities-sync";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
-const CAPABILITIES_REFRESH_MS = 30_000;
+const CAPABILITIES_REFRESH_MS = 90_000;
 
 function getClientId() {
   if (typeof window === "undefined") return "";

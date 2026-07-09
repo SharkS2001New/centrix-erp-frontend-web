@@ -279,7 +279,51 @@ function shouldTrackNavigationFetch(options, method) {
   return isPageNavigationLoading();
 }
 
+/** @type {Map<string, Promise<unknown>>} */
+const inflightGetRequests = new Map();
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildApiUrl(path, searchParams) {
+  const url = new URL(path.startsWith("http") ? path : `${baseUrl()}${path}`);
+  if (searchParams) {
+    for (const [k, v] of Object.entries(searchParams)) {
+      if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
+    }
+  }
+  return url;
+}
+
+function getInflightDedupeKey(method, urlString) {
+  if (method !== "GET") return null;
+  return `GET:${urlString}`;
+}
+
 export async function apiRequest(path, options = {}) {
+  const method = options.method ?? "GET";
+  const url = buildApiUrl(path, options.searchParams);
+  const dedupeKey = options.dedupe === false ? null : getInflightDedupeKey(method, url.toString());
+
+  if (dedupeKey && inflightGetRequests.has(dedupeKey)) {
+    return inflightGetRequests.get(dedupeKey);
+  }
+
+  const promise = performApiRequest(path, url, { ...options, method });
+  if (dedupeKey) {
+    inflightGetRequests.set(dedupeKey, promise);
+    promise.finally(() => {
+      if (inflightGetRequests.get(dedupeKey) === promise) {
+        inflightGetRequests.delete(dedupeKey);
+      }
+    });
+  }
+
+  return promise;
+}
+
+async function performApiRequest(path, url, options = {}) {
   const method = options.method ?? "GET";
   const trackNavigation = shouldTrackNavigationFetch(options, method);
   const trackIssues = options.reportIssues !== false;
@@ -289,13 +333,6 @@ export async function apiRequest(path, options = {}) {
   if (trackNavigation) beginAppLoading(options.loadingLabel ?? "Loading…");
 
   try {
-    const url = new URL(path.startsWith("http") ? path : `${baseUrl()}${path}`);
-    if (options.searchParams) {
-      for (const [k, v] of Object.entries(options.searchParams)) {
-        if (v !== undefined && v !== "") url.searchParams.set(k, String(v));
-      }
-    }
-
     const token = options.token ?? getToken();
     const headers = {
       Accept: "application/json",
@@ -310,6 +347,7 @@ export async function apiRequest(path, options = {}) {
       headers,
       credentials: apiFetchCredentials(),
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: options.signal,
     });
 
     const text = await res.text();
@@ -325,6 +363,21 @@ export async function apiRequest(path, options = {}) {
     const durationMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
 
     if (!res.ok) {
+      if (
+        res.status === 429 &&
+        method === "GET" &&
+        !options._rateLimitRetried &&
+        options.retryOnRateLimit !== false &&
+        !options.signal?.aborted
+      ) {
+        const retryAfterHeader = Number(res.headers.get("Retry-After"));
+        const retryMs = Number.isFinite(retryAfterHeader) && retryAfterHeader > 0
+          ? Math.min(retryAfterHeader * 1000, 8000)
+          : 1500;
+        await sleep(retryMs);
+        return performApiRequest(path, url, { ...options, _rateLimitRetried: true, reportIssues: false });
+      }
+
       if (res.status === 401 && typeof window !== "undefined") {
         const code = data?.code;
         const locked = isScreenLocked();
@@ -405,6 +458,9 @@ export async function apiRequest(path, options = {}) {
 
     return data;
   } catch (error) {
+    if (error?.name === "AbortError") {
+      throw error;
+    }
     if (trackIssues && !(error instanceof ApiError)) {
       const durationMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
       const rawMessage = error instanceof Error ? error.message : "Network request failed";

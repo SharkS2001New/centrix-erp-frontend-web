@@ -1,10 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabPaneActive } from "@/contexts/tab-pane-activity-context";
+import { useTabFormDirty } from "@/hooks/use-tab-form-dirty";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { catalogMetaFromCapabilities } from "@/lib/catalog-scope";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
@@ -26,6 +29,9 @@ import { productsCatalogHref } from "@/lib/products-list-state";
 export default function EditProductPage() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
+  const { abortSignal } = useTabPaneActive();
+  const { enabled: tabWorkspaceEnabled, clearTabDirty } = useTabWorkspace();
   const { capabilities, user } = useAuth();
   const allowDiscounts = Boolean(mergeSalesSettings(capabilities?.module_settings).allow_discounts);
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
@@ -52,8 +58,13 @@ export default function EditProductPage() {
   const [loadError, setLoadError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const productLoadedRef = useRef(false);
+
+  useTabFormDirty(isDirty);
 
   const loadProduct = useCallback(async () => {
+    if (abortSignal?.aborted) return;
     setLoadError(null);
     setProductLoading(true);
     try {
@@ -64,24 +75,37 @@ export default function EditProductPage() {
       const [productRes, retailPackage] = await Promise.all([
         apiRequest(`/products/${encodeURIComponent(productCode)}`, {
           searchParams: branchId ? { branch_id: branchId } : {},
+          signal: abortSignal ?? undefined,
         }),
         loadRetailPackageForProduct(productCode).catch(() => null),
       ]);
+      if (abortSignal?.aborted) return;
       const product = productRes.data ?? productRes;
       const uom = uoms.find((u) => String(u.id) === String(product.unit_id)) ?? null;
       setForm(
         productToForm({ ...product, is_active: !product.deleted_at }, retailPackage, uom),
       );
     } catch (e) {
+      if (e?.name === "AbortError" || abortSignal?.aborted) return;
       setLoadError(e instanceof Error ? e.message : "Failed to load product");
     } finally {
       setProductLoading(false);
     }
-  }, [productCode, uoms, user?.branch_id, capabilities]);
+  }, [abortSignal, productCode, uoms, user?.branch_id, capabilities]);
+
+  const { isActive } = useTabPaneActive();
 
   useEffect(() => {
-    loadProduct();
-  }, [loadProduct]);
+    if (!isActive || metaLoading || productLoadedRef.current) return undefined;
+    let cancelled = false;
+    void (async () => {
+      await loadProduct();
+      if (!cancelled) productLoadedRef.current = true;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isActive, metaLoading, loadProduct]);
 
   useEffect(() => {
     return () => {
@@ -95,11 +119,13 @@ export default function EditProductPage() {
   const error = metaError || loadError;
 
   function updateField(key, value) {
+    setIsDirty(true);
     setFormError(null);
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
   function onImageSelect(file) {
+    setIsDirty(true);
     if (imagePreview?.startsWith("blob:")) {
       URL.revokeObjectURL(imagePreview);
     }
@@ -147,6 +173,8 @@ export default function EditProductPage() {
         body,
       });
       await saveRetailPackageSetting(form, productCode);
+      setIsDirty(false);
+      if (tabWorkspaceEnabled) clearTabDirty(pathname);
       router.push(`/products/${encodeURIComponent(productCode)}`);
     } catch (e) {
       setFormError(e instanceof ApiError ? e.message : "Failed to save product");

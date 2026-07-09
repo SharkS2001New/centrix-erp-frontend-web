@@ -35,6 +35,7 @@ import {
   fetchBranchesCached,
   fetchCatalogReferenceDataCached,
 } from "@/lib/reference-data-cache";
+import { useTabAwareInitialLoad, useTabPaneActive } from "@/contexts/tab-pane-activity-context";
 
 export const EMPTY_PRODUCT_FORM = {
   product_code: "",
@@ -267,6 +268,7 @@ export function validateRetailPackage(form) {
 
 export function useProductFormResources() {
   const { user } = useAuth();
+  const { abortSignal } = useTabPaneActive();
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -278,14 +280,21 @@ export function useProductFormResources() {
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
+    if (abortSignal?.aborted) return;
     setError(null);
     try {
       const [{ categories, subCategories, suppliers, uoms, vats }, branchRes, settingsRes] =
         await Promise.all([
           fetchCatalogReferenceDataCached(),
           fetchBranchesCached(user?.organization_id).then((data) => ({ data })),
-          apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
+          apiRequest("/system-settings", {
+            searchParams: { per_page: 1 },
+            signal: abortSignal ?? undefined,
+            loading: false,
+            reportIssues: false,
+          }).catch(() => null),
         ]);
+      if (abortSignal?.aborted) return;
       setCategories(categories);
       setSubCategories(subCategories);
       setSuppliers(suppliers);
@@ -295,15 +304,14 @@ export function useProductFormResources() {
       const settingsRows = settingsRes?.data ?? settingsRes ?? [];
       setSystemSettings(Array.isArray(settingsRows) ? settingsRows[0] : settingsRows);
     } catch (e) {
+      if (e?.name === "AbortError" || abortSignal?.aborted) return;
       setError(e instanceof Error ? e.message : "Failed to load form data");
     } finally {
       setLoading(false);
     }
-  }, [user?.organization_id]);
+  }, [abortSignal, user?.organization_id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareInitialLoad(load);
 
   const globalReorderLevel = useMemo(() => {
     const threshold = systemSettings?.global_low_stock_threshold;

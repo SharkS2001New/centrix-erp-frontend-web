@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { NETWORK_PING_INTERVAL_MS, pingApiHealth } from "@/lib/network-status";
 
 function formatClock(date) {
   return date.toLocaleString(undefined, {
@@ -54,15 +54,15 @@ export function PosStatusFooter({
         return;
       }
       try {
-        await apiRequest("/erp/capabilities");
-        if (!cancelled) setApiOnline(true);
+        const result = await pingApiHealth();
+        if (!cancelled) setApiOnline(result.ok);
       } catch {
         if (!cancelled) setApiOnline(false);
       }
     }
 
     ping();
-    const timer = setInterval(ping, 60000);
+    const timer = setInterval(ping, NETWORK_PING_INTERVAL_MS);
     return () => {
       cancelled = true;
       clearInterval(timer);

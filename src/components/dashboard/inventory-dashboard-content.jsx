@@ -6,6 +6,7 @@ import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import { formatInventoryKes } from "@/components/inventory/inventory-shared";
+import { formatInventoryQtyWithUom } from "@/lib/inventory-qty-display";
 import {
   DashboardErrorBanner,
   DashboardKpiGrid,
@@ -207,13 +208,12 @@ export function InventoryDashboardContent() {
               columns={[
                 { key: "product_name", label: "Product" },
                 { key: "total_base_units", label: "On hand", align: "right" },
-                { key: "uom_name", label: "UOM" },
               ]}
               rows={inStockItems}
               emptyMessage="No items currently in stock."
-              formatValue={(key, value) =>
+              formatValue={(key, value, row) =>
                 key === "total_base_units"
-                  ? Number(value ?? 0).toLocaleString("en-KE", { maximumFractionDigits: 2 })
+                  ? formatInventoryQtyWithUom(value, row)
                   : value
               }
               viewAllHref={ITEMS_CURRENTLY_IN_STOCK_HREF}
@@ -237,9 +237,9 @@ export function InventoryDashboardContent() {
                 { key: "reorder_point", label: "Reorder", align: "right" },
               ]}
               rows={lowStockRows}
-              formatValue={(key, value) =>
+              formatValue={(key, value, row) =>
                 key === "total_base_units" || key === "reorder_point"
-                  ? Number(value ?? 0).toLocaleString("en-KE", { maximumFractionDigits: 2 })
+                  ? formatInventoryQtyWithUom(value, row)
                   : value
               }
               viewAllHref="/reports/low-stock"

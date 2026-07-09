@@ -7,6 +7,9 @@ const HIDDEN_SINGLE_BRANCH_COLUMNS = new Set(["branch_id"]);
 /** Product code is redundant in reports when product name is available (catalogue pages keep both). */
 const HIDDEN_PRODUCT_CODE_COLUMN = "product_code";
 
+/** Internal FK columns — kept in API for joins/UOM but not shown in report tables. */
+const HIDDEN_INTERNAL_ID_COLUMNS = new Set(["unit_id"]);
+
 const REPORT_COLUMN_LABELS = {
   product_name: "Product",
   first_received_at: "First receive",
@@ -26,6 +29,7 @@ const REPORT_COLUMN_LABELS = {
  */
 export function isRedundantReportColumn(key, { multiBranch = false, showProductCode = false, rowKeys = [] } = {}) {
   if (HIDDEN_ORG_COLUMNS.has(key)) return true;
+  if (HIDDEN_INTERNAL_ID_COLUMNS.has(key)) return true;
   if (!multiBranch && HIDDEN_SINGLE_BRANCH_COLUMNS.has(key)) return true;
   if (
     !showProductCode

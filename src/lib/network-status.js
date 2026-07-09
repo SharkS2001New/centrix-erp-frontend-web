@@ -1,10 +1,10 @@
 import { apiV1BaseUrl } from "./api";
 
 /** How often to probe API reachability while the app tab is visible and healthy. */
-export const NETWORK_PING_INTERVAL_MS = 60_000;
+export const NETWORK_PING_INTERVAL_MS = 120_000;
 
 /** Faster probes while offline or slow so the banner clears soon after recovery. */
-export const NETWORK_DEGRADED_PING_INTERVAL_MS = 5_000;
+export const NETWORK_DEGRADED_PING_INTERVAL_MS = 15_000;
 
 /** Round-trip above this is shown as a slow connection (not the same as slow API call reports). */
 export const NETWORK_SLOW_THRESHOLD_MS = 5_000;

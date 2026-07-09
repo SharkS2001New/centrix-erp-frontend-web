@@ -1,4 +1,5 @@
 import { inventoryTransactionTypeLabel, salesChannelLabel } from "@/lib/user-facing-labels";
+import { formatInventoryQtyWithUom } from "@/lib/inventory-qty-display";
 
 /** @typedef {{ key: string, label: string, accessor: (row: object) => unknown, align?: 'left'|'right', badge?: (row: object) => { label: string, tone: string } | null, total?: boolean }} ReportColumn */
 
@@ -223,14 +224,16 @@ export const REPORT_DEFINITIONS = {
       {
         key: "total_base_units",
         label: "On Hand Qty",
-        accessor: (r) => r.total_base_units ?? r.total_quantity,
+        accessor: (r) => formatInventoryQtyWithUom(r.total_base_units ?? r.total_quantity, r),
         align: "right",
-        total: true,
       },
       {
         key: "reorder_point",
         label: "Reorder Point",
-        accessor: (r) => r.reorder_point,
+        accessor: (r) =>
+          Number(r.reorder_point) > 0
+            ? formatInventoryQtyWithUom(r.reorder_point, r)
+            : "—",
         align: "right",
       },
       {
@@ -268,7 +271,7 @@ export const REPORT_DEFINITIONS = {
         }),
       },
     ],
-    footerTotals: ["total_base_units"],
+    footerTotals: [],
   },
 
   "profit-loss": {
@@ -365,31 +368,40 @@ export const REPORT_DEFINITIONS = {
       {
         key: "in_qty",
         label: "In Qty",
-        accessor: (r) => (Number(r.quantity_change) > 0 ? r.quantity_change : null),
+        accessor: (r) =>
+          Number(r.quantity_change) > 0
+            ? formatInventoryQtyWithUom(r.quantity_change, r)
+            : "—",
         align: "right",
       },
       {
         key: "out_qty",
         label: "Out Qty",
-        accessor: (r) => (Number(r.quantity_change) < 0 ? Math.abs(Number(r.quantity_change)) : null),
+        accessor: (r) =>
+          Number(r.quantity_change) < 0
+            ? formatInventoryQtyWithUom(Math.abs(Number(r.quantity_change)), r)
+            : "—",
         align: "right",
       },
-      { key: "quantity_after", label: "Balance Qty", accessor: (r) => r.quantity_after, align: "right" },
+      {
+        key: "quantity_after",
+        label: "Balance Qty",
+        accessor: (r) => formatInventoryQtyWithUom(r.quantity_after, r),
+        align: "right",
+      },
       { key: "unit_cost", label: "Unit Cost", accessor: (r) => r.unit_cost, align: "right" },
     ],
     kpis: [
       {
-        id: "inward",
-        label: "Total Inward Qty",
-        compute: (rows) => ({
-          value: formatQty(rows.reduce((s, r) => s + Math.max(0, Number(r.quantity_change) || 0), 0)),
-        }),
+        id: "movements",
+        label: "Movements",
+        compute: (rows) => ({ value: String(rows.length) }),
       },
       {
-        id: "outward",
-        label: "Total Outward Qty",
+        id: "products",
+        label: "Products",
         compute: (rows) => ({
-          value: formatQty(rows.reduce((s, r) => s + Math.max(0, -(Number(r.quantity_change) || 0)), 0)),
+          value: String(new Set(rows.map((r) => r.product_code).filter(Boolean)).size),
         }),
       },
     ],
