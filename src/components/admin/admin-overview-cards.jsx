@@ -53,12 +53,19 @@ const CARDS = [
   },
 ];
 
-const ADMIN_NAV_BY_HREF = new Map(
-  navSections
-    .filter((section) => String(section.id ?? "").startsWith("admin"))
-    .flatMap((section) => section.items ?? [])
-    .map((item) => [item.href, item]),
-);
+let adminNavByHrefCache = null;
+
+function getAdminNavByHref() {
+  if (!adminNavByHrefCache) {
+    adminNavByHrefCache = new Map(
+      navSections
+        .filter((section) => String(section.id ?? "").startsWith("admin"))
+        .flatMap((section) => section.items ?? [])
+        .map((item) => [item.href, item]),
+    );
+  }
+  return adminNavByHrefCache;
+}
 
 export function AdminOverviewCards() {
   const { hasPermission, isModuleEnabled, isSuperAdmin, organization, user, capabilities } = useAuth();
@@ -80,7 +87,7 @@ export function AdminOverviewCards() {
   };
   const visible = CARDS.filter((card) => {
     if (!orgAdminOk) return false;
-    const navItem = ADMIN_NAV_BY_HREF.get(card.href);
+    const navItem = getAdminNavByHref().get(card.href);
     if (navItem) {
       return isNavItemVisible(navItem, navContext);
     }

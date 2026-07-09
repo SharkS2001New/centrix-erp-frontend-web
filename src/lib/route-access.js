@@ -39,7 +39,14 @@ function flattenNavItems() {
   return items.sort((a, b) => b.href.length - a.href.length);
 }
 
-const NAV_ROUTE_RULES = flattenNavItems().filter((item) => item.href);
+let navRouteRulesCache = null;
+
+function getNavRouteRules() {
+  if (!navRouteRulesCache) {
+    navRouteRulesCache = flattenNavItems().filter((item) => item.href);
+  }
+  return navRouteRulesCache;
+}
 
 const REPORT_ROUTE_RULES = [
   { prefix: "/reports/builder", permission: P.reports.builder.view },
@@ -217,7 +224,7 @@ export function canAccessRoute(pathname, ctx) {
     return supplierSubroute;
   }
 
-  const item = NAV_ROUTE_RULES.find((rule) =>
+  const item = getNavRouteRules().find((rule) =>
     rule.exact ? pathname === rule.href : pathname === rule.href || pathname.startsWith(`${rule.href}/`),
   );
 
