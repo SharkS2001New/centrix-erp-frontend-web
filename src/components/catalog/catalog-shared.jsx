@@ -43,13 +43,7 @@ export function StatCard({ label, value, hint }) {
   );
 }
 
-export function isSameCalendarDay(a, b) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
+export { getSaleTimestamp, isSameCalendarDay } from "@/lib/datetime";
 
 export function isSameCalendarMonth(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
@@ -70,11 +64,6 @@ export function isInCalendarWeek(date, reference = new Date()) {
   const end = new Date(reference);
   end.setHours(23, 59, 59, 999);
   return d >= start && d <= end;
-}
-
-export function getSaleTimestamp(sale) {
-  const raw = sale.completed_at ?? sale.delivery_date ?? sale.created_at;
-  return raw ? new Date(raw) : null;
 }
 
 export const SALES_PERIOD_OPTIONS = [

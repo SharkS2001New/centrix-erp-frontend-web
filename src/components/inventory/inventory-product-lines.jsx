@@ -17,6 +17,7 @@ export function InventoryProductLines({
   tableHeaders,
   emptyMessage = "No items added yet.",
   onAddProduct,
+  onAddProducts,
 }) {
   const [selectedIndex, setSelectedIndex] = useState(null);
 
@@ -34,6 +35,34 @@ export function InventoryProductLines({
     const row = lineFromEnrichedProduct(product);
     onChange([...lines, row]);
     setSelectedIndex(lines.length);
+  }
+
+  function addProducts(products) {
+    if (!products?.length) return;
+    if (onAddProducts) {
+      onAddProducts(products);
+      return;
+    }
+    let lastIndex = selectedIndex;
+    let nextLines = [...lines];
+    for (const product of products) {
+      if (onAddProduct) {
+        onAddProduct(product);
+        continue;
+      }
+      const code = product.product_code;
+      const existingIndex = nextLines.findIndex((l) => l.product_code === code);
+      if (existingIndex >= 0) {
+        lastIndex = existingIndex;
+        continue;
+      }
+      nextLines = [...nextLines, lineFromEnrichedProduct(product)];
+      lastIndex = nextLines.length - 1;
+    }
+    if (!onAddProduct) {
+      onChange(nextLines);
+      if (lastIndex != null) setSelectedIndex(lastIndex);
+    }
   }
 
   function updateLine(index, patch) {
@@ -54,9 +83,12 @@ export function InventoryProductLines({
         <LpoProductSearchPanel
           uomById={uomById}
           vatById={vatById}
+          selectionMode="multiple"
           onSelect={addProduct}
+          onSelectMany={addProducts}
           actionLabel="Add to list"
-          hint="Search by name or code, then click a row or Add to list."
+          multiActionLabel="Add {n} to list"
+          hint="Search products, tick rows, then Add to list."
           clearOnSelect
         />
       </div>

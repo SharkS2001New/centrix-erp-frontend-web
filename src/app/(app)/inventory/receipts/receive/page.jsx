@@ -116,6 +116,12 @@ export default function ReceiveStockPage() {
     }));
   }
 
+  function addManualProducts(products) {
+    for (const product of products) {
+      addManualProduct(product);
+    }
+  }
+
   useEffect(() => {
     if (mode !== "lpo" || !form.supplier_id) {
       setLpoOptions([]);
@@ -484,6 +490,7 @@ export default function ReceiveStockPage() {
               onChange={setManualLines}
               uomById={uomById}
               onAddProduct={addManualProduct}
+              onAddProducts={addManualProducts}
               tableHeaders={[
                 { key: "product", label: "Product" },
                 { key: "qty", label: "Qty received", align: "right" },

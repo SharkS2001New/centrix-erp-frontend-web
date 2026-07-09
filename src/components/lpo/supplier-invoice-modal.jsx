@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { apiRequest, ApiError, apiUploadForm } from "@/lib/api";
 import { Field, FormModal, inputClassName } from "@/components/catalog/catalog-shared";
-import { openLpoSupplierInvoiceDocument } from "./lpo-supplier-invoice-doc";
+import { lpoSupplierInvoiceFilePath } from "./lpo-supplier-invoice-doc";
+import { ProtectedFileLink } from "@/components/media/protected-file-preview";
 
 const EMPTY = {
   supplier_invoice_number: "",
@@ -116,13 +117,12 @@ export function SupplierInvoiceModal({
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
         {invoice?.has_document ? (
-          <button
-            type="button"
-            className="mt-2 text-xs font-medium text-[#185FA5] hover:underline"
-            onClick={() => openLpoSupplierInvoiceDocument(invoice.id)}
-          >
-            View current document ({invoice.file_name || "attached"})
-          </button>
+          <ProtectedFileLink
+            filePath={lpoSupplierInvoiceFilePath(invoice.id)}
+            label={`View current document (${invoice.file_name || "attached"})`}
+            title="Supplier invoice document"
+            className="mt-2 text-xs"
+          />
         ) : null}
       </Field>
       <p className="text-xs text-slate-500">

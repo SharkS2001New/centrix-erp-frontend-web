@@ -111,3 +111,16 @@ export function formatAppDateTimeWithSettings(value, settings) {
 
 /** @deprecated Use APP_TIMEZONE */
 export const NAIROBI_TZ = APP_TIMEZONE;
+
+export function isSameCalendarDay(a, b) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+export function getSaleTimestamp(sale) {
+  const raw = sale?.completed_at ?? sale?.delivery_date ?? sale?.created_at;
+  return raw ? new Date(raw) : null;
+}

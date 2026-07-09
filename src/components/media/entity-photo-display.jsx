@@ -74,7 +74,15 @@ export function EntityPhotoDisplay({
   }
 
   if (!src) {
-    return <span className={placeholderClassName}>Loading…</span>;
+    return (
+      <span className={`flex items-center justify-center gap-2 ${placeholderClassName}`}>
+        <span
+          className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-[#185FA5]"
+          aria-hidden
+        />
+        Loading…
+      </span>
+    );
   }
 
   return (

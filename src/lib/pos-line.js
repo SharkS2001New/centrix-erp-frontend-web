@@ -418,6 +418,22 @@ export function posListUnitPrice(product, sellWholesale, retailPackage) {
   return displayUnitPrice;
 }
 
+/** Per-unit discount from stored line total (API `discount_given`). */
+export function lineDiscountPerUnit(totalDiscount, baseQty) {
+  const q = Number(baseQty);
+  const total = Math.max(0, Number(totalDiscount ?? 0));
+  if (!Number.isFinite(q) || q <= 0) return total;
+  return Math.round((total / q) * 10000) / 10000;
+}
+
+/** Line total discount for API from per-unit cashier input. */
+export function lineDiscountTotal(perUnitDiscount, baseQty) {
+  const q = Number(baseQty);
+  const perUnit = Math.max(0, Number(perUnitDiscount ?? 0));
+  if (!Number.isFinite(q) || q <= 0) return 0;
+  return Math.round(perUnit * q * 100) / 100;
+}
+
 /** Cart grid unit price — per retail measure unit or per wholesale pack. */
 export function cartLineDisplayUnitPrice(line, uom, isRetailLine = false) {
   const perBase = Number(line?.unit_price ?? 0);

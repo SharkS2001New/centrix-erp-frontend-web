@@ -65,6 +65,7 @@ import {
   PodCaptureDialog,
 } from "@/components/fulfillment/fulfillment-assignment-dialog";
 import { ProductWeightPromptDialog } from "@/components/fulfillment/product-weight-prompt-dialog";
+import { PodRecordSummary } from "@/components/fulfillment/pod-record-summary";
 import { BackofficeOrderEditModal } from "@/components/sales/backoffice-order-edit-modal";
 import { InlineActionError } from "@/components/shared/inline-action-error";
 import { getSaleDriverId, getSaleVehicleId } from "@/components/fulfillment/fulfillment-shared";
@@ -1035,6 +1036,13 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                 workflow={saleWorkflow}
                 {...fulfillmentLabels}
               />
+              {sale?.fulfillment_meta?.pod_captured ||
+              sale?.fulfillment_meta?.pod_signer_name ||
+              ["delivered", "completed"].includes(sale?.status) ? (
+                <div className="lg:col-span-2">
+                  <PodRecordSummary saleId={sale.id} />
+                </div>
+              ) : null}
             </div>
           ) : null}
 

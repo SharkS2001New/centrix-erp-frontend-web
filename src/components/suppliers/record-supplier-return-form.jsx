@@ -29,6 +29,7 @@ import {
 } from "@/components/suppliers/supplier-return-shared";
 import { parseReturnReason, resolveReturnReason } from "@/components/sales/customer-returns-shared";
 import { ReturnReasonFields, isReturnReasonValid } from "@/components/returns/return-reason-fields";
+import { defaultUomMeasureLevel } from "@/components/inventory/damage-measure-select";
 
 const RETURN_MODES = {
   LPO: "lpo",
@@ -375,6 +376,47 @@ export function RecordSupplierReturnForm({
       return;
     }
     setPendingManual(product);
+    setPendingLpoLine(null);
+    setAddDraft({ ...DEFAULT_RETURN_DRAFT });
+    setFormError(null);
+    setAddError(null);
+    setReturnReasonError(null);
+  }
+
+  function addManualProducts(products) {
+    const existing = new Set(lines.map((l) => l.product_code));
+    const orderReason = resolveReturnReason(returnReasonPreset, returnReasonOther);
+    if (reasonScope === REASON_SCOPE.ORDER && orderReason.length < 3) {
+      setReturnReasonError("Return reason is required (at least 3 characters).");
+      return;
+    }
+
+    const newLines = [];
+    for (const product of products) {
+      if (existing.has(product.product_code)) continue;
+      existing.add(product.product_code);
+      const uom = product.uom ?? uomById.get(product.unit_id);
+      const packageType = defaultUomMeasureLevel(uom);
+      newLines.push({
+        key: newLineKey(),
+        product_code: product.product_code,
+        product_name: product.product_name,
+        quantity: "1",
+        package_type: packageType,
+        stock_location: DEFAULT_RETURN_DRAFT.stock_location,
+        uom_label: product.package_name ?? packageNameFromUom(uom),
+        packaging_label: packagingLabelFromProduct(product, uomById),
+        reason: reasonScope === REASON_SCOPE.PER_PRODUCT ? "" : "",
+      });
+    }
+
+    if (!newLines.length) {
+      setAddError("Selected products are already on this return.");
+      return;
+    }
+
+    setLines((prev) => [...prev, ...newLines]);
+    setPendingManual(null);
     setPendingLpoLine(null);
     setAddDraft({ ...DEFAULT_RETURN_DRAFT });
     setFormError(null);
@@ -1100,11 +1142,15 @@ export function RecordSupplierReturnForm({
                     <LpoProductSearchPanel
                       uomById={uomById}
                       vatById={vatById}
+                      selectionMode="multiple"
                       onSelect={selectManualProduct}
+                      onSelectMany={addManualProducts}
                       actionLabel="Choose product"
+                      multiActionLabel="Add {n} selected"
                       disabled={!branchId}
                       compactHalfPage
                       clearOnSelect={false}
+                      hint="Tick products, then Add selected. Configure qty on each line in the table."
                     />
                   ) : showLpoProductPicker ? (
                     <div className="theme-table-shell overflow-hidden rounded-lg border">

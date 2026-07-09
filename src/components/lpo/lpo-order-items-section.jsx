@@ -116,6 +116,8 @@ export function LpoOrderItemsSection({
             onSelect={addProduct}
             onSelectMany={addProducts}
             selectionMode="multiple"
+            actionLabel="Add selected to order"
+            multiActionLabel="Add {n} selected to order"
             hint="Select one or more products, then add them to the order. Double-click a row to add it immediately."
           />
         </div>

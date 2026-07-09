@@ -8,6 +8,7 @@ import {
   saleLineEntryQtyForEdit,
   saleLineEntryQtyToBase,
 } from "@/lib/sale-line-items";
+import { lineDiscountPerUnit, lineDiscountTotal } from "@/lib/pos-line";
 import { showBackofficeLineDiscountEdit } from "@/lib/sales-settings";
 import { useAuth } from "@/contexts/auth-context";
 import { inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
@@ -33,18 +34,36 @@ function scaleAmount(value, newQty, oldQty) {
   return Math.round((Number(value) * Number(newQty)) / old * 100) / 100;
 }
 
-function toPerUnitDiscount(discountTotal, qty) {
-  const q = Number(qty);
-  if (!Number.isFinite(q) || q <= 0) return Number(discountTotal ?? 0);
-  return Number(discountTotal ?? 0) / q;
-}
-
 function indexRetailPackages(rows) {
   const map = {};
   for (const row of rows ?? []) {
     if (row?.product_code) map[row.product_code] = row;
   }
   return map;
+}
+
+function resolveLineBaseQty(line, draftQty, uomById, retailByCode) {
+  const oldQty = Number(line.quantity);
+  const entryQty = Number(draftQty);
+  if (!Number.isFinite(entryQty) || entryQty <= 0) return oldQty;
+  const baseQty = saleLineEntryQtyToBase(line, entryQty, uomById, retailByCode);
+  return Number.isFinite(baseQty) && baseQty > 0 ? baseQty : oldQty;
+}
+
+/** Line total preview: unit price × qty − (per-unit discount × qty). */
+function linePreviewAmount(line, draftQty, uomById, retailByCode, discountEditEnabled) {
+  const oldQty = Number(line.quantity);
+  const baseQty = resolveLineBaseQty(line, draftQty, uomById, retailByCode);
+
+  if (discountEditEnabled) {
+    const unitPrice = saleLineDisplayUnitPrice(line, uomById);
+    const perUnit = Math.max(0, Number(line.draftDiscount ?? 0));
+    const subtotal = Math.round(unitPrice * baseQty * 100) / 100;
+    const discountTotal = lineDiscountTotal(perUnit, baseQty);
+    return Math.max(0, Math.round((subtotal - discountTotal) * 100) / 100);
+  }
+
+  return scaleAmount(line.amount, baseQty, oldQty || baseQty);
 }
 
 export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved, capabilities = null }) {
@@ -84,7 +103,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
           };
           return {
             ...editLine,
-            draftDiscount: toPerUnitDiscount(editLine.discount_given, editLine.quantity),
+            draftDiscount: lineDiscountPerUnit(editLine.discount_given, editLine.quantity),
             draftQty: saleLineEntryQtyForEdit(editLine, uomById, retailMap),
           };
         }),
@@ -118,15 +137,12 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
   );
 
   const totals = useMemo(() => {
-    return lines.reduce((sum, line) => {
-      const oldQty = Number(line.quantity);
-      const draftQty = Number(line.draftQty);
-      const entryQty = Number.isFinite(draftQty) && draftQty > 0 ? draftQty : Number(line.draftQty);
-      const baseQty = saleLineEntryQtyToBase(line, entryQty, uomById, retailByCode);
-      const qty = Number.isFinite(baseQty) && baseQty > 0 ? baseQty : oldQty;
-      return sum + scaleAmount(line.amount, qty, oldQty || qty);
-    }, 0);
-  }, [lines, retailByCode, uomById]);
+    return lines.reduce(
+      (sum, line) =>
+        sum + linePreviewAmount(line, line.draftQty, uomById, retailByCode, discountEditEnabled),
+      0,
+    );
+  }, [lines, retailByCode, uomById, discountEditEnabled]);
 
   function updateQty(lineId, value) {
     setLines((prev) =>
@@ -169,7 +185,9 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       const item = { id: line.id, quantity: baseQty };
       if (discountEditEnabled) {
         const perUnit = Number(line.draftDiscount ?? 0);
-        if (Number.isFinite(perUnit)) item.discount_given = perUnit * baseQty;
+        if (Number.isFinite(perUnit)) {
+          item.discount_given = lineDiscountTotal(perUnit, baseQty);
+        }
       }
       payload.push(item);
     }
@@ -254,25 +272,23 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                   <th className="w-28 px-3 py-2 text-right">Qty</th>
                   <th className="w-32 px-3 py-2 text-right">Unit price</th>
                   {discountEditEnabled ? (
-                    <th className="w-28 px-3 py-2 text-right">Discount</th>
+                    <th className="w-28 px-3 py-2 text-right">Disc / unit</th>
                   ) : null}
                   <th className="w-32 px-3 py-2 text-right">Amount</th>
                 </tr>
               </thead>
               <tbody>
                     {lines.map((line) => {
-                  const oldQty = Number(line.quantity);
-                  const draftQty = line.draftQty ?? "";
-                  const entryQty = Number(draftQty);
-                  const baseQty =
-                    Number.isFinite(entryQty) && entryQty > 0
-                      ? saleLineEntryQtyToBase(line, entryQty, uomById, retailByCode)
-                      : oldQty;
-                  const displayQty = Number.isFinite(baseQty) && baseQty > 0 ? baseQty : oldQty;
-                  const amount = scaleAmount(line.amount, displayQty, oldQty || displayQty);
+                  const amount = linePreviewAmount(
+                    line,
+                    line.draftQty,
+                    uomById,
+                    retailByCode,
+                    discountEditEnabled,
+                  );
                   const unitPrice = saleLineDisplayUnitPrice(line, uomById);
 
-                      return (
+                  return (
                     <tr key={line.id} className="theme-table-row border-b last:border-b-0">
                       <td className="px-3 py-2.5 text-slate-800">{lineLabel(line)}</td>
                       <td className="px-3 py-2.5 text-right">
@@ -280,7 +296,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                           type="number"
                           min="0.0001"
                           step="any"
-                          value={draftQty}
+                          value={line.draftQty ?? ""}
                           disabled={saving}
                           onChange={(e) => updateQty(line.id, e.target.value)}
                           className={`${inputClassName()} w-24 text-right text-sm`}

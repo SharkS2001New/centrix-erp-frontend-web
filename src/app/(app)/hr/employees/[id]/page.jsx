@@ -27,6 +27,7 @@ import {
   EntityPhotoDisplay,
   employeePhotoFileUrl,
 } from "@/components/media/entity-photo-display";
+import { ProtectedPhotoEnlarge } from "@/components/media/protected-file-preview";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
 export default function EmployeeProfilePage() {
@@ -123,15 +124,21 @@ export default function EmployeeProfilePage() {
           <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-center gap-4">
               {employee.photo_path || employee.photo_url ? (
-                <div className="h-14 w-14 overflow-hidden rounded-full border border-slate-200 bg-slate-50">
-                  <EntityPhotoDisplay
-                    fileUrl={employeePhotoFileUrl(employee.id)}
-                    imageUrl={employee.photo_url ?? employee.photo_path}
-                    alt={composeEmployeeDisplayName(employee)}
-                    className="h-14 w-14 object-cover"
-                    placeholderClassName="flex h-full w-full items-center justify-center text-lg font-semibold text-[#3C3489]"
-                  />
-                </div>
+                <ProtectedPhotoEnlarge
+                  filePath={employeePhotoFileUrl(employee.id)}
+                  alt={composeEmployeeDisplayName(employee)}
+                  className="rounded-full"
+                >
+                  <div className="h-14 w-14 overflow-hidden rounded-full border border-slate-200 bg-slate-50 ring-offset-2 transition hover:ring-2 hover:ring-[#185FA5]/30">
+                    <EntityPhotoDisplay
+                      fileUrl={employeePhotoFileUrl(employee.id)}
+                      imageUrl={employee.photo_url ?? employee.photo_path}
+                      alt={composeEmployeeDisplayName(employee)}
+                      className="h-14 w-14 object-cover"
+                      placeholderClassName="flex h-full w-full items-center justify-center text-lg font-semibold text-[#3C3489]"
+                    />
+                  </div>
+                </ProtectedPhotoEnlarge>
               ) : (
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#EEEDFE] text-lg font-semibold text-[#3C3489]">
                   {employeeInitials(composeEmployeeDisplayName(employee))}

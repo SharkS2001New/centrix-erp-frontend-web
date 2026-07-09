@@ -65,6 +65,10 @@ export function isPlatformAdvancedDataImportEnabled(capabilities) {
   return capabilities?.platform_advanced_data_import_enabled === true;
 }
 
+export function isPlatformTabWorkspaceEnabled(capabilities) {
+  return capabilities?.platform_tab_workspace_enabled === true;
+}
+
 export function isOrderExpiryNavEnabled(capabilities) {
   return capabilities?.module_settings?.sales?.order_expiry_enabled !== false;
 }

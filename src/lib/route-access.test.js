@@ -56,4 +56,24 @@ describe("route-access", () => {
       }),
     ).toBe(true);
   });
+
+  it("allows new supplier when create permission is granted", () => {
+    expect(
+      canAccessRoute("/suppliers/new", {
+        ...baseCtx,
+        isModuleEnabled: (key) => key === "customers_suppliers",
+        hasPermission: (code) => code === "purchasing.suppliers.create",
+      }),
+    ).toBe(true);
+  });
+
+  it("denies new supplier without create permission", () => {
+    expect(
+      canAccessRoute("/suppliers/new", {
+        ...baseCtx,
+        isModuleEnabled: (key) => key === "customers_suppliers",
+        hasPermission: (code) => code === "purchasing.suppliers.view",
+      }),
+    ).toBe(false);
+  });
 });

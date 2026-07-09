@@ -1,7 +1,7 @@
 import { humanizeBackendTerm, salesChannelLabel } from "@/lib/user-facing-labels";
 import { formatOrgCurrency } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
-import { getSaleTimestamp, isSameCalendarDay } from "@/components/catalog/catalog-shared";
+import { getSaleTimestamp, isSameCalendarDay } from "@/lib/datetime";
 import {
   DEFAULT_ORDER_WORKFLOW,
   alignStatusToWorkflow,

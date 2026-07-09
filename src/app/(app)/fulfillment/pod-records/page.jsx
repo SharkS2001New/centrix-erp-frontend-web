@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiFetchBlob, apiRequest, ApiError } from "@/lib/api";
+import { apiRequest, ApiError } from "@/lib/api";
+import { PodAttachmentLink } from "@/components/fulfillment/pod-attachment-preview";
 import { useAuth } from "@/contexts/auth-context";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import {
@@ -40,8 +41,6 @@ export default function PodRecordsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [fromDate, setFromDate] = useState(() => isoDate(new Date(Date.now() - 7 * 86400000)));
   const [toDate, setToDate] = useState(() => isoDate());
-  const [previewUrl, setPreviewUrl] = useState(null);
-
   const loadData = useCallback(async () => {
     setError(null);
     setLoading(true);
@@ -77,15 +76,6 @@ export default function PodRecordsPage() {
       );
     });
   }, [records, search]);
-
-  async function previewImage(path) {
-    try {
-      const blob = await apiFetchBlob(path);
-      setPreviewUrl(URL.createObjectURL(blob));
-    } catch {
-      setError("Could not load image");
-    }
-  }
 
   if (!distributionEnabled) {
     return (
@@ -137,7 +127,13 @@ export default function PodRecordsPage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-slate-500">Loading POD records…</p>
+        <div className="flex items-center gap-3 text-sm text-slate-500">
+          <span
+            className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-[#185FA5]"
+            aria-hidden
+          />
+          Loading POD records…
+        </div>
       ) : filtered.length === 0 ? (
         <p className="text-sm text-slate-500">No proof-of-delivery records in this period.</p>
       ) : (
@@ -166,24 +162,12 @@ export default function PodRecordsPage() {
                   <td className="px-4 py-3">{record.recipient_name}</td>
                   <td className="px-4 py-3 capitalize">{record.status}</td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-3">
                       {record.photo_path ? (
-                        <button
-                          type="button"
-                          className="text-xs text-[#185FA5] hover:underline"
-                          onClick={() => previewImage(`/pod-records/${record.id}/photo/file`)}
-                        >
-                          Photo
-                        </button>
+                        <PodAttachmentLink recordId={record.id} kind="photo" label="Photo" />
                       ) : null}
                       {record.signature_path ? (
-                        <button
-                          type="button"
-                          className="text-xs text-[#185FA5] hover:underline"
-                          onClick={() => previewImage(`/pod-records/${record.id}/signature/file`)}
-                        >
-                          Signature
-                        </button>
+                        <PodAttachmentLink recordId={record.id} kind="signature" label="Signature" />
                       ) : null}
                     </div>
                   </td>
@@ -194,11 +178,6 @@ export default function PodRecordsPage() {
         </div>
       )}
 
-      {previewUrl ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setPreviewUrl(null)}>
-          <img src={previewUrl} alt="POD attachment" className="max-h-[80vh] max-w-full rounded-lg bg-white p-2" />
-        </div>
-      ) : null}
     </CatalogPageShell>
   );
 }

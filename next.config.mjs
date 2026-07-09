@@ -34,20 +34,21 @@ const immutableAssetHeaders = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   async headers() {
-    return [
-      {
-        source: "/_next/static/:path*",
-        headers: immutableAssetHeaders,
-      },
-      {
-        source: "/branding/:path*",
-        headers: immutableAssetHeaders,
-      },
+    const rules = [
       {
         source: "/:path*",
         headers: securityHeaders,
       },
     ];
+
+    if (process.env.NODE_ENV === "production") {
+      rules.unshift(
+        { source: "/_next/static/:path*", headers: immutableAssetHeaders },
+        { source: "/branding/:path*", headers: immutableAssetHeaders },
+      );
+    }
+
+    return rules;
   },
   async redirects() {
     return [

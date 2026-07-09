@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { apiFetchBlob, ApiError, resolveProtectedFileUrl } from "@/lib/api";
+import { resolveProtectedFileUrl } from "@/lib/api";
+import { ProtectedFileLink } from "@/components/media/protected-file-preview";
 import {
   discountRevisionConfirmationMessage,
   isDiscountRevisionSubmitted,
 } from "@/lib/discount-approval-messages";
-import { notifyError } from "@/lib/notify";
 
 function formatKes(value) {
   const amount = Number(value ?? 0);
@@ -165,7 +164,6 @@ export function DiscountApprovalItemsTable({ item }) {
 export function ApprovalNotificationDetails({ item }) {
   const reason = approvalReason(item);
   const proof = approvalProof(item);
-  const [loadingProof, setLoadingProof] = useState(false);
   const showDiscountTable = isDiscountApproval(item);
   const showLpoSummary = isLpoApproval(item);
   const discountRevisionSubmitted = isDiscountRevisionSubmitted(item);
@@ -173,21 +171,6 @@ export function ApprovalNotificationDetails({ item }) {
 
   if (!reason && !proof && !showDiscountTable && !showLpoSummary && !discountRevisionSubmitted) {
     return null;
-  }
-
-  async function openProof() {
-    if (!proof?.url) return;
-    setLoadingProof(true);
-    try {
-      const blob = await apiFetchBlob(proof.url);
-      const blobUrl = URL.createObjectURL(blob);
-      window.open(blobUrl, "_blank", "noopener,noreferrer");
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-    } catch (err) {
-      notifyError(err instanceof ApiError ? err.message : "Could not open proof file.");
-    } finally {
-      setLoadingProof(false);
-    }
   }
 
   return (
@@ -221,17 +204,12 @@ export function ApprovalNotificationDetails({ item }) {
       {proof?.url ? (
         <p className="text-slate-700 dark:text-slate-200">
           <span className="font-medium text-slate-500 dark:text-slate-400">Proof: </span>
-          <button
-            type="button"
-            disabled={loadingProof}
-            onClick={(e) => {
-              e.stopPropagation();
-              void openProof();
-            }}
-            className="font-medium text-[#185FA5] hover:underline disabled:opacity-50"
-          >
-            {loadingProof ? "Opening…" : proof.file_name ?? "View attachment"}
-          </button>
+          <ProtectedFileLink
+            filePath={proof.url}
+            label={proof.file_name ?? "View attachment"}
+            title={proof.file_name ?? "Approval proof"}
+            className="text-xs"
+          />
         </p>
       ) : null}
     </div>

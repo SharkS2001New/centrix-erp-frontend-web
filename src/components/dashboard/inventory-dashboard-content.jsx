@@ -116,13 +116,13 @@ export function InventoryDashboardContent() {
       id: "shop_value",
       label: "Shop value",
       value: inventoryValue.shop != null ? formatReportKes(inventoryValue.shop) : "—",
-      hint: "Qty × cost in shop",
+      hint: "Converted qty × cost in shop",
     },
     {
       id: "store_value",
       label: "Store value",
       value: inventoryValue.store != null ? formatReportKes(inventoryValue.store) : "—",
-      hint: "Qty × cost in store",
+      hint: "Converted qty × cost in store",
     },
     {
       id: "total_value",
@@ -173,13 +173,13 @@ export function InventoryDashboardContent() {
                   <dd className="font-medium text-red-700">{stats.out}</dd>
                 </div>
                 <div className="flex justify-between gap-4 border-t border-slate-100 pt-3 dark:border-slate-800">
-                  <dt className="text-slate-500">Shop value (qty × cost)</dt>
+                  <dt className="text-slate-500">Shop value (converted qty × cost)</dt>
                   <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
                     {inventoryValue.shop != null ? formatInventoryKes(inventoryValue.shop) : "—"}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Store value (qty × cost)</dt>
+                  <dt className="text-slate-500">Store value (converted qty × cost)</dt>
                   <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
                     {inventoryValue.store != null ? formatInventoryKes(inventoryValue.store) : "—"}
                   </dd>

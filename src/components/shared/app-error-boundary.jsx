@@ -1,7 +1,7 @@
 "use client";
 
 import { Component } from "react";
-import { canSeeServerErrorDetail } from "@/lib/api";
+import { canSeeServerErrorDetail } from "@/lib/auth-storage";
 import { emitSystemIssue } from "@/lib/system-issue-dispatcher";
 import { logApiErrorIssue } from "@/lib/system-issue-reports";
 

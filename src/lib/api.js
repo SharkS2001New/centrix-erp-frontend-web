@@ -1,4 +1,4 @@
-import { getToken, clearSession, isScreenLocked, getStoredUser, getStoredCapabilities } from "./auth-storage";
+import { getToken, clearSession, isScreenLocked, canSeeServerErrorDetail } from "./auth-storage";
 import { apiFetchCredentials, useCookieAuth } from "./auth-config";
 import { apiV1BaseUrl } from "./api-base-url";
 import { beginAppLoading, endAppLoading, isPageNavigationLoading } from "./app-loading";
@@ -90,16 +90,7 @@ export class ApiError extends Error {
   }
 }
 
-/** Platform super admin or org admin — may see server error detail in UI. */
-export function canSeeServerErrorDetail() {
-  const user = getStoredUser();
-  const capabilities = getStoredCapabilities();
-  return Boolean(
-    user?.is_super_admin
-      || user?.is_admin
-      || capabilities?.is_super_admin,
-  );
-}
+export { canSeeServerErrorDetail };
 
 /** Message for the system-issue popup (generic for staff; technical for admins). */
 export function formatSystemIssueMessage(data, statusText, apiPath) {

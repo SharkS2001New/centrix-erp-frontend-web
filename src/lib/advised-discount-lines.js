@@ -1,3 +1,5 @@
+import { lineDiscountTotal } from "@/lib/pos-line";
+
 export function formatAdvisedDiscountKes(value) {
   const amount = Number(value ?? 0);
   if (!Number.isFinite(amount)) return "—";
@@ -46,10 +48,11 @@ export function applyAdvisedDiscountsToDraftLines(lines, advisedLines, { getProd
     const code = String(resolveCode(line) ?? "").trim();
     if (!code || !advisedByCode.has(code)) return line;
     const advised = advisedByCode.get(code);
+    const baseQty = Number(line?.quantity ?? 0);
     return {
       ...line,
       draftDiscount: advised,
-      discount_given: advised,
+      discount_given: lineDiscountTotal(advised, baseQty),
     };
   });
 }

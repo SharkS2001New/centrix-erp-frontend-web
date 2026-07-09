@@ -12,6 +12,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { DashboardKpiGrid, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
 import { TripExpensesPanel } from "@/components/fulfillment/trip-expenses-panel";
+import { PodAttachmentLink } from "@/components/fulfillment/pod-attachment-preview";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { formatCollectedCashDefault } from "@/lib/trip-cod";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
@@ -356,7 +357,34 @@ export function TripCloseReconciliation({ tripId }) {
               {
                 key: "pod_captured",
                 label: "POD",
-                render: (row) => (row.pod_captured ? "Yes" : row.is_delivered ? "Missing" : "—"),
+                render: (row) => {
+                  if (row.pod_record_id) {
+                    return (
+                      <div className="flex flex-col items-end gap-1">
+                        <span>Yes</span>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {row.pod_has_photo ? (
+                            <PodAttachmentLink
+                              recordId={row.pod_record_id}
+                              kind="photo"
+                              label="Photo"
+                              className="text-[11px]"
+                            />
+                          ) : null}
+                          {row.pod_has_signature ? (
+                            <PodAttachmentLink
+                              recordId={row.pod_record_id}
+                              kind="signature"
+                              label="Signature"
+                              className="text-[11px]"
+                            />
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return row.pod_captured ? "Yes" : row.is_delivered ? "Missing" : "—";
+                },
               },
             ]}
             rows={orders.map((row) => ({

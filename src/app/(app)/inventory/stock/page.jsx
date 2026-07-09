@@ -80,9 +80,15 @@ function enrichStockRow(row) {
   const shopQty = Number(row.shop_quantity ?? 0);
   const storeQty = Number(row.store_quantity ?? 0);
   const totalBase = shopQty + storeQty;
-  // Stock value = qty × cost only (not retail/wholesale sell price). Zero qty ⇒ zero value.
-  const shopValue = Math.round(shopQty * cost * 100) / 100;
-  const storeValue = Math.round(storeQty * cost * 100) / 100;
+  const convertedShopQty = factor > 0 ? shopQty / factor : shopQty;
+  const convertedStoreQty = factor > 0 ? storeQty / factor : storeQty;
+  // Stock value = converted qty × cost (cost is per purchase/package unit).
+  const shopValue = row.shop_cost_value != null
+    ? Number(row.shop_cost_value)
+    : Math.round(convertedShopQty * cost * 100) / 100;
+  const storeValue = row.store_cost_value != null
+    ? Number(row.store_cost_value)
+    : Math.round(convertedStoreQty * cost * 100) / 100;
   const profitMargin = sell > 0 ? Math.round(((sell - cost) / sell) * 100) : null;
   const reorderPoint = Number(row.reorder_point ?? 0);
 
@@ -422,7 +428,7 @@ export default function CurrentStockPage() {
   return (
     <InventoryPageShell
       title={ITEMS_CURRENTLY_IN_STOCK_LABEL}
-      subtitle="Quantities in packaging hierarchy — stock value is qty × cost price"
+      subtitle="Quantities in packaging hierarchy — stock value is (qty ÷ conversion factor) × cost price"
       action={
         <CatalogListExport
           title={ITEMS_CURRENTLY_IN_STOCK_LABEL}

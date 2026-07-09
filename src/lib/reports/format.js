@@ -1,5 +1,4 @@
-import { formatShortDate } from "@/components/catalog/catalog-shared";
-import { formatOrgCurrency, formatOrgNumber } from "@/lib/format";
+import { formatOrgCurrency, formatOrgDate, formatOrgNumber } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 
 export function formatReportKes(value, settings = GENERAL_DEFAULTS) {
@@ -29,7 +28,7 @@ export function formatReportCell(key, value, settings = GENERAL_DEFAULTS) {
     return formatReportNumber(value, 2, settings);
   }
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
-    return formatShortDate(value, settings);
+    return formatOrgDate(value, settings);
   }
   return String(value);
 }

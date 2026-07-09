@@ -1,7 +1,6 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { PrimaryButton } from "@/components/catalog/catalog-shared";
 
 export function SystemIssuePrompt({
   open,
@@ -68,14 +67,14 @@ export function SystemIssuePrompt({
           >
             Dismiss
           </button>
-          <PrimaryButton
+          <button
             type="button"
-            showIcon={false}
+            className="theme-primary-btn inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
             disabled={reporting || reported}
             onClick={onReport}
           >
             {reported ? "Reported" : reporting ? "Reporting…" : "Report to System Admin"}
-          </PrimaryButton>
+          </button>
         </div>
       </div>
     </div>,

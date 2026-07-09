@@ -9,6 +9,15 @@ const HIDDEN_PRODUCT_CODE_COLUMN = "product_code";
 
 const REPORT_COLUMN_LABELS = {
   product_name: "Product",
+  first_received_at: "First receive",
+  first_adjustment_at: "First adjustment",
+  first_entered_at: "First stock in",
+  first_sold_at: "First sale",
+  last_movement_at: "Last movement",
+  total_received: "Received (period)",
+  total_sold: "Sold (period)",
+  current_shop_stock: "Shop stock",
+  current_store_stock: "Store stock",
 };
 
 /**

@@ -31,7 +31,6 @@ import {
   TABLE_HEAD_ROW_CLASS,
   TABLE_SECTION_ROW_CLASS,
   TABLE_SHELL_CLASS,
-  TABLE_SUBSECTION_ROW_CLASS,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { resolveProductAudit } from "@/lib/product-audit";
@@ -72,11 +71,10 @@ const PRODUCT_COLUMNS = [
   { id: "weight", label: "Weight", defaultVisible: false, align: "right", sortKey: "product_weight" },
   { id: "shop", label: "Shop", defaultVisible: true, align: "center" },
   { id: "store", label: "Store", defaultVisible: true, align: "center" },
-  { id: "reorder", label: "Reorder", defaultVisible: false, align: "right", sortKey: "reorder_point" },
+  { id: "reorder", label: "Reorder level", defaultVisible: false, align: "right", sortKey: "reorder_point" },
   { id: "supplier", label: "Supplier", defaultVisible: true },
   { id: "vat", label: "VAT", defaultVisible: true },
   { id: "pricing", label: "Pricing", defaultVisible: true },
-  { id: "alert", label: "Reorder", defaultVisible: false },
   { id: "updated", label: "Updated by", defaultVisible: true },
   { id: "actions", label: "Actions", defaultVisible: true, required: true, align: "center" },
 ];
@@ -1112,81 +1110,22 @@ function CategoryGroup({
         </tr>
       )}
       {!categoryCollapsed &&
-        [...subMap.entries()].map(([subName, items]) => (
-          <SubCategoryGroup
-            key={`${categoryName}-${subName}`}
-            categoryName={categoryName}
-            subName={subName}
-            items={items}
-            selectionEnabled={selectionEnabled}
-            selected={selected}
-            onToggle={onToggle}
-            isCollapsed={isCollapsed}
-            onToggleSection={onToggleSection}
-            showCategoryHeader={showCategoryHeader}
-            visibleColumns={visibleColumns}
-            tableColCount={tableColCount}
-            onView={onView}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onPriceSaved={onPriceSaved}
-          />
-        ))}
-    </>
-  );
-}
-
-function SubCategoryGroup({
-  categoryName,
-  subName,
-  items,
-  selectionEnabled,
-  selected,
-  onToggle,
-  isCollapsed,
-  onToggleSection,
-  showCategoryHeader,
-  visibleColumns,
-  tableColCount,
-  onView,
-  onEdit,
-  onDelete,
-  onPriceSaved,
-}) {
-  const subKey = `subcategory:${categoryName}/${subName}`;
-  const subCollapsed = isCollapsed(subKey);
-  const subIndent = showCategoryHeader ? "pl-6" : "pl-2";
-
-  return (
-    <>
-      <tr className={TABLE_SUBSECTION_ROW_CLASS}>
-        <td colSpan={tableColCount} className="px-4 py-2">
-          <button
-            type="button"
-            onClick={() => onToggleSection(subKey)}
-            className={`theme-heading flex w-full items-center gap-2 text-left text-sm font-medium ${subIndent}`}
-          >
-            <ChevronToggle expanded={!subCollapsed} />
-            {subName}
-            <span className="theme-subtext text-xs font-normal">({items.length})</span>
-          </button>
-        </td>
-      </tr>
-      {!subCollapsed &&
-        items.map((p) => (
-          <ProductRow
-            key={p.product_code}
-            product={p}
-            selectionEnabled={selectionEnabled}
-            checked={selected.has(String(p.product_code))}
-            onToggle={() => onToggle(p.product_code)}
-            visibleColumns={visibleColumns}
-            onView={onView}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onPriceSaved={onPriceSaved}
-          />
-        ))}
+        [...subMap.entries()].flatMap(([subName, items]) =>
+          items.map((p) => (
+            <ProductRow
+              key={p.product_code}
+              product={p}
+              selectionEnabled={selectionEnabled}
+              checked={selected.has(String(p.product_code))}
+              onToggle={() => onToggle(p.product_code)}
+              visibleColumns={visibleColumns}
+              onView={onView}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onPriceSaved={onPriceSaved}
+            />
+          )),
+        )}
     </>
   );
 }
@@ -1253,13 +1192,16 @@ function renderProductCell(product, columnId, onPriceSaved) {
         <div className="min-w-0">
           <Link
             href={`/products/${encodeURIComponent(product.product_code)}`}
-            className="theme-link font-medium"
+            className="theme-link text-sm font-medium"
           >
             {product.product_name}
           </Link>
           <p className="theme-subtext mt-0.5 font-mono text-xs">{product.product_code}</p>
+          <p className="theme-subtext mt-0.5 text-xs">
+            {product.category_name} · {product.subcategory_name}
+          </p>
           {product.catalog_scope === "branch" || product.branch_id ? (
-            <p className="mt-1 text-xs font-medium text-amber-700">{productScopeLabel(product)}</p>
+            <p className="theme-subtext mt-0.5 text-xs">{productScopeLabel(product)}</p>
           ) : null}
         </div>
       );
@@ -1303,13 +1245,15 @@ function renderProductCell(product, columnId, onPriceSaved) {
       );
     case "reorder":
       return product.effective_reorder_point != null ? (
-        <>
-          {formatQty(baseToDisplayQty(product.effective_reorder_point, product.uom_factor))}{" "}
-          <span className="theme-subtext text-xs">{product.uom_label}</span>
-          {product.uses_global_reorder ? (
-            <span className="theme-subtext mt-0.5 block text-xs">Global default</span>
-          ) : null}
-        </>
+        <div className="theme-text-muted text-sm">
+          <span>
+            {formatQty(baseToDisplayQty(product.effective_reorder_point, product.uom_factor))}{" "}
+            <span className="theme-subtext text-xs">{product.uom_label}</span>
+          </span>
+          <span className="theme-subtext mt-0.5 block text-xs">
+            {product.uses_global_reorder ? "Global default" : "Custom threshold"}
+          </span>
+        </div>
       ) : (
         "—"
       );
@@ -1319,16 +1263,6 @@ function renderProductCell(product, columnId, onPriceSaved) {
       return <VatBadge treatment={product.vat_treatment} />;
     case "pricing":
       return <PricingBadge type={product.pricing} />;
-    case "alert":
-      return product.uses_global_reorder ? (
-        <span className="inline-flex rounded-full bg-[var(--theme-surface-muted)] px-2 py-0.5 text-xs font-medium text-[var(--theme-text-muted)] ring-1 ring-[var(--theme-border)]">
-          Global
-        </span>
-      ) : (
-        <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-600/20">
-          Custom
-        </span>
-      );
     case "updated":
       return <UserDateCell name={product.audit_name} date={product.audit_date} />;
     default:

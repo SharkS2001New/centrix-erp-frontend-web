@@ -147,6 +147,7 @@ export function capabilitiesFromOrganizationPayload(payload) {
   const security = moduleSettings.security ?? {};
   const modules = payload?.effective_modules ?? payload?.capabilities?.modules ?? {};
   const finance = moduleSettings.finance ?? {};
+  const general = moduleSettings.general ?? {};
   const ai = moduleSettings.ai ?? {};
   const whatsapp = moduleSettings.whatsapp ?? {};
   const sales = moduleSettings.sales ?? {};
@@ -177,6 +178,7 @@ export function capabilitiesFromOrganizationPayload(payload) {
     platform_kra_integration_enabled: finance.enable_kra_integration !== false,
     platform_ai_enabled: ai.enable_ai !== false,
     platform_whatsapp_enabled: Boolean(whatsapp.enable_whatsapp_orders),
+    platform_tab_workspace_enabled: Boolean(general.enable_tab_workspace),
     ai_assistant: {
       platform_enabled: ai.enable_ai !== false,
       enabled: Boolean(ai.enabled),

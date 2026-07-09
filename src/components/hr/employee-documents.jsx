@@ -1,13 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  apiFetchBlob,
-  apiRequest,
-  apiUploadForm,
-  ApiError,
-  employeeDocumentFilePath,
-} from "@/lib/api";
+import { apiRequest, apiUploadForm, ApiError, employeeDocumentFilePath } from "@/lib/api";
+import { ProtectedFileLink } from "@/components/media/protected-file-preview";
 import { Field, FormModal, inputClassName } from "@/components/catalog/catalog-shared";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
@@ -72,21 +67,6 @@ export function EmployeeDocuments({ employeeId }) {
     }
   }
 
-  async function viewDocument(doc) {
-    setViewingId(doc.id);
-    setError(null);
-    try {
-      const blob = await apiFetchBlob(employeeDocumentFilePath(employeeId, doc.id));
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not open document");
-    } finally {
-      setViewingId(null);
-    }
-  }
-
   async function remove(doc) {
     const ok = await confirm(confirmDeleteOptions(`"${doc.title}"`));
     if (!ok) return;
@@ -132,14 +112,14 @@ export function EmployeeDocuments({ employeeId }) {
                 </p>
               </div>
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => viewDocument(doc)}
-                  disabled={viewingId === doc.id}
-                  className="text-[#185FA5] hover:underline disabled:opacity-50"
-                >
-                  {viewingId === doc.id ? "Opening…" : "View"}
-                </button>
+                <ProtectedFileLink
+                  filePath={employeeDocumentFilePath(employeeId, doc.id)}
+                  label="View"
+                  title={doc.title}
+                  className="text-sm"
+                  disabled={viewingId !== null}
+                  onBusyChange={(busy) => setViewingId(busy ? doc.id : null)}
+                />
                 <button
                   type="button"
                   onClick={() => remove(doc)}

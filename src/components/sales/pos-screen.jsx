@@ -25,6 +25,8 @@ import {
   computePosLine,
   defaultPosEntryQty,
   isPosRetailSession,
+  lineDiscountPerUnit,
+  lineDiscountTotal,
   posCartLineTypeLabel,
   posEntryQtyFromCartLine,
   posEntryQtyFromBaseQty,
@@ -713,7 +715,8 @@ export function PosScreen({ standalone = false }) {
     () =>
       draftLinesMatchAdvisedDiscounts(cart?.lines ?? [], advisedDiscountLines, {
         getProductCode: (line) => line?.product_code,
-        getDraftDiscount: (line) => line?.discount_given,
+        getDraftDiscount: (line) =>
+          lineDiscountPerUnit(line?.discount_given, line?.quantity),
       }),
     [cart?.lines, advisedDiscountLines],
   );
@@ -967,10 +970,12 @@ export function PosScreen({ standalone = false }) {
         if (!code || !advisedByCode.has(code)) continue;
 
         const lineRef = cartLineRef(line);
+        const advisedPerUnit = advisedByCode.get(code);
+        const baseQty = Number(line.quantity ?? 0);
         const updated = await apiRequest(`/sales/carts/${cart.id}/lines/${lineRef}`, {
           method: "PATCH",
           body: {
-            discount_given: advisedByCode.get(code),
+            discount_given: lineDiscountTotal(advisedPerUnit, baseQty),
             quantity: line.quantity,
             on_wholesale_retail: line.on_wholesale_retail,
             update_no: latestCart.update_no,
@@ -2056,10 +2061,11 @@ export function PosScreen({ standalone = false }) {
       }
 
       const entryQty = cartLineEntryQtyForBaseQty(line, product, retailPackage, nextBaseQty);
+      const perUnitDiscount = lineDiscountPerUnit(line.discount_given, line.quantity);
       const computed = applyComputedPrice(
         product,
         entryQty,
-        line.discount_given ?? 0,
+        perUnitDiscount,
         null,
         isRetailLine,
         !isRetailLine,
@@ -2071,7 +2077,7 @@ export function PosScreen({ standalone = false }) {
         incrementBaseQty: computed.baseQty,
         editingId: line.id,
         editingRef: cartLineRef(line),
-        discount: line.discount_given ?? 0,
+        discount: perUnitDiscount,
         clearEntry: false,
         successMessage: null,
         lineRetailStockFlagOverride: isRetailLine,
@@ -2270,12 +2276,14 @@ export function PosScreen({ standalone = false }) {
       setSelectedProduct(product);
       setSearchQuery(product.product_name ?? line.product_code);
       setUnitPriceTouched(true);
+      const baseQty = Number(line.quantity ?? 0);
+      const perUnitDiscount = lineDiscountPerUnit(line.discount_given, baseQty);
       setLineForm({
         product_code: line.product_code,
         description: line.product_name ?? product.product_name ?? "",
         package: line.uom ?? "",
         quantity: posEntryQtyFromCartLine(line, product, retailPackage),
-        discount: String(Number(line.discount_given ?? 0)),
+        discount: String(perUnitDiscount),
         unit_price: String(
           cartLineDisplayUnitPrice(line, product.uom, isRetailLine),
         ),
@@ -3800,7 +3808,7 @@ export function PosScreen({ standalone = false }) {
                         </td>
                         {showLineDiscountField ? (
                           <td className="px-3 py-2 text-right">
-                            {Number(line.discount_given ?? 0).toLocaleString()}
+                            {lineDiscountPerUnit(line.discount_given, line.quantity).toLocaleString()}
                           </td>
                         ) : null}
                         <td className="px-3 py-2 text-right font-medium">

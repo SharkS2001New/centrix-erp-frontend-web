@@ -27,6 +27,8 @@ export function LpoProductSearchPanel({
   onSelect,
   onSelectMany,
   actionLabel = "Add selected to order",
+  /** When multiple items are selected, `{n}` is replaced with the count. */
+  multiActionLabel,
   hint = "Click a row to select, double-click or use the button to add.",
   /** "multiple" allows checkboxes and batch add; "single" keeps one highlighted row. */
   selectionMode = "single",
@@ -176,7 +178,10 @@ export function LpoProductSearchPanel({
 
   const addButtonLabel =
     multiple && selectedCount > 1
-      ? `Add ${selectedCount} selected to order`
+      ? (multiActionLabel ?? `Add ${selectedCount} selected to order`).replace(
+          "{n}",
+          String(selectedCount),
+        )
       : actionLabel;
 
   const scrollClass = compactHalfPage

@@ -55,6 +55,13 @@ export default function RecordDamagePage() {
     setLines((prev) => [...prev, lineFromProduct(product)]);
   }
 
+  function addProducts(products) {
+    const existing = new Set(lines.map((l) => l.product_code));
+    const toAdd = products.filter((p) => !existing.has(p.product_code));
+    if (!toAdd.length) return;
+    setLines((prev) => [...prev, ...toAdd.map((product) => lineFromProduct(product))]);
+  }
+
   function updateLine(index, patch) {
     setLines((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
@@ -139,6 +146,7 @@ export default function RecordDamagePage() {
           onChange={setLines}
           uomById={uomById}
           onAddProduct={addProduct}
+          onAddProducts={addProducts}
           tableHeaders={[
             { key: "product", label: "Product" },
             { key: "measure", label: "Measured as" },

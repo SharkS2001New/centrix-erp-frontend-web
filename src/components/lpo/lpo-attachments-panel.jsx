@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { apiFetchBlob, apiRequest, apiUploadForm, ApiError, lpoAttachmentFilePath } from "@/lib/api";
+import { apiRequest, apiUploadForm, ApiError, lpoAttachmentFilePath } from "@/lib/api";
+import { ProtectedFileLink } from "@/components/media/protected-file-preview";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
@@ -56,25 +57,6 @@ export function LpoAttachmentsPanel({ lpoNo }) {
     }
   }
 
-  async function viewAttachment(row) {
-    if (!row.file_path) {
-      setError("This attachment has no stored file (legacy reference only).");
-      return;
-    }
-    setViewingId(row.id);
-    setError(null);
-    try {
-      const blob = await apiFetchBlob(lpoAttachmentFilePath(row.id));
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not open file");
-    } finally {
-      setViewingId(null);
-    }
-  }
-
   async function remove(id) {
     const ok = await confirm(confirmDeleteOptions("this attachment"));
     if (!ok) return;
@@ -104,14 +86,13 @@ export function LpoAttachmentsPanel({ lpoNo }) {
               </div>
               <div className="flex items-center gap-3">
                 {r.file_path ? (
-                  <button
-                    type="button"
-                    disabled={viewingId === r.id}
-                    onClick={() => void viewAttachment(r)}
-                    className="theme-link hover:underline disabled:opacity-50"
-                  >
-                    {viewingId === r.id ? "Opening…" : "View"}
-                  </button>
+                  <ProtectedFileLink
+                    filePath={lpoAttachmentFilePath(r.id)}
+                    label="View"
+                    className="theme-link text-xs"
+                    disabled={viewingId !== null}
+                    onBusyChange={(busy) => setViewingId(busy ? r.id : null)}
+                  />
                 ) : null}
                 <button type="button" onClick={() => remove(r.id)} className="text-red-600 hover:underline">
                   Remove

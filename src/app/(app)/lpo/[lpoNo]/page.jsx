@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatShortDate, IconButton, TrashIcon } from "@/components/catalog/catalog-shared";
-import { openLpoSupplierInvoiceDocument } from "@/components/lpo/lpo-supplier-invoice-doc";
+import { lpoSupplierInvoiceFilePath } from "@/components/lpo/lpo-supplier-invoice-doc";
+import { ProtectedFileLink } from "@/components/media/protected-file-preview";
 import { SupplierInvoiceModal } from "@/components/lpo/supplier-invoice-modal";
 import {
   formatLpoKes,
@@ -431,13 +432,12 @@ export default function LpoDetailPage() {
                         </td>
                         <td className="px-3 py-2.5">
                           {inv.has_document ? (
-                            <button
-                              type="button"
-                              onClick={() => openLpoSupplierInvoiceDocument(inv.id)}
-                              className="theme-link text-xs font-medium hover:underline"
-                            >
-                              View PDF
-                            </button>
+                            <ProtectedFileLink
+                              filePath={lpoSupplierInvoiceFilePath(inv.id)}
+                              label="View PDF"
+                              title={`Supplier invoice ${inv.supplier_invoice_number}`}
+                              className="text-xs"
+                            />
                           ) : (
                             <span className="theme-subtext text-xs">No file</span>
                           )}

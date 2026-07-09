@@ -16,6 +16,7 @@ import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 import { FieldRepHrLinkageBanner } from "@/components/hr/field-rep-hr-linkage-banner";
 import { CustomerLocationMapEmbed } from "@/components/customers/customer-location-map-embed";
 import { EntityPhotoDisplay, fieldAttendancePhotoFileUrl } from "@/components/media/entity-photo-display";
+import { ProtectedPhotoEnlarge } from "@/components/media/protected-file-preview";
 import { GpsLocationLabel } from "@/components/shared/gps-location-label";
 import { hasValidCustomerLocation } from "@/lib/customer-location";
 import { formatAppDateTime, calendarDateInTimezone, todayCalendarDate } from "@/lib/datetime";
@@ -81,19 +82,29 @@ function AttendanceLocationBlock({ latitude, longitude, address, photoFileUrl, l
         <CustomerLocationMapEmbed latitude={latitude} longitude={longitude} heightClass="h-40 mt-3" />
       ) : null}
       {photoFileUrl ? (
-        <div className="mt-2 max-h-48 overflow-hidden rounded-lg border bg-slate-900/40">
-          <EntityPhotoDisplay
-            fileUrl={
-              sessionId && photoKind
-                ? fieldAttendancePhotoFileUrl(sessionId, photoKind, variant)
-                : photoFileUrl
-            }
-            imageUrl={photoFileUrl}
-            alt={label}
-            className="max-h-48 w-full object-cover"
-            placeholderClassName="flex h-24 items-center justify-center px-2 text-center text-xs text-slate-400"
-          />
-        </div>
+        <ProtectedPhotoEnlarge
+          filePath={
+            sessionId && photoKind
+              ? fieldAttendancePhotoFileUrl(sessionId, photoKind, variant)
+              : photoFileUrl
+          }
+          alt={label}
+          className="mt-2 block w-full"
+        >
+          <div className="max-h-48 overflow-hidden rounded-lg border bg-slate-900/40 ring-offset-2 transition hover:ring-2 hover:ring-[#185FA5]/40">
+            <EntityPhotoDisplay
+              fileUrl={
+                sessionId && photoKind
+                  ? fieldAttendancePhotoFileUrl(sessionId, photoKind, variant)
+                  : photoFileUrl
+              }
+              imageUrl={photoFileUrl}
+              alt={label}
+              className="max-h-48 w-full object-cover"
+              placeholderClassName="flex h-24 items-center justify-center px-2 text-center text-xs text-slate-400"
+            />
+          </div>
+        </ProtectedPhotoEnlarge>
       ) : null}
     </div>
   );

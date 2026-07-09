@@ -1,4 +1,4 @@
-import { formatShortDate } from "@/components/catalog/catalog-shared";
+import { formatOrgDate } from "@/lib/format";
 import { formatAppDateTime } from "@/lib/datetime";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { openPrintWindow, PRINT_BLOCKED_MESSAGE } from "@/lib/open-print-window";
@@ -71,7 +71,7 @@ export function buildReportPrintHtml({
   const headers = columns.map((col) => col.label);
   const period =
     meta.fromDate || meta.toDate
-      ? `${meta.fromDate ? formatShortDate(meta.fromDate) : "—"} – ${meta.toDate ? formatShortDate(meta.toDate) : "—"}`
+      ? `${meta.fromDate ? formatOrgDate(meta.fromDate) : "—"} – ${meta.toDate ? formatOrgDate(meta.toDate) : "—"}`
       : "";
 
   const detailMeta = {

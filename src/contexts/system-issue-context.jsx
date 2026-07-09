@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { canSeeServerErrorDetail } from "@/lib/api";
+import { canSeeServerErrorDetail } from "@/lib/auth-storage";
 import { subscribeSystemIssues } from "@/lib/system-issue-dispatcher";
 import { submitSystemIssueReport } from "@/lib/system-issue-reports";
 import { SystemIssuePrompt } from "@/components/shared/system-issue-prompt";

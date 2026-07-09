@@ -6,12 +6,15 @@ import { AuthGuard } from "@/components/auth-guard";
 import { WorkspaceGuard } from "@/components/auth/workspace-guard";
 import { RoutePermissionGuard } from "@/components/route-permission-guard";
 import { BackgroundTaskProvider } from "@/contexts/background-task-context";
+import { TabWorkspaceProvider } from "@/contexts/tab-workspace-context";
 import { SystemIssueProvider } from "@/contexts/system-issue-context";
 import { AppErrorBoundary } from "@/components/shared/app-error-boundary";
 import { GlobalErrorCapture } from "@/components/shared/global-error-capture";
 import { WorkspaceNavigationTracker } from "@/components/layout/workspace-navigation-tracker";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AppTopbar } from "@/components/layout/app-topbar";
+import { WorkspaceTabBar } from "@/components/layout/workspace-tab-bar";
+import { TabWorkspaceMain } from "@/components/layout/tab-workspace-main";
 import { AccountingHelpDialog } from "@/components/accounting/accounting-help";
 import { OrderPrintTypePickerHost } from "@/components/sales/order-print-type-picker-host";
 import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
@@ -89,6 +92,7 @@ export function AppShell({ children }) {
           <SystemIssueProvider>
           <GlobalErrorCapture />
           <BackgroundTaskProvider>
+          <TabWorkspaceProvider>
           <div className="app-shell-bg flex h-screen overflow-hidden">
             <Sidebar
               collapsed={sidebarCollapsed}
@@ -110,6 +114,7 @@ export function AppShell({ children }) {
                 onToggleSidebar={toggleSidebar}
               />
               <NetworkStatusBanner />
+              <WorkspaceTabBar />
               <main
                 className={
                   isPos
@@ -119,8 +124,8 @@ export function AppShell({ children }) {
                 aria-busy={navigationBusy || undefined}
               >
                 <AppErrorBoundary>
-                  <div className={isPos ? "flex min-h-0 min-w-0 flex-1 flex-col" : undefined}>
-                    {children}
+                  <div className={isPos ? "flex min-h-0 min-w-0 flex-1 flex-col" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
+                    <TabWorkspaceMain>{children}</TabWorkspaceMain>
                   </div>
                 </AppErrorBoundary>
                 {navigationBusy ? (
@@ -140,6 +145,7 @@ export function AppShell({ children }) {
             <OrderPrintTypePickerHost />
             <AccountingHelpDialog />
           </div>
+          </TabWorkspaceProvider>
           </BackgroundTaskProvider>
           </SystemIssueProvider>
         </RoutePermissionGuard>

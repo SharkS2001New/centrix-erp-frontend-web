@@ -145,6 +145,16 @@ export function setStoredCapabilities(capabilities) {
   }
 }
 
+export function canSeeServerErrorDetail() {
+  const user = getStoredUser();
+  const capabilities = getStoredCapabilities();
+  return Boolean(
+    user?.is_super_admin
+      || user?.is_admin
+      || capabilities?.is_super_admin,
+  );
+}
+
 /** Synchronous session snapshot for route/guard checks before React auth state hydrates. */
 export function readCachedAuthSnapshot() {
   if (typeof window === "undefined") return null;

@@ -155,16 +155,22 @@ export function ReportBarChart({ rows, labelKey, valueKey, title }) {
 
   const aggregated = aggregateByKey(rows, labelKey, valueKey);
   const max = Math.max(...aggregated.map((p) => p.value), 1);
+  const chartHeight = 176;
+  const barAreaHeight = chartHeight - 24;
 
   return (
     <div className="theme-panel rounded-xl border p-4 shadow-sm">
       {title ? <h3 className="mb-3 text-sm font-medium text-slate-900">{title}</h3> : null}
-      <div className="flex h-44 items-end gap-1">
+      <div className="flex gap-1" style={{ height: chartHeight }}>
         {aggregated.map((p) => (
-          <div key={p.label} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+          <div
+            key={p.label}
+            className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1"
+            style={{ height: chartHeight }}
+          >
             <div
-              className="w-full rounded-t bg-indigo-500/80"
-              style={{ height: `${Math.max(6, (p.value / max) * 100)}%` }}
+              className="w-full min-w-[4px] rounded-t bg-indigo-500"
+              style={{ height: Math.max(4, (p.value / max) * barAreaHeight) }}
               title={`${p.label}: ${formatReportKes(p.value)}`}
             />
             <span className="max-w-full truncate text-[9px] text-slate-500">{p.label}</span>
@@ -178,7 +184,8 @@ export function ReportBarChart({ rows, labelKey, valueKey, title }) {
 function aggregateByKey(rows, labelKey, valueKey) {
   const map = new Map();
   for (const row of rows) {
-    const label = String(row[labelKey] ?? "—").slice(0, 8);
+    const raw = row[labelKey];
+    const label = raw ? formatShortDate(String(raw).slice(0, 10)) : "—";
     const val = Number(row[valueKey]) || 0;
     map.set(label, (map.get(label) ?? 0) + val);
   }

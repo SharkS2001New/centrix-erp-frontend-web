@@ -63,6 +63,26 @@ const POS_ROUTE_RULES = [
   },
 ];
 
+/** Suppliers list nav is exact — child paths need explicit rules. */
+function canAccessSupplierSubroute(pathname, ctx) {
+  if (!pathname.startsWith("/suppliers/")) return null;
+  if (!ctx.isModuleEnabled("customers_suppliers")) return false;
+
+  if (pathname === "/suppliers/new") {
+    return ctx.hasPermission(P.purchasing.suppliers.create);
+  }
+
+  if (/^\/suppliers\/[^/]+\/edit$/.test(pathname)) {
+    return ctx.hasPermission(P.purchasing.suppliers.edit);
+  }
+
+  if (/^\/suppliers\/[^/]+$/.test(pathname)) {
+    return ctx.hasPermission(P.purchasing.suppliers.view);
+  }
+
+  return null;
+}
+
 /**
  * @param {string} pathname
  * @param {{ hasPermission: (code: string) => boolean, isModuleEnabled: (key: string) => boolean, user?: object, organization?: object, capabilities?: object, requireTillFloat?: boolean, isSuperAdmin?: () => boolean }} ctx
@@ -190,6 +210,11 @@ export function canAccessRoute(pathname, ctx) {
       return false;
     }
     return canViewReport(slug, ctx.hasPermission);
+  }
+
+  const supplierSubroute = canAccessSupplierSubroute(pathname, ctx);
+  if (supplierSubroute !== null) {
+    return supplierSubroute;
   }
 
   const item = NAV_ROUTE_RULES.find((rule) =>

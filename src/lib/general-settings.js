@@ -81,12 +81,13 @@ export function generalFormFromApi(res) {
     document_footer_text: general.document_footer_text || "",
     show_organization_on_documents: Boolean(general.show_organization_on_documents),
     document_header_display: general.document_header_display || "auto",
+    enable_tab_workspace: Boolean(general.enable_tab_workspace),
     ...printFontFormFromGeneral(general),
   };
 }
 
-export function generalPayloadFromForm(form) {
-  return {
+export function generalPayloadFromForm(form, { includePlatformFields = false } = {}) {
+  const payload = {
     currency: form.currency || "KES",
     timezone: form.timezone || "Africa/Nairobi",
     date_format: form.date_format || "DD/MM/YYYY",
@@ -98,4 +99,10 @@ export function generalPayloadFromForm(form) {
     phone_country_code: form.phone_country_code || "+254",
     default_country_code: form.default_country_code || "KE",
   };
+
+  if (includePlatformFields) {
+    payload.enable_tab_workspace = Boolean(form.enable_tab_workspace);
+  }
+
+  return payload;
 }
