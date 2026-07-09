@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { isTabWorkspaceRoute, normalizeTabHref } from "@/lib/tab-workspace";
@@ -11,11 +11,17 @@ import { isTabWorkspaceRoute, normalizeTabHref } from "@/lib/tab-workspace";
 export function TabWorkspaceMain({ children }) {
   const pathname = usePathname();
   const { enabled, tabs } = useTabWorkspace();
-  const cacheRef = useRef(new Map());
+  const [paneCache, setPaneCache] = useState(() => new Map());
 
   useEffect(() => {
     if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) return;
-    cacheRef.current.set(normalizeTabHref(pathname), children);
+    const href = normalizeTabHref(pathname);
+    setPaneCache((prev) => {
+      if (prev.get(href) === children) return prev;
+      const next = new Map(prev);
+      next.set(href, children);
+      return next;
+    });
   }, [children, enabled, pathname]);
 
   if (!enabled || !isTabWorkspaceRoute(pathname)) {
@@ -30,7 +36,7 @@ export function TabWorkspaceMain({ children }) {
     <>
       {[...visibleHrefs].map((href) => {
         const isActive = href === activeHref;
-        const cached = cacheRef.current.get(href);
+        const cached = paneCache.get(href);
         if (!isActive && !cached) return null;
 
         return (
