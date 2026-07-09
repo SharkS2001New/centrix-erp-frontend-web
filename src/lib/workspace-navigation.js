@@ -1,6 +1,10 @@
 import { navSections } from "@/lib/nav-config";
 import { canAccessRoute } from "@/lib/route-access";
 import {
+  isTabWorkspaceEnabled,
+  recallWorkspaceTabLandingPath,
+} from "@/lib/tab-workspace";
+import {
   filterNavSectionsForWorkspace,
   pathBelongsToWorkspace,
   workspaceHomePath,
@@ -102,6 +106,28 @@ function resolveWorkspaceFallbackPath(workspaceId, capabilities, ctx) {
   }
 
   return home;
+}
+
+/**
+ * Resume path when re-opening a workspace — prefers tab workspace state, then last route, then home.
+ */
+export function recallWorkspaceLandingPath(
+  userId,
+  organizationId,
+  workspaceId,
+  capabilities,
+  ctx = null,
+) {
+  if (isTabWorkspaceEnabled(capabilities)) {
+    const tabPath = recallWorkspaceTabLandingPath(organizationId, workspaceId);
+    if (tabPath && pathBelongsToWorkspace(tabPath, workspaceId)) {
+      if (!ctx || canAccessRoute(tabPath, ctx)) {
+        return tabPath;
+      }
+    }
+  }
+
+  return recallWorkspacePath(userId, organizationId, workspaceId, capabilities, ctx);
 }
 
 /**

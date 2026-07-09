@@ -195,8 +195,7 @@ export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage }
               <div>
                 <h3 className="text-sm font-medium text-slate-900">Workspace (platform)</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Super-admin only. When enabled, users in this organization see a desktop-style tab bar and can
-                  keep multiple pages open without losing their place.
+                  Enabled by default for all organizations. Uncheck to turn off the desktop-style tab bar for this org.
                 </p>
                 <label className="mt-3 flex items-start gap-3 text-sm text-slate-800">
                   <input

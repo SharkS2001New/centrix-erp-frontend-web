@@ -1,4 +1,5 @@
 import { useCookieAuth } from "./auth-config";
+import { clearAllTabWorkspaceMemory } from "./tab-workspace";
 
 const TOKEN_KEY = "pos_erp_token";
 const WORKSPACE_ROUTE_MEMORY_PREFIX = "pos_erp_workspace_routes";
@@ -12,6 +13,7 @@ function clearWorkspaceRouteMemoryOnLogout() {
       if (key?.startsWith(WORKSPACE_ROUTE_MEMORY_PREFIX)) keys.push(key);
     }
     keys.forEach((key) => sessionStorage.removeItem(key));
+    clearAllTabWorkspaceMemory();
   } catch {
     /* ignore */
   }

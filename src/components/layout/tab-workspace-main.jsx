@@ -10,8 +10,12 @@ import { isTabWorkspaceRoute, normalizeTabHref } from "@/lib/tab-workspace";
  */
 export function TabWorkspaceMain({ children }) {
   const pathname = usePathname();
-  const { enabled, tabs } = useTabWorkspace();
+  const { enabled, tabs, workspaceId } = useTabWorkspace();
   const [paneCache, setPaneCache] = useState(() => new Map());
+
+  useEffect(() => {
+    setPaneCache(new Map());
+  }, [workspaceId]);
 
   useEffect(() => {
     if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) return;

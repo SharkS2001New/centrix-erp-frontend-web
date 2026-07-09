@@ -14,6 +14,7 @@ export const GENERAL_DEFAULTS = {
   document_footer_text: "",
   show_organization_on_documents: true,
   document_header_display: "auto",
+  enable_tab_workspace: true,
   ...printFontFormDefaults(),
 };
 
@@ -81,7 +82,7 @@ export function generalFormFromApi(res) {
     document_footer_text: general.document_footer_text || "",
     show_organization_on_documents: Boolean(general.show_organization_on_documents),
     document_header_display: general.document_header_display || "auto",
-    enable_tab_workspace: Boolean(general.enable_tab_workspace),
+    enable_tab_workspace: general.enable_tab_workspace !== false,
     ...printFontFormFromGeneral(general),
   };
 }

@@ -8,7 +8,7 @@ import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
 import {
   persistWorkspaceRouteBeforeSwitch,
-  recallWorkspacePath,
+  recallWorkspaceLandingPath,
 } from "@/lib/workspace-navigation";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import {
@@ -98,7 +98,7 @@ export function WorkspaceSwitcher() {
           pathname,
         );
       }
-      const resumePath = recallWorkspacePath(
+      const resumePath = recallWorkspaceLandingPath(
         user?.id,
         organization?.id,
         id,

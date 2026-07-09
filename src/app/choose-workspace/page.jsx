@@ -7,7 +7,7 @@ import { AuthGuard } from "@/components/auth-guard";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { WorkspaceOpeningScreen } from "@/components/branding/workspace-opening-screen";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
-import { persistWorkspaceRouteBeforeSwitch, recallWorkspacePath } from "@/lib/workspace-navigation";
+import { persistWorkspaceRouteBeforeSwitch, recallWorkspaceLandingPath } from "@/lib/workspace-navigation";
 import { resolveAvailableWorkspaces } from "@/lib/workspaces";
 import { WorkspaceApplicationPicker } from "@/components/layout/workspace-application-picker";
 import { SignOutButton } from "@/components/layout/sign-out-button";
@@ -35,7 +35,7 @@ function ChooseWorkspaceContent() {
       setSwitching(true);
       setSwitchError(null);
       try {
-        const resumePath = recallWorkspacePath(
+        const resumePath = recallWorkspaceLandingPath(
           user?.id,
           organization?.id,
           workspaces[0].id,
@@ -62,7 +62,7 @@ function ChooseWorkspaceContent() {
     setSwitching(true);
     setSwitchError(null);
     try {
-      const resumePath = recallWorkspacePath(user?.id, organization?.id, id, capabilities, ctx);
+      const resumePath = recallWorkspaceLandingPath(user?.id, organization?.id, id, capabilities, ctx);
       await switchWorkspace(id);
       router.replace(resumePath);
     } catch (err) {
