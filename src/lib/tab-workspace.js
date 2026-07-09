@@ -27,10 +27,64 @@ export function normalizeTabHref(href) {
   if (!href) return "/";
   try {
     const url = new URL(href, "http://local");
-    return `${url.pathname}${url.search}`;
+    const path = normalizePathname(url.pathname);
+    return `${path}${url.search}`;
   } catch {
-    return href.split("#")[0] || "/";
+    const withoutHash = href.split("#")[0] || "/";
+    const [pathPart, ...queryParts] = withoutHash.split("?");
+    const path = normalizePathname(pathPart || "/");
+    const query = queryParts.length > 0 ? `?${queryParts.join("?")}` : "";
+    return `${path}${query}`;
   }
+}
+
+function normalizePathname(pathname) {
+  if (!pathname || pathname === "/") return "/";
+  return pathname.replace(/\/+$/, "") || "/";
+}
+
+/** Normalize a Next.js `Link` href prop (string or route object). */
+export function hrefFromLinkProp(href) {
+  if (!href) return "/";
+  if (typeof href === "string") return normalizeTabHref(href);
+
+  const pathname = href.pathname ?? "/";
+  if (href.search) return normalizeTabHref(`${pathname}${href.search}`);
+
+  if (href.query && typeof href.query === "object") {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(href.query)) {
+      if (value != null && value !== "") params.set(key, String(value));
+    }
+    const qs = params.toString();
+    return normalizeTabHref(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  return normalizeTabHref(pathname);
+}
+
+/** @param {{ href: string }[]} tabs */
+export function findOpenTab(tabs, href) {
+  if (!Array.isArray(tabs)) return null;
+  const normalized = hrefFromLinkProp(href);
+  return tabs.find((tab) => tab.href === normalized) ?? null;
+}
+
+/** Whether an anchor click should switch to an already-open tab instead of default nav. */
+export function shouldReuseOpenTab(anchor, event) {
+  if (!anchor || !event) return false;
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+    return false;
+  }
+  if (anchor.target && anchor.target !== "_self") return false;
+  if (anchor.hasAttribute("download")) return false;
+  if (anchor.closest("[data-tab-nav-ignore]")) return false;
+
+  const rawHref = anchor.getAttribute("href");
+  if (!rawHref || rawHref.startsWith("#")) return false;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(rawHref)) return false;
+
+  return true;
 }
 
 export function titleFromPathname(pathname) {

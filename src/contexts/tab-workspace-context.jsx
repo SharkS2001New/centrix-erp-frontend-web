@@ -15,11 +15,14 @@ import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-contro
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import {
   TAB_WORKSPACE_MAX_TABS,
+  findOpenTab,
   getWorkspaceTabState,
+  hrefFromLinkProp,
   isTabWorkspaceEnabled,
   isTabWorkspaceRoute,
   normalizeTabHref,
   readTabWorkspaceStore,
+  shouldReuseOpenTab,
   titleFromPathname,
   writeTabWorkspaceStore,
 } from "@/lib/tab-workspace";
@@ -38,6 +41,8 @@ const TabWorkspaceContext = createContext({
   openTab: () => {},
   closeTab: () => {},
   activateTab: () => {},
+  navigateToHref: () => {},
+  handleTabLinkClick: () => false,
   setTabTitle: () => {},
   markTabDirty: () => {},
   clearTabDirty: () => {},
@@ -108,7 +113,7 @@ export function TabWorkspaceProvider({ children }) {
 
   const upsertTab = useCallback(
     (href, title, { dirty = false } = {}) => {
-      const normalized = normalizeTabHref(href);
+      const normalized = hrefFromLinkProp(href);
       if (!workspaceId || !isTabWorkspaceRoute(normalized)) return;
       if (!pathBelongsToWorkspace(normalized, workspaceId)) return;
 
@@ -135,8 +140,9 @@ export function TabWorkspaceProvider({ children }) {
             };
           }
 
+          const dedupedTabs = current.tabs.filter((tab) => tab.href !== normalized);
           const nextTabs = [
-            ...current.tabs,
+            ...dedupedTabs,
             {
               href: normalized,
               title: resolvedTitle,
@@ -183,14 +189,111 @@ export function TabWorkspaceProvider({ children }) {
     );
   }, [enabled, pathname, workspaceId]);
 
+  const switchToHref = useCallback(
+    (href) => {
+      const normalized = hrefFromLinkProp(href);
+      const isCurrent = normalizeTabHref(pathname) === normalized;
+
+      if (
+        enabled &&
+        workspaceId &&
+        isTabWorkspaceRoute(normalized) &&
+        pathBelongsToWorkspace(normalized, workspaceId) &&
+        findOpenTab(tabs, normalized)
+      ) {
+        setTabStore((store) =>
+          updateWorkspaceTabs(store, workspaceId, (current) => {
+            const existing = current.tabs.find((tab) => tab.href === normalized);
+            if (!existing) return current;
+
+            return {
+              ...current,
+              activeHref: normalized,
+              tabs: current.tabs.map((tab) =>
+                tab.href === normalized ? { ...tab, lastActiveAt: Date.now() } : tab,
+              ),
+            };
+          }),
+        );
+
+        if (!isCurrent) router.push(normalized);
+        return true;
+      }
+
+      if (!isCurrent) router.push(normalized);
+      return false;
+    },
+    [enabled, pathname, router, tabs, workspaceId],
+  );
+
   const activateTab = useCallback(
     (href) => {
-      const normalized = normalizeTabHref(href);
-      if (normalized === normalizeTabHref(pathname)) return;
-      router.push(normalized);
+      switchToHref(href);
     },
-    [pathname, router],
+    [switchToHref],
   );
+
+  const navigateToHref = useCallback(
+    (href, { replace = false } = {}) => {
+      const normalized = hrefFromLinkProp(href);
+      const isCurrent = normalizeTabHref(pathname) === normalized;
+
+      if (isCurrent) return;
+
+      if (
+        enabled &&
+        workspaceId &&
+        isTabWorkspaceRoute(normalized) &&
+        pathBelongsToWorkspace(normalized, workspaceId) &&
+        findOpenTab(tabs, normalized)
+      ) {
+        switchToHref(normalized);
+        return;
+      }
+
+      if (replace) router.replace(normalized);
+      else router.push(normalized);
+    },
+    [enabled, pathname, router, switchToHref, tabs, workspaceId],
+  );
+
+  const handleTabLinkClick = useCallback(
+    (href, event) => {
+      if (!enabled || !event || event.defaultPrevented) return false;
+
+      const normalized = hrefFromLinkProp(href);
+      if (!isTabWorkspaceRoute(normalized)) return false;
+      if (!workspaceId || !pathBelongsToWorkspace(normalized, workspaceId)) return false;
+      if (!findOpenTab(tabs, normalized)) return false;
+
+      event.preventDefault();
+      switchToHref(normalized);
+      return true;
+    },
+    [enabled, switchToHref, tabs, workspaceId],
+  );
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+
+    const onDocumentClick = (event) => {
+      if (event.defaultPrevented) return;
+
+      const anchor = event.target?.closest?.("a[href]");
+      if (!shouldReuseOpenTab(anchor, event)) return;
+
+      const normalized = normalizeTabHref(anchor.getAttribute("href"));
+      if (!isTabWorkspaceRoute(normalized)) return;
+      if (!workspaceId || !pathBelongsToWorkspace(normalized, workspaceId)) return;
+      if (!findOpenTab(tabs, normalized)) return;
+
+      event.preventDefault();
+      switchToHref(normalized);
+    };
+
+    document.addEventListener("click", onDocumentClick, true);
+    return () => document.removeEventListener("click", onDocumentClick, true);
+  }, [enabled, switchToHref, tabs, workspaceId]);
 
   const closeTab = useCallback(
     (href) => {
@@ -287,6 +390,8 @@ export function TabWorkspaceProvider({ children }) {
       openTab: upsertTab,
       closeTab,
       activateTab,
+      navigateToHref,
+      handleTabLinkClick,
       setTabTitle,
       markTabDirty,
       clearTabDirty,
@@ -299,6 +404,8 @@ export function TabWorkspaceProvider({ children }) {
       upsertTab,
       closeTab,
       activateTab,
+      navigateToHref,
+      handleTabLinkClick,
       setTabTitle,
       markTabDirty,
       clearTabDirty,

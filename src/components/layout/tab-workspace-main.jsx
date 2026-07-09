@@ -73,7 +73,7 @@ export function TabWorkspaceMain({ children }) {
     <>
       {[...mountedHrefs].map((href) => {
         const isActive = href === activeHref;
-        const pane = isActive ? children : paneCache.get(href);
+        const pane = paneCache.get(href) ?? (isActive ? children : null);
         if (!pane) return null;
 
         return (
