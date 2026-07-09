@@ -3,6 +3,7 @@
 import { notifyError, notifySuccess } from "@/lib/notify";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
@@ -527,6 +528,7 @@ async function loadOrderRelatedDetails(saleData) {
 
 export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const confirm = useConfirm();
+  const router = useRouter();
   const { capabilities, organization, user, hasPermission } = useAuth();
   const { floatSessionId } = usePosSession();
   const readOnlyWorkflow = String(backHref ?? "").startsWith("/fulfillment");
@@ -803,6 +805,44 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const breadcrumbParent = orderDetailBreadcrumbParent(backHref);
   const orderCrumbLabel = sale ? `Order #${formatOrderNumber(sale)}` : "Order …";
 
+  async function openEditOrder({ replace = false } = {}) {
+    if (!sale?.id) return;
+
+    if (sale.can_edit_lines) {
+      setEditOrderOpen(true);
+      return;
+    }
+
+    if (!sale.can_edit) return;
+
+    setTransitionBusy(true);
+    try {
+      await apiRequest(`/sales/orders/${sale.id}/restore-to-cart`, {
+        method: "POST",
+        body: { replace },
+      });
+      router.push("/sales/pos");
+    } catch (e) {
+      const message = e instanceof ApiError ? e.message : "Could not load order for editing.";
+      if (!replace && message.toLowerCase().includes("already has items")) {
+        const ok = await confirm({
+          title: "Replace cart",
+          message: "Your cart already has items. Replace them with this order?",
+          confirmLabel: "Replace",
+          destructive: true,
+        });
+        if (ok) {
+          setTransitionBusy(false);
+          await openEditOrder({ replace: true });
+          return;
+        }
+      }
+      notifyError(message);
+    } finally {
+      setTransitionBusy(false);
+    }
+  }
+
   return (
     <div className="theme-workspace min-h-full">
       <AppBreadcrumb
@@ -859,10 +899,10 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {sale.can_edit_lines ? (
+              {sale.can_edit_lines || sale.can_edit ? (
                 <button
                   type="button"
-                  onClick={() => setEditOrderOpen(true)}
+                  onClick={() => void openEditOrder()}
                   className="theme-secondary-btn inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
                 >
                   Edit Order
