@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 const defaultValue = {
   isActive: true,
@@ -15,34 +15,30 @@ const TabPaneActivityContext = createContext(defaultValue);
  * but keep their React tree mounted (preserves form input state).
  */
 export function TabPaneActivityProvider({ paneHref, isActive, children }) {
-  const controllerRef = useRef(null);
-
-  if (!controllerRef.current) {
-    controllerRef.current = new AbortController();
-  }
+  const [abortController, setAbortController] = useState(() => new AbortController());
 
   useEffect(() => {
     if (isActive) return undefined;
 
-    controllerRef.current?.abort();
-    controllerRef.current = new AbortController();
+    setAbortController((prev) => {
+      prev.abort();
+      return new AbortController();
+    });
     return undefined;
   }, [isActive]);
 
-  useEffect(
-    () => () => {
-      controllerRef.current?.abort();
-    },
-    [],
-  );
+  useEffect(() => {
+    const controller = abortController;
+    return () => controller.abort();
+  }, [abortController]);
 
   const value = useMemo(
     () => ({
       isActive,
       paneHref,
-      abortSignal: controllerRef.current?.signal ?? null,
+      abortSignal: abortController.signal,
     }),
-    [isActive, paneHref],
+    [isActive, paneHref, abortController],
   );
 
   return <TabPaneActivityContext.Provider value={value}>{children}</TabPaneActivityContext.Provider>;
