@@ -1,4 +1,4 @@
-import { WORKSPACE_DISPLAY_ORDER, WORKSPACE_ICONS } from "@/lib/workspaces";
+import { WORKSPACE_DISPLAY_ORDER, WORKSPACE_ICONS } from "@/lib/workspace-constants";
 import { buildDomainChildrenMap, patchEnabledModules } from "@/lib/module-registry";
 
 const SALES_CHILDREN = ["sales.pos", "sales.mobile", "sales.backend", "sales.dashboard", "sales.reports"];

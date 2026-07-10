@@ -102,7 +102,12 @@ export function buildWorkspaceNavSections({
     return withOrders;
   }
 
-  return filterNavSectionsForWorkspace(withOrders, resolvedWorkspaceId, navContext);
+  return filterNavSectionsForWorkspace(
+    withOrders,
+    resolvedWorkspaceId,
+    navContext,
+    isNavItemVisible,
+  );
 }
 
 /** Flatten nav sections into searchable entries for the current module/workspace. */

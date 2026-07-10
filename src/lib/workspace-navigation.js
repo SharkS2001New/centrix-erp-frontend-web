@@ -1,4 +1,4 @@
-import { navSections } from "@/lib/nav-config";
+import { isNavItemVisible, navSections } from "@/lib/nav-config";
 import { canAccessRoute } from "@/lib/route-access";
 import {
   isTabWorkspaceEnabled,
@@ -81,7 +81,12 @@ export function firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx) 
   if (!workspaceId || !ctx) return null;
 
   const navContext = { capabilities, ...ctx };
-  const sections = filterNavSectionsForWorkspace(navSections, workspaceId, navContext);
+  const sections = filterNavSectionsForWorkspace(
+    navSections,
+    workspaceId,
+    navContext,
+    isNavItemVisible,
+  );
 
   for (const section of sections) {
     for (const item of section.items) {

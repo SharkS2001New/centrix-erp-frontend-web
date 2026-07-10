@@ -1,5 +1,4 @@
 import { POS_LOGIN_CHANNEL, WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
-import { isNavItemVisible } from "@/lib/nav-config";
 import {
   WORKSPACE_ANALYTICS_HREFS,
   WORKSPACE_HIDE_REPORTS_HUB,
@@ -8,36 +7,12 @@ import {
   reportSlugBelongsToWorkspace,
   workspaceHasEnabledReports,
 } from "@/lib/workspace-reports";
+import {
+  WORKSPACE_ICONS,
+  sortWorkspaces,
+} from "@/lib/workspace-constants";
 
-export const WORKSPACE_ICONS = {
-  building: "🏢",
-  chart: "📊",
-  people: "👥",
-  pos: "🛒",
-  truck: "🚛",
-  app: "📱",
-  settings: "⚙️",
-};
-
-/** Display order for the application switcher and choose-workspace screen. */
-export const WORKSPACE_DISPLAY_ORDER = [
-  "pos",
-  "backoffice",
-  "distribution",
-  "accounting",
-  "hr",
-  "admin",
-];
-
-/**
- * @param {Array<{ id: string }>} workspaces
- */
-export function sortWorkspaces(workspaces) {
-  const rank = new Map(WORKSPACE_DISPLAY_ORDER.map((id, index) => [id, index]));
-  return [...workspaces].sort(
-    (a, b) => (rank.get(a.id) ?? 999) - (rank.get(b.id) ?? 999),
-  );
-}
+export { WORKSPACE_DISPLAY_ORDER, WORKSPACE_ICONS, sortWorkspaces } from "@/lib/workspace-constants";
 
 /** Nav sections shown per workspace (reports filtered further by report module). */
 export const WORKSPACE_SECTION_IDS = {
@@ -388,11 +363,17 @@ export function resolvePostLoginPath(ctx, capabilities) {
 
 /**
  * Filter nav sections for the active workspace.
+ * Pass `isItemVisible` from the caller (e.g. nav-config.isNavItemVisible) so this
+ * module does not import nav-config and create a circular init cycle.
  * @param {import("@/lib/nav-config").NavSection[]} sections
+ * @param {string} workspaceId
+ * @param {object} navContext
+ * @param {(item: object, ctx: object) => boolean} [isItemVisible]
  */
-export function filterNavSectionsForWorkspace(sections, workspaceId, navContext) {
+export function filterNavSectionsForWorkspace(sections, workspaceId, navContext, isItemVisible) {
   const sectionOrder = WORKSPACE_SECTION_IDS[workspaceId] ?? [];
   const orderRank = new Map(sectionOrder.map((id, index) => [id, index]));
+  const visible = typeof isItemVisible === "function" ? isItemVisible : () => true;
 
   return sections
     .filter((section) => sectionBelongsToWorkspace(section, workspaceId))
@@ -403,7 +384,7 @@ export function filterNavSectionsForWorkspace(sections, workspaceId, navContext)
           return false;
         }
         if (!navItemBelongsToWorkspace(item, workspaceId)) return false;
-        return isNavItemVisible(item, navContext);
+        return visible(item, navContext);
       }),
     }))
     .filter((section) => section.items.length > 0)

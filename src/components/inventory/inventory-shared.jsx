@@ -14,6 +14,7 @@ import {
 import {
   APP_TIMEZONE,
   calendarDateInTimezone,
+  defaultDateRange,
   formatAppDateTime,
   formatInTimezone,
   todayCalendarDate,
@@ -22,6 +23,7 @@ import {
 export {
   APP_TIMEZONE as NAIROBI_TZ,
   calendarDateInTimezone as nairobiCalendarDate,
+  defaultDateRange,
   formatAppDateTime as formatMovementDateTime,
   todayCalendarDate,
 };
@@ -243,11 +245,6 @@ export function formatMovementDate(value) {
   );
 }
 
-function addDaysToCalendarDate(isoDate, deltaDays) {
-  const ms = Date.parse(`${isoDate}T12:00:00+03:00`) + deltaDays * 86_400_000;
-  return calendarDateInTimezone(new Date(ms), APP_TIMEZONE);
-}
-
 export const LOCATION_OPTIONS = [
   { value: "all", label: "All locations" },
   { value: "shop", label: "Shop" },
@@ -363,12 +360,6 @@ export function receiptDetailHref(ref) {
 
 export function isoDate(value = new Date()) {
   return calendarDateInTimezone(value) ?? "";
-}
-
-export function defaultDateRange(days = 7) {
-  const to = isoDate();
-  const from = addDaysToCalendarDate(to, -(days - 1));
-  return { from, to };
 }
 
 export function rowInDateRange(row, from, to, dateKeys = ["created_at", "damage_date", "receipt_date"]) {

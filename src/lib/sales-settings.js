@@ -3,7 +3,7 @@ import {
   DEFAULT_INVOICE_FOOTER_LINES,
   invoicePrintFormFromApi,
 } from "@/lib/invoice-print-settings";
-import { defaultDateRange } from "@/components/inventory/inventory-shared";
+import { defaultDateRange } from "@/lib/datetime";
 import {
   DEFAULT_POS_RECEIPT_PAYMENT_LINES,
   receiptPaymentDetailsFromApi,

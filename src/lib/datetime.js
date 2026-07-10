@@ -124,3 +124,16 @@ export function getSaleTimestamp(sale) {
   const raw = sale?.completed_at ?? sale?.delivery_date ?? sale?.created_at;
   return raw ? new Date(raw) : null;
 }
+
+/** Add calendar days to a YYYY-MM-DD string in the app timezone. */
+export function addDaysToCalendarDate(isoDate, deltaDays, timeZone = APP_TIMEZONE) {
+  const ms = new Date(`${isoDate}T12:00:00+03:00`).getTime() + deltaDays * 86400000;
+  return calendarDateInTimezone(new Date(ms), timeZone);
+}
+
+/** Inclusive date range ending today (app timezone). */
+export function defaultDateRange(days = 7) {
+  const to = todayCalendarDate();
+  const from = addDaysToCalendarDate(to, -(days - 1));
+  return { from, to };
+}
