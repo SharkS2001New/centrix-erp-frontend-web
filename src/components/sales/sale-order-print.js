@@ -287,12 +287,18 @@ export async function printSaleOrder(sale, options = {}) {
       printedBy,
       generalSettings: general,
       productDiscountsEnabled: Boolean(
-        sales.effective_allow_discounts || sales.allow_discounts || sales.discount_approval_enabled,
+        sales.effective_allow_discounts ||
+          sales.allow_discounts ||
+          sales.discount_approval_enabled ||
+          sales.discount_approval_enabled_mobile ||
+          sales.discount_approval_enabled_backoffice,
       ),
       orderDiscountEnabled: Boolean(
         sales.effective_enable_order_discount ||
           sales.enable_order_discount ||
-          sales.discount_approval_enabled,
+          sales.discount_approval_enabled ||
+          sales.discount_approval_enabled_mobile ||
+          sales.discount_approval_enabled_backoffice,
       ),
       customerNameEnabled: Boolean(sales.enable_checkout_customer_name),
       showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),

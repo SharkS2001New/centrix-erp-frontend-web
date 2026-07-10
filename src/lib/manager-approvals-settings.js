@@ -19,7 +19,7 @@ export const APPROVAL_REQUEST_EVENTS = [
     id: "discount",
     label: "Discount approval requested",
     description:
-      "Notifies users with Administration → Discount approvals → Approve (or legacy Sales → Order actions → Approve). Enable the workflow under Organization settings → Sales → Prices & discounts.",
+      "Notifies users with Administration → Discount approvals → Approve (or legacy Sales → Order actions → Approve). Enable per channel under Organization settings → Sales → Prices & discounts (backoffice and/or mobile).",
     module: "sales",
   },
   {

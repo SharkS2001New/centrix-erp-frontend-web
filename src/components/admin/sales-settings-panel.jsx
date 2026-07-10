@@ -218,12 +218,32 @@ function CheckoutPricingTab({
         }
       />
       <Toggle
-        label="Discount approval for staff"
-        description="When enabled, staff can enter line discounts on backoffice and mobile sales. Non-approvers submit discounts for manager review — orders save under Pending approval, then Booked when approved or Editable when rejected. When disabled, normal discount settings apply with no approval step."
-        checked={salesForm.discount_approval_enabled}
-        onChange={(v) => setSalesForm((f) => applyDiscountApprovalFormUpdates(f, v))}
+        label="Discount approval — backoffice"
+        description="When enabled, staff on Sales → Create order and external POS enter line discounts for manager review, and manual line discount on those surfaces is turned on. Does not control mobile. Pending approval / Editable queues appear when either channel is on."
+        checked={salesForm.discount_approval_enabled_backoffice}
+        onChange={(v) =>
+          setSalesForm((f) =>
+            applyDiscountApprovalFormUpdates(f, {
+              mobile: f.discount_approval_enabled_mobile,
+              backoffice: v,
+            }),
+          )
+        }
       />
-      {salesForm.discount_approval_enabled ? (
+      <Toggle
+        label="Discount approval — mobile"
+        description="When enabled, the mobile app shows the line discount field for manager review. Turning this off hides discount entry on mobile even if ERP manual line discount is on. Backoffice still shows discounts on receipts/invoices and the order edit popup for approving or revising those mobile orders."
+        checked={salesForm.discount_approval_enabled_mobile}
+        onChange={(v) =>
+          setSalesForm((f) =>
+            applyDiscountApprovalFormUpdates(f, {
+              mobile: v,
+              backoffice: f.discount_approval_enabled_backoffice,
+            }),
+          )
+        }
+      />
+      {salesForm.discount_approval_enabled_mobile || salesForm.discount_approval_enabled_backoffice ? (
         <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3">
           <p className="theme-heading text-sm font-medium">Who can approve discounts?</p>
           <p className="theme-subtext mt-1 text-xs">
@@ -233,23 +253,24 @@ function CheckoutPricingTab({
             </span>{" "}
             on the approver&apos;s role under Admin → Roles. Users with the legacy{" "}
             <span className="font-medium text-slate-700">Sales → Order actions → Approve</span>{" "}
-            permission can also approve discount requests.
+            permission can also approve discount requests. Enabling either channel shows the Pending
+            approval and Editable order queues.
           </p>
         </div>
       ) : null}
       <Toggle
         label="Allow manual line discount on create order"
-        description="Sales → Create new order. Lets staff type a discount when adding a line. When discount approval is enabled, managers must approve before it applies."
+        description="Sales → Create new order (ERP only). Lets staff type a discount when adding a line. Does not show on the mobile app — use Discount approval — mobile for that. When backoffice discount approval is enabled, this is turned on and managers must approve before it applies."
         checked={salesForm.allow_edit_line_discount}
-        disabled={!salesForm.allow_discounts && !salesForm.discount_approval_enabled}
+        disabled={!salesForm.allow_discounts && !salesForm.discount_approval_enabled_backoffice}
         onChange={(v) => setSalesForm((f) => ({ ...f, allow_edit_line_discount: v }))}
       />
       {hasPosSales ? (
         <Toggle
           label="Allow manual line discount on external POS"
-          description="External POS cashier terminal (/pos). Lets cashiers type a discount when adding a line. When discount approval is enabled, managers must approve before it applies."
+          description="External POS cashier terminal (/pos). Lets cashiers type a discount when adding a line. When backoffice discount approval is enabled, this is turned on and managers must approve before it applies."
           checked={salesForm.allow_pos_edit_line_discount}
-          disabled={!salesForm.allow_discounts && !salesForm.discount_approval_enabled}
+          disabled={!salesForm.allow_discounts && !salesForm.discount_approval_enabled_backoffice}
           onChange={(v) => setSalesForm((f) => ({ ...f, allow_pos_edit_line_discount: v }))}
         />
       ) : null}

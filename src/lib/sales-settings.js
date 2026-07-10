@@ -19,7 +19,9 @@ const SALES_DEFAULTS = {
   allow_edit_line_discount: true,
   allow_pos_edit_line_discount: true,
   enable_order_discount: false,
-  discount_approval_enabled: true,
+  discount_approval_enabled: false,
+  discount_approval_enabled_mobile: false,
+  discount_approval_enabled_backoffice: false,
   discount_approval_threshold_percent: 10,
   order_cancellation_approval_enabled: false,
   enable_vouchers: false,
@@ -281,7 +283,9 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   allow_edit_line_discount: true,
   allow_pos_edit_line_discount: true,
   enable_order_discount: false,
-  discount_approval_enabled: true,
+  discount_approval_enabled: false,
+  discount_approval_enabled_mobile: false,
+  discount_approval_enabled_backoffice: false,
   discount_approval_threshold_percent: "10",
   order_cancellation_approval_enabled: false,
   enable_vouchers: false,
@@ -344,6 +348,8 @@ export function salesOrganizationFormFromApi(res) {
     allow_pos_edit_line_discount: Boolean(sales.allow_pos_edit_line_discount),
     enable_order_discount: Boolean(sales.enable_order_discount),
     discount_approval_enabled: Boolean(sales.discount_approval_enabled),
+    discount_approval_enabled_mobile: Boolean(sales.discount_approval_enabled_mobile),
+    discount_approval_enabled_backoffice: Boolean(sales.discount_approval_enabled_backoffice),
     discount_approval_threshold_percent: String(sales.discount_approval_threshold_percent ?? 10),
     order_cancellation_approval_enabled: Boolean(sales.order_cancellation_approval_enabled),
     enable_vouchers: Boolean(sales.enable_vouchers),
@@ -434,12 +440,24 @@ export function sanitizeSalesOrganizationFormForModules(form, capabilities) {
   return next;
 }
 
-/** When discount approval is on, staff must be able to enter line discounts on backoffice and POS. */
-export function applyDiscountApprovalFormUpdates(form, discountApprovalEnabled) {
+/** When discount approval is on for a channel, unlock manual line entry for that channel only. */
+export function applyDiscountApprovalFormUpdates(form, patch) {
+  const mobile =
+    typeof patch === "boolean"
+      ? patch
+      : Boolean(patch?.mobile ?? form.discount_approval_enabled_mobile);
+  const backoffice =
+    typeof patch === "boolean"
+      ? patch
+      : Boolean(patch?.backoffice ?? form.discount_approval_enabled_backoffice);
+
   return {
     ...form,
-    discount_approval_enabled: discountApprovalEnabled,
-    ...(discountApprovalEnabled
+    discount_approval_enabled_mobile: mobile,
+    discount_approval_enabled_backoffice: backoffice,
+    discount_approval_enabled: mobile || backoffice,
+    // Backoffice create-order / POS only — do not unlock these when only mobile approval is on.
+    ...(backoffice
       ? {
           allow_edit_line_discount: true,
           allow_pos_edit_line_discount: true,
@@ -452,9 +470,10 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
   const sanitized = capabilities
     ? sanitizeSalesOrganizationFormForModules(form, capabilities)
     : form;
-  const withDiscountApproval = sanitized.discount_approval_enabled
-    ? applyDiscountApprovalFormUpdates(sanitized, true)
-    : sanitized;
+  const withDiscountApproval = applyDiscountApprovalFormUpdates(sanitized, {
+    mobile: sanitized.discount_approval_enabled_mobile,
+    backoffice: sanitized.discount_approval_enabled_backoffice,
+  });
   const {
     order_document_type: _orderDocumentType,
     receipt_copies: _receiptCopies,
@@ -563,6 +582,8 @@ export function orgSalesDiscountFeaturesActive(sales) {
       s.allow_edit_line_discount ||
       s.allow_pos_edit_line_discount ||
       s.discount_approval_enabled ||
+      s.discount_approval_enabled_mobile ||
+      s.discount_approval_enabled_backoffice ||
       s.enable_order_discount,
   );
 }
@@ -586,7 +607,20 @@ export function isRedeemablePointsEnabled(moduleSettings) {
 }
 
 export function isDiscountApprovalEnabled(moduleSettings) {
-  return Boolean(mergeSalesSettings(moduleSettings).discount_approval_enabled);
+  const sales = mergeSalesSettings(moduleSettings);
+  return Boolean(
+    sales.discount_approval_enabled_mobile || sales.discount_approval_enabled_backoffice,
+  );
+}
+
+/** Channel-specific discount approval (`mobile` or `backoffice` / `backend` / `pos`). */
+export function isDiscountApprovalEnabledForChannel(moduleSettings, channel = "backoffice") {
+  const sales = mergeSalesSettings(moduleSettings);
+  const normalized = String(channel || "backoffice").toLowerCase();
+  if (normalized === "mobile") {
+    return Boolean(sales.discount_approval_enabled_mobile);
+  }
+  return Boolean(sales.discount_approval_enabled_backoffice);
 }
 
 /** True when the user may apply discounts directly without approval workflow or reason. */
@@ -609,13 +643,13 @@ export function shouldShowSalesDiscountColumn(moduleSettings) {
   return areSalesDiscountFeaturesEnabled(moduleSettings);
 }
 
-/** POS line discount field — product rules, manual line (channel-specific), or approval workflow. */
+/** POS / create-order line discount field — backoffice channel only (not mobile approval). */
 export function showPosLineDiscountField(moduleSettings, { standalone = false } = {}) {
   if (!areSalesDiscountFeaturesEnabled(moduleSettings)) return false;
   const sales = mergeSalesSettings(moduleSettings);
   return Boolean(
     sales.allow_discounts ||
-      sales.discount_approval_enabled ||
+      isDiscountApprovalEnabledForChannel(moduleSettings, "backoffice") ||
       resolveAllowEditLineDiscount(sales, { standalone }),
   );
 }
@@ -626,27 +660,41 @@ export function showPosOrderDiscountInput(moduleSettings, options = {}) {
   return Boolean(getPosSalesConfig(moduleSettings, options).enableOrderDiscount);
 }
 
-/** Backoffice editable-order modal: direct discount edits (not via POS restore). */
+/**
+ * Backoffice order edit popup: allow discount edits for approval-workflow revisions
+ * (including mobile-only approval → Editable orders), and for normal backoffice discount settings.
+ */
 export function showBackofficeLineDiscountEdit(moduleSettings, { hasPermission = () => false, sale = null } = {}) {
   if (!areSalesDiscountFeaturesEnabled(moduleSettings)) return false;
   const sales = mergeSalesSettings(moduleSettings);
-  if (isDiscountApprovalEnabled(moduleSettings) && !canGiveDiscountDirectly({ hasPermission })) {
-    if (sale?.status === "editable" && sale?.can_edit_lines) {
-      return true;
-    }
+  const mobileApproval = isDiscountApprovalEnabledForChannel(moduleSettings, "mobile");
+  const backofficeApproval = isDiscountApprovalEnabledForChannel(moduleSettings, "backoffice");
+  const canDirect = canGiveDiscountDirectly({ hasPermission });
+
+  const status = String(sale?.status ?? "").toLowerCase();
+  const isWorkflowRevision =
+    (status === "editable" || status === "pending_approval") && Boolean(sale?.can_edit_lines);
+
+  // Managers / submitters revising approval-queue orders (mobile or backoffice workflow).
+  if (isWorkflowRevision && (mobileApproval || backofficeApproval)) {
+    return true;
+  }
+
+  // Staff under backoffice approval mode cannot freely edit discounts on other orders.
+  if (backofficeApproval && !canDirect) {
     return false;
   }
+
   return Boolean(
     sales.allow_discounts ||
       sales.allow_edit_line_discount ||
-      sales.allow_pos_edit_line_discount ||
-      sales.discount_approval_enabled,
+      backofficeApproval,
   );
 }
 
 /** POS / cart line discount field label when approval workflow is active for staff. */
 export function lineDiscountInputLabel(moduleSettings, { canAutoApprove = false } = {}) {
-  if (isDiscountApprovalEnabled(moduleSettings) && !canAutoApprove) {
+  if (isDiscountApprovalEnabledForChannel(moduleSettings, "backoffice") && !canAutoApprove) {
     return "Discount for approval";
   }
   return "Discount";
@@ -851,6 +899,36 @@ export function mergeSalesSettings(moduleSettings) {
     sales.allow_sell_from_shop = true;
     sales.allow_sell_from_store = false;
   }
+
+  const custom = moduleSettings?.sales ?? {};
+  const hasChannelKeys =
+    Object.prototype.hasOwnProperty.call(custom, "discount_approval_enabled_mobile") ||
+    Object.prototype.hasOwnProperty.call(custom, "discount_approval_enabled_backoffice");
+  const legacy = Object.prototype.hasOwnProperty.call(custom, "discount_approval_enabled")
+    ? Boolean(custom.discount_approval_enabled)
+    : Boolean(sales.discount_approval_enabled);
+
+  if (!hasChannelKeys) {
+    sales.discount_approval_enabled_mobile = legacy;
+    sales.discount_approval_enabled_backoffice = legacy;
+  } else {
+    sales.discount_approval_enabled_mobile = Object.prototype.hasOwnProperty.call(
+      custom,
+      "discount_approval_enabled_mobile",
+    )
+      ? Boolean(custom.discount_approval_enabled_mobile)
+      : legacy;
+    sales.discount_approval_enabled_backoffice = Object.prototype.hasOwnProperty.call(
+      custom,
+      "discount_approval_enabled_backoffice",
+    )
+      ? Boolean(custom.discount_approval_enabled_backoffice)
+      : legacy;
+  }
+  sales.discount_approval_enabled =
+    Boolean(sales.discount_approval_enabled_mobile) ||
+    Boolean(sales.discount_approval_enabled_backoffice);
+
   return sales;
 }
 
@@ -925,12 +1003,12 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     allowDiscounts: Boolean(sales.allow_discounts),
     allowEditLineDiscount:
       resolveAllowEditLineDiscount(sales, { standalone: Boolean(options.standalone) }) ||
-      isDiscountApprovalEnabled(moduleSettings),
+      isDiscountApprovalEnabledForChannel(moduleSettings, "backoffice"),
     enableOrderDiscount:
       Boolean(sales.effective_enable_order_discount) ||
       (Boolean(sales.enable_order_discount) &&
         !(
-          isDiscountApprovalEnabled(moduleSettings) &&
+          isDiscountApprovalEnabledForChannel(moduleSettings, "backoffice") &&
           options.canAutoApprove === false
         )),
     enableVouchers: Boolean(sales.enable_vouchers),

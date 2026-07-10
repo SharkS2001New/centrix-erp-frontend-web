@@ -82,5 +82,14 @@ export function isOrderCancellationNavEnabled(capabilities) {
 }
 
 export function isDiscountApprovalNavEnabled(capabilities) {
-  return Boolean(capabilities?.module_settings?.sales?.discount_approval_enabled);
+  const sales = capabilities?.module_settings?.sales ?? {};
+  if (
+    Object.prototype.hasOwnProperty.call(sales, "discount_approval_enabled_mobile") ||
+    Object.prototype.hasOwnProperty.call(sales, "discount_approval_enabled_backoffice")
+  ) {
+    return Boolean(
+      sales.discount_approval_enabled_mobile || sales.discount_approval_enabled_backoffice,
+    );
+  }
+  return Boolean(sales.discount_approval_enabled);
 }

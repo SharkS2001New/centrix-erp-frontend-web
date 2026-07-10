@@ -51,7 +51,7 @@ import { getChannelWorkflow, workflowPipelineSteps, checkoutCompleteStatuses, is
 import {
   getPosSalesConfig,
   areSalesDiscountFeaturesEnabled,
-  isDiscountApprovalEnabled,
+  isDiscountApprovalEnabledForChannel,
   lineDiscountInputLabel,
   isWorkspaceTillFloatRequired,
   salesCartChannelForWorkspace,
@@ -235,7 +235,10 @@ export function PosScreen({ standalone = false }) {
   const allowEditLineDiscount = posSalesConfig.allowEditLineDiscount;
   const showCartLineType = posSalesConfig.enableRetailPricing;
   const enableOrderDiscount = posSalesConfig.enableOrderDiscount;
-  const discountApprovalActive = isDiscountApprovalEnabled(capabilities?.module_settings);
+  const discountApprovalActive = isDiscountApprovalEnabledForChannel(
+    capabilities?.module_settings,
+    "backoffice",
+  );
   const discountFeaturesEnabled = areSalesDiscountFeaturesEnabled(capabilities?.module_settings);
   const canAutoApproveDiscount = canGiveDiscountDirectly({ hasPermission });
   const showLineDiscountField = showPosLineDiscountField(capabilities?.module_settings, {

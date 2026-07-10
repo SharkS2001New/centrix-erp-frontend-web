@@ -17,6 +17,8 @@ function discountFeaturesEnabledForPrint(moduleSettings) {
       s.allow_edit_line_discount ||
       s.allow_pos_edit_line_discount ||
       s.discount_approval_enabled ||
+      s.discount_approval_enabled_mobile ||
+      s.discount_approval_enabled_backoffice ||
       s.enable_order_discount ||
       s.effective_enable_order_discount,
   );
