@@ -219,3 +219,21 @@ export function clearAllTabWorkspaceMemory() {
     /* ignore */
   }
 }
+
+/** @type {((href: string) => boolean) | null} */
+let openTabReuseChecker = null;
+
+/** Register whether an href should reuse a mounted tab (skips nav loading skeleton). */
+export function setOpenTabReuseChecker(checker) {
+  openTabReuseChecker = typeof checker === "function" ? checker : null;
+}
+
+/** True when navigating to an already-open workspace tab (keep-alive reuse). */
+export function shouldReuseOpenTabHref(href) {
+  if (!href || !openTabReuseChecker) return false;
+  try {
+    return Boolean(openTabReuseChecker(href));
+  } catch {
+    return false;
+  }
+}

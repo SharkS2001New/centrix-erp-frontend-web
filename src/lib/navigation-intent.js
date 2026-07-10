@@ -2,6 +2,7 @@ import {
   beginNavigationIntent,
   isNavigationPending,
 } from "./app-loading";
+import { shouldReuseOpenTabHref } from "./tab-workspace";
 
 function isModifiedClick(event) {
   return (
@@ -48,6 +49,9 @@ export function handleNavigationIntentClick(event) {
 
   const current = `${window.location.pathname}${window.location.search}`;
   if (href === current || href === window.location.pathname) return;
+
+  // Already-open tab: keep-alive will show the cached pane — no loading skeleton.
+  if (shouldReuseOpenTabHref(href)) return;
 
   if (isNavigationPending()) return;
 

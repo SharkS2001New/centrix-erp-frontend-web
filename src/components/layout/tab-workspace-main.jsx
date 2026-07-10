@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { TabPaneActivityProvider } from "@/contexts/tab-pane-activity-context";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
@@ -8,68 +8,65 @@ import { isTabWorkspaceRoute, normalizeTabHref } from "@/lib/tab-workspace";
 
 /**
  * Keep every open workspace tab mounted so loaded lists/forms stay in memory.
- * Returning to a tab reuses the cached React tree — it must not swap in fresh
- * Next.js `children` (that remounts the page and refetches). Closing a tab
+ * Returning to a tab reuses the cached React tree — never swap in fresh Next.js
+ * `children` on revisit (that remounts the page and refetches). Closing a tab
  * drops its cache; browser refresh remounts everything.
  */
 export function TabWorkspaceMain({ children }) {
   const pathname = usePathname();
-  const { enabled, tabs, workspaceId } = useTabWorkspace();
-  const [paneCache, setPaneCache] = useState(() => new Map());
+  const { enabled, tabs, activeHref: workspaceActiveHref, workspaceId } = useTabWorkspace();
+  const paneCacheRef = useRef(new Map());
+  const [, setCacheVersion] = useState(0);
 
-  const activeHref = normalizeTabHref(pathname);
+  const routeHref = normalizeTabHref(pathname);
+  const activeHref = normalizeTabHref(workspaceActiveHref || routeHref);
 
   const mountedHrefs = useMemo(() => {
-    const hrefs = new Set([activeHref]);
+    const hrefs = [];
+    const seen = new Set();
     for (const tab of tabs) {
       const href = normalizeTabHref(tab.href);
-      if (href) hrefs.add(href);
+      if (!href || seen.has(href)) continue;
+      seen.add(href);
+      hrefs.push(href);
+    }
+    if (activeHref && !seen.has(activeHref)) {
+      hrefs.unshift(activeHref);
     }
     return hrefs;
   }, [activeHref, tabs]);
 
   useEffect(() => {
-    setPaneCache(new Map());
+    paneCacheRef.current = new Map();
+    setCacheVersion((version) => version + 1);
   }, [workspaceId]);
 
-  // Cache each route's tree the first time it opens — never overwrite on revisit.
-  useEffect(() => {
+  // Seed / refresh only the *active* route the first time it opens.
+  // Never overwrite an existing pane — that would remount and refetch.
+  useLayoutEffect(() => {
     if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) return;
-    setPaneCache((prev) => {
-      const href = normalizeTabHref(pathname);
-      if (prev.has(href)) return prev;
-      const next = new Map(prev);
-      next.set(href, children);
-      return next;
-    });
+
+    const href = normalizeTabHref(pathname);
+    if (paneCacheRef.current.has(href)) return;
+
+    paneCacheRef.current.set(href, children);
+    setCacheVersion((version) => version + 1);
   }, [children, enabled, pathname]);
 
-  // Drop panes for closed tabs; keep existing trees for still-open ones.
-  useEffect(() => {
-    setPaneCache((prev) => {
-      let changed = false;
-      const next = new Map();
-      for (const href of mountedHrefs) {
-        const existing = prev.get(href);
-        if (existing) {
-          next.set(href, existing);
-        } else if (href === activeHref) {
-          next.set(href, children);
-          changed = true;
-        }
+  // Drop panes for closed tabs.
+  useLayoutEffect(() => {
+    if (!enabled) return;
+
+    const allowed = new Set(mountedHrefs);
+    let changed = false;
+    for (const href of [...paneCacheRef.current.keys()]) {
+      if (!allowed.has(href)) {
+        paneCacheRef.current.delete(href);
+        changed = true;
       }
-      if (next.size !== prev.size) changed = true;
-      else {
-        for (const href of next.keys()) {
-          if (next.get(href) !== prev.get(href)) {
-            changed = true;
-            break;
-          }
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [activeHref, children, mountedHrefs]);
+    }
+    if (changed) setCacheVersion((version) => version + 1);
+  }, [enabled, mountedHrefs]);
 
   if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) {
     return children;
@@ -77,9 +74,9 @@ export function TabWorkspaceMain({ children }) {
 
   return (
     <>
-      {[...mountedHrefs].map((href) => {
+      {mountedHrefs.map((href) => {
         const isActive = href === activeHref;
-        const pane = paneCache.get(href) ?? (isActive ? children : null);
+        const pane = paneCacheRef.current.get(href) ?? (isActive ? children : null);
         if (!pane) return null;
 
         return (

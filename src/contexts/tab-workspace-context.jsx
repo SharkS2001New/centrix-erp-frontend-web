@@ -22,6 +22,7 @@ import {
   isTabWorkspaceRoute,
   normalizeTabHref,
   readTabWorkspaceStore,
+  setOpenTabReuseChecker,
   shouldReuseOpenTab,
   titleFromPathname,
   writeTabWorkspaceStore,
@@ -91,6 +92,29 @@ export function TabWorkspaceProvider({ children }) {
     () => (workspaceId ? getWorkspaceTabState(tabStore, workspaceId).tabs : []),
     [tabStore, workspaceId],
   );
+
+  const storeActiveHref = useMemo(() => {
+    if (!workspaceId) return normalizeTabHref(pathname);
+    return (
+      getWorkspaceTabState(tabStore, workspaceId).activeHref ?? normalizeTabHref(pathname)
+    );
+  }, [pathname, tabStore, workspaceId]);
+
+  useEffect(() => {
+    if (!enabled) {
+      setOpenTabReuseChecker(null);
+      return undefined;
+    }
+
+    setOpenTabReuseChecker((href) => {
+      const normalized = hrefFromLinkProp(href);
+      if (!workspaceId || !isTabWorkspaceRoute(normalized)) return false;
+      if (!pathBelongsToWorkspace(normalized, workspaceId)) return false;
+      return Boolean(findOpenTab(tabs, normalized));
+    });
+
+    return () => setOpenTabReuseChecker(null);
+  }, [enabled, tabs, workspaceId]);
 
   useEffect(() => {
     if (!enabled) {
@@ -217,7 +241,7 @@ export function TabWorkspaceProvider({ children }) {
           }),
         );
 
-        // Reusing a mounted tab — cancel any link-click loading skeleton.
+        // Reusing a mounted tab — no loading skeleton / no refetch intent.
         finishNavigation();
         if (!isCurrent) router.push(normalized);
         return true;
@@ -389,7 +413,7 @@ export function TabWorkspaceProvider({ children }) {
       enabled,
       workspaceId,
       tabs,
-      activeHref: normalizeTabHref(pathname),
+      activeHref: storeActiveHref,
       openTab: upsertTab,
       closeTab,
       activateTab,
@@ -403,7 +427,7 @@ export function TabWorkspaceProvider({ children }) {
       enabled,
       workspaceId,
       tabs,
-      pathname,
+      storeActiveHref,
       upsertTab,
       closeTab,
       activateTab,

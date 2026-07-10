@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { beginNavigationIntent, isNavigationPending } from "./app-loading";
+import { shouldReuseOpenTabHref } from "./tab-workspace";
 
 /**
  * Drop-in router wrapper that shows navigation feedback and ignores duplicate pushes.
@@ -15,13 +16,17 @@ export function useAppRouter() {
       push(href, options) {
         if (isNavigationPending()) return;
         const target = typeof href === "string" ? href : String(href);
-        beginNavigationIntent("Opening page…", target);
+        if (!shouldReuseOpenTabHref(target)) {
+          beginNavigationIntent("Opening page…", target);
+        }
         router.push(href, options);
       },
       replace(href, options) {
         if (isNavigationPending()) return;
         const target = typeof href === "string" ? href : String(href);
-        beginNavigationIntent("Opening page…", target);
+        if (!shouldReuseOpenTabHref(target)) {
+          beginNavigationIntent("Opening page…", target);
+        }
         router.replace(href, options);
       },
       back() {
