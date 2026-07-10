@@ -1,18 +1,20 @@
 import Image from "next/image";
+import { CentrixLogoMark } from "@/components/branding/centrix-logo-mark";
 
-const MARK_SRC = "/branding/centrix-mark.png";
+export { CentrixLogoMark };
 
-/** Icon mark — transparent PNG, works on light and dark surfaces. */
-export function CentrixLogoMark({ size = 32, className = "" }) {
+/** @deprecated Prefer CentrixLogoMark (SVG). Kept for any direct PNG needs. */
+export function CentrixLogoMarkImage({ size = 32, className = "" }) {
   return (
     <Image
-      src={MARK_SRC}
+      src="/branding/centrix-mark.png"
       alt=""
       width={size}
       height={size}
       className={className}
       aria-hidden
       priority
+      style={{ width: size, height: size, objectFit: "contain" }}
     />
   );
 }

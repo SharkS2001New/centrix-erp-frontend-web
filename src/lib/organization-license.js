@@ -16,6 +16,7 @@ export const LICENSE_WARNING_DAYS = 7;
 /** API error codes that mean the org licence is expired (web + mobile). */
 export const LICENSE_EXPIRED_API_CODES = [
   "organization_license_expired",
+  "organization_subscription_required",
   "license_expired",
   "subscription_expired",
   "organization_subscription_expired",
@@ -100,7 +101,7 @@ export function resolveOrganizationLicense(source = null) {
   const isTrial = Boolean(raw.is_trial || status === "trialing");
 
   return {
-    status: status || "active",
+    status: status || (end ? "active" : "missing"),
     expires_at: expiresAt ? String(expiresAt).slice(0, 10) : null,
     expires_at_raw: expiresAt,
     is_trial: isTrial,
@@ -122,8 +123,14 @@ export function licenseFromAuthState({ capabilities = null, organization = null 
 
 export function isLicenseExpired(license) {
   if (!license) return false;
-  if (["expired", "cancelled"].includes(license.status)) return true;
+  if (["missing", "expired", "cancelled", "inactive"].includes(license.status)) return true;
   if (license.days_remaining != null && license.days_remaining < 0) return true;
+  if (
+    license.status &&
+    !["active", "trialing", "past_due"].includes(license.status)
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -154,6 +161,9 @@ export function licenseWarningMessage(license) {
 }
 
 export function licenseExpiredMessage(license) {
+  if (license?.status === "missing") {
+    return "This organization does not have an active Centrix subscription. The system is locked until a plan is activated.";
+  }
   const when = license?.expires_at ? ` (ended ${licenseExpiryLabel(license)})` : "";
   return `This organization’s Centrix licence has expired${when}. The system is locked until the licence is renewed or extended.`;
 }
@@ -172,7 +182,9 @@ export function isLicenseExpiredApiError(error) {
   return (
     msg.includes("licence expired") ||
     msg.includes("license expired") ||
-    msg.includes("subscription expired")
+    msg.includes("subscription expired") ||
+    msg.includes("active centrix subscription") ||
+    msg.includes("does not have an active")
   );
 }
 

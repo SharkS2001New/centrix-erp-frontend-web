@@ -41,11 +41,17 @@ export const PLATFORM_LINK_GROUPS = [
         icon: "star",
         description: "Platform test console and OpenAI credentials for super-admin knowledge training.",
       },
+    ],
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    links: [
       {
-        href: "/platform/whatsapp",
-        label: "WhatsApp",
+        href: "/platform/settings",
+        label: "Platform settings",
         icon: "chat",
-        description: "Shared webhook URL and verify token for all tenant WhatsApp Business numbers.",
+        description: "Mailbox, email delivery (SMTP/IMAP), and WhatsApp — one place for platform communications.",
       },
     ],
   },
@@ -100,12 +106,6 @@ export const PLATFORM_LINK_GROUPS = [
         label: "Contracts & quotes",
         icon: "file",
         description: "Quote → accept → provision org → first invoice.",
-      },
-      {
-        href: "/platform/email",
-        label: "Email",
-        icon: "chat",
-        description: "SMTP and From address for sending contracts and billing notices.",
       },
       {
         href: "/platform/invoice-templates",

@@ -34,6 +34,13 @@ describe("organization license", () => {
     expect(isLicenseExpired(license)).toBe(true);
   });
 
+  it("treats missing subscription as locked", () => {
+    const license = resolveOrganizationLicense({
+      status: "missing",
+    });
+    expect(isLicenseExpired(license)).toBe(true);
+  });
+
   it("reads nested license / trial payload", () => {
     const license = resolveOrganizationLicense({
       license: { status: "trialing", trial_ends_at: "2099-01-01", is_trial: true },

@@ -1,7 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { PlatformWhatsappScreen } from "@/components/platform/platform-whatsapp-screen";
-
-export default function PlatformWhatsappPage() {
-  return <PlatformWhatsappScreen />;
+/** @deprecated Use /platform/settings?tab=whatsapp */
+export default function PlatformWhatsappRedirectPage() {
+  redirect("/platform/settings?tab=whatsapp");
 }
