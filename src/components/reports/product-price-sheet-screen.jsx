@@ -499,7 +499,16 @@ export function ProductPriceSheetScreen() {
 
           <div className="theme-table-footer flex items-center justify-between px-4 py-2 text-xs">
             <span className="theme-subtext">{filteredRows.length} product(s)</span>
-            <span className="theme-subtext">Printed: {effectiveDate}</span>
+            <span className="theme-subtext">
+              Printed:{" "}
+              {new Date().toLocaleString("en-GB", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
           </div>
         </div>
       )}
