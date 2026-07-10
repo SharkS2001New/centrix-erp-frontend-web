@@ -41,7 +41,7 @@ describe("sale line discount display qty", () => {
     ).toBe(50);
   });
 
-  it("shows stored selling_price, not current product.unit_price", () => {
+  it("shows gross unit price per sold pack from stored amount and discount", () => {
     const pricedLine = {
       ...line,
       selling_price: 91.44,
@@ -54,10 +54,21 @@ describe("sale line discount display qty", () => {
         unit: uomById.get(1),
       },
     };
-    expect(saleLineSoldUnitPrice(pricedLine, uomById)).toBe(91.44);
+    expect(saleLineSoldUnitPrice(pricedLine, uomById)).toBe(2286);
   });
 
-  it("upgrades legacy per-base selling_price to gross per sold pack", () => {
+  it("prefers API display_unit_price when present", () => {
+    const pricedLine = {
+      ...line,
+      display_unit_price: 2300,
+      amount: 2272,
+      discount_given: 14,
+      product: { unit_id: 1, unit: uomById.get(1) },
+    };
+    expect(saleLineSoldUnitPrice(pricedLine, uomById)).toBe(2300);
+  });
+
+  it("legacy per-base amounts still resolve to gross per pack", () => {
     const pricedLine = {
       ...line,
       selling_price: 3.0976,
@@ -85,6 +96,10 @@ describe("sale line discount display qty", () => {
       },
     };
     expect(saleLineListRowAmount(pricedLine)).toBe(2272);
+  });
+
+  it("prefers API display_amount when present", () => {
+    expect(saleLineListRowAmount({ amount: 999, display_amount: 2272 })).toBe(2272);
   });
 
   it("edit preview returns stored amount when qty and discount are unchanged", () => {

@@ -141,34 +141,22 @@ export function legacySaleLinePrintQtyPackage(line) {
 }
 
 /** Display sale line quantity with packaging labels when UOM data is available. */
-/** Unit price recorded on the sale line — stored gross per sold pack/display unit, not ÷ UOM. */
-export function saleLineSoldUnitPrice(line, uomById) {
-  const stored = Number(line?.selling_price ?? 0);
-  if (!Number.isFinite(stored) || stored <= 0) return 0;
-
-  if (!uomById) return stored;
-
-  const uom = saleLineUom(line, uomById);
-  const factor = uomConversionFactor(uom);
-  const isRetailLine = Number(line?.on_wholesale_retail) === 1;
-  const baseQty = Number(line?.quantity ?? 0);
-  if (baseQty <= 0) return stored;
-
-  const packQty = isRetailLine || factor <= 1 ? baseQty : baseQty / factor;
-  if (packQty <= 0) return stored;
-
-  const netPerBase = Number(line?.amount ?? 0) / baseQty;
-  const gross =
-    Number(line?.amount ?? 0) + Math.max(0, Number(line?.discount_given ?? 0));
-  const grossPerDisplay =
-    Math.round((gross / packQty) * 100) / 100;
-
-  // Legacy rows stored amount÷baseQty (net per smallest unit). Show gross per sold pack.
-  if (!isRetailLine && factor > 1 && Math.abs(stored - netPerBase) < 0.05) {
-    return grossPerDisplay;
+/** Gross unit price per sold pack/display unit — from stored line amount + discount. */
+export function saleLineSoldUnitPrice(line, uomById, retailByCode = {}) {
+  if (line?.display_unit_price != null && line.display_unit_price !== "") {
+    const fromApi = Number(line.display_unit_price);
+    if (Number.isFinite(fromApi) && fromApi >= 0) return fromApi;
   }
 
-  return stored;
+  const amount = Number(line?.amount ?? 0);
+  const discount = Math.max(0, Number(line?.discount_given ?? 0));
+  const packQty = saleLinePackQtyForDiscount(line, uomById, retailByCode);
+  if (packQty > 0) {
+    return Math.round(((amount + discount) / packQty) * 100) / 100;
+  }
+
+  const stored = Number(line?.selling_price ?? 0);
+  return Number.isFinite(stored) && stored > 0 ? stored : 0;
 }
 
 /** @deprecated Use {@link saleLineSoldUnitPrice} for order line tables. */
@@ -183,11 +171,19 @@ export function saleLineDisplayUnitPrice(line, uomById) {
 
 /** Per-pack discount shown in order line tables (matches POS cashier input). */
 export function saleLineDisplayDiscountPerUnit(line, uomById, retailByCode = {}, draftQty = null) {
+  if (draftQty == null && line?.display_discount_per_unit != null && line.display_discount_per_unit !== "") {
+    const fromApi = Number(line.display_discount_per_unit);
+    if (Number.isFinite(fromApi) && fromApi >= 0) return fromApi;
+  }
   return saleLineEnteredDiscountPerUnit(line, uomById, retailByCode, draftQty);
 }
 
 /** Line amount for order lists — stored net amount from the sale line (DB). */
 export function saleLineListRowAmount(line) {
+  if (line?.display_amount != null && line.display_amount !== "") {
+    const fromApi = Number(line.display_amount);
+    if (Number.isFinite(fromApi)) return fromApi;
+  }
   return Number(line?.amount ?? 0);
 }
 
