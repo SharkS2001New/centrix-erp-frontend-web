@@ -56,12 +56,13 @@ export function todayIsoDate() {
 }
 
 export const DEFAULT_INVOICE_OPTIONS = {
+  show_branding: true,
   show_quantity: true,
   show_payment_details: false,
   payment_details: "",
   show_etims_invoice_no: false,
   etims_invoice_no: "",
-  watermark_enabled: true,
+  watermark_enabled: false,
   watermark_mode: "name",
   watermark_text: "ALPAC SOFTWARE SOLUTIONS",
   watermark_logo_url: "",

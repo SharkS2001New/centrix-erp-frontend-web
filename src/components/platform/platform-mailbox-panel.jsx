@@ -5,9 +5,20 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { PrimaryButton, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
+import { formatBillingMoney } from "@/lib/platform-billing";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
+
+function emptyCompose() {
+  return {
+    organization_id: "",
+    invoice_id: "",
+    to: "",
+    subject: "",
+    body: "",
+  };
+}
 
 function formatWhen(value) {
   if (!value) return "—";
@@ -24,6 +35,20 @@ function previewBody(text, max = 90) {
   return `${clean.slice(0, max)}…`;
 }
 
+function invoiceOptionLabel(inv) {
+  const number = inv.invoice_number || `#${inv.id}`;
+  const total = formatBillingMoney(inv.total, inv.currency);
+  const status = inv.status ? String(inv.status) : "draft";
+  return `${number} · ${total} · ${status}`;
+}
+
+function defaultInvoiceBody(invoice, orgName, fromName = "Centrix") {
+  const name = invoice.bill_to_name || orgName || "Customer";
+  const number = invoice.invoice_number || `#${invoice.id}`;
+  const total = formatBillingMoney(invoice.total, invoice.currency);
+  return `Dear ${name},\n\nPlease find attached invoice ${number} for ${total}.\n\nIf you have questions, reply to this email.\n\nRegards,\n${fromName}`;
+}
+
 export function PlatformMailboxPanel() {
   const [folder, setFolder] = useState("inbox");
   const [messages, setMessages] = useState([]);
@@ -36,8 +61,11 @@ export function PlatformMailboxPanel() {
   const [composing, setComposing] = useState(false);
   const [sending, setSending] = useState(false);
   const [replyBody, setReplyBody] = useState("");
-  const [compose, setCompose] = useState({ to: "", subject: "", body: "" });
+  const [compose, setCompose] = useState(() => emptyCompose());
   const [search, setSearch] = useState("");
+  const [organizations, setOrganizations] = useState([]);
+  const [orgInvoices, setOrgInvoices] = useState([]);
+  const [loadingOrgInvoices, setLoadingOrgInvoices] = useState(false);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -55,9 +83,45 @@ export function PlatformMailboxPanel() {
     }
   }, [folder, search]);
 
+  const loadOrganizations = useCallback(async () => {
+    try {
+      const res = await apiRequest("/admin/organizations", { loading: false });
+      setOrganizations(res.data ?? []);
+    } catch {
+      setOrganizations([]);
+    }
+  }, []);
+
+  const loadOrgInvoices = useCallback(async (organizationId) => {
+    if (!organizationId) {
+      setOrgInvoices([]);
+      return;
+    }
+    setLoadingOrgInvoices(true);
+    try {
+      const res = await apiRequest("/admin/platform-invoices", {
+        searchParams: { organization_id: organizationId },
+        loading: false,
+      });
+      setOrgInvoices(res.data ?? []);
+    } catch {
+      setOrgInvoices([]);
+    } finally {
+      setLoadingOrgInvoices(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadList();
   }, [loadList]);
+
+  useEffect(() => {
+    if (composing) void loadOrganizations();
+  }, [composing, loadOrganizations]);
+
+  useEffect(() => {
+    if (composing) void loadOrgInvoices(compose.organization_id);
+  }, [composing, compose.organization_id, loadOrgInvoices]);
 
   async function openMessage(id) {
     setComposing(false);
@@ -86,6 +150,59 @@ export function PlatformMailboxPanel() {
     }
   }
 
+  function applyOrganization(organizationId) {
+    const org = organizations.find((row) => String(row.id) === String(organizationId));
+    setCompose((prev) => {
+      const next = {
+        ...prev,
+        organization_id: organizationId,
+        invoice_id: "",
+      };
+      if (org) {
+        if (org.org_email) next.to = org.org_email;
+        if (!prev.subject.trim()) {
+          next.subject = org.org_name ? `Centrix ERP — ${org.org_name}` : prev.subject;
+        }
+        if (!prev.body.trim()) {
+          next.body = `Dear ${org.org_name || "Customer"},\n\n`;
+        } else if (prev.body.startsWith("Dear ") && !prev.invoice_id) {
+          next.body = prev.body.replace(/^Dear [^\n]*/, `Dear ${org.org_name || "Customer"}`);
+        }
+      }
+      return next;
+    });
+  }
+
+  function applyInvoice(invoiceId) {
+    const invoice = orgInvoices.find((row) => String(row.id) === String(invoiceId));
+    if (!invoiceId) {
+      setCompose((prev) => ({ ...prev, invoice_id: "" }));
+      return;
+    }
+    if (!invoice) {
+      setCompose((prev) => ({ ...prev, invoice_id: invoiceId }));
+      return;
+    }
+
+    const org = organizations.find(
+      (row) => String(row.id) === String(invoice.organization_id || compose.organization_id),
+    );
+    const number = invoice.invoice_number || `#${invoice.id}`;
+    setCompose((prev) => ({
+      ...prev,
+      invoice_id: String(invoice.id),
+      organization_id: invoice.organization_id
+        ? String(invoice.organization_id)
+        : prev.organization_id,
+      to:
+        invoice.bill_to_email ||
+        org?.org_email ||
+        prev.to,
+      subject: `Invoice ${number}`,
+      body: defaultInvoiceBody(invoice, org?.org_name || invoice.bill_to_name),
+    }));
+  }
+
   async function handleSendCompose(e) {
     e.preventDefault();
     if (!compose.to.trim() || !compose.subject.trim() || !compose.body.trim()) {
@@ -100,10 +217,13 @@ export function PlatformMailboxPanel() {
           to: compose.to.trim(),
           subject: compose.subject.trim(),
           body: compose.body.trim(),
+          organization_id: compose.organization_id ? Number(compose.organization_id) : null,
+          invoice_id: compose.invoice_id ? Number(compose.invoice_id) : null,
         },
       });
       notifySuccess(res.message ?? "Email sent.");
-      setCompose({ to: "", subject: "", body: "" });
+      setCompose(emptyCompose());
+      setOrgInvoices([]);
       setComposing(false);
       setFolder("sent");
       if (res.data?.id) {
@@ -179,6 +299,8 @@ export function PlatformMailboxPanel() {
           type="button"
           showIcon={false}
           onClick={() => {
+            setCompose(emptyCompose());
+            setOrgInvoices([]);
             setComposing(true);
             setSelectedId(null);
             setSelected(null);
@@ -189,8 +311,8 @@ export function PlatformMailboxPanel() {
       </div>
 
       <p className="text-xs text-slate-500">
-        Sent mail is stored here automatically. Configure IMAP under Email delivery, then use Sync inbox to pull
-        client replies into one place.
+        Select an organization to prefill the recipient, or pick an invoice to attach as PDF. Sent mail is stored
+        here automatically. Configure IMAP under Email delivery, then use Sync inbox to pull client replies.
       </p>
 
       <div className="grid min-h-[28rem] gap-4 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
@@ -239,6 +361,55 @@ export function PlatformMailboxPanel() {
           {composing ? (
             <form onSubmit={(e) => void handleSendCompose(e)} className="space-y-3">
               <h2 className="text-sm font-semibold text-slate-900">New email to client</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Organization</span>
+                  <select
+                    className={inputClass}
+                    value={compose.organization_id}
+                    onChange={(e) => applyOrganization(e.target.value)}
+                  >
+                    <option value="">— Optional —</option>
+                    {organizations.map((org) => (
+                      <option key={org.id} value={org.id}>
+                        {org.org_name}
+                        {org.company_code ? ` (${org.company_code})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">
+                    Invoice to attach
+                  </span>
+                  <select
+                    className={inputClass}
+                    value={compose.invoice_id}
+                    disabled={!compose.organization_id || loadingOrgInvoices}
+                    onChange={(e) => applyInvoice(e.target.value)}
+                  >
+                    <option value="">
+                      {!compose.organization_id
+                        ? "Select organization first"
+                        : loadingOrgInvoices
+                          ? "Loading invoices…"
+                          : orgInvoices.length === 0
+                            ? "No invoices for this org"
+                            : "— None —"}
+                    </option>
+                    {orgInvoices.map((inv) => (
+                      <option key={inv.id} value={inv.id}>
+                        {invoiceOptionLabel(inv)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {compose.invoice_id ? (
+                <p className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                  Selected invoice will be attached as a PDF when you send.
+                </p>
+              ) : null}
               <PlatformAiEmailAssist
                 subject={compose.subject}
                 body={compose.body}
@@ -274,11 +445,19 @@ export function PlatformMailboxPanel() {
                 />
               </label>
               <div className="flex justify-end gap-2">
-                <button type="button" className={SECONDARY_BTN_CLASS} onClick={() => setComposing(false)}>
+                <button
+                  type="button"
+                  className={SECONDARY_BTN_CLASS}
+                  onClick={() => {
+                    setComposing(false);
+                    setCompose(emptyCompose());
+                    setOrgInvoices([]);
+                  }}
+                >
                   Cancel
                 </button>
                 <PrimaryButton type="submit" showIcon={false} disabled={sending}>
-                  {sending ? "Sending…" : "Send"}
+                  {sending ? "Sending…" : compose.invoice_id ? "Send with invoice" : "Send"}
                 </PrimaryButton>
               </div>
             </form>
@@ -295,6 +474,11 @@ export function PlatformMailboxPanel() {
                     : `${selected.from_name ? `${selected.from_name} ` : ""}<${selected.from_address}>`}{" "}
                   · {formatWhen(selected.sent_at || selected.received_at)}
                 </p>
+                {selected.meta?.invoice_id ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Invoice attached · ID {selected.meta.invoice_id}
+                  </p>
+                ) : null}
               </div>
 
               {thread.length > 1 ? (

@@ -44,7 +44,15 @@ function emptyAssignForm() {
     current_period_start: new Date().toISOString().slice(0, 10),
     current_period_end: "",
     trial_days: "14",
+    invoice_id: "",
   };
+}
+
+function invoiceOptionLabel(inv) {
+  const number = inv.invoice_number || `#${inv.id}`;
+  const total = formatBillingMoney(inv.total, inv.currency);
+  const status = inv.status ? String(inv.status) : "draft";
+  return `${number} · ${total} · ${status}`;
 }
 
 export default function PlatformSubscriptionsPage() {
@@ -52,14 +60,37 @@ export default function PlatformSubscriptionsPage() {
   const [rows, setRows] = useState([]);
   const [plans, setPlans] = useState([]);
   const [organizations, setOrganizations] = useState([]);
+  const [orgInvoices, setOrgInvoices] = useState([]);
+  const [loadingOrgInvoices, setLoadingOrgInvoices] = useState(false);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
   const [assignOpen, setAssignOpen] = useState(false);
   const [extendTarget, setExtendTarget] = useState(null);
+  const [attachTarget, setAttachTarget] = useState(null);
+  const [attachInvoiceId, setAttachInvoiceId] = useState("");
   const [extendDays, setExtendDays] = useState("30");
   const [extendUntil, setExtendUntil] = useState("");
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(() => emptyAssignForm());
+
+  const loadOrgInvoices = useCallback(async (organizationId) => {
+    if (!organizationId) {
+      setOrgInvoices([]);
+      return;
+    }
+    setLoadingOrgInvoices(true);
+    try {
+      const res = await apiRequest("/admin/platform-invoices", {
+        searchParams: { organization_id: organizationId },
+        loading: false,
+      });
+      setOrgInvoices(res.data ?? []);
+    } catch {
+      setOrgInvoices([]);
+    } finally {
+      setLoadingOrgInvoices(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,6 +116,18 @@ export default function PlatformSubscriptionsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (assignOpen) {
+      void loadOrgInvoices(form.organization_id);
+    }
+  }, [assignOpen, form.organization_id, loadOrgInvoices]);
+
+  useEffect(() => {
+    if (attachTarget?.organization_id) {
+      void loadOrgInvoices(attachTarget.organization_id);
+    }
+  }, [attachTarget, loadOrgInvoices]);
 
   function applyTrialDays(days, start = form.current_period_start) {
     const n = Number(days) || 14;
@@ -115,11 +158,13 @@ export default function PlatformSubscriptionsPage() {
           current_period_end: form.current_period_end || null,
           is_trial: form.status === "trialing",
           trial_days: form.status === "trialing" ? Number(form.trial_days) || 14 : null,
+          invoice_id: form.invoice_id ? Number(form.invoice_id) : null,
         },
       });
       notifySuccess(form.status === "trialing" ? "Free trial started." : "Subscription assigned.");
       setAssignOpen(false);
       setForm(emptyAssignForm());
+      setOrgInvoices([]);
       await load();
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Failed to assign subscription.");
@@ -133,6 +178,34 @@ export default function PlatformSubscriptionsPage() {
     setExtendTarget(sub);
     setExtendDays("30");
     setExtendUntil(end ? addCalendarDays(end, 30) : addCalendarDays(undefined, 30));
+  }
+
+  function openAttachInvoice(sub) {
+    setAttachTarget(sub);
+    setAttachInvoiceId(sub.invoice_id ? String(sub.invoice_id) : sub.invoice?.id ? String(sub.invoice.id) : "");
+  }
+
+  async function handleAttachInvoice(e) {
+    e.preventDefault();
+    if (!attachTarget) return;
+    setSaving(true);
+    try {
+      await apiRequest(`/admin/platform-subscriptions/${attachTarget.id}`, {
+        method: "PATCH",
+        body: {
+          invoice_id: attachInvoiceId ? Number(attachInvoiceId) : null,
+        },
+      });
+      notifySuccess(attachInvoiceId ? "Invoice attached." : "Invoice detached.");
+      setAttachTarget(null);
+      setAttachInvoiceId("");
+      setOrgInvoices([]);
+      await load();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to attach invoice.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleExtend(e) {
@@ -300,6 +373,7 @@ export default function PlatformSubscriptionsPage() {
                   <th className="px-5 py-3">Organization</th>
                   <th className="px-5 py-3">Plan</th>
                   <th className="px-5 py-3">Period / expiry</th>
+                  <th className="px-5 py-3">Invoice</th>
                   <th className="px-5 py-3">Seats</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3 text-right">Actions</th>
@@ -357,6 +431,18 @@ export default function PlatformSubscriptionsPage() {
                           </span>
                         ) : null}
                       </td>
+                      <td className="px-5 py-3 text-slate-600">
+                        {sub.invoice?.id || sub.invoice_id ? (
+                          <Link
+                            href={`/platform/invoices/${sub.invoice?.id ?? sub.invoice_id}`}
+                            className="font-medium text-[#185FA5] hover:underline"
+                          >
+                            {sub.invoice?.invoice_number || `Invoice #${sub.invoice?.id ?? sub.invoice_id}`}
+                          </Link>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
                       <td className="px-5 py-3 text-slate-600">{sub.seat_count ?? "—"}</td>
                       <td className="px-5 py-3">
                         <span
@@ -388,6 +474,13 @@ export default function PlatformSubscriptionsPage() {
                               Start 14-day trial
                             </button>
                           ) : null}
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-indigo-700 hover:underline"
+                            onClick={() => openAttachInvoice(sub)}
+                          >
+                            {sub.invoice?.id || sub.invoice_id ? "Change invoice" : "Attach invoice"}
+                          </button>
                           <button
                             type="button"
                             className="text-xs text-slate-600 hover:underline"
@@ -436,7 +529,13 @@ export default function PlatformSubscriptionsPage() {
                 <select
                   className={inputClass}
                   value={form.organization_id}
-                  onChange={(e) => setForm((f) => ({ ...f, organization_id: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      organization_id: e.target.value,
+                      invoice_id: "",
+                    }))
+                  }
                 >
                   <option value="">— Select —</option>
                   {organizations.map((org) => (
@@ -445,6 +544,40 @@ export default function PlatformSubscriptionsPage() {
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-600">
+                  Invoice (optional)
+                </span>
+                <select
+                  className={inputClass}
+                  value={form.invoice_id}
+                  disabled={!form.organization_id || loadingOrgInvoices}
+                  onChange={(e) => setForm((f) => ({ ...f, invoice_id: e.target.value }))}
+                >
+                  <option value="">
+                    {!form.organization_id
+                      ? "Select organization first"
+                      : loadingOrgInvoices
+                        ? "Loading invoices…"
+                        : orgInvoices.length === 0
+                          ? "No invoices for this org"
+                          : "— None —"}
+                  </option>
+                  {orgInvoices.map((inv) => (
+                    <option key={inv.id} value={inv.id}>
+                      {invoiceOptionLabel(inv)}
+                    </option>
+                  ))}
+                </select>
+                {form.organization_id ? (
+                  <Link
+                    href={`/platform/invoices/new?organization=${form.organization_id}`}
+                    className="mt-1 inline-block text-xs font-medium text-[#185FA5] hover:underline"
+                  >
+                    Create invoice for this org
+                  </Link>
+                ) : null}
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-600">Plan</span>
@@ -628,6 +761,69 @@ export default function PlatformSubscriptionsPage() {
               </button>
               <PrimaryButton type="submit" showIcon={false} disabled={saving}>
                 {saving ? "Saving…" : "Extend"}
+              </PrimaryButton>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {attachTarget ? (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/45 p-4">
+          <form
+            onSubmit={(e) => void handleAttachInvoice(e)}
+            className="theme-modal w-full max-w-md rounded-xl border p-6 shadow-2xl"
+          >
+            <h2 className="text-base font-semibold text-slate-900">Attach invoice</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {attachTarget.organization?.org_name ?? "Organization"} — choose an invoice for this
+              organization.
+            </p>
+            <div className="mt-4 space-y-3">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Invoice</span>
+                <select
+                  className={inputClass}
+                  value={attachInvoiceId}
+                  disabled={loadingOrgInvoices}
+                  onChange={(e) => setAttachInvoiceId(e.target.value)}
+                >
+                  <option value="">
+                    {loadingOrgInvoices
+                      ? "Loading invoices…"
+                      : orgInvoices.length === 0
+                        ? "No invoices for this org"
+                        : "— None —"}
+                  </option>
+                  {orgInvoices.map((inv) => (
+                    <option key={inv.id} value={inv.id}>
+                      {invoiceOptionLabel(inv)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {attachTarget.organization_id ? (
+                <Link
+                  href={`/platform/invoices/new?organization=${attachTarget.organization_id}`}
+                  className="inline-block text-xs font-medium text-[#185FA5] hover:underline"
+                >
+                  Create invoice for this org
+                </Link>
+              ) : null}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                onClick={() => {
+                  setAttachTarget(null);
+                  setAttachInvoiceId("");
+                  setOrgInvoices([]);
+                }}
+              >
+                Cancel
+              </button>
+              <PrimaryButton type="submit" showIcon={false} disabled={saving || loadingOrgInvoices}>
+                {saving ? "Saving…" : attachInvoiceId ? "Attach" : "Clear"}
               </PrimaryButton>
             </div>
           </form>

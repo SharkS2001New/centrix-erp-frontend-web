@@ -88,6 +88,8 @@ function totalsBlock(totals, currency, taxRate) {
 }
 
 function brandHeaderHtml(options) {
+  if (options.show_branding === false) return "";
+
   const brandName = options.brand_name || "CentrixERP";
   const showLogo = options.brand_mode === "logo" || options.brand_mode === "both";
   const showName = options.brand_mode === "name" || options.brand_mode === "both" || !showLogo;
@@ -100,11 +102,12 @@ function brandHeaderHtml(options) {
     ? `<p class="brand-name">${escapeHtml(brandName)}</p>`
     : "";
 
+  if (!logo && !name) return "";
   return `<div class="brand">${logo}${name}</div>`;
 }
 
 function watermarkHtml(options) {
-  if (!options.watermark_enabled) return "";
+  if (options.watermark_enabled !== true) return "";
 
   const mode = options.watermark_mode || "name";
   const text = options.watermark_text || options.brand_name || "CentrixERP";
@@ -141,76 +144,78 @@ function baseStyles(templateId, options = {}) {
   const printLabelSize = `${Math.max(scale.printPx - 3, 12)}px`;
   const footerSize = `${Math.max(scale.screenPx - 1, 12)}px`;
   const printFooterSize = `${Math.max(scale.printPx - 2, 13)}px`;
-  const h1Size = templateId === "bold" ? "34px" : templateId === "elegant" ? "30px" : "26px";
-  const printH1Size = `${scale.printPx + 16}px`;
-  const grandTotalSize = templateId === "bold" ? "20px" : "17px";
-  const printGrandTotalSize = `${scale.printPx + 6}px`;
-  const brandNameSize = compactTemplate ? "16px" : "18px";
-  const printBrandNameSize = `${scale.printPx + 4}px`;
+  const h1Size = templateId === "bold" ? "28px" : templateId === "elegant" ? "26px" : "22px";
+  const printH1Size = `${scale.printPx + 10}px`;
+  const grandTotalSize = templateId === "bold" ? "18px" : "15px";
+  const printGrandTotalSize = `${scale.printPx + 4}px`;
+  const brandNameSize = compactTemplate ? "14px" : "16px";
+  const printBrandNameSize = `${scale.printPx + 2}px`;
 
   return `
     * { box-sizing: border-box; }
     html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body { margin: 0; padding: 32px; font-family: ${fontFamily}; color: #0f172a; background: ${t.bg}; font-size: ${bodySize}; line-height: 1.5; }
+    body { margin: 0; padding: 16px; font-family: ${fontFamily}; color: #0f172a; background: ${t.bg}; font-size: ${bodySize}; line-height: 1.4; }
     a, a:visited { color: inherit; text-decoration: none; }
     .sheet { position: relative; max-width: 800px; margin: 0 auto; background: #fff; border-radius: ${templateId === "minimal" ? "0" : "8px"}; overflow: hidden; box-shadow: ${templateId === "minimal" ? "none" : "0 1px 3px rgba(0,0,0,.08)"}; border: ${templateId === "classic" ? "1px solid #cbd5e1" : "none"}; }
     .sheet-body { position: relative; z-index: 1; }
     .watermark { position: absolute; inset: 0; z-index: 0; pointer-events: none; user-select: none; }
-    .watermark-text { display: flex; align-items: center; justify-content: center; font-size: 72px; font-weight: 800; letter-spacing: 0.08em; color: rgba(15, 23, 42, 0.06); transform: rotate(-28deg); text-transform: uppercase; white-space: nowrap; }
-    .watermark-logo { background-repeat: no-repeat; background-position: center; background-size: 45%; opacity: 0.07; }
-    .header { padding: ${compactTemplate ? "18px 22px" : "28px 32px"}; background: ${templateId === "corporate" || templateId === "bold" ? t.accent : templateId === "stripe" ? "#f6f9fc" : "#fff"}; color: ${templateId === "corporate" || templateId === "bold" ? "#fff" : "#0f172a"}; ${templateId === "modern" ? `border-top: 4px solid ${t.accent};` : ""} ${templateId === "stripe" ? `border-left: 6px solid ${t.accent};` : ""} }
-    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-    .brand-logo { max-height: 48px; max-width: 200px; object-fit: contain; }
+    .watermark-text { display: flex; align-items: center; justify-content: center; font-size: 64px; font-weight: 800; letter-spacing: 0.08em; color: rgba(15, 23, 42, 0.06); transform: rotate(-28deg); text-transform: uppercase; white-space: nowrap; }
+    .watermark-logo { background-repeat: no-repeat; background-position: center; background-size: 40%; opacity: 0.07; }
+    .header { padding: ${compactTemplate ? "12px 16px" : "16px 20px"}; background: ${templateId === "corporate" || templateId === "bold" ? t.accent : templateId === "stripe" ? "#f6f9fc" : "#fff"}; color: ${templateId === "corporate" || templateId === "bold" ? "#fff" : "#0f172a"}; ${templateId === "modern" ? `border-top: 3px solid ${t.accent};` : ""} ${templateId === "stripe" ? `border-left: 5px solid ${t.accent};` : ""} }
+    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .brand-logo { max-height: 40px; max-width: 180px; object-fit: contain; }
     .brand-name { margin: 0; font-size: ${brandNameSize}; font-weight: 700; letter-spacing: 0.02em; }
     .header h1 { margin: 0; font-size: ${h1Size}; font-weight: 700; letter-spacing: ${templateId === "elegant" ? "0.02em" : "0"}; line-height: 1.15; }
-    .header .meta { margin-top: 10px; opacity: ${templateId === "corporate" || templateId === "bold" ? "0.92" : "1"}; font-size: ${metaSize}; line-height: 1.45; }
-    .body { padding: ${compactTemplate ? "20px 22px 24px" : "28px 32px 32px"}; }
-    .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-bottom: 28px; }
-    .party-label { margin: 0 0 8px; font-size: ${labelSize}; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; font-weight: 700; }
-    .party-line { margin: 0 0 4px; font-size: inherit; line-height: 1.45; }
-    table.lines { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: inherit; }
-    table.lines th { text-align: left; font-size: ${labelSize}; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; padding: 10px 12px; border-bottom: 2px solid ${t.accent}; font-weight: 700; }
-    table.lines td { padding: ${compactTemplate ? "8px 10px" : "12px"}; border-bottom: 1px solid #e2e8f0; vertical-align: top; font-size: inherit; line-height: 1.45; }
-    table.lines .num { width: 40px; color: #64748b; font-weight: 600; }
+    .header .meta { margin-top: 6px; opacity: ${templateId === "corporate" || templateId === "bold" ? "0.92" : "1"}; font-size: ${metaSize}; line-height: 1.35; }
+    .body { padding: ${compactTemplate ? "14px 16px 16px" : "16px 20px 18px"}; }
+    .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px; }
+    .party-label { margin: 0 0 4px; font-size: ${labelSize}; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; font-weight: 700; }
+    .party-line { margin: 0 0 2px; font-size: inherit; line-height: 1.35; }
+    table.lines { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: inherit; }
+    table.lines th { text-align: left; font-size: ${labelSize}; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; padding: 6px 8px; border-bottom: 2px solid ${t.accent}; font-weight: 700; }
+    table.lines td { padding: ${compactTemplate ? "6px 8px" : "8px"}; border-bottom: 1px solid #e2e8f0; vertical-align: top; font-size: inherit; line-height: 1.35; }
+    table.lines .num { width: 36px; color: #64748b; font-weight: 600; }
     table.lines .desc { font-size: inherit; }
-    table.lines .qty { width: 72px; text-align: right; font-weight: 600; }
-    table.lines .amt { width: 132px; text-align: right; font-weight: 700; white-space: nowrap; }
-    table.lines .empty { text-align: center; color: #94a3b8; padding: 28px; }
-    .totals { margin-left: auto; width: min(100%, 320px); font-size: inherit; }
-    .total-row { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: inherit; }
-    .total-row.grand { font-size: ${grandTotalSize}; font-weight: 800; color: ${t.accent}; border-bottom: none; padding-top: 12px; margin-top: 6px; }
-    .footer { margin-top: 32px; padding-top: 18px; border-top: 1px solid #e2e8f0; font-size: ${footerSize}; color: #334155; line-height: 1.5; }
-    .footer h3 { margin: 0 0 8px; font-size: ${labelSize}; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; font-weight: 700; }
-    .footer p { margin: 0 0 14px; white-space: pre-wrap; font-size: inherit; }
-    .etims { margin-top: 18px; padding: 12px 14px; border-radius: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; font-size: ${metaSize}; line-height: 1.45; }
-    .status { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: ${labelSize}; font-weight: 700; text-transform: uppercase; background: rgba(255,255,255,.2); }
-    @page { size: A4; margin: 14mm; }
+    table.lines .qty { width: 64px; text-align: right; font-weight: 600; }
+    table.lines .amt { width: 120px; text-align: right; font-weight: 700; white-space: nowrap; }
+    table.lines .empty { text-align: center; color: #94a3b8; padding: 16px; }
+    .totals { margin-left: auto; width: min(100%, 280px); font-size: inherit; }
+    .total-row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px solid #f1f5f9; font-size: inherit; }
+    .total-row.grand { font-size: ${grandTotalSize}; font-weight: 800; color: ${t.accent}; border-bottom: none; padding-top: 8px; margin-top: 2px; }
+    .footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: ${footerSize}; color: #334155; line-height: 1.4; }
+    .footer h3 { margin: 0 0 4px; font-size: ${labelSize}; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; font-weight: 700; }
+    .footer p { margin: 0 0 10px; white-space: pre-wrap; font-size: inherit; }
+    .etims { margin: 0 0 12px; padding: 8px 10px; border-radius: 6px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; font-size: ${metaSize}; line-height: 1.35; }
+    .status { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: ${labelSize}; font-weight: 700; text-transform: uppercase; background: rgba(255,255,255,.2); }
+    @page { size: A4; margin: 10mm; }
     @media print {
-      body { padding: 0; background: #fff; font-size: ${printBodySize}; line-height: 1.55; }
+      body { padding: 0; background: #fff; font-size: ${printBodySize}; line-height: 1.4; }
       a, a:visited { color: inherit !important; text-decoration: none !important; }
       a[href]::after { content: none !important; }
       .sheet { max-width: none; box-shadow: none; border: none; border-radius: 0; }
-      .header { padding: 22px 24px; }
-      .brand-logo { max-height: 56px; }
+      .header { padding: 12px 14px; }
+      .brand { margin-bottom: 6px; }
+      .brand-logo { max-height: 44px; }
       .brand-name { font-size: ${printBrandNameSize}; }
       .header h1 { font-size: ${printH1Size}; }
-      .header .meta { font-size: ${printMetaSize}; }
-      .body { padding: 22px 24px 28px; }
-      .party-label { font-size: ${printLabelSize}; }
+      .header .meta { font-size: ${printMetaSize}; margin-top: 4px; }
+      .body { padding: 12px 14px 14px; }
+      .parties { gap: 14px; margin-bottom: 12px; }
+      .party-label { font-size: ${printLabelSize}; margin-bottom: 3px; }
       .party-line { font-size: ${printBodySize}; }
-      table.lines { font-size: ${printBodySize}; }
-      table.lines th { font-size: ${printLabelSize}; padding: 12px 14px; }
-      table.lines td { padding: 12px 14px; font-size: ${printBodySize}; }
+      table.lines { font-size: ${printBodySize}; margin-bottom: 10px; }
+      table.lines th { font-size: ${printLabelSize}; padding: 6px 8px; }
+      table.lines td { padding: 6px 8px; font-size: ${printBodySize}; }
       table.lines .amt { font-size: ${printBodySize}; }
       .totals { font-size: ${printBodySize}; }
-      .total-row { font-size: ${printBodySize}; padding: 10px 0; }
-      .total-row.grand { font-size: ${printGrandTotalSize}; }
-      .footer { font-size: ${printFooterSize}; }
+      .total-row { font-size: ${printBodySize}; padding: 4px 0; }
+      .total-row.grand { font-size: ${printGrandTotalSize}; padding-top: 6px; }
+      .footer { margin-top: 12px; padding-top: 10px; font-size: ${printFooterSize}; }
       .footer h3 { font-size: ${printLabelSize}; }
-      .footer p { font-size: ${printFooterSize}; }
-      .etims { font-size: ${printFooterSize}; }
+      .footer p { font-size: ${printFooterSize}; margin-bottom: 8px; }
+      .etims { font-size: ${printFooterSize}; margin-bottom: 10px; padding: 6px 8px; }
       .status { font-size: ${printLabelSize}; }
-      .watermark-text { font-size: 84px; }
+      .watermark-text { font-size: 72px; }
     }
   `;
 }
@@ -247,6 +252,17 @@ export function buildPlatformInvoiceHtml(invoice) {
 
   const paymentBlock = options.show_payment_details && options.payment_details
     ? `<div><h3>Payment details</h3><p>${printTextBlock(options.payment_details)}</p></div>`
+    : "";
+
+  const notesBlock = invoice.notes
+    ? `<div><h3>Notes</h3><p>${printTextBlock(invoice.notes)}</p></div>`
+    : "";
+  const termsBlock = invoice.terms
+    ? `<div><h3>Terms</h3><p>${printTextBlock(invoice.terms)}</p></div>`
+    : "";
+  const footerInner = `${paymentBlock}${notesBlock}${termsBlock}`;
+  const footerBlock = footerInner
+    ? `<div class="footer">${footerInner}</div>`
     : "";
 
   return `<!DOCTYPE html>
@@ -290,11 +306,7 @@ export function buildPlatformInvoiceHtml(invoice) {
           </tbody>
         </table>
         ${totalsBlock(totals, currency, taxRate)}
-        <div class="footer">
-          ${paymentBlock}
-          ${invoice.notes ? `<div><h3>Notes</h3><p>${printTextBlock(invoice.notes)}</p></div>` : ""}
-          ${invoice.terms ? `<div><h3>Terms</h3><p>${printTextBlock(invoice.terms)}</p></div>` : ""}
-        </div>
+        ${footerBlock}
       </div>
     </div>
   </div>

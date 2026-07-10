@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
@@ -39,12 +40,14 @@ function Field({ label, children }) {
 
 function ContractEditor({ contractId = null }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const isEdit = Boolean(contractId);
   const [form, setForm] = useState(() => emptyContractForm());
   const [organizations, setOrganizations] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [emailing, setEmailing] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [savedId, setSavedId] = useState(contractId);
@@ -194,6 +197,30 @@ function ContractEditor({ contractId = null }) {
     }
   }
 
+  async function handleDelete() {
+    const id = savedId || contractId;
+    if (!id) return;
+    const label = form.title?.trim() || form.reference?.trim() || `#${id}`;
+    const ok = await confirm({
+      title: "Delete contract?",
+      message: `Delete “${label}”? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setDeleting(true);
+    try {
+      await apiRequest(`/admin/platform-contracts/${id}`, { method: "DELETE" });
+      notifySuccess("Contract deleted.");
+      router.push("/platform/contracts");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not delete contract.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   function fillTemplate(template, vars) {
     return String(template ?? "").replace(/\{(\w+)\}/g, (_, key) =>
       vars[key] != null && vars[key] !== "" ? String(vars[key]) : `{${key}}`,
@@ -283,12 +310,22 @@ function ContractEditor({ contractId = null }) {
           <button
             type="button"
             className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            disabled={emailing || saving}
+            disabled={emailing || saving || deleting}
             onClick={openEmailComposer}
           >
             Send email
           </button>
-          <PrimaryButton type="button" showIcon={false} disabled={saving} onClick={() => void handleSave()}>
+          {isEdit || savedId ? (
+            <button
+              type="button"
+              className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              disabled={saving || deleting}
+              onClick={() => void handleDelete()}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+          ) : null}
+          <PrimaryButton type="button" showIcon={false} disabled={saving || deleting} onClick={() => void handleSave()}>
             {saving ? "Saving…" : "Save"}
           </PrimaryButton>
         </div>

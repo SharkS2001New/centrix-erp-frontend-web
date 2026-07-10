@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
   CatalogPageShell,
@@ -25,6 +26,7 @@ import {
 
 export default function PlatformContractsPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [kindFilter, setKindFilter] = useState("all");
@@ -58,6 +60,29 @@ export default function PlatformContractsPage() {
       setViewerContract(detail.data ?? detail);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load contract.");
+    }
+  }
+
+  async function handleDelete(row) {
+    const label = row.title || row.reference || contractKindLabel(row.kind) || `#${row.id}`;
+    const ok = await confirm({
+      title: "Delete contract?",
+      message: `Delete “${label}”? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setActingId(row.id);
+    try {
+      await apiRequest(`/admin/platform-contracts/${row.id}`, { method: "DELETE" });
+      notifySuccess("Contract deleted.");
+      if (viewerContract?.id === row.id) setViewerContract(null);
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not delete contract.");
+    } finally {
+      setActingId(null);
     }
   }
 
@@ -247,6 +272,14 @@ export default function PlatformContractsPage() {
                             Provision org + invoice
                           </button>
                         ) : null}
+                        <button
+                          type="button"
+                          disabled={actingId === row.id}
+                          className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                          onClick={() => void handleDelete(row)}
+                        >
+                          Delete
+                        </button>
                       </div>
                     </td>
                   </tr>

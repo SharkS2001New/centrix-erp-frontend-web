@@ -23,6 +23,8 @@ import {
   resolveEnabledBillingModuleKeys,
 } from "@/lib/platform-invoices";
 import { buildPlatformInvoiceHtml, printPlatformInvoice } from "@/lib/platform-invoice-print";
+import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
+import { formatBillingMoney } from "@/lib/platform-billing";
 
 function Field({ label, children, className = "" }) {
   return (
@@ -49,16 +51,24 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   const isEdit = Boolean(invoiceId);
   const searchParams = useSearchParams();
   const presetTemplateId = searchParams.get("template")?.trim() ?? "";
+  const presetOrganizationId = searchParams.get("organization")?.trim() ?? "";
   const [form, setForm] = useState(() => emptyPlatformInvoiceForm());
   const [organizations, setOrganizations] = useState([]);
   const [moduleSummaries, setModuleSummaries] = useState([]);
   const [savedTemplates, setSavedTemplates] = useState([]);
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
+  const [emailing, setEmailing] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
   const [presetTemplateApplied, setPresetTemplateApplied] = useState(false);
+  const [presetOrganizationApplied, setPresetOrganizationApplied] = useState(false);
+  const [brandingOpen, setBrandingOpen] = useState(false);
 
   const totals = useMemo(
     () => calculateInvoiceTotals(form.line_items, form.tax_rate),
@@ -211,6 +221,14 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
     });
   }
 
+  useEffect(() => {
+    if (invoiceId || !presetOrganizationId || presetOrganizationApplied) return;
+    setPresetOrganizationApplied(true);
+    void handleOrganizationChange(presetOrganizationId);
+    // One-shot query preset for /platform/invoices/new?organization=
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceId, presetOrganizationId, presetOrganizationApplied]);
+
   function toggleModule(summary, checked) {
     setForm((prev) => {
       const selected = new Set(prev.selected_modules ?? []);
@@ -259,7 +277,8 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
     }));
   }
 
-  async function handleSave() {
+  async function handleSave(options = {}) {
+    const { skipOnSaved = false } = options;
     setSaving(true);
     try {
       const payload = invoiceFormToPayload(form);
@@ -278,11 +297,61 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
           return next;
         });
       }
-      onSaved?.(saved);
+      if (!skipOnSaved) onSaved?.(saved);
+      return saved?.id ?? invoiceId ?? null;
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to save invoice.");
+      return null;
     } finally {
       setSaving(false);
+    }
+  }
+
+  function openEmailComposer() {
+    const org = organizations.find((row) => String(row.id) === String(form.organization_id));
+    const number = form.invoice_number || (invoiceId ? `#${invoiceId}` : "draft");
+    const name = form.bill_to_name || org?.org_name || "Customer";
+    const total = formatBillingMoney(totals.total, form.currency);
+    setEmailTo(form.bill_to_email || org?.org_email || "");
+    setEmailSubject(`Invoice ${number}`);
+    setEmailBody(
+      `Dear ${name},\n\nPlease find attached invoice ${number} for ${total}.\n\nIf you have questions, reply to this email.\n\nRegards,\nCentrix`,
+    );
+    setEmailOpen(true);
+  }
+
+  async function handleSendEmail() {
+    if (!emailTo.trim()) {
+      notifyError("Enter a recipient email.");
+      return;
+    }
+    let id = invoiceId;
+    if (!id) {
+      id = await handleSave({ skipOnSaved: true });
+      if (!id) return;
+    }
+    setEmailing(true);
+    try {
+      const res = await apiRequest(`/admin/platform-invoices/${id}/email`, {
+        method: "POST",
+        body: {
+          to: emailTo.trim(),
+          subject: emailSubject.trim() || undefined,
+          body: emailBody.trim() || undefined,
+        },
+      });
+      notifySuccess(res.message ?? `Sent to ${emailTo.trim()}.`);
+      if (form.status === "draft") {
+        updateForm({ status: "sent" });
+      }
+      setEmailOpen(false);
+      if (!invoiceId && id) {
+        window.location.href = `/platform/invoices/${id}`;
+      }
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to send email. Check Platform → Email.");
+    } finally {
+      setEmailing(false);
     }
   }
 
@@ -378,22 +447,30 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
           </button>
           <button
             type="button"
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+            disabled={emailing || saving}
+            onClick={openEmailComposer}
+          >
+            Send email
+          </button>
+          <button
+            type="button"
             className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
             onClick={() => setSaveTemplateOpen(true)}
           >
             Save as template
           </button>
-          <PrimaryButton type="button" showIcon={false} disabled={saving} onClick={() => void handleSave()}>
+          <PrimaryButton type="button" showIcon={false} disabled={saving || emailing} onClick={() => void handleSave()}>
             {saving ? "Saving…" : "Save invoice"}
           </PrimaryButton>
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <div className="space-y-4">
-          <section className="theme-panel rounded-xl border p-5 shadow-sm">
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="space-y-3">
+          <section className="theme-panel rounded-xl border p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">Invoice details</h2>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Field label="Tenant organization">
                 <select
                   className={inputClass}
@@ -496,12 +573,12 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
             </p>
           </section>
 
-          <section className="theme-panel rounded-xl border p-5 shadow-sm">
+          <section className="theme-panel rounded-xl border p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">Bill from</h2>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-slate-500">
               Your company details on the invoice (defaults to ALPAC SOFTWARE SOLUTIONS).
             </p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Field label="Organization name" className="sm:col-span-2">
                 <input className={inputClass} value={seller.name} onChange={(e) => updateSeller({ name: e.target.value })} />
               </Field>
@@ -515,14 +592,14 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                 <input className={inputClass} value={seller.tax_pin} onChange={(e) => updateSeller({ tax_pin: e.target.value })} />
               </Field>
               <Field label="Address" className="sm:col-span-2">
-                <textarea className={inputClass} rows={3} value={seller.address} onChange={(e) => updateSeller({ address: e.target.value })} />
+                <textarea className={inputClass} rows={2} value={seller.address} onChange={(e) => updateSeller({ address: e.target.value })} />
               </Field>
             </div>
           </section>
 
-          <section className="theme-panel rounded-xl border p-5 shadow-sm">
+          <section className="theme-panel rounded-xl border p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">Bill to</h2>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <Field label="Organization name" className="sm:col-span-2">
                 <input className={inputClass} value={form.bill_to_name} onChange={(e) => updateForm({ bill_to_name: e.target.value })} />
               </Field>
@@ -539,14 +616,92 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                 <input className={inputClass} value={form.bill_to_tax_pin} onChange={(e) => updateForm({ bill_to_tax_pin: e.target.value })} />
               </Field>
               <Field label="Address" className="sm:col-span-2">
-                <textarea className={inputClass} rows={3} value={form.bill_to_address} onChange={(e) => updateForm({ bill_to_address: e.target.value })} />
+                <textarea className={inputClass} rows={2} value={form.bill_to_address} onChange={(e) => updateForm({ bill_to_address: e.target.value })} />
               </Field>
             </div>
           </section>
 
-          <section className="theme-panel rounded-xl border p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">Branding &amp; display</h2>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <section className="theme-panel rounded-xl border p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Branding &amp; display</h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Optional — show or hide branding, quantity, payment details, eTIMS, and watermark per invoice.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                onClick={() => setBrandingOpen((open) => !open)}
+              >
+                {brandingOpen ? "Hide options" : "Show options"}
+              </button>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300"
+                  checked={invoiceOptions.show_branding !== false}
+                  onChange={(e) => {
+                    updateInvoiceOptions({ show_branding: e.target.checked });
+                    if (e.target.checked) setBrandingOpen(true);
+                  }}
+                />
+                Show branding
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300"
+                  checked={invoiceOptions.show_quantity !== false}
+                  onChange={(e) => updateInvoiceOptions({ show_quantity: e.target.checked })}
+                />
+                Show quantity
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300"
+                  checked={Boolean(invoiceOptions.show_payment_details)}
+                  onChange={(e) => {
+                    updateInvoiceOptions({ show_payment_details: e.target.checked });
+                    if (e.target.checked) setBrandingOpen(true);
+                  }}
+                />
+                Payment details
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300"
+                  checked={Boolean(invoiceOptions.show_etims_invoice_no)}
+                  onChange={(e) => {
+                    updateInvoiceOptions({ show_etims_invoice_no: e.target.checked });
+                    if (e.target.checked) setBrandingOpen(true);
+                  }}
+                />
+                eTIMS number
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300"
+                  checked={invoiceOptions.watermark_enabled === true}
+                  onChange={(e) => {
+                    updateInvoiceOptions({ watermark_enabled: e.target.checked });
+                    if (e.target.checked) setBrandingOpen(true);
+                  }}
+                />
+                Watermark
+              </label>
+            </div>
+
+            {brandingOpen ? (
+            <div className="mt-3 grid gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2">
+              {invoiceOptions.show_branding !== false ? (
+                <>
               <Field label="Header branding">
                 <select
                   className={inputClass}
@@ -582,44 +737,23 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                   </button>
                 ) : null}
               </Field>
-              <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300"
-                  checked={invoiceOptions.show_quantity !== false}
-                  onChange={(e) => updateInvoiceOptions({ show_quantity: e.target.checked })}
-                />
-                Show quantity column on invoice
-              </label>
-              <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300"
-                  checked={Boolean(invoiceOptions.show_payment_details)}
-                  onChange={(e) => updateInvoiceOptions({ show_payment_details: e.target.checked })}
-                />
-                Show payment details
-              </label>
+                </>
+              ) : (
+                <p className="sm:col-span-2 text-xs text-slate-500">
+                  Branding is hidden on this invoice. Turn on “Show branding” to configure logo/name.
+                </p>
+              )}
               {invoiceOptions.show_payment_details ? (
                 <Field label="Payment details" className="sm:col-span-2">
                   <textarea
                     className={inputClass}
-                    rows={3}
+                    rows={2}
                     value={invoiceOptions.payment_details}
                     onChange={(e) => updateInvoiceOptions({ payment_details: e.target.value })}
                     placeholder="Bank name, account number, paybill, etc."
                   />
                 </Field>
               ) : null}
-              <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300"
-                  checked={Boolean(invoiceOptions.show_etims_invoice_no)}
-                  onChange={(e) => updateInvoiceOptions({ show_etims_invoice_no: e.target.checked })}
-                />
-                Show eTIMS KRA invoice number
-              </label>
               {invoiceOptions.show_etims_invoice_no ? (
                 <Field label="eTIMS KRA invoice no." className="sm:col-span-2">
                   <input
@@ -630,16 +764,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                   />
                 </Field>
               ) : null}
-              <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300"
-                  checked={invoiceOptions.watermark_enabled !== false}
-                  onChange={(e) => updateInvoiceOptions({ watermark_enabled: e.target.checked })}
-                />
-                Show anti-fraud watermark
-              </label>
-              {invoiceOptions.watermark_enabled !== false ? (
+              {invoiceOptions.watermark_enabled === true ? (
                 <>
                   <Field label="Watermark style">
                     <select
@@ -647,7 +772,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                       value={invoiceOptions.watermark_mode}
                       onChange={(e) => updateInvoiceOptions({ watermark_mode: e.target.value })}
                     >
-                      <option value="name">CentrixERP name</option>
+                      <option value="name">Brand name</option>
                       <option value="text">Custom text</option>
                       <option value="logo">Logo image</option>
                     </select>
@@ -683,16 +808,17 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                 </>
               ) : null}
             </div>
+            ) : null}
           </section>
 
           {moduleSummaries.length > 0 ? (
-            <section className="theme-panel rounded-xl border p-5 shadow-sm">
+            <section className="theme-panel rounded-xl border p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-900">Workspace modules</h2>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-slate-500">
                 Aligned to Centrix workspaces. Choosing a tenant auto-selects their enabled modules
                 (and free Administration). Amounts are market suggestions — edit line items below.
               </p>
-              <div className="mt-4 space-y-5">
+              <div className="mt-3 space-y-4">
                 {PLATFORM_BILLING_MODULE_GROUPS.map((group) => {
                   const rows = moduleSummaries.filter((summary) => summary.group === group.id);
                   if (!rows.length) return null;
@@ -701,13 +827,13 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                         {group.label}
                       </p>
-                      <ul className="space-y-3">
+                      <ul className="space-y-2">
                         {rows.map((summary) => {
                           const checked = (form.selected_modules ?? []).includes(summary.key);
                           return (
                             <li
                               key={summary.key}
-                              className="flex gap-3 rounded-lg border border-slate-100 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/40"
+                              className="flex gap-3 rounded-lg border border-slate-100 bg-slate-50/80 p-2.5 dark:border-slate-700 dark:bg-slate-900/40"
                             >
                               <input
                                 type="checkbox"
@@ -744,7 +870,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
             </section>
           ) : null}
 
-          <section className="theme-panel rounded-xl border p-5 shadow-sm">
+          <section className="theme-panel rounded-xl border p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-slate-900">Line items</h2>
               <button type="button" className="text-sm font-medium text-indigo-600 hover:text-indigo-800" onClick={addCustomLine}>
@@ -805,20 +931,20 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                 <p className="text-sm text-slate-500">No active line items. Select modules or add a custom line.</p>
               ) : null}
             </div>
-            <div className="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-sm">
+            <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-sm">
               <div className="flex justify-between"><span>Subtotal</span><span>{form.currency} {totals.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
               <div className="flex justify-between"><span>VAT</span><span>{form.currency} {totals.tax_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
               <div className="mt-1 flex justify-between font-semibold text-slate-900"><span>Total</span><span>{form.currency} {totals.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
             </div>
           </section>
 
-          <section className="theme-panel rounded-xl border p-5 shadow-sm">
-            <div className="grid gap-4">
+          <section className="theme-panel rounded-xl border p-4 shadow-sm">
+            <div className="grid gap-3">
               <Field label="Notes">
-                <textarea className={inputClass} rows={3} value={form.notes} onChange={(e) => updateForm({ notes: e.target.value })} />
+                <textarea className={inputClass} rows={2} value={form.notes} onChange={(e) => updateForm({ notes: e.target.value })} />
               </Field>
               <Field label="Terms">
-                <textarea className={inputClass} rows={3} value={form.terms} onChange={(e) => updateForm({ terms: e.target.value })} />
+                <textarea className={inputClass} rows={2} value={form.terms} onChange={(e) => updateForm({ terms: e.target.value })} />
               </Field>
             </div>
           </section>
@@ -826,13 +952,13 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
 
         <div className="xl:sticky xl:top-4 xl:self-start">
           <section className="theme-panel overflow-hidden rounded-xl border shadow-sm">
-            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2">
               <h2 className="text-sm font-semibold text-slate-900">Live preview</h2>
               <p className="text-xs text-slate-500">Updates as you edit — matches print output.</p>
             </div>
             <iframe
               title="Invoice preview"
-              className="h-[min(80vh,900px)] w-full border-0 bg-white"
+              className="h-[min(70vh,780px)] w-full border-0 bg-white"
               srcDoc={previewHtml}
             />
           </section>
@@ -858,6 +984,62 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
               </button>
               <PrimaryButton type="button" showIcon={false} onClick={() => void handleSaveTemplate()}>
                 Save template
+              </PrimaryButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {emailOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border bg-white p-5 shadow-xl">
+            <h3 className="text-base font-semibold text-slate-900">Email invoice</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              The invoice PDF will be attached. Delivery uses Platform → Email SMTP.
+            </p>
+            <div className="mt-4 space-y-3">
+              <Field label="To">
+                <input
+                  type="email"
+                  className={inputClass}
+                  value={emailTo}
+                  onChange={(e) => setEmailTo(e.target.value)}
+                />
+              </Field>
+              <PlatformAiEmailAssist
+                subject={emailSubject}
+                body={emailBody}
+                onApply={({ subject, body }) => {
+                  setEmailSubject(subject);
+                  setEmailBody(body);
+                }}
+              />
+              <Field label="Subject">
+                <input
+                  className={inputClass}
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                />
+              </Field>
+              <Field label="Body">
+                <textarea
+                  className={inputClass}
+                  rows={10}
+                  value={emailBody}
+                  onChange={(e) => setEmailBody(e.target.value)}
+                />
+              </Field>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                onClick={() => setEmailOpen(false)}
+              >
+                Cancel
+              </button>
+              <PrimaryButton type="button" showIcon={false} disabled={emailing} onClick={() => void handleSendEmail()}>
+                {emailing ? "Sending…" : "Send with PDF"}
               </PrimaryButton>
             </div>
           </div>
