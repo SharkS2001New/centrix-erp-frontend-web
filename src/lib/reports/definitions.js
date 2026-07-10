@@ -278,6 +278,94 @@ export const REPORT_DEFINITIONS = {
     footerTotals: [],
   },
 
+  "stock-chain": {
+    title: "Stock Chain Report",
+    subtitle: "Receive → sell lifecycle with available stock and stock value",
+    section: "Inventory",
+    apiPath: "/reports/stock-chain",
+    dateColumn: null,
+    showDateRange: true,
+    columns: [
+      {
+        key: "product_name",
+        label: "Product",
+        accessor: (r) => r.product_name,
+        link: "product",
+      },
+      {
+        key: "first_entered_at",
+        label: "First stock in",
+        accessor: (r) => r.first_entered_at,
+      },
+      {
+        key: "first_sold_at",
+        label: "First sale",
+        accessor: (r) => r.first_sold_at,
+      },
+      {
+        key: "last_movement_at",
+        label: "Last movement",
+        accessor: (r) => r.last_movement_at,
+      },
+      {
+        key: "total_received",
+        label: "Received value",
+        accessor: (r) => r.total_received,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "total_sold",
+        label: "Sold value",
+        accessor: (r) => r.total_sold,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "current_shop_stock",
+        label: "Shop available",
+        accessor: (r) => formatInventoryQtyWithUom(r.current_shop_stock, r),
+        align: "right",
+      },
+      {
+        key: "current_store_stock",
+        label: "Store available",
+        accessor: (r) => formatInventoryQtyWithUom(r.current_store_stock, r),
+        align: "right",
+      },
+      {
+        key: "total_cost_value",
+        label: "Stock value",
+        accessor: (r) => r.total_cost_value,
+        align: "right",
+        total: true,
+      },
+    ],
+    kpis: [
+      {
+        id: "skus",
+        label: "Products",
+        compute: (rows) => ({ value: String(rows.length) }),
+      },
+      {
+        id: "received",
+        label: "Received value",
+        compute: (rows) => ({ value: kes(sum(rows, "total_received")) }),
+      },
+      {
+        id: "sold",
+        label: "Sold value",
+        compute: (rows) => ({ value: kes(sum(rows, "total_sold")) }),
+      },
+      {
+        id: "stock_value",
+        label: "Stock value",
+        compute: (rows) => ({ value: kes(sum(rows, "total_cost_value")) }),
+      },
+    ],
+    footerTotals: ["total_received", "total_sold", "total_cost_value"],
+  },
+
   "profit-loss": {
     title: "Profit & Loss Report",
     subtitle: "Operational revenue, COGS, and expenses",

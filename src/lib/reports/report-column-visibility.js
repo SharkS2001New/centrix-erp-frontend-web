@@ -10,6 +10,19 @@ const HIDDEN_PRODUCT_CODE_COLUMN = "product_code";
 /** Internal FK columns — kept in API for joins/UOM but not shown in report tables. */
 const HIDDEN_INTERNAL_ID_COLUMNS = new Set(["unit_id"]);
 
+/** Reservation / on-hand helper fields — live stock columns already show available qty. */
+const HIDDEN_STOCK_HELPER_COLUMNS = new Set([
+  "reserved_shop_quantity",
+  "reserved_store_quantity",
+  "available_shop_quantity",
+  "available_store_quantity",
+  "available_total_units",
+  "current_shop_on_hand",
+  "current_store_on_hand",
+  "shop_on_hand",
+  "store_on_hand",
+]);
+
 /** UOM breakdown metadata — qty columns already show packaging via formatInventoryQtyWithUom. */
 const HIDDEN_REPORT_UOM_DETAIL_COLUMNS = new Set([
   "uom_name",
@@ -30,10 +43,14 @@ const REPORT_COLUMN_LABELS = {
   first_entered_at: "First stock in",
   first_sold_at: "First sale",
   last_movement_at: "Last movement",
-  total_received: "Received (period)",
-  total_sold: "Sold (period)",
-  current_shop_stock: "Shop stock",
-  current_store_stock: "Store stock",
+  total_received: "Received value (period)",
+  total_sold: "Sold value (period)",
+  current_shop_stock: "Shop available",
+  current_store_stock: "Store available",
+  shop_cost_value: "Shop stock value",
+  store_cost_value: "Store stock value",
+  total_cost_value: "Stock value",
+  effective_unit_cost: "Unit cost",
 };
 
 /**
@@ -43,6 +60,7 @@ const REPORT_COLUMN_LABELS = {
 export function isRedundantReportColumn(key, { multiBranch = false, showProductCode = false, rowKeys = [] } = {}) {
   if (HIDDEN_ORG_COLUMNS.has(key)) return true;
   if (HIDDEN_INTERNAL_ID_COLUMNS.has(key)) return true;
+  if (HIDDEN_STOCK_HELPER_COLUMNS.has(key)) return true;
   if (HIDDEN_REPORT_UOM_DETAIL_COLUMNS.has(key)) return true;
   if (!multiBranch && HIDDEN_SINGLE_BRANCH_COLUMNS.has(key)) return true;
   if (
