@@ -74,42 +74,50 @@ export function InventoryDashboardContent() {
   }, [user?.branch_id, user?.access_scope, user?.is_admin]);
 
   const stats = useMemo(() => {
-    const inStock = stockRows.filter((r) => Number(r.total_base_units ?? 0) > 0);
+    const availableTotal = (r) =>
+      Number(r.available_shop_quantity ?? r.shop_quantity ?? 0) +
+      Number(r.available_store_quantity ?? r.store_quantity ?? 0);
+    const inStock = stockRows.filter((r) => availableTotal(r) > 0);
     const low = stockRows.filter((r) => {
-      const qty = Number(r.total_base_units) || 0;
+      const qty = availableTotal(r);
       if (qty <= 0) return true;
       return r.product_alert === "REORDER";
     }).length;
-    const out = stockRows.filter((r) => Number(r.total_base_units) <= 0).length;
-    const totalQty = inStock.reduce((sum, r) => sum + Number(r.total_base_units ?? 0), 0);
+    const out = stockRows.filter((r) => availableTotal(r) <= 0).length;
+    const totalQty = inStock.reduce((sum, r) => sum + availableTotal(r), 0);
     return {
       skus: inStock.length,
       totalQty,
       low,
       out,
+      availableTotal,
     };
   }, [stockRows]);
 
   const inStockItems = useMemo(
     () =>
       [...stockRows]
-        .filter((r) => Number(r.total_base_units ?? 0) > 0)
-        .sort((a, b) => Number(b.total_base_units ?? 0) - Number(a.total_base_units ?? 0))
-        .slice(0, 10),
-    [stockRows],
+        .filter((r) => stats.availableTotal(r) > 0)
+        .sort((a, b) => stats.availableTotal(b) - stats.availableTotal(a))
+        .slice(0, 10)
+        .map((r) => ({
+          ...r,
+          available_total_units: stats.availableTotal(r),
+        })),
+    [stockRows, stats],
   );
 
   const topByQty = useMemo(
     () =>
       [...stockRows]
-        .sort((a, b) => Number(b.total_base_units ?? 0) - Number(a.total_base_units ?? 0))
+        .sort((a, b) => stats.availableTotal(b) - stats.availableTotal(a))
         .slice(0, 6)
         .map((r, i) => ({
           label: (r.product_name ?? r.product_code ?? "—").slice(0, 18),
-          value: Number(r.total_base_units ?? 0),
+          value: stats.availableTotal(r),
           color: CHART_COLORS[i % CHART_COLORS.length],
         })),
-    [stockRows],
+    [stockRows, stats],
   );
 
   const kpiItems = [
@@ -129,11 +137,11 @@ export function InventoryDashboardContent() {
       id: "total_value",
       label: "Total stock value",
       value: inventoryValue.total != null ? formatReportKes(inventoryValue.total) : "—",
-      hint: "Shop + store at cost",
+      hint: "Shop + store at cost (on hand)",
     },
-    { id: "skus", label: "SKUs in stock", value: stats.skus.toLocaleString(), hint: "With quantity on hand" },
+    { id: "skus", label: "SKUs in stock", value: stats.skus.toLocaleString(), hint: "With available quantity" },
     { id: "low", label: "Low stock", value: stats.low.toLocaleString(), hint: "Below reorder point" },
-    { id: "out", label: "Out of stock", value: stats.out.toLocaleString(), hint: "Zero on hand" },
+    { id: "out", label: "Out of stock", value: stats.out.toLocaleString(), hint: "Zero available" },
   ];
 
   return (
@@ -151,7 +159,7 @@ export function InventoryDashboardContent() {
           <DashboardKpiGrid items={kpiItems} />
 
           <div className="grid gap-4 xl:grid-cols-3">
-            <DashboardPanel title="Top products by quantity" subtitle="Highest on-hand units" className="xl:col-span-2">
+            <DashboardPanel title="Top products by quantity" subtitle="Highest available units" className="xl:col-span-2">
               <DonutChart segments={topByQty} loading={false} emptyMessage="No stock data." />
             </DashboardPanel>
             <DashboardPanel
@@ -160,7 +168,7 @@ export function InventoryDashboardContent() {
             >
               <dl className="space-y-3 text-sm">
                 <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Total units on hand</dt>
+                  <dt className="text-slate-500">Total units available</dt>
                   <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
                     {stats.totalQty.toLocaleString("en-KE", { maximumFractionDigits: 0 })}
                   </dd>
@@ -197,7 +205,7 @@ export function InventoryDashboardContent() {
 
           <DashboardSection
             title={ITEMS_CURRENTLY_IN_STOCK_LABEL}
-            subtitle="Products with quantity on hand right now"
+            subtitle="Products with available quantity right now"
             action={
               <Link href={ITEMS_CURRENTLY_IN_STOCK_HREF} className="text-sm text-[#185FA5] hover:underline">
                 View all
@@ -207,12 +215,12 @@ export function InventoryDashboardContent() {
             <DashboardSummaryTable
               columns={[
                 { key: "product_name", label: "Product" },
-                { key: "total_base_units", label: "On hand", align: "right" },
+                { key: "available_total_units", label: "Available", align: "right" },
               ]}
               rows={inStockItems}
               emptyMessage="No items currently in stock."
               formatValue={(key, value, row) =>
-                key === "total_base_units"
+                key === "available_total_units"
                   ? formatInventoryQtyWithUom(value, row)
                   : value
               }
@@ -233,12 +241,17 @@ export function InventoryDashboardContent() {
             <DashboardSummaryTable
               columns={[
                 { key: "product_name", label: "Product" },
-                { key: "total_base_units", label: "On hand", align: "right" },
+                { key: "available_total_units", label: "Available", align: "right" },
                 { key: "reorder_point", label: "Reorder", align: "right" },
               ]}
-              rows={lowStockRows}
+              rows={lowStockRows.map((r) => ({
+                ...r,
+                available_total_units:
+                  Number(r.available_shop_quantity ?? r.shop_quantity ?? 0) +
+                  Number(r.available_store_quantity ?? r.store_quantity ?? 0),
+              }))}
               formatValue={(key, value, row) =>
-                key === "total_base_units" || key === "reorder_point"
+                key === "available_total_units" || key === "reorder_point"
                   ? formatInventoryQtyWithUom(value, row)
                   : value
               }

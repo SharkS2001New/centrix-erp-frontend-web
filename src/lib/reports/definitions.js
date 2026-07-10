@@ -223,8 +223,12 @@ export const REPORT_DEFINITIONS = {
       { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
       {
         key: "total_base_units",
-        label: "On Hand Qty",
-        accessor: (r) => formatInventoryQtyWithUom(r.total_base_units ?? r.total_quantity, r),
+        label: "Available Qty",
+        accessor: (r) =>
+          formatInventoryQtyWithUom(
+            r.available_total_units ?? r.total_base_units ?? r.total_quantity,
+            r,
+          ),
         align: "right",
       },
       {

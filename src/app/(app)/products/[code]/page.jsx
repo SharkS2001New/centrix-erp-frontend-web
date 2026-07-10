@@ -813,7 +813,7 @@ export default function ProductDetailPage() {
           <div className="space-y-6 p-5 md:p-6">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <MetricCard
-                label="Total stock"
+                label="Total available"
                 value={enriched.stock_total_text}
                 hint={`Shop: ${enriched.stock_shop_text} · Store: ${enriched.stock_store_text}`}
                 accent="primary"
@@ -895,9 +895,9 @@ export default function ProductDetailPage() {
                 </DetailItem>
               </SectionCard>
 
-              <SectionCard title="Inventory" description="Stock in UOM packaging — same format as stock take">
-                <DetailItem label="Stock in shop">{enriched.stock_shop_text}</DetailItem>
-                <DetailItem label="Stock in store">{enriched.stock_store_text}</DetailItem>
+              <SectionCard title="Inventory" description="Available stock after reservations (same as catalogue and mobile)">
+                <DetailItem label="Available in shop">{enriched.stock_shop_text}</DetailItem>
+                <DetailItem label="Available in store">{enriched.stock_store_text}</DetailItem>
                 {includeShelfLocation ? (
                   <DetailItem label="Warehouse shelf">
                     {enriched.shelf_location?.trim() ? enriched.shelf_location : "—"}

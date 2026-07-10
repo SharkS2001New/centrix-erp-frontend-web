@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { inputClassName } from "@/components/catalog/catalog-shared";
 import { TABLE_ROW_CHECKBOX_CLASS } from "@/components/catalog/table-row-selection";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
+import { productStockAtLocation } from "@/lib/pos-stock";
 import { enrichProductForLpo } from "./lpo-product-utils";
 
 function formatStock(baseQty, product) {
@@ -245,8 +246,8 @@ export function LpoProductSearchPanel({
                   </th>
                 ) : null}
                 <th className="px-2 py-2">Product Name</th>
-                <th className="px-2 py-2 text-right">Current Stock in Shop</th>
-                <th className="px-2 py-2 text-right">Current Stock in Store</th>
+                <th className="px-2 py-2 text-right">Available in Shop</th>
+                <th className="px-2 py-2 text-right">Available in Store</th>
               </tr>
             </thead>
             <tbody>
@@ -289,10 +290,10 @@ export function LpoProductSearchPanel({
                         </span>
                       </td>
                       <td className="theme-text-muted px-2 py-2 text-right">
-                        {formatStock(product.stock_in_shop, product)}
+                        {formatStock(productStockAtLocation(product, "shop"), product)}
                       </td>
                       <td className="theme-text-muted px-2 py-2 text-right">
-                        {formatStock(product.stock_in_store, product)}
+                        {formatStock(productStockAtLocation(product, "store"), product)}
                       </td>
                     </tr>
                   );

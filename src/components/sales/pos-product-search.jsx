@@ -183,10 +183,10 @@ export function PosProductSearch({
                 <th className="px-2 py-1.5">Product name</th>
                 <th className="px-2 py-1.5 text-right">Unit price</th>
                 {showShopStock ? (
-                  <th className="px-2 py-1.5 text-right">Stock in shop</th>
+                  <th className="px-2 py-1.5 text-right">Available in shop</th>
                 ) : null}
                 {showStoreStock ? (
-                  <th className="px-2 py-1.5 text-right">Stock in store</th>
+                  <th className="px-2 py-1.5 text-right">Available in store</th>
                 ) : null}
               </tr>
             </thead>

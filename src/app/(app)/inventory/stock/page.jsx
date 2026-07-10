@@ -47,8 +47,8 @@ const COLUMN_STORAGE_KEY = "centrix-erp-inventory-stock-columns";
 const STOCK_COLUMNS = [
   { id: "product", label: "Product", defaultVisible: true, required: true },
   { id: "sku", label: "SKU", defaultVisible: false },
-  { id: "shop", label: "Shop", defaultVisible: true, align: "right" },
-  { id: "store", label: "Store", defaultVisible: true, align: "right" },
+  { id: "shop", label: "Shop avail.", defaultVisible: true, align: "right" },
+  { id: "store", label: "Store avail.", defaultVisible: true, align: "right" },
   { id: "shop_value", label: "Shop cost", defaultVisible: true, align: "right" },
   { id: "store_value", label: "Store cost", defaultVisible: true, align: "right" },
   { id: "profit_margin", label: "Profit margin", defaultVisible: false, align: "right" },
@@ -59,8 +59,8 @@ const STOCK_COLUMNS = [
 const STOCK_EXPORT_COLUMN_DEFS = {
   product: { key: "product_name", label: "Product" },
   sku: { key: "product_code", label: "SKU" },
-  shop: { key: "shop", label: "Shop", align: "right" },
-  store: { key: "store", label: "Store", align: "right" },
+  shop: { key: "shop", label: "Shop available", align: "right" },
+  store: { key: "store", label: "Store available", align: "right" },
   shop_value: { key: "shop_value", label: "Shop cost", align: "right" },
   store_value: { key: "store_value", label: "Store cost", align: "right" },
   profit_margin: { key: "profit_margin", label: "Profit margin", align: "right" },
@@ -77,12 +77,15 @@ function enrichStockRow(row) {
   };
   const cost = Number(row.effective_unit_cost ?? row.last_cost_price ?? 0);
   const sell = Number(row.wholesale_price ?? 0);
-  const shopQty = Number(row.shop_quantity ?? 0);
-  const storeQty = Number(row.store_quantity ?? 0);
+  const shopOnHand = Number(row.shop_quantity ?? 0);
+  const storeOnHand = Number(row.store_quantity ?? 0);
+  // Sellable qty after reservations (matches products catalogue / mobile).
+  const shopQty = Number(row.available_shop_quantity ?? shopOnHand);
+  const storeQty = Number(row.available_store_quantity ?? storeOnHand);
   const totalBase = shopQty + storeQty;
-  const convertedShopQty = factor > 0 ? shopQty / factor : shopQty;
-  const convertedStoreQty = factor > 0 ? storeQty / factor : storeQty;
-  // Stock value = converted qty × cost (cost is per purchase/package unit).
+  const convertedShopQty = factor > 0 ? shopOnHand / factor : shopOnHand;
+  const convertedStoreQty = factor > 0 ? storeOnHand / factor : storeOnHand;
+  // Stock value = physical on-hand × cost (valuation ignores reservations).
   const shopValue = row.shop_cost_value != null
     ? Number(row.shop_cost_value)
     : Math.round(convertedShopQty * cost * 100) / 100;
@@ -97,6 +100,8 @@ function enrichStockRow(row) {
     product_name: row.product_name,
     shop_quantity: shopQty,
     store_quantity: storeQty,
+    shop_on_hand: shopOnHand,
+    store_on_hand: storeOnHand,
     total_base_units: totalBase,
     reorder_point: reorderPoint,
     product_alert: row.product_alert ?? (reorderPoint > 0 && totalBase <= reorderPoint ? "REORDER" : "OK"),

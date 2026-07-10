@@ -856,7 +856,7 @@ export default function ProductsPage() {
           hint={`${stats.activePct}% of catalogue`}
         />
         <StatCard label="Low stock" value={stats.lowStock} hint="below reorder point" />
-        <StatCard label="Out of stock" value={stats.outOfStock} hint="zero units on hand" />
+        <StatCard label="Out of stock" value={stats.outOfStock} hint="zero available units" />
       </div>
       {multiBranch ? (
         <p className="theme-subtext mt-2 text-xs">

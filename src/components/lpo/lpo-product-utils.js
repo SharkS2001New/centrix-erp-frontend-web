@@ -134,8 +134,24 @@ export function enrichProductForLpo(product, uomById, vatById) {
     uom_label: packName,
     vat_rate: vat?.vat_percentage != null ? Number(vat.vat_percentage) : 0,
     unit_price_display: Number(product.unit_price ?? 0),
-    stock_in_shop: Number(product.stock_in_shop ?? 0),
-    stock_in_store: Number(product.stock_in_store ?? 0),
+    stock_in_shop: Number(
+      product.stock_on_hand_shop ?? product.stock_in_shop ?? 0,
+    ),
+    stock_in_store: Number(
+      product.stock_on_hand_store ?? product.stock_in_store ?? 0,
+    ),
+    stock_available_shop: Number(
+      product.stock_available_shop ??
+        product.branch_stock?.shop_available ??
+        product.stock_in_shop ??
+        0,
+    ),
+    stock_available_store: Number(
+      product.stock_available_store ??
+        product.branch_stock?.store_available ??
+        product.stock_in_store ??
+        0,
+    ),
   };
 }
 
