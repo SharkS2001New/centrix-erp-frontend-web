@@ -63,22 +63,258 @@ export const DEFAULT_INVOICE_OPTIONS = {
   etims_invoice_no: "",
   watermark_enabled: true,
   watermark_mode: "name",
-  watermark_text: "CentrixERP",
+  watermark_text: "ALPAC SOFTWARE SOLUTIONS",
   watermark_logo_url: "",
   brand_mode: "name",
-  brand_name: "CentrixERP",
+  brand_name: "ALPAC SOFTWARE SOLUTIONS",
   brand_logo_url: "",
   print_font_family: "template",
   print_font_scale: "standard",
 };
 
+/** Default Bill from — Alpac Software Solutions (platform operator). */
 export const DEFAULT_PLATFORM_SELLER = {
-  name: "CentrixERP",
-  email: "",
-  phone: "",
-  address: "",
-  tax_pin: "",
+  name: "ALPAC SOFTWARE SOLUTIONS",
+  email: "alpacke.tech@gmail.com",
+  phone: "0748956677",
+  address: "Kasarani, Nairobi Kenya",
+  tax_pin: "A008933545E",
 };
+
+/**
+ * Billable modules aligned to Centrix workspaces.
+ * Backoffice is billed as Sales + Inventory + Customers/suppliers (not one line).
+ * Suggested amounts are mid-market Kenya SaaS ERP add-on prices (KES / month).
+ */
+export const PLATFORM_BILLING_MODULE_GROUPS = [
+  { id: "backoffice", label: "Backoffice" },
+  { id: "workspaces", label: "Workspaces" },
+  { id: "integrations", label: "Integrations" },
+  { id: "platform", label: "Platform" },
+];
+
+export const PLATFORM_BILLING_MODULES = [
+  {
+    key: "sales",
+    group: "backoffice",
+    label: "Sales",
+    description: "Backoffice sales orders, quotations, pricing, and sales reporting.",
+    default_amount: 12000,
+    billing_period: "monthly",
+    moduleKeys: ["sales.backend", "sales.dashboard", "sales.reports"],
+  },
+  {
+    key: "inventory",
+    group: "backoffice",
+    label: "Inventory & stock",
+    description: "Stock control, transfers, valuations, and inventory reporting.",
+    default_amount: 10000,
+    billing_period: "monthly",
+    moduleKeys: ["inventory", "inventory.dashboard", "inventory.reports"],
+  },
+  {
+    key: "customers_suppliers",
+    group: "backoffice",
+    label: "Customers, suppliers & purchasing",
+    description: "Customer and supplier master data, LPOs, purchases, and routes.",
+    default_amount: 8000,
+    billing_period: "monthly",
+    moduleKeys: ["customers_suppliers", "customers_suppliers.reports"],
+  },
+  {
+    key: "mobile_apps",
+    group: "workspaces",
+    label: "Mobile, Drivers & Manager apps",
+    description: "Centrix Mobile field sales, Drivers, Manager apps, and External POS terminal.",
+    default_amount: 15000,
+    billing_period: "monthly",
+    moduleKeys: ["sales.mobile", "sales.pos"],
+  },
+  {
+    key: "accounting",
+    group: "workspaces",
+    label: "Accounting & finance",
+    description: "General ledger, receivables, expenses, and financial statements.",
+    default_amount: 15000,
+    billing_period: "monthly",
+    moduleKeys: ["accounting", "accounting.reports"],
+  },
+  {
+    key: "hr_payroll",
+    group: "workspaces",
+    label: "Human resources & payroll",
+    description: "Employees, attendance, payroll runs, and HR compliance reports.",
+    default_amount: 12000,
+    billing_period: "monthly",
+    moduleKeys: ["hr_payroll", "hr_payroll.reports"],
+  },
+  {
+    key: "distribution",
+    group: "workspaces",
+    label: "Distribution & logistics",
+    description: "Dispatch board, trips, fleet, proof of delivery, and logistics KPIs.",
+    default_amount: 12000,
+    billing_period: "monthly",
+    moduleKeys: ["distribution", "distribution.dashboard", "distribution.reports"],
+  },
+  {
+    key: "kra_etims",
+    group: "integrations",
+    label: "KRA integrations via eTIMS",
+    description: "Kenya Revenue Authority eTIMS receipt submission, device setup, and compliance onboarding.",
+    default_amount: 5000,
+    billing_period: "monthly",
+    financeFlags: ["enable_kra_integration", "enable_kra_device"],
+  },
+  {
+    key: "mpesa",
+    group: "integrations",
+    label: "M-Pesa integrations & onboarding",
+    description: "Lipa na M-Pesa STK checkout, C2B reconciliation, and payment onboarding for POS and mobile.",
+    default_amount: 4000,
+    billing_period: "monthly",
+    financeFlags: ["enable_mpesa_stk"],
+    salesFlags: ["enable_mpesa_stk"],
+  },
+  {
+    key: "hosting_support",
+    group: "platform",
+    label: "Platform hosting & support",
+    description: "Cloud hosting, backups, security updates, and standard support SLA.",
+    default_amount: 25000,
+    billing_period: "monthly",
+    alwaysWhenOrgSelected: true,
+  },
+  {
+    key: "admin",
+    group: "platform",
+    label: "Administration",
+    description: "Users, roles, branches, company setup, and audit. Included free with every tenant.",
+    default_amount: 0,
+    billing_period: "monthly",
+    free: true,
+    moduleKeys: ["admin"],
+    alwaysWhenOrgSelected: true,
+  },
+];
+
+function modulesOn(enabledModules, keys = []) {
+  return (keys ?? []).some((key) => Boolean(enabledModules?.[key]));
+}
+
+/** Build display summaries (catalog wins; API can override amounts). */
+export function buildPlatformBillingSummaries(apiSummaries = []) {
+  const byKey = new Map((apiSummaries ?? []).map((row) => [row.key, row]));
+  return PLATFORM_BILLING_MODULES.map((mod) => {
+    const api = byKey.get(mod.key);
+    return {
+      key: mod.key,
+      group: mod.group,
+      label: mod.label,
+      description: mod.description,
+      default_amount: api?.default_amount != null ? Number(api.default_amount) : mod.default_amount,
+      billing_period: api?.billing_period ?? mod.billing_period ?? "monthly",
+      free: Boolean(mod.free),
+    };
+  });
+}
+
+const LEGACY_BILLING_KEY_MAP = {
+  sales: "sales",
+  mobile: "mobile_apps",
+  mobile_field_sales: "mobile_apps",
+  "mobile-field-sales": "mobile_apps",
+  inventory: "inventory",
+  inventory_stock: "inventory",
+  customers_suppliers: "customers_suppliers",
+  purchasing: "customers_suppliers",
+  accounting: "accounting",
+  hr: "hr_payroll",
+  hr_payroll: "hr_payroll",
+  distribution: "distribution",
+  kra: "kra_etims",
+  kra_etims: "kra_etims",
+  etims: "kra_etims",
+  mpesa: "mpesa",
+  hosting: "hosting_support",
+  hosting_support: "hosting_support",
+  platform_hosting: "hosting_support",
+  admin: "admin",
+  administration: "admin",
+};
+
+/**
+ * Which billing modules should be ticked for a tenant from billing-context / org payload.
+ */
+export function resolveEnabledBillingModuleKeys(context = {}) {
+  const selected = new Set();
+
+  const push = (key) => {
+    if (!key) return;
+    const mapped = LEGACY_BILLING_KEY_MAP[key] ?? key;
+    if (PLATFORM_BILLING_MODULES.some((mod) => mod.key === mapped)) {
+      selected.add(mapped);
+    }
+  };
+
+  for (const key of context.enabled_billing_keys ?? context.selected_modules ?? []) {
+    push(key);
+  }
+
+  for (const row of context.module_summaries ?? []) {
+    if (row?.enabled || row?.is_enabled || row?.selected) {
+      push(row.key);
+    }
+  }
+
+  const enabledModules =
+    context.enabled_modules ??
+    context.organization?.enabled_modules ??
+    context.modules ??
+    {};
+  const moduleSettings =
+    context.module_settings ?? context.organization?.module_settings ?? {};
+  const finance = moduleSettings.finance ?? context.finance ?? {};
+  const sales = moduleSettings.sales ?? context.sales ?? {};
+
+  for (const mod of PLATFORM_BILLING_MODULES) {
+    let on = false;
+    if (mod.alwaysWhenOrgSelected) on = true;
+    if (mod.moduleKeys?.length && modulesOn(enabledModules, mod.moduleKeys)) on = true;
+    if (mod.financeFlags?.length) {
+      on =
+        on ||
+        mod.financeFlags.some((key) => {
+          if (finance && Object.prototype.hasOwnProperty.call(finance, key)) {
+            return finance[key] !== false;
+          }
+          return false;
+        });
+    }
+    if (mod.salesFlags?.length) {
+      on =
+        on ||
+        mod.salesFlags.some((key) => {
+          if (sales && Object.prototype.hasOwnProperty.call(sales, key)) {
+            return sales[key] !== false;
+          }
+          return false;
+        });
+    }
+    if (mod.free && mod.key === "admin") on = true;
+    if (on) selected.add(mod.key);
+  }
+
+  return [...selected];
+}
+
+export function lineItemsFromBillingKeys(keys, summaries) {
+  const byKey = new Map((summaries ?? []).map((row) => [row.key, row]));
+  return (keys ?? [])
+    .map((key) => byKey.get(key))
+    .filter(Boolean)
+    .map((summary) => lineItemFromModuleSummary(summary, true));
+}
 
 export function normalizeInvoiceOptions(options) {
   return { ...DEFAULT_INVOICE_OPTIONS, ...(options ?? {}) };
@@ -124,9 +360,10 @@ export function emptyPlatformInvoiceForm(overrides = {}) {
 export function lineItemFromModuleSummary(summary, included = true) {
   const qty = 1;
   const unitPrice = Number(summary.default_amount ?? 0);
+  const period = summary.billing_period ? ` (${summary.billing_period})` : "";
   return {
     module_key: summary.key,
-    description: summary.description || summary.label,
+    description: `${summary.label ?? summary.description ?? "Module"}${period}`,
     quantity: qty,
     unit_price: unitPrice,
     amount: qty * unitPrice,
@@ -189,7 +426,7 @@ export function invoiceRecordToForm(record) {
     bill_to_address: record.bill_to_address ?? "",
     bill_to_tax_pin: record.bill_to_tax_pin ?? "",
     bill_to_company_code: record.bill_to_company_code ?? "",
-    seller: normalizeSeller(record.seller),
+    seller: normalizeSeller(record.seller ?? record.bill_from),
     invoice_options: normalizeInvoiceOptions(record.invoice_options),
     line_items: Array.isArray(record.line_items) ? record.line_items.map((row) => ({ ...row })) : [],
     selected_modules: record.selected_modules ?? [],

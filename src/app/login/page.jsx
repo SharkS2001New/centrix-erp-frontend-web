@@ -7,6 +7,10 @@ import { hasAuthSession, getStoredUser, readCachedAuthSnapshot } from "@/lib/aut
 import { buildAccessContext, resolveHomePath } from "@/lib/access-control";
 import { ApiError, isSessionConflictError } from "@/lib/api";
 import {
+  isLicenseExpiredApiError,
+  licenseExpiredMessage,
+} from "@/lib/organization-license";
+import {
   clearStoredCompanyCode,
   getDefaultCompanyCode,
   getStoredCompanyCode,
@@ -99,13 +103,21 @@ function LoginForm() {
         );
       } else {
         setSessionConflict(false);
-        setError(
-          err instanceof ApiError
-            ? err.message
-            : err instanceof Error
+        if (isLicenseExpiredApiError(err)) {
+          setError(
+            err instanceof ApiError
               ? err.message
-              : "Login failed. Check that the API is reachable and try again.",
-        );
+              : licenseExpiredMessage(null),
+          );
+        } else {
+          setError(
+            err instanceof ApiError
+              ? err.message
+              : err instanceof Error
+                ? err.message
+                : "Login failed. Check that the API is reachable and try again.",
+          );
+        }
       }
     } finally {
       setSubmitting(false);
@@ -131,7 +143,9 @@ function LoginForm() {
       ? "Your session expired due to inactivity. Please sign in again."
       : reason === "session"
         ? "Your session ended because this account signed in on another device."
-        : null;
+        : reason === "license"
+          ? "Your organization’s Centrix licence has expired. All users have been signed out. Contact your Centrix administrator to renew or extend the licence."
+          : null;
 
   return (
     <AuthShell title="Sign in" subtitle="Sign in with your email or username and password.">

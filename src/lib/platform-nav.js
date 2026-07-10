@@ -15,6 +15,12 @@ export const PLATFORM_LINK_GROUPS = [
         label: "Overview",
         exact: true,
         icon: "platform",
+        description: "Platform home and quick links to tenant and operations tools.",
+      },
+      {
+        href: "/platform/organizations",
+        label: "Tenant organizations",
+        icon: "building",
         description: "All registered organizations and quick access to tenant configuration.",
       },
       {
@@ -34,12 +40,6 @@ export const PLATFORM_LINK_GROUPS = [
         label: "AI training",
         icon: "star",
         description: "Platform test console and OpenAI credentials for super-admin knowledge training.",
-      },
-      {
-        href: "/platform/push",
-        label: "Mobile push",
-        icon: "bell",
-        description: "Firebase Cloud Messaging for Centrix Manager and Centrix Mobile field sales apps.",
       },
       {
         href: "/platform/whatsapp",
@@ -82,6 +82,36 @@ export const PLATFORM_LINK_GROUPS = [
         label: "Invoices",
         icon: "receipt",
         description: "Platform billing invoices for tenant subscriptions.",
+      },
+      {
+        href: "/platform/plans",
+        label: "Plans",
+        icon: "package",
+        description: "Monthly and annual subscription packages (modules, seats, price).",
+      },
+      {
+        href: "/platform/subscriptions",
+        label: "Subscriptions",
+        icon: "clock",
+        description: "Tenant plan assignments, renewals, overdue status, and draft invoices.",
+      },
+      {
+        href: "/platform/contracts",
+        label: "Contracts & quotes",
+        icon: "file",
+        description: "Quote → accept → provision org → first invoice.",
+      },
+      {
+        href: "/platform/email",
+        label: "Email",
+        icon: "chat",
+        description: "SMTP and From address for sending contracts and billing notices.",
+      },
+      {
+        href: "/platform/invoice-templates",
+        label: "Templates",
+        icon: "package",
+        description: "Invoice design layouts and saved billing package templates.",
       },
       {
         href: "/platform/legacy-import-converter",

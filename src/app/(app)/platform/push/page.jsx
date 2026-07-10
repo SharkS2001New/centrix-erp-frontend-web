@@ -1,7 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { PlatformPushScreen } from "@/components/platform/platform-push-screen";
-
-export default function PlatformPushPage() {
-  return <PlatformPushScreen />;
+/** Mobile push (FCM) config removed — realtime uses Laravel Reverb. */
+export default function PlatformPushRedirectPage() {
+  redirect("/platform");
 }

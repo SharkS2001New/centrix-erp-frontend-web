@@ -1,21 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import {
+  PLATFORM_BILLING_MODULE_GROUPS,
   PLATFORM_INVOICE_DESIGN_TEMPLATES,
   PLATFORM_INVOICE_STATUSES,
+  buildPlatformBillingSummaries,
   calculateInvoiceTotals,
   emptyPlatformInvoiceForm,
   invoiceFormToPayload,
   invoiceRecordToForm,
   lineItemFromModuleSummary,
+  lineItemsFromBillingKeys,
   normalizeInvoiceOptions,
   normalizeSeller,
   recalcLineItemAmount,
+  resolveEnabledBillingModuleKeys,
 } from "@/lib/platform-invoices";
 import { buildPlatformInvoiceHtml, printPlatformInvoice } from "@/lib/platform-invoice-print";
 
@@ -42,6 +47,8 @@ async function imageFileToDataUrl(file) {
 
 export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   const isEdit = Boolean(invoiceId);
+  const searchParams = useSearchParams();
+  const presetTemplateId = searchParams.get("template")?.trim() ?? "";
   const [form, setForm] = useState(() => emptyPlatformInvoiceForm());
   const [organizations, setOrganizations] = useState([]);
   const [moduleSummaries, setModuleSummaries] = useState([]);
@@ -51,6 +58,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
+  const [presetTemplateApplied, setPresetTemplateApplied] = useState(false);
 
   const totals = useMemo(
     () => calculateInvoiceTotals(form.line_items, form.tax_rate),
@@ -77,28 +85,55 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
     }
   }, []);
 
-  const loadBillingContext = useCallback(async (organizationId) => {
+  const loadBillingContext = useCallback(async (organizationId, options = {}) => {
+    const {
+      syncBillTo = true,
+      syncSeller = true,
+      autoSelectModules = Boolean(organizationId),
+    } = options;
     try {
       const query = organizationId ? `?organization_id=${organizationId}` : "";
       const res = await apiRequest(`/admin/platform-invoices/billing-context${query}`);
-      const summaries = res.module_summaries ?? [];
+      const summaries = buildPlatformBillingSummaries(res.module_summaries ?? []);
       setModuleSummaries(summaries);
-      if (res.bill_to) {
-        setForm((prev) => ({
-          ...prev,
-          bill_to_name: res.bill_to.name ?? prev.bill_to_name,
-          bill_to_email: res.bill_to.email ?? prev.bill_to_email,
-          bill_to_phone: res.bill_to.phone ?? prev.bill_to_phone,
-          bill_to_address: res.bill_to.address ?? prev.bill_to_address,
-          bill_to_tax_pin: res.bill_to.tax_pin ?? prev.bill_to_tax_pin,
-          bill_to_company_code: res.bill_to.company_code ?? prev.bill_to_company_code,
-          seller: normalizeSeller(res.seller ?? prev.seller),
-        }));
-      }
+
+      const enabledKeys = organizationId ? resolveEnabledBillingModuleKeys(res) : [];
+
+      setForm((prev) => {
+        const next = { ...prev };
+        if (syncBillTo && res.bill_to) {
+          next.bill_to_name = res.bill_to.name ?? prev.bill_to_name;
+          next.bill_to_email = res.bill_to.email ?? prev.bill_to_email;
+          next.bill_to_phone = res.bill_to.phone ?? prev.bill_to_phone;
+          next.bill_to_address = res.bill_to.address ?? prev.bill_to_address;
+          next.bill_to_tax_pin = res.bill_to.tax_pin ?? prev.bill_to_tax_pin;
+          next.bill_to_company_code = res.bill_to.company_code ?? prev.bill_to_company_code;
+        }
+        if (syncSeller) {
+          // Prefer Alpac defaults; only fill blanks from API context.
+          const contextSeller = res.seller ?? res.bill_from ?? {};
+          next.seller = normalizeSeller({
+            ...contextSeller,
+            name: contextSeller.name || prev.seller?.name,
+            email: contextSeller.email || prev.seller?.email,
+            phone: contextSeller.phone || prev.seller?.phone,
+            address: contextSeller.address || prev.seller?.address,
+            tax_pin: contextSeller.tax_pin || prev.seller?.tax_pin,
+          });
+        }
+        if (autoSelectModules) {
+          next.selected_modules = enabledKeys;
+          next.line_items = lineItemsFromBillingKeys(enabledKeys, summaries);
+        }
+        return next;
+      });
       return summaries;
     } catch (e) {
+      // Still show catalog modules if billing-context fails.
+      const fallback = buildPlatformBillingSummaries([]);
+      setModuleSummaries(fallback);
       notifyError(e instanceof ApiError ? e.message : "Failed to load billing context.");
-      return [];
+      return fallback;
     }
   }, []);
 
@@ -109,7 +144,11 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
       const res = await apiRequest(`/admin/platform-invoices/${invoiceId}`);
       const record = res.data;
       setForm(invoiceRecordToForm(record));
-      await loadBillingContext(record.organization_id ?? "");
+      await loadBillingContext(record.organization_id ?? "", {
+        syncBillTo: false,
+        syncSeller: false,
+        autoSelectModules: false,
+      });
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load invoice.");
     } finally {
@@ -121,7 +160,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
     void loadOrganizations();
     void loadSavedTemplates();
     if (!invoiceId) {
-      void loadBillingContext("");
+      void loadBillingContext("", { syncBillTo: false, syncSeller: false, autoSelectModules: false });
     } else {
       void loadInvoice();
     }
@@ -164,7 +203,12 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
 
   async function handleOrganizationChange(organizationId) {
     updateForm({ organization_id: organizationId, selected_modules: [], line_items: [] });
-    await loadBillingContext(organizationId || "");
+    // Refresh Bill to + auto-tick this tenant's enabled modules onto the invoice.
+    await loadBillingContext(organizationId || "", {
+      syncBillTo: true,
+      syncSeller: false,
+      autoSelectModules: Boolean(organizationId),
+    });
   }
 
   function toggleModule(summary, checked) {
@@ -223,7 +267,18 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
         ? await apiRequest(`/admin/platform-invoices/${invoiceId}`, { method: "PATCH", body: payload })
         : await apiRequest("/admin/platform-invoices", { method: "POST", body: payload });
       notifySuccess(res.message ?? "Invoice saved.");
-      onSaved?.(res.data);
+      const saved = res.data;
+      if (saved) {
+        setForm((prev) => {
+          const next = invoiceRecordToForm(saved);
+          // If the API omits seller, keep what the user just saved in the form.
+          if (!(saved.seller ?? saved.bill_from)) {
+            next.seller = prev.seller;
+          }
+          return next;
+        });
+      }
+      onSaved?.(saved);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to save invoice.");
     } finally {
@@ -260,6 +315,24 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
       notifyError(e instanceof ApiError ? e.message : "Failed to save template.");
     }
   }
+
+  useEffect(() => {
+    if (isEdit || presetTemplateApplied || !presetTemplateId || !savedTemplates.length) return;
+    const template = savedTemplates.find((row) => String(row.id) === String(presetTemplateId));
+    if (!template) return;
+    setForm((prev) => ({
+      ...prev,
+      template_id: template.template_id ?? prev.template_id,
+      invoice_options: normalizeInvoiceOptions(template.invoice_options ?? prev.invoice_options),
+      line_items: (template.line_items ?? []).map((row) => ({ ...row })),
+      selected_modules: template.selected_modules ?? [],
+      notes: template.notes ?? prev.notes,
+      terms: template.terms ?? prev.terms,
+      tax_rate: template.tax_rate ?? prev.tax_rate,
+    }));
+    setPresetTemplateApplied(true);
+    notifySuccess(`Applied template “${template.name}”.`);
+  }, [isEdit, presetTemplateApplied, presetTemplateId, savedTemplates]);
 
   function applySavedTemplate(templateId) {
     const template = savedTemplates.find((row) => String(row.id) === String(templateId));
@@ -348,6 +421,23 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                   ))}
                 </select>
               </Field>
+              <Field label="Saved template">
+                <select
+                  className={inputClass}
+                  defaultValue=""
+                  onChange={(e) => {
+                    if (e.target.value) applySavedTemplate(e.target.value);
+                    e.target.value = "";
+                  }}
+                >
+                  <option value="">— Load saved template —</option>
+                  {savedTemplates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <Field label="Status">
                 <select
                   className={inputClass}
@@ -396,34 +486,21 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                   onChange={(e) => updateForm({ tax_rate: e.target.value })}
                 />
               </Field>
-              {savedTemplates.length > 0 ? (
-                <Field label="Load saved template">
-                  <select
-                    className={inputClass}
-                    defaultValue=""
-                    onChange={(e) => {
-                      if (e.target.value) applySavedTemplate(e.target.value);
-                      e.target.value = "";
-                    }}
-                  >
-                    <option value="">— Choose template —</option>
-                    {savedTemplates.map((tpl) => (
-                      <option key={tpl.id} value={tpl.id}>
-                        {tpl.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              ) : null}
             </div>
             <p className="mt-2 text-xs text-slate-500">
               {PLATFORM_INVOICE_DESIGN_TEMPLATES.find((t) => t.id === form.template_id)?.description}
+              {" · "}
+              <a href="/platform/invoice-templates" className="font-medium text-[#185FA5] hover:underline">
+                Manage templates
+              </a>
             </p>
           </section>
 
           <section className="theme-panel rounded-xl border p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900">Bill from</h2>
-            <p className="mt-1 text-xs text-slate-500">Your company details on the invoice (defaults to CentrixERP).</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Your company details on the invoice (defaults to ALPAC SOFTWARE SOLUTIONS).
+            </p>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <Field label="Organization name" className="sm:col-span-2">
                 <input className={inputClass} value={seller.name} onChange={(e) => updateSeller({ name: e.target.value })} />
@@ -610,32 +687,60 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
 
           {moduleSummaries.length > 0 ? (
             <section className="theme-panel rounded-xl border p-5 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-900">Enabled modules</h2>
+              <h2 className="text-sm font-semibold text-slate-900">Workspace modules</h2>
               <p className="mt-1 text-xs text-slate-500">
-                Check modules to add billing lines. Amounts are suggestions — edit line items below.
+                Aligned to Centrix workspaces. Choosing a tenant auto-selects their enabled modules
+                (and free Administration). Amounts are market suggestions — edit line items below.
               </p>
-              <ul className="mt-4 space-y-3">
-                {moduleSummaries.map((summary) => {
-                  const checked = (form.selected_modules ?? []).includes(summary.key);
+              <div className="mt-4 space-y-5">
+                {PLATFORM_BILLING_MODULE_GROUPS.map((group) => {
+                  const rows = moduleSummaries.filter((summary) => summary.group === group.id);
+                  if (!rows.length) return null;
                   return (
-                    <li key={summary.key} className="flex gap-3 rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                      <input
-                        type="checkbox"
-                        className="mt-1 h-4 w-4 rounded border-slate-300"
-                        checked={checked}
-                        onChange={(e) => toggleModule(summary, e.target.checked)}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-slate-900">{summary.label}</p>
-                        <p className="mt-0.5 text-xs text-slate-600">{summary.description}</p>
-                        <p className="mt-1 text-xs font-medium text-indigo-700">
-                          Suggested: {form.currency} {Number(summary.default_amount ?? 0).toLocaleString()} / {summary.billing_period}
-                        </p>
-                      </div>
-                    </li>
+                    <div key={group.id}>
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        {group.label}
+                      </p>
+                      <ul className="space-y-3">
+                        {rows.map((summary) => {
+                          const checked = (form.selected_modules ?? []).includes(summary.key);
+                          return (
+                            <li
+                              key={summary.key}
+                              className="flex gap-3 rounded-lg border border-slate-100 bg-slate-50/80 p-3 dark:border-slate-700 dark:bg-slate-900/40"
+                            >
+                              <input
+                                type="checkbox"
+                                className="mt-1 h-4 w-4 rounded border-slate-300"
+                                checked={checked}
+                                onChange={(e) => toggleModule(summary, e.target.checked)}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                                  {summary.label}
+                                  {summary.free ? (
+                                    <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200">
+                                      Free
+                                    </span>
+                                  ) : null}
+                                </p>
+                                <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+                                  {summary.description}
+                                </p>
+                                <p className="mt-1 text-xs font-medium text-indigo-700 dark:text-indigo-300">
+                                  {summary.free
+                                    ? "Included free of charge"
+                                    : `Suggested: ${form.currency} ${Number(summary.default_amount ?? 0).toLocaleString()} / ${summary.billing_period}`}
+                                </p>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
                   );
                 })}
-              </ul>
+              </div>
             </section>
           ) : null}
 
@@ -768,14 +873,16 @@ export function PlatformInvoiceEditorPage({ invoiceId = null }) {
       title={invoiceId ? "Edit platform invoice" : "New platform invoice"}
       subtitle="Bill tenant organizations with professional templates, module summaries, and live preview."
     >
-      <PlatformInvoiceEditor
-        invoiceId={invoiceId}
-        onSaved={(record) => {
-          if (!invoiceId && record?.id) {
-            window.location.href = `/platform/invoices/${record.id}`;
-          }
-        }}
-      />
+      <Suspense fallback={<p className="text-sm text-slate-500">Loading invoice…</p>}>
+        <PlatformInvoiceEditor
+          invoiceId={invoiceId}
+          onSaved={(record) => {
+            if (!invoiceId && record?.id) {
+              window.location.href = `/platform/invoices/${record.id}`;
+            }
+          }}
+        />
+      </Suspense>
     </CatalogPageShell>
   );
 }

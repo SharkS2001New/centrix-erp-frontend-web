@@ -1,4 +1,5 @@
 import { getToken, clearSession, isScreenLocked, canSeeServerErrorDetail } from "./auth-storage";
+import { isLicenseExpiredApiCode } from "./organization-license";
 import { apiFetchCredentials, useCookieAuth } from "./auth-config";
 import { apiV1BaseUrl } from "./api-base-url";
 import { beginAppLoading, endAppLoading, isPageNavigationLoading } from "./app-loading";
@@ -114,6 +115,8 @@ export function isSessionConflictError(error) {
       || String(error.message ?? "").toLowerCase().includes("another device"))
   );
 }
+
+export { isLicenseExpiredApiError, isLicenseExpiredApiCode } from "./organization-license";
 
 /** @param {unknown} error */
 export function isMissingProductWeightsError(error) {
@@ -379,27 +382,39 @@ async function performApiRequest(path, url, options = {}) {
         return performApiRequest(path, url, { ...options, _rateLimitRetried: true, reportIssues: false });
       }
 
-      if (res.status === 401 && typeof window !== "undefined") {
+      if (typeof window !== "undefined") {
         const code = data?.code;
-        const locked = isScreenLocked();
-        const stayOnPageWhileLocked =
-          locked && code !== "session_active_elsewhere";
+        const licenseExpired = isLicenseExpiredApiCode(code);
 
-        if (!stayOnPageWhileLocked) {
+        if (licenseExpired && (res.status === 401 || res.status === 403)) {
           if (!isAuthEndpoint(path)) {
             await revokeServerAuthSession();
           }
           clearSession();
           localStorage.removeItem("pos_erp_active_session");
-          const loginPath = "/login";
-          if (!window.location.pathname.startsWith(loginPath)) {
-            const reason =
-              code === "session_idle_timeout"
-                ? "idle"
-                : code === "session_active_elsewhere"
-                  ? "session"
-                  : "auth";
-            window.location.assign(`${loginPath}?reason=${reason}`);
+          if (!window.location.pathname.startsWith("/login")) {
+            window.location.assign("/login?reason=license");
+          }
+        } else if (res.status === 401) {
+          const locked = isScreenLocked();
+          const stayOnPageWhileLocked =
+            locked && code !== "session_active_elsewhere";
+
+          if (!stayOnPageWhileLocked) {
+            if (!isAuthEndpoint(path)) {
+              await revokeServerAuthSession();
+            }
+            clearSession();
+            localStorage.removeItem("pos_erp_active_session");
+            if (!window.location.pathname.startsWith("/login")) {
+              const reason =
+                code === "session_idle_timeout"
+                  ? "idle"
+                  : code === "session_active_elsewhere"
+                    ? "session"
+                    : "auth";
+              window.location.assign(`/login?reason=${reason}`);
+            }
           }
         }
       }

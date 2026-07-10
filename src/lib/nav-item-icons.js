@@ -11,10 +11,16 @@ export const NAV_HREF_ICONS = {
   "/platform/ai-training/credentials": "shield",
   "/platform/whatsapp": "chat",
   "/platform/invoices": "receipt",
+  "/platform/invoice-templates": "package",
+  "/platform/plans": "package",
+  "/platform/subscriptions": "clock",
+  "/platform/contracts": "file",
+  "/platform/email": "chat",
   "/platform/active-users": "users",
   "/platform/system-issues": "alert",
   "/platform/database-backups": "database",
   "/platform/legacy-import-converter": "upload",
+  "/platform/organizations": "building",
   "/platform/organizations/new": "plus",
 
   // Dashboards

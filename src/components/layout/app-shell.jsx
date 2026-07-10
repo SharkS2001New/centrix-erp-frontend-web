@@ -21,6 +21,7 @@ import { AiAssistPanel } from "@/components/ai/ai-assist-panel";
 import { AppRouteLoading } from "@/components/shared/app-route-loading";
 import { useNavigationBusy, usePendingNavigationHref } from "@/components/shared/navigation-progress-bar";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
+import { LicenseExpiryBanner } from "@/components/shared/license-expiry-banner";
 import {
   beginNavigationIntent,
   finishNavigation,
@@ -114,6 +115,7 @@ export function AppShell({ children }) {
                 onToggleSidebar={toggleSidebar}
               />
               <NetworkStatusBanner />
+              <LicenseExpiryBanner />
               <WorkspaceTabBar />
               <main
                 className={

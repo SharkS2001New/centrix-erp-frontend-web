@@ -38,6 +38,10 @@ import { useCookieAuth } from "@/lib/auth-config";
 import { invalidateReferenceDataCache } from "@/lib/reference-data-cache";
 import { invalidateReportBuilderTemplateCache } from "@/lib/report-builder-templates";
 import { capabilitiesVersionChanged } from "@/lib/capabilities-sync";
+import {
+  clearLicenseWarningDismissed,
+  licenseFromAuthState,
+} from "@/lib/organization-license";
 
 const CLIENT_ID_KEY = "pos_erp_client_id";
 const CAPABILITIES_REFRESH_MS = 90_000;
@@ -182,6 +186,10 @@ export function AuthProvider({ children }) {
   }, [applyPasswordExpiry]);
 
   const passwordExpiry = capabilities?.password_expiry ?? null;
+  const organizationLicense = useMemo(
+    () => licenseFromAuthState({ capabilities, organization }),
+    [capabilities, organization],
+  );
 
   const applyAuthPayload = useCallback(async (res, channel = WEB_LOGIN_CHANNEL) => {
     setSession(res.token, res.user, res.organization, res.memberships ?? [], channel);
@@ -307,6 +315,7 @@ export function AuthProvider({ children }) {
       }
 
       const caps = await applyAuthPayload(res, WEB_LOGIN_CHANNEL);
+      clearLicenseWarningDismissed();
       if (res.must_change_password || res.user?.must_change_password) {
         router.replace("/change-password");
         return caps;
@@ -348,6 +357,7 @@ export function AuthProvider({ children }) {
         },
       });
       const caps = await applyAuthPayload(res, WEB_LOGIN_CHANNEL);
+      clearLicenseWarningDismissed();
       if (res.must_change_password || res.user?.must_change_password) {
         router.replace("/change-password");
         return caps;
@@ -374,7 +384,8 @@ export function AuthProvider({ children }) {
     [applyAuthPayload, router],
   );
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (options = {}) => {
+    const reason = options.reason ? String(options.reason) : null;
     try {
       if (hasAuthSession()) {
         await revokeServerAuthSession();
@@ -396,7 +407,7 @@ export function AuthProvider({ children }) {
     setMemberships([]);
     setCapabilities(null);
     setLoginChannel(null);
-    router.replace("/login");
+    router.replace(reason ? `/login?reason=${encodeURIComponent(reason)}` : "/login");
   }, [router]);
 
   const value = useMemo(
@@ -419,6 +430,7 @@ export function AuthProvider({ children }) {
       completePasswordChange,
       skipPasswordExpiry,
       passwordExpiry,
+      organizationLicense,
       isModuleEnabled: (key) => capabilities?.modules?.[key] ?? false,
       isSuperAdmin: () => Boolean(user?.is_super_admin || capabilities?.is_super_admin),
       hasPermission: (code) =>
@@ -453,6 +465,7 @@ export function AuthProvider({ children }) {
       completePasswordChange,
       skipPasswordExpiry,
       passwordExpiry,
+      organizationLicense,
     ],
   );
 

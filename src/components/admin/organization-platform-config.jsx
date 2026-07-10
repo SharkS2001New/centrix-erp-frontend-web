@@ -36,6 +36,7 @@ import {
   formatLoginChannels,
 } from "@/lib/login-channels";
 import { platformCapabilitiesFromOrgConfig } from "@/lib/sales-channels";
+import { OrganizationBillingPanel } from "@/components/platform/organization-billing-panel";
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]";
@@ -1592,31 +1593,38 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
 
 export function OrganizationStatusPanel({ organization, isActive: isActiveProp, onChange }) {
   const isActive = isActiveProp ?? organization?.is_active !== false;
+  const organizationId = organization?.id;
 
   return (
-    <PlatformFormSection
-      title="Organization status"
-      description="Disabling an organization signs out all users and blocks sign-in until re-enabled."
-    >
-      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-        <input
-          type="checkbox"
-          className="mt-1"
-          checked={isActive}
-          onChange={(e) => onChange?.({ is_active: e.target.checked })}
-        />
-        <span>
-          <span className="block text-sm font-medium text-slate-900">
-            {isActive ? "Organization is active" : "Organization is disabled"}
+    <div className="space-y-6">
+      <PlatformFormSection
+        title="Organization status"
+        description="Disabling an organization signs out all users and blocks sign-in until re-enabled."
+      >
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={isActive}
+            onChange={(e) => onChange?.({ is_active: e.target.checked })}
+          />
+          <span>
+            <span className="block text-sm font-medium text-slate-900">
+              {isActive ? "Organization is active" : "Organization is disabled"}
+            </span>
+            <span className="mt-0.5 block text-xs text-slate-500">
+              {isActive
+                ? "Users can sign in normally."
+                : "All users are signed out and cannot sign in until you re-enable this organization."}
+            </span>
           </span>
-          <span className="mt-0.5 block text-xs text-slate-500">
-            {isActive
-              ? "Users can sign in normally."
-              : "All users are signed out and cannot sign in until you re-enable this organization."}
-          </span>
-        </span>
-      </label>
-    </PlatformFormSection>
+        </label>
+      </PlatformFormSection>
+
+      {organizationId ? (
+        <OrganizationBillingPanel organizationId={organizationId} organization={organization} />
+      ) : null}
+    </div>
   );
 }
 

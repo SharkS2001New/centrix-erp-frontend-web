@@ -61,9 +61,17 @@ export default function PlatformInvoicesPage() {
       title="Platform invoices"
       subtitle="Create and manage invoices to bill tenant organizations for modules, hosting, and platform services."
       action={
-        <Link href="/platform/invoices/new">
-          <PrimaryButton type="button">New invoice</PrimaryButton>
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/platform/invoice-templates"
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Templates
+          </Link>
+          <Link href="/platform/invoices/new">
+            <PrimaryButton type="button">New invoice</PrimaryButton>
+          </Link>
+        </div>
       }
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Invoices" }]} />

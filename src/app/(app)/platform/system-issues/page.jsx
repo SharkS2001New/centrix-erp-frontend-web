@@ -14,7 +14,6 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
-
 const KIND_LABELS = {
   error: "Error",
   slow: "Slow",
@@ -38,6 +37,55 @@ function issueSummary(row) {
   return row.message;
 }
 
+function formatWhen(value) {
+  if (!value) return "—";
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return String(value);
+  }
+}
+
+/** First time this fingerprint was recorded. */
+function issueFirstSeen(row) {
+  return row.first_seen_at ?? row.created_at ?? null;
+}
+
+/** Last time a similar error was embedded / re-occurred. */
+function issueLastSeen(row) {
+  return (
+    row.last_seen_at ??
+    row.last_occurred_at ??
+    row.last_occurrence_at ??
+    (Number(row.occurrence_count ?? 0) > 1 ? row.updated_at : null) ??
+    null
+  );
+}
+
+function statusLeavesCurrentFilter(nextStatus, statusFilter) {
+  if (statusFilter === "all") return false;
+  return nextStatus !== statusFilter;
+}
+
+function adjustSummaryCounts(summary, fromStatus, toStatus) {
+  if (!summary || fromStatus === toStatus) return summary;
+  const next = { ...summary };
+  const dec = (key) => {
+    if (typeof next[key] === "number") next[key] = Math.max(0, next[key] - 1);
+  };
+  const inc = (key) => {
+    if (typeof next[key] === "number") next[key] = next[key] + 1;
+    else next[key] = 1;
+  };
+  if (fromStatus === "open") dec("open");
+  if (fromStatus === "acknowledged") dec("acknowledged");
+  if (fromStatus === "resolved") dec("resolved");
+  if (toStatus === "open") inc("open");
+  if (toStatus === "acknowledged") inc("acknowledged");
+  if (toStatus === "resolved") inc("resolved");
+  return next;
+}
+
 export default function PlatformSystemIssuesPage() {
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -57,8 +105,8 @@ export default function PlatformSystemIssuesPage() {
   const [saving, setSaving] = useState(false);
   const [resolvingId, setResolvingId] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ quiet = false } = {}) => {
+    if (!quiet) setLoading(true);
     try {
       const extra = {
         status: statusFilter,
@@ -76,6 +124,7 @@ export default function PlatformSystemIssuesPage() {
             q: search,
             extra,
           }),
+          loading: false,
         }),
         apiRequest("/admin/system-issue-reports/summary", { loading: false }),
       ]);
@@ -87,7 +136,7 @@ export default function PlatformSystemIssuesPage() {
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load system issues");
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [page, pageSize, search, statusFilter, kindFilter, priorityFilter, fromDate, toDate]);
 
@@ -106,7 +155,7 @@ export default function PlatformSystemIssuesPage() {
 
   async function openDetail(row) {
     try {
-      const detail = await apiRequest(`/admin/system-issue-reports/${row.id}`);
+      const detail = await apiRequest(`/admin/system-issue-reports/${row.id}`, { loading: false });
       setSelected(detail);
       setResolutionNotes(detail.resolution_notes ?? "");
     } catch (e) {
@@ -114,18 +163,56 @@ export default function PlatformSystemIssuesPage() {
     }
   }
 
-  async function patchIssue(id, body, { closeDetail = false } = {}) {
+  function applyLocalUpdate(id, updated, previousStatus) {
+    const nextStatus = updated.status ?? previousStatus;
+    setSummary((prev) => adjustSummaryCounts(prev, previousStatus, nextStatus));
+
+    if (statusLeavesCurrentFilter(nextStatus, statusFilter)) {
+      setRows((prev) => prev.filter((row) => row.id !== id));
+      setTotal((t) => Math.max(0, t - 1));
+      return;
+    }
+
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...updated } : row)));
+  }
+
+  function nextIssueAfter(id) {
+    const index = rows.findIndex((row) => row.id === id);
+    const candidates = rows.filter((row) => row.id !== id && row.status !== "resolved");
+    if (!candidates.length) return null;
+    if (index < 0) return candidates[0];
+    return (
+      rows.slice(index + 1).find((row) => row.id !== id && row.status !== "resolved") ??
+      rows.slice(0, index).find((row) => row.id !== id && row.status !== "resolved") ??
+      null
+    );
+  }
+
+  async function patchIssue(id, body, { advanceDetail = false } = {}) {
+    const previous = rows.find((row) => row.id === id) ?? selected;
+    const previousStatus = previous?.status ?? "open";
     setSaving(true);
     try {
       const updated = await apiRequest(`/admin/system-issue-reports/${id}`, {
         method: "PATCH",
         body,
+        loading: false,
       });
-      if (closeDetail) {
-        setSelected(updated);
-      }
+      applyLocalUpdate(id, updated, previousStatus);
       notifySuccess(body.status === "resolved" ? "Issue marked resolved." : "Issue updated.");
-      await load();
+
+      if (advanceDetail) {
+        const next = nextIssueAfter(id);
+        if (next) {
+          await openDetail(next);
+        } else {
+          setSelected(null);
+          setResolutionNotes("");
+        }
+      }
+
+      // Keep summary accurate without blanking the table.
+      void load({ quiet: true });
       return updated;
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to update issue");
@@ -144,7 +231,7 @@ export default function PlatformSystemIssuesPage() {
         status,
         resolution_notes: resolutionNotes.trim() || null,
       },
-      { closeDetail: true },
+      { advanceDetail: true },
     );
   }
 
@@ -242,7 +329,8 @@ export default function PlatformSystemIssuesPage() {
         <table className="min-w-full text-sm">
           <thead className="theme-table-head-row text-left text-xs uppercase">
             <tr>
-              <th className="px-4 py-3">When</th>
+              <th className="px-4 py-3">First seen</th>
+              <th className="px-4 py-3">Last seen</th>
               <th className="px-4 py-3">Kind</th>
               <th className="px-4 py-3">Priority</th>
               <th className="px-4 py-3">Organization</th>
@@ -255,77 +343,100 @@ export default function PlatformSystemIssuesPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="theme-subtext px-4 py-8 text-center">
+                <td colSpan={9} className="theme-subtext px-4 py-8 text-center">
                   Loading issues…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="theme-subtext px-4 py-8 text-center">
+                <td colSpan={9} className="theme-subtext px-4 py-8 text-center">
                   No system issues found.
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
-                <tr
-                  key={row.id}
-                  className={`theme-table-body-row ${row.is_high_priority ? "theme-legacy-archive-row" : ""}`}
-                >
-                  <td className="theme-text-muted px-4 py-3 whitespace-nowrap">
-                    {row.created_at ? new Date(row.created_at).toLocaleString() : "—"}
-                  </td>
-                  <td className="px-4 py-3">{KIND_LABELS[row.kind] ?? row.kind}</td>
-                  <td className="px-4 py-3">
-                    {row.is_high_priority ? (
-                      <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-900 dark:bg-orange-500/20 dark:text-orange-200">
-                        High · {row.occurrence_count ?? "?"}×
-                      </span>
-                    ) : (
-                      <span className="theme-subtext text-xs">Normal</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {row.organization?.org_name ?? "—"}
-                    {row.organization?.company_code ? (
-                      <div className="theme-subtext text-xs">{row.organization.company_code}</div>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3">{userLabel(row.user)}</td>
-                  <td className="theme-text-muted max-w-xs truncate px-4 py-3 font-mono text-xs" title={issueSummary(row)}>
-                    {issueSummary(row)}
-                  </td>
-                  <td className="px-4 py-3">{STATUS_LABELS[row.status] ?? row.status}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        className="theme-link text-sm font-medium hover:underline"
-                        onClick={() => openDetail(row)}
-                      >
-                        View
-                      </button>
-                      {row.status !== "resolved" ? (
+              rows.map((row) => {
+                const firstSeen = issueFirstSeen(row);
+                const lastSeen = issueLastSeen(row);
+                return (
+                  <tr
+                    key={row.id}
+                    className={`theme-table-body-row ${row.is_high_priority ? "theme-legacy-archive-row" : ""}`}
+                  >
+                    <td className="theme-text-muted px-4 py-3 whitespace-nowrap">
+                      {formatWhen(firstSeen)}
+                    </td>
+                    <td className="theme-text-muted px-4 py-3 whitespace-nowrap">
+                      {lastSeen && lastSeen !== firstSeen ? (
+                        <span title={`${row.occurrence_count ?? "?"} occurrences`}>
+                          {formatWhen(lastSeen)}
+                          {Number(row.occurrence_count ?? 0) > 1 ? (
+                            <span className="theme-subtext ml-1 text-[11px]">
+                              ({row.occurrence_count}×)
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <span className="theme-subtext">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">{KIND_LABELS[row.kind] ?? row.kind}</td>
+                    <td className="px-4 py-3">
+                      {row.is_high_priority ? (
+                        <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-900 dark:bg-orange-500/20 dark:text-orange-200">
+                          High · {row.occurrence_count ?? "?"}×
+                        </span>
+                      ) : (
+                        <span className="theme-subtext text-xs">Normal</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {row.organization?.org_name ?? "—"}
+                      {row.organization?.company_code ? (
+                        <div className="theme-subtext text-xs">{row.organization.company_code}</div>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3">{userLabel(row.user)}</td>
+                    <td className="theme-text-muted max-w-xs truncate px-4 py-3 font-mono text-xs" title={issueSummary(row)}>
+                      {issueSummary(row)}
+                    </td>
+                    <td className="px-4 py-3">{STATUS_LABELS[row.status] ?? row.status}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-2">
                         <button
                           type="button"
-                          className="text-sm font-medium text-emerald-600 hover:underline disabled:opacity-50 dark:text-emerald-400"
-                          disabled={resolvingId === row.id || saving}
-                          onClick={() => void markResolvedQuick(row)}
+                          className="theme-link text-sm font-medium hover:underline"
+                          onClick={() => openDetail(row)}
                         >
-                          {resolvingId === row.id ? "Saving…" : "Resolve"}
+                          View
                         </button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              ))
+                        {row.status !== "resolved" ? (
+                          <button
+                            type="button"
+                            className="text-sm font-medium text-emerald-600 hover:underline disabled:opacity-50 dark:text-emerald-400"
+                            disabled={resolvingId === row.id || saving}
+                            onClick={() => void markResolvedQuick(row)}
+                          >
+                            {resolvingId === row.id ? "Saving…" : "Resolve"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
 
-      <PaginationBar page={page} totalPages={totalPages} total={total} pageSize={pageSize} onChange={setPage}
-              onPageSizeChange={handlePageSizeChange}
-            />
+      <PaginationBar
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={pageSize}
+        onChange={setPage}
+        onPageSizeChange={handlePageSizeChange}
+      />
 
       {selected ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/45 p-4">
@@ -342,14 +453,32 @@ export default function PlatformSystemIssuesPage() {
               </div>
               <button
                 type="button"
-                className="theme-subtext text-sm hover:text-[var(--theme-text)]"
-                onClick={() => setSelected(null)}
+                className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                onClick={() => {
+                  setSelected(null);
+                  setResolutionNotes("");
+                }}
               >
                 Close
               </button>
             </div>
 
             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="theme-subtext text-xs uppercase">First seen</dt>
+                <dd>{formatWhen(issueFirstSeen(selected))}</dd>
+              </div>
+              <div>
+                <dt className="theme-subtext text-xs uppercase">Last seen</dt>
+                <dd>
+                  {formatWhen(issueLastSeen(selected) ?? issueFirstSeen(selected))}
+                  {Number(selected.occurrence_count ?? 0) > 1 ? (
+                    <span className="theme-subtext ml-1 text-xs">
+                      ({selected.occurrence_count}×)
+                    </span>
+                  ) : null}
+                </dd>
+              </div>
               <div>
                 <dt className="theme-subtext text-xs uppercase">Kind</dt>
                 <dd>{KIND_LABELS[selected.kind] ?? selected.kind}</dd>
@@ -436,22 +565,33 @@ export default function PlatformSystemIssuesPage() {
             </label>
 
             <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                disabled={saving}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                onClick={() => {
+                  setSelected(null);
+                  setResolutionNotes("");
+                }}
+              >
+                Close
+              </button>
               <PrimaryButton
                 type="button"
                 showIcon={false}
-                disabled={saving}
+                disabled={saving || selected.status === "acknowledged" || selected.status === "resolved"}
                 className="!bg-amber-600 hover:!bg-amber-700"
-                onClick={() => updateStatus("acknowledged")}
+                onClick={() => void updateStatus("acknowledged")}
               >
-                Acknowledge
+                {saving ? "Saving…" : "Acknowledge"}
               </PrimaryButton>
               <PrimaryButton
                 type="button"
                 showIcon={false}
-                disabled={saving}
-                onClick={() => updateStatus("resolved")}
+                disabled={saving || selected.status === "resolved"}
+                onClick={() => void updateStatus("resolved")}
               >
-                Mark resolved
+                {saving ? "Saving…" : "Mark resolved"}
               </PrimaryButton>
             </div>
           </div>

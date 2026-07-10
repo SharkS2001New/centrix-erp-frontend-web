@@ -18,6 +18,14 @@ import {
   ProvisionSetupPreview,
   ProvisionTemplateControls,
 } from "@/components/platform/provision-setup-preview";
+import { ProvisionSubscriptionFields } from "@/components/platform/provision-subscription-fields";
+import {
+  buildProvisionSubscriptionPayload,
+  emptyProvisionSubscriptionForm,
+  ensureSubscriptionAfterProvision,
+} from "@/lib/provision-subscription";
+import { formatBillingDate, formatBillingMoney } from "@/lib/platform-billing";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 export default function RegisterOrganizationPage() {
   const { capabilities } = useAuth();
@@ -49,6 +57,10 @@ export default function RegisterOrganizationPage() {
   const [templateName, setTemplateName] = useState("");
   const [templateSaving, setTemplateSaving] = useState(false);
   const [cloneOrgId, setCloneOrgId] = useState("");
+  const [plans, setPlans] = useState([]);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [subscriptionForm, setSubscriptionForm] = useState(() => emptyProvisionSubscriptionForm());
+  const [createdSubscription, setCreatedSubscription] = useState(null);
 
   const domainChildrenMap = useMemo(() => buildDomainChildrenMap(moduleOptions), [moduleOptions]);
 
@@ -114,6 +126,12 @@ export default function RegisterOrganizationPage() {
     apiRequest("/admin/organizations")
       .then((res) => setOrganizations(res.data ?? []))
       .catch(() => setOrganizations([]));
+
+    setPlansLoading(true);
+    apiRequest("/admin/platform-plans")
+      .then((res) => setPlans((res.data ?? []).filter((p) => p.is_active !== false)))
+      .catch(() => setPlans([]))
+      .finally(() => setPlansLoading(false));
   }, []);
 
   useEffect(() => {
@@ -241,7 +259,25 @@ export default function RegisterOrganizationPage() {
     e.preventDefault();
     setError(null);
     setResult(null);
+    setCreatedSubscription(null);
     setSubmitting(true);
+
+    const subscriptionPayload = buildProvisionSubscriptionPayload(subscriptionForm, plans);
+
+    if (subscriptionForm.license_mode === "plan" && !subscriptionForm.plan_id) {
+      setError("Select a subscription plan, or choose Free trial / No licence yet.");
+      setSubmitting(false);
+      return;
+    }
+
+    if (
+      (subscriptionForm.license_mode === "trial" || subscriptionForm.license_mode === "plan") &&
+      !subscriptionForm.current_period_end
+    ) {
+      setError("Set a licence expiry date.");
+      setSubmitting(false);
+      return;
+    }
 
     try {
       const res = await apiRequest("/admin/organizations/provision", {
@@ -261,8 +297,38 @@ export default function RegisterOrganizationPage() {
           admin_email: managerEmail,
           admin_password: managerPassword,
           admin_full_name: managerFullName,
+          ...(subscriptionPayload
+            ? {
+                subscription: subscriptionPayload,
+                plan_id: subscriptionPayload.plan_id,
+                license: subscriptionPayload,
+              }
+            : { subscription: null }),
         },
       });
+
+      const orgId = res.organization?.id ?? res.data?.organization?.id ?? res.data?.id;
+      let subscription = res.subscription ?? res.data?.subscription ?? null;
+
+      if (subscriptionPayload && orgId && !subscription?.id) {
+        try {
+          subscription = await ensureSubscriptionAfterProvision({
+            apiRequest,
+            organizationId: orgId,
+            subscriptionPayload,
+            provisionResponse: res,
+          });
+          notifySuccess("Organization registered and subscription assigned.");
+        } catch (subErr) {
+          notifyError(
+            subErr instanceof ApiError
+              ? `Organization created, but subscription failed: ${subErr.message}`
+              : "Organization created, but subscription could not be assigned. Use Platform → Subscriptions.",
+          );
+        }
+      }
+
+      setCreatedSubscription(subscription);
       setResult(res);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not register organization.");
@@ -274,7 +340,7 @@ export default function RegisterOrganizationPage() {
   return (
     <CatalogPageShell
       title="Register organization"
-      subtitle="Configure tenant profile, sales behaviour, modules, and the first administrator."
+      subtitle="Configure tenant profile, licence (trial or plan), modules, and the first administrator."
     >
       <AdminBreadcrumb
         items={[
@@ -299,6 +365,38 @@ export default function RegisterOrganizationPage() {
             <div>
               <dt className="font-medium">Administrator username</dt>
               <dd className="font-mono">{result.manager?.username}</dd>
+            </div>
+            <div>
+              <dt className="font-medium">Licence</dt>
+              <dd>
+                {createdSubscription || result.subscription ? (
+                  <>
+                    {(createdSubscription ?? result.subscription)?.status === "trialing"
+                      ? "Free trial"
+                      : (createdSubscription ?? result.subscription)?.plan?.name ?? "Subscription"}
+                    {" · expires "}
+                    {formatBillingDate(
+                      (createdSubscription ?? result.subscription)?.current_period_end ??
+                        (createdSubscription ?? result.subscription)?.trial_ends_at,
+                    )}
+                    {(createdSubscription ?? result.subscription)?.plan?.renewal_price != null ||
+                    (createdSubscription ?? result.subscription)?.plan?.price != null ? (
+                      <span className="block text-xs text-emerald-800">
+                        Renewal{" "}
+                        {formatBillingMoney(
+                          (createdSubscription ?? result.subscription)?.plan?.renewal_price ??
+                            (createdSubscription ?? result.subscription)?.plan?.price,
+                          (createdSubscription ?? result.subscription)?.plan?.currency ?? "KES",
+                        )}
+                      </span>
+                    ) : null}
+                  </>
+                ) : subscriptionForm.license_mode === "none" ? (
+                  "Not assigned — add under Subscriptions when ready"
+                ) : (
+                  "Pending — check Platform → Subscriptions"
+                )}
+              </dd>
             </div>
           </dl>
 
@@ -332,7 +430,14 @@ export default function RegisterOrganizationPage() {
             <strong>{result.organization?.company_code}</strong> on the same application URL.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <PrimaryButton type="button" onClick={() => setResult(null)}>
+            <PrimaryButton
+              type="button"
+              onClick={() => {
+                setResult(null);
+                setCreatedSubscription(null);
+                setSubscriptionForm(emptyProvisionSubscriptionForm());
+              }}
+            >
               Register another
             </PrimaryButton>
             <Link
@@ -340,6 +445,12 @@ export default function RegisterOrganizationPage() {
               className="inline-flex items-center rounded-lg border border-emerald-300 px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100"
             >
               Manage organization
+            </Link>
+            <Link
+              href="/platform/subscriptions"
+              className="inline-flex items-center rounded-lg border border-emerald-300 px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100"
+            >
+              Subscriptions
             </Link>
             <Link
               href="/platform"
@@ -378,26 +489,35 @@ export default function RegisterOrganizationPage() {
           />
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
-            <OrganizationConfigTabs
-              mode="register"
-              tenantValues={tenantValues}
-              onTenantChange={onTenantChange}
-              profilePresets={profilePresets}
-              deploymentProfile={deploymentProfile}
-              onProfileChange={onProfileChange}
-              salesPlatform={salesPlatform}
-              onSalesChange={setSalesPlatform}
-              enabledModules={enabledModules}
-              moduleOptions={moduleOptions}
-              onToggleModule={toggleModule}
-              onSetModules={setModules}
-              adminPanel={
-                <InitialAdministratorFields
-                  values={{ managerFullName, managerUsername, managerEmail, managerPassword }}
-                  onChange={updateManager}
-                />
-              }
-            />
+            <div className="space-y-6">
+              <OrganizationConfigTabs
+                mode="register"
+                tenantValues={tenantValues}
+                onTenantChange={onTenantChange}
+                profilePresets={profilePresets}
+                deploymentProfile={deploymentProfile}
+                onProfileChange={onProfileChange}
+                salesPlatform={salesPlatform}
+                onSalesChange={setSalesPlatform}
+                enabledModules={enabledModules}
+                moduleOptions={moduleOptions}
+                onToggleModule={toggleModule}
+                onSetModules={setModules}
+                adminPanel={
+                  <InitialAdministratorFields
+                    values={{ managerFullName, managerUsername, managerEmail, managerPassword }}
+                    onChange={updateManager}
+                  />
+                }
+              />
+
+              <ProvisionSubscriptionFields
+                form={subscriptionForm}
+                onChange={setSubscriptionForm}
+                plans={plans}
+                plansLoading={plansLoading}
+              />
+            </div>
 
             <ProvisionSetupPreview preview={preview} loading={previewLoading} className="xl:sticky xl:top-6 xl:self-start" />
           </div>

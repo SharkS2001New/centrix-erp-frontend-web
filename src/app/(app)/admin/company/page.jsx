@@ -14,6 +14,7 @@ import {
 import { EntityPhotoDisplay } from "@/components/media/entity-photo-display";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { confirmRemoveOptions, useConfirm } from "@/lib/use-confirm";
+import { OrganizationBillingPanel } from "@/components/platform/organization-billing-panel";
 
 const EMPTY_FORM = {
   org_name: "",
@@ -170,7 +171,7 @@ export default function AdminCompanyPage() {
   return (
     <CatalogPageShell
       title="Company profile"
-      subtitle="Update your organization details and logo. Company code and billing email are managed by platform administration."
+      subtitle="Organization details, logo, and your Centrix subscription agreement (first-time and renewal prices)."
     >
       <AdminBreadcrumb
         items={[{ label: "Administration", href: "/admin" }, { label: "Company profile" }]}
@@ -179,6 +180,7 @@ export default function AdminCompanyPage() {
       {loading || authLoading ? (
         <p className="text-sm text-slate-500">Loading…</p>
       ) : (
+        <>
         <form onSubmit={handleSave} className="grid gap-6 lg:grid-cols-[1fr_220px]">
           <div className="theme-panel rounded-xl border p-6 shadow-sm">
             <h2 className="text-[15px] font-medium text-slate-900">Organization details</h2>
@@ -310,6 +312,15 @@ export default function AdminCompanyPage() {
             </div>
           </div>
         </form>
+
+        <div className="theme-panel mt-6 space-y-8 rounded-xl border p-6 shadow-sm">
+          <OrganizationBillingPanel
+            organizationId={platformOrgId || orgId}
+            organization={{ org_name: form.org_name, id: orgId }}
+            mode={platformOrgId ? "platform" : "tenant"}
+          />
+        </div>
+        </>
       )}
     </CatalogPageShell>
   );

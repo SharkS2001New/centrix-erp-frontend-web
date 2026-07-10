@@ -52,7 +52,7 @@ export function PlatformAiCredentialsScreen() {
   return (
     <CatalogPageShell
       title="AI credentials"
-      subtitle="OpenAI settings for the platform training test console — separate from each tenant's own AI configuration."
+      subtitle="OpenAI settings for platform tools (email compose, training test console). Separate from each tenant's own AI configuration."
     >
       <AdminBreadcrumb
         items={[
@@ -67,8 +67,9 @@ export function PlatformAiCredentialsScreen() {
       <section className="max-w-2xl theme-panel rounded-xl border p-6 shadow-sm">
         <h2 className="text-sm font-semibold theme-heading">Platform AI credentials</h2>
         <p className="mt-1 text-sm theme-subtext">
-          These keys power the super-admin test console only. Tenant organizations keep their own AI settings under
-          Administration — you do not need to enable tenant AI to test platform knowledge notes.
+          These keys power platform-admin AI: contract/quote email drafting and the training test console.
+          Email assist does not need knowledge notes — it calls the model directly. Tenant organizations keep
+          their own AI settings under Administration.
         </p>
 
         {loading ? (
