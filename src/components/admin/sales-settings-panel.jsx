@@ -219,7 +219,7 @@ function CheckoutPricingTab({
       />
       <Toggle
         label="Discount approval — backoffice"
-        description="When enabled, staff on Sales → Create order and external POS enter line discounts for manager review, and manual line discount on those surfaces is turned on. Does not control mobile. Pending approval / Editable queues appear when either channel is on."
+        description="When enabled, staff on Sales → Create order and external POS enter line discounts for manager review, and manual line discount on those surfaces is turned on. Does not control mobile. ERP Pending approval / Editable queues appear when either this or mobile approval is on."
         checked={salesForm.discount_approval_enabled_backoffice}
         onChange={(v) =>
           setSalesForm((f) =>
@@ -232,7 +232,7 @@ function CheckoutPricingTab({
       />
       <Toggle
         label="Discount approval — mobile"
-        description="When enabled, the mobile app shows the line discount field for manager review. Turning this off hides discount entry on mobile even if ERP manual line discount is on. Backoffice still shows discounts on receipts/invoices and the order edit popup for approving or revising those mobile orders."
+        description="When enabled, the mobile app shows the line discount field and Pending approval / Needs changes on the dashboard. Turning this off hides those on mobile even if ERP manual line discount is on. Backoffice still shows discounts on receipts/invoices, the order edit popup, and ERP approval queues so admins can approve or revise those mobile orders."
         checked={salesForm.discount_approval_enabled_mobile}
         onChange={(v) =>
           setSalesForm((f) =>
@@ -254,7 +254,8 @@ function CheckoutPricingTab({
             on the approver&apos;s role under Admin → Roles. Users with the legacy{" "}
             <span className="font-medium text-slate-700">Sales → Order actions → Approve</span>{" "}
             permission can also approve discount requests. Enabling either channel shows the Pending
-            approval and Editable order queues.
+            approval and Editable order queues in ERP. Mobile only shows those buttons when mobile
+            approval is on.
           </p>
         </div>
       ) : null}
