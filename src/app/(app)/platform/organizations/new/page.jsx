@@ -504,18 +504,19 @@ export default function RegisterOrganizationPage() {
                 onToggleModule={toggleModule}
                 onSetModules={setModules}
                 adminPanel={
-                  <InitialAdministratorFields
-                    values={{ managerFullName, managerUsername, managerEmail, managerPassword }}
-                    onChange={updateManager}
-                  />
+                  <div className="space-y-6">
+                    <InitialAdministratorFields
+                      values={{ managerFullName, managerUsername, managerEmail, managerPassword }}
+                      onChange={updateManager}
+                    />
+                    <ProvisionSubscriptionFields
+                      form={subscriptionForm}
+                      onChange={setSubscriptionForm}
+                      plans={plans}
+                      plansLoading={plansLoading}
+                    />
+                  </div>
                 }
-              />
-
-              <ProvisionSubscriptionFields
-                form={subscriptionForm}
-                onChange={setSubscriptionForm}
-                plans={plans}
-                plansLoading={plansLoading}
               />
             </div>
 
