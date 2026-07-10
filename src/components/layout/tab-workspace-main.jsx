@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { TabPaneActivityProvider } from "@/contexts/tab-pane-activity-context";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
@@ -15,8 +15,8 @@ import { isTabWorkspaceRoute, normalizeTabHref } from "@/lib/tab-workspace";
 export function TabWorkspaceMain({ children }) {
   const pathname = usePathname();
   const { enabled, tabs, activeHref: workspaceActiveHref, workspaceId } = useTabWorkspace();
-  const paneCacheRef = useRef(new Map());
-  const [, setCacheVersion] = useState(0);
+  const [paneCache, setPaneCache] = useState(() => new Map());
+  const [cacheWorkspaceId, setCacheWorkspaceId] = useState(workspaceId);
 
   const routeHref = normalizeTabHref(pathname);
   const activeHref = normalizeTabHref(workspaceActiveHref || routeHref);
@@ -36,10 +36,11 @@ export function TabWorkspaceMain({ children }) {
     return hrefs;
   }, [activeHref, tabs]);
 
-  useEffect(() => {
-    paneCacheRef.current = new Map();
-    setCacheVersion((version) => version + 1);
-  }, [workspaceId]);
+  // Reset pane cache when the workspace changes (render-safe, no ref reads).
+  if (cacheWorkspaceId !== workspaceId) {
+    setCacheWorkspaceId(workspaceId);
+    setPaneCache(new Map());
+  }
 
   // Seed / refresh only the *active* route the first time it opens.
   // Never overwrite an existing pane — that would remount and refetch.
@@ -47,10 +48,12 @@ export function TabWorkspaceMain({ children }) {
     if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) return;
 
     const href = normalizeTabHref(pathname);
-    if (paneCacheRef.current.has(href)) return;
-
-    paneCacheRef.current.set(href, children);
-    setCacheVersion((version) => version + 1);
+    setPaneCache((prev) => {
+      if (prev.has(href)) return prev;
+      const next = new Map(prev);
+      next.set(href, children);
+      return next;
+    });
   }, [children, enabled, pathname]);
 
   // Drop panes for closed tabs.
@@ -58,14 +61,17 @@ export function TabWorkspaceMain({ children }) {
     if (!enabled) return;
 
     const allowed = new Set(mountedHrefs);
-    let changed = false;
-    for (const href of [...paneCacheRef.current.keys()]) {
-      if (!allowed.has(href)) {
-        paneCacheRef.current.delete(href);
-        changed = true;
+    setPaneCache((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const href of [...next.keys()]) {
+        if (!allowed.has(href)) {
+          next.delete(href);
+          changed = true;
+        }
       }
-    }
-    if (changed) setCacheVersion((version) => version + 1);
+      return changed ? next : prev;
+    });
   }, [enabled, mountedHrefs]);
 
   if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) {
@@ -76,7 +82,7 @@ export function TabWorkspaceMain({ children }) {
     <>
       {mountedHrefs.map((href) => {
         const isActive = href === activeHref;
-        const pane = paneCacheRef.current.get(href) ?? (isActive ? children : null);
+        const pane = paneCache.get(href) ?? (isActive ? children : null);
         if (!pane) return null;
 
         return (
