@@ -418,17 +418,17 @@ export function posListUnitPrice(product, sellWholesale, retailPackage) {
   return displayUnitPrice;
 }
 
-/** Per-unit discount from stored line total (API `discount_given`). */
-export function lineDiscountPerUnit(totalDiscount, baseQty) {
-  const q = Number(baseQty);
+/** Per-unit discount from stored line total (`discount_given` ÷ pack/display qty). */
+export function lineDiscountPerUnit(totalDiscount, packQty) {
+  const q = Number(packQty);
   const total = Math.max(0, Number(totalDiscount ?? 0));
   if (!Number.isFinite(q) || q <= 0) return total;
   return Math.round((total / q) * 10000) / 10000;
 }
 
-/** Line total discount for API from per-unit cashier input. */
-export function lineDiscountTotal(perUnitDiscount, baseQty) {
-  const q = Number(baseQty);
+/** Line total discount for API from per-unit cashier input × pack/display qty. */
+export function lineDiscountTotal(perUnitDiscount, packQty) {
+  const q = Number(packQty);
   const perUnit = Math.max(0, Number(perUnitDiscount ?? 0));
   if (!Number.isFinite(q) || q <= 0) return 0;
   return Math.round(perUnit * q * 100) / 100;

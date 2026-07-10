@@ -18,7 +18,10 @@ import {
   COMPACT_INPUT_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { enrichProductForLpo } from "@/components/lpo/lpo-product-utils";
-import { formatMixedStockDisplay, formatPosCartQty } from "@/lib/stock-uom";
+import {
+  cartLineEnteredDiscountPerUnit,
+  cartLinePackQtyForDiscount,
+} from "@/lib/sale-line-items";
 import { uomWholesaleConversionExample } from "@/lib/uom-packaging";
 import {
   cartLineDisplayUnitPrice,
@@ -715,8 +718,14 @@ export function PosScreen({ standalone = false }) {
     () =>
       draftLinesMatchAdvisedDiscounts(cart?.lines ?? [], advisedDiscountLines, {
         getProductCode: (line) => line?.product_code,
-        getDraftDiscount: (line) =>
-          lineDiscountPerUnit(line?.discount_given, line?.quantity),
+        getDraftDiscount: (line) => {
+          const product = productByCode[line?.product_code];
+          const retailPackage = retailByCode[line?.product_code] ?? null;
+          if (product) {
+            return cartLineEnteredDiscountPerUnit(line, product, retailPackage);
+          }
+          return lineDiscountPerUnit(line?.discount_given, line?.quantity);
+        },
       }),
     [cart?.lines, advisedDiscountLines],
   );
@@ -2061,7 +2070,12 @@ export function PosScreen({ standalone = false }) {
       }
 
       const entryQty = cartLineEntryQtyForBaseQty(line, product, retailPackage, nextBaseQty);
-      const perUnitDiscount = lineDiscountPerUnit(line.discount_given, line.quantity);
+      const packQty = cartLinePackQtyForDiscount(
+        { ...line, quantity: nextBaseQty },
+        product,
+        retailPackage,
+      );
+      const perUnitDiscount = lineDiscountPerUnit(line.discount_given, packQty);
       const computed = applyComputedPrice(
         product,
         entryQty,
@@ -2277,7 +2291,7 @@ export function PosScreen({ standalone = false }) {
       setSearchQuery(product.product_name ?? line.product_code);
       setUnitPriceTouched(true);
       const baseQty = Number(line.quantity ?? 0);
-      const perUnitDiscount = lineDiscountPerUnit(line.discount_given, baseQty);
+      const perUnitDiscount = cartLineEnteredDiscountPerUnit(line, product, retailPackage);
       setLineForm({
         product_code: line.product_code,
         description: line.product_name ?? product.product_name ?? "",
@@ -3808,7 +3822,15 @@ export function PosScreen({ standalone = false }) {
                         </td>
                         {showLineDiscountField ? (
                           <td className="px-3 py-2 text-right">
-                            {lineDiscountPerUnit(line.discount_given, line.quantity).toLocaleString()}
+                            {(
+                              productMeta
+                                ? cartLineEnteredDiscountPerUnit(
+                                    line,
+                                    productMeta,
+                                    retailByCode[line.product_code] ?? null,
+                                  )
+                                : lineDiscountPerUnit(line.discount_given, line.quantity)
+                            ).toLocaleString()}
                           </td>
                         ) : null}
                         <td className="px-3 py-2 text-right font-medium">

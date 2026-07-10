@@ -5,11 +5,13 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
 import {
   saleLineDisplayUnitPrice,
+  saleLineDiscountTotalFromEntered,
+  saleLineEnteredDiscountPerUnit,
   saleLineEntryQtyForEdit,
   saleLineEntryQtyToBase,
   saleLineUom,
 } from "@/lib/sale-line-items";
-import { lineDiscountPerUnit, lineDiscountTotal } from "@/lib/pos-line";
+import { lineDiscountTotal } from "@/lib/pos-line";
 import { showBackofficeLineDiscountEdit } from "@/lib/sales-settings";
 import { uomConversionFactor } from "@/lib/stock-uom";
 import { useAuth } from "@/contexts/auth-context";
@@ -87,17 +89,17 @@ function lineGrossDisplayUnitPrice(line, uomById) {
   return saleLineDisplayUnitPrice(line, uomById);
 }
 
-/** Line total preview: gross display price × qty − line discount (per base unit × base qty). */
+/** Line total preview: gross display price × pack qty − (disc per pack × pack qty). */
 function linePreviewAmount(line, draftQty, uomById, retailByCode, discountEditEnabled) {
   const oldQty = Number(line.quantity);
   const baseQty = resolveLineBaseQty(line, draftQty, uomById, retailByCode);
 
   if (discountEditEnabled) {
-    const displayQty = resolveLineDisplayQty(line, draftQty, uomById, retailByCode);
+    const packQty = resolveLineDisplayQty(line, draftQty, uomById, retailByCode);
     const grossUnitPrice = lineGrossDisplayUnitPrice(line, uomById);
     const perUnitDiscount = Math.max(0, Number(line.draftDiscount ?? 0));
-    const subtotal = Math.round(grossUnitPrice * displayQty * 100) / 100;
-    const discountTotal = lineDiscountTotal(perUnitDiscount, baseQty);
+    const subtotal = Math.round(grossUnitPrice * packQty * 100) / 100;
+    const discountTotal = lineDiscountTotal(perUnitDiscount, packQty);
     return Math.max(0, Math.round((subtotal - discountTotal) * 100) / 100);
   }
 
@@ -141,7 +143,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
           };
           return {
             ...editLine,
-            draftDiscount: lineDiscountPerUnit(editLine.discount_given, editLine.quantity),
+            draftDiscount: saleLineEnteredDiscountPerUnit(editLine, uomById, retailMap),
             draftQty: saleLineEntryQtyForEdit(editLine, uomById, retailMap),
           };
         }),
@@ -224,7 +226,13 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       if (discountEditEnabled) {
         const perUnit = Number(line.draftDiscount ?? 0);
         if (Number.isFinite(perUnit)) {
-          item.discount_given = lineDiscountTotal(perUnit, baseQty);
+          item.discount_given = saleLineDiscountTotalFromEntered(
+            perUnit,
+            line,
+            entryQty,
+            uomById,
+            retailByCode,
+          );
         }
       }
       payload.push(item);
@@ -324,7 +332,9 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                     retailByCode,
                     discountEditEnabled,
                   );
-                  const unitPrice = saleLineDisplayUnitPrice(line, uomById);
+                  const unitPrice = discountEditEnabled
+                    ? lineGrossDisplayUnitPrice(line, uomById)
+                    : saleLineDisplayUnitPrice(line, uomById);
 
                   return (
                     <tr key={line.id} className="theme-table-row border-b last:border-b-0">

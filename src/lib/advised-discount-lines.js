@@ -48,11 +48,12 @@ export function applyAdvisedDiscountsToDraftLines(lines, advisedLines, { getProd
     const code = String(resolveCode(line) ?? "").trim();
     if (!code || !advisedByCode.has(code)) return line;
     const advised = advisedByCode.get(code);
-    const baseQty = Number(line?.quantity ?? 0);
+    const packQty = Number(line?.draftQty ?? 0);
+    const divisor = packQty > 0 ? packQty : Math.max(Number(line?.quantity ?? 0), 1);
     return {
       ...line,
       draftDiscount: advised,
-      discount_given: lineDiscountTotal(advised, baseQty),
+      discount_given: lineDiscountTotal(advised, divisor),
     };
   });
 }

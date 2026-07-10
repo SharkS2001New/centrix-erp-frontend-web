@@ -1,4 +1,4 @@
-import { cartLineDisplayUnitPrice, posEntryQtyFromCartLine, posEntryToBaseQty } from "@/lib/pos-line";
+import { cartLineDisplayUnitPrice, lineDiscountPerUnit, lineDiscountTotal, posEntryQtyFromCartLine, posEntryToBaseQty } from "@/lib/pos-line";
 import {
   tierForQuantity,
   tiersForRetailPackage,
@@ -46,6 +46,47 @@ export function saleLineEntryQtyToBase(line, entryQty, uomById, retailByCode = {
   const retailPackage = retailByCode[line?.product_code] ?? null;
   const isRetailLine = Number(line?.on_wholesale_retail) === 1;
   return posEntryToBaseQty(entryQty, product, !isRetailLine, retailPackage);
+}
+
+/** Pack/display qty used when converting stored line discount ↔ cashier-entered per-unit discount. */
+export function saleLinePackQtyForDiscount(line, uomById, retailByCode = {}, draftQty = null) {
+  if (draftQty != null && draftQty !== "") {
+    const parsed = Number(draftQty);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  const entry = Number(saleLineEntryQtyForEdit(line, uomById, retailByCode));
+  if (Number.isFinite(entry) && entry > 0) return entry;
+  const fallback = Number(line?.quantity ?? 0);
+  return fallback > 0 ? fallback : 1;
+}
+
+/** Cashier-entered per-pack discount from API line-total `discount_given`. */
+export function saleLineEnteredDiscountPerUnit(line, uomById, retailByCode = {}, draftQty = null) {
+  return lineDiscountPerUnit(
+    line.discount_given,
+    saleLinePackQtyForDiscount(line, uomById, retailByCode, draftQty),
+  );
+}
+
+/** Line-total discount for API from per-pack cashier input. */
+export function saleLineDiscountTotalFromEntered(perUnit, line, draftQty, uomById, retailByCode = {}) {
+  return lineDiscountTotal(
+    perUnit,
+    saleLinePackQtyForDiscount(line, uomById, retailByCode, draftQty),
+  );
+}
+
+/** Pack/display qty for cart line discount display (POS). */
+export function cartLinePackQtyForDiscount(line, product, retailPackage) {
+  const fromEntry = Number(posEntryQtyFromCartLine(line, product, retailPackage));
+  if (Number.isFinite(fromEntry) && fromEntry > 0) return fromEntry;
+  const fallback = Number(line?.quantity ?? 0);
+  return fallback > 0 ? fallback : 1;
+}
+
+/** Cashier-entered per-pack discount for a cart line. */
+export function cartLineEnteredDiscountPerUnit(line, product, retailPackage) {
+  return lineDiscountPerUnit(line.discount_given, cartLinePackQtyForDiscount(line, product, retailPackage));
 }
 
 /** Product display name from nested API relation or a code → product map. */
