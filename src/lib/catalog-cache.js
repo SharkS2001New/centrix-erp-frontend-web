@@ -1,10 +1,6 @@
+import { apiRequest } from "@/lib/api";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { getStoredOrganization } from "@/lib/auth-storage";
-import {
-  fetchOrgCached,
-  invalidateOrgCacheResource,
-  orgCacheKey,
-} from "@/lib/org-cache";
 import {
   fetchStockLevelsMap,
   mergeProductWithLiveStock,
@@ -18,7 +14,7 @@ export {
   mergeProductsWithLiveStock,
 } from "@/lib/stock-cache";
 
-/** Fields stripped from cached catalog — stock is always fetched live. */
+/** Fields stripped when building master-data-only product rows. */
 export const PRODUCT_STOCK_FIELD_KEYS = [
   "stock_in_shop",
   "stock_in_store",
@@ -115,23 +111,69 @@ function filterProductCatalogRows(rows, options = {}) {
 }
 
 /**
- * Search cached product catalog (master data only — no stock).
+ * Live API product search — no client catalog cache.
  * @returns {Promise<object[]>}
  */
 export async function searchProductCatalogCached(organizationId, query, options = {}) {
   const { limit = 50, status = "active" } = options;
-  const rows = await fetchProductCatalogCached(resolveOrgId(organizationId), { status });
-  return filterProductCatalogRows(rows, { ...options, query }).slice(0, limit);
+  const trimmed = String(query ?? "").trim();
+  if (!trimmed) return [];
+
+  void resolveOrgId(organizationId);
+
+  const searchParams = {
+    q: trimmed,
+    per_page: Math.min(Math.max(limit, 1), 200),
+    page: 1,
+  };
+  if (status !== "all") searchParams.status = status;
+  if (options.subcategoryId != null) {
+    searchParams["filter[subcategory_id]"] = options.subcategoryId;
+  }
+  if (options.categoryId != null) {
+    searchParams["filter[category_id]"] = options.categoryId;
+  }
+
+  const res = await apiRequest("/products", {
+    searchParams,
+    loading: false,
+    reportIssues: false,
+  });
+  const rows = (Array.isArray(res?.data) ? res.data : []).map(stripProductStockFields);
+  return filterProductCatalogRows(rows, {
+    ...options,
+    query: trimmed,
+    // API already filtered by q/status; keep client filters for excludeCodes etc.
+    status: "all",
+  }).slice(0, limit);
 }
 
-/** @returns {Promise<object | null>} */
+/** Live fetch of one product by code — no catalog cache. @returns {Promise<object | null>} */
 export async function fetchProductByCodeCached(organizationId, productCode, options = {}) {
   const code = String(productCode ?? "").trim();
   if (!code) return null;
-  const rows = await fetchProductCatalogCached(resolveOrgId(organizationId), {
-    status: options.status ?? "all",
-  });
-  return filterProductCatalogRows(rows, { ...options, productCode: code, status: options.status ?? "all" })[0] ?? null;
+  void resolveOrgId(organizationId);
+
+  try {
+    const product = await apiRequest(`/products/${encodeURIComponent(code)}`, {
+      searchParams: options.status === "all" ? { status: "all" } : undefined,
+      loading: false,
+      reportIssues: false,
+    });
+    if (!product?.product_code) return null;
+    return stripProductStockFields(product);
+  } catch {
+    const matches = await searchProductCatalogCached(organizationId, code, {
+      ...options,
+      limit: 10,
+      status: options.status ?? "all",
+    });
+    return (
+      matches.find((row) => String(row.product_code) === code) ??
+      matches[0] ??
+      null
+    );
+  }
 }
 
 export async function isProductCodeInCatalogCached(organizationId, productCode, options = {}) {
@@ -143,23 +185,20 @@ export async function isProductCodeInCatalogCached(organizationId, productCode, 
 }
 
 /**
- * Master product list (no live stock). Org-scoped, invalidated on product CUD.
+ * Full product list via live paginated API (no org cache).
+ * Prefer searchProductCatalogCached for pickers.
  * @returns {Promise<object[]>}
  */
 export async function fetchProductCatalogCached(organizationId, { status = "active" } = {}) {
-  const orgId = resolveOrgId(organizationId);
-  const key = orgCacheKey(orgId, "product-catalog", status);
-
-  return fetchOrgCached(key, async () => {
-    const searchParams = { per_page: 200 };
-    if (status !== "all") searchParams.status = status;
-    const rows = await fetchAllPaginatedRowsSmart(
-      "/products",
-      searchParams,
-      { perPage: 200 },
-    );
-    return (rows ?? []).map(stripProductStockFields);
-  });
+  void resolveOrgId(organizationId);
+  const searchParams = { per_page: 200 };
+  if (status !== "all") searchParams.status = status;
+  const rows = await fetchAllPaginatedRowsSmart(
+    "/products",
+    searchParams,
+    { perPage: 200 },
+  );
+  return (rows ?? []).map(stripProductStockFields);
 }
 
 /** @returns {Promise<Map<string, object>>} */
@@ -174,8 +213,6 @@ export async function fetchProductCatalogMapCached(organizationId, options = {})
 
 /**
  * Catalog row + live stock for one branch.
- * @param {string | number | null | undefined} organizationId
- * @param {string | number | null | undefined} branchId
  */
 export async function fetchProductsWithLiveStock(organizationId, branchId, options = {}) {
   const [catalog, stockByCode] = await Promise.all([
@@ -185,6 +222,7 @@ export async function fetchProductsWithLiveStock(organizationId, branchId, optio
   return mergeProductsWithLiveStock(catalog, stockByCode);
 }
 
-export function invalidateProductCatalogCache(organizationId) {
-  invalidateOrgCacheResource(organizationId, "product-catalog");
+/** No-op — product catalog is no longer cached client-side. */
+export function invalidateProductCatalogCache(_organizationId) {
+  // Product search/list always hits the API.
 }

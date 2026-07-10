@@ -28,8 +28,8 @@ function invalidateReference(resource) {
 
 /**
  * Invalidate org caches after successful API mutations.
- * Reference data: 3h cache cleared on matching CUD.
- * Products: catalog cache cleared on product CUD (stock is always live — no cache).
+ * Reference helpers (suppliers, VAT, UOM, categories, …): max 1h cache, cleared on matching CUD.
+ * Products: no client catalog cache — search/list always hit the API.
  */
 export function handleCacheInvalidation(method, path) {
   if (!isMutation(method)) return;

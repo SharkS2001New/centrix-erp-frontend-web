@@ -382,7 +382,8 @@ export function computePosLine({
   const discountNum = Math.max(0, Number(discount ?? 0));
   lineAmount = Math.max(0, lineAmount - discountNum);
 
-  const displayUnitPrice = reversePosDisplayUnitPrice(lineAmount, uom, {
+  // Gross sold-unit price (before line discount) so markups stay visible in Price.
+  const displayUnitPrice = reversePosDisplayUnitPrice(lineAmountBeforeDiscount, uom, {
     retailSession,
     factor,
     baseQty,

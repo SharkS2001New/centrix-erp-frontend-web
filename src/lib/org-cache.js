@@ -1,6 +1,6 @@
-/** Session-scoped org cache — 3h TTL unless invalidated by CUD mutations. */
+/** Session-scoped org cache — 1h TTL unless invalidated by CUD mutations. */
 
-export const ORG_CACHE_TTL_MS = 3 * 60 * 60 * 1000;
+export const ORG_CACHE_TTL_MS = 60 * 60 * 1000;
 
 /** @type {Map<string, { data?: unknown, promise?: Promise<unknown>, fetchedAt?: number, ttlMs?: number }>} */
 const entries = new Map();

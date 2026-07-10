@@ -3,7 +3,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { inputClassName } from "@/components/catalog/catalog-shared";
-import { formatAdvisedDiscountKes } from "@/lib/advised-discount-lines";
+import {
+  discountApprovalDiscountPerUnit,
+  discountApprovalUnitPrice,
+  formatAdvisedDiscountKes,
+} from "@/lib/advised-discount-lines";
 
 function linesForAdvisedInput(approvalLines) {
   const withDiscount = (approvalLines ?? []).filter(
@@ -38,7 +42,7 @@ export function DiscountRejectionDialog({
     for (const line of advisedInputLines) {
       const code = String(line?.product_code ?? "").trim();
       if (!code) continue;
-      const current = Number(line?.discount_given ?? 0);
+      const current = discountApprovalDiscountPerUnit(line);
       initial.set(code, Number.isFinite(current) ? String(current) : "");
     }
     setAdvisedByCode(initial);
@@ -186,10 +190,10 @@ export function DiscountRejectionDialog({
                                   {line.product_name ?? code ?? "Item"}
                                 </td>
                                 <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
-                                  {formatAdvisedDiscountKes(line.unit_price ?? line.selling_price)}
+                                  {formatAdvisedDiscountKes(discountApprovalUnitPrice(line))}
                                 </td>
                                 <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
-                                  {formatAdvisedDiscountKes(line.discount_given)}
+                                  {formatAdvisedDiscountKes(discountApprovalDiscountPerUnit(line))}
                                 </td>
                                 <td className="px-3 py-2 text-right">
                                   <input

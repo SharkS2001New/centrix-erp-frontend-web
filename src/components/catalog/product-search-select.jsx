@@ -9,7 +9,7 @@ import {
 import { inputClassName } from "@/components/catalog/catalog-shared";
 
 /**
- * Searchable product picker — searches the org product catalog cache (master data only).
+ * Searchable product picker — live API search (no client product catalog cache).
  */
 export function ProductSearchSelect({
   value,

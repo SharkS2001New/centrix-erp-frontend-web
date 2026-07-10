@@ -32,7 +32,11 @@ export function PosAdvisedDiscountPanel({
                 <tr key={code || name} className="border-b border-amber-100 last:border-0">
                   <td className="px-3 py-2">{name}</td>
                   <td className="px-3 py-2 text-right">
-                    {formatAdvisedDiscountKes(line?.discount_given)}
+                    {formatAdvisedDiscountKes(
+                      line?.display_discount_per_unit != null
+                        ? line.display_discount_per_unit
+                        : line?.discount_given,
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right font-semibold text-amber-900">
                     {formatAdvisedDiscountKes(line?.advised_discount)}

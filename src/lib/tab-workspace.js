@@ -6,7 +6,6 @@ export const TAB_WORKSPACE_MAX_TABS = 10;
 
 /** Routes that always use full-page navigation without the tab bar. */
 export const TAB_WORKSPACE_EXCLUDED_PREFIXES = [
-  "/sales/pos",
   "/change-password",
   "/login",
   "/platform",

@@ -7,6 +7,11 @@ import {
   discountRevisionConfirmationMessage,
   isDiscountRevisionSubmitted,
 } from "@/lib/discount-approval-messages";
+import {
+  discountApprovalDiscountPerUnit,
+  discountApprovalLineAmount,
+  discountApprovalUnitPrice,
+} from "@/lib/advised-discount-lines";
 
 function formatKes(value) {
   const amount = Number(value ?? 0);
@@ -139,13 +144,13 @@ export function DiscountApprovalItemsTable({ item }) {
                 {discountApprovalQtyLabel(line)}
               </td>
               <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
-                {formatKes(line.unit_price ?? line.selling_price)}
+                {formatKes(discountApprovalUnitPrice(line))}
               </td>
               <td className="px-3 py-2 text-right text-slate-700 dark:text-slate-200">
-                {formatKes(line.discount_given)}
+                {formatKes(discountApprovalDiscountPerUnit(line))}
               </td>
               <td className="px-3 py-2 text-right font-medium text-slate-900 dark:text-slate-100">
-                {formatKes(line.amount)}
+                {formatKes(discountApprovalLineAmount(line))}
               </td>
             </tr>
           ))}

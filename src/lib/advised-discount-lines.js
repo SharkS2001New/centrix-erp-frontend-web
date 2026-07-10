@@ -13,6 +13,66 @@ export function discountApprovalLinesFromSource(source) {
   return Array.isArray(fromPayload) ? fromPayload : [];
 }
 
+/** Pack/display qty for discount approval notification lines. */
+export function discountApprovalPackQty(line) {
+  const displayQty = Number(line?.display_quantity ?? 0);
+  if (Number.isFinite(displayQty) && displayQty > 0) return displayQty;
+
+  const qtyDisp = String(line?.qty_disp ?? "").trim();
+  const fromDisp = qtyDisp.match(/^([\d.]+)/);
+  if (fromDisp) {
+    const parsed = Number(fromDisp[1]);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+
+  const qty = Number(line?.quantity ?? 0);
+  return qty > 0 ? qty : 1;
+}
+
+/** Gross unit price per sold pack — prefers cart-calculated display price. */
+export function discountApprovalUnitPrice(line) {
+  if (line?.display_unit_price != null && line.display_unit_price !== "") {
+    const fromApi = Number(line.display_unit_price);
+    if (Number.isFinite(fromApi) && fromApi >= 0) return fromApi;
+  }
+
+  const amount = Number(line?.amount ?? 0);
+  const discount = Math.max(0, Number(line?.discount_given ?? 0));
+  const packQty = discountApprovalPackQty(line);
+  if (packQty > 0 && (amount > 0 || discount > 0)) {
+    return Math.round(((amount + discount) / packQty) * 100) / 100;
+  }
+
+  const stored = Number(line?.unit_price ?? line?.selling_price ?? 0);
+  return Number.isFinite(stored) && stored > 0 ? stored : 0;
+}
+
+/** Per-pack discount shown in approval tables (matches cashier input). */
+export function discountApprovalDiscountPerUnit(line) {
+  if (line?.display_discount_per_unit != null && line.display_discount_per_unit !== "") {
+    const fromApi = Number(line.display_discount_per_unit);
+    if (Number.isFinite(fromApi) && fromApi >= 0) return fromApi;
+  }
+
+  const discount = Math.max(0, Number(line?.discount_given ?? 0));
+  const packQty = discountApprovalPackQty(line);
+  if (packQty > 0) {
+    return Math.round((discount / packQty) * 100) / 100;
+  }
+
+  return discount;
+}
+
+/** Net line amount for approval tables. */
+export function discountApprovalLineAmount(line) {
+  if (line?.display_amount != null && line.display_amount !== "") {
+    const fromApi = Number(line.display_amount);
+    if (Number.isFinite(fromApi)) return fromApi;
+  }
+
+  return Number(line?.amount ?? 0);
+}
+
 export function advisedDiscountLinesFromRejection(rejection) {
   const lines = rejection?.advised_discount_lines;
   return Array.isArray(lines) ? lines : [];

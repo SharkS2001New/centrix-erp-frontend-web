@@ -980,11 +980,16 @@ export function PosScreen({ standalone = false }) {
 
         const lineRef = cartLineRef(line);
         const advisedPerUnit = advisedByCode.get(code);
-        const baseQty = Number(line.quantity ?? 0);
+        const product = productByCode?.[code] ?? null;
+        const retailPackage = retailByCode?.[code] ?? null;
+        const packQty = Number(
+          cartLinePackQtyForDiscount(line, product, retailPackage),
+        );
+        const qtyForDiscount = packQty > 0 ? packQty : Number(line.quantity ?? 0);
         const updated = await apiRequest(`/sales/carts/${cart.id}/lines/${lineRef}`, {
           method: "PATCH",
           body: {
-            discount_given: lineDiscountTotal(advisedPerUnit, baseQty),
+            discount_given: lineDiscountTotal(advisedPerUnit, qtyForDiscount),
             quantity: line.quantity,
             on_wholesale_retail: line.on_wholesale_retail,
             update_no: latestCart.update_no,
@@ -1001,7 +1006,7 @@ export function PosScreen({ standalone = false }) {
     } finally {
       setApplyingAdvisedDiscounts(false);
     }
-  }, [advisedDiscountLines, applyingAdvisedDiscounts, cart, refreshCart]);
+  }, [advisedDiscountLines, applyingAdvisedDiscounts, cart, productByCode, refreshCart, retailByCode]);
 
   const ensureCart = useCallback(async () => {
     if (cart?.id && cart.channel === channel && Array.isArray(cart.lines)) {
@@ -1263,6 +1268,7 @@ export function PosScreen({ standalone = false }) {
       product_code: product.product_code,
       quantity: finalComputed.baseQty,
       unit_price: finalComputed.unitPricePerBase,
+      display_unit_price: finalComputed.displayUnitPrice,
       uom: finalComputed.uomLabel || product.package_name,
       on_wholesale_retail: onWholesaleRetailFlag ? 1 : 0,
       discount_given:
@@ -1281,7 +1287,17 @@ export function PosScreen({ standalone = false }) {
       try {
         let lineRef = targetLineRef;
         let cartState = activeCart;
-        const deferredLineBody = { ...lineBody, discount_given: 0 };
+        const grossPerBase =
+          finalComputed.baseQty > 0
+            ? finalComputed.lineAmountBeforeDiscount / finalComputed.baseQty
+            : finalComputed.unitPricePerBase;
+        const deferredLineBody = {
+          ...lineBody,
+          discount_given: 0,
+          unit_price: grossPerBase,
+          display_unit_price: finalComputed.displayUnitPrice,
+          product_vat: lineProductVat(product, finalComputed.lineAmountBeforeDiscount),
+        };
 
         if (!lineRef) {
           const added = await apiRequest(`/sales/carts/${activeCart.id}/lines`, {

@@ -16,7 +16,7 @@ export function invalidateReferenceDataCache() {
   clearOrgCache();
 }
 
-/** Invalidate one reference resource after CUD (categories, uoms, etc.). */
+/** Invalidate one reference resource after CUD (suppliers, vats, uoms, etc.). Max TTL is 1h. */
 export function invalidateReferenceResource(resource, organizationId) {
   invalidateOrgCacheResource(resolveOrgId(organizationId), resource);
 }
