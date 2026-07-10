@@ -197,20 +197,6 @@ html[data-theme="dark"] .app-sidebar-brand {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Centrix mark: brand blue on light surfaces; lighter blue on dark; white on sidebar chrome */
-.centrix-logo-mark-themed {
-  color: #185fa5;
-}
-
-html[data-theme="dark"] .centrix-logo-mark-themed {
-  color: #6ea8fe;
-}
-
-.app-sidebar-brand .centrix-logo-mark,
-.velzon-sidebar .centrix-logo-mark {
-  color: #ffffff;
-}
-
 html[data-theme="light"] .app-sidebar-menu-label,
 html[data-theme="dark"] .app-sidebar-menu-label {
   color: #838fb9;
