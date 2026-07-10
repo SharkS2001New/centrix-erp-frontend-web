@@ -4,8 +4,10 @@ import { useEffect } from "react";
 
 export const SETTINGS_SUB_TAB_BTN =
   "rounded-md px-3 py-1.5 text-sm font-medium transition whitespace-nowrap";
-export const SETTINGS_SUB_TAB_BTN_ACTIVE = "bg-white text-[#185FA5] shadow-sm";
-export const SETTINGS_SUB_TAB_BTN_IDLE = "text-slate-600 hover:text-slate-900";
+export const SETTINGS_SUB_TAB_BTN_ACTIVE =
+  "bg-white text-[#185FA5] shadow-sm dark:bg-[var(--theme-surface,#1e293b)] dark:text-[#6ea8fe]";
+export const SETTINGS_SUB_TAB_BTN_IDLE =
+  "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100";
 
 export function SettingsSubTabBar({
   tabs,

@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
-import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
+import { SettingsSubTabBar } from "@/components/admin/settings-sub-tabs";
 import { PlatformMailboxPanel } from "@/components/platform/platform-mailbox-panel";
 import { PlatformEmailDeliveryPanel } from "@/components/platform/platform-email-delivery-panel";
 import { PlatformWhatsappScreen } from "@/components/platform/platform-whatsapp-screen";
@@ -15,27 +14,18 @@ const TABS = [
   { id: "whatsapp", label: "WhatsApp" },
 ];
 
+function resolveTab(tabId, fallback = "mailbox") {
+  return TABS.some((t) => t.id === tabId) ? tabId : fallback;
+}
+
 export function PlatformSettingsScreen({ initialTab = "mailbox" }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const tabFromUrl = searchParams.get("tab");
-  const [activeTab, setActiveTab] = useState(() => {
-    const fromUrl = TABS.some((t) => t.id === tabFromUrl) ? tabFromUrl : null;
-    return fromUrl || (TABS.some((t) => t.id === initialTab) ? initialTab : "mailbox");
-  });
-
-  useEffect(() => {
-    if (TABS.some((t) => t.id === tabFromUrl) && tabFromUrl !== activeTab) {
-      setActiveTab(tabFromUrl);
-    }
-  }, [tabFromUrl, activeTab]);
-
-  const visibleTabs = useMemo(() => TABS, []);
-  useSettingsSubTab(activeTab, setActiveTab, visibleTabs);
+  const activeTab = resolveTab(searchParams.get("tab"), resolveTab(initialTab));
 
   function onTabChange(id) {
-    setActiveTab(id);
+    if (id === activeTab) return;
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", id);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
@@ -54,7 +44,7 @@ export function PlatformSettingsScreen({ initialTab = "mailbox" }) {
 
       <div className="mb-4">
         <SettingsSubTabBar
-          tabs={visibleTabs}
+          tabs={TABS}
           activeTab={activeTab}
           onTabChange={onTabChange}
           ariaLabel="Platform settings"
