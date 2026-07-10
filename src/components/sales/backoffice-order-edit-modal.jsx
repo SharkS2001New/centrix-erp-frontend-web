@@ -266,7 +266,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                     draftDiscount: line.draftDiscount,
                     discountEditEnabled,
                   });
-                  const unitPrice = saleLineCatalogDisplayUnitPrice(line, uomById, { retailByCode });
+                  const unitPrice = saleLineCatalogDisplayUnitPrice(line, uomById);
 
                   return (
                     <tr key={line.id} className="theme-table-row border-b last:border-b-0">

@@ -41,7 +41,7 @@ describe("sale line discount display qty", () => {
     ).toBe(50);
   });
 
-  it("shows catalogue unit price without subtracting discount", () => {
+  it("shows product.unit_price without UOM conversion", () => {
     const pricedLine = {
       ...line,
       quantity: 25,
@@ -53,7 +53,7 @@ describe("sale line discount display qty", () => {
         unit: uomById.get(1),
       },
     };
-    expect(saleLineCatalogDisplayUnitPrice(pricedLine, uomById)).toBe(2286);
+    expect(saleLineCatalogDisplayUnitPrice(pricedLine, uomById)).toBe(91.44);
   });
 
   it("subtracts line discount only on amount", () => {
