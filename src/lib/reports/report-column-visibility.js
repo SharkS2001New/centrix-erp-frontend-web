@@ -10,6 +10,19 @@ const HIDDEN_PRODUCT_CODE_COLUMN = "product_code";
 /** Internal FK columns — kept in API for joins/UOM but not shown in report tables. */
 const HIDDEN_INTERNAL_ID_COLUMNS = new Set(["unit_id"]);
 
+/** UOM breakdown metadata — qty columns already show packaging via formatInventoryQtyWithUom. */
+const HIDDEN_REPORT_UOM_DETAIL_COLUMNS = new Set([
+  "uom_name",
+  "conversion_factor",
+  "small_packaging_label",
+  "middle_packaging_label",
+  "middle_factor",
+  "uom_type",
+]);
+
+/** Customer id/code columns — customer_name is sufficient in customer-facing reports. */
+const HIDDEN_CUSTOMER_ID_COLUMNS = new Set(["customer_num", "customer_code"]);
+
 const REPORT_COLUMN_LABELS = {
   product_name: "Product",
   first_received_at: "First receive",
@@ -30,11 +43,18 @@ const REPORT_COLUMN_LABELS = {
 export function isRedundantReportColumn(key, { multiBranch = false, showProductCode = false, rowKeys = [] } = {}) {
   if (HIDDEN_ORG_COLUMNS.has(key)) return true;
   if (HIDDEN_INTERNAL_ID_COLUMNS.has(key)) return true;
+  if (HIDDEN_REPORT_UOM_DETAIL_COLUMNS.has(key)) return true;
   if (!multiBranch && HIDDEN_SINGLE_BRANCH_COLUMNS.has(key)) return true;
   if (
     !showProductCode
     && key === HIDDEN_PRODUCT_CODE_COLUMN
     && rowKeys.includes("product_name")
+  ) {
+    return true;
+  }
+  if (
+    HIDDEN_CUSTOMER_ID_COLUMNS.has(key)
+    && rowKeys.includes("customer_name")
   ) {
     return true;
   }
@@ -56,19 +76,26 @@ export function reportColumnLabel(key) {
  */
 export function filterStructuredReportColumns(columns = []) {
   const hasProductName = columns.some((col) => col.key === "product_name");
-  if (!hasProductName) {
-    return columns.map((col) =>
-      col.key === "product_name" ? { ...col, label: col.label ?? "Product" } : col,
-    );
-  }
+  const hasCustomerName = columns.some((col) => col.key === "customer_name");
 
   return columns
-    .filter((col) => col.key !== HIDDEN_PRODUCT_CODE_COLUMN)
-    .map((col) =>
-      col.key === "product_name"
-        ? { ...col, label: col.label === "Product Name" ? "Product" : (col.label ?? "Product") }
-        : col,
-    );
+    .filter((col) => {
+      if (hasProductName && col.key === HIDDEN_PRODUCT_CODE_COLUMN) return false;
+      if (hasCustomerName && HIDDEN_CUSTOMER_ID_COLUMNS.has(col.key)) return false;
+      return true;
+    })
+    .map((col) => {
+      if (col.key === "product_name") {
+        return {
+          ...col,
+          label: col.label === "Product Name" ? "Product" : (col.label ?? "Product"),
+        };
+      }
+      if (col.key === "customer_name" && col.label === "Customer Name") {
+        return { ...col, label: "Customer" };
+      }
+      return col;
+    });
 }
 
 /**

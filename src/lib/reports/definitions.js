@@ -292,8 +292,7 @@ export const REPORT_DEFINITIONS = {
     dateColumn: null,
     showDateRange: false,
     columns: [
-      { key: "customer_num", label: "Customer Code", accessor: (r) => r.customer_num, link: "customer" },
-      { key: "customer_name", label: "Customer Name", accessor: (r) => r.customer_name, link: "customer" },
+      { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name, link: "customer" },
       { key: "route_name", label: "Route", accessor: (r) => r.route_name },
       { key: "current_balance", label: "Outstanding", accessor: (r) => r.current_balance, align: "right", total: true },
       { key: "open_invoices", label: "Open Invoices", accessor: (r) => r.open_invoices, align: "right", total: true },
@@ -325,7 +324,6 @@ export const REPORT_DEFINITIONS = {
     columns: [
       { key: "date_paid", label: "Date paid", accessor: (r) => r.date_paid },
       { key: "invoice_number", label: "Invoice #", accessor: (r) => r.invoice_number, link: "invoice" },
-      { key: "customer_num", label: "Customer #", accessor: (r) => r.customer_num, link: "customer" },
       { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name, link: "customer" },
       { key: "amount_paid", label: "Amount", accessor: (r) => r.amount_paid, align: "right", total: true },
       { key: "method_name", label: "Method", accessor: (r) => r.method_name },

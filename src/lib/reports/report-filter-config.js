@@ -63,6 +63,15 @@ export const INVENTORY_TXN_TYPE_OPTIONS = [
   ...Object.entries(INVENTORY_TRANSACTION_TYPE_LABELS).map(([value, label]) => ({ value, label })),
 ];
 
+export function inventoryTransactionTypeOptionsForCapabilities(capabilities) {
+  if (capabilities?.modules?.["sales.pos"]) {
+    return INVENTORY_TXN_TYPE_OPTIONS;
+  }
+  return INVENTORY_TXN_TYPE_OPTIONS.filter(
+    (option) => option.value === "" || option.value !== "POS_SALE",
+  );
+}
+
 export const REPORT_DATE_COLUMNS = {
   "sales-by-product": "sale_date",
   "sales-by-supplier": "sale_date",

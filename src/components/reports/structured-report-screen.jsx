@@ -22,6 +22,7 @@ import { ProfitLossReportScreen } from "@/components/reports/profit-loss-report-
 import { ExpensesReportScreen } from "@/components/reports/expenses-report-screen";
 import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
 import { filterStructuredReportColumns } from "@/lib/reports/report-column-visibility";
+import { filterStockMovementRows } from "@/lib/reports/report-row-filters";
 
 const PAGE_SIZE = 20;
 
@@ -100,6 +101,9 @@ function StandardReportScreen({ definition }) {
       if (definition.filterRows) {
         centrixRows = definition.filterRows(centrixRows, applied.extraFilters);
       }
+      if (definition.key === "stock-movement") {
+        centrixRows = filterStockMovementRows(centrixRows, capabilities);
+      }
       setRows(centrixRows);
       setReportMeta(normalizeReportMeta(res, page, PAGE_SIZE));
     } catch (e) {
@@ -109,7 +113,7 @@ function StandardReportScreen({ definition }) {
     } finally {
       setLoading(false);
     }
-  }, [definition, applied, page]);
+  }, [definition, applied, page, capabilities]);
 
   useEffect(() => {
     loadReport();
@@ -199,8 +203,11 @@ function StandardReportScreen({ definition }) {
     if (definition.filterRows) {
       combined = definition.filterRows(combined, applied.extraFilters);
     }
+    if (definition.key === "stock-movement") {
+      combined = filterStockMovementRows(combined, capabilities);
+    }
     return combined;
-  }, [applied.extraFilters, definition, exportSearchParams]);
+  }, [applied.extraFilters, capabilities, definition, exportSearchParams]);
 
   return (
     <>

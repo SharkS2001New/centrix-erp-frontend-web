@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import {
   INVENTORY_LOCATION_OPTIONS,
-  INVENTORY_TXN_TYPE_OPTIONS,
+  inventoryTransactionTypeOptionsForCapabilities,
   ORDER_STATUS_OPTIONS,
   PAYMENT_STATUS_OPTIONS,
   salesChannelOptionsForCapabilities,
@@ -25,7 +25,7 @@ export function useReportFilterOptions(reportKey) {
       orderStatuses: ORDER_STATUS_OPTIONS,
       stockLocations: STOCK_LOCATION_FILTER_OPTIONS,
       inventoryLocations: INVENTORY_LOCATION_OPTIONS,
-      transactionTypes: INVENTORY_TXN_TYPE_OPTIONS,
+      transactionTypes: inventoryTransactionTypeOptionsForCapabilities(capabilities),
     }),
     [capabilities],
   );

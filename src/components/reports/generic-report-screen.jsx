@@ -18,8 +18,8 @@ import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options"
 import { ReportQueryFilterFields } from "@/components/reports/report-query-filter-fields";
 import { ReportBranchSearchSelect } from "@/components/reports/report-filter-search-select";
 import { reportVatKpis } from "@/lib/reports/vat-summary";
-import { formatReportKes } from "@/lib/reports/format";
-import { formatInventoryQtyWithUom, isInventoryQtyField } from "@/lib/inventory-qty-display";
+import { formatReportCell, formatReportKes } from "@/lib/reports/format";
+import { isInventoryQtyField } from "@/lib/inventory-qty-display";
 import { ReportKpiGrid } from "@/components/reports/report-screen-shared";
 import { ReportCellLink } from "@/components/reports/report-cell-link";
 import {
@@ -29,27 +29,12 @@ import {
   FilterToolbar,
   PaginationBar,
   PrimaryButton,
-  formatShortDate,
 } from "@/components/catalog/catalog-shared";
 
 const PAGE_SIZE = 20;
 
 function formatCell(key, value, row) {
-  if (value == null || value === "") return "—";
-  if (typeof value === "number") {
-    if (isInventoryQtyField(key)) {
-      return row ? formatInventoryQtyWithUom(value, row) : String(value);
-    }
-    if (/amount|total|paid|balance|vat|gross|net|price|cost|kes|value/i.test(key)) {
-      return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-    return String(value);
-  }
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
-    return formatShortDate(value);
-  }
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  return String(value);
+  return formatReportCell(key, value, undefined, row);
 }
 
 function labelizeKey(key) {

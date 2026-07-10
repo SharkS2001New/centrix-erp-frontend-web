@@ -41,8 +41,6 @@ function buildPriceSheetPrintHtml({
   groups,
   columns,
   organizationName,
-  subtitle,
-  effectiveDate,
   showCost,
   showMargins,
 }) {
@@ -118,9 +116,7 @@ function buildPriceSheetPrintHtml({
   <style>
     @page { size: A4 landscape; margin: 10mm; }
     body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 16px; color: #212529; font-size: 10px; }
-    .title { text-align: center; font-size: 22px; font-weight: 800; color: #4c5ba4; letter-spacing: 0.04em; margin: 0; }
-    .subtitle { text-align: center; font-size: 11px; font-style: italic; margin: 4px 0 2px; color: #495057; }
-    .effective { text-align: center; font-size: 10px; margin-bottom: 12px; color: #6c757d; }
+    .title { text-align: center; font-size: 22px; font-weight: 800; color: #4c5ba4; letter-spacing: 0.04em; margin: 0 0 12px; }
     .org { text-align: center; font-size: 10px; color: #6c757d; margin-bottom: 8px; }
     table { width: 100%; border-collapse: collapse; }
     thead th { background: #4c5ba4; color: #fff; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; }
@@ -134,8 +130,6 @@ function buildPriceSheetPrintHtml({
 </head>
 <body>
   <h1 class="title">PRODUCT PRICE SHEET</h1>
-  <p class="subtitle">${escapeHtml(subtitle)}</p>
-  <p class="effective">Effective Date: ${escapeHtml(effectiveDate)}</p>
   ${organizationName ? `<p class="org">${escapeHtml(organizationName)}</p>` : ""}
   <table>
     <thead><tr>${headCells}</tr></thead>
@@ -303,25 +297,11 @@ export function ProductPriceSheetScreen() {
     (columns.aboveDozens ? 1 : 0) +
     (columns.wholesale ? 1 : 0);
 
-  const effectiveDate = new Date().toLocaleString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  const subtitle = retailPricingEnabled
-    ? "Pricing in pieces, dozens, and cartons with expected profit margins (grouped by subcategory)"
-    : "Wholesale pricing and expected profit margins by packaging";
-
   function handlePrint() {
     const html = buildPriceSheetPrintHtml({
       groups,
       columns,
       organizationName: organization?.org_name ?? capabilities?.profile_label ?? "",
-      subtitle,
-      effectiveDate,
       showCost,
       showMargins,
     });
@@ -441,19 +421,6 @@ export function ProductPriceSheetScreen() {
         <p className="text-sm text-slate-500">No products with a unit price to display.</p>
       ) : (
         <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-          <div className="border-b border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-5 py-4 text-center">
-            <h2 className="theme-heading text-xl font-extrabold tracking-wide uppercase">
-              Product price list
-            </h2>
-            <p className="theme-subtext mt-1 text-sm italic">{subtitle}</p>
-            {showMargins ? (
-              <p className="theme-subtext mt-1 text-xs">
-                Expected margin % = (full wholesale price − last cost) ÷ full wholesale price. Shown only on full price.
-              </p>
-            ) : null}
-            <p className="theme-subtext mt-1 text-xs">Effective date: {effectiveDate}</p>
-          </div>
-
           <div className="overflow-x-auto">
             <table className="theme-table min-w-full text-sm">
               <thead>

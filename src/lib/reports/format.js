@@ -4,6 +4,10 @@ import {
   formatInventoryQtyWithUom,
   isInventoryQtyField,
 } from "@/lib/inventory-qty-display";
+import {
+  inventoryTransactionTypeLabel,
+  salesChannelLabel,
+} from "@/lib/user-facing-labels";
 
 export function formatReportKes(value, settings = GENERAL_DEFAULTS) {
   if (value == null || value === "") return "—";
@@ -21,6 +25,8 @@ export function formatReportNumber(value, decimals = 2, settings = GENERAL_DEFAU
 
 export function formatReportCell(key, value, settings = GENERAL_DEFAULTS, row = null) {
   if (value == null || value === "") return "—";
+  if (key === "channel") return salesChannelLabel(value);
+  if (key === "transaction_type") return inventoryTransactionTypeLabel(value);
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") {
     if (isInventoryQtyField(key)) {
