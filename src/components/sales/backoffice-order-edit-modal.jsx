@@ -7,9 +7,11 @@ import {
   saleLineDisplayUnitPrice,
   saleLineEntryQtyForEdit,
   saleLineEntryQtyToBase,
+  saleLineUom,
 } from "@/lib/sale-line-items";
 import { lineDiscountPerUnit, lineDiscountTotal } from "@/lib/pos-line";
 import { showBackofficeLineDiscountEdit } from "@/lib/sales-settings";
+import { uomConversionFactor } from "@/lib/stock-uom";
 import { useAuth } from "@/contexts/auth-context";
 import { inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
@@ -50,16 +52,52 @@ function resolveLineBaseQty(line, draftQty, uomById, retailByCode) {
   return Number.isFinite(baseQty) && baseQty > 0 ? baseQty : oldQty;
 }
 
-/** Line total preview: unit price × qty − (per-unit discount × qty). */
+function resolveLineDisplayQty(line, draftQty, uomById, retailByCode) {
+  const entryQty = Number(draftQty);
+  if (Number.isFinite(entryQty) && entryQty > 0) return entryQty;
+  const parsed = Number(saleLineEntryQtyForEdit(line, uomById, retailByCode));
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  const uom = saleLineUom(line, uomById);
+  const factor = uomConversionFactor(uom);
+  const baseQty = Number(line.quantity ?? 0);
+  const isRetailLine = Number(line?.on_wholesale_retail) === 1;
+  if (isRetailLine || factor <= 1) return baseQty;
+  return baseQty / factor;
+}
+
+/** Gross display unit price (before line discount) from the stored line. */
+function lineGrossDisplayUnitPrice(line, uomById) {
+  const uom = saleLineUom(line, uomById);
+  const factor = uomConversionFactor(uom);
+  const isRetailLine = Number(line?.on_wholesale_retail) === 1;
+  const baseQty = Number(line.quantity ?? 0);
+  const originalDisplayQty = isRetailLine || factor <= 1 ? baseQty : baseQty / factor;
+  const grossAmount = Number(line.amount ?? 0) + Math.max(0, Number(line.discount_given ?? 0));
+
+  if (originalDisplayQty > 0 && grossAmount > 0) {
+    return Math.round((grossAmount / originalDisplayQty) * 100) / 100;
+  }
+
+  const perBase = Number(line.selling_price ?? 0);
+  if (perBase > 0) {
+    if (isRetailLine || factor <= 1) return perBase;
+    return Math.round(perBase * factor * 100) / 100;
+  }
+
+  return saleLineDisplayUnitPrice(line, uomById);
+}
+
+/** Line total preview: gross display price × qty − line discount (per base unit × base qty). */
 function linePreviewAmount(line, draftQty, uomById, retailByCode, discountEditEnabled) {
   const oldQty = Number(line.quantity);
   const baseQty = resolveLineBaseQty(line, draftQty, uomById, retailByCode);
 
   if (discountEditEnabled) {
-    const unitPrice = saleLineDisplayUnitPrice(line, uomById);
-    const perUnit = Math.max(0, Number(line.draftDiscount ?? 0));
-    const subtotal = Math.round(unitPrice * baseQty * 100) / 100;
-    const discountTotal = lineDiscountTotal(perUnit, baseQty);
+    const displayQty = resolveLineDisplayQty(line, draftQty, uomById, retailByCode);
+    const grossUnitPrice = lineGrossDisplayUnitPrice(line, uomById);
+    const perUnitDiscount = Math.max(0, Number(line.draftDiscount ?? 0));
+    const subtotal = Math.round(grossUnitPrice * displayQty * 100) / 100;
+    const discountTotal = lineDiscountTotal(perUnitDiscount, baseQty);
     return Math.max(0, Math.round((subtotal - discountTotal) * 100) / 100);
   }
 
