@@ -69,8 +69,9 @@ const SAMPLE_ROW = [
   "",
 ];
 
-function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
+function ExportModal({ open, onClose, totalCount, exportSearchParams, exportColumns }) {
   const { runBackgroundTask } = useBackgroundTasks();
+  const columns = exportColumns?.length ? exportColumns : CUSTOMER_CATALOG_EXPORT_COLUMNS;
 
   if (!open) return null;
 
@@ -84,7 +85,7 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
           format: exportFormat,
           source: "customer_catalog",
           filename: `customers-${stamp}`,
-          columns: CUSTOMER_CATALOG_EXPORT_COLUMNS,
+          columns,
           meta: serializeExportMeta({
             title: "Customers",
             subtitle: "Customer export",
@@ -109,7 +110,7 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
         <h2 className="text-[15px] font-medium text-slate-900">Export customers</h2>
         <p className="mt-2 text-sm text-slate-500">
           Export all {countLabel.toLocaleString()} customer{countLabel === 1 ? "" : "s"} matching your
-          current filters.
+          current filters. PDF and CSV use your visible table columns.
         </p>
         <div className="mt-4 flex flex-col gap-2">
           <button
@@ -289,7 +290,7 @@ function ImportModal({ open, onClose, onImported }) {
   );
 }
 
-export function CustomerImportExport({ totalCount, exportSearchParams, onImported }) {
+export function CustomerImportExport({ totalCount, exportSearchParams, exportColumns, onImported }) {
   const { user, organization, capabilities } = useAuth();
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -320,6 +321,7 @@ export function CustomerImportExport({ totalCount, exportSearchParams, onImporte
         onClose={() => setExportOpen(false)}
         totalCount={totalCount}
         exportSearchParams={exportSearchParams}
+        exportColumns={exportColumns}
       />
     </>
   );

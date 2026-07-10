@@ -31,6 +31,7 @@ import {
   readStoredColumnIds,
   renderSupplierCell,
 } from "@/components/suppliers/suppliers-columns";
+import { supplierExportColumnsFromVisibleIds } from "@/lib/catalog-list-export-columns";
 import { SupplierImportExport } from "@/components/suppliers/supplier-import-export";
 import { OtherContactsModal } from "@/components/suppliers/other-contacts-modal";
 import {
@@ -96,6 +97,10 @@ export default function SuppliersPage() {
       visibleColumnIds
         .map((id) => SUPPLIER_COLUMNS.find((c) => c.id === id))
         .filter(Boolean),
+    [visibleColumnIds],
+  );
+  const exportColumns = useMemo(
+    () => supplierExportColumnsFromVisibleIds(visibleColumnIds),
     [visibleColumnIds],
   );
 
@@ -301,6 +306,7 @@ export default function SuppliersPage() {
           <SupplierImportExport
             totalCount={totalSuppliers}
             exportSearchParams={buildExportSearchParams}
+            exportColumns={exportColumns}
             onImported={reloadAll}
           />
           <Link

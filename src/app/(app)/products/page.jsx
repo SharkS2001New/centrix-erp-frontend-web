@@ -60,6 +60,7 @@ import {
 import { useConfirm } from "@/lib/use-confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
+import { productExportColumnsFromVisibleIds } from "@/lib/catalog-list-export-columns";
 
 const COLUMN_STORAGE_KEY = "centrix-erp-products-visible-columns";
 const SORT_STORAGE_KEY = "centrix-erp-products-sort";
@@ -396,6 +397,10 @@ export default function ProductsPage() {
       visibleColumnIds
         .map((id) => PRODUCT_COLUMNS.find((c) => c.id === id))
         .filter(Boolean),
+    [visibleColumnIds],
+  );
+  const exportColumns = useMemo(
+    () => productExportColumnsFromVisibleIds(visibleColumnIds),
     [visibleColumnIds],
   );
 
@@ -820,6 +825,7 @@ export default function ProductsPage() {
           <ProductImportExport
             totalCount={totalProducts}
             exportSearchParams={buildExportSearchParams}
+            exportColumns={exportColumns}
             onImported={reloadAll}
           />
           <PermissionGate permission={P.catalogue.products.create}>

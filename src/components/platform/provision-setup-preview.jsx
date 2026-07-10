@@ -10,7 +10,8 @@ const APPLICATION_LABELS = Object.fromEntries(
 const CHANNEL_LABELS = {
   pos: "POS terminal",
   mobile: "Mobile field sales",
-  backend: "Backoffice web",
+  backend: "Backoffice",
+  backoffice: "Backoffice",
 };
 
 export function enabledApplicationLabels(enabledModules = {}) {
@@ -38,7 +39,8 @@ export function ProvisionSetupPreview({ preview, loading = false, className = ""
   }
 
   const apps = enabledApplicationLabels(preview.enabled_modules ?? {});
-  const channels = channelLabels(preview.login_channels ?? []);
+  const salesChannels = channelLabels(preview.sales_channels ?? []);
+  const loginChannels = channelLabels(preview.login_channels ?? []);
   const roles = preview.recommended_roles ?? [];
   const steps = preview.onboarding_steps ?? [];
 
@@ -69,7 +71,12 @@ export function ProvisionSetupPreview({ preview, loading = false, className = ""
 
         <section>
           <h3 className="font-medium text-[var(--theme-text)]">Sales channels</h3>
-          <p className="theme-subtext mt-2">{channels.join(" · ") || "Backoffice web"}</p>
+          <p className="theme-subtext mt-2">{salesChannels.join(" · ") || "Backoffice"}</p>
+        </section>
+
+        <section>
+          <h3 className="font-medium text-[var(--theme-text)]">Login channels</h3>
+          <p className="theme-subtext mt-2">{loginChannels.join(" · ") || "Backoffice"}</p>
         </section>
 
         <section>

@@ -11,6 +11,7 @@ import {
   DashboardQuickLinks,
   DashboardSection,
 } from "@/components/dashboard/dashboard-shared";
+import { salesChannelLabel } from "@/lib/user-facing-labels";
 import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboard-section";
 
 const MODULE_LINKS = [
@@ -78,7 +79,7 @@ export function OverviewDashboard() {
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Branch</p>
           <p className="theme-heading mt-1 text-lg font-semibold">{user?.branch?.branch_name ?? "All branches"}</p>
           <p className="theme-subtext mt-0.5 text-xs">
-            {(capabilities?.channels ?? []).join(" · ") || "Backoffice"}
+            {(capabilities?.channels ?? []).map((channel) => salesChannelLabel(channel)).join(" · ") || "Backoffice"}
           </p>
         </div>
         <div className="theme-panel rounded-xl border px-5 py-4 shadow-sm">

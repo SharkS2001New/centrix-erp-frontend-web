@@ -36,6 +36,7 @@ import {
 } from "@/components/catalog/table-row-selection";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { customerExportColumnsFromVisibleIds } from "@/lib/catalog-list-export-columns";
 
 const COLUMN_STORAGE_KEY = "centrix-erp-customers-visible-columns";
 const SORT_STORAGE_KEY = "centrix-erp-customers-sort";
@@ -339,6 +340,10 @@ export default function CustomersPage() {
         .filter(Boolean),
     [visibleColumnIds],
   );
+  const exportColumns = useMemo(
+    () => customerExportColumnsFromVisibleIds(visibleColumnIds),
+    [visibleColumnIds],
+  );
 
   const loadReferenceData = useCallback(async () => {
     try {
@@ -557,6 +562,7 @@ export default function CustomersPage() {
           <CustomerImportExport
             totalCount={totalCustomers}
             exportSearchParams={buildExportSearchParams}
+            exportColumns={exportColumns}
             onImported={reloadAll}
           />
           <Link

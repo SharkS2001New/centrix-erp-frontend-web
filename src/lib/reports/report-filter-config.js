@@ -1,4 +1,7 @@
 /** Reports with no date range UI or params. */
+import { INVENTORY_TRANSACTION_TYPE_LABELS } from "@/lib/user-facing-labels";
+import { resolveSalesChannelsFromCapabilities } from "@/lib/sales-channels";
+
 export const REPORTS_WITHOUT_DATE_FILTER = new Set([
   "price-list",
   "low-stock",
@@ -23,20 +26,7 @@ export const SALES_CHANNEL_OPTIONS = [
 ];
 
 export function salesChannelOptionsForCapabilities(capabilities) {
-  const channels = Array.isArray(capabilities?.channels)
-    ? capabilities.channels
-    : [
-        ...(capabilities?.modules?.["sales.pos"] ? ["pos"] : []),
-        ...(
-          capabilities?.modules?.["sales.mobile"] &&
-          capabilities?.mobile_orders_enabled !== false &&
-          capabilities?.module_settings?.sales?.enable_mobile_orders !== false
-            ? ["mobile"]
-            : []
-        ),
-        ...(capabilities?.modules?.["sales.backend"] !== false ? ["backend"] : []),
-      ];
-  const allowed = new Set(channels);
+  const allowed = new Set(resolveSalesChannelsFromCapabilities(capabilities));
 
   return SALES_CHANNEL_OPTIONS.filter((option) => option.value === "" || allowed.has(option.value));
 }
@@ -67,8 +57,6 @@ export const INVENTORY_LOCATION_OPTIONS = [
   { value: "shop", label: "Shop only" },
   { value: "store", label: "Store only" },
 ];
-
-import { INVENTORY_TRANSACTION_TYPE_LABELS } from "@/lib/user-facing-labels";
 
 export const INVENTORY_TXN_TYPE_OPTIONS = [
   { value: "", label: "All types" },

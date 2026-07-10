@@ -30,6 +30,12 @@ import {
   advancedDataImportPagesFromApi,
   defaultAdvancedDataImportPages,
 } from "@/lib/advanced-data-import-pages";
+import {
+  availableLoginChannelsFromCapabilities,
+  defaultLoginChannelsForCapabilities,
+  formatLoginChannels,
+} from "@/lib/login-channels";
+import { platformCapabilitiesFromOrgConfig } from "@/lib/sales-channels";
 
 const inputClass =
   "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-[#185FA5] focus:ring-1 focus:ring-[#185FA5]";
@@ -320,7 +326,7 @@ export function OrganizationPlatformSalesSettings({
           />
           <Toggle
             label="Enable mobile orders"
-            description="When on, the mobile app, mobile user logins, and backoffice mobile-order views are available. When off, only backoffice and POS channels can be used."
+            description="When on, the mobile app, mobile user logins, and backoffice mobile-order views are available. When off, only backoffice (and external POS when enabled) can be used."
             checked={mobileOrdersEnabled}
             onChange={(v) => patch({ enable_mobile_orders: v })}
           />
@@ -734,6 +740,9 @@ export function OrganizationConfigTabs({
         <OrganizationUsersPanel
           organizationId={organizationId ?? organization?.id}
           companyCode={tenantValues.company_code}
+          enabledModules={enabledModules}
+          mobileOrdersEnabled={mobileOrdersEnabled}
+          salesPlatform={salesPlatform}
           detailed
         />
       ) : null}
@@ -856,11 +865,6 @@ export function OrganizationModuleToggles({
   );
 }
 
-function formatChannels(channels) {
-  if (!Array.isArray(channels) || channels.length === 0) return "—";
-  return channels.join(", ");
-}
-
 function pickDefaultBranch(branches) {
   if (!Array.isArray(branches) || branches.length === 0) return null;
   const hq = branches.find((b) => String(b.branch_code ?? "").toUpperCase() === "HQ");
@@ -883,7 +887,14 @@ function pickDefaultRole(roles, { admin = false } = {}) {
   );
 }
 
-export function OrganizationUsersPanel({ organizationId, companyCode, detailed = false }) {
+export function OrganizationUsersPanel({
+  organizationId,
+  companyCode,
+  enabledModules = {},
+  mobileOrdersEnabled = true,
+  salesPlatform = {},
+  detailed = false,
+}) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -902,6 +913,21 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState(null);
   const [createMessage, setCreateMessage] = useState(null);
+
+  const platformCapabilities = useMemo(
+    () =>
+      platformCapabilitiesFromOrgConfig({
+        enabledModules,
+        mobileOrdersEnabled,
+        salesPlatform,
+      }),
+    [enabledModules, mobileOrdersEnabled, salesPlatform],
+  );
+
+  const availableLoginChannels = useMemo(
+    () => availableLoginChannelsFromCapabilities(platformCapabilities),
+    [platformCapabilities],
+  );
 
   const loadUsers = useCallback(async () => {
     if (!organizationId) return;
@@ -958,7 +984,7 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
     setPassword("");
     setIsAdmin(false);
     setMustChangePassword(true);
-    setLoginChannels(["backoffice"]);
+    setLoginChannels(defaultLoginChannelsForCapabilities(platformCapabilities));
     const branch = pickDefaultBranch(branches);
     const staffRole = pickDefaultRole(roles, { admin: false });
     setBranchId(branch?.id ? String(branch.id) : "");
@@ -1120,20 +1146,20 @@ export function OrganizationUsersPanel({ organizationId, companyCode, detailed =
               <div className="mt-4">
                 <span className="text-xs font-medium text-slate-600">Login channels *</span>
                 <div className="mt-2 flex flex-wrap gap-3">
-                  {["backoffice", "pos", "mobile"].map((channel) => (
-                    <label key={channel} className="flex items-center gap-2 text-sm text-slate-700">
+                  {availableLoginChannels.map((channel) => (
+                    <label key={channel.value} className="flex items-center gap-2 text-sm text-slate-700">
                       <input
                         type="checkbox"
-                        checked={loginChannels.includes(channel)}
+                        checked={loginChannels.includes(channel.value)}
                         onChange={(e) =>
                           setLoginChannels((prev) =>
                             e.target.checked
-                              ? [...prev, channel]
-                              : prev.filter((c) => c !== channel),
+                              ? [...prev, channel.value]
+                              : prev.filter((c) => c !== channel.value),
                           )
                         }
                       />
-                      {channel}
+                      {channel.label}
                     </label>
                   ))}
                 </div>
@@ -1383,7 +1409,7 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
           <span className="text-slate-600">Staff</span>
         )}
       </td>
-      <td className="px-4 py-2 text-xs text-slate-600">{formatChannels(user.login_channels)}</td>
+      <td className="px-4 py-2 text-xs text-slate-600">{formatLoginChannels(user.login_channels)}</td>
       <td className="px-4 py-2 text-xs text-slate-600">
         {user.last_login ? new Date(user.last_login).toLocaleString() : "—"}
       </td>

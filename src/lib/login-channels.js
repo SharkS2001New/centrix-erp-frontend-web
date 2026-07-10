@@ -1,5 +1,5 @@
 export const LOGIN_CHANNELS = [
-  { value: "backoffice", label: "Backoffice (web ERP)" },
+  { value: "backoffice", label: "Backoffice" },
   { value: "pos", label: "POS (external terminal)" },
   { value: "mobile", label: "Mobile app (field sales / driver)" },
   { value: "manager", label: "Manager app" },

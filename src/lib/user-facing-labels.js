@@ -17,9 +17,9 @@ export const INVENTORY_TRANSACTION_TYPE_LABELS = {
 export const SALES_CHANNEL_LABELS = {
   pos: "POS",
   mobile: "Mobile",
-  erp: "ERP",
-  backend: "ERP",
-  backoffice: "ERP",
+  erp: "Backoffice",
+  backend: "Backoffice",
+  backoffice: "Backoffice",
   wholesale: "Wholesale",
   online: "Online",
   route: "Route",
@@ -32,9 +32,12 @@ export function humanizeBackendTerm(value) {
   if (upper === "BACKEND_SALE") return "Backoffice sale";
   if (upper === "BACKEND") return "Backoffice";
   const lower = raw.toLowerCase();
-  if (lower === "backend" || lower === "backoffice") return "Backoffice";
+  if (lower === "backend" || lower === "backoffice" || lower === "erp") return "Backoffice";
   if (/\bbackend\b/i.test(raw)) {
     return raw.replace(/\bbackend\b/gi, "Backoffice");
+  }
+  if (/\berp\b/i.test(raw)) {
+    return raw.replace(/\berp\b/gi, "Backoffice");
   }
   return null;
 }

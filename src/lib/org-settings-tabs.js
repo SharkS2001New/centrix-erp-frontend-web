@@ -1,5 +1,6 @@
 import { hasOperationalModule } from "@/lib/admin-scope";
 import { hasManagerApprovalsSettingsTab } from "@/lib/manager-approvals-settings";
+import { resolveSalesChannelsFromModules } from "@/lib/sales-channels";
 import {
   isPlatformAiEnabled,
   isPlatformKraIntegrationEnabled,
@@ -160,11 +161,9 @@ export function capabilitiesFromOrganizationPayload(payload) {
   return {
     modules,
     module_settings: moduleSettings,
-    channels: [
-      ...(modules["sales.pos"] ? ["pos"] : []),
-      ...(sales.enable_mobile_orders !== false && modules["sales.mobile"] ? ["mobile"] : []),
-      ...(modules["sales.backend"] ? ["backend"] : []),
-    ],
+    channels: resolveSalesChannelsFromModules(modules, {
+      mobileOrdersEnabled: sales.enable_mobile_orders !== false,
+    }),
     screen_lock_minutes: security.screen_lock_minutes ?? 5,
     session_idle_minutes: security.session_idle_minutes ?? 60,
     mobile_orders_enabled: sales.enable_mobile_orders !== false,

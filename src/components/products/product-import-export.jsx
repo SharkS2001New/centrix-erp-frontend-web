@@ -130,9 +130,10 @@ function ExportIcon() {
   );
 }
 
-function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
+function ExportModal({ open, onClose, totalCount, exportSearchParams, exportColumns }) {
   const { runBackgroundTask } = useBackgroundTasks();
   const [error, setError] = useState(null);
+  const columns = exportColumns?.length ? exportColumns : PRODUCT_CATALOG_EXPORT_COLUMNS;
 
   if (!open) return null;
 
@@ -147,7 +148,7 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
           format: exportFormat,
           source: "product_catalog",
           filename: `products-${stamp}`,
-          columns: PRODUCT_CATALOG_EXPORT_COLUMNS,
+          columns,
           meta: serializeExportMeta({
             title: "Products",
             subtitle: "Product catalogue export",
@@ -174,7 +175,7 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
         <h2 className="text-[15px] font-medium text-slate-900">Export products</h2>
         <p className="mt-2 text-sm text-slate-500">
           Export all {countLabel.toLocaleString()} product{countLabel === 1 ? "" : "s"} matching your
-          current filters.
+          current filters. PDF and CSV use your visible table columns.
         </p>
         {error ? (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
@@ -415,7 +416,7 @@ function ImportModal({ open, onClose, onImported, includeShelfLocation = false }
   );
 }
 
-export function ProductImportExport({ totalCount, exportSearchParams, onImported }) {
+export function ProductImportExport({ totalCount, exportSearchParams, exportColumns, onImported }) {
   const { user, organization, capabilities } = useAuth();
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
   const [importOpen, setImportOpen] = useState(false);
@@ -459,6 +460,7 @@ export function ProductImportExport({ totalCount, exportSearchParams, onImported
         onClose={() => setExportOpen(false)}
         totalCount={totalCount}
         exportSearchParams={exportSearchParams}
+        exportColumns={exportColumns}
       />
     </>
   );

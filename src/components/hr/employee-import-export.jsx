@@ -59,7 +59,7 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
 
   function runExport(format) {
     const stamp = new Date().toISOString().slice(0, 10);
-    const exportFormat = format === "pdf" ? "pdf" : format === "csv" ? "csv" : "xlsx";
+    const exportFormat = format === "pdf" ? "pdf" : "csv";
     onClose();
     void runBackgroundTask(
       () =>
@@ -92,10 +92,7 @@ function ExportModal({ open, onClose, totalCount, exportSearchParams }) {
           Export all {countLabel.toLocaleString()} employee{countLabel === 1 ? "" : "s"} matching your filters.
         </p>
         <div className="mt-4 flex flex-col gap-2">
-          <button type="button" disabled={countLabel === 0} onClick={() => runExport("excel")} className="rounded-lg bg-[#185FA5] py-2.5 text-sm font-medium text-white hover:bg-[#144f8a] disabled:opacity-50">
-            Excel spreadsheet (.xlsx)
-          </button>
-          <button type="button" disabled={countLabel === 0} onClick={() => runExport("csv")} className="rounded-lg border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          <button type="button" disabled={countLabel === 0} onClick={() => runExport("csv")} className="rounded-lg bg-[#185FA5] py-2.5 text-sm font-medium text-white hover:bg-[#144f8a] disabled:opacity-50">
             CSV (.csv)
           </button>
           <button type="button" disabled={countLabel === 0} onClick={() => runExport("pdf")} className="rounded-lg border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">

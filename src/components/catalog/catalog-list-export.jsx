@@ -9,7 +9,7 @@ import { reportPrintedAt } from "@/lib/reports/export";
 import { ImportExportIcons } from "@/components/catalog/catalog-import-export-shared";
 
 /**
- * Export-only toolbar button for paginated list pages (Excel, CSV, PDF).
+ * Export-only toolbar button for paginated list pages (CSV, PDF).
  *
  * @param {object} props
  * @param {string} props.title
@@ -38,7 +38,7 @@ export function CatalogListExport({
   function runExport(format) {
     const stamp = new Date().toISOString().slice(0, 10);
     const slug = filename || title || "export";
-    const exportFormat = format === "pdf" ? "pdf" : format === "csv" ? "csv" : "xlsx";
+    const exportFormat = format === "pdf" ? "pdf" : "csv";
     setOpen(false);
     void runBackgroundTask(
       () => {
@@ -105,15 +105,8 @@ export function CatalogListExport({
                 <div className="mt-4 flex flex-col gap-2">
                   <button
                     type="button"
-                    onClick={() => runExport("excel")}
-                    className="rounded-lg bg-[#185FA5] py-2.5 text-sm font-medium text-white hover:bg-[#144f8a]"
-                  >
-                    Excel spreadsheet (.xlsx)
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => runExport("csv")}
-                    className="rounded-lg border border-slate-200 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="rounded-lg bg-[#185FA5] py-2.5 text-sm font-medium text-white hover:bg-[#144f8a]"
                   >
                     CSV (.csv)
                   </button>
