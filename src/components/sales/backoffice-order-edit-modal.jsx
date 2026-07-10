@@ -4,16 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
 import {
-  saleLineDisplayUnitPrice,
+  saleLineCatalogDisplayUnitPrice,
   saleLineDiscountTotalFromEntered,
   saleLineEnteredDiscountPerUnit,
   saleLineEntryQtyForEdit,
   saleLineEntryQtyToBase,
-  saleLineUom,
+  saleLinePreviewRowAmount,
 } from "@/lib/sale-line-items";
-import { lineDiscountTotal } from "@/lib/pos-line";
 import { showBackofficeLineDiscountEdit } from "@/lib/sales-settings";
-import { uomConversionFactor } from "@/lib/stock-uom";
 import { useAuth } from "@/contexts/auth-context";
 import { inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
@@ -32,78 +30,12 @@ function lineLabel(line) {
   return name || code || "Item";
 }
 
-function scaleAmount(value, newQty, oldQty) {
-  const old = Number(oldQty);
-  if (!old || old <= 0) return 0;
-  return Math.round((Number(value) * Number(newQty)) / old * 100) / 100;
-}
-
 function indexRetailPackages(rows) {
   const map = {};
   for (const row of rows ?? []) {
     if (row?.product_code) map[row.product_code] = row;
   }
   return map;
-}
-
-function resolveLineBaseQty(line, draftQty, uomById, retailByCode) {
-  const oldQty = Number(line.quantity);
-  const entryQty = Number(draftQty);
-  if (!Number.isFinite(entryQty) || entryQty <= 0) return oldQty;
-  const baseQty = saleLineEntryQtyToBase(line, entryQty, uomById, retailByCode);
-  return Number.isFinite(baseQty) && baseQty > 0 ? baseQty : oldQty;
-}
-
-function resolveLineDisplayQty(line, draftQty, uomById, retailByCode) {
-  const entryQty = Number(draftQty);
-  if (Number.isFinite(entryQty) && entryQty > 0) return entryQty;
-  const parsed = Number(saleLineEntryQtyForEdit(line, uomById, retailByCode));
-  if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  const uom = saleLineUom(line, uomById);
-  const factor = uomConversionFactor(uom);
-  const baseQty = Number(line.quantity ?? 0);
-  const isRetailLine = Number(line?.on_wholesale_retail) === 1;
-  if (isRetailLine || factor <= 1) return baseQty;
-  return baseQty / factor;
-}
-
-/** Gross display unit price (before line discount) from the stored line. */
-function lineGrossDisplayUnitPrice(line, uomById) {
-  const uom = saleLineUom(line, uomById);
-  const factor = uomConversionFactor(uom);
-  const isRetailLine = Number(line?.on_wholesale_retail) === 1;
-  const baseQty = Number(line.quantity ?? 0);
-  const originalDisplayQty = isRetailLine || factor <= 1 ? baseQty : baseQty / factor;
-  const grossAmount = Number(line.amount ?? 0) + Math.max(0, Number(line.discount_given ?? 0));
-
-  if (originalDisplayQty > 0 && grossAmount > 0) {
-    return Math.round((grossAmount / originalDisplayQty) * 100) / 100;
-  }
-
-  const perBase = Number(line.selling_price ?? 0);
-  if (perBase > 0) {
-    if (isRetailLine || factor <= 1) return perBase;
-    return Math.round(perBase * factor * 100) / 100;
-  }
-
-  return saleLineDisplayUnitPrice(line, uomById);
-}
-
-/** Line total preview: gross display price × pack qty − (disc per pack × pack qty). */
-function linePreviewAmount(line, draftQty, uomById, retailByCode, discountEditEnabled) {
-  const oldQty = Number(line.quantity);
-  const baseQty = resolveLineBaseQty(line, draftQty, uomById, retailByCode);
-
-  if (discountEditEnabled) {
-    const packQty = resolveLineDisplayQty(line, draftQty, uomById, retailByCode);
-    const grossUnitPrice = lineGrossDisplayUnitPrice(line, uomById);
-    const perUnitDiscount = Math.max(0, Number(line.draftDiscount ?? 0));
-    const subtotal = Math.round(grossUnitPrice * packQty * 100) / 100;
-    const discountTotal = lineDiscountTotal(perUnitDiscount, packQty);
-    return Math.max(0, Math.round((subtotal - discountTotal) * 100) / 100);
-  }
-
-  return scaleAmount(line.amount, baseQty, oldQty || baseQty);
 }
 
 export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved, capabilities = null }) {
@@ -179,7 +111,11 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
   const totals = useMemo(() => {
     return lines.reduce(
       (sum, line) =>
-        sum + linePreviewAmount(line, line.draftQty, uomById, retailByCode, discountEditEnabled),
+        sum +
+        saleLinePreviewRowAmount(line, line.draftQty, uomById, {
+          retailByCode,
+          discountEditEnabled,
+        }),
       0,
     );
   }, [lines, retailByCode, uomById, discountEditEnabled]);
@@ -325,16 +261,12 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
               </thead>
               <tbody>
                     {lines.map((line) => {
-                  const amount = linePreviewAmount(
-                    line,
-                    line.draftQty,
-                    uomById,
+                  const amount = saleLinePreviewRowAmount(line, line.draftQty, uomById, {
                     retailByCode,
+                    draftDiscount: line.draftDiscount,
                     discountEditEnabled,
-                  );
-                  const unitPrice = discountEditEnabled
-                    ? lineGrossDisplayUnitPrice(line, uomById)
-                    : saleLineDisplayUnitPrice(line, uomById);
+                  });
+                  const unitPrice = saleLineCatalogDisplayUnitPrice(line, uomById, { retailByCode });
 
                   return (
                     <tr key={line.id} className="theme-table-row border-b last:border-b-0">

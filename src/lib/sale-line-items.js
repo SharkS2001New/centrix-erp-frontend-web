@@ -141,35 +141,86 @@ export function legacySaleLinePrintQtyPackage(line) {
 }
 
 /** Display sale line quantity with packaging labels when UOM data is available. */
-/** Unit price shown per pack (wholesale) or per retail measure — from stored line amount ÷ qty. */
-export function saleLineDisplayUnitPrice(line, uomById, { legacyPrint = false, sale = null } = {}) {
+/** Catalogue list price per display unit (pack / retail measure) — discount is not baked in. */
+export function saleLineCatalogDisplayUnitPrice(line, uomById, { legacyPrint = false, sale = null, retailByCode = {} } = {}) {
   if (isLegacySaleLine(line, { legacyPrint, sale })) {
     const baseQty = Number(line?.quantity ?? 0);
-    const amount = Number(line?.amount ?? 0);
-    if (baseQty > 0 && amount > 0) {
-      return Math.round((amount / baseQty) * 100) / 100;
+    const discount = Math.max(0, Number(line?.discount_given ?? 0));
+    const grossAmount = Number(line?.amount ?? 0) + discount;
+    if (baseQty > 0 && grossAmount > 0) {
+      return Math.round((grossAmount / baseQty) * 100) / 100;
     }
     return Number(line?.selling_price ?? line?.unit_price ?? 0);
   }
 
   const uom = saleLineUom(line, uomById);
   const isRetailLine = Number(line?.on_wholesale_retail) === 1;
-  const factor = uomConversionFactor(uom);
-  const baseQty = Number(line?.quantity ?? 0);
-  const amount = Number(line?.amount ?? 0);
+  const catalogBase = Number(line?.product?.unit_price ?? 0);
 
-  if (baseQty > 0 && amount > 0) {
-    const displayQty = isRetailLine || factor <= 1 ? baseQty : baseQty / factor;
-    if (displayQty > 0) {
-      return Math.round((amount / displayQty) * 100) / 100;
-    }
+  if (catalogBase > 0) {
+    return cartLineDisplayUnitPrice({ unit_price: catalogBase }, uom, isRetailLine);
   }
 
-  return cartLineDisplayUnitPrice(
-    { unit_price: line?.selling_price ?? line?.unit_price },
-    uom,
-    isRetailLine,
-  );
+  const perBase = Number(line?.selling_price ?? line?.unit_price ?? 0);
+  if (perBase > 0) {
+    return cartLineDisplayUnitPrice({ unit_price: perBase }, uom, isRetailLine);
+  }
+
+  const displayQty = saleLinePackQtyForDiscount(line, uomById, retailByCode);
+  const grossAmount = Number(line?.amount ?? 0) + Math.max(0, Number(line?.discount_given ?? 0));
+  if (displayQty > 0 && grossAmount > 0) {
+    return Math.round((grossAmount / displayQty) * 100) / 100;
+  }
+
+  return 0;
+}
+
+/** Unit price column — catalogue gross per display unit; discount applies only on amount. */
+export function saleLineDisplayUnitPrice(line, uomById, options = {}) {
+  return saleLineCatalogDisplayUnitPrice(line, uomById, options);
+}
+
+/** Per-pack discount shown in order line tables (matches POS cashier input). */
+export function saleLineDisplayDiscountPerUnit(line, uomById, retailByCode = {}, draftQty = null) {
+  return saleLineEnteredDiscountPerUnit(line, uomById, retailByCode, draftQty);
+}
+
+/** Line amount for order lists: (catalog unit price × pack qty) − (per-pack discount × pack qty). */
+export function saleLineListRowAmount(line, uomById, { legacyPrint = false, sale = null, retailByCode = {} } = {}) {
+  if (isLegacySaleLine(line, { legacyPrint, sale })) {
+    return Number(line?.amount ?? 0);
+  }
+
+  const unitPrice = saleLineCatalogDisplayUnitPrice(line, uomById, { legacyPrint, sale, retailByCode });
+  const packQty = saleLinePackQtyForDiscount(line, uomById, retailByCode);
+  const perPackDiscount = saleLineDisplayDiscountPerUnit(line, uomById, retailByCode);
+  const discountTotal = lineDiscountTotal(perPackDiscount, packQty);
+  const gross = Math.round(unitPrice * packQty * 100) / 100;
+  return Math.max(0, Math.round((gross - discountTotal) * 100) / 100);
+}
+
+/** Preview amount while editing lines: gross unit × pack qty − per-pack discount × pack qty. */
+export function saleLinePreviewRowAmount(
+  line,
+  draftQty,
+  uomById,
+  { retailByCode = {}, draftDiscount = null, discountEditEnabled = false } = {},
+) {
+  const packQty = saleLinePackQtyForDiscount(line, uomById, retailByCode, draftQty);
+  const unitPrice = saleLineCatalogDisplayUnitPrice(line, uomById, { retailByCode });
+
+  if (!discountEditEnabled) {
+    const oldBase = Number(line.quantity ?? 0);
+    const newBase = saleLineEntryQtyToBase(line, draftQty, uomById, retailByCode);
+    const oldAmount = Number(line.amount ?? 0);
+    if (!oldBase || !newBase) return oldAmount;
+    return Math.round((oldAmount * newBase) / oldBase * 100) / 100;
+  }
+
+  const perPackDiscount = Math.max(0, Number(draftDiscount ?? line.draftDiscount ?? 0));
+  const gross = Math.round(unitPrice * packQty * 100) / 100;
+  const discountTotal = lineDiscountTotal(perPackDiscount, packQty);
+  return Math.max(0, Math.round((gross - discountTotal) * 100) / 100);
 }
 
 function saleLineRetailPackage(line) {
@@ -229,8 +280,18 @@ export function resolveSaleLinePrintColumns(
         ? baseQty
         : 0;
 
+  const catalogUnit =
+    catalogBase > 0
+      ? isRetail || factor <= 1
+        ? catalogBase
+        : Math.round(catalogBase * factor * 100) / 100
+      : 0;
   const unitPrice =
-    qty > 0 ? Math.round((amountBeforeDisc / qty) * 100) / 100 : 0;
+    catalogUnit > 0
+      ? catalogUnit
+      : qty > 0
+        ? Math.round((amountBeforeDisc / qty) * 100) / 100
+        : 0;
 
   if (isRetail) {
     const basePrice =

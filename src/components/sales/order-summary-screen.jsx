@@ -37,7 +37,14 @@ import {
   shouldRestoreOrderToCart,
 } from "@/lib/sales";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
-import { isLegacySale, saleLineProductLabel } from "@/lib/sale-line-items";
+import {
+  isLegacySale,
+  saleLineCatalogDisplayUnitPrice,
+  saleLineDisplayDiscountPerUnit,
+  saleLineListRowAmount,
+  saleLineProductLabel,
+  saleLineQtyLabel,
+} from "@/lib/sale-line-items";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
 import { orderDocumentPrintLabel, defaultOrderListPrintDocumentType, isOrderCancellationApprovalEnabled, shouldShowSalesDiscountColumn } from "@/lib/sales-settings";
@@ -233,7 +240,15 @@ function SummaryInfoCard({ label, value, hint, hintClassName, href, linkLabel, o
   );
 }
 
-function OrderSummaryItemsTable({ items, subById, catById, limit, onViewAll, showDiscountColumn = true }) {
+function OrderSummaryItemsTable({
+  items,
+  subById,
+  catById,
+  uomById,
+  limit,
+  onViewAll,
+  showDiscountColumn = true,
+}) {
   const rows = limit ? (items ?? []).slice(0, limit) : (items ?? []);
 
   return (
@@ -276,19 +291,21 @@ function OrderSummaryItemsTable({ items, subById, catById, limit, onViewAll, sho
                       </div>
                     </td>
                     <td className="px-4 py-3 text-slate-600">{sku}</td>
-                    <td className="px-4 py-3 text-right text-slate-700">{line.quantity}</td>
                     <td className="px-4 py-3 text-right text-slate-700">
-                      {formatCustomerKes(line.selling_price)}
+                      {saleLineQtyLabel(line, uomById)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-700">
+                      {formatCustomerKes(saleLineCatalogDisplayUnitPrice(line, uomById))}
                     </td>
                     {showDiscountColumn ? (
                       <td className="px-4 py-3 text-right text-slate-700">
-                        {Number(line.discount_given ?? 0) > 0
-                          ? formatCustomerKes(line.discount_given)
+                        {saleLineDisplayDiscountPerUnit(line, uomById) > 0
+                          ? formatCustomerKes(saleLineDisplayDiscountPerUnit(line, uomById))
                           : "—"}
                       </td>
                     ) : null}
                     <td className="px-4 py-3 text-right font-medium text-slate-900">
-                      {formatCustomerKes(line.amount)}
+                      {formatCustomerKes(saleLineListRowAmount(line, uomById))}
                     </td>
                   </tr>
                 );
@@ -1013,6 +1030,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                 items={sale.items}
                 subById={subById}
                 catById={catById}
+                uomById={uomById}
                 limit={5}
                 onViewAll={() => setActiveTab("items")}
                 showDiscountColumn={showDiscountColumn}

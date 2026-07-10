@@ -7,7 +7,9 @@ import { formatShortDate, formatKesCompact, getSaleTimestamp, StatCard, TABLE_HE
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import {
   isLegacySale,
-  saleLineDisplayUnitPrice,
+  saleLineCatalogDisplayUnitPrice,
+  saleLineDisplayDiscountPerUnit,
+  saleLineListRowAmount,
   saleLineProductLabel,
   saleLineQtyLabel,
 } from "@/lib/sale-line-items";
@@ -329,15 +331,17 @@ export function OrderInlineItems({ items, loading, uomById, legacyPrint = false,
               {saleLineQtyLabel(line, uomById, { legacyPrint })}
             </td>
             <td className="px-4 py-2.5 text-right text-slate-700">
-              {formatSaleKes(saleLineDisplayUnitPrice(line, uomById, { legacyPrint }))}
+              {formatSaleKes(saleLineCatalogDisplayUnitPrice(line, uomById, { legacyPrint }))}
             </td>
             {showDiscountColumn ? (
               <td className="px-4 py-2.5 text-right text-slate-700">
-                {Number(line.discount_given ?? 0) > 0 ? formatSaleKes(line.discount_given) : "—"}
+                {saleLineDisplayDiscountPerUnit(line, uomById) > 0
+                  ? formatSaleKes(saleLineDisplayDiscountPerUnit(line, uomById))
+                  : "—"}
               </td>
             ) : null}
             <td className="px-4 py-2.5 text-right font-medium text-slate-900">
-              {formatSaleKes(line.amount)}
+              {formatSaleKes(saleLineListRowAmount(line, uomById, { legacyPrint }))}
             </td>
           </tr>
         ))}
@@ -1130,17 +1134,17 @@ export function OrderLineItemsTable({ items, uomById, legacyPrint = false, showD
                     {saleLineQtyLabel(line, uomById, { legacyPrint })}
                   </td>
                   <td className="px-4 py-3 text-right text-slate-700">
-                    {formatCustomerKes(line.selling_price)}
+                    {formatCustomerKes(saleLineCatalogDisplayUnitPrice(line, uomById, { legacyPrint }))}
                   </td>
                   {showDiscountColumn ? (
                     <td className="px-4 py-3 text-right text-slate-700">
-                      {Number(line.discount_given ?? 0) > 0
-                        ? formatCustomerKes(line.discount_given)
+                      {saleLineDisplayDiscountPerUnit(line, uomById) > 0
+                        ? formatCustomerKes(saleLineDisplayDiscountPerUnit(line, uomById))
                         : "—"}
                     </td>
                   ) : null}
                   <td className="px-4 py-3 text-right font-medium text-slate-900">
-                    {formatCustomerKes(line.amount)}
+                    {formatCustomerKes(saleLineListRowAmount(line, uomById, { legacyPrint }))}
                   </td>
                 </tr>
               ))}
