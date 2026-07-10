@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   EMPTY_SALES_ORGANIZATION_FORM,
+  applyDiscountApprovalFormUpdates,
   salesOrganizationFormFromApi,
   salesOrganizationPayloadFromForm,
   sanitizeSalesOrganizationFormForModules,
@@ -216,6 +217,26 @@ function CheckoutPricingTab({
           }))
         }
       />
+      <Toggle
+        label="Discount approval for staff"
+        description="When enabled, staff can enter line discounts on backoffice and mobile sales. Non-approvers submit discounts for manager review — orders save under Pending approval, then Booked when approved or Editable when rejected. When disabled, normal discount settings apply with no approval step."
+        checked={salesForm.discount_approval_enabled}
+        onChange={(v) => setSalesForm((f) => applyDiscountApprovalFormUpdates(f, v))}
+      />
+      {salesForm.discount_approval_enabled ? (
+        <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3">
+          <p className="theme-heading text-sm font-medium">Who can approve discounts?</p>
+          <p className="theme-subtext mt-1 text-xs">
+            Assign{" "}
+            <span className="font-medium text-slate-700">
+              Administration → Discount approvals → Approve
+            </span>{" "}
+            on the approver&apos;s role under Admin → Roles. Users with the legacy{" "}
+            <span className="font-medium text-slate-700">Sales → Order actions → Approve</span>{" "}
+            permission can also approve discount requests.
+          </p>
+        </div>
+      ) : null}
       <Toggle
         label="Allow manual line discount on create order"
         description="Sales → Create new order. Lets staff type a discount when adding a line. When discount approval is enabled, managers must approve before it applies."

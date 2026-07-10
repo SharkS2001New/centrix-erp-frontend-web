@@ -26,12 +26,29 @@ export function resolveTillFloatNavFlag(capabilities) {
 export function resolveHasPermission({ user, organization, capabilities, code, isSuperAdmin }) {
   if (!code) return true;
 
+  const superAdminFn =
+    typeof isSuperAdmin === "function"
+      ? isSuperAdmin
+      : () => Boolean(user?.is_super_admin || capabilities?.is_super_admin);
+
+  if (
+    superAdminFn() &&
+    !isPlatformShellUser({
+      user,
+      organization,
+      capabilities,
+      isSuperAdmin: superAdminFn,
+    })
+  ) {
+    return true;
+  }
+
   if (
     isPlatformShellUser({
       user,
       organization,
       capabilities,
-      isSuperAdmin,
+      isSuperAdmin: superAdminFn,
     })
   ) {
     return false;

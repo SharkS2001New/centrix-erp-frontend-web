@@ -19,7 +19,7 @@ export const APPROVAL_REQUEST_EVENTS = [
     id: "discount",
     label: "Discount approval requested",
     description:
-      "Notifies users with Administration → Discount approvals → Approve (or legacy Sales → Order actions → Approve).",
+      "Notifies users with Administration → Discount approvals → Approve (or legacy Sales → Order actions → Approve). Enable the workflow under Organization settings → Sales → Prices & discounts.",
     module: "sales",
   },
   {
@@ -111,7 +111,6 @@ export function managerApprovalsFormFromApiResponses(responses = {}) {
   const notifications = notificationsFormFromApi(responses.notifications ?? {});
 
   return {
-    discount_approval_enabled: Boolean(sales.discount_approval_enabled),
     order_cancellation_approval_enabled: Boolean(sales.order_cancellation_approval_enabled),
     stock_adjustment_approval_enabled: Boolean(inventory.stock_adjustment_approval_enabled),
     stock_transfer_approval_enabled: Boolean(inventory.stock_transfer_approval_enabled),
@@ -135,15 +134,9 @@ export function managerApprovalsFormFromApiResponses(responses = {}) {
 }
 
 export function salesManagerApprovalsPayload(form) {
-  const payload = {
-    discount_approval_enabled: Boolean(form.discount_approval_enabled),
+  return {
     order_cancellation_approval_enabled: Boolean(form.order_cancellation_approval_enabled),
   };
-  if (form.discount_approval_enabled) {
-    payload.allow_edit_line_discount = true;
-    payload.allow_pos_edit_line_discount = true;
-  }
-  return payload;
 }
 
 export function inventoryManagerApprovalsPayload(form) {

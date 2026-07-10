@@ -77,6 +77,9 @@ export function canAccessTenantOrganizationSettings({
   if (!hasOperationalModule(capabilities)) {
     return false;
   }
+  if (isSuperAdmin?.()) {
+    return true;
+  }
   if (isOrgAdministrator(user, capabilities)) {
     return true;
   }
@@ -112,6 +115,9 @@ export function canAccessOrgAdminSettings({ organization, isSuperAdmin, hasPermi
   }
   if (!isAdministrationModuleEnabled(capabilities)) {
     return false;
+  }
+  if (isSuperAdmin?.()) {
+    return true;
   }
   if (isOrgAdministrator(user, capabilities)) {
     return true;

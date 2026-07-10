@@ -16,8 +16,8 @@ const SALES_DEFAULTS = {
   allow_sell_from_store: false,
   enable_retail_pricing: false,
   allow_discounts: true,
-  allow_edit_line_discount: false,
-  allow_pos_edit_line_discount: false,
+  allow_edit_line_discount: true,
+  allow_pos_edit_line_discount: true,
   enable_order_discount: false,
   discount_approval_enabled: true,
   discount_approval_threshold_percent: 10,
@@ -278,8 +278,8 @@ export function isMobileCustomerPhoneVisible(moduleSettings) {
 /** Org-admin sales settings form (excludes mobile application keys — see Mobile application tab). */
 export const EMPTY_SALES_ORGANIZATION_FORM = {
   allow_discounts: true,
-  allow_edit_line_discount: false,
-  allow_pos_edit_line_discount: false,
+  allow_edit_line_discount: true,
+  allow_pos_edit_line_discount: true,
   enable_order_discount: false,
   discount_approval_enabled: true,
   discount_approval_threshold_percent: "10",
@@ -434,8 +434,27 @@ export function sanitizeSalesOrganizationFormForModules(form, capabilities) {
   return next;
 }
 
+/** When discount approval is on, staff must be able to enter line discounts on backoffice and POS. */
+export function applyDiscountApprovalFormUpdates(form, discountApprovalEnabled) {
+  return {
+    ...form,
+    discount_approval_enabled: discountApprovalEnabled,
+    ...(discountApprovalEnabled
+      ? {
+          allow_edit_line_discount: true,
+          allow_pos_edit_line_discount: true,
+        }
+      : {}),
+  };
+}
+
 export function salesOrganizationPayloadFromForm(form, capabilities = null) {
-  const sanitized = capabilities ? sanitizeSalesOrganizationFormForModules(form, capabilities) : form;
+  const sanitized = capabilities
+    ? sanitizeSalesOrganizationFormForModules(form, capabilities)
+    : form;
+  const withDiscountApproval = sanitized.discount_approval_enabled
+    ? applyDiscountApprovalFormUpdates(sanitized, true)
+    : sanitized;
   const {
     order_document_type: _orderDocumentType,
     receipt_copies: _receiptCopies,
@@ -449,17 +468,19 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
     invoice_print_delivery_terms: _invoicePrintDeliveryTerms,
     invoice_print_footer_lines: _invoicePrintFooterLines,
     ...checkoutForm
-  } = sanitized;
+  } = withDiscountApproval;
 
   return {
     ...checkoutForm,
-    default_tax_rate: Number(sanitized.default_tax_rate) || 0,
-    point_cash_value: Number(sanitized.point_cash_value) || 0,
-    points_earn_per_kes: Number(sanitized.points_earn_per_kes) || 0,
-    orders_list_default_days: normalizeOrdersListDefaultDays(sanitized.orders_list_default_days),
-    orders_list_sort: normalizeOrdersListSort(sanitized.orders_list_sort),
+    default_tax_rate: Number(withDiscountApproval.default_tax_rate) || 0,
+    point_cash_value: Number(withDiscountApproval.point_cash_value) || 0,
+    points_earn_per_kes: Number(withDiscountApproval.points_earn_per_kes) || 0,
+    orders_list_default_days: normalizeOrdersListDefaultDays(
+      withDiscountApproval.orders_list_default_days,
+    ),
+    orders_list_sort: normalizeOrdersListSort(withDiscountApproval.orders_list_sort),
     discount_approval_threshold_percent:
-      Number(sanitized.discount_approval_threshold_percent) || 10,
+      Number(withDiscountApproval.discount_approval_threshold_percent) || 10,
   };
 }
 

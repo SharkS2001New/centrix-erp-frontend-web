@@ -38,7 +38,7 @@ export const RBAC_GUIDE_PARTS = [
       "Journal entries — Accounting → Journal entries → Approve or Accounting manage.",
       "Expenses — Accounting manage.",
     ],
-    tip: "Enable workflows under Organization settings → Manager approvals; configure bell alerts under Messaging.",
+    tip: "Enable discount approval under Organization settings → Sales → Prices & discounts. Other workflows live under Manager approvals; configure bell alerts under Messaging.",
   },
   {
     id: "deploy",

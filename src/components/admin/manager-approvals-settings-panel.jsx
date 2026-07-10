@@ -61,7 +61,7 @@ export function ManagerApprovalsSettingsPanel({
 }) {
   const { refreshCapabilities, capabilities: authCapabilities } = useAuth();
   const capabilities = capabilitiesProp ?? authCapabilities;
-  const { settingsPath } = useSettingsApi();
+  const { settingsPath, organizationApiPath } = useSettingsApi();
   const afterSave = onAfterSave ?? (() => refreshCapabilities({ force: true }));
   const [form, setForm] = useState(managerApprovalsFormFromApiResponses({}));
   const [loading, setLoading] = useState(true);
@@ -93,7 +93,7 @@ export function ManagerApprovalsSettingsPanel({
         loadSections.map(async (section) => {
           const res =
             section === "accounting"
-              ? await apiRequest("/accounting/settings")
+              ? await apiRequest(organizationApiPath("/accounting/settings"))
               : await apiRequest(settingsPath(section));
           return [section, res];
         }),
@@ -104,7 +104,7 @@ export function ManagerApprovalsSettingsPanel({
     } finally {
       setLoading(false);
     }
-  }, [loadSections, setError, settingsPath]);
+  }, [loadSections, organizationApiPath, setError, settingsPath]);
 
   useEffect(() => {
     if (loadSections.length === 0) {
@@ -148,7 +148,7 @@ export function ManagerApprovalsSettingsPanel({
       }
       if (showAccounting) {
         saves.push(
-          apiRequest("/accounting/settings", {
+          apiRequest(organizationApiPath("/accounting/settings"), {
             method: "PATCH",
             body: accountingManagerApprovalsPayload(form),
           }),
@@ -235,37 +235,6 @@ export function ManagerApprovalsSettingsPanel({
                 {showSales ? (
                   <div className="space-y-3 rounded-xl border border-[var(--theme-border)] p-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sales</p>
-                    <Toggle
-                      label="Discount approval for staff"
-                      description="When enabled, all staff can enter line and order discounts on backoffice and mobile sales. Non-approvers submit discounts for manager review — orders save under Pending approval, then Booked when approved or Editable when rejected. When disabled, normal discount settings apply with no approval step."
-                      checked={form.discount_approval_enabled}
-                      onChange={(v) =>
-                        setForm((f) => ({
-                          ...f,
-                          discount_approval_enabled: v,
-                          ...(v
-                            ? {
-                                allow_edit_line_discount: true,
-                                allow_pos_edit_line_discount: true,
-                              }
-                            : {}),
-                        }))
-                      }
-                    />
-                    {form.discount_approval_enabled ? (
-                      <div className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] px-4 py-3">
-                        <p className="theme-heading text-sm font-medium">Who can approve discounts?</p>
-                        <p className="theme-subtext mt-1 text-xs">
-                          Assign{" "}
-                          <span className="font-medium text-slate-700">
-                            Administration → Discount approvals → Approve
-                          </span>{" "}
-                          on the approver&apos;s role under Admin → Roles. Users with the legacy{" "}
-                          <span className="font-medium text-slate-700">Sales → Order actions → Approve</span>{" "}
-                          permission can also approve discount requests.
-                        </p>
-                      </div>
-                    ) : null}
                     <Toggle
                       label="Order cancellation approval"
                       description="Non-managers request cancellation; approvers resolve from notifications."
