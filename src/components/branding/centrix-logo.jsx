@@ -19,21 +19,22 @@ export function CentrixLogoMarkImage({ size = 32, className = "" }) {
   );
 }
 
+/** Sidebar wordmark — always on dark chrome (#405189 / #212529). */
 export function CentrixLogo({ collapsed = false, className = "", orgSubtitle = "" }) {
   const subtitle = String(orgSubtitle ?? "").trim();
 
   if (collapsed) {
     return (
-      <span title={subtitle || undefined} className={className}>
-        <CentrixLogoMark size={28} />
+      <span title={subtitle || undefined} className={`text-white ${className}`.trim()}>
+        <CentrixLogoMark size={28} className="text-white" />
       </span>
     );
   }
 
   return (
-    <span className={`inline-flex flex-col gap-3 ${className}`}>
+    <span className={`inline-flex flex-col gap-3 text-white ${className}`.trim()}>
       <span className="inline-flex items-center gap-2.5">
-        <CentrixLogoMark size={28} />
+        <CentrixLogoMark size={28} className="text-white" />
         <span className="flex items-baseline gap-0.5 leading-none">
           <span className="text-[22px] font-bold tracking-tight text-white">Centrix</span>
           <span className="text-[22px] font-light tracking-tight text-white/90"> ERP</span>
@@ -67,7 +68,7 @@ export function CentrixLogoHeader({
       title={accessibleLabel}
       aria-label={accessibleLabel}
     >
-      <CentrixLogoMark size={markSize} className="shrink-0" />
+      <CentrixLogoMark size={markSize} className="centrix-logo-mark-themed shrink-0" />
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="flex min-w-0 items-baseline gap-0.5 leading-none">
           <span className="pos-header-brand-strong truncate text-lg font-bold tracking-tight">Centrix</span>
@@ -83,14 +84,17 @@ export function CentrixLogoHeader({
   );
 }
 
-/** Login / auth — mark + wordmark using theme text colors. */
+/** Login / auth / opening — mark + wordmark using theme text colors. */
 export function CentrixLogoFull({ className = "" }) {
   return (
     <span className={`inline-flex items-center gap-3 ${className}`}>
-      <CentrixLogoMark size={40} />
+      <CentrixLogoMark size={40} className="centrix-logo-mark-themed" />
       <span className="flex items-baseline gap-1 leading-none">
-        <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Centrix</span>
-        <span className="text-2xl font-light tracking-tight text-slate-500 dark:text-slate-400"> ERP</span>
+        <span className="text-2xl font-bold tracking-tight text-[var(--theme-text)]">Centrix</span>
+        <span className="text-2xl font-light tracking-tight text-[var(--theme-text-muted,#64748b)]">
+          {" "}
+          ERP
+        </span>
       </span>
     </span>
   );
