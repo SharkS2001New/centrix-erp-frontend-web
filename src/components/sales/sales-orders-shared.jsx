@@ -181,10 +181,10 @@ export function OrderDateGroupRow({ dateLabel, colSpan = 8 }) {
   );
 }
 
-export function matchesOrderSourceFilter(sale, sourceFilter) {
+export function matchesOrderSourceFilter(sale, sourceFilter, capabilities = null) {
   if (sourceFilter === "all") return true;
-  const key = String(sale.order_source ?? sale.channel ?? "").toLowerCase();
-  if (sourceFilter === "backoffice") return key === "backoffice" || key === "backend";
+  const key = resolveOrderSourceKey(sale.order_source, sale.channel, capabilities);
+  if (sourceFilter === "backoffice") return key === "backoffice";
   return key === sourceFilter;
 }
 
@@ -929,7 +929,11 @@ export function OrderListTableRow({
         </td>
         {showSourceColumn ? (
           <td className="px-4 py-3">
-            <OrderSourceBadge source={sale.order_source} channel={sale.channel} />
+            <OrderSourceBadge
+              source={sale.order_source}
+              channel={sale.channel}
+              capabilities={capabilities}
+            />
           </td>
         ) : null}
         <td className="px-4 py-3 text-slate-700">
@@ -988,7 +992,7 @@ export function OrderDetailHeader({ sale, workflow, capabilities = null }) {
             {formatOrderNumber(sale)}
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            {sale.channel ? `${String(sale.channel).toUpperCase()} channel` : "—"}
+            {orderSourceLabel(sale.order_source, sale.channel, capabilities)}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -996,7 +1000,11 @@ export function OrderDetailHeader({ sale, workflow, capabilities = null }) {
           {shouldShowPaymentStatusBadge(sale, null, capabilities) ? (
             <PaymentStatusBadge status={sale.payment_status} />
           ) : null}
-          <OrderSourceBadge source={sale.order_source} channel={sale.channel} />
+          <OrderSourceBadge
+            source={sale.order_source}
+            channel={sale.channel}
+            capabilities={capabilities}
+          />
           {isCredit ? (
             <span className="inline-flex rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-800 ring-1 ring-purple-600/20">
               Credit sale
@@ -1017,7 +1025,10 @@ export function OrderDetailHeader({ sale, workflow, capabilities = null }) {
 
       <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <DetailMeta label="Customer" value={saleCustomerLabel(sale)} />
-        <DetailMeta label="Created via" value={orderSourceLabel(sale.order_source, sale.channel)} />
+        <DetailMeta
+          label="Created via"
+          value={orderSourceLabel(sale.order_source, sale.channel, capabilities)}
+        />
         <DetailMeta
           label="Date"
           value={formatShortDate(sale.completed_at ?? sale.created_at)}
@@ -1203,7 +1214,7 @@ export function OrderPaymentsSection({
   );
 }
 
-export function OrderMetaPanel({ sale, workflow, routeById, driverById, vehicleById }) {
+export function OrderMetaPanel({ sale, workflow, routeById, driverById, vehicleById, capabilities = null }) {
   if (!sale) return null;
 
   const driverId = getSaleDriverId(sale);
@@ -1222,8 +1233,14 @@ export function OrderMetaPanel({ sale, workflow, routeById, driverById, vehicleB
       <dl className="mt-4 space-y-2 text-sm">
         <SummaryRow label="Workflow status" value={saleStatusLabel(sale.status, workflow)} />
         <SummaryRow label="Payment status" value={PAYMENT_STATUS_LABELS[sale.payment_status] ?? sale.payment_status ?? "—"} />
-        <SummaryRow label="Channel" value={String(sale.channel ?? "—").toUpperCase()} />
-        <SummaryRow label="Created via" value={orderSourceLabel(sale.order_source, sale.channel)} />
+        <SummaryRow
+          label="Channel"
+          value={orderSourceLabel(sale.channel, sale.order_source, capabilities)}
+        />
+        <SummaryRow
+          label="Created via"
+          value={orderSourceLabel(sale.order_source, sale.channel, capabilities)}
+        />
         {routeName ? <SummaryRow label="Route" value={routeName} /> : null}
         {driverName ? <SummaryRow label="Driver" value={driverName} /> : null}
         {vehicleLabel ? <SummaryRow label="Vehicle" value={vehicleLabel} /> : null}

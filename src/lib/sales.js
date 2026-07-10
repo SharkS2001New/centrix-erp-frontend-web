@@ -2,6 +2,7 @@ import { humanizeBackendTerm, salesChannelLabel } from "@/lib/user-facing-labels
 import { formatOrgCurrency } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 import { getSaleTimestamp, isSameCalendarDay } from "@/lib/datetime";
+import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import {
   DEFAULT_ORDER_WORKFLOW,
   alignStatusToWorkflow,
@@ -35,8 +36,23 @@ export const ORDER_SOURCE_LABELS = {
   whatsapp: "WhatsApp",
 };
 
-export function orderSourceLabel(source, fallbackChannel) {
-  const key = String(source ?? fallbackChannel ?? "").toLowerCase();
+const BACKOFFICE_SOURCE_KEYS = new Set(["pos", "backend", "backoffice", "erp"]);
+
+/** Normalize API source/channel keys for display and filters. */
+export function resolveOrderSourceKey(source, fallbackChannel, capabilities = null) {
+  const raw = String(source ?? fallbackChannel ?? "").toLowerCase();
+  if (!raw) return "backoffice";
+
+  if (capabilities && !isExternalPosEnabled(capabilities) && BACKOFFICE_SOURCE_KEYS.has(raw)) {
+    return "backoffice";
+  }
+
+  if (raw === "backend" || raw === "erp") return "backoffice";
+  return raw;
+}
+
+export function orderSourceLabel(source, fallbackChannel, capabilities = null) {
+  const key = resolveOrderSourceKey(source, fallbackChannel, capabilities);
   if (ORDER_SOURCE_LABELS[key]) return ORDER_SOURCE_LABELS[key];
   return salesChannelLabel(key) ?? humanizeBackendTerm(key) ?? key ?? "—";
 }
@@ -48,9 +64,9 @@ export function isRouteOrderSale(sale) {
   return channel === "mobile" || channel === "pos";
 }
 
-const ORDER_EDIT_STATUSES = new Set(["booked", "pending"]);
+const ORDER_EDIT_STATUSES = new Set(["booked", "pending", "editable"]);
 
-/** Show Edit Order when workflow status is Booked or Pending. */
+/** Show Edit Order when workflow status is Booked, Pending, or Editable (discount revision). */
 export function isOrderEditVisible(sale, workflow = null) {
   if (!sale) return false;
   const raw = String(sale.status ?? "").toLowerCase();
@@ -67,7 +83,7 @@ export function isPosOrMobileSale(sale) {
   if (source === "backoffice" || source === "backend") return false;
 
   const channel = String(sale?.channel ?? "").toLowerCase();
-  if (channel === "backend") return false;
+  if (channel === "backend" || channel === "backoffice" || channel === "erp") return false;
 
   const meta = sale?.fulfillment_meta;
   if (meta?.sales_workspace === "backoffice") return false;
@@ -90,6 +106,9 @@ export function isBackofficeSale(sale) {
 /** Line-edit popup for backoffice orders; POS/mobile booked orders restore to cart instead. */
 export function shouldOpenBackofficeOrderEdit(sale, workflow = null) {
   if (sale?.can_edit_lines) return true;
+  if (isBackofficeSale(sale) && (isOrderEditVisible(sale, workflow) || sale?.can_edit)) {
+    return true;
+  }
   if (!isOrderEditVisible(sale, workflow)) return false;
   return !isPosOrMobileSale(sale);
 }
@@ -97,8 +116,18 @@ export function shouldOpenBackofficeOrderEdit(sale, workflow = null) {
 export function shouldRestoreOrderToCart(sale, workflow = null) {
   if (sale?.can_edit_lines) return false;
   if (sale?.can_edit === false) return false;
-  if (!isOrderEditVisible(sale, workflow)) return false;
-  return isPosOrMobileSale(sale) || Boolean(sale?.can_edit);
+  if (isBackofficeSale(sale)) return false;
+  if (!isOrderEditVisible(sale, workflow) && !sale?.can_edit) return false;
+  return isPosOrMobileSale(sale);
+}
+
+/** Whether the Edit Order action should appear in list/detail menus. */
+export function isOrderEditActionVisible(sale, workflow = null) {
+  if (!sale) return false;
+  return (
+    shouldOpenBackofficeOrderEdit(sale, workflow)
+    || shouldRestoreOrderToCart(sale, workflow)
+  );
 }
 
 /** Visual pipeline steps for backend/mobile orders. */

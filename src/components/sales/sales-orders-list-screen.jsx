@@ -70,7 +70,7 @@ import { discountApprovalLinesFromSource } from "@/lib/advised-discount-lines";
 import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
 import {
   formatOrderNumber,
-  isOrderEditVisible,
+  isOrderEditActionVisible,
   shouldOpenBackofficeOrderEdit,
   shouldRestoreOrderToCart,
 } from "@/lib/sales";
@@ -120,9 +120,10 @@ export default function SalesOrdersListScreen({
     () => workflowStatusFilterOptions(orgWorkflow),
     [orgWorkflow],
   );
+  const includeExternalPos = isExternalPosEnabled(capabilities);
   const sourceOptions = useMemo(
-    () => orderSourceFilterOptions(includeMobileOrders, true, includeWhatsappOrders),
-    [includeMobileOrders, includeWhatsappOrders],
+    () => orderSourceFilterOptions(includeMobileOrders, includeExternalPos, includeWhatsappOrders),
+    [includeMobileOrders, includeExternalPos, includeWhatsappOrders],
   );
 
   const [rows, setRows] = useState([]);
@@ -208,6 +209,12 @@ export default function SalesOrdersListScreen({
       setSourceFilter("all");
     }
   }, [includeMobileOrders, sourceFilter]);
+
+  useEffect(() => {
+    if (!includeExternalPos && sourceFilter === "pos") {
+      setSourceFilter("all");
+    }
+  }, [includeExternalPos, sourceFilter]);
 
   useEffect(() => {
     const orgId = user?.organization_id;
@@ -488,7 +495,7 @@ export default function SalesOrdersListScreen({
   async function openEditOrder(sale, { replace = false } = {}) {
     if (!sale?.id) return;
     const workflow = getOrderWorkflow(capabilities, sale);
-    if (!isOrderEditVisible(sale, workflow) && !sale.can_edit_lines && !sale.can_edit) return;
+    if (!isOrderEditActionVisible(sale, workflow)) return;
     setContextMenu(null);
 
     if (shouldOpenBackofficeOrderEdit(sale, workflow)) {
@@ -720,7 +727,7 @@ export default function SalesOrdersListScreen({
       busy: transitionBusyId === sale.id || fulfillment.busy,
       includePrint: contextMenu.includePrint !== false,
       hasExternalPos,
-      canEdit: isOrderEditVisible(sale, workflow),
+      canEdit: isOrderEditActionVisible(sale, workflow),
       balanceDue: saleBalanceDue(sale),
       disableWorkflowActions: routeOrdersOnly,
       onView: () => viewOrder(sale),

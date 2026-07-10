@@ -27,14 +27,16 @@ import {
   formatOrderNumber,
   formatReceiptNumber,
   formatSaleKes,
-  isOrderEditVisible,
+  isOrderEditActionVisible,
   orderSourceLabel,
+  resolveOrderSourceKey,
   saleCustomerLabel,
   salePaymentMethodDisplay,
   saleStatusLabel,
   shouldOpenBackofficeOrderEdit,
   shouldRestoreOrderToCart,
 } from "@/lib/sales";
+import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import { isLegacySale, saleLineProductLabel } from "@/lib/sale-line-items";
 import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { printSaleOrder } from "@/components/sales/sale-order-print";
@@ -104,11 +106,11 @@ function formatRelativeAgo(sale) {
   return `${diffDays} days ago`;
 }
 
-function orderTypeLabel(sale) {
-  const source = orderSourceLabel(sale?.order_source, sale?.channel);
-  if (sale?.channel === "pos" || sale?.order_source === "pos") return "Retail sale";
-  if (sale?.channel === "mobile" || sale?.order_source === "mobile") return "Mobile order";
-  return source;
+function orderTypeLabel(sale, capabilities) {
+  const key = resolveOrderSourceKey(sale?.order_source, sale?.channel, capabilities);
+  if (key === "mobile") return "Mobile order";
+  if (key === "pos" && isExternalPosEnabled(capabilities)) return "Retail sale";
+  return orderSourceLabel(sale?.order_source, sale?.channel, capabilities);
 }
 
 function productCategoryLabel(line, subById, catById) {
@@ -427,6 +429,7 @@ function CustomerOrderDetailsPanel({
   routeName,
   driverName,
   vehicleLabel,
+  capabilities = null,
 }) {
   const customerName = customer?.customer_name ?? saleCustomerLabel(sale);
   const meta = sale?.fulfillment_meta;
@@ -446,7 +449,7 @@ function CustomerOrderDetailsPanel({
         <div>
           <h3 className="text-sm font-medium text-slate-900">Order information</h3>
           <dl className="mt-4 space-y-2 text-sm">
-            <DetailRow label="Order type" value={orderTypeLabel(sale)} />
+            <DetailRow label="Order type" value={orderTypeLabel(sale, capabilities)} />
             <DetailRow label="Branch" value={branchName ?? "—"} />
             <DetailRow label="Cashier" value={cashierName ?? "—"} />
             <DetailRow label="Order no." value={formatOrderNumber(sale)} />
@@ -813,13 +816,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
 
   async function openEditOrder({ replace = false } = {}) {
     if (!sale?.id) return;
-    if (
-      !isOrderEditVisible(sale, saleWorkflow)
-      && !sale.can_edit_lines
-      && !sale.can_edit
-    ) {
-      return;
-    }
+    if (!isOrderEditActionVisible(sale, saleWorkflow)) return;
 
     if (shouldOpenBackofficeOrderEdit(sale, saleWorkflow)) {
       setEditError(null);
@@ -915,7 +912,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {isOrderEditVisible(sale, saleWorkflow) ? (
+              {isOrderEditActionVisible(sale, saleWorkflow) ? (
                 <button
                   type="button"
                   onClick={() => void openEditOrder()}
@@ -1034,6 +1031,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                 branchName={branchName ?? saleBranchLabel(sale, new Map())}
                 cashierName={cashierName}
                 workflow={saleWorkflow}
+                capabilities={capabilities}
                 {...fulfillmentLabels}
               />
               {sale?.fulfillment_meta?.pod_captured ||
@@ -1076,6 +1074,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                 branchName={branchName}
                 cashierName={cashierName}
                 workflow={saleWorkflow}
+                capabilities={capabilities}
                 {...fulfillmentLabels}
               />
             </div>

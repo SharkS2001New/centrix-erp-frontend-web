@@ -15,6 +15,7 @@ import {
   formatSaleKes,
   orderSourceLabel,
   pipelineStepIndex,
+  resolveOrderSourceKey,
 } from "@/lib/sales";
 
 export { formatSaleKes, formatReceiptNumber, formatOrderNumber };
@@ -73,9 +74,9 @@ const ORDER_SOURCE_TONES = {
   whatsapp: "bg-emerald-50 text-emerald-800 ring-emerald-600/20",
 };
 
-export function OrderSourceBadge({ source, channel, className = "" }) {
-  const key = String(source ?? channel ?? "pos").toLowerCase();
-  const label = orderSourceLabel(source, channel);
+export function OrderSourceBadge({ source, channel, capabilities = null, className = "" }) {
+  const key = resolveOrderSourceKey(source, channel, capabilities);
+  const label = orderSourceLabel(source, channel, capabilities);
   const tone = ORDER_SOURCE_TONES[key] ?? ORDER_SOURCE_TONES.backend;
   return (
     <span
@@ -163,7 +164,7 @@ export function OrderWorkflowPipeline({
         <h3 className="text-sm font-medium text-slate-900">Order workflow</h3>
         <div className="text-right">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Created via</p>
-          <OrderSourceBadge source={orderSource} channel={channel} className="mt-1" />
+          <OrderSourceBadge source={orderSource} channel={channel} capabilities={capabilities} className="mt-1" />
         </div>
       </div>
       {isCancelled ? (
