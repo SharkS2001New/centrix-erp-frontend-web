@@ -22,6 +22,8 @@ export const PRODUCT_STOCK_FIELD_KEYS = [
   "stock_on_hand_store",
   "stock_available_shop",
   "stock_available_store",
+  "stock_reserved_shop",
+  "stock_reserved_store",
   "shop_quantity",
   "store_quantity",
   "branch_stock",

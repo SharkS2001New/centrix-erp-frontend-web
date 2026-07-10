@@ -40,7 +40,6 @@ import { isKraDeviceEnabled } from "@/lib/finance-settings";
 import { productScopeLabel, isMultiBranchCatalog, defaultProductBranchId } from "@/lib/catalog-scope";
 import { useAuth } from "@/contexts/auth-context";
 import { loadReferenceDataPhased } from "@/lib/paginated-fetch";
-import { mergeProductsWithLiveStock, fetchStockLevelsMap } from "@/lib/catalog-cache";
 import {
   fetchBranchesCached,
   fetchCategoriesCached,
@@ -71,8 +70,8 @@ const PRODUCT_COLUMNS = [
   { id: "cost_price", label: "Cost price (KES)", defaultVisible: true, align: "right", sortKey: "last_cost_price" },
   { id: "discount", label: "Discount", defaultVisible: true },
   { id: "weight", label: "Weight", defaultVisible: false, align: "right", sortKey: "product_weight" },
-  { id: "shop", label: "Shop", defaultVisible: true, align: "center" },
-  { id: "store", label: "Store", defaultVisible: true, align: "center" },
+  { id: "shop", label: "Shop avail.", defaultVisible: true, align: "center" },
+  { id: "store", label: "Store avail.", defaultVisible: true, align: "center" },
   { id: "reorder", label: "Reorder level", defaultVisible: false, align: "right", sortKey: "reorder_point" },
   { id: "supplier", label: "Supplier", defaultVisible: true },
   { id: "vat", label: "VAT", defaultVisible: true },
@@ -490,11 +489,10 @@ export default function ProductsPage() {
       });
       const prodRes = await apiRequest("/products", { searchParams });
       const parsed = parsePaginator(prodRes);
-      const stockByCode = await fetchStockLevelsMap(
-        user?.organization_id,
-        effectiveStockBranchId,
-      );
-      setProducts(mergeProductsWithLiveStock(parsed.items, stockByCode));
+      // Product API already overlays live branch stock with reservations deducted
+      // (stock_available_*). Do not merge stock-on-hand — that report's on-hand
+      // quantities were overwriting available and disagreeing with mobile.
+      setProducts(parsed.items);
       setTotalProducts(parsed.total);
       setTotalPages(parsed.totalPages);
     } catch (e) {
@@ -866,7 +864,7 @@ export default function ProductsPage() {
           {user?.branch_id
             ? "your branch"
             : branches.find((b) => String(b.id) === stockBranchId)?.branch_name ?? "the selected branch"}
-          {" "}ledger balances.
+          {" "}available stock (on-hand minus active reservations).
         </p>
       ) : null}
 

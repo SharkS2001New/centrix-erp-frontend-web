@@ -335,6 +335,7 @@ export const LOYALTY_CARD_EXPORT_COLUMNS = [
 ];
 
 export const STOCK_RESERVATION_EXPORT_COLUMNS = [
+  { key: "product_name", label: "Product" },
   { key: "product_code", label: "Product code" },
   { key: "sale_id", label: "Order #" },
   { key: "quantity", label: "Qty", align: "right" },

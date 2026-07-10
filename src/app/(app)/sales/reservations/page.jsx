@@ -60,6 +60,7 @@ export default function SalesReservationsPage() {
       const sale = salesById[r.sale_id];
       const receipt = sale ? formatReceiptNumber(sale).toLowerCase() : "";
       return (
+        String(r.product_name ?? "").toLowerCase().includes(q) ||
         String(r.product_code).toLowerCase().includes(q) ||
         receipt.includes(q) ||
         String(r.sale_id ?? "").includes(q)
@@ -146,7 +147,17 @@ export default function SalesReservationsPage() {
                         <span className="text-slate-700">{orderLabel}</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-800">{row.product_code}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-900">
+                        {row.product_name || row.product_code}
+                      </div>
+                      {row.product_name &&
+                      row.product_name !== row.product_code ? (
+                        <div className="mt-0.5 text-xs text-slate-500">
+                          {row.product_code}
+                        </div>
+                      ) : null}
+                    </td>
                     <td className="px-4 py-3 text-right text-slate-700">{row.quantity}</td>
                     <td className="px-4 py-3 text-slate-600">{row.stock_location ?? "—"}</td>
                     <td className="px-4 py-3 text-slate-600">

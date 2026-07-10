@@ -122,13 +122,17 @@ function enrichProduct(product, subById, catById, supplierById, uomById, vatById
   const uom = uomById.get(product.unit_id) ?? uomById.get(String(product.unit_id ?? ""));
   const vat = vatById.get(product.vat_id);
   const shop = Number(
-    product.branch_stock?.shop_quantity ??
+    product.stock_available_shop ??
+      product.branch_stock?.shop_available ??
+      product.branch_stock?.shop_quantity ??
       product.stock_on_hand_shop ??
       product.stock_in_shop ??
       0,
   );
   const store = Number(
-    product.branch_stock?.store_quantity ??
+    product.stock_available_store ??
+      product.branch_stock?.store_available ??
+      product.branch_stock?.store_quantity ??
       product.stock_on_hand_store ??
       product.stock_in_store ??
       0,
