@@ -69,16 +69,24 @@ export function OrganizationBillingPanel({
             apiRequest("/organization/contracts", { loading: false }).catch(() => ({ data: [] })),
         );
       } else if (organizationId) {
-        subRes = await apiRequest(`/admin/organizations/${organizationId}/subscription`, {
-          loading: false,
-        }).catch(() => null);
-        contractsRes = await apiRequest(`/admin/organizations/${organizationId}/contracts`, {
+        subRes = await apiRequest(`/admin/organizations/${organizationId}/platform-subscription`, {
           loading: false,
         }).catch(() =>
-          apiRequest("/admin/platform-contracts", {
-            searchParams: { organization_id: organizationId },
+          apiRequest(`/admin/organizations/${organizationId}/subscription`, {
             loading: false,
-          }).catch(() => ({ data: [] })),
+          }).catch(() => null),
+        );
+        contractsRes = await apiRequest(`/admin/organizations/${organizationId}/platform-contracts`, {
+          loading: false,
+        }).catch(() =>
+          apiRequest(`/admin/organizations/${organizationId}/contracts`, {
+            loading: false,
+          }).catch(() =>
+            apiRequest("/admin/platform-contracts", {
+              searchParams: { organization_id: organizationId },
+              loading: false,
+            }).catch(() => ({ data: [] })),
+          ),
         );
       }
 
