@@ -98,22 +98,31 @@ export function isPosOrMobileSale(sale, capabilities = null) {
   return sourceKey === "pos" || sourceKey === "mobile";
 }
 
-/** Line-edit popup for backoffice orders; POS/mobile booked orders restore to cart instead. */
+/** Line-edit popup for workspace orders (backoffice, mobile, editable discount revision). */
 export function shouldOpenBackofficeOrderEdit(sale, workflow = null, capabilities = null) {
   if (sale?.can_edit_lines) return true;
+  if (String(sale?.status ?? "").toLowerCase() === "editable") return true;
+
+  const sourceKey = resolveOrderSourceKey(sale?.order_source, sale?.channel, capabilities);
+  if (sourceKey === "mobile" && (isOrderEditVisible(sale, workflow) || sale?.can_edit)) {
+    return true;
+  }
+
   if (isBackofficeSale(sale, capabilities) && (isOrderEditVisible(sale, workflow) || sale?.can_edit)) {
     return true;
   }
+
   if (!isOrderEditVisible(sale, workflow)) return false;
   return !isPosOrMobileSale(sale, capabilities);
 }
 
 export function shouldRestoreOrderToCart(sale, workflow = null, capabilities = null) {
+  if (shouldOpenBackofficeOrderEdit(sale, workflow, capabilities)) return false;
   if (sale?.can_edit_lines) return false;
   if (sale?.can_edit === false) return false;
   if (isBackofficeSale(sale, capabilities)) return false;
   if (!isOrderEditVisible(sale, workflow) && !sale?.can_edit) return false;
-  return isPosOrMobileSale(sale, capabilities);
+  return isPosOrMobileSale(sale, capabilities) || Boolean(sale?.can_edit);
 }
 
 /** Whether the Edit Order action should appear in list/detail menus. */
