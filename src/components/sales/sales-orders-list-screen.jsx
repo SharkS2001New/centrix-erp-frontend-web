@@ -495,15 +495,15 @@ export default function SalesOrdersListScreen({
   async function openEditOrder(sale, { replace = false } = {}) {
     if (!sale?.id) return;
     const workflow = getOrderWorkflow(capabilities, sale);
-    if (!isOrderEditActionVisible(sale, workflow)) return;
+    if (!isOrderEditActionVisible(sale, workflow, capabilities)) return;
     setContextMenu(null);
 
-    if (shouldOpenBackofficeOrderEdit(sale, workflow)) {
+    if (shouldOpenBackofficeOrderEdit(sale, workflow, capabilities)) {
       setEditSale(sale);
       return;
     }
 
-    if (!shouldRestoreOrderToCart(sale, workflow)) return;
+    if (!shouldRestoreOrderToCart(sale, workflow, capabilities)) return;
 
     setTransitionBusyId(sale.id);
     setActionMessage(null);
@@ -727,7 +727,7 @@ export default function SalesOrdersListScreen({
       busy: transitionBusyId === sale.id || fulfillment.busy,
       includePrint: contextMenu.includePrint !== false,
       hasExternalPos,
-      canEdit: isOrderEditActionVisible(sale, workflow),
+      canEdit: isOrderEditActionVisible(sale, workflow, capabilities),
       balanceDue: saleBalanceDue(sale),
       disableWorkflowActions: routeOrdersOnly,
       onView: () => viewOrder(sale),

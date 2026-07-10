@@ -816,15 +816,15 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
 
   async function openEditOrder({ replace = false } = {}) {
     if (!sale?.id) return;
-    if (!isOrderEditActionVisible(sale, saleWorkflow)) return;
+    if (!isOrderEditActionVisible(sale, saleWorkflow, capabilities)) return;
 
-    if (shouldOpenBackofficeOrderEdit(sale, saleWorkflow)) {
+    if (shouldOpenBackofficeOrderEdit(sale, saleWorkflow, capabilities)) {
       setEditError(null);
       setEditOrderOpen(true);
       return;
     }
 
-    if (!shouldRestoreOrderToCart(sale, saleWorkflow)) return;
+    if (!shouldRestoreOrderToCart(sale, saleWorkflow, capabilities)) return;
 
     setTransitionBusy(true);
     setEditError(null);
@@ -912,7 +912,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {isOrderEditActionVisible(sale, saleWorkflow) ? (
+              {isOrderEditActionVisible(sale, saleWorkflow, capabilities) ? (
                 <button
                   type="button"
                   onClick={() => void openEditOrder()}
