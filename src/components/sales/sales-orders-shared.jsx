@@ -331,7 +331,7 @@ export function OrderInlineItems({ items, loading, uomById, legacyPrint = false,
               {saleLineQtyLabel(line, uomById, { legacyPrint })}
             </td>
             <td className="px-4 py-2.5 text-right text-slate-700">
-              {formatSaleKes(saleLineSoldUnitPrice(line))}
+              {formatSaleKes(saleLineSoldUnitPrice(line, uomById))}
             </td>
             {showDiscountColumn ? (
               <td className="px-4 py-2.5 text-right text-slate-700">
@@ -1134,7 +1134,7 @@ export function OrderLineItemsTable({ items, uomById, legacyPrint = false, showD
                     {saleLineQtyLabel(line, uomById, { legacyPrint })}
                   </td>
                   <td className="px-4 py-3 text-right text-slate-700">
-                    {formatCustomerKes(saleLineSoldUnitPrice(line))}
+                    {formatCustomerKes(saleLineSoldUnitPrice(line, uomById))}
                   </td>
                   {showDiscountColumn ? (
                     <td className="px-4 py-3 text-right text-slate-700">

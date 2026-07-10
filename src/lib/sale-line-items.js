@@ -141,19 +141,44 @@ export function legacySaleLinePrintQtyPackage(line) {
 }
 
 /** Display sale line quantity with packaging labels when UOM data is available. */
-/** Unit price recorded on the sale line at checkout — not current catalogue price. */
-export function saleLineSoldUnitPrice(line) {
-  return Number(line?.selling_price ?? line?.unit_price ?? 0);
+/** Unit price recorded on the sale line — stored gross per sold pack/display unit, not ÷ UOM. */
+export function saleLineSoldUnitPrice(line, uomById) {
+  const stored = Number(line?.selling_price ?? 0);
+  if (!Number.isFinite(stored) || stored <= 0) return 0;
+
+  if (!uomById) return stored;
+
+  const uom = saleLineUom(line, uomById);
+  const factor = uomConversionFactor(uom);
+  const isRetailLine = Number(line?.on_wholesale_retail) === 1;
+  const baseQty = Number(line?.quantity ?? 0);
+  if (baseQty <= 0) return stored;
+
+  const packQty = isRetailLine || factor <= 1 ? baseQty : baseQty / factor;
+  if (packQty <= 0) return stored;
+
+  const netPerBase = Number(line?.amount ?? 0) / baseQty;
+  const gross =
+    Number(line?.amount ?? 0) + Math.max(0, Number(line?.discount_given ?? 0));
+  const grossPerDisplay =
+    Math.round((gross / packQty) * 100) / 100;
+
+  // Legacy rows stored amount÷baseQty (net per smallest unit). Show gross per sold pack.
+  if (!isRetailLine && factor > 1 && Math.abs(stored - netPerBase) < 0.05) {
+    return grossPerDisplay;
+  }
+
+  return stored;
 }
 
 /** @deprecated Use {@link saleLineSoldUnitPrice} for order line tables. */
-export function saleLineCatalogDisplayUnitPrice(line) {
-  return saleLineSoldUnitPrice(line);
+export function saleLineCatalogDisplayUnitPrice(line, uomById) {
+  return saleLineSoldUnitPrice(line, uomById);
 }
 
 /** Unit price column for saved order lines. */
-export function saleLineDisplayUnitPrice(line) {
-  return saleLineSoldUnitPrice(line);
+export function saleLineDisplayUnitPrice(line, uomById) {
+  return saleLineSoldUnitPrice(line, uomById);
 }
 
 /** Per-pack discount shown in order line tables (matches POS cashier input). */

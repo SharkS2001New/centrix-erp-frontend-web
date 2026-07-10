@@ -337,7 +337,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
                                   {saleLineQtyLabel(line, uomById)}
                                 </td>
                                 <td className="px-4 py-2.5 text-right text-slate-700">
-                                  {formatSaleKes(saleLineSoldUnitPrice(line))}
+                                  {formatSaleKes(saleLineSoldUnitPrice(line, uomById))}
                                 </td>
                                 <td className="px-4 py-2.5 text-right font-medium text-slate-900">
                                   {formatSaleKes(saleLineListRowAmount(line, uomById))}

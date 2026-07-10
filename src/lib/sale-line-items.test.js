@@ -54,7 +54,22 @@ describe("sale line discount display qty", () => {
         unit: uomById.get(1),
       },
     };
-    expect(saleLineSoldUnitPrice(pricedLine)).toBe(91.44);
+    expect(saleLineSoldUnitPrice(pricedLine, uomById)).toBe(91.44);
+  });
+
+  it("upgrades legacy per-base selling_price to gross per sold pack", () => {
+    const pricedLine = {
+      ...line,
+      selling_price: 3.0976,
+      quantity: 25,
+      amount: 77.44,
+      discount_given: 14,
+      product: {
+        unit_id: 1,
+        unit: uomById.get(1),
+      },
+    };
+    expect(saleLineSoldUnitPrice(pricedLine, uomById)).toBe(91.44);
   });
 
   it("returns stored line amount from the database", () => {
