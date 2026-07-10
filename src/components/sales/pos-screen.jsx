@@ -39,6 +39,7 @@ import {
   posUnitPriceFieldLabel,
   usesPosRetailPricing,
 } from "@/lib/pos-line";
+import { formatPosCartQty } from "@/lib/stock-uom";
 import {
   computeProductLineDiscount,
   formatProductDiscountLabel,
