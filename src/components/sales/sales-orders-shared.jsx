@@ -7,7 +7,7 @@ import { formatShortDate, formatKesCompact, getSaleTimestamp, StatCard, TABLE_HE
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import {
   isLegacySale,
-  saleLineCatalogDisplayUnitPrice,
+  saleLineSoldUnitPrice,
   saleLineDisplayDiscountPerUnit,
   saleLineListRowAmount,
   saleLineProductLabel,
@@ -331,7 +331,7 @@ export function OrderInlineItems({ items, loading, uomById, legacyPrint = false,
               {saleLineQtyLabel(line, uomById, { legacyPrint })}
             </td>
             <td className="px-4 py-2.5 text-right text-slate-700">
-              {formatSaleKes(saleLineCatalogDisplayUnitPrice(line, uomById, { legacyPrint }))}
+              {formatSaleKes(saleLineSoldUnitPrice(line))}
             </td>
             {showDiscountColumn ? (
               <td className="px-4 py-2.5 text-right text-slate-700">
@@ -1134,7 +1134,7 @@ export function OrderLineItemsTable({ items, uomById, legacyPrint = false, showD
                     {saleLineQtyLabel(line, uomById, { legacyPrint })}
                   </td>
                   <td className="px-4 py-3 text-right text-slate-700">
-                    {formatCustomerKes(saleLineCatalogDisplayUnitPrice(line, uomById, { legacyPrint }))}
+                    {formatCustomerKes(saleLineSoldUnitPrice(line))}
                   </td>
                   {showDiscountColumn ? (
                     <td className="px-4 py-3 text-right text-slate-700">

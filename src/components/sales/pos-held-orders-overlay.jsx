@@ -5,7 +5,7 @@ import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "
 import { apiRequest } from "@/lib/api";
 import { formatShortDate, INPUT_CLASS, TABLE_HEAD_ROW_CLASS, workspaceCardClassName } from "@/components/catalog/catalog-shared";
 import {
-  saleLineCatalogDisplayUnitPrice,
+  saleLineSoldUnitPrice,
   saleLineListRowAmount,
   saleLineProductLabel,
   saleLineQtyLabel,
@@ -337,7 +337,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
                                   {saleLineQtyLabel(line, uomById)}
                                 </td>
                                 <td className="px-4 py-2.5 text-right text-slate-700">
-                                  {formatSaleKes(saleLineCatalogDisplayUnitPrice(line, uomById))}
+                                  {formatSaleKes(saleLineSoldUnitPrice(line))}
                                 </td>
                                 <td className="px-4 py-2.5 text-right font-medium text-slate-900">
                                   {formatSaleKes(saleLineListRowAmount(line, uomById))}

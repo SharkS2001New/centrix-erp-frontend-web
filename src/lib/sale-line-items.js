@@ -141,21 +141,19 @@ export function legacySaleLinePrintQtyPackage(line) {
 }
 
 /** Display sale line quantity with packaging labels when UOM data is available. */
-/** Catalogue list price from product master — always `product.unit_price`, never UOM-scaled. */
-export function saleLineCatalogDisplayUnitPrice(line, uomById, { legacyPrint = false, sale = null } = {}) {
-  if (isLegacySaleLine(line, { legacyPrint, sale })) {
-    return Number(line?.selling_price ?? line?.unit_price ?? 0);
-  }
-
-  const catalog = Number(line?.product?.unit_price ?? 0);
-  if (catalog > 0) return catalog;
-
+/** Unit price recorded on the sale line at checkout — not current catalogue price. */
+export function saleLineSoldUnitPrice(line) {
   return Number(line?.selling_price ?? line?.unit_price ?? 0);
 }
 
-/** Unit price column — catalogue gross per display unit; discount applies only on amount. */
-export function saleLineDisplayUnitPrice(line, uomById, options = {}) {
-  return saleLineCatalogDisplayUnitPrice(line, uomById, options);
+/** @deprecated Use {@link saleLineSoldUnitPrice} for order line tables. */
+export function saleLineCatalogDisplayUnitPrice(line) {
+  return saleLineSoldUnitPrice(line);
+}
+
+/** Unit price column for saved order lines. */
+export function saleLineDisplayUnitPrice(line) {
+  return saleLineSoldUnitPrice(line);
 }
 
 /** Per-pack discount shown in order line tables (matches POS cashier input). */
@@ -163,44 +161,35 @@ export function saleLineDisplayDiscountPerUnit(line, uomById, retailByCode = {},
   return saleLineEnteredDiscountPerUnit(line, uomById, retailByCode, draftQty);
 }
 
-/** Line amount for order lists: (product.unit_price × base qty) − (per-pack discount × pack qty). */
-export function saleLineListRowAmount(line, uomById, { legacyPrint = false, sale = null, retailByCode = {} } = {}) {
-  if (isLegacySaleLine(line, { legacyPrint, sale })) {
-    return Number(line?.amount ?? 0);
-  }
-
-  const unitPrice = saleLineCatalogDisplayUnitPrice(line, uomById, { legacyPrint, sale });
-  const baseQty = Number(line?.quantity ?? 0);
-  const packQty = saleLinePackQtyForDiscount(line, uomById, retailByCode);
-  const perPackDiscount = saleLineDisplayDiscountPerUnit(line, uomById, retailByCode);
-  const discountTotal = lineDiscountTotal(perPackDiscount, packQty);
-  const gross = Math.round(unitPrice * baseQty * 100) / 100;
-  return Math.max(0, Math.round((gross - discountTotal) * 100) / 100);
+/** Line amount for order lists — stored net amount from the sale line (DB). */
+export function saleLineListRowAmount(line) {
+  return Number(line?.amount ?? 0);
 }
 
-/** Preview amount while editing lines: product.unit_price × base qty − per-pack discount × pack qty. */
+/** Preview line amount while editing — scales stored amount/discount, never catalogue price. */
 export function saleLinePreviewRowAmount(
   line,
   draftQty,
   uomById,
   { retailByCode = {}, draftDiscount = null, discountEditEnabled = false } = {},
 ) {
-  const packQty = saleLinePackQtyForDiscount(line, uomById, retailByCode, draftQty);
-  const unitPrice = saleLineCatalogDisplayUnitPrice(line, uomById);
+  const oldBase = Number(line.quantity ?? 0);
+  const newBase = saleLineEntryQtyToBase(line, draftQty, uomById, retailByCode);
+  const oldAmount = Number(line.amount ?? 0);
+  const oldDiscount = Math.max(0, Number(line.discount_given ?? 0));
+
+  if (!oldBase || !newBase) return oldAmount;
 
   if (!discountEditEnabled) {
-    const oldBase = Number(line.quantity ?? 0);
-    const newBase = saleLineEntryQtyToBase(line, draftQty, uomById, retailByCode);
-    const oldAmount = Number(line.amount ?? 0);
-    if (!oldBase || !newBase) return oldAmount;
-    return Math.round((oldAmount * newBase) / oldBase * 100) / 100;
+    return Math.max(0, Math.round((oldAmount * newBase) / oldBase * 100) / 100);
   }
 
-  const baseQty = saleLineEntryQtyToBase(line, draftQty, uomById, retailByCode);
+  const packQty = saleLinePackQtyForDiscount(line, uomById, retailByCode, draftQty);
+  const grossBeforeDiscount =
+    Math.round(((oldAmount + oldDiscount) * newBase) / oldBase * 100) / 100;
   const perPackDiscount = Math.max(0, Number(draftDiscount ?? line.draftDiscount ?? 0));
-  const gross = Math.round(unitPrice * baseQty * 100) / 100;
   const discountTotal = lineDiscountTotal(perPackDiscount, packQty);
-  return Math.max(0, Math.round((gross - discountTotal) * 100) / 100);
+  return Math.max(0, Math.round((grossBeforeDiscount - discountTotal) * 100) / 100);
 }
 
 function saleLineRetailPackage(line) {

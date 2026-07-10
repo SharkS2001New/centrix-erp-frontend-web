@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
 import {
-  saleLineCatalogDisplayUnitPrice,
+  saleLineSoldUnitPrice,
   saleLineDiscountTotalFromEntered,
   saleLineEnteredDiscountPerUnit,
   saleLineEntryQtyForEdit,
@@ -114,6 +114,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
         sum +
         saleLinePreviewRowAmount(line, line.draftQty, uomById, {
           retailByCode,
+          draftDiscount: line.draftDiscount,
           discountEditEnabled,
         }),
       0,
@@ -266,7 +267,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                     draftDiscount: line.draftDiscount,
                     discountEditEnabled,
                   });
-                  const unitPrice = saleLineCatalogDisplayUnitPrice(line, uomById);
+                  const unitPrice = saleLineSoldUnitPrice(line);
 
                   return (
                     <tr key={line.id} className="theme-table-row border-b last:border-b-0">

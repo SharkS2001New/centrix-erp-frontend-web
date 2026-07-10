@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  saleLineCatalogDisplayUnitPrice,
+  saleLineSoldUnitPrice,
   saleLineDiscountTotalFromEntered,
-  saleLineDisplayDiscountPerUnit,
   saleLineEnteredDiscountPerUnit,
   saleLineListRowAmount,
+  saleLinePreviewRowAmount,
 } from "@/lib/sale-line-items";
 
 describe("sale line discount display qty", () => {
@@ -41,7 +41,23 @@ describe("sale line discount display qty", () => {
     ).toBe(50);
   });
 
-  it("shows product.unit_price without UOM conversion", () => {
+  it("shows stored selling_price, not current product.unit_price", () => {
+    const pricedLine = {
+      ...line,
+      selling_price: 91.44,
+      quantity: 25,
+      amount: 2272,
+      discount_given: 14,
+      product: {
+        unit_id: 1,
+        unit_price: 120,
+        unit: uomById.get(1),
+      },
+    };
+    expect(saleLineSoldUnitPrice(pricedLine)).toBe(91.44);
+  });
+
+  it("returns stored line amount from the database", () => {
     const pricedLine = {
       ...line,
       quantity: 25,
@@ -53,37 +69,42 @@ describe("sale line discount display qty", () => {
         unit: uomById.get(1),
       },
     };
-    expect(saleLineCatalogDisplayUnitPrice(pricedLine, uomById)).toBe(91.44);
+    expect(saleLineListRowAmount(pricedLine)).toBe(2272);
   });
 
-  it("subtracts line discount only on amount", () => {
+  it("edit preview returns stored amount when qty and discount are unchanged", () => {
     const pricedLine = {
       ...line,
       quantity: 25,
       amount: 2272,
       discount_given: 14,
+      draftQty: "1",
+      draftDiscount: 14,
       product: {
         unit_id: 1,
-        unit_price: 91.44,
         unit: uomById.get(1),
       },
     };
-    expect(saleLineListRowAmount(pricedLine, uomById)).toBe(2272);
+    expect(
+      saleLinePreviewRowAmount(pricedLine, "1", uomById, {
+        draftDiscount: 14,
+        discountEditEnabled: true,
+      }),
+    ).toBe(2272);
   });
 
-  it("subtracts per-pack discount × pack qty from gross amount", () => {
+  it("edit preview scales stored amount when qty changes", () => {
     const pricedLine = {
       ...line,
-      quantity: 125,
-      amount: 11330,
-      discount_given: 50,
+      quantity: 25,
+      amount: 2272,
+      discount_given: 14,
+      draftQty: "1",
       product: {
         unit_id: 1,
-        unit_price: 91.44,
         unit: uomById.get(1),
       },
     };
-    expect(saleLineDisplayDiscountPerUnit(pricedLine, uomById)).toBe(10);
-    expect(saleLineListRowAmount(pricedLine, uomById)).toBe(11380);
+    expect(saleLinePreviewRowAmount(pricedLine, "2", uomById)).toBe(4544);
   });
 });

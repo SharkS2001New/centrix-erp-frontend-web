@@ -39,7 +39,7 @@ import {
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import {
   isLegacySale,
-  saleLineCatalogDisplayUnitPrice,
+  saleLineSoldUnitPrice,
   saleLineDisplayDiscountPerUnit,
   saleLineListRowAmount,
   saleLineProductLabel,
@@ -295,7 +295,7 @@ function OrderSummaryItemsTable({
                       {saleLineQtyLabel(line, uomById)}
                     </td>
                     <td className="px-4 py-3 text-right text-slate-700">
-                      {formatCustomerKes(saleLineCatalogDisplayUnitPrice(line, uomById))}
+                      {formatCustomerKes(saleLineSoldUnitPrice(line))}
                     </td>
                     {showDiscountColumn ? (
                       <td className="px-4 py-3 text-right text-slate-700">
