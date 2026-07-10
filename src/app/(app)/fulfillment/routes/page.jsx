@@ -33,6 +33,7 @@ import {
   PencilIcon,
   SALES_PERIOD_OPTIONS,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   StatCard,
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
@@ -327,6 +328,14 @@ export default function RoutesPage() {
       subtitle="Manage delivery and sales routes"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            disabled={loading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogDataImportButton
             title="Import routes"
             description="Upload CSV or Excel. Required column: route_name (or Route). Optional: direction, route_markup_price, is_active."

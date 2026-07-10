@@ -9,6 +9,7 @@ import {
   Field,
   PrimaryLink,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { useAuth } from "@/contexts/auth-context";
@@ -76,6 +77,14 @@ export default function InventoryTransfersPage() {
       subtitle="History of shop ↔ store transfers"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Stock transfers"
             filename="stock-transfers"

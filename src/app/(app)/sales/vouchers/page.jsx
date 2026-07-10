@@ -17,6 +17,7 @@ import {
   PencilIcon,
   PrimaryButton,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   TrashIcon,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
@@ -238,6 +239,14 @@ export default function VouchersPage() {
       subtitle="Create promotional codes for fixed or percentage discounts at checkout"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            disabled={loading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Vouchers"
             apiPath="/vouchers"

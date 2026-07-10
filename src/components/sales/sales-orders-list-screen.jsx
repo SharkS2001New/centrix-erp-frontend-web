@@ -30,6 +30,7 @@ import {
   FILTER_CONTROL_CLASS,
   PaginationBar,
   SearchInput,
+  SECONDARY_BTN_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { defaultDateRange, isoDate } from "@/components/inventory/inventory-shared";
 import { shouldShowSalesDiscountColumn, canApproveDiscountRequests } from "@/lib/sales-settings";
@@ -791,6 +792,14 @@ export default function SalesOrdersListScreen({
       action={
         routeOrdersOnly ? (
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void loadOrders()}
+              disabled={loading || listLoading}
+              className={SECONDARY_BTN_CLASS}
+            >
+              {loading || listLoading ? "Refreshing…" : "Refresh"}
+            </button>
             <Link
               href="/fulfillment/dispatch"
               className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -805,12 +814,22 @@ export default function SalesOrdersListScreen({
             </Link>
           </div>
         ) : (
-          <Link
-            href="/sales/pos"
-            className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
-          >
-            + New sale
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void loadOrders()}
+              disabled={loading || listLoading}
+              className={SECONDARY_BTN_CLASS}
+            >
+              {loading || listLoading ? "Refreshing…" : "Refresh"}
+            </button>
+            <Link
+              href="/sales/pos"
+              className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
+            >
+              + New sale
+            </Link>
+          </div>
         )
       }
       toolbar={

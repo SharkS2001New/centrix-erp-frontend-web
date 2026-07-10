@@ -17,6 +17,7 @@ import {
   FilterSelect,
   PaginationBar,
   SearchInput,
+  SECONDARY_BTN_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { CUSTOMER_INVOICE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
@@ -93,20 +94,30 @@ export default function CustomerInvoicesPage() {
       title="Customer invoices"
       subtitle="Accounts receivable invoices and balances"
       action={
-        <CatalogListExport
-          title="Customer invoices"
-          filename="customer-invoices"
-          apiPath="/customer-invoices"
-          columns={CUSTOMER_INVOICE_EXPORT_COLUMNS}
-          totalCount={totalInvoices}
-          getSearchParams={() => {
-            const extra = {};
-            if (presetCustomer) extra.customer_num = presetCustomer;
-            if (statusFilter !== "all") extra.payment_status = statusFilter;
-            return buildPageParams({ page: 1, perPage: 200, q: debouncedSearch, extra });
-          }}
-          disabled={loading || listLoading}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading || listLoading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
+          <CatalogListExport
+            title="Customer invoices"
+            filename="customer-invoices"
+            apiPath="/customer-invoices"
+            columns={CUSTOMER_INVOICE_EXPORT_COLUMNS}
+            totalCount={totalInvoices}
+            getSearchParams={() => {
+              const extra = {};
+              if (presetCustomer) extra.customer_num = presetCustomer;
+              if (statusFilter !== "all") extra.payment_status = statusFilter;
+              return buildPageParams({ page: 1, perPage: 200, q: debouncedSearch, extra });
+            }}
+            disabled={loading || listLoading}
+          />
+        </div>
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">

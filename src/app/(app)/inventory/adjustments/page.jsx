@@ -10,6 +10,7 @@ import {
   Field,
   PaginationBar,
   PrimaryLink,
+  SECONDARY_BTN_CLASS,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
@@ -108,6 +109,14 @@ export default function StockAdjustmentsPage() {
       subtitle="Manual increases and decreases to shop or store stock"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadRows()}
+            disabled={loading || listLoading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Stock adjustments"
             filename="stock-adjustments"

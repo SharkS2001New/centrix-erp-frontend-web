@@ -14,6 +14,7 @@ import {
   FilterToolbar,
   PaginationBar,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   StatCard,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
@@ -287,6 +288,14 @@ export default function LpoListPage() {
       subtitle="Procure from suppliers — links to supplier accounts payable and stock receipt"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadRows()}
+            disabled={loading || listLoading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Purchase orders"
             filename="lpo"

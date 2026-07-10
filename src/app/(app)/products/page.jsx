@@ -820,6 +820,14 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void reloadAll()}
+            disabled={loading || listLoading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
           <ProductImportExport
             totalCount={totalProducts}
             exportSearchParams={buildExportSearchParams}

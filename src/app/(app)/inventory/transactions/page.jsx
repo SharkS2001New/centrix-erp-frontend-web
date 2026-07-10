@@ -13,6 +13,7 @@ import {
   PaginationBar,
   PrimaryLink,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { P } from "@/lib/permission-codes";
@@ -192,6 +193,14 @@ export default function InventoryTransactionsPage() {
       subtitle="Stock changes grouped by product — expand to see each movement"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadMovements()}
+            disabled={loading || listLoading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Inventory movements"
             filename="stock-movements"

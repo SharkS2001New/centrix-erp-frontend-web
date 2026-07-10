@@ -17,6 +17,7 @@ import {
   PrimaryLink,
   TrashIcon,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   StatCard,
   formatKesCompact,
 } from "@/components/catalog/catalog-shared";
@@ -303,6 +304,14 @@ export default function SuppliersPage() {
       subtitle="Supplier accounts and amount owing from purchases"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void reloadAll()}
+            disabled={loading || listLoading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
           <SupplierImportExport
             totalCount={totalSuppliers}
             exportSearchParams={buildExportSearchParams}

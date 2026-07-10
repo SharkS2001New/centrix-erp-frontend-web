@@ -21,11 +21,21 @@ const HIDDEN_STOCK_HELPER_COLUMNS = new Set([
   "current_store_on_hand",
   "shop_on_hand",
   "store_on_hand",
+  "last_cost_price",
+  "retail_value",
+  "shop_cost_value",
+  "store_cost_value",
+  "total_qty",
+  "shop_qty",
+  "store_qty",
+  "unit_cost",
+  "stock_value",
 ]);
 
 /** UOM breakdown metadata — qty columns already show packaging via formatInventoryQtyWithUom. */
 const HIDDEN_REPORT_UOM_DETAIL_COLUMNS = new Set([
   "uom_name",
+  "sell_uom",
   "conversion_factor",
   "small_packaging_label",
   "middle_packaging_label",

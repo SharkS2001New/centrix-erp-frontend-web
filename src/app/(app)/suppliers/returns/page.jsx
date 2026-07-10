@@ -15,6 +15,7 @@ import {
   PaginationBar,
   PencilIcon,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   TrashIcon,
   formatShortDate,
   inputClassName,
@@ -547,6 +548,14 @@ export default function SupplierReturnsPage() {
       subtitle="Returns to suppliers — each order is tied to one supplier"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            disabled={loading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Supplier returns"
             filename="supplier-returns"

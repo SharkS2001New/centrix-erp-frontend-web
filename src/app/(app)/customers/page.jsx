@@ -19,6 +19,7 @@ import {
   PaginationBar,
   PencilIcon,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   SortableColumnHeader,
   StatCard,
   TrashIcon,
@@ -559,6 +560,14 @@ export default function CustomersPage() {
       }
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void reloadAll()}
+            disabled={loading || listLoading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
           <CustomerImportExport
             totalCount={totalCustomers}
             exportSearchParams={buildExportSearchParams}

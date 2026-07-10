@@ -26,6 +26,7 @@ import {
   PaginationBar,
   PencilIcon,
   PrimaryButton,
+  SECONDARY_BTN_CLASS,
   ShieldIcon,
   TrashIcon,
   SearchInput,
@@ -547,6 +548,14 @@ export default function AdminUsersPage() {
       subtitle="Manage system users, branches, roles, and per-user permission overrides."
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void reloadAll()}
+            disabled={loading || listLoading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Users"
             apiPath="/users"

@@ -17,6 +17,7 @@ import {
   PaginationBar,
   PencilIcon,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   SortableColumnHeader,
   TrashIcon,
   formatShortDate,
@@ -398,6 +399,14 @@ export default function ExpensesPage() {
       subtitle="Record and track business expenses"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void reloadAll()}
+            disabled={loading || listLoading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Expenses"
             apiPath="/expenses"

@@ -12,6 +12,7 @@ import {
   IconButton,
   PencilIcon,
   PrimaryButton,
+  SECONDARY_BTN_CLASS,
   SearchInput,
   StatCard,
   TrashIcon,
@@ -215,6 +216,14 @@ export default function VehiclesPage() {
       subtitle="Fleet registration and vehicle status"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            disabled={loading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Vehicles"
             apiPath="/vehicles"

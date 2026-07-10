@@ -9,6 +9,7 @@ import {
   FilterToolbar,
   PaginationBar,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
@@ -89,15 +90,25 @@ export default function SalesReservationsPage() {
       title="Reserved stock"
       subtitle="Stock held for open carts and pending orders"
       action={
-        <CatalogListExport
-          title="Stock reservations"
-          filename="stock-reservations"
-          apiPath="/stock-reservations"
-          columns={STOCK_RESERVATION_EXPORT_COLUMNS}
-          totalCount={filtered.length}
-          getSearchParams={() => ({ per_page: 200 })}
-          disabled={loading}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            disabled={loading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+          <CatalogListExport
+            title="Stock reservations"
+            filename="stock-reservations"
+            apiPath="/stock-reservations"
+            columns={STOCK_RESERVATION_EXPORT_COLUMNS}
+            totalCount={filtered.length}
+            getSearchParams={() => ({ per_page: 200 })}
+            disabled={loading}
+          />
+        </div>
       }
       toolbar={
         <FilterToolbar>

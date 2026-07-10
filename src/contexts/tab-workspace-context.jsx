@@ -26,6 +26,7 @@ import {
   titleFromPathname,
   writeTabWorkspaceStore,
 } from "@/lib/tab-workspace";
+import { finishNavigation } from "@/lib/app-loading";
 import {
   pathBelongsToWorkspace,
   resolveActiveWorkspace,
@@ -216,6 +217,8 @@ export function TabWorkspaceProvider({ children }) {
           }),
         );
 
+        // Reusing a mounted tab — cancel any link-click loading skeleton.
+        finishNavigation();
         if (!isCurrent) router.push(normalized);
         return true;
       }

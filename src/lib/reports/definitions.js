@@ -89,7 +89,13 @@ export const REPORT_DEFINITIONS = {
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
       { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
-      { key: "qty_sold", label: "Qty Sold", accessor: (r) => r.qty_sold, align: "right", total: true },
+      {
+        key: "qty_sold",
+        label: "Qty Sold",
+        accessor: (r) => formatInventoryQtyWithUom(r.qty_sold, r),
+        align: "right",
+        total: true,
+      },
       {
         key: "net_ex_vat",
         label: "Net (ex VAT)",
@@ -364,6 +370,68 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["total_received", "total_sold", "total_cost_value"],
+  },
+
+  "stock-valuation": {
+    title: "Stock Valuation",
+    subtitle: "Available stock with value at cost (on-hand ÷ conversion × unit cost)",
+    section: "Inventory",
+    apiPath: "/reports/stock-valuation",
+    dateColumn: null,
+    showDateRange: false,
+    columns: [
+      {
+        key: "product_name",
+        label: "Product",
+        accessor: (r) => r.product_name,
+        link: "product",
+      },
+      {
+        key: "shop_quantity",
+        label: "Shop available",
+        accessor: (r) => formatInventoryQtyWithUom(r.shop_quantity ?? r.shop_qty, r),
+        align: "right",
+      },
+      {
+        key: "store_quantity",
+        label: "Store available",
+        accessor: (r) => formatInventoryQtyWithUom(r.store_quantity ?? r.store_qty, r),
+        align: "right",
+      },
+      {
+        key: "effective_unit_cost",
+        label: "Unit cost",
+        accessor: (r) => r.effective_unit_cost ?? r.unit_cost,
+        align: "right",
+      },
+      {
+        key: "cost_value",
+        label: "Stock value",
+        accessor: (r) => r.cost_value ?? r.stock_value,
+        align: "right",
+        total: true,
+      },
+    ],
+    kpis: [
+      {
+        id: "skus",
+        label: "Products",
+        compute: (rows) => ({ value: String(rows.length) }),
+      },
+      {
+        id: "stock_value",
+        label: "Total stock value",
+        compute: (rows) => ({
+          value: kes(
+            rows.reduce(
+              (s, r) => s + (Number(r.cost_value ?? r.stock_value) || 0),
+              0,
+            ),
+          ),
+        }),
+      },
+    ],
+    footerTotals: ["cost_value"],
   },
 
   "profit-loss": {

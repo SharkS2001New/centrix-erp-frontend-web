@@ -11,6 +11,7 @@ import {
   PaginationBar,
   PencilIcon,
   PrimaryLink,
+  SECONDARY_BTN_CLASS,
   TrashIcon,
   formatShortDate,
   inputClassName,
@@ -144,6 +145,14 @@ export default function DamagesPage() {
       subtitle="Stock written off due to damage, expiry, or loss"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadRows()}
+            disabled={loading || listLoading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Damages"
             apiPath="/damages"

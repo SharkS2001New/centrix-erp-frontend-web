@@ -14,6 +14,7 @@ import {
   PaginationBar,
   PencilIcon,
   PrimaryButton,
+  SECONDARY_BTN_CLASS,
   SearchInput,
   StatCard,
   TrashIcon,
@@ -241,6 +242,14 @@ export default function HrEmployeesPage() {
       subtitle="Manage staff records and departments"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void reloadAll()}
+            disabled={loading || listLoading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
           <EmployeeImportExport
             totalCount={totalEmployees}
             exportSearchParams={buildExportSearchParams}

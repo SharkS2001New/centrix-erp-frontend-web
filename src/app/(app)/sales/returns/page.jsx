@@ -13,6 +13,7 @@ import {
   PaginationBar,
   PrimaryLink,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
@@ -234,7 +235,17 @@ export default function SalesReturnsPage() {
             Manage product returns and refunds.{manageHint}
           </p>
         </div>
-        <PrimaryLink href="/sales/returns/new">Create return</PrimaryLink>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            disabled={loading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+          <PrimaryLink href="/sales/returns/new">Create return</PrimaryLink>
+        </div>
       </div>
 
       <section className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">

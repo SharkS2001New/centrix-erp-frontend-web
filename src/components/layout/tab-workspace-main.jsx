@@ -7,9 +7,10 @@ import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { isTabWorkspaceRoute, normalizeTabHref } from "@/lib/tab-workspace";
 
 /**
- * Active tab is always mounted. Inactive tabs are unmounted unless they have unsaved
- * form data (dirty) — those stay mounted but suspended (no API refresh, in-flight
- * requests aborted).
+ * Keep every open workspace tab mounted so loaded lists/forms stay in memory.
+ * Returning to a tab reuses the cached React tree — it must not swap in fresh
+ * Next.js `children` (that remounts the page and refetches). Closing a tab
+ * drops its cache; browser refresh remounts everything.
  */
 export function TabWorkspaceMain({ children }) {
   const pathname = usePathname();
@@ -18,39 +19,44 @@ export function TabWorkspaceMain({ children }) {
 
   const activeHref = normalizeTabHref(pathname);
 
-  const dirtyHrefs = useMemo(
-    () => new Set(tabs.filter((tab) => tab.dirty).map((tab) => tab.href)),
-    [tabs],
-  );
-
   const mountedHrefs = useMemo(() => {
     const hrefs = new Set([activeHref]);
-    for (const href of dirtyHrefs) hrefs.add(href);
+    for (const tab of tabs) {
+      const href = normalizeTabHref(tab.href);
+      if (href) hrefs.add(href);
+    }
     return hrefs;
-  }, [activeHref, dirtyHrefs]);
+  }, [activeHref, tabs]);
 
   useEffect(() => {
     setPaneCache(new Map());
   }, [workspaceId]);
 
+  // Cache each route's tree the first time it opens — never overwrite on revisit.
   useEffect(() => {
     if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) return;
     setPaneCache((prev) => {
       const href = normalizeTabHref(pathname);
-      if (prev.get(href) === children) return prev;
+      if (prev.has(href)) return prev;
       const next = new Map(prev);
       next.set(href, children);
       return next;
     });
   }, [children, enabled, pathname]);
 
+  // Drop panes for closed tabs; keep existing trees for still-open ones.
   useEffect(() => {
     setPaneCache((prev) => {
       let changed = false;
       const next = new Map();
       for (const href of mountedHrefs) {
-        const pane = href === activeHref ? children : prev.get(href);
-        if (pane) next.set(href, pane);
+        const existing = prev.get(href);
+        if (existing) {
+          next.set(href, existing);
+        } else if (href === activeHref) {
+          next.set(href, children);
+          changed = true;
+        }
       }
       if (next.size !== prev.size) changed = true;
       else {

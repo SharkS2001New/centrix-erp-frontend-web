@@ -15,6 +15,7 @@ import {
   IconButton,
   PencilIcon,
   PrimaryButton,
+  SECONDARY_BTN_CLASS,
   TrashIcon,
   SearchInput,
   inputClassName,
@@ -268,6 +269,14 @@ export default function AdminBranchesPage() {
       subtitle="Manage branch locations and contacts."
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Branches"
             apiPath="/branches"

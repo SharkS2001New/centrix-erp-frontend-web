@@ -13,6 +13,7 @@ import {
   FilterSelect,
   PaginationBar,
   SearchInput,
+  SECONDARY_BTN_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { defaultProductBranchId, isMultiBranchCatalog } from "@/lib/catalog-scope";
@@ -435,14 +436,24 @@ export default function CurrentStockPage() {
       title={ITEMS_CURRENTLY_IN_STOCK_LABEL}
       subtitle="Quantities in packaging hierarchy — stock value is (qty ÷ conversion factor) × cost price"
       action={
-        <CatalogListExport
-          title={ITEMS_CURRENTLY_IN_STOCK_LABEL}
-          filename="stock-on-hand"
-          columns={exportColumns}
-          totalCount={totalStockRows}
-          getInlineRows={fetchStockExportRows}
-          disabled={loading || listLoading || !branchId || exportColumns.length === 0}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadStock()}
+            disabled={loading || listLoading || !branchId}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
+          <CatalogListExport
+            title={ITEMS_CURRENTLY_IN_STOCK_LABEL}
+            filename="stock-on-hand"
+            columns={exportColumns}
+            totalCount={totalStockRows}
+            getInlineRows={fetchStockExportRows}
+            disabled={loading || listLoading || !branchId || exportColumns.length === 0}
+          />
+        </div>
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">

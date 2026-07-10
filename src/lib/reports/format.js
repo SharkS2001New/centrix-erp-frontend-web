@@ -28,10 +28,13 @@ export function formatReportCell(key, value, settings = GENERAL_DEFAULTS, row = 
   if (key === "channel") return salesChannelLabel(value);
   if (key === "transaction_type") return inventoryTransactionTypeLabel(value);
   if (typeof value === "boolean") return value ? "Yes" : "No";
+
+  // API decimals often arrive as strings; still format inventory qty with package UOM.
+  if (isInventoryQtyField(key) && row && (typeof value === "number" || isPlainNumericString(value))) {
+    return formatInventoryQtyWithUom(value, row);
+  }
+
   if (typeof value === "number") {
-    if (isInventoryQtyField(key)) {
-      return row ? formatInventoryQtyWithUom(value, row) : formatReportNumber(value, 0, settings);
-    }
     if (/amount|total|paid|balance|vat|gross|net|price|cost|kes|value|float|variance|expected|actual|sales|revenue|profit|expense|debit|credit|collected|outstanding|due/i.test(key)) {
       return formatReportKes(value, settings);
     }
@@ -44,6 +47,13 @@ export function formatReportCell(key, value, settings = GENERAL_DEFAULTS, row = 
     return formatOrgDate(value, settings);
   }
   return String(value);
+}
+
+function isPlainNumericString(value) {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (trimmed === "" || /^\d{4}-\d{2}-\d{2}/.test(trimmed)) return false;
+  return Number.isFinite(Number(trimmed));
 }
 
 export function sumField(rows, field) {

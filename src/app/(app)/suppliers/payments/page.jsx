@@ -11,6 +11,7 @@ import {
   FilterSelect,
   PaginationBar,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
@@ -112,6 +113,14 @@ export default function SupplierPaymentsPage() {
       subtitle="Pay suppliers for purchases (accounts payable)"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            disabled={loading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Supplier payments"
             filename="supplier-payments"

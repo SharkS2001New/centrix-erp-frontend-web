@@ -6,7 +6,7 @@ import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
-import { Field, PaginationBar, PrimaryLink, inputClassName } from "@/components/catalog/catalog-shared";
+import { Field, PaginationBar, PrimaryLink, SECONDARY_BTN_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { P } from "@/lib/permission-codes";
 import {
@@ -79,6 +79,14 @@ export default function StockReceiptsPage() {
       subtitle="Goods received from suppliers into your stock"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadRows()}
+            disabled={loading || listLoading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Stock receipts"
             apiPath="/stock-receipts"

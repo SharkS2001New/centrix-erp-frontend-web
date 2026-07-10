@@ -29,6 +29,7 @@ import {
   PaginationBar,
   PencilIcon,
   PrimaryButton,
+  SECONDARY_BTN_CLASS,
   SearchInput,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
@@ -432,6 +433,14 @@ export default function UomsPage() {
       subtitle="Define how stock is counted — small units with optional packs, or full package only for wholesale items"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            disabled={loading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogDataImportButton
             title="Import units of measure"
             description="Upload CSV or Excel with measure_name, full_name, conversion_factor, uom_type, and optional packaging labels."

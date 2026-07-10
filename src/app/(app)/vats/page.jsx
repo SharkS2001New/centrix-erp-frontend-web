@@ -13,6 +13,7 @@ import {
   inputClassName,
   PencilIcon,
   PrimaryButton,
+  SECONDARY_BTN_CLASS,
   TABLE_BODY_ROW_CLASS,
   TABLE_HEAD_ROW_CLASS,
   TABLE_SHELL_CLASS,
@@ -209,6 +210,14 @@ export default function VatsPage() {
       subtitle="Configure tax codes and percentages for products"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            disabled={loading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogDataImportButton
             title="Import VAT rates"
             description="Upload CSV or Excel with vat_code, vat_name, vat_percentage, and optional is_active."

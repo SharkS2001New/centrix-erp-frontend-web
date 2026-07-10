@@ -12,6 +12,7 @@ import {
   PaginationBar,
   PrimaryLink,
   SearchInput,
+  SECONDARY_BTN_CLASS,
   formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
@@ -70,6 +71,14 @@ export default function JournalEntriesPage() {
       subtitle="Accounting > Journal Entries"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading || listLoading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Journal entries"
             filename="journal-entries"

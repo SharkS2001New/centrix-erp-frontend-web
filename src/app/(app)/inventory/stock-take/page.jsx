@@ -12,6 +12,7 @@ import {
   IconButton,
   PencilIcon,
   PrimaryButton,
+  SECONDARY_BTN_CLASS,
   TrashIcon,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
@@ -199,6 +200,14 @@ export default function StockTakeListPage() {
       subtitle="Count stock in the shop or warehouse and reconcile differences"
       action={
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className={SECONDARY_BTN_CLASS}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
           <CatalogListExport
             title="Stock take sessions"
             filename="stock-take-sessions"
