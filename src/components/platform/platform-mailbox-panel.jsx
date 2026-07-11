@@ -104,6 +104,8 @@ export function PlatformMailboxPanel() {
   const [listTotal, setListTotal] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [similarReplies, setSimilarReplies] = useState([]);
   const [saveReplyForAi, setSaveReplyForAi] = useState(false);
   const [savingReplyMemory, setSavingReplyMemory] = useState(false);
@@ -223,6 +225,7 @@ export function PlatformMailboxPanel() {
 
   useEffect(() => {
     void loadList({ append: false, offset: 0 });
+    setSelectedIds(new Set());
   }, [loadList]);
 
   useEffect(() => {
@@ -487,6 +490,27 @@ export function PlatformMailboxPanel() {
     }
   }
 
+  function toggleSelectMessage(messageId, event) {
+    event?.stopPropagation?.();
+    event?.preventDefault?.();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageId)) next.delete(messageId);
+      else next.add(messageId);
+      return next;
+    });
+  }
+
+  function toggleSelectAllVisible() {
+    const visibleIds = messages.map((row) => row.id).filter(Boolean);
+    setSelectedIds((prev) => {
+      const allSelected =
+        visibleIds.length > 0 && visibleIds.every((id) => prev.has(id));
+      if (allSelected) return new Set();
+      return new Set(visibleIds);
+    });
+  }
+
   async function handleDeleteMessage(messageId, event) {
     event?.stopPropagation?.();
     event?.preventDefault?.();
@@ -514,6 +538,11 @@ export function PlatformMailboxPanel() {
       );
       const removedUnread = target?.folder === "inbox" && !target?.read_at;
       setMessages((prev) => prev.filter((row) => row.id !== messageId));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(messageId);
+        return next;
+      });
       setListTotal((prev) => Math.max(0, prev - 1));
       if (typeof res.unread_count === "number") {
         setUnreadCount(res.unread_count);
@@ -538,6 +567,56 @@ export function PlatformMailboxPanel() {
       notifyError(err instanceof ApiError ? err.message : "Failed to delete message.");
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function handleBulkDelete() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    const hasInbound = messages.some(
+      (row) => ids.includes(row.id) && row.direction === "inbound",
+    );
+    const ok = await confirm({
+      title: `Delete ${ids.length} message${ids.length === 1 ? "" : "s"}`,
+      message: hasInbound
+        ? `Delete ${ids.length} selected messages from Centrix? Inbound messages will also be removed from the email account when IMAP is available.`
+        : `Delete ${ids.length} selected messages permanently?`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+
+    setBulkDeleting(true);
+    try {
+      const res = await apiRequest("/admin/platform-mail/messages/bulk-delete", {
+        method: "POST",
+        body: {
+          ids,
+          account_id: accountId || undefined,
+        },
+        loading: false,
+      });
+      notifySuccess(res.message ?? `${ids.length} messages deleted.`);
+      const idSet = new Set(ids);
+      setMessages((prev) => prev.filter((row) => !idSet.has(row.id)));
+      setListTotal((prev) => Math.max(0, prev - ids.length));
+      setSelectedIds(new Set());
+      if (typeof res.unread_count === "number") {
+        setUnreadCount(res.unread_count);
+        publishPlatformMailUnread(res.unread_count);
+      }
+      if (compose.draft_id && idSet.has(Number(compose.draft_id))) {
+        setCompose(emptyCompose());
+        setComposing(false);
+      }
+      if (selectedId && idSet.has(selectedId)) {
+        setSelectedId(null);
+        setSelected(null);
+        setSimilarReplies([]);
+      }
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to delete messages.");
+    } finally {
+      setBulkDeleting(false);
     }
   }
 
@@ -831,6 +910,7 @@ export function PlatformMailboxPanel() {
                 setKindFilter("");
                 setSelectedId(null);
                 setSelected(null);
+                setSelectedIds(new Set());
                 setComposing(false);
               }}
             >
@@ -959,66 +1039,111 @@ export function PlatformMailboxPanel() {
             </p>
           ) : (
             <>
+              <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
+                <label className="flex items-center gap-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-[#185FA5] focus:ring-[#185FA5]"
+                    checked={
+                      messages.length > 0 &&
+                      messages.every((row) => selectedIds.has(row.id))
+                    }
+                    onChange={toggleSelectAllVisible}
+                    aria-label="Select all visible messages"
+                  />
+                  Select all
+                </label>
+                {selectedIds.size > 0 ? (
+                  <button
+                    type="button"
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                    disabled={bulkDeleting}
+                    onClick={() => void handleBulkDelete()}
+                  >
+                    <TrashIcon />
+                    {bulkDeleting
+                      ? "Deleting…"
+                      : `Delete (${selectedIds.size})`}
+                  </button>
+                ) : null}
+              </div>
               <ul className="divide-y divide-slate-100">
                 {messages.map((msg) => {
                   const unread = msg.folder === "inbox" && !msg.read_at;
                   const active = selectedId === msg.id;
+                  const checked = selectedIds.has(msg.id);
                   return (
                     <li key={msg.id} className="group relative">
-                      <button
-                        type="button"
-                        className={`w-full px-3 py-3 pr-10 text-left hover:bg-slate-50 ${
+                      <div
+                        className={`flex items-stretch ${
                           active ? "bg-sky-50" : ""
-                        }`}
-                        onClick={() => void openMessage(msg.id)}
+                        } ${checked ? "bg-sky-50/60" : ""}`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="flex min-w-0 items-center gap-2">
-                            {unread ? (
-                              <span
-                                className="h-2 w-2 shrink-0 rounded-full bg-[#185FA5]"
-                                title="Unread"
-                                aria-label="Unread"
-                              />
-                            ) : (
-                              <span className="h-2 w-2 shrink-0" aria-hidden />
-                            )}
-                            <span
-                              className={`truncate text-sm ${
-                                unread ? "font-semibold text-slate-900" : "text-slate-800"
-                              }`}
-                            >
-                              {msg.direction === "outbound"
-                                ? (Array.isArray(msg.to_addresses) ? msg.to_addresses[0] : "—")
-                                : msg.from_name || msg.from_address}
-                            </span>
-                          </span>
-                          <span className="shrink-0 text-[10px] text-slate-400">
-                            {formatWhen(msg.sent_at || msg.received_at)}
-                          </span>
-                        </div>
-                        <div
-                          className={`mt-0.5 truncate pl-4 text-xs ${
-                            unread ? "font-medium text-slate-800" : "text-slate-600"
-                          }`}
+                        <label
+                          className="flex shrink-0 items-start px-2 pt-3.5"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          {msg.kind_label ? (
-                            <span className="mr-1 inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                              {msg.kind_label}
+                          <input
+                            type="checkbox"
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-[#185FA5] focus:ring-[#185FA5]"
+                            checked={checked}
+                            onChange={(e) => toggleSelectMessage(msg.id, e)}
+                            aria-label={`Select message ${msg.subject || msg.id}`}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="min-w-0 flex-1 px-1 py-3 pr-10 text-left hover:bg-slate-50/80"
+                          onClick={() => void openMessage(msg.id)}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="flex min-w-0 items-center gap-2">
+                              {unread ? (
+                                <span
+                                  className="h-2 w-2 shrink-0 rounded-full bg-[#185FA5]"
+                                  title="Unread"
+                                  aria-label="Unread"
+                                />
+                              ) : (
+                                <span className="h-2 w-2 shrink-0" aria-hidden />
+                              )}
+                              <span
+                                className={`truncate text-sm ${
+                                  unread ? "font-semibold text-slate-900" : "text-slate-800"
+                                }`}
+                              >
+                                {msg.direction === "outbound"
+                                  ? (Array.isArray(msg.to_addresses) ? msg.to_addresses[0] : "—")
+                                  : msg.from_name || msg.from_address}
+                              </span>
                             </span>
-                          ) : null}
-                          {msg.subject || "(no subject)"}
-                        </div>
-                        <div className="mt-0.5 truncate pl-4 text-[11px] text-slate-400">
-                          {previewBody(msg.body_text)}
-                        </div>
-                      </button>
+                            <span className="shrink-0 text-[10px] text-slate-400">
+                              {formatWhen(msg.sent_at || msg.received_at)}
+                            </span>
+                          </div>
+                          <div
+                            className={`mt-0.5 truncate pl-4 text-xs ${
+                              unread ? "font-medium text-slate-800" : "text-slate-600"
+                            }`}
+                          >
+                            {msg.kind_label ? (
+                              <span className="mr-1 inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                                {msg.kind_label}
+                              </span>
+                            ) : null}
+                            {msg.subject || "(no subject)"}
+                          </div>
+                          <div className="mt-0.5 truncate pl-4 text-[11px] text-slate-400">
+                            {previewBody(msg.body_text)}
+                          </div>
+                        </button>
+                      </div>
                       <button
                         type="button"
                         className="absolute right-2 top-2 z-10 rounded-md p-1.5 text-red-600 opacity-0 transition hover:bg-red-50 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-40"
                         title="Delete"
                         aria-label="Delete message"
-                        disabled={deletingId === msg.id}
+                        disabled={deletingId === msg.id || bulkDeleting}
                         onClick={(e) => void handleDeleteMessage(msg.id, e)}
                       >
                         <TrashIcon />
