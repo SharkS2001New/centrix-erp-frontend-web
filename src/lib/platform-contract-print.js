@@ -4,6 +4,7 @@ import {
   formatBillingDate,
   formatBillingMoney,
   licenseBasisLabel,
+  billingIntervalLabel,
   planModuleLabels,
   resolveAgreementPrices,
   workspaceLabels,
@@ -106,7 +107,7 @@ export function buildPlatformContractHtml(contract, { seller: sellerOverride } =
           <strong>${escapeHtml(formatBillingMoney(prices.first_payment_price, prices.currency))}</strong>
         </div>
         <div>
-          <span class="muted">Renewal (${escapeHtml(prices.interval)})</span>
+          <span class="muted">Renewal (${escapeHtml(billingIntervalLabel(prices.interval))})</span>
           <strong>${escapeHtml(formatBillingMoney(prices.renewal_price, prices.currency))}</strong>
         </div>
       </div>

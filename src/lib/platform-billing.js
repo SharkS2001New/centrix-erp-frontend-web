@@ -9,8 +9,13 @@ import { PROVISIONABLE_WORKSPACES } from "@/lib/workspace-modules";
 
 export const PLAN_INTERVALS = [
   { id: "monthly", label: "Monthly" },
-  { id: "annual", label: "Annual" },
+  { id: "annual", label: "Yearly" },
 ];
+
+export function billingIntervalLabel(interval) {
+  const id = interval === "yearly" ? "annual" : interval;
+  return PLAN_INTERVALS.find((row) => row.id === id)?.label?.toLowerCase() ?? (interval || "monthly");
+}
 
 /** Org-wide flat fee vs per named user / seat. */
 export const LICENSE_BASIS_OPTIONS = [
@@ -43,9 +48,23 @@ export const SUBSCRIPTION_STATUSES = [
 ];
 
 export const CONTRACT_KINDS = [
-  { id: "quote", label: "Quote" },
-  { id: "contract", label: "Contract" },
+  {
+    id: "quote",
+    label: "Quote",
+    description:
+      "A priced proposal you send before the customer commits. They can accept it; you then provision and invoice. Not yet a binding long-term agreement.",
+  },
+  {
+    id: "contract",
+    label: "Contract",
+    description:
+      "The signed commercial agreement (terms, licence, renewal). Use after a quote is accepted, or when the customer is already committed.",
+  },
 ];
+
+export function contractKindHelp(kind) {
+  return CONTRACT_KINDS.find((row) => row.id === kind)?.description ?? "";
+}
 
 export const CONTRACT_STATUSES = [
   { id: "draft", label: "Draft" },
@@ -86,6 +105,8 @@ export function defaultKenyaPlatformContractTerms({
   renewalPayment = null,
   currency = "KES",
 } = {}) {
+  const intervalLabel =
+    interval === "annual" || interval === "yearly" ? "yearly" : "monthly";
   const licenseLine =
     licenseBasis === "user"
       ? "Licence is granted on a named-user / seat basis. The Customer shall not exceed the licensed seat count without a written variation and corresponding fees."
@@ -96,8 +117,8 @@ export function defaultKenyaPlatformContractTerms({
       ? `Initial / first-time payment: ${currency} ${Number(firstPayment).toLocaleString("en-KE")}.`
       : "Initial / first-time payment: as stated in the commercial schedule of this agreement.",
     renewalPayment != null && renewalPayment !== ""
-      ? `Renewal payment (${interval}): ${currency} ${Number(renewalPayment).toLocaleString("en-KE")}.`
-      : `Renewal payment (${interval}): as stated in the commercial schedule of this agreement.`,
+      ? `Renewal payment (${intervalLabel}): ${currency} ${Number(renewalPayment).toLocaleString("en-KE")}.`
+      : `Renewal payment (${intervalLabel}): as stated in the commercial schedule of this agreement.`,
   ].join("\n");
 
   return `SOFTWARE AS A SERVICE (SaaS) AGREEMENT — CENTRIX ERP
@@ -237,6 +258,7 @@ export function emptyContractForm(overrides = {}) {
     start_date: today,
     end_date: "",
     currency: "KES",
+    interval: "monthly",
     license_basis: "org",
     amount: "",
     first_payment_price: "",
@@ -272,6 +294,7 @@ export function contractRecordToForm(record) {
     start_date: record.start_date?.slice?.(0, 10) ?? record.start_date ?? "",
     end_date: record.end_date?.slice?.(0, 10) ?? record.end_date ?? "",
     currency: record.currency ?? "KES",
+    interval: record.interval === "annual" || record.interval === "yearly" ? "annual" : "monthly",
     license_basis: record.license_basis === "user" ? "user" : "org",
     amount: renewal != null ? String(renewal) : "",
     first_payment_price: first != null ? String(first) : "",
@@ -305,6 +328,7 @@ export function contractFormToPayload(form) {
     start_date: form.start_date || null,
     end_date: form.end_date || null,
     currency: form.currency || "KES",
+    interval: form.interval === "annual" || form.interval === "yearly" ? "annual" : "monthly",
     license_basis: form.license_basis === "user" ? "user" : "org",
     amount: renewal,
     first_payment_price: first,
@@ -379,7 +403,13 @@ export function resolveAgreementPrices(source = {}) {
     first_payment_price: first,
     renewal_price: renewal,
     license_basis: source.license_basis ?? source.plan?.license_basis ?? "org",
-    interval: source.interval ?? source.plan?.interval ?? "monthly",
+    interval:
+      source.interval === "annual" ||
+      source.interval === "yearly" ||
+      source.plan?.interval === "annual" ||
+      source.plan?.interval === "yearly"
+        ? "annual"
+        : source.interval ?? source.plan?.interval ?? "monthly",
   };
 }
 

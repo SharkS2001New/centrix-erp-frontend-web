@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -10,11 +10,81 @@ import {
   PrimaryButton,
   SECONDARY_BTN_CLASS,
 } from "@/components/catalog/catalog-shared";
-import { PLATFORM_INVOICE_DESIGN_TEMPLATES } from "@/lib/platform-invoices";
+import { PlatformInvoiceViewer } from "@/components/platform/platform-invoice-viewer";
+import { buildPlatformInvoiceHtml } from "@/lib/platform-invoice-print";
+import {
+  PLATFORM_INVOICE_DESIGN_TEMPLATES,
+  sampleInvoiceForDesignPreview,
+} from "@/lib/platform-invoices";
 import { useConfirm } from "@/lib/use-confirm";
 
 function designLabel(templateId) {
   return PLATFORM_INVOICE_DESIGN_TEMPLATES.find((row) => row.id === templateId)?.label ?? templateId ?? "—";
+}
+
+function invoiceFromSavedTemplate(tpl) {
+  return sampleInvoiceForDesignPreview(tpl.template_id || "modern", {
+    invoice_number: "TEMPLATE-PREVIEW",
+    notes: tpl.notes || "Preview of saved template content.",
+    terms: tpl.terms || undefined,
+    tax_rate: tpl.tax_rate != null ? Number(tpl.tax_rate) : 16,
+    line_items:
+      Array.isArray(tpl.line_items) && tpl.line_items.length
+        ? tpl.line_items.map((row) => ({ ...row }))
+        : undefined,
+    invoice_options: {
+      show_branding: true,
+      show_quantity: true,
+      brand_mode: "name",
+      brand_name: "ALPAC SOFTWARE SOLUTIONS",
+      print_spacing: "comfortable",
+      print_font_scale: "standard",
+      ...(tpl.invoice_options ?? {}),
+    },
+  });
+}
+
+function DesignPreviewCard({ tpl, onPreview }) {
+  const html = useMemo(
+    () => buildPlatformInvoiceHtml(sampleInvoiceForDesignPreview(tpl.id)),
+    [tpl.id],
+  );
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900/40">
+      <div className="relative h-44 overflow-hidden bg-slate-100 dark:bg-slate-950">
+        <iframe
+          title={`${tpl.label} preview`}
+          srcDoc={html}
+          className="pointer-events-none absolute left-0 top-0 origin-top-left border-0"
+          style={{ width: "800px", height: "1130px", transform: "scale(0.28)" }}
+          sandbox=""
+          tabIndex={-1}
+        />
+      </div>
+      <div className="space-y-2 p-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{tpl.label}</p>
+          <p className="mt-0.5 text-xs text-slate-500">{tpl.description}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="text-sm font-medium text-[#185FA5] hover:underline"
+            onClick={() => onPreview(tpl)}
+          >
+            Preview
+          </button>
+          <Link
+            href={`/platform/invoices/new?design=${encodeURIComponent(tpl.id)}`}
+            className="text-sm font-medium text-slate-600 hover:underline"
+          >
+            Use this template
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function PlatformInvoiceTemplatesPage() {
@@ -22,6 +92,7 @@ export default function PlatformInvoiceTemplatesPage() {
   const [savedTemplates, setSavedTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
+  const [viewerInvoice, setViewerInvoice] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,20 +167,20 @@ export default function PlatformInvoiceTemplatesPage() {
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Design templates</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Visual layouts applied when you create or edit a platform invoice. Pick one on the invoice form.
+              Visual layouts applied when you create or edit a platform invoice. Preview below, then use on a new invoice.
             </p>
           </div>
+          <p className="text-xs text-slate-400">{PLATFORM_INVOICE_DESIGN_TEMPLATES.length} designs</p>
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {PLATFORM_INVOICE_DESIGN_TEMPLATES.map((tpl) => (
-            <div
+            <DesignPreviewCard
               key={tpl.id}
-              className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/40"
-            >
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{tpl.label}</p>
-              <p className="mt-1 text-xs text-slate-500">{tpl.description}</p>
-              <p className="mt-3 font-mono text-[11px] text-slate-400">{tpl.id}</p>
-            </div>
+              tpl={tpl}
+              onPreview={(row) =>
+                setViewerInvoice(sampleInvoiceForDesignPreview(row.id))
+              }
+            />
           ))}
         </div>
       </section>
@@ -176,11 +247,18 @@ export default function PlatformInvoiceTemplatesPage() {
                       </td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex flex-wrap justify-end gap-2">
+                          <button
+                            type="button"
+                            className="text-sm font-medium text-slate-700 hover:underline"
+                            onClick={() => setViewerInvoice(invoiceFromSavedTemplate(tpl))}
+                          >
+                            View
+                          </button>
                           <Link
                             href={`/platform/invoices/new?template=${encodeURIComponent(tpl.id)}`}
                             className="text-sm font-medium text-[#185FA5] hover:underline"
                           >
-                            Use for new invoice
+                            Use this template
                           </Link>
                           <button
                             type="button"
@@ -200,6 +278,13 @@ export default function PlatformInvoiceTemplatesPage() {
           </div>
         )}
       </section>
+
+      <PlatformInvoiceViewer
+        invoice={viewerInvoice}
+        open={Boolean(viewerInvoice)}
+        onClose={() => setViewerInvoice(null)}
+        allowEmail={false}
+      />
     </CatalogPageShell>
   );
 }

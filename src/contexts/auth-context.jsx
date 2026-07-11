@@ -314,6 +314,10 @@ export function AuthProvider({ children }) {
         }
       }
 
+      if (res?.mfa_required) {
+        return res;
+      }
+
       const caps = await applyAuthPayload(res, WEB_LOGIN_CHANNEL);
       clearLicenseWarningDismissed();
       if (res.must_change_password || res.user?.must_change_password) {
@@ -342,6 +346,50 @@ export function AuthProvider({ children }) {
         setStoredWorkspace(null);
       }
       router.replace(resolvePostLoginPath(ctx, caps));
+      return caps;
+    },
+    [applyAuthPayload, router, switchWorkspace],
+  );
+
+  const completeTwoFactorLogin = useCallback(
+    async (challengeToken, code) => {
+      const res = await apiRequest("/auth/2fa/verify", {
+        method: "POST",
+        body: {
+          challenge_token: challengeToken,
+          code: String(code).trim(),
+        },
+        token: null,
+      });
+      const caps = await applyAuthPayload(res, WEB_LOGIN_CHANNEL);
+      clearLicenseWarningDismissed();
+      if (res.must_change_password || res.user?.must_change_password) {
+        router.replace("/change-password");
+        return caps;
+      }
+      if (res.password_expiry?.forced) {
+        router.replace("/change-password?reason=expired");
+        return caps;
+      }
+      const ctx = buildAccessContext({
+        user: res.user,
+        organization: res.organization,
+        capabilities: caps,
+        requireTillFloat: resolveTillFloatNavFlag(caps),
+      });
+      const workspaces = workspacesFromCapabilities(caps);
+      if (workspaces.length === 1) {
+        const only = workspaces[0];
+        if (workspaceLoginChannel(only.id) === POS_LOGIN_CHANNEL) {
+          void switchWorkspace(only.id);
+        } else {
+          setStoredWorkspace(only.id);
+        }
+      } else if (workspaces.length > 1) {
+        setStoredWorkspace(null);
+      }
+      router.replace(resolvePostLoginPath(ctx, caps));
+      return caps;
     },
     [applyAuthPayload, router, switchWorkspace],
   );
@@ -419,6 +467,7 @@ export function AuthProvider({ children }) {
       loading,
       capabilitiesRefreshing,
       login,
+      completeTwoFactorLogin,
       loginChannel,
       switchOrganization,
       switchWorkspace,
@@ -454,6 +503,7 @@ export function AuthProvider({ children }) {
       loading,
       capabilitiesRefreshing,
       login,
+      completeTwoFactorLogin,
       loginChannel,
       switchOrganization,
       switchWorkspace,

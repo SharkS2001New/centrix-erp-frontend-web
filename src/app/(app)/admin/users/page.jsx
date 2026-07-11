@@ -79,6 +79,10 @@ function userIsPasswordLocked(row) {
   return Boolean(row?.password_locked ?? row?.must_change_password);
 }
 
+function userHasTwoFactor(row) {
+  return Boolean(row?.two_factor_enabled);
+}
+
 export default function AdminUsersPage() {
   const confirm = useConfirm();
   const { user, capabilities, refreshCapabilities } = useAuth();
@@ -372,6 +376,28 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function clearTwoFactor(row) {
+    const ok = await confirm({
+      title: "Clear two-factor authentication?",
+      message: `Clear 2FA for "${row.full_name}"? They will sign in with password only until they enable 2FA again from My profile.`,
+      confirmLabel: "Clear 2FA",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await apiRequest(adminPath(`/users/${row.id}/clear-two-factor`), { method: "POST" });
+      await reloadAll();
+      if (viewUser?.id === row.id) {
+        setViewUser((current) =>
+          current ? { ...current, two_factor_enabled: false, two_factor_method: null } : current,
+        );
+      }
+      notifySuccess(`Two-factor authentication cleared for "${row.full_name}"`);
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to clear 2FA");
+    }
+  }
+
   async function softDeleteUser(row) {
     if (isProtectedUserAccount(row, user?.id)) {
       notifyError(
@@ -640,6 +666,9 @@ export default function AdminUsersPage() {
                         {userIsPasswordLocked(row) ? (
                           <span className="text-[11px] font-medium text-amber-700">Password locked</span>
                         ) : null}
+                        {userHasTwoFactor(row) ? (
+                          <span className="text-[11px] font-medium text-indigo-700">2FA on</span>
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -651,6 +680,15 @@ export default function AdminUsersPage() {
                             className="rounded-md px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50"
                           >
                             Clear lock
+                          </button>
+                        ) : null}
+                        {user?.is_super_admin && userHasTwoFactor(row) ? (
+                          <button
+                            type="button"
+                            onClick={() => void clearTwoFactor(row)}
+                            className="rounded-md px-2 py-1 text-xs font-medium text-indigo-800 hover:bg-indigo-50"
+                          >
+                            Clear 2FA
                           </button>
                         ) : null}
                         <IconButton label="Permissions" onClick={() => openView(row)}>

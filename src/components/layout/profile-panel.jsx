@@ -13,6 +13,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { ProfileTwoFactorSection } from "@/components/layout/profile-two-factor-section";
 
 function accessLabel(user, capabilities) {
   if (user?.is_super_admin || capabilities?.is_super_admin) {
@@ -129,7 +130,8 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
     : "grid gap-6 lg:grid-cols-2";
 
   return (
-    <div className={gridClass}>
+    <div className="space-y-6">
+      <div className={gridClass}>
       <section className="theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Account</h2>
         <form onSubmit={onSaveProfile} className="mt-4 space-y-4">
@@ -235,6 +237,8 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
           </PrimaryButton>
         </form>
       </section>
+      </div>
+      {!requiredPasswordChange ? <ProfileTwoFactorSection /> : null}
     </div>
   );
 }

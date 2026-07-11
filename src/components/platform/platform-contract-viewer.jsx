@@ -8,6 +8,7 @@ import {
   contractStatusLabel,
   formatBillingDate,
   formatBillingMoney,
+  billingIntervalLabel,
   resolveAgreementPrices,
 } from "@/lib/platform-billing";
 import {
@@ -166,7 +167,8 @@ export function PlatformContractViewer({
             <p className="theme-subtext mt-1 text-xs">
               {contractKindLabel(contract.kind)} · {contractStatusLabel(contract.status)} · First{" "}
               {formatBillingMoney(prices?.first_payment_price, prices?.currency)} · Renewal{" "}
-              {formatBillingMoney(prices?.renewal_price, prices?.currency)} ·{" "}
+              {formatBillingMoney(prices?.renewal_price, prices?.currency)}/
+              {billingIntervalLabel(prices?.interval)} ·{" "}
               {formatBillingDate(contract.start_date || contract.created_at)}
             </p>
           </div>

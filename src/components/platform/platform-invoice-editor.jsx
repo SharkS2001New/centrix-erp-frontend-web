@@ -53,6 +53,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   const searchParams = useSearchParams();
   const presetTemplateId = searchParams.get("template")?.trim() ?? "";
   const presetOrganizationId = searchParams.get("organization")?.trim() ?? "";
+  const presetDesignId = searchParams.get("design")?.trim() ?? "";
   const [form, setForm] = useState(() => emptyPlatformInvoiceForm());
   const [organizations, setOrganizations] = useState([]);
   const [moduleSummaries, setModuleSummaries] = useState([]);
@@ -69,6 +70,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   const [templateDescription, setTemplateDescription] = useState("");
   const [presetTemplateApplied, setPresetTemplateApplied] = useState(false);
   const [presetOrganizationApplied, setPresetOrganizationApplied] = useState(false);
+  const [presetDesignApplied, setPresetDesignApplied] = useState(false);
   const [brandingOpen, setBrandingOpen] = useState(false);
 
   const totals = useMemo(
@@ -403,6 +405,14 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
     setPresetTemplateApplied(true);
     notifySuccess(`Applied template “${template.name}”.`);
   }, [isEdit, presetTemplateApplied, presetTemplateId, savedTemplates]);
+
+  useEffect(() => {
+    if (isEdit || presetDesignApplied || !presetDesignId || presetTemplateId) return;
+    const known = PLATFORM_INVOICE_DESIGN_TEMPLATES.some((row) => row.id === presetDesignId);
+    if (!known) return;
+    setForm((prev) => ({ ...prev, template_id: presetDesignId }));
+    setPresetDesignApplied(true);
+  }, [isEdit, presetDesignApplied, presetDesignId, presetTemplateId]);
 
   function applySavedTemplate(templateId) {
     const template = savedTemplates.find((row) => String(row.id) === String(templateId));
@@ -902,10 +912,12 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                 >
                   <div className="grid gap-3 sm:grid-cols-12">
                     <Field label="Description" className="sm:col-span-6">
-                      <input
-                        className={inputClass}
+                      <textarea
+                        className={`${inputClass} min-h-[4.5rem] resize-y`}
+                        rows={3}
                         value={row.description ?? ""}
                         onChange={(e) => updateLineItem(index, { description: e.target.value })}
+                        placeholder={"Line description\nOptional second line"}
                       />
                     </Field>
                     <Field label="Qty" className={`sm:col-span-2 ${invoiceOptions.show_quantity === false ? "opacity-50" : ""}`}>

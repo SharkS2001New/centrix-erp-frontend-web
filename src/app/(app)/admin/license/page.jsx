@@ -7,8 +7,14 @@ import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { OrganizationBillingPanel } from "@/components/platform/organization-billing-panel";
 
 export default function AdminLicensePage() {
-  const { organization: authOrganization, loading: authLoading } = useAuth();
+  const { organization: authOrganization, loading: authLoading, hasPermission, isSuperAdmin } = useAuth();
   const { organizationId: platformOrgId, organizationProfile } = useAdminApi();
+
+  const canView =
+    Boolean(platformOrgId) ||
+    isSuperAdmin ||
+    hasPermission?.("admin.license.view") ||
+    hasPermission?.("admin.view");
 
   const orgId = platformOrgId || authOrganization?.id || null;
   const orgName =
@@ -30,6 +36,11 @@ export default function AdminLicensePage() {
 
       {authLoading && !platformOrgId ? (
         <p className="text-sm text-slate-500">Loading…</p>
+      ) : !canView ? (
+        <div className="theme-panel rounded-xl border p-6 text-sm text-slate-600 shadow-sm">
+          You do not have permission to view License Information. Ask an organization administrator
+          to grant <span className="font-mono text-xs">admin.license.view</span>.
+        </div>
       ) : (
         <div className="theme-panel space-y-8 rounded-xl border p-6 shadow-sm">
           <OrganizationBillingPanel

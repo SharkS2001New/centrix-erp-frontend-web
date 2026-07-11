@@ -832,7 +832,7 @@ const NAV_SECTION_DEFINITIONS = [
         href: "/admin/license",
         label: "License Information",
         module: "admin",
-        permission: P.admin.company.view,
+        permission: P.admin.license.view,
         orgAdminOnly: true,
       },
       {

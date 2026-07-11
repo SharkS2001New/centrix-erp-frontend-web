@@ -129,3 +129,93 @@ export async function composePlatformEmailWithAi(input = {}) {
     )
   );
 }
+
+/**
+ * Suggest title, reference, and related fields for a quote or contract.
+ * @param {{
+ *   kind?: "quote" | "contract",
+ *   instruction?: string,
+ *   form?: Record<string, unknown>,
+ * }} input
+ */
+export async function composePlatformDocumentFieldsWithAi(input = {}) {
+  const apiBase = aiTrainingApiBase();
+  const kind = input.kind === "contract" ? "contract" : "quote";
+  const form = input.form ?? {};
+  const customer = String(form.customer_name || "").trim();
+  const planHint = String(form.plan_name || form.plan_id || "").trim();
+  const context = {
+    kind,
+    title: form.title ?? "",
+    reference: form.reference ?? "",
+    customer_name: form.customer_name ?? "",
+    customer_email: form.customer_email ?? "",
+    first_payment_price: form.first_payment_price ?? "",
+    renewal_price: form.renewal_price ?? form.amount ?? "",
+    interval: form.interval ?? "monthly",
+    license_basis: form.license_basis ?? "org",
+    seat_count: form.seat_count ?? 1,
+    notes: form.notes ?? "",
+  };
+
+  const payload = {
+    task: "document_fields",
+    mode: "suggest",
+    use_knowledge: false,
+    skip_training: true,
+    instruction:
+      input.instruction?.trim() ||
+      `Suggest a professional ${kind} title and reference for Centrix ERP SaaS billing` +
+        (customer ? ` for ${customer}` : "") +
+        (planHint ? ` (plan/context: ${planHint})` : "") +
+        ". Also suggest a short internal notes line if helpful.",
+    subject: String(form.title ?? ""),
+    body: JSON.stringify(context, null, 2),
+    output_format: "json",
+    system_hint:
+      "You help a Centrix platform admin name and label commercial documents. " +
+      `Document kind is a ${kind}. ` +
+      "A quote is a pre-commitment proposal; a contract is the binding agreement after acceptance. " +
+      "Return JSON only with keys: title, reference, notes (optional short string). " +
+      "Title should clearly say Quote or Contract and name the customer/plan when known. " +
+      "Reference like Q-2026-001 for quotes or C-2026-001 for contracts. " +
+      "Do not rewrite legal terms. Kenya business English.",
+  };
+
+  const paths = [`${apiBase}/compose`, `${apiBase}/compose-email`];
+  let lastError = null;
+
+  for (const path of paths) {
+    try {
+      const res = await apiRequest(path, { method: "POST", body: payload });
+      const data = res?.data ?? res ?? {};
+      const parsed =
+        extractJsonObject(data.reply) ||
+        extractJsonObject(data.content) ||
+        extractJsonObject(data.message) ||
+        (typeof data.body === "string" ? extractJsonObject(data.body) : null) ||
+        (typeof data === "object" ? data : null);
+
+      return {
+        title: String(parsed?.title ?? data.title ?? data.subject ?? form.title ?? "").trim(),
+        reference: String(parsed?.reference ?? data.reference ?? "").trim(),
+        notes: String(parsed?.notes ?? data.notes ?? "").trim(),
+        raw: data,
+      };
+    } catch (err) {
+      lastError = err;
+      if (err instanceof ApiError && (err.status === 404 || err.status === 405)) {
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw (
+    lastError ??
+    new ApiError(
+      "Platform AI compose is not available yet. Save AI credentials under Platform → AI training → Credentials.",
+      404,
+    )
+  );
+}

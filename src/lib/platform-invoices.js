@@ -1,14 +1,31 @@
 /** Built-in platform invoice design templates (super admin billing). */
-
 export const PLATFORM_INVOICE_DESIGN_TEMPLATES = [
-  { id: "modern", label: "Modern", description: "Clean layout with accent header — Stripe-inspired." },
-  { id: "classic", label: "Classic", description: "Traditional bordered invoice with formal typography." },
-  { id: "minimal", label: "Minimal", description: "Generous whitespace and subtle dividers." },
-  { id: "corporate", label: "Corporate", description: "Navy header band suited for enterprise clients." },
-  { id: "bold", label: "Bold", description: "Large headings and high-contrast totals." },
-  { id: "elegant", label: "Elegant", description: "Refined serif accents — FreshBooks style." },
+  { id: "modern", label: "Modern", description: "Clean layout with blue accent header — Stripe-inspired." },
+  { id: "classic", label: "Classic", description: "Traditional bordered invoice with formal serif typography." },
+  { id: "minimal", label: "Minimal", description: "Quiet whitespace and subtle dividers — no chrome." },
+  { id: "corporate", label: "Corporate", description: "Solid navy header band suited for enterprise clients." },
+  { id: "bold", label: "Bold", description: "High-contrast red accents and large totals." },
+  { id: "elegant", label: "Elegant", description: "Warm serif accents — FreshBooks / boutique style." },
   { id: "stripe", label: "Stripe", description: "Purple accent sidebar — popular SaaS billing look." },
   { id: "compact", label: "Compact", description: "Dense layout for printing multiple copies." },
+  { id: "ocean", label: "Ocean", description: "Teal accents with a calm coastal feel." },
+  { id: "forest", label: "Forest", description: "Deep green header for eco / agri brands." },
+  { id: "sunset", label: "Sunset", description: "Warm orange accents — energetic retail look." },
+  { id: "slate", label: "Slate", description: "Neutral grey professional stationery." },
+  { id: "rose", label: "Rose", description: "Soft rose accents for lifestyle brands." },
+  { id: "indigo", label: "Indigo", description: "Deep indigo band — tech / SaaS friendly." },
+  { id: "gold", label: "Gold", description: "Premium gold accents with ivory background." },
+  { id: "paper", label: "Paper", description: "Cream paper feel with classic rule lines." },
+  { id: "ledger", label: "Ledger", description: "Accounting-style ruled rows and charcoal type." },
+  { id: "midnight", label: "Midnight", description: "Dark midnight header with crisp white type." },
+  { id: "emerald", label: "Emerald", description: "Bright emerald accents — growth / finance." },
+  { id: "mono", label: "Mono", description: "Monospace-inspired type for ops / logistics." },
+  { id: "coastal", label: "Coastal", description: "Sky blue top bar and airy spacing." },
+  { id: "graphite", label: "Graphite", description: "Matte graphite header — industrial polish." },
+  { id: "ivory", label: "Ivory", description: "Soft ivory sheet with chocolate brown accents." },
+  { id: "magenta", label: "Magenta", description: "Vivid magenta accent for creative agencies." },
+  { id: "safari", label: "Safari", description: "Earth-tone brown accents — East Africa inspired." },
+  { id: "rounded", label: "Rounded", description: "Friendly rounded sheet with soft sky accents." },
 ];
 
 export const PLATFORM_INVOICE_STATUSES = [
@@ -313,6 +330,53 @@ export const DEFAULT_PLATFORM_SELLER = {
   address: "Kasarani, Nairobi Kenya",
   tax_pin: "A008933545E",
 };
+
+/** Sample invoice used for design / saved-template previews. */
+export function sampleInvoiceForDesignPreview(templateId = "modern", overrides = {}) {
+  return {
+    template_id: templateId,
+    invoice_number: "PLT-PREVIEW-001",
+    status: "draft",
+    currency: "KES",
+    issue_date: new Date().toISOString().slice(0, 10),
+    due_date: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+    bill_to_name: "Sample Customer Ltd",
+    bill_to_email: "billing@example.com",
+    bill_to_phone: "0700 000 000",
+    bill_to_address: "Nairobi, Kenya",
+    bill_to_company_code: "SAMPLE",
+    bill_to_tax_pin: "P000000000X",
+    seller: { ...DEFAULT_PLATFORM_SELLER },
+    invoice_options: {
+      show_branding: true,
+      show_quantity: true,
+      brand_mode: "name",
+      brand_name: DEFAULT_PLATFORM_SELLER.name,
+      print_spacing: "comfortable",
+      print_font_scale: "standard",
+    },
+    line_items: [
+      {
+        description: "Centrix ERP — Starter plan (first period)",
+        quantity: 1,
+        unit_price: 15000,
+        amount: 15000,
+        included: true,
+      },
+      {
+        description: "Onboarding & training\nOn-site kickoff session",
+        quantity: 1,
+        unit_price: 25000,
+        amount: 25000,
+        included: true,
+      },
+    ],
+    tax_rate: 16,
+    notes: "Preview only — sample content.",
+    terms: "Payment due within 14 days.",
+    ...overrides,
+  };
+}
 
 /**
  * Billable modules aligned to Centrix workspaces.

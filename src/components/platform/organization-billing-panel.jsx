@@ -6,9 +6,11 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { PlatformContractViewer } from "@/components/platform/platform-contract-viewer";
+import { PlatformInvoiceViewer } from "@/components/platform/platform-invoice-viewer";
 import {
   CONTRACT_STATUS_STYLES,
   SUBSCRIPTION_STATUS_STYLES,
+  billingIntervalLabel,
   contractKindLabel,
   contractStatusLabel,
   formatBillingDate,
@@ -57,6 +59,7 @@ export function OrganizationBillingPanel({
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
   const [viewerContract, setViewerContract] = useState(null);
+  const [viewerInvoice, setViewerInvoice] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -209,7 +212,7 @@ export function OrganizationBillingPanel({
                   </div>
                   <div className="rounded-md bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
                     <p className="text-[11px] uppercase tracking-wide text-slate-500">
-                      Renewal ({prices.interval})
+                      Renewal ({billingIntervalLabel(prices.interval)})
                     </p>
                     <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                       {formatBillingMoney(prices.renewal_price, prices.currency)}
@@ -338,14 +341,19 @@ export function OrganizationBillingPanel({
                       {invoice.status}
                     </span>
                   ) : null}
-                  {!isTenant && (invoice?.id || subscription.invoice_id) ? (
-                    <Link
-                      href={`/platform/invoices/${invoice?.id ?? subscription.invoice_id}`}
-                      className="text-sm font-medium text-[#185FA5] hover:underline"
-                    >
-                      Open invoice
-                    </Link>
-                  ) : null}
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-[#185FA5] hover:underline"
+                    onClick={() =>
+                      setViewerInvoice(
+                        invoice?.id
+                          ? invoice
+                          : { id: subscription.invoice_id, ...invoice },
+                      )
+                    }
+                  >
+                    View
+                  </button>
                 </div>
               </div>
             </div>
@@ -390,7 +398,8 @@ export function OrganizationBillingPanel({
                       {contractKindLabel(row.kind)}
                       {row.reference ? ` · ${row.reference}` : ""} · First{" "}
                       {formatBillingMoney(rowPrices.first_payment_price, rowPrices.currency)} · Renewal{" "}
-                      {formatBillingMoney(rowPrices.renewal_price, rowPrices.currency)} ·{" "}
+                      {formatBillingMoney(rowPrices.renewal_price, rowPrices.currency)}/
+                      {billingIntervalLabel(rowPrices.interval)} ·{" "}
                       {formatBillingDate(row.start_date || row.created_at)}
                     </p>
                   </div>
@@ -424,6 +433,13 @@ export function OrganizationBillingPanel({
         expanded
         allowEmail={!isTenant}
         onClose={() => setViewerContract(null)}
+      />
+      <PlatformInvoiceViewer
+        open={Boolean(viewerInvoice)}
+        invoice={viewerInvoice}
+        expanded
+        allowEmail={!isTenant}
+        onClose={() => setViewerInvoice(null)}
       />
     </>
   );

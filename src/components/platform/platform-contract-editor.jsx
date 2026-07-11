@@ -14,7 +14,9 @@ import {
   CONTRACT_STATUSES,
   LICENSE_BASIS_OPTIONS,
   LICENSABLE_WORKSPACES,
+  PLAN_INTERVALS,
   contractFormToPayload,
+  contractKindHelp,
   emptyContractForm,
   contractRecordToForm,
   defaultKenyaPlatformContractTerms,
@@ -24,6 +26,7 @@ import {
 import { buildPlatformContractHtml, printPlatformContract } from "@/lib/platform-contract-print";
 import { PlatformContractViewer } from "@/components/platform/platform-contract-viewer";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
+import { PlatformAiDocumentAssist } from "@/components/platform/platform-ai-document-assist";
 import { PLATFORM_MAIL_DEFAULTS } from "@/lib/platform-mail-settings";
 
 const inputClass =
@@ -38,11 +41,11 @@ function Field({ label, children }) {
   );
 }
 
-function ContractEditor({ contractId = null }) {
+function ContractEditor({ contractId = null, initialKind = "quote" }) {
   const router = useRouter();
   const confirm = useConfirm();
   const isEdit = Boolean(contractId);
-  const [form, setForm] = useState(() => emptyContractForm());
+  const [form, setForm] = useState(() => emptyContractForm({ kind: initialKind === "contract" ? "contract" : "quote" }));
   const [organizations, setOrganizations] = useState([]);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(isEdit);
@@ -120,6 +123,7 @@ function ContractEditor({ contractId = null }) {
           ? String(plan.first_payment_price ?? plan.price)
           : prev.first_payment_price,
       currency: plan?.currency ?? prev.currency,
+      interval: plan?.interval === "annual" || plan?.interval === "yearly" ? "annual" : prev.interval || "monthly",
       module_keys: plan?.module_keys ? [...plan.module_keys] : prev.module_keys,
       workspace_keys: plan?.workspace_keys ? [...plan.workspace_keys] : prev.workspace_keys,
       seat_count: plan?.seat_limit != null ? String(plan.seat_limit) : prev.seat_count,
@@ -134,7 +138,7 @@ function ContractEditor({ contractId = null }) {
       ...prev,
       terms: defaultKenyaPlatformContractTerms({
         licenseBasis: prev.license_basis,
-        interval: plans.find((p) => String(p.id) === String(prev.plan_id))?.interval ?? "monthly",
+        interval: prev.interval || "monthly",
         firstPayment: prev.first_payment_price || prev.amount,
         renewalPayment: prev.renewal_price || prev.amount,
         currency: prev.currency || "KES",
@@ -200,9 +204,10 @@ function ContractEditor({ contractId = null }) {
   async function handleDelete() {
     const id = savedId || contractId;
     if (!id) return;
+    const kindLabel = form.kind === "contract" ? "contract" : "quote";
     const label = form.title?.trim() || form.reference?.trim() || `#${id}`;
     const ok = await confirm({
-      title: "Delete contract?",
+      title: `Delete ${kindLabel}?`,
       message: `Delete “${label}”? This cannot be undone.`,
       confirmLabel: "Delete",
       destructive: true,
@@ -212,10 +217,10 @@ function ContractEditor({ contractId = null }) {
     setDeleting(true);
     try {
       await apiRequest(`/admin/platform-contracts/${id}`, { method: "DELETE" });
-      notifySuccess("Contract deleted.");
+      notifySuccess(`${kindLabel === "quote" ? "Quote" : "Contract"} deleted.`);
       router.push("/platform/contracts");
     } catch (err) {
-      notifyError(err instanceof ApiError ? err.message : "Could not delete contract.");
+      notifyError(err instanceof ApiError ? err.message : `Could not delete ${kindLabel}.`);
     } finally {
       setDeleting(false);
     }
@@ -282,6 +287,9 @@ function ContractEditor({ contractId = null }) {
     return <p className="text-sm text-slate-500">Loading…</p>;
   }
 
+  const kindLabel = form.kind === "contract" ? "Contract" : "Quote";
+  const kindHelp = contractKindHelp(form.kind);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -289,7 +297,7 @@ function ContractEditor({ contractId = null }) {
           items={[
             { label: "Platform", href: "/platform" },
             { label: "Contracts & quotes", href: "/platform/contracts" },
-            { label: isEdit ? "Edit" : "New quote" },
+            { label: isEdit ? `Edit ${kindLabel.toLowerCase()}` : `New ${kindLabel.toLowerCase()}` },
           ]}
         />
         <div className="flex flex-wrap gap-2">
@@ -334,6 +342,31 @@ function ContractEditor({ contractId = null }) {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.95fr)]">
         <form onSubmit={(e) => void handleSave(e)} className="space-y-4">
           <section className="theme-panel space-y-4 rounded-xl border p-5 shadow-sm">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+              <p className="font-medium text-slate-800 dark:text-slate-100">
+                {form.kind === "quote" ? "Quote vs contract" : "Contract vs quote"}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed">{kindHelp}</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                Typical flow: create a <strong>quote</strong> → send → customer accepts → convert / create a{" "}
+                <strong>contract</strong> → provision organization → invoice.
+              </p>
+            </div>
+            <PlatformAiDocumentAssist
+              kind={form.kind}
+              form={{
+                ...form,
+                plan_name: plans.find((p) => String(p.id) === String(form.plan_id))?.name,
+              }}
+              onApply={(suggested) => {
+                setForm((f) => ({
+                  ...f,
+                  title: suggested.title || f.title,
+                  reference: suggested.reference || f.reference,
+                  notes: suggested.notes || f.notes,
+                }));
+              }}
+            />
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Type">
                 <select className={inputClass} value={form.kind} onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value }))}>
@@ -424,6 +457,17 @@ function ContractEditor({ contractId = null }) {
                     }))
                   }
                 />
+              </Field>
+              <Field label="Renewal period">
+                <select
+                  className={inputClass}
+                  value={form.interval === "annual" || form.interval === "yearly" ? "annual" : "monthly"}
+                  onChange={(e) => setForm((f) => ({ ...f, interval: e.target.value }))}
+                >
+                  {PLAN_INTERVALS.map((row) => (
+                    <option key={row.id} value={row.id}>{row.label}</option>
+                  ))}
+                </select>
               </Field>
               <Field label="Seats">
                 <input type="number" min="1" className={inputClass} value={form.seat_count} onChange={(e) => setForm((f) => ({ ...f, seat_count: e.target.value }))} />
@@ -553,7 +597,9 @@ function ContractEditor({ contractId = null }) {
       {emailOpen ? (
         <div className="fixed inset-0 z-[230] flex items-center justify-center bg-slate-900/50 p-4">
           <div className="theme-modal max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-xl border p-6 shadow-2xl">
-            <h2 className="text-base font-semibold text-slate-900">Send contract / quote email</h2>
+            <h2 className="text-base font-semibold text-slate-900">
+              Send {form.kind === "contract" ? "contract" : "quote"} email
+            </h2>
             <p className="mt-1 text-xs text-slate-500">
               Edit the message, optionally improve it with platform AI, then send via Platform → Email SMTP.
             </p>
@@ -612,20 +658,31 @@ function ContractEditor({ contractId = null }) {
   );
 }
 
-export function PlatformContractEditorPage({ contractId = null }) {
+export function PlatformContractEditorPage({ contractId = null, initialKind = "quote" }) {
+  const kind = initialKind === "contract" ? "contract" : "quote";
+  const title = contractId
+    ? "Edit contract / quote"
+    : kind === "contract"
+      ? "New contract"
+      : "New quote";
+
   return (
     <CatalogPageShell
-      title={contractId ? "Edit contract / quote" : "New quote"}
-      subtitle="Kenya-aligned commercial terms, live preview, PDF print, and email via Platform → Email."
+      title={title}
+      subtitle={
+        kind === "contract"
+          ? "Binding commercial agreement: licence, renewal, Kenya SaaS terms, preview, and email."
+          : "Priced proposal before commitment: send for acceptance, then provision and invoice."
+      }
     >
       <AdminBreadcrumb
         items={[
           { label: "Platform", href: "/platform" },
           { label: "Contracts & quotes", href: "/platform/contracts" },
-          { label: contractId ? "Edit" : "New" },
+          { label: contractId ? "Edit" : kind === "contract" ? "New contract" : "New quote" },
         ]}
       />
-      <ContractEditor contractId={contractId} />
+      <ContractEditor contractId={contractId} initialKind={kind} />
     </CatalogPageShell>
   );
 }

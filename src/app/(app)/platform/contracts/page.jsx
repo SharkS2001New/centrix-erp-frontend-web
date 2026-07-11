@@ -64,9 +64,10 @@ export default function PlatformContractsPage() {
   }
 
   async function handleDelete(row) {
+    const kindLabel = row.kind === "contract" ? "contract" : "quote";
     const label = row.title || row.reference || contractKindLabel(row.kind) || `#${row.id}`;
     const ok = await confirm({
-      title: "Delete contract?",
+      title: `Delete ${kindLabel}?`,
       message: `Delete “${label}”? This cannot be undone.`,
       confirmLabel: "Delete",
       destructive: true,
@@ -76,11 +77,11 @@ export default function PlatformContractsPage() {
     setActingId(row.id);
     try {
       await apiRequest(`/admin/platform-contracts/${row.id}`, { method: "DELETE" });
-      notifySuccess("Contract deleted.");
+      notifySuccess(`${kindLabel === "quote" ? "Quote" : "Contract"} deleted.`);
       if (viewerContract?.id === row.id) setViewerContract(null);
       await load();
     } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Could not delete contract.");
+      notifyError(e instanceof ApiError ? e.message : `Could not delete ${kindLabel}.`);
     } finally {
       setActingId(null);
     }
@@ -151,12 +152,15 @@ export default function PlatformContractsPage() {
   return (
     <CatalogPageShell
       title="Contracts & quotes"
-      subtitle="Sales motion before billing: quote → accept → provision organization → first invoice."
+      subtitle="Sales motion before billing: quote → accept → contract / provision → first invoice."
       action={
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" className={SECONDARY_BTN_CLASS} disabled={loading} onClick={() => void load()}>
             {loading ? "Refreshing…" : "Refresh"}
           </button>
+          <Link href="/platform/contracts/new?kind=contract" className={SECONDARY_BTN_CLASS}>
+            New contract
+          </Link>
           <Link href="/platform/contracts/new">
             <PrimaryButton type="button">New quote</PrimaryButton>
           </Link>
@@ -164,6 +168,23 @@ export default function PlatformContractsPage() {
       }
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "Contracts & quotes" }]} />
+
+      <section className="theme-panel mb-4 grid gap-3 rounded-xl border p-4 shadow-sm sm:grid-cols-2">
+        <div className="rounded-lg border border-sky-200 bg-sky-50/80 p-3 dark:border-sky-900/50 dark:bg-sky-950/30">
+          <p className="text-sm font-semibold text-sky-950 dark:text-sky-100">Quote</p>
+          <p className="mt-1 text-xs leading-relaxed text-sky-900/80 dark:text-sky-200/80">
+            A priced proposal you send before the customer commits. They can accept it; you then provision and invoice.
+            Not yet a binding long-term agreement.
+          </p>
+        </div>
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50/80 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/30">
+          <p className="text-sm font-semibold text-indigo-950 dark:text-indigo-100">Contract</p>
+          <p className="mt-1 text-xs leading-relaxed text-indigo-900/80 dark:text-indigo-200/80">
+            The signed commercial agreement (terms, licence, renewal). Use after a quote is accepted, or when the
+            customer is already committed.
+          </p>
+        </div>
+      </section>
 
       <div className="mb-4 flex flex-wrap gap-3">
         <FilterSelect
@@ -190,9 +211,17 @@ export default function PlatformContractsPage() {
         ) : rows.length === 0 ? (
           <div className="px-5 py-10 text-center text-sm text-slate-500">
             <p>No quotes or contracts yet.</p>
-            <Link href="/platform/contracts/new" className="mt-3 inline-block font-medium text-[#185FA5] hover:underline">
-              Create a quote
-            </Link>
+            <p className="mt-2 text-xs text-slate-400">
+              Start with a quote for prospects, or a contract when terms are already agreed.
+            </p>
+            <div className="mt-3 flex flex-wrap justify-center gap-3">
+              <Link href="/platform/contracts/new" className="font-medium text-[#185FA5] hover:underline">
+                Create a quote
+              </Link>
+              <Link href="/platform/contracts/new?kind=contract" className="font-medium text-[#185FA5] hover:underline">
+                Create a contract
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">

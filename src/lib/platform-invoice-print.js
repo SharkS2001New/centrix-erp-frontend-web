@@ -124,17 +124,38 @@ function watermarkHtml(options) {
 
 function baseStyles(templateId, options = {}) {
   const themes = {
-    modern: { accent: "#2563eb", bg: "#f8fafc", font: "system-ui, sans-serif" },
-    classic: { accent: "#1e293b", bg: "#ffffff", font: "Georgia, serif" },
-    minimal: { accent: "#64748b", bg: "#ffffff", font: "system-ui, sans-serif" },
-    corporate: { accent: "#0f172a", bg: "#ffffff", font: "system-ui, sans-serif" },
-    bold: { accent: "#dc2626", bg: "#ffffff", font: "system-ui, sans-serif" },
-    elegant: { accent: "#78350f", bg: "#fffbeb", font: "Georgia, 'Times New Roman', serif" },
-    stripe: { accent: "#635bff", bg: "#ffffff", font: "system-ui, sans-serif" },
-    compact: { accent: "#334155", bg: "#ffffff", font: "system-ui, sans-serif" },
+    modern: { accent: "#2563eb", bg: "#f8fafc", font: "system-ui, sans-serif", header: "top" },
+    classic: { accent: "#1e293b", bg: "#ffffff", font: "Georgia, serif", header: "plain", border: true },
+    minimal: { accent: "#64748b", bg: "#ffffff", font: "system-ui, sans-serif", header: "plain", flat: true },
+    corporate: { accent: "#0f172a", bg: "#ffffff", font: "system-ui, sans-serif", header: "solid" },
+    bold: { accent: "#dc2626", bg: "#ffffff", font: "system-ui, sans-serif", header: "solid" },
+    elegant: { accent: "#78350f", bg: "#fffbeb", font: "Georgia, 'Times New Roman', serif", header: "top" },
+    stripe: { accent: "#635bff", bg: "#ffffff", font: "system-ui, sans-serif", header: "stripe" },
+    compact: { accent: "#334155", bg: "#ffffff", font: "system-ui, sans-serif", header: "top" },
+    ocean: { accent: "#0d9488", bg: "#f0fdfa", font: "system-ui, sans-serif", header: "top" },
+    forest: { accent: "#166534", bg: "#f7fee7", font: "system-ui, sans-serif", header: "solid" },
+    sunset: { accent: "#ea580c", bg: "#fff7ed", font: "system-ui, sans-serif", header: "top" },
+    slate: { accent: "#475569", bg: "#f8fafc", font: "system-ui, sans-serif", header: "solid" },
+    rose: { accent: "#e11d48", bg: "#fff1f2", font: "system-ui, sans-serif", header: "top" },
+    indigo: { accent: "#4338ca", bg: "#eef2ff", font: "system-ui, sans-serif", header: "solid" },
+    gold: { accent: "#b45309", bg: "#fffbeb", font: "Georgia, 'Times New Roman', serif", header: "top" },
+    paper: { accent: "#78716c", bg: "#fafaf9", font: "Georgia, serif", header: "plain", border: true },
+    ledger: { accent: "#1c1917", bg: "#ffffff", font: "system-ui, sans-serif", header: "top" },
+    midnight: { accent: "#020617", bg: "#f8fafc", font: "system-ui, sans-serif", header: "solid" },
+    emerald: { accent: "#059669", bg: "#ecfdf5", font: "system-ui, sans-serif", header: "top" },
+    mono: { accent: "#0f766e", bg: "#f8fafc", font: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", header: "top" },
+    coastal: { accent: "#0284c7", bg: "#f0f9ff", font: "system-ui, sans-serif", header: "top" },
+    graphite: { accent: "#374151", bg: "#f9fafb", font: "system-ui, sans-serif", header: "solid" },
+    ivory: { accent: "#78350f", bg: "#fffdf7", font: "Georgia, serif", header: "top" },
+    magenta: { accent: "#c026d3", bg: "#ffffff", font: "system-ui, sans-serif", header: "stripe" },
+    safari: { accent: "#92400e", bg: "#fffbeb", font: "system-ui, sans-serif", header: "solid" },
+    rounded: { accent: "#0ea5e9", bg: "#f0f9ff", font: "system-ui, sans-serif", header: "top", radius: "16px" },
   };
   const t = themes[templateId] ?? themes.modern;
   const compactTemplate = templateId === "compact";
+  const solidHeader = t.header === "solid";
+  const stripeHeader = t.header === "stripe";
+  const topHeader = t.header === "top";
   const fontFamily = invoiceFontFamilyCss(options.print_font_family, t.font);
   const scale = invoiceFontScale(options.print_font_scale);
   const space = invoiceSpacing(options.print_spacing);
@@ -149,7 +170,7 @@ function baseStyles(templateId, options = {}) {
   const printFooterSize = `${Math.max(scale.printPx - 2, 13)}px`;
   const h1Size = templateId === "bold"
     ? space.h1Size.bold
-    : templateId === "elegant"
+    : templateId === "elegant" || templateId === "gold" || templateId === "ivory"
       ? space.h1Size.elegant
       : space.h1Size.default;
   const printH1Size = `${scale.printPx + space.printH1Extra}px`;
@@ -160,23 +181,32 @@ function baseStyles(templateId, options = {}) {
   const headerPad = compactTemplate ? space.headerPadCompact : space.headerPad;
   const bodyInnerPad = compactTemplate ? space.bodyInnerPadCompact : space.bodyInnerPad;
   const tdPad = compactTemplate ? space.tdPadCompact : space.tdPad;
+  const sheetRadius = t.flat ? "0" : (t.radius || "8px");
+  const sheetShadow = t.flat ? "none" : "0 1px 3px rgba(0,0,0,.08)";
+  const sheetBorder = t.border ? "1px solid #cbd5e1" : "none";
+  const headerBg = solidHeader ? t.accent : stripeHeader ? "#f6f9fc" : "#fff";
+  const headerColor = solidHeader ? "#fff" : "#0f172a";
+  const headerExtras = [
+    topHeader ? `border-top: 3px solid ${t.accent};` : "",
+    stripeHeader ? `border-left: 5px solid ${t.accent};` : "",
+  ].filter(Boolean).join(" ");
 
   return `
     * { box-sizing: border-box; }
     html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body { margin: 0; padding: ${space.bodyPad}; font-family: ${fontFamily}; color: #0f172a; background: ${t.bg}; font-size: ${bodySize}; line-height: ${space.lineHeight}; }
     a, a:visited { color: inherit; text-decoration: none; }
-    .sheet { position: relative; max-width: 800px; margin: 0 auto; background: #fff; border-radius: ${templateId === "minimal" ? "0" : "8px"}; overflow: hidden; box-shadow: ${templateId === "minimal" ? "none" : "0 1px 3px rgba(0,0,0,.08)"}; border: ${templateId === "classic" ? "1px solid #cbd5e1" : "none"}; }
+    .sheet { position: relative; max-width: 800px; margin: 0 auto; background: #fff; border-radius: ${sheetRadius}; overflow: hidden; box-shadow: ${sheetShadow}; border: ${sheetBorder}; }
     .sheet-body { position: relative; z-index: 1; }
     .watermark { position: absolute; inset: 0; z-index: 0; pointer-events: none; user-select: none; }
     .watermark-text { display: flex; align-items: center; justify-content: center; font-size: ${space.watermarkText}; font-weight: 800; letter-spacing: 0.08em; color: rgba(15, 23, 42, 0.06); transform: rotate(-28deg); text-transform: uppercase; white-space: nowrap; }
     .watermark-logo { background-repeat: no-repeat; background-position: center; background-size: 40%; opacity: 0.07; }
-    .header { padding: ${headerPad}; background: ${templateId === "corporate" || templateId === "bold" ? t.accent : templateId === "stripe" ? "#f6f9fc" : "#fff"}; color: ${templateId === "corporate" || templateId === "bold" ? "#fff" : "#0f172a"}; ${templateId === "modern" ? `border-top: 3px solid ${t.accent};` : ""} ${templateId === "stripe" ? `border-left: 5px solid ${t.accent};` : ""} }
+    .header { padding: ${headerPad}; background: ${headerBg}; color: ${headerColor}; ${headerExtras} }
     .brand { display: flex; align-items: center; gap: ${space.brandGap}; margin-bottom: ${space.brandMarginBottom}; }
     .brand-logo { max-height: ${space.brandLogoMax}; max-width: 180px; object-fit: contain; }
     .brand-name { margin: 0; font-size: ${brandNameSize}; font-weight: 700; letter-spacing: 0.02em; }
-    .header h1 { margin: 0; font-size: ${h1Size}; font-weight: 700; letter-spacing: ${templateId === "elegant" ? "0.02em" : "0"}; line-height: 1.15; }
-    .header .meta { margin-top: ${space.metaMarginTop}; opacity: ${templateId === "corporate" || templateId === "bold" ? "0.92" : "1"}; font-size: ${metaSize}; line-height: ${space.partyLineHeight}; }
+    .header h1 { margin: 0; font-size: ${h1Size}; font-weight: 700; letter-spacing: ${templateId === "elegant" || templateId === "gold" ? "0.02em" : "0"}; line-height: 1.15; }
+    .header .meta { margin-top: ${space.metaMarginTop}; opacity: ${solidHeader ? "0.92" : "1"}; font-size: ${metaSize}; line-height: ${space.partyLineHeight}; }
     .body { padding: ${bodyInnerPad}; }
     .parties { display: grid; grid-template-columns: 1fr 1fr; gap: ${space.partiesGap}; margin-bottom: ${space.partiesMarginBottom}; }
     .party-label { margin: 0 0 ${space.partyLabelMargin}; font-size: ${labelSize}; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; font-weight: 700; }
@@ -185,7 +215,7 @@ function baseStyles(templateId, options = {}) {
     table.lines th { text-align: left; font-size: ${labelSize}; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; padding: ${space.thPad}; border-bottom: 2px solid ${t.accent}; font-weight: 700; }
     table.lines td { padding: ${tdPad}; border-bottom: 1px solid #e2e8f0; vertical-align: top; font-size: inherit; line-height: ${space.partyLineHeight}; }
     table.lines .num { width: 36px; color: #64748b; font-weight: 600; }
-    table.lines .desc { font-size: inherit; }
+    table.lines .desc { font-size: inherit; white-space: pre-wrap; }
     table.lines .qty { width: 64px; text-align: right; font-weight: 600; }
     table.lines .amt { width: 120px; text-align: right; font-weight: 700; white-space: nowrap; }
     table.lines .empty { text-align: center; color: #94a3b8; padding: ${space.emptyPad}; }

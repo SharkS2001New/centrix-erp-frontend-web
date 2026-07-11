@@ -210,6 +210,7 @@ export const P = {
   admin: {
     overview: { view: "admin.overview.view" },
     company: { view: "admin.company.view", edit: "admin.company.edit" },
+    license: { view: "admin.license.view" },
     settings: { view: "admin.settings.view", edit: "admin.settings.edit" },
     branches: { view: "admin.branches.view" },
     users: { view: "admin.users.view" },

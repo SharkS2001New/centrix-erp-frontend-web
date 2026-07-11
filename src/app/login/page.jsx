@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { hasAuthSession, getStoredUser, readCachedAuthSnapshot } from "@/lib/auth-storage";
 import { buildAccessContext, resolveHomePath } from "@/lib/access-control";
-import { ApiError, isSessionConflictError } from "@/lib/api";
+import { ApiError, apiRequest, isSessionConflictError } from "@/lib/api";
 import {
   isLicenseExpiredApiError,
   licenseExpiredMessage,
@@ -35,12 +35,11 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const { login } = useAuth();
+  const { login, completeTwoFactorLogin } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const reason = searchParams.get("reason");
 
-  // SSR and first client paint must match — read localStorage only after mount.
   const [showOrgField, setShowOrgField] = useState(true);
   const [companyCode, setCompanyCode] = useState(() => getDefaultCompanyCode());
   const [username, setUsername] = useState("");
@@ -49,6 +48,8 @@ function LoginForm() {
   const [sessionConflict, setSessionConflict] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [mfaChallenge, setMfaChallenge] = useState(null);
+  const [mfaCode, setMfaCode] = useState("");
 
   useEffect(() => {
     const stored = getStoredCompanyCode();
@@ -92,7 +93,11 @@ function LoginForm() {
     }
     setSubmitting(true);
     try {
-      await login(companyCode, username, password, { forceLogout });
+      const result = await login(companyCode, username, password, { forceLogout });
+      if (result?.mfa_required) {
+        setMfaChallenge(result);
+        setMfaCode("");
+      }
     } catch (err) {
       if (isSessionConflictError(err)) {
         setSessionConflict(true);
@@ -138,6 +143,38 @@ function LoginForm() {
     await attemptLogin(true);
   }
 
+  async function onVerifyMfa(e) {
+    e.preventDefault();
+    if (!mfaChallenge?.challenge_token) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await completeTwoFactorLogin(mfaChallenge.challenge_token, mfaCode);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Invalid verification code.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onResendMfa() {
+    if (!mfaChallenge?.challenge_token) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await apiRequest("/auth/2fa/resend", {
+        method: "POST",
+        body: { challenge_token: mfaChallenge.challenge_token },
+        token: null,
+      });
+      setMfaChallenge((prev) => ({ ...prev, email_hint: res.email_hint ?? prev?.email_hint }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not resend code.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const sessionMessage =
     reason === "idle"
       ? "Your session expired due to inactivity. Please sign in again."
@@ -146,6 +183,60 @@ function LoginForm() {
         : reason === "license"
           ? "Your organization’s Centrix licence has expired. All users have been signed out. Contact your Centrix administrator to renew or extend the licence."
           : null;
+
+  if (mfaChallenge?.mfa_required) {
+    const isEmail = mfaChallenge.method === "email";
+    return (
+      <AuthShell
+        title="Two-factor authentication"
+        subtitle={
+          isEmail
+            ? `Enter the code sent to ${mfaChallenge.email_hint || "your email"}.`
+            : "Enter the 6-digit code from Google Authenticator."
+        }
+      >
+        <form onSubmit={onVerifyMfa} className="mt-6 space-y-4">
+          {error ? <AuthError>{error}</AuthError> : null}
+          <AuthField label="Verification code">
+            <input
+              className={authInputClass()}
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value)}
+              placeholder="6-digit code"
+              autoComplete="one-time-code"
+              inputMode="numeric"
+              autoFocus
+            />
+          </AuthField>
+          <AuthSubmitButton disabled={submitting || !mfaCode.trim()}>
+            {submitting ? "Verifying…" : "Verify and continue"}
+          </AuthSubmitButton>
+          {isEmail ? (
+            <button
+              type="button"
+              className="w-full text-sm font-medium text-emerald-700 hover:underline"
+              disabled={submitting}
+              onClick={() => void onResendMfa()}
+            >
+              Resend email code
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="w-full text-sm text-slate-500 hover:underline"
+            disabled={submitting}
+            onClick={() => {
+              setMfaChallenge(null);
+              setMfaCode("");
+              setError(null);
+            }}
+          >
+            Back to sign in
+          </button>
+        </form>
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell title="Sign in" subtitle="Sign in with your email or username and password.">
@@ -177,18 +268,15 @@ function LoginForm() {
             </button>
           </div>
         )}
-
-        <AuthField label="Email or username">
+        <AuthField label="Username or email">
           <input
             className={authInputClass()}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
-            placeholder="you@company.com or username"
             required
           />
         </AuthField>
-
         <AuthField label="Password">
           <PasswordInput
             className={authInputClass()}
@@ -197,46 +285,31 @@ function LoginForm() {
             autoComplete="current-password"
             required
           />
-          <div className="mt-1.5 text-right">
-            <button
-              type="button"
-              onClick={() => setForgotPasswordOpen(true)}
-              className="text-xs font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
-            >
-              Forgot password?
-            </button>
-          </div>
         </AuthField>
-
-        <ForgotPasswordHelpDialog
-          open={forgotPasswordOpen}
-          onClose={() => setForgotPasswordOpen(false)}
-        />
-
         {sessionMessage ? <AuthNotice>{sessionMessage}</AuthNotice> : null}
-        <AuthError>{error}</AuthError>
-
+        {error ? <AuthError>{error}</AuthError> : null}
         {sessionConflict ? (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 dark:border-amber-800/60 dark:bg-amber-950/30">
-            <p className="text-sm text-amber-900 dark:text-amber-100">
-              You can sign out the other device and continue here. Any unsaved work on that device
-              may be lost.
-            </p>
-            <button
-              type="button"
-              onClick={onForceLogout}
-              disabled={submitting}
-              className="mt-3 w-full rounded-lg border border-amber-400/60 bg-amber-100 py-2.5 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-200 disabled:opacity-50 dark:border-amber-600/50 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900/60"
-            >
-              {submitting ? "Please wait…" : "Sign out other device and continue"}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => void onForceLogout()}
+            className="w-full rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900"
+            disabled={submitting}
+          >
+            Sign out other device and continue
+          </button>
         ) : null}
-
         <AuthSubmitButton disabled={submitting}>
-          {submitting ? "Please wait…" : "Continue"}
+          {submitting ? "Signing in…" : "Sign in"}
         </AuthSubmitButton>
+        <button
+          type="button"
+          className="w-full text-sm text-slate-500 hover:underline"
+          onClick={() => setForgotPasswordOpen(true)}
+        >
+          Forgot password?
+        </button>
       </form>
+      <ForgotPasswordHelpDialog open={forgotPasswordOpen} onClose={() => setForgotPasswordOpen(false)} />
     </AuthShell>
   );
 }

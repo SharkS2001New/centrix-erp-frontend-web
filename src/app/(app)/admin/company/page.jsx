@@ -54,7 +54,7 @@ function organizationFromResponse(res) {
 const readOnlyClass = `${inputClassName()} cursor-not-allowed bg-slate-50 text-slate-700`;
 
 export default function AdminCompanyPage() {
-  const { organization: authOrganization, loading: authLoading } = useAuth();
+  const { organization: authOrganization, loading: authLoading, hasPermission, isSuperAdmin } = useAuth();
   const confirm = useConfirm();
   const {
     organizationId: platformOrgId,
@@ -70,6 +70,11 @@ export default function AdminCompanyPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const canViewLicense =
+    Boolean(platformOrgId) ||
+    isSuperAdmin ||
+    hasPermission?.("admin.license.view") ||
+    hasPermission?.("admin.view");
   const load = useCallback(async () => {
     if (authLoading) return;
 
@@ -313,6 +318,7 @@ export default function AdminCompanyPage() {
           </div>
         </form>
 
+        {canViewLicense ? (
         <div className="theme-panel mt-6 rounded-xl border p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-900">License &amp; billing</h2>
           <p className="mt-1 text-xs text-slate-500">
@@ -329,6 +335,7 @@ export default function AdminCompanyPage() {
             Open License Information →
           </Link>
         </div>
+        ) : null}
         </>
       )}
     </CatalogPageShell>

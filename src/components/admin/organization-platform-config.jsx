@@ -1369,6 +1369,33 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
     }
   }
 
+  async function clearTwoFactor() {
+    const ok = await confirm({
+      title: "Clear two-factor authentication?",
+      message: `Clear 2FA for "${user.full_name}"? They will sign in with password only until they enable 2FA again from My profile.`,
+      confirmLabel: "Clear 2FA",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const { apiRequest } = await import("@/lib/api");
+      await apiRequest(`/admin/organizations/${organizationId}/users/${user.id}/clear-two-factor`, {
+        method: "POST",
+      });
+      setSaved(true);
+      await onUpdated?.();
+    } catch (err) {
+      const { ApiError } = await import("@/lib/api");
+      setError(err instanceof ApiError ? err.message : "Could not clear 2FA.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function deleteUser() {
     const ok = await confirm({
       title: "Delete user",
@@ -1440,6 +1467,9 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
         {userIsPasswordLocked(user) ? (
           <span className="mt-1 block text-[11px] font-medium text-amber-700">Password locked</span>
         ) : null}
+        {user.two_factor_enabled ? (
+          <span className="mt-1 block text-[11px] font-medium text-indigo-700">2FA on</span>
+        ) : null}
       </td>
       <td className="px-4 py-2">
         <div className="flex flex-col items-end gap-2">
@@ -1452,6 +1482,16 @@ function OrganizationUserRow({ user, organizationId, onUpdated, detailed = false
                 className="rounded border border-amber-300 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-50 disabled:opacity-50"
               >
                 Clear password lock
+              </button>
+            ) : null}
+            {user.two_factor_enabled ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void clearTwoFactor()}
+                className="rounded border border-indigo-300 px-2 py-1 text-xs font-medium text-indigo-900 hover:bg-indigo-50 disabled:opacity-50"
+              >
+                Clear 2FA
               </button>
             ) : null}
             <button
