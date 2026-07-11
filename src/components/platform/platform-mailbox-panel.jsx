@@ -51,6 +51,8 @@ function defaultInvoiceBody(invoice, orgName, fromName = "Centrix") {
 
 export function PlatformMailboxPanel() {
   const [folder, setFolder] = useState("inbox");
+  const [kindFilter, setKindFilter] = useState("");
+  const [mailStats, setMailStats] = useState(null);
   const [messages, setMessages] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [selectedId, setSelectedId] = useState(null);
@@ -71,17 +73,22 @@ export function PlatformMailboxPanel() {
     setLoading(true);
     try {
       const res = await apiRequest("/admin/platform-mail/messages", {
-        searchParams: { folder, ...(search.trim() ? { q: search.trim() } : {}) },
+        searchParams: {
+          folder,
+          ...(search.trim() ? { q: search.trim() } : {}),
+          ...(folder === "sent" && kindFilter ? { kind: kindFilter } : {}),
+        },
       });
       setMessages(Array.isArray(res.data) ? res.data : []);
       setUnreadCount(Number(res.unread_count || 0));
+      if (res.stats) setMailStats(res.stats);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load mailbox.");
       setMessages([]);
     } finally {
       setLoading(false);
     }
-  }, [folder, search]);
+  }, [folder, search, kindFilter]);
 
   const loadOrganizations = useCallback(async () => {
     try {
@@ -277,6 +284,7 @@ export function PlatformMailboxPanel() {
               }`}
               onClick={() => {
                 setFolder(tab.id);
+                setKindFilter("");
                 setSelectedId(null);
                 setSelected(null);
                 setComposing(false);
@@ -286,6 +294,37 @@ export function PlatformMailboxPanel() {
             </button>
           ))}
         </div>
+        {folder === "sent" ? (
+          <select
+            className={`${inputClass} max-w-[14rem]`}
+            value={kindFilter}
+            onChange={(e) => {
+              setKindFilter(e.target.value);
+              setSelectedId(null);
+              setSelected(null);
+            }}
+          >
+            <option value="">All sent types</option>
+            <option value="subscription_renewal_reminder">
+              Renewal reminders
+              {mailStats?.renewal_reminders?.all_time != null
+                ? ` (${mailStats.renewal_reminders.all_time})`
+                : ""}
+            </option>
+            <option value="two_factor">
+              2FA codes
+              {mailStats?.two_factor?.all_time != null ? ` (${mailStats.two_factor.all_time})` : ""}
+            </option>
+            <option value="email_verification">
+              Email verification
+              {mailStats?.email_verification?.all_time != null
+                ? ` (${mailStats.email_verification.all_time})`
+                : ""}
+            </option>
+            <option value="subscription_renewal_reminder_test">Renewal tests</option>
+            <option value="test">SMTP tests</option>
+          </select>
+        ) : null}
         <input
           className={`${inputClass} max-w-xs`}
           placeholder="Search…"
@@ -311,9 +350,26 @@ export function PlatformMailboxPanel() {
       </div>
 
       <p className="text-xs text-slate-500">
-        Select an organization to prefill the recipient, or pick an invoice to attach as PDF. Sent mail is stored
-        here automatically. Configure IMAP under Email delivery, then use Sync inbox to pull client replies.
+        Select an organization to prefill the recipient, or pick an invoice to attach as PDF. Outbound mail —
+        including auto renewal reminders and 2FA codes — is stored under Sent. Configure IMAP under Email
+        delivery, then use Sync inbox to pull client replies.
       </p>
+
+      {folder === "sent" && mailStats ? (
+        <div className="flex flex-wrap gap-3 text-xs text-slate-600">
+          <span className="rounded-full bg-slate-100 px-2.5 py-1">
+            Renewals: <strong>{mailStats.renewal_reminders?.all_time ?? 0}</strong>
+            <span className="text-slate-400"> · {mailStats.renewal_reminders?.last_30_days ?? 0} / 30d</span>
+          </span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1">
+            2FA: <strong>{mailStats.two_factor?.all_time ?? 0}</strong>
+            <span className="text-slate-400"> · {mailStats.two_factor?.last_30_days ?? 0} / 30d</span>
+          </span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1">
+            Verification: <strong>{mailStats.email_verification?.all_time ?? 0}</strong>
+          </span>
+        </div>
+      ) : null}
 
       <div className="grid min-h-[28rem] gap-4 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
         <div className="theme-panel overflow-hidden rounded-xl border shadow-sm">
@@ -346,6 +402,11 @@ export function PlatformMailboxPanel() {
                         </span>
                       </div>
                       <div className={`mt-0.5 truncate text-xs ${unread ? "font-medium text-slate-800" : "text-slate-600"}`}>
+                        {msg.kind_label ? (
+                          <span className="mr-1 inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                            {msg.kind_label}
+                          </span>
+                        ) : null}
                         {msg.subject || "(no subject)"}
                       </div>
                       <div className="mt-0.5 truncate text-[11px] text-slate-400">{previewBody(msg.body_text)}</div>
@@ -467,6 +528,13 @@ export function PlatformMailboxPanel() {
             <div className="space-y-4">
               <div>
                 <h2 className="text-base font-semibold text-slate-900">{selected.subject || "(no subject)"}</h2>
+                {selected.kind_label || selected.meta?.kind ? (
+                  <p className="mt-1">
+                    <span className="inline-flex rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                      {selected.kind_label || selected.meta?.kind}
+                    </span>
+                  </p>
+                ) : null}
                 <p className="mt-1 text-xs text-slate-500">
                   {selected.direction === "outbound" ? "To" : "From"}{" "}
                   {selected.direction === "outbound"

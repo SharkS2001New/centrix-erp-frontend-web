@@ -110,21 +110,26 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
   }
 
   async function confirmEmailVerification(e) {
-    e.preventDefault();
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    const code = verifyCode.trim();
+    if (!code || verifyBusy) return;
+
     setVerifyBusy(true);
     try {
       const res = await apiRequest("/auth/email/verify/confirm", {
         method: "POST",
-        body: { code: verifyCode.trim() },
+        body: { code },
       });
       updateProfile({
         email: res.email,
-        email_verified_at: res.email_verified_at ?? null,
+        email_verified_at: res.email_verified_at ?? new Date().toISOString(),
       });
       setVerifyMode(false);
       setVerifyCode("");
       notifySuccess("Email verified.");
     } catch (err) {
+      // Keep the verification UI open so the user can retry or dismiss it.
       notifyError(err instanceof ApiError ? err.message : "Invalid verification code.");
     } finally {
       setVerifyBusy(false);
@@ -243,19 +248,32 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
                 </div>
               ) : null}
               {verifyMode && !emailDirty && !emailVerified ? (
-                <form onSubmit={(e) => void confirmEmailVerification(e)} className="space-y-2 pt-1">
+                <div className="space-y-2 pt-1">
                   <Field label="Email verification code">
                     <input
                       className={inputClassName()}
                       value={verifyCode}
                       onChange={(e) => setVerifyCode(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (verifyCode.trim() && !verifyBusy) {
+                            void confirmEmailVerification(e);
+                          }
+                        }
+                      }}
                       placeholder="6-digit code"
                       autoComplete="one-time-code"
                       inputMode="numeric"
                     />
                   </Field>
                   <div className="flex flex-wrap gap-2">
-                    <PrimaryButton type="submit" showIcon={false} disabled={verifyBusy || !verifyCode.trim()}>
+                    <PrimaryButton
+                      type="button"
+                      showIcon={false}
+                      disabled={verifyBusy || !verifyCode.trim()}
+                      onClick={(e) => void confirmEmailVerification(e)}
+                    >
                       {verifyBusy ? "Verifying…" : "Verify email"}
                     </PrimaryButton>
                     <button
@@ -270,7 +288,7 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
                       Cancel
                     </button>
                   </div>
-                </form>
+                </div>
               ) : null}
             </div>
           ) : (

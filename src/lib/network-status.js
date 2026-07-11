@@ -1,4 +1,5 @@
 import { apiV1BaseUrl } from "./api";
+import { parseServerDurationMs } from "./latency-split";
 
 /** How often to probe API reachability while the app tab is visible and healthy. */
 export const NETWORK_PING_INTERVAL_MS = 120_000;
@@ -15,12 +16,12 @@ export const NETWORK_PING_TIMEOUT_MS = 12_000;
 /** Minimum outage length before auto-reporting after reconnect. */
 export const NETWORK_OUTAGE_REPORT_MIN_MS = 10_000;
 
-/** @type {Promise<{ ok: boolean, latencyMs: number }> | null} */
+/** @type {Promise<{ ok: boolean, latencyMs: number, serverMs: number | null }> | null} */
 let healthPingInFlight = null;
 
 /**
  * Lightweight reachability check — uses public /health (no auth required).
- * @returns {Promise<{ ok: boolean, latencyMs: number }>}
+ * @returns {Promise<{ ok: boolean, latencyMs: number, serverMs: number | null }>}
  */
 export async function pingApiHealth() {
   if (healthPingInFlight) {
@@ -51,22 +52,27 @@ async function pingApiHealthRequest() {
     const latencyMs = Math.round(
       (typeof performance !== "undefined" ? performance.now() : Date.now()) - started,
     );
+    let body = null;
     let bodyOk = res.ok;
     if (bodyOk) {
       try {
-        const body = await res.json();
+        body = await res.json();
         bodyOk = body?.ok !== false;
       } catch {
         bodyOk = false;
       }
     }
 
-    return { ok: bodyOk, latencyMs };
+    return {
+      ok: bodyOk,
+      latencyMs,
+      serverMs: parseServerDurationMs(res, body),
+    };
   } catch {
     const latencyMs = Math.round(
       (typeof performance !== "undefined" ? performance.now() : Date.now()) - started,
     );
-    return { ok: false, latencyMs };
+    return { ok: false, latencyMs, serverMs: null };
   } finally {
     clearTimeout(timer);
   }

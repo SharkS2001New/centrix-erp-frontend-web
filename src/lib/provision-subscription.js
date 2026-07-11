@@ -15,7 +15,8 @@ export const PROVISION_LICENSE_MODES = [
   {
     id: "none",
     label: "No licence yet",
-    description: "Create the org only. Assign a plan later under Subscriptions (org stays unlocked until a licence exists).",
+    description:
+      "Create the org only. It stays locked until you assign a plan under Subscriptions — users cannot sign in without an active licence.",
   },
 ];
 

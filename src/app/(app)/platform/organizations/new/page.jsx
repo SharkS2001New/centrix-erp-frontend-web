@@ -392,7 +392,7 @@ export default function RegisterOrganizationPage() {
                     ) : null}
                   </>
                 ) : subscriptionForm.license_mode === "none" ? (
-                  "Not assigned — add under Subscriptions when ready"
+                  "Not assigned — org is locked until you add a plan under Subscriptions"
                 ) : (
                   "Pending — check Platform → Subscriptions"
                 )}

@@ -1,4 +1,5 @@
 import { postSystemIssueReportRaw } from "./system-issue-api";
+import { classifyLatency, formatSlowLatencyMessage } from "./latency-split";
 
 export const SLOW_REQUEST_THRESHOLD_MS = 12000;
 
@@ -140,15 +141,26 @@ export async function logSlowRequestIssue({
   method,
   status,
   durationMs,
+  serverMs = null,
 }) {
   if (!shouldPromptSlowRequest(path, durationMs)) return null;
 
+  const split = classifyLatency({ clientRttMs: durationMs, serverMs });
+
   return submitSystemIssueReport({
     kind: "slow",
-    message: `Slow response (${Math.round(durationMs / 1000)}s)`,
+    message: formatSlowLatencyMessage({
+      mode: "request",
+      clientRttMs: durationMs,
+      serverMs,
+    }),
     api_path: path,
     http_method: method,
     http_status: status ?? null,
     duration_ms: durationMs,
+    context: {
+      connectivity: "slow_request",
+      ...split,
+    },
   });
 }

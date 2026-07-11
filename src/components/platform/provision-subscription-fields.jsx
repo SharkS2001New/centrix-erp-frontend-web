@@ -132,7 +132,7 @@ export function ProvisionSubscriptionFields({
               <Link href="/platform/plans" className="font-medium underline">
                 Create a plan
               </Link>{" "}
-              first, or choose “No licence yet”.
+              first, or choose “No licence yet” (org stays locked until a plan is assigned).
             </p>
           ) : (
             <label className="block text-sm">

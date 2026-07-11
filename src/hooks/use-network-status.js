@@ -10,6 +10,7 @@ import {
   resolveNetworkStatus,
 } from "@/lib/network-status";
 import { submitSystemIssueReport } from "@/lib/system-issue-reports";
+import { classifyLatency, formatSlowLatencyMessage } from "@/lib/latency-split";
 
 /**
  * Tracks browser online state + API reachability (latency via /health).
@@ -88,13 +89,24 @@ export function useNetworkStatus({ enabled = true, reportOutages = true } = {}) 
         && !slowReportedRef.current
       ) {
         slowReportedRef.current = true;
+        const split = classifyLatency({
+          clientRttMs: result.latencyMs,
+          serverMs: result.serverMs,
+        });
         void submitSystemIssueReport({
           kind: "slow",
-          message: `Slow connection (${Math.round(result.latencyMs / 1000)}s to reach API)`,
+          message: formatSlowLatencyMessage({
+            mode: "ping",
+            clientRttMs: result.latencyMs,
+            serverMs: result.serverMs,
+          }),
           api_path: "/health",
           http_method: "GET",
           duration_ms: result.latencyMs,
-          context: { connectivity: "slow_ping" },
+          context: {
+            connectivity: "slow_ping",
+            ...split,
+          },
         });
       }
     },

@@ -720,7 +720,32 @@ export default function PlatformSystemIssuesPage() {
                     {selected.http_method ? `${selected.http_method} ` : ""}
                     {selected.api_path}
                     {selected.http_status ? ` (${selected.http_status})` : ""}
-                    {selected.duration_ms ? ` · ${selected.duration_ms} ms` : ""}
+                    {selected.duration_ms ? ` · ${selected.duration_ms} ms RTT` : ""}
+                  </dd>
+                </div>
+              ) : null}
+              {selected.kind === "slow" && (
+                selected.context?.client_rtt_ms != null
+                || selected.context?.server_ms != null
+                || selected.context?.likely
+              ) ? (
+                <div className="sm:col-span-2">
+                  <dt className="theme-subtext text-xs uppercase">Latency split</dt>
+                  <dd className="mt-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900/40">
+                    <div className="font-medium text-slate-900 dark:text-slate-100">
+                      {selected.context?.likely === "network"
+                        ? "Likely user / network"
+                        : selected.context?.likely === "api"
+                          ? "Likely API / server"
+                          : "Cause unclear"}
+                    </div>
+                    <div className="mt-1 font-mono text-xs text-slate-600 dark:text-slate-300">
+                      client RTT: {selected.context?.client_rtt_ms ?? selected.duration_ms ?? "—"} ms
+                      {" · "}
+                      server: {selected.context?.server_ms ?? "—"} ms
+                      {" · "}
+                      network est.: {selected.context?.network_estimate_ms ?? "—"} ms
+                    </div>
                   </dd>
                 </div>
               ) : null}

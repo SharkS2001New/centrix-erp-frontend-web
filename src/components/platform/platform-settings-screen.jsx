@@ -32,17 +32,31 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
   }, [requestedTab, router]);
 
   const activeTab = resolveTab(requestedTab, resolveTab(initialTab));
+  const emailTab = searchParams.get("email_tab");
 
   function onTabChange(id) {
     if (id === activeTab) return;
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", id);
+    if (id !== "email") {
+      params.delete("email_tab");
+    } else if (!params.get("email_tab")) {
+      params.set("email_tab", "smtp");
+    }
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
+  const emailSubtitles = {
+    smtp: "Main outbound SMTP, From address, and test email.",
+    auth: "Dedicated sender for 2FA and email verification codes.",
+    imap: "Inbox sync for Platform → Mailbox replies.",
+    templates: "Contract and quote email subject and body templates.",
+    renewals: "Automatic subscription renewal reminders and templates.",
+  };
+
   const subtitle =
     activeTab === "email"
-      ? "SMTP, IMAP, contract templates, and subscription renewal reminders."
+      ? emailSubtitles[emailTab] || "SMTP, IMAP, contract templates, and subscription renewal reminders."
       : activeTab === "whatsapp"
         ? "Shared WhatsApp webhook for all tenant organizations."
         : "Email digest and instant WhatsApp/email alerts for system errors & reports.";

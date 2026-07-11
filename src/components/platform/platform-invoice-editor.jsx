@@ -24,6 +24,7 @@ import {
   resolveEnabledBillingModuleKeys,
 } from "@/lib/platform-invoices";
 import { buildPlatformInvoiceHtml, printPlatformInvoice } from "@/lib/platform-invoice-print";
+import { PlatformInvoiceViewer } from "@/components/platform/platform-invoice-viewer";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
 import { formatBillingMoney } from "@/lib/platform-billing";
 
@@ -72,13 +73,15 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   const [presetOrganizationApplied, setPresetOrganizationApplied] = useState(false);
   const [presetDesignApplied, setPresetDesignApplied] = useState(false);
   const [brandingOpen, setBrandingOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   const totals = useMemo(
     () => calculateInvoiceTotals(form.line_items, form.tax_rate),
     [form.line_items, form.tax_rate],
   );
 
-  const previewHtml = useMemo(() => buildPlatformInvoiceHtml({ ...form, ...totals }), [form, totals]);
+  const previewRecord = useMemo(() => ({ ...form, ...totals }), [form, totals]);
+  const previewHtml = useMemo(() => buildPlatformInvoiceHtml(previewRecord), [previewRecord]);
 
   const loadOrganizations = useCallback(async () => {
     try {
@@ -452,9 +455,16 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
           <button
             type="button"
             className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-            onClick={() => printPlatformInvoice({ ...form, ...totals })}
+            onClick={() => printPlatformInvoice(previewRecord)}
           >
             Print / PDF
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            onClick={() => setViewerOpen(true)}
+          >
+            Expand preview
           </button>
           <button
             type="button"
@@ -993,6 +1003,14 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
           </section>
         </div>
       </div>
+
+      <PlatformInvoiceViewer
+        open={viewerOpen}
+        invoice={previewRecord}
+        expanded
+        allowEmail={false}
+        onClose={() => setViewerOpen(false)}
+      />
 
       {saveTemplateOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
