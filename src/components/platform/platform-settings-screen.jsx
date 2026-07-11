@@ -60,7 +60,7 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
     activeTab === "email"
       ? emailSubtitles[emailTab] || "SMTP, IMAP, contract templates, and subscription renewal reminders."
       : activeTab === "whatsapp"
-        ? "Shared WhatsApp webhook for all tenant organizations."
+        ? "Shared WhatsApp webhook for all tenants, plus a dry-run bot test against a selected organization."
         : activeTab === "r2"
           ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
           : "Email digest and instant WhatsApp/email alerts for system errors & reports.";

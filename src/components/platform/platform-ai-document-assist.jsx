@@ -65,11 +65,12 @@ export function PlatformAiDocumentAssist({
         <span className="mb-1 block text-xs font-medium text-indigo-900 dark:text-indigo-200">
           Hint for AI (optional)
         </span>
-        <input
-          className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-indigo-800 dark:bg-slate-900 dark:text-slate-100"
+        <textarea
+          className="w-full resize-y rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-indigo-800 dark:bg-slate-900 dark:text-slate-100"
+          rows={3}
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
-          placeholder='e.g. "Annual renewal for Acme", "Starter plan onboarding quote"'
+          placeholder={"e.g. Annual renewal for Acme.\nStarter plan onboarding quote."}
           disabled={busy}
         />
       </label>

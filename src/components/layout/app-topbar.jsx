@@ -8,6 +8,7 @@ import { AccountingHelpTopbarButton } from "@/components/accounting/accounting-h
 import { DistributionHelpTopbarButton } from "@/components/fulfillment/distribution-help";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
+import { useAuth } from "@/contexts/auth-context";
 
 function MenuIcon({ className }) {
   return (
@@ -18,6 +19,9 @@ function MenuIcon({ className }) {
 }
 
 export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSidebarOpen = false }) {
+  const { isSuperAdmin } = useAuth();
+  const hideModuleSearch = Boolean(isSuperAdmin?.());
+
   return (
     <>
       <header
@@ -44,7 +48,7 @@ export function AppTopbar({ onToggleSidebar, sidebarCollapsed = false, mobileSid
             <MenuIcon className="h-5 w-5" />
           </button>
 
-          <GlobalModuleSearch />
+          {!hideModuleSearch ? <GlobalModuleSearch /> : null}
           <BackgroundTaskHeaderBar />
         </div>
 

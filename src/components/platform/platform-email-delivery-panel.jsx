@@ -8,11 +8,14 @@ import { PrimaryButton, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog
 import { SettingsSubTabBar } from "@/components/admin/settings-sub-tabs";
 import {
   PLATFORM_MAIL_DEFAULTS,
+  mailboxAccountLabel,
   platformMailFormFromApi,
   platformMailPayloadFromForm,
+  suggestImapFromSmtp,
 } from "@/lib/platform-mail-settings";
 import { PLATFORM_EMAIL_PLACEHOLDERS } from "@/lib/platform-ai-compose";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
+import { useConfirm } from "@/lib/use-confirm";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
@@ -33,6 +36,7 @@ export function PlatformEmailDeliveryPanel() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
+  const confirm = useConfirm();
   const activeEmailTab = resolveEmailTab(searchParams.get("email_tab"));
 
   const [form, setForm] = useState(() => platformMailFormFromApi(PLATFORM_MAIL_DEFAULTS));
@@ -42,16 +46,21 @@ export function PlatformEmailDeliveryPanel() {
   const [testing, setTesting] = useState(false);
   const [testingAuth, setTestingAuth] = useState(false);
   const [testingRenewal, setTestingRenewal] = useState(false);
+  const [testingImap, setTestingImap] = useState(false);
+  const [imapTestResult, setImapTestResult] = useState(null);
   const [testTo, setTestTo] = useState("");
   const [authTestTo, setAuthTestTo] = useState("");
   const [renewalTestTo, setRenewalTestTo] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (accountId) => {
     setLoading(true);
     try {
-      const res = await apiRequest("/admin/platform-mail/settings");
+      const res = await apiRequest("/admin/platform-mail/settings", {
+        searchParams: accountId ? { account_id: accountId } : undefined,
+      });
       setForm(platformMailFormFromApi(res));
       setMailStats(res.stats ?? null);
+      setImapTestResult(null);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load mail settings.");
       setForm(platformMailFormFromApi(PLATFORM_MAIL_DEFAULTS));
@@ -75,6 +84,7 @@ export function PlatformEmailDeliveryPanel() {
   async function handleSave(e) {
     e.preventDefault();
     setSaving(true);
+    setImapTestResult(null);
     try {
       const res = await apiRequest("/admin/platform-mail/settings", {
         method: "PUT",
@@ -87,6 +97,124 @@ export function PlatformEmailDeliveryPanel() {
       notifyError(err instanceof ApiError ? err.message : "Failed to save mail settings.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function switchAccount(accountId) {
+    if (!accountId || accountId === form.account_id) return;
+    await load(accountId);
+  }
+
+  async function handleAddMailbox() {
+    setSaving(true);
+    try {
+      const res = await apiRequest("/admin/platform-mail/settings", {
+        method: "PUT",
+        body: {
+          add_account: {
+            label: "New mailbox",
+            enabled: false,
+            from_name: form.from_name,
+            from_address: "",
+            reply_to: "",
+            smtp_host: "",
+            smtp_port: 587,
+            smtp_encryption: "tls",
+            imap_enabled: false,
+            imap_port: 993,
+            imap_encryption: "ssl",
+            imap_mailbox: "INBOX",
+          },
+        },
+      });
+      setForm(platformMailFormFromApi(res));
+      notifySuccess("Mailbox added. Configure SMTP / IMAP, then save.");
+      onEmailTabChange("smtp");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not add mailbox.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRemoveMailbox() {
+    if ((form.accounts?.length || 0) <= 1) {
+      notifyError("Keep at least one mailbox.");
+      return;
+    }
+    const ok = await confirm({
+      title: "Remove mailbox",
+      message: `Remove “${mailboxAccountLabel(form)}” from platform mail? Existing messages stay in the mailbox history.`,
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
+    setSaving(true);
+    try {
+      const res = await apiRequest("/admin/platform-mail/settings", {
+        method: "PUT",
+        body: { remove_account_id: form.account_id },
+      });
+      setForm(platformMailFormFromApi(res));
+      notifySuccess("Mailbox removed.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not remove mailbox.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCopyImapFromSmtp() {
+    setForm((f) => {
+      const next = suggestImapFromSmtp({
+        ...f,
+        imap_host: "",
+        imap_username: "",
+        imap_port: "993",
+        imap_encryption: "ssl",
+        imap_mailbox: "INBOX",
+      });
+      return { ...next, imap_enabled: true };
+    });
+    setImapTestResult(null);
+    notifySuccess("IMAP fields filled from SMTP. Save, then Test IMAP connection.");
+  }
+
+  async function handleTestImap() {
+    setTestingImap(true);
+    setImapTestResult(null);
+    try {
+      // Persist current form first so the test uses latest values (blank IMAP password → SMTP password).
+      await apiRequest("/admin/platform-mail/settings", {
+        method: "PUT",
+        body: platformMailPayloadFromForm(form, { prefill_imap_from_smtp: true }),
+      });
+      const res = await apiRequest("/admin/platform-mail/test-imap", {
+        method: "POST",
+        body: { account_id: form.account_id || undefined },
+      });
+      setImapTestResult({
+        ok: true,
+        message: res.message ?? "IMAP connection OK.",
+        detail: res.detail ?? null,
+      });
+      notifySuccess(res.message ?? "IMAP connection OK.");
+      await load(form.account_id);
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.body?.message || err.message
+          : "IMAP connection failed.";
+      const detail = err instanceof ApiError ? err.body?.detail : null;
+      setImapTestResult({
+        ok: false,
+        message,
+        detail:
+          detail ||
+          "IMAP credentials were refused or incomplete. If this mailbox matches SMTP, use “Copy from SMTP”, confirm the app password allows IMAP, save the correct values, then test again.",
+      });
+      notifyError(message);
+    } finally {
+      setTestingImap(false);
     }
   }
 
@@ -174,14 +302,64 @@ export function PlatformEmailDeliveryPanel() {
         ariaLabel="Email delivery sections"
       />
 
+      {(activeEmailTab === "smtp" || activeEmailTab === "imap") && (
+        <div className="theme-panel flex flex-wrap items-center gap-2 rounded-xl border px-4 py-3 shadow-sm">
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Mailbox</span>
+          <select
+            className={`${inputClass} max-w-xs`}
+            value={form.account_id || ""}
+            onChange={(e) => void switchAccount(e.target.value)}
+            disabled={saving || loading}
+          >
+            {(form.accounts || []).map((account) => (
+              <option key={account.id} value={account.id}>
+                {mailboxAccountLabel(account)}
+                {account.is_default ? " (default)" : ""}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className={SECONDARY_BTN_CLASS}
+            disabled={saving}
+            onClick={() => void handleAddMailbox()}
+          >
+            Add mailbox
+          </button>
+          {(form.accounts?.length || 0) > 1 ? (
+            <button
+              type="button"
+              className={SECONDARY_BTN_CLASS}
+              disabled={saving}
+              onClick={() => void handleRemoveMailbox()}
+            >
+              Remove
+            </button>
+          ) : null}
+          <p className="w-full text-xs text-slate-500 sm:w-auto sm:flex-1">
+            Switch like Gmail accounts — each mailbox has its own SMTP / IMAP. Auth / 2FA and templates stay shared.
+          </p>
+        </div>
+      )}
+
       {activeEmailTab === "smtp" ? (
         <section className="theme-panel space-y-5 rounded-xl border p-5 shadow-sm">
           <div>
             <h2 className="text-sm font-semibold text-slate-900">SMTP &amp; sender</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Main outbound mailbox for contracts, invoices, mailbox replies, and renewal reminders.
+              Outbound mail for this mailbox (contracts, invoices, replies, renewals). IMAP can reuse the
+              same credentials on the IMAP tab.
             </p>
           </div>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Mailbox display name</span>
+            <input
+              className={inputClass}
+              value={form.label || ""}
+              onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
+              placeholder="e.g. Support · billing@…"
+            />
+          </label>
 
           <label className="flex items-start gap-3">
             <input
@@ -494,8 +672,8 @@ export function PlatformEmailDeliveryPanel() {
         <section className="theme-panel rounded-xl border p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-slate-900">IMAP (inbox sync)</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Pull client replies into Platform → Mailbox so you can read and respond from Centrix. Same
-            mailbox as SMTP is typical (e.g. imap.gmail.com:993).
+            Pull client replies into Platform → Mailbox. Same login as SMTP is typical — use “Copy from SMTP”
+            then Test IMAP. Leave IMAP password blank to reuse the saved SMTP password.
           </p>
           {!form.imap_extension_available ? (
             <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -503,12 +681,56 @@ export function PlatformEmailDeliveryPanel() {
               the API image (imap enabled) to sync inbox replies.
             </p>
           ) : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={SECONDARY_BTN_CLASS}
+              disabled={saving || !form.smtp_host}
+              onClick={handleCopyImapFromSmtp}
+            >
+              Copy from SMTP
+            </button>
+            <button
+              type="button"
+              className={SECONDARY_BTN_CLASS}
+              disabled={saving || testingImap || !form.imap_extension_available}
+              onClick={() => void handleTestImap()}
+            >
+              {testingImap ? "Testing…" : "Test IMAP connection"}
+            </button>
+          </div>
+          {imapTestResult ? (
+            <div
+              className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+                imapTestResult.ok
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                  : "border-amber-200 bg-amber-50 text-amber-950"
+              }`}
+            >
+              <p className="font-medium">{imapTestResult.message}</p>
+              {imapTestResult.detail ? (
+                <p className="mt-1 text-xs opacity-90">{imapTestResult.detail}</p>
+              ) : null}
+              {!imapTestResult.ok ? (
+                <p className="mt-2 text-xs">
+                  Update the IMAP host/username/password below (or copy from SMTP), save, then test again.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <label className="mt-4 flex items-start gap-3">
             <input
               type="checkbox"
               className="mt-1"
               checked={form.imap_enabled}
-              onChange={(e) => setForm((f) => ({ ...f, imap_enabled: e.target.checked }))}
+              onChange={(e) => {
+                const enabled = e.target.checked;
+                setForm((f) => {
+                  if (!enabled) return { ...f, imap_enabled: false };
+                  const next = suggestImapFromSmtp(f);
+                  return { ...next, imap_enabled: true };
+                });
+              }}
             />
             <span className="text-sm font-medium text-slate-900">Enable IMAP sync</span>
           </label>
@@ -558,7 +780,11 @@ export function PlatformEmailDeliveryPanel() {
                 value={form.imap_password}
                 onChange={(e) => setForm((f) => ({ ...f, imap_password: e.target.value }))}
                 placeholder={
-                  form.imap_password_set ? "•••••••• (saved — leave blank to keep)" : "App password if required"
+                  form.imap_password_set
+                    ? "•••••••• (saved — leave blank to keep)"
+                    : form.smtp_password_set
+                      ? "Leave blank to reuse SMTP password"
+                      : "App password if required"
                 }
                 autoComplete="new-password"
               />

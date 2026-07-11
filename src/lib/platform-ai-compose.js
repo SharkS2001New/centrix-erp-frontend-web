@@ -73,33 +73,64 @@ function normalizeComposeResult(res, fallback = {}) {
  *   instruction?: string,
  *   subject?: string,
  *   body?: string,
- *   mode?: "draft" | "improve" | "shorten" | "formal",
+ *   mode?: "draft" | "improve" | "shorten" | "formal" | "from_template",
  *   placeholders?: string[],
+ *   template?: { name?: string, subject?: string, body?: string } | null,
+ *   context?: Record<string, string | number | null | undefined>,
  * }} input
  */
 export async function composePlatformEmailWithAi(input = {}) {
   const apiBase = aiTrainingApiBase();
   const mode = input.mode || (input.subject || input.body ? "improve" : "draft");
   const placeholders = input.placeholders ?? PLATFORM_EMAIL_PLACEHOLDERS;
+  const template = input.template ?? null;
+  const context = input.context ?? {};
+
+  let instruction =
+    input.instruction?.trim() ||
+    (mode === "draft"
+      ? "Draft a clear, professional Centrix ERP billing email for a Kenyan business customer."
+      : mode === "from_template"
+        ? "Adapt this saved email template for the new recipient/context. Keep the same structure and tone; only change details the user asked for."
+        : "Improve this Centrix ERP email. Keep placeholders like {customer_name} unchanged.");
+
+  if (mode === "from_template" && template) {
+    const contextLines = Object.entries(context)
+      .filter(([, value]) => value != null && String(value).trim() !== "")
+      .map(([key, value]) => `${key}: ${value}`)
+      .join("\n");
+    instruction =
+      `${instruction}\n\nSaved template name: ${template.name || "Untitled"}.\n` +
+      "Use the template subject/body as the base. Apply the user's requested changes and any context below. " +
+      "Replace obvious prior recipient/company details with the new context when provided.\n" +
+      (contextLines ? `Context:\n${contextLines}\n` : "");
+  }
+
+  const subject = mode === "from_template" && template
+    ? String(template.subject ?? input.subject ?? "")
+    : (input.subject ?? "");
+  const body = mode === "from_template" && template
+    ? String(template.body ?? input.body ?? "")
+    : (input.body ?? "");
 
   const payload = {
     task: "email",
     mode,
     use_knowledge: false,
     skip_training: true,
-    instruction:
-      input.instruction?.trim() ||
-      (mode === "draft"
-        ? "Draft a clear, professional Centrix ERP billing email for a Kenyan business customer."
-        : "Improve this Centrix ERP email. Keep placeholders like {customer_name} unchanged."),
-    subject: input.subject ?? "",
-    body: input.body ?? "",
+    instruction,
+    subject,
+    body,
     placeholders,
     output_format: "json",
     system_hint:
-      "You help the Centrix platform admin write outbound emails (contracts, quotes, renewals). " +
-      "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}. " +
-      "Keep template placeholders exactly as given. Tone: professional, concise, Kenya business English.",
+      mode === "from_template"
+        ? "You help the Centrix platform admin reuse a saved email template. " +
+          "Start from the provided template subject/body. Apply only the requested changes and new context. " +
+          "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}. Kenya business English, professional and concise."
+        : "You help the Centrix platform admin write outbound emails (contracts, quotes, renewals). " +
+          "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}. " +
+          "Keep template placeholders exactly as given. Tone: professional, concise, Kenya business English.",
   };
 
   const paths = [`${apiBase}/compose`, `${apiBase}/compose-email`];
@@ -109,8 +140,8 @@ export async function composePlatformEmailWithAi(input = {}) {
     try {
       const res = await apiRequest(path, { method: "POST", body: payload });
       return normalizeComposeResult(res, {
-        subject: input.subject,
-        body: input.body,
+        subject,
+        body,
       });
     } catch (err) {
       lastError = err;

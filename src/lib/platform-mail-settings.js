@@ -34,12 +34,47 @@ export const PLATFORM_MAIL_DEFAULTS = {
   renewal_email_subject: "Centrix ERP licence renewal reminder — {company_code}",
   renewal_email_body:
     "Dear {customer_name},\n\nYour Centrix ERP licence for {company_code} ({plan_name}) expires on {expires_on} ({days_remaining} day(s) remaining).\n\nPlease find attached invoice {invoice_number} for {total} to renew your subscription.\n\nIf you have already paid, you can ignore this message.\n\nRegards,\n{from_name}",
+  accounts: [],
+  account_id: "",
+  active_account_id: "",
+  label: "Primary",
 };
+
+/** Map common SMTP hosts to IMAP hosts (Gmail / Microsoft / smtp.* → imap.*). */
+export function suggestImapFromSmtp(form) {
+  const smtpHost = String(form.smtp_host || "").trim().toLowerCase();
+  const smtpUser = String(form.smtp_username || "").trim();
+  const from = String(form.from_address || "").trim();
+  const next = { ...form };
+
+  if (!String(next.imap_host || "").trim() && smtpHost) {
+    let imapHost = smtpHost;
+    if (smtpHost.startsWith("smtp.")) {
+      imapHost = `imap.${smtpHost.slice(5)}`;
+    } else if (smtpHost === "smtp.office365.com" || smtpHost === "smtp-mail.outlook.com") {
+      imapHost = "outlook.office365.com";
+    } else if (smtpHost.includes("gmail.com") || smtpHost.includes("googlemail.com")) {
+      imapHost = "imap.gmail.com";
+    }
+    next.imap_host = imapHost;
+  }
+
+  if (!String(next.imap_port || "").trim()) next.imap_port = "993";
+  if (!String(next.imap_encryption || "").trim()) next.imap_encryption = "ssl";
+  if (!String(next.imap_mailbox || "").trim()) next.imap_mailbox = "INBOX";
+  if (!String(next.imap_username || "").trim()) {
+    next.imap_username = smtpUser || from;
+  }
+
+  return next;
+}
 
 export function platformMailFormFromApi(res = {}) {
   const settings = res.settings ?? res.data ?? res ?? {};
+  const accounts = Array.isArray(settings.accounts) ? settings.accounts : [];
   return {
     enabled: settings.enabled !== false && Boolean(settings.enabled ?? settings.smtp_host),
+    label: settings.label || settings.from_address || "Primary",
     from_name: settings.from_name || PLATFORM_MAIL_DEFAULTS.from_name,
     from_address: settings.from_address || PLATFORM_MAIL_DEFAULTS.from_address,
     reply_to: settings.reply_to || settings.from_address || PLATFORM_MAIL_DEFAULTS.reply_to,
@@ -79,11 +114,16 @@ export function platformMailFormFromApi(res = {}) {
       settings.renewal_email_subject || PLATFORM_MAIL_DEFAULTS.renewal_email_subject,
     renewal_email_body:
       settings.renewal_email_body || PLATFORM_MAIL_DEFAULTS.renewal_email_body,
+    accounts,
+    account_id: settings.account_id || settings.active_account_id || accounts[0]?.id || "",
+    active_account_id: settings.active_account_id || settings.account_id || accounts[0]?.id || "",
   };
 }
 
-export function platformMailPayloadFromForm(form) {
+export function platformMailPayloadFromForm(form, extras = {}) {
   const payload = {
+    account_id: form.account_id || form.active_account_id || undefined,
+    label: String(form.label || "").trim() || form.from_address?.trim() || "Mailbox",
     enabled: Boolean(form.enabled),
     from_name: form.from_name.trim(),
     from_address: form.from_address.trim(),
@@ -112,6 +152,7 @@ export function platformMailPayloadFromForm(form) {
     subscription_reminder_days: form.subscription_reminder_days.trim() || "30,14,7",
     renewal_email_subject: form.renewal_email_subject.trim(),
     renewal_email_body: form.renewal_email_body.trim(),
+    ...extras,
   };
   if (form.smtp_password?.trim()) {
     payload.smtp_password = form.smtp_password.trim();
@@ -123,4 +164,12 @@ export function platformMailPayloadFromForm(form) {
     payload.auth_smtp_password = form.auth_smtp_password.trim();
   }
   return payload;
+}
+
+export function mailboxAccountLabel(account) {
+  if (!account) return "Mailbox";
+  const label = String(account.label || "").trim();
+  if (label) return label;
+  const email = String(account.from_address || account.smtp_username || "").trim();
+  return email || "Mailbox";
 }

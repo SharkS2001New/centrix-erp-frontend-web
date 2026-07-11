@@ -6,6 +6,10 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { PrimaryButton, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
 import { formatBillingMoney } from "@/lib/platform-billing";
+import { useConfirm } from "@/lib/use-confirm";
+import { mailboxAccountLabel } from "@/lib/platform-mail-settings";
+
+const MAILBOX_ACCOUNT_KEY = "centrix.platform_mail.active_account_id";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
@@ -50,11 +54,21 @@ function defaultInvoiceBody(invoice, orgName, fromName = "Centrix") {
 }
 
 export function PlatformMailboxPanel() {
+  const confirm = useConfirm();
   const [folder, setFolder] = useState("inbox");
   const [kindFilter, setKindFilter] = useState("");
   const [mailStats, setMailStats] = useState(null);
   const [messages, setMessages] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [accounts, setAccounts] = useState([]);
+  const [accountId, setAccountId] = useState(() => {
+    try {
+      return localStorage.getItem(MAILBOX_ACCOUNT_KEY) || "";
+    } catch {
+      return "";
+    }
+  });
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [selected, setSelected] = useState(null);
   const [thread, setThread] = useState([]);
@@ -68,6 +82,14 @@ export function PlatformMailboxPanel() {
   const [organizations, setOrganizations] = useState([]);
   const [orgInvoices, setOrgInvoices] = useState([]);
   const [loadingOrgInvoices, setLoadingOrgInvoices] = useState(false);
+  const [composeTemplates, setComposeTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
+  const activeAccount =
+    accounts.find((row) => String(row.id) === String(accountId)) || accounts[0] || null;
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -77,18 +99,40 @@ export function PlatformMailboxPanel() {
           folder,
           ...(search.trim() ? { q: search.trim() } : {}),
           ...(folder === "sent" && kindFilter ? { kind: kindFilter } : {}),
+          ...(accountId ? { account_id: accountId } : {}),
         },
       });
       setMessages(Array.isArray(res.data) ? res.data : []);
       setUnreadCount(Number(res.unread_count || 0));
       if (res.stats) setMailStats(res.stats);
+      if (Array.isArray(res.accounts)) {
+        setAccounts(res.accounts);
+        if (!accountId && res.active_account_id) {
+          setAccountId(res.active_account_id);
+        } else if (!accountId && res.accounts[0]?.id) {
+          setAccountId(res.accounts[0].id);
+        }
+      }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load mailbox.");
       setMessages([]);
     } finally {
       setLoading(false);
     }
-  }, [folder, search, kindFilter]);
+  }, [folder, search, kindFilter, accountId]);
+
+  function selectAccount(nextId) {
+    setAccountId(nextId);
+    setAccountMenuOpen(false);
+    setSelectedId(null);
+    setSelected(null);
+    setComposing(false);
+    try {
+      localStorage.setItem(MAILBOX_ACCOUNT_KEY, nextId);
+    } catch {
+      /* ignore */
+    }
+  }
 
   const loadOrganizations = useCallback(async () => {
     try {
@@ -96,6 +140,15 @@ export function PlatformMailboxPanel() {
       setOrganizations(res.data ?? []);
     } catch {
       setOrganizations([]);
+    }
+  }, []);
+
+  const loadComposeTemplates = useCallback(async () => {
+    try {
+      const res = await apiRequest("/admin/platform-mail/compose-templates", { loading: false });
+      setComposeTemplates(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      setComposeTemplates([]);
     }
   }, []);
 
@@ -123,8 +176,11 @@ export function PlatformMailboxPanel() {
   }, [loadList]);
 
   useEffect(() => {
-    if (composing) void loadOrganizations();
-  }, [composing, loadOrganizations]);
+    if (composing) {
+      void loadOrganizations();
+      void loadComposeTemplates();
+    }
+  }, [composing, loadOrganizations, loadComposeTemplates]);
 
   useEffect(() => {
     if (composing) void loadOrgInvoices(compose.organization_id);
@@ -147,11 +203,20 @@ export function PlatformMailboxPanel() {
   async function handleSync() {
     setSyncing(true);
     try {
-      const res = await apiRequest("/admin/platform-mail/sync", { method: "POST", body: {} });
+      const res = await apiRequest("/admin/platform-mail/sync", {
+        method: "POST",
+        body: { account_id: accountId || undefined },
+      });
       notifySuccess(res.message ?? "Inbox synced.");
       await loadList();
     } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "IMAP sync failed.");
+      const message = e instanceof ApiError ? e.message : "IMAP sync failed.";
+      const detail = e instanceof ApiError ? e.body?.detail : null;
+      notifyError(
+        detail
+          ? `${message} ${detail}`
+          : `${message} Check Platform settings → Email delivery → IMAP, or use Copy from SMTP and Test IMAP.`,
+      );
     } finally {
       setSyncing(false);
     }
@@ -226,6 +291,7 @@ export function PlatformMailboxPanel() {
           body: compose.body.trim(),
           organization_id: compose.organization_id ? Number(compose.organization_id) : null,
           invoice_id: compose.invoice_id ? Number(compose.invoice_id) : null,
+          account_id: accountId || undefined,
         },
       });
       notifySuccess(res.message ?? "Email sent.");
@@ -267,9 +333,157 @@ export function PlatformMailboxPanel() {
     }
   }
 
+  function openSaveTemplate() {
+    const suggested =
+      compose.subject.trim().slice(0, 80) ||
+      (composeTemplates.length ? `Email template ${composeTemplates.length + 1}` : "Client email");
+    setTemplateName(suggested);
+    setSaveTemplateOpen(true);
+  }
+
+  async function handleSaveTemplate() {
+    if (!templateName.trim()) {
+      notifyError("Enter a template name.");
+      return;
+    }
+    if (!compose.subject.trim() && !compose.body.trim()) {
+      notifyError("Write a subject or body before saving a template.");
+      return;
+    }
+    setSavingTemplate(true);
+    try {
+      const res = await apiRequest("/admin/platform-mail/compose-templates", {
+        method: "POST",
+        body: {
+          name: templateName.trim(),
+          subject: compose.subject.trim(),
+          body: compose.body,
+        },
+      });
+      setComposeTemplates(Array.isArray(res.data) ? res.data : []);
+      const saved = (res.data || []).find((row) => row.name === templateName.trim());
+      if (saved?.id) setSelectedTemplateId(saved.id);
+      setSaveTemplateOpen(false);
+      notifySuccess("Email template saved. Use Draft from template next time.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not save template.");
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
+  async function handleDeleteTemplate(templateId) {
+    if (!templateId) return;
+    const tpl = composeTemplates.find((row) => String(row.id) === String(templateId));
+    const ok = await confirm({
+      title: "Delete email template",
+      message: `Delete “${tpl?.name || "this template"}”?`,
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+    try {
+      const res = await apiRequest(`/admin/platform-mail/compose-templates/${encodeURIComponent(templateId)}`, {
+        method: "DELETE",
+      });
+      setComposeTemplates(Array.isArray(res.data) ? res.data : []);
+      if (String(selectedTemplateId) === String(templateId)) setSelectedTemplateId("");
+      notifySuccess("Template deleted.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not delete template.");
+    }
+  }
+
+  function applyTemplateLiterally(templateId) {
+    const tpl = composeTemplates.find((row) => String(row.id) === String(templateId));
+    if (!tpl) return;
+    setSelectedTemplateId(tpl.id);
+    setCompose((prev) => ({
+      ...prev,
+      subject: tpl.subject || prev.subject,
+      body: tpl.body || prev.body,
+    }));
+    notifySuccess(`Loaded template “${tpl.name}”. Adjust details or use Draft from template.`);
+  }
+
+  const draftContext = (() => {
+    const org = organizations.find((row) => String(row.id) === String(compose.organization_id));
+    const invoice = orgInvoices.find((row) => String(row.id) === String(compose.invoice_id));
+    return {
+      organization_name: org?.org_name || "",
+      company_code: org?.company_code || "",
+      to_email: compose.to || org?.org_email || "",
+      invoice_number: invoice?.invoice_number || "",
+      invoice_total: invoice?.total != null ? String(invoice.total) : "",
+      invoice_currency: invoice?.currency || "",
+    };
+  })();
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <button
+            type="button"
+            className="flex max-w-[16rem] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+            onClick={() => setAccountMenuOpen((open) => !open)}
+            aria-haspopup="listbox"
+            aria-expanded={accountMenuOpen}
+          >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#185FA5] text-xs font-semibold text-white">
+              {mailboxAccountLabel(activeAccount).slice(0, 1).toUpperCase() || "M"}
+            </span>
+            <span className="min-w-0 truncate">{mailboxAccountLabel(activeAccount)}</span>
+            <span className="text-slate-400" aria-hidden>
+              ▾
+            </span>
+          </button>
+          {accountMenuOpen ? (
+            <div className="absolute left-0 z-30 mt-1 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+              <p className="border-b px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Switch mailbox
+              </p>
+              <ul role="listbox" className="max-h-64 overflow-auto py-1">
+                {(accounts.length ? accounts : [{ id: accountId || "default", label: "Primary", from_address: "" }]).map(
+                  (account) => {
+                    const selectedAccount = String(account.id) === String(accountId || activeAccount?.id);
+                    return (
+                      <li key={account.id}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={selectedAccount}
+                          className={`flex w-full items-start gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 ${
+                            selectedAccount ? "bg-slate-50" : ""
+                          }`}
+                          onClick={() => selectAccount(account.id)}
+                        >
+                          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
+                            {mailboxAccountLabel(account).slice(0, 1).toUpperCase()}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium text-slate-900">
+                              {mailboxAccountLabel(account)}
+                            </span>
+                            <span className="block truncate text-xs text-slate-500">
+                              {account.from_address || account.smtp_username || "Configure in settings"}
+                              {account.is_default ? " · default" : ""}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  },
+                )}
+              </ul>
+              <a
+                href="/platform/settings?tab=email&email_tab=smtp"
+                className="block border-t px-3 py-2 text-sm font-medium text-[#185FA5] hover:bg-slate-50"
+              >
+                Manage mailboxes…
+              </a>
+            </div>
+          ) : null}
+        </div>
         <div className="flex gap-1 rounded-lg bg-slate-100 p-0.5">
           {[
             { id: "inbox", label: unreadCount ? `Inbox (${unreadCount})` : "Inbox" },
@@ -471,9 +685,51 @@ export function PlatformMailboxPanel() {
                   Selected invoice will be attached as a PDF when you send.
                 </p>
               ) : null}
+              <div className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <label className="min-w-[12rem] flex-1 block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Load saved template</span>
+                  <select
+                    className={inputClass}
+                    value={selectedTemplateId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setSelectedTemplateId(id);
+                      if (id) applyTemplateLiterally(id);
+                    }}
+                  >
+                    <option value="">— Select template —</option>
+                    {composeTemplates.map((tpl) => (
+                      <option key={tpl.id} value={tpl.id}>
+                        {tpl.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className={SECONDARY_BTN_CLASS}
+                  disabled={!compose.subject.trim() && !compose.body.trim()}
+                  onClick={openSaveTemplate}
+                >
+                  Save as template
+                </button>
+                {selectedTemplateId ? (
+                  <button
+                    type="button"
+                    className={SECONDARY_BTN_CLASS}
+                    onClick={() => void handleDeleteTemplate(selectedTemplateId)}
+                  >
+                    Delete template
+                  </button>
+                ) : null}
+              </div>
               <PlatformAiEmailAssist
                 subject={compose.subject}
                 body={compose.body}
+                templates={composeTemplates}
+                selectedTemplateId={selectedTemplateId}
+                onSelectedTemplateIdChange={setSelectedTemplateId}
+                draftContext={draftContext}
                 onApply={({ subject, body }) => setCompose((c) => ({ ...c, subject, body }))}
               />
               <label className="block text-sm">
@@ -588,6 +844,45 @@ export function PlatformMailboxPanel() {
           )}
         </div>
       </div>
+
+      {saveTemplateOpen ? (
+        <div className="fixed inset-0 z-[230] flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="theme-modal w-full max-w-md rounded-xl border p-5 shadow-2xl">
+            <h3 className="text-base font-semibold text-slate-900">Save email template</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Reuse this subject and body later with “Draft from template” — AI will adapt the details.
+            </p>
+            <label className="mt-4 block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Template name</span>
+              <input
+                className={inputClass}
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                placeholder="e.g. Renewal follow-up"
+                autoFocus
+              />
+            </label>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className={SECONDARY_BTN_CLASS}
+                onClick={() => setSaveTemplateOpen(false)}
+                disabled={savingTemplate}
+              >
+                Cancel
+              </button>
+              <PrimaryButton
+                type="button"
+                showIcon={false}
+                disabled={savingTemplate || !templateName.trim()}
+                onClick={() => void handleSaveTemplate()}
+              >
+                {savingTemplate ? "Saving…" : "Save template"}
+              </PrimaryButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
