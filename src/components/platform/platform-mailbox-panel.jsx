@@ -121,6 +121,8 @@ export function PlatformMailboxPanel() {
 
   const activeAccount =
     accounts.find((row) => String(row.id) === String(accountId)) || accounts[0] || null;
+  const inboxSyncEnabled = Boolean(activeAccount?.imap_enabled);
+  const smtpOnlyMode = Boolean(activeAccount) && !inboxSyncEnabled;
 
   const loadList = useCallback(async ({ append = false, offset = 0 } = {}) => {
     if (append) setLoadingMore(true);
@@ -225,6 +227,7 @@ export function PlatformMailboxPanel() {
 
   useEffect(() => {
     if (autoSyncStarted.current) return;
+    if (!inboxSyncEnabled) return;
     autoSyncStarted.current = true;
     let already = false;
     try {
@@ -253,12 +256,12 @@ export function PlatformMailboxPanel() {
           await loadList({ append: false, offset: 0 });
         }
       } catch {
-        /* Auto-sync is best-effort; manual Sync inbox remains available. */
+        /* Auto-sync is best-effort; manual Sync inbox remains available when IMAP is on. */
       } finally {
         setSyncing(false);
       }
     })();
-  }, [accountId, loadList]);
+  }, [accountId, loadList, inboxSyncEnabled]);
 
   useEffect(() => {
     if (composing) {
@@ -328,6 +331,12 @@ export function PlatformMailboxPanel() {
   }
 
   async function handleSync() {
+    if (!inboxSyncEnabled) {
+      notifyError(
+        "This mailbox is SMTP-only. Enable IMAP under Platform settings → Email delivery → IMAP (optional) if your provider allows inbox sync.",
+      );
+      return;
+    }
     setSyncing(true);
     try {
       const res = await apiRequest("/admin/platform-mail/sync", {
@@ -339,11 +348,16 @@ export function PlatformMailboxPanel() {
     } catch (e) {
       const message = e instanceof ApiError ? e.message : "IMAP sync failed.";
       const detail = e instanceof ApiError ? e.body?.detail : null;
-      notifyError(
-        detail
-          ? `${message} ${detail}`
-          : `${message} Check Platform settings → Email delivery → IMAP, or use Copy from SMTP and Test IMAP.`,
-      );
+      const code = e instanceof ApiError ? e.body?.code : null;
+      if (code === "imap_disabled") {
+        notifyError(detail ? `${message} ${detail}` : message);
+      } else {
+        notifyError(
+          detail
+            ? `${message} ${detail}`
+            : `${message} Check Platform settings → Email delivery → IMAP, or use Copy from SMTP and Test IMAP.`,
+        );
+      }
     } finally {
       setSyncing(false);
     }
@@ -870,7 +884,17 @@ export function PlatformMailboxPanel() {
             aria-label="Search mailbox"
           />
         </div>
-        <button type="button" className={SECONDARY_BTN_CLASS} disabled={syncing} onClick={() => void handleSync()}>
+        <button
+          type="button"
+          className={SECONDARY_BTN_CLASS}
+          disabled={syncing || smtpOnlyMode}
+          title={
+            smtpOnlyMode
+              ? "IMAP is off for this mailbox (SMTP-only). Enable IMAP in Email delivery to sync inbox."
+              : undefined
+          }
+          onClick={() => void handleSync()}
+        >
           {syncing ? "Syncing…" : "Sync inbox"}
         </button>
         <PrimaryButton
@@ -888,12 +912,26 @@ export function PlatformMailboxPanel() {
         </PrimaryButton>
       </div>
 
-      <p className="text-xs text-slate-500">
-        Synced inbox mail is stored as metadata + short snippets; the full body loads from IMAP when you
-        open a message. Local copies (including saved AI responses) are auto-deleted after 3 months.
-        Outbound mail you send from Centrix is kept the same way. Use Sync inbox anytime to pull the
-        latest client replies.
-      </p>
+      {smtpOnlyMode ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          <strong className="font-medium text-slate-900">SMTP-only mailbox.</strong> Outbound send works;
+          inbox sync is off because IMAP is disabled (common when a domain host blocks IMAP).{" "}
+          <a
+            href="/platform/settings?tab=email&email_tab=imap"
+            className="font-medium text-[#185FA5] hover:underline"
+          >
+            Configure IMAP
+          </a>{" "}
+          only if your provider allows it.
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">
+          Synced inbox mail is stored as metadata + short snippets; the full body loads from IMAP when you
+          open a message. Local copies (including saved AI responses) are auto-deleted after 3 months.
+          Outbound mail you send from Centrix is kept the same way. Use Sync inbox anytime to pull the
+          latest client replies.
+        </p>
+      )}
 
       {folder === "sent" && mailStats ? (
         <div className="flex flex-wrap gap-3 text-xs text-slate-600">

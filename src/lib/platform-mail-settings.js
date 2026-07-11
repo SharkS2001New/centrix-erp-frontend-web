@@ -96,6 +96,9 @@ export function platformMailFormFromApi(res = {}) {
     imap_encryption: settings.imap_encryption || "ssl",
     imap_mailbox: settings.imap_mailbox || "INBOX",
     imap_extension_available: settings.imap_extension_available !== false,
+    outbound_ready: Boolean(settings.outbound_ready),
+    inbox_sync_ready: Boolean(settings.inbox_sync_ready),
+    mail_mode: settings.mail_mode || (settings.imap_enabled ? "smtp_and_imap" : "smtp_only"),
     contract_email_subject:
       settings.contract_email_subject || PLATFORM_MAIL_DEFAULTS.contract_email_subject,
     contract_email_body:

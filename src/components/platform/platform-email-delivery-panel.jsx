@@ -24,7 +24,7 @@ const inputClass =
 const EMAIL_TABS = [
   { id: "smtp", label: "SMTP & sender" },
   { id: "auth", label: "Auth / 2FA" },
-  { id: "imap", label: "IMAP inbox" },
+  { id: "imap", label: "IMAP (optional)" },
   { id: "templates", label: "Contracts & quotes" },
   { id: "renewals", label: "Renewals" },
 ];
@@ -344,8 +344,29 @@ export function PlatformEmailDeliveryPanel() {
               Remove
             </button>
           ) : null}
-          <p className="w-full text-xs text-slate-500 sm:w-auto sm:flex-1">
-            Switch like Gmail accounts — each mailbox has its own SMTP / IMAP. Auth / 2FA and templates stay shared.
+          <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${
+                form.enabled && form.smtp_host
+                  ? "bg-emerald-50 text-emerald-800 ring-emerald-600/20"
+                  : "bg-slate-50 text-slate-600 ring-slate-500/20"
+              }`}
+            >
+              SMTP {form.enabled && form.smtp_host ? "ready" : "not set"}
+            </span>
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${
+                form.imap_enabled
+                  ? "bg-sky-50 text-sky-800 ring-sky-600/20"
+                  : "bg-slate-50 text-slate-600 ring-slate-500/20"
+              }`}
+            >
+              {form.imap_enabled ? "IMAP sync on" : "SMTP-only (IMAP off)"}
+            </span>
+          </div>
+          <p className="w-full text-xs text-slate-500">
+            SMTP sends mail. IMAP is optional for inbox sync — leave it off if your domain host does not
+            allow IMAP.
           </p>
         </div>
       )}
@@ -355,8 +376,8 @@ export function PlatformEmailDeliveryPanel() {
           <div>
             <h2 className="text-sm font-semibold text-slate-900">SMTP &amp; sender</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Outbound mail for this mailbox (contracts, invoices, replies, renewals). IMAP can reuse the
-              same credentials on the IMAP tab.
+              Outbound mail for this mailbox (contracts, invoices, replies, renewals). Inbox sync is
+              configured separately on the <strong>IMAP (optional)</strong> tab — not required to send.
             </p>
           </div>
           <label className="block text-sm">
@@ -678,22 +699,57 @@ export function PlatformEmailDeliveryPanel() {
 
       {activeEmailTab === "imap" ? (
         <section className="theme-panel rounded-xl border p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">IMAP (inbox sync)</h2>
+          <h2 className="text-sm font-semibold text-slate-900">IMAP inbox sync (optional)</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Pull client replies into Platform → Mailbox. Same login as SMTP is typical — use “Copy from SMTP”
-            then Test IMAP. Leave IMAP password blank to reuse the saved SMTP password.
+            Use IMAP only if you want Platform → Mailbox to pull inbound replies. Many custom domains and
+            some hosts disable IMAP — in that case keep this off and use <strong>SMTP-only</strong> for
+            sending. When IMAP matches SMTP login, use “Copy from SMTP” and leave the IMAP password blank
+            to reuse the saved SMTP password.
           </p>
+          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+            <p className="font-medium text-slate-900">Recommended modes</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4">
+              <li>
+                <strong>SMTP only</strong> — send contracts, 2FA, renewals (IMAP off). Works when IMAP is
+                blocked.
+              </li>
+              <li>
+                <strong>SMTP + IMAP</strong> — also sync the inbox into Platform → Mailbox.
+              </li>
+            </ul>
+          </div>
           {!form.imap_extension_available ? (
             <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              PHP IMAP extension is not available on the API server yet. Outbound mail still works; rebuild
-              the API image (imap enabled) to sync inbox replies.
+              PHP IMAP extension is not available on the API server yet. Outbound SMTP still works; rebuild
+              the API image (imap enabled) only if you need inbox sync.
             </p>
           ) : null}
+          <label className="mt-4 flex items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={form.imap_enabled}
+              onChange={(e) => {
+                const enabled = e.target.checked;
+                setForm((f) => {
+                  if (!enabled) return { ...f, imap_enabled: false };
+                  const next = suggestImapFromSmtp(f);
+                  return { ...next, imap_enabled: true };
+                });
+              }}
+            />
+            <span>
+              <span className="block text-sm font-medium text-slate-900">Enable IMAP inbox sync</span>
+              <span className="mt-0.5 block text-xs text-slate-500">
+                Off = SMTP-only (recommended when IMAP is unavailable for this domain).
+              </span>
+            </span>
+          </label>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
               className={SECONDARY_BTN_CLASS}
-              disabled={saving || !form.smtp_host}
+              disabled={saving || !form.smtp_host || !form.imap_enabled}
               onClick={handleCopyImapFromSmtp}
             >
               Copy from SMTP
@@ -701,7 +757,9 @@ export function PlatformEmailDeliveryPanel() {
             <button
               type="button"
               className={SECONDARY_BTN_CLASS}
-              disabled={saving || testingImap || !form.imap_extension_available}
+              disabled={
+                saving || testingImap || !form.imap_extension_available || !form.imap_enabled
+              }
               onClick={() => void handleTestImap()}
             >
               {testingImap ? "Testing…" : "Test IMAP connection"}
@@ -721,33 +779,23 @@ export function PlatformEmailDeliveryPanel() {
               ) : null}
               {!imapTestResult.ok ? (
                 <p className="mt-2 text-xs">
-                  Update the IMAP host/username/password below (or copy from SMTP), save, then test again.
+                  If your provider blocks IMAP, leave sync disabled and keep using SMTP to send. Otherwise
+                  update the IMAP host/username/password below, save, then test again.
                 </p>
               ) : null}
             </div>
           ) : null}
-          <label className="mt-4 flex items-start gap-3">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={form.imap_enabled}
-              onChange={(e) => {
-                const enabled = e.target.checked;
-                setForm((f) => {
-                  if (!enabled) return { ...f, imap_enabled: false };
-                  const next = suggestImapFromSmtp(f);
-                  return { ...next, imap_enabled: true };
-                });
-              }}
-            />
-            <span className="text-sm font-medium text-slate-900">Enable IMAP sync</span>
-          </label>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div
+            className={`mt-4 grid gap-4 sm:grid-cols-2 ${
+              form.imap_enabled ? "" : "pointer-events-none opacity-50"
+            }`}
+          >
             <label className="block text-sm sm:col-span-2">
               <span className="mb-1 block text-xs font-medium text-slate-600">Host</span>
               <input
                 className={inputClass}
                 value={form.imap_host}
+                disabled={!form.imap_enabled}
                 onChange={(e) => setForm((f) => ({ ...f, imap_host: e.target.value }))}
                 placeholder="imap.gmail.com"
               />
@@ -757,6 +805,7 @@ export function PlatformEmailDeliveryPanel() {
               <input
                 className={inputClass}
                 value={form.imap_port}
+                disabled={!form.imap_enabled}
                 onChange={(e) => setForm((f) => ({ ...f, imap_port: e.target.value }))}
               />
             </label>
@@ -765,6 +814,7 @@ export function PlatformEmailDeliveryPanel() {
               <select
                 className={inputClass}
                 value={form.imap_encryption}
+                disabled={!form.imap_enabled}
                 onChange={(e) => setForm((f) => ({ ...f, imap_encryption: e.target.value }))}
               >
                 <option value="ssl">SSL</option>
@@ -777,6 +827,7 @@ export function PlatformEmailDeliveryPanel() {
               <input
                 className={inputClass}
                 value={form.imap_username}
+                disabled={!form.imap_enabled}
                 onChange={(e) => setForm((f) => ({ ...f, imap_username: e.target.value }))}
               />
             </label>
@@ -786,6 +837,7 @@ export function PlatformEmailDeliveryPanel() {
                 type="password"
                 className={inputClass}
                 value={form.imap_password}
+                disabled={!form.imap_enabled}
                 onChange={(e) => setForm((f) => ({ ...f, imap_password: e.target.value }))}
                 placeholder={
                   form.imap_password_set
@@ -802,6 +854,7 @@ export function PlatformEmailDeliveryPanel() {
               <input
                 className={inputClass}
                 value={form.imap_mailbox}
+                disabled={!form.imap_enabled}
                 onChange={(e) => setForm((f) => ({ ...f, imap_mailbox: e.target.value }))}
                 placeholder="INBOX"
               />
