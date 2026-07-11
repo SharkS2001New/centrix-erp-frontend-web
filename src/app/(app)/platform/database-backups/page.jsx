@@ -135,6 +135,8 @@ export default function PlatformDatabaseBackupsPage() {
           ? " and uploaded to Google Drive after each backup."
           : "."}
         {" "}
+        Local backups older than 7 days are deleted automatically after each backup run.
+        {" "}
         Large files may be emailed as a notification only (without attachment).
       </div>
 
@@ -186,7 +188,12 @@ export default function PlatformDatabaseBackupsPage() {
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="text-sm font-semibold text-slate-900">Available backups</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Newest first. Download a file to restore or archive it locally.
+            Newest first. Download a file to restore or archive it locally. Fresh backups are
+            sanitized for MySQL generated columns (e.g. <code>balance_due</code>) so Workbench import
+            does not fail with ERROR 3105. If you have an older dump that fails on import, gunzip it
+            then run:{" "}
+            <code className="text-xs">php artisan erp:sanitize-database-dump /path/to/file.sql</code>
+            {" "}and import the sanitized file.
           </p>
         </div>
 

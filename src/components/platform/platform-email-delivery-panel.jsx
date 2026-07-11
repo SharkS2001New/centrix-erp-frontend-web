@@ -20,7 +20,11 @@ export function PlatformEmailDeliveryPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingAuth, setTestingAuth] = useState(false);
+  const [testingRenewal, setTestingRenewal] = useState(false);
   const [testTo, setTestTo] = useState("");
+  const [authTestTo, setAuthTestTo] = useState("");
+  const [renewalTestTo, setRenewalTestTo] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,6 +79,46 @@ export function PlatformEmailDeliveryPanel() {
     }
   }
 
+  async function handleTestAuthMail() {
+    const to = authTestTo.trim() || testTo.trim();
+    if (!to) {
+      notifyError("Enter a recipient for the auth / 2FA test email.");
+      return;
+    }
+    setTestingAuth(true);
+    try {
+      const res = await apiRequest("/admin/platform-mail/test-auth", {
+        method: "POST",
+        body: { to },
+      });
+      notifySuccess(res.message ?? "Auth / 2FA test email sent.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Auth / 2FA test email failed.");
+    } finally {
+      setTestingAuth(false);
+    }
+  }
+
+  async function handleTestRenewalReminder() {
+    const to = renewalTestTo.trim() || testTo.trim();
+    if (!to) {
+      notifyError("Enter a recipient for the test renewal reminder.");
+      return;
+    }
+    setTestingRenewal(true);
+    try {
+      const res = await apiRequest("/admin/platform-mail/test-renewal-reminder", {
+        method: "POST",
+        body: { to },
+      });
+      notifySuccess(res.message ?? "Test renewal reminder sent.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Test renewal reminder failed.");
+    } finally {
+      setTestingRenewal(false);
+    }
+  }
+
   if (loading) {
     return <p className="text-sm text-slate-500">Loading email settings…</p>;
   }
@@ -123,7 +167,150 @@ export function PlatformEmailDeliveryPanel() {
               value={form.reply_to}
               onChange={(e) => setForm((f) => ({ ...f, reply_to: e.target.value }))}
             />
+            <span className="mt-1 block text-[11px] text-slate-500">
+              Used for contracts, invoices, mailbox, and renewal reminders — not for 2FA codes.
+            </span>
           </label>
+        </div>
+      </section>
+
+      <section className="theme-panel rounded-xl border p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">Auth / 2FA email</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Separate sender for two-factor and email-verification codes. No Reply-To is set on these
+          messages. You can use a different mailbox than contracts and renewals (recommended).
+        </p>
+
+        <label className="mt-4 flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={form.auth_mail_use_dedicated}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, auth_mail_use_dedicated: e.target.checked }))
+            }
+          />
+          <span>
+            <span className="block text-sm font-medium text-slate-900">
+              Use a dedicated mailbox for 2FA / verification
+            </span>
+            <span className="mt-0.5 block text-xs text-slate-500">
+              When off, codes use the main SMTP above with the no-reply From address.
+            </span>
+          </span>
+        </label>
+
+        {!form.auth_mail_use_dedicated ? (
+          <label className="mt-4 block text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">
+              No-reply From (when using main SMTP)
+            </span>
+            <input
+              type="email"
+              className={inputClass}
+              value={form.noreply_address}
+              onChange={(e) => setForm((f) => ({ ...f, noreply_address: e.target.value }))}
+              placeholder="noreply@yourdomain.com"
+            />
+            <span className="mt-1 block text-[11px] text-slate-500">
+              With Gmail SMTP, From usually must match your Gmail account; Centrix still omits
+              Reply-To. Prefer a dedicated auth mailbox below for a true noreply sender.
+            </span>
+          </label>
+        ) : (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">From name</span>
+              <input
+                className={inputClass}
+                value={form.auth_from_name}
+                onChange={(e) => setForm((f) => ({ ...f, auth_from_name: e.target.value }))}
+                placeholder={form.from_name || "Centrix Security"}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">From address</span>
+              <input
+                type="email"
+                className={inputClass}
+                value={form.auth_from_address}
+                onChange={(e) => setForm((f) => ({ ...f, auth_from_address: e.target.value }))}
+                placeholder="noreply@yourdomain.com"
+              />
+            </label>
+            <label className="block text-sm sm:col-span-2">
+              <span className="mb-1 block text-xs font-medium text-slate-600">SMTP host</span>
+              <input
+                className={inputClass}
+                value={form.auth_smtp_host}
+                onChange={(e) => setForm((f) => ({ ...f, auth_smtp_host: e.target.value }))}
+                placeholder="smtp.yourdomain.com"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Port</span>
+              <input
+                className={inputClass}
+                value={form.auth_smtp_port}
+                onChange={(e) => setForm((f) => ({ ...f, auth_smtp_port: e.target.value }))}
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Encryption</span>
+              <select
+                className={inputClass}
+                value={form.auth_smtp_encryption}
+                onChange={(e) => setForm((f) => ({ ...f, auth_smtp_encryption: e.target.value }))}
+              >
+                <option value="tls">TLS</option>
+                <option value="ssl">SSL</option>
+                <option value="none">None</option>
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">SMTP username</span>
+              <input
+                className={inputClass}
+                value={form.auth_smtp_username}
+                onChange={(e) => setForm((f) => ({ ...f, auth_smtp_username: e.target.value }))}
+                autoComplete="off"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">SMTP password</span>
+              <input
+                type="password"
+                className={inputClass}
+                value={form.auth_smtp_password}
+                onChange={(e) => setForm((f) => ({ ...f, auth_smtp_password: e.target.value }))}
+                placeholder={
+                  form.auth_smtp_password_set ? "•••••••• (saved — leave blank to keep)" : ""
+                }
+                autoComplete="new-password"
+              />
+            </label>
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-end gap-2">
+          <label className="block min-w-[16rem] flex-1 text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Test recipient</span>
+            <input
+              type="email"
+              className={inputClass}
+              value={authTestTo}
+              onChange={(e) => setAuthTestTo(e.target.value)}
+              placeholder={testTo || "you@example.com"}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={testingAuth || (!form.auth_mail_use_dedicated && !form.enabled)}
+            className={SECONDARY_BTN_CLASS}
+            onClick={() => void handleTestAuthMail()}
+          >
+            {testingAuth ? "Sending…" : "Send 2FA test email"}
+          </button>
         </div>
       </section>
 
@@ -187,7 +374,7 @@ export function PlatformEmailDeliveryPanel() {
       <section className="theme-panel rounded-xl border p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">IMAP (inbox sync)</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Pull client replies into the Mailbox tab so you can read and respond from Centrix. Same mailbox as
+          Pull client replies into Platform → Mailbox so you can read and respond from Centrix. Same mailbox as
           SMTP is typical (e.g. imap.gmail.com:993).
         </p>
         {!form.imap_extension_available ? (
@@ -305,6 +492,94 @@ export function PlatformEmailDeliveryPanel() {
             onChange={(e) => setForm((f) => ({ ...f, contract_email_body: e.target.value }))}
           />
         </label>
+      </section>
+
+      <section className="theme-panel rounded-xl border p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">Subscription renewal reminders</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Automatically email organization admins (and org email) before a plan expires, with a draft
+          renewal invoice PDF attached. Runs daily when enabled.
+        </p>
+
+        <label className="mt-4 flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={form.subscription_reminder_enabled}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, subscription_reminder_enabled: e.target.checked }))
+            }
+          />
+          <span className="text-sm font-medium text-slate-900">
+            Send automatic renewal reminders
+          </span>
+        </label>
+
+        <label className="mt-4 block text-sm">
+          <span className="mb-1 block text-xs font-medium text-slate-600">
+            Reminder days before expiry
+          </span>
+          <input
+            className={inputClass}
+            value={form.subscription_reminder_days}
+            onChange={(e) => setForm((f) => ({ ...f, subscription_reminder_days: e.target.value }))}
+            placeholder="30,14,7"
+          />
+          <span className="mt-1 block text-[11px] text-slate-500">
+            Comma-separated day offsets (e.g. 30,14,7). One email is sent per matching day.
+          </span>
+        </label>
+
+        <p className="mt-4 text-xs text-slate-500">
+          Placeholders: {"{customer_name}"}, {"{company_code}"}, {"{plan_name}"}, {"{expires_on}"},{" "}
+          {"{days_remaining}"}, {"{invoice_number}"}, {"{total}"}, {"{from_name}"}
+        </p>
+
+        <label className="mt-3 block text-sm">
+          <span className="mb-1 block text-xs font-medium text-slate-600">Subject</span>
+          <input
+            className={inputClass}
+            value={form.renewal_email_subject}
+            onChange={(e) => setForm((f) => ({ ...f, renewal_email_subject: e.target.value }))}
+          />
+        </label>
+        <label className="mt-3 block text-sm">
+          <span className="mb-1 block text-xs font-medium text-slate-600">Body</span>
+          <textarea
+            className={inputClass}
+            rows={8}
+            value={form.renewal_email_body}
+            onChange={(e) => setForm((f) => ({ ...f, renewal_email_body: e.target.value }))}
+          />
+        </label>
+
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+          <p className="text-xs font-medium text-slate-700">Send test renewal reminder</p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            Sends your current subject/body with sample placeholders and a sample invoice PDF. Does
+            not notify a real tenant.
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <label className="block min-w-[16rem] flex-1 text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">Recipient</span>
+              <input
+                type="email"
+                className={inputClass}
+                value={renewalTestTo}
+                onChange={(e) => setRenewalTestTo(e.target.value)}
+                placeholder={testTo || "you@example.com"}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={testingRenewal || !form.enabled}
+              className={SECONDARY_BTN_CLASS}
+              onClick={() => void handleTestRenewalReminder()}
+            >
+              {testingRenewal ? "Sending…" : "Send test reminder"}
+            </button>
+          </div>
+        </div>
       </section>
 
       <section className="theme-panel rounded-xl border p-5 shadow-sm">

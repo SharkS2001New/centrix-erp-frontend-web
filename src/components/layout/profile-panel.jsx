@@ -10,6 +10,7 @@ import { PasswordInput } from "@/components/auth/password-input";
 import {
   Field,
   PrimaryButton,
+  SECONDARY_BTN_CLASS,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -46,7 +47,13 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyMode, setVerifyMode] = useState(false);
+  const [verifyCode, setVerifyCode] = useState("");
   const requiredPasswordChange = Boolean(user?.must_change_password);
+  const savedEmail = String(user?.email ?? "").trim();
+  const emailVerified = Boolean(user?.email_verified_at);
+  const emailDirty = email.trim() !== savedEmail;
 
   useEffect(() => {
     setFullName(user?.full_name ?? "");
@@ -70,12 +77,57 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
         full_name: res.full_name,
         username: res.username,
         email: res.email,
+        email_verified_at: res.email_verified_at ?? null,
       });
+      setVerifyMode(false);
+      setVerifyCode("");
       notifySuccess("Profile updated.");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not update profile.");
     } finally {
       setSavingProfile(false);
+    }
+  }
+
+  async function beginEmailVerification() {
+    setVerifyBusy(true);
+    try {
+      const res = await apiRequest("/auth/email/verify/begin", { method: "POST", body: {} });
+      if (res.already_verified) {
+        updateProfile({ email_verified_at: res.verified_at ?? user?.email_verified_at });
+        notifySuccess("Email is already verified.");
+        setVerifyMode(false);
+      } else {
+        setVerifyMode(true);
+        setVerifyCode("");
+        notifySuccess("Verification code sent to your email.");
+      }
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not send verification email.");
+    } finally {
+      setVerifyBusy(false);
+    }
+  }
+
+  async function confirmEmailVerification(e) {
+    e.preventDefault();
+    setVerifyBusy(true);
+    try {
+      const res = await apiRequest("/auth/email/verify/confirm", {
+        method: "POST",
+        body: { code: verifyCode.trim() },
+      });
+      updateProfile({
+        email: res.email,
+        email_verified_at: res.email_verified_at ?? null,
+      });
+      setVerifyMode(false);
+      setVerifyCode("");
+      notifySuccess("Email verified.");
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Invalid verification code.");
+    } finally {
+      setVerifyBusy(false);
     }
   }
 
@@ -167,6 +219,65 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
               autoComplete="email"
             />
           </Field>
+          {savedEmail ? (
+            <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2">
+              {emailVerified && !emailDirty ? (
+                <p className="text-xs text-emerald-700">Email verified. Required before enabling email 2FA.</p>
+              ) : (
+                <p className="text-xs text-amber-800">
+                  {emailDirty
+                    ? "Save your email first, then verify it. Email 2FA requires a verified address."
+                    : "This email is not verified yet. Verify it before enabling email 2FA."}
+                </p>
+              )}
+              {!emailVerified && !emailDirty ? (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={SECONDARY_BTN_CLASS}
+                    disabled={verifyBusy || savingProfile}
+                    onClick={() => void beginEmailVerification()}
+                  >
+                    {verifyBusy && !verifyMode ? "Sending…" : "Send verification code"}
+                  </button>
+                </div>
+              ) : null}
+              {verifyMode && !emailDirty && !emailVerified ? (
+                <form onSubmit={(e) => void confirmEmailVerification(e)} className="space-y-2 pt-1">
+                  <Field label="Email verification code">
+                    <input
+                      className={inputClassName()}
+                      value={verifyCode}
+                      onChange={(e) => setVerifyCode(e.target.value)}
+                      placeholder="6-digit code"
+                      autoComplete="one-time-code"
+                      inputMode="numeric"
+                    />
+                  </Field>
+                  <div className="flex flex-wrap gap-2">
+                    <PrimaryButton type="submit" showIcon={false} disabled={verifyBusy || !verifyCode.trim()}>
+                      {verifyBusy ? "Verifying…" : "Verify email"}
+                    </PrimaryButton>
+                    <button
+                      type="button"
+                      className={SECONDARY_BTN_CLASS}
+                      disabled={verifyBusy}
+                      onClick={() => {
+                        setVerifyMode(false);
+                        setVerifyCode("");
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Add and save an email address, then verify it to use email two-factor authentication.
+            </p>
+          )}
           <dl className="space-y-3 border-t border-slate-100 pt-4 text-sm">
             <div>
               <dt className="text-slate-500">Organization</dt>

@@ -16,6 +16,8 @@ export const NAV_HREF_ICONS = {
   "/platform/subscriptions": "clock",
   "/platform/contracts": "file",
   "/platform/email": "chat",
+  "/platform/mailbox": "chat",
+  "/platform/settings": "chat",
   "/platform/active-users": "users",
   "/platform/system-issues": "alert",
   "/platform/database-backups": "database",

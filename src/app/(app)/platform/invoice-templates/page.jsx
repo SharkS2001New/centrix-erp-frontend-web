@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -11,7 +11,6 @@ import {
   SECONDARY_BTN_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { PlatformInvoiceViewer } from "@/components/platform/platform-invoice-viewer";
-import { buildPlatformInvoiceHtml } from "@/lib/platform-invoice-print";
 import {
   PLATFORM_INVOICE_DESIGN_TEMPLATES,
   sampleInvoiceForDesignPreview,
@@ -42,49 +41,6 @@ function invoiceFromSavedTemplate(tpl) {
       ...(tpl.invoice_options ?? {}),
     },
   });
-}
-
-function DesignPreviewCard({ tpl, onPreview }) {
-  const html = useMemo(
-    () => buildPlatformInvoiceHtml(sampleInvoiceForDesignPreview(tpl.id)),
-    [tpl.id],
-  );
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900/40">
-      <div className="relative h-44 overflow-hidden bg-slate-100 dark:bg-slate-950">
-        <iframe
-          title={`${tpl.label} preview`}
-          srcDoc={html}
-          className="pointer-events-none absolute left-0 top-0 origin-top-left border-0"
-          style={{ width: "800px", height: "1130px", transform: "scale(0.28)" }}
-          sandbox=""
-          tabIndex={-1}
-        />
-      </div>
-      <div className="space-y-2 p-3">
-        <div>
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{tpl.label}</p>
-          <p className="mt-0.5 text-xs text-slate-500">{tpl.description}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="text-sm font-medium text-[#185FA5] hover:underline"
-            onClick={() => onPreview(tpl)}
-          >
-            Preview
-          </button>
-          <Link
-            href={`/platform/invoices/new?design=${encodeURIComponent(tpl.id)}`}
-            className="text-sm font-medium text-slate-600 hover:underline"
-          >
-            Use this template
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export default function PlatformInvoiceTemplatesPage() {
@@ -137,7 +93,7 @@ export default function PlatformInvoiceTemplatesPage() {
   return (
     <CatalogPageShell
       title="Invoice templates"
-      subtitle="Design layouts for how invoices look, plus saved content templates for recurring billing packages."
+      subtitle="Saved content templates for recurring billing packages. Choose a design layout when creating or editing an invoice."
       action={
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -161,29 +117,6 @@ export default function PlatformInvoiceTemplatesPage() {
           { label: "Templates" },
         ]}
       />
-
-      <section className="theme-panel mb-6 rounded-xl border p-5 shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-900">Design templates</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Visual layouts applied when you create or edit a platform invoice. Preview below, then use on a new invoice.
-            </p>
-          </div>
-          <p className="text-xs text-slate-400">{PLATFORM_INVOICE_DESIGN_TEMPLATES.length} designs</p>
-        </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {PLATFORM_INVOICE_DESIGN_TEMPLATES.map((tpl) => (
-            <DesignPreviewCard
-              key={tpl.id}
-              tpl={tpl}
-              onPreview={(row) =>
-                setViewerInvoice(sampleInvoiceForDesignPreview(row.id))
-              }
-            />
-          ))}
-        </div>
-      </section>
 
       <section className="theme-panel rounded-xl border shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">

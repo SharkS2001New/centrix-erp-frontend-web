@@ -41,17 +41,11 @@ export const PLATFORM_LINK_GROUPS = [
         icon: "star",
         description: "Platform test console and OpenAI credentials for super-admin knowledge training.",
       },
-    ],
-  },
-  {
-    id: "settings",
-    label: "Settings",
-    links: [
       {
-        href: "/platform/settings",
-        label: "Platform settings",
+        href: "/platform/mailbox",
+        label: "Mailbox",
         icon: "chat",
-        description: "Mailbox, email delivery (SMTP/IMAP), and WhatsApp — one place for platform communications.",
+        description: "Send mail to clients, sync replies, and respond from one inbox.",
       },
     ],
   },
@@ -118,6 +112,19 @@ export const PLATFORM_LINK_GROUPS = [
         label: "Legacy data converter",
         icon: "upload",
         description: "Convert legacy exports into Centrix import templates.",
+      },
+    ],
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    links: [
+      {
+        href: "/platform/settings",
+        label: "Platform settings",
+        icon: "chat",
+        description:
+          "Email delivery (SMTP/IMAP), WhatsApp, renewal reminders, and alert notifications.",
       },
     ],
   },

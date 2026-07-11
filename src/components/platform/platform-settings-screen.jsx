@@ -1,28 +1,37 @@
 "use client";
 
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useEffect } from "react";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { SettingsSubTabBar } from "@/components/admin/settings-sub-tabs";
-import { PlatformMailboxPanel } from "@/components/platform/platform-mailbox-panel";
 import { PlatformEmailDeliveryPanel } from "@/components/platform/platform-email-delivery-panel";
 import { PlatformWhatsappScreen } from "@/components/platform/platform-whatsapp-screen";
+import { PlatformAlertNotificationsPanel } from "@/components/platform/platform-alert-notifications-panel";
 
 const TABS = [
-  { id: "mailbox", label: "Mailbox" },
   { id: "email", label: "Email delivery" },
   { id: "whatsapp", label: "WhatsApp" },
+  { id: "alerts", label: "Alert notifications" },
 ];
 
-function resolveTab(tabId, fallback = "mailbox") {
+function resolveTab(tabId, fallback = "email") {
   return TABS.some((t) => t.id === tabId) ? tabId : fallback;
 }
 
-export function PlatformSettingsScreen({ initialTab = "mailbox" }) {
+export function PlatformSettingsScreen({ initialTab = "email" }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const activeTab = resolveTab(searchParams.get("tab"), resolveTab(initialTab));
+  const requestedTab = searchParams.get("tab");
+
+  useEffect(() => {
+    if (requestedTab === "mailbox") {
+      router.replace("/platform/mailbox");
+    }
+  }, [requestedTab, router]);
+
+  const activeTab = resolveTab(requestedTab, resolveTab(initialTab));
 
   function onTabChange(id) {
     if (id === activeTab) return;
@@ -32,11 +41,11 @@ export function PlatformSettingsScreen({ initialTab = "mailbox" }) {
   }
 
   const subtitle =
-    activeTab === "mailbox"
-      ? "Send mail to clients, sync replies, and respond from one inbox."
-      : activeTab === "email"
-        ? "SMTP, IMAP, and contract email templates for platform outbound mail."
-        : "Shared WhatsApp webhook for all tenant organizations.";
+    activeTab === "email"
+      ? "SMTP, IMAP, contract templates, and subscription renewal reminders."
+      : activeTab === "whatsapp"
+        ? "Shared WhatsApp webhook for all tenant organizations."
+        : "Email digest and instant WhatsApp/email alerts for system errors & reports.";
 
   return (
     <CatalogPageShell title="Platform settings" subtitle={subtitle}>
@@ -51,9 +60,9 @@ export function PlatformSettingsScreen({ initialTab = "mailbox" }) {
         />
       </div>
 
-      {activeTab === "mailbox" ? <PlatformMailboxPanel /> : null}
       {activeTab === "email" ? <PlatformEmailDeliveryPanel /> : null}
       {activeTab === "whatsapp" ? <PlatformWhatsappScreen embedded /> : null}
+      {activeTab === "alerts" ? <PlatformAlertNotificationsPanel /> : null}
     </CatalogPageShell>
   );
 }

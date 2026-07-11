@@ -1,10 +1,35 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { apiRequest, ApiError } from "@/lib/api";
 import { PasswordInput } from "@/components/auth/password-input";
 import { Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
+
+async function copyText(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return false;
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const el = document.createElement("textarea");
+      el.value = text;
+      el.setAttribute("readonly", "");
+      el.style.position = "fixed";
+      el.style.left = "-9999px";
+      document.body.appendChild(el);
+      el.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(el);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
 
 /**
  * User-based 2FA setup under My profile: email OTP or Google Authenticator.
@@ -15,6 +40,7 @@ export function ProfileTwoFactorSection() {
   const [busy, setBusy] = useState(false);
   const [emailCode, setEmailCode] = useState("");
   const [totpSetup, setTotpSetup] = useState(null);
+  const [totpQrDataUrl, setTotpQrDataUrl] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [disablePassword, setDisablePassword] = useState("");
   const [mode, setMode] = useState(null); // email_confirm | totp_confirm | disable | null
@@ -34,6 +60,33 @@ export function ProfileTwoFactorSection() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const otpauthUrl = totpSetup?.otpauth_url;
+    if (!otpauthUrl) {
+      setTotpQrDataUrl("");
+      return undefined;
+    }
+
+    (async () => {
+      try {
+        const dataUrl = await QRCode.toDataURL(otpauthUrl, {
+          errorCorrectionLevel: "M",
+          margin: 2,
+          width: 220,
+          color: { dark: "#0f172a", light: "#ffffff" },
+        });
+        if (!cancelled) setTotpQrDataUrl(dataUrl);
+      } catch {
+        if (!cancelled) setTotpQrDataUrl("");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [totpSetup?.otpauth_url]);
 
   async function beginEmail() {
     setBusy(true);
@@ -93,6 +146,7 @@ export function ProfileTwoFactorSection() {
       setStatus(res.two_factor ?? res);
       setMode(null);
       setTotpSetup(null);
+      setTotpQrDataUrl("");
       setTotpCode("");
       notifySuccess("Authenticator two-factor authentication enabled.");
     } catch (err) {
@@ -119,6 +173,18 @@ export function ProfileTwoFactorSection() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleCopySecret() {
+    const ok = await copyText(totpSetup?.secret);
+    if (ok) notifySuccess("Secret key copied.");
+    else notifyError("Could not copy the secret key.");
+  }
+
+  async function handleCopyOtpauth() {
+    const ok = await copyText(totpSetup?.otpauth_url);
+    if (ok) notifySuccess("Authenticator link copied.");
+    else notifyError("Could not copy the authenticator link.");
   }
 
   if (loading) {
@@ -150,7 +216,12 @@ export function ProfileTwoFactorSection() {
       {mode === null && available && !enabled ? (
         <div className="flex flex-wrap gap-2">
           {allowed.includes("email") ? (
-            <button type="button" className={SECONDARY_BTN_CLASS} disabled={busy || !status?.has_email} onClick={() => void beginEmail()}>
+            <button
+              type="button"
+              className={SECONDARY_BTN_CLASS}
+              disabled={busy || !status?.has_email || !status?.email_verified}
+              onClick={() => void beginEmail()}
+            >
               Enable email 2FA
             </button>
           ) : null}
@@ -159,8 +230,15 @@ export function ProfileTwoFactorSection() {
               Enable Google Authenticator
             </button>
           ) : null}
-          {!status?.has_email && allowed.includes("email") ? (
-            <p className="w-full text-xs text-slate-500">Save an email on your profile before enabling email 2FA.</p>
+          {allowed.includes("email") && !status?.has_email ? (
+            <p className="w-full text-xs text-slate-500">
+              Save an email on your profile and verify it before enabling email 2FA.
+            </p>
+          ) : null}
+          {allowed.includes("email") && status?.has_email && !status?.email_verified ? (
+            <p className="w-full text-xs text-slate-500">
+              Verify your email address in the Account section above before enabling email 2FA.
+            </p>
           ) : null}
         </div>
       ) : null}
@@ -194,22 +272,73 @@ export function ProfileTwoFactorSection() {
       ) : null}
 
       {mode === "totp_confirm" && totpSetup ? (
-        <form onSubmit={(e) => void confirmTotp(e)} className="space-y-3">
+        <form onSubmit={(e) => void confirmTotp(e)} className="space-y-4">
           <p className="text-sm text-slate-600">
-            Add this account in Google Authenticator (or any TOTP app) using the secret below, then enter
-            the 6-digit code.
+            Scan the QR code with Google Authenticator (or any TOTP app). If you cannot scan, copy the
+            secret key and add it manually, then enter the 6-digit code from the app.
           </p>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm break-all">
-            {totpSetup.secret}
+
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div className="mx-auto flex h-[236px] w-[236px] items-center justify-center rounded-xl border border-slate-200 bg-white p-2 shadow-sm sm:mx-0">
+              {totpQrDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={totpQrDataUrl}
+                  alt="QR code for Google Authenticator"
+                  width={220}
+                  height={220}
+                  className="h-[220px] w-[220px]"
+                />
+              ) : (
+                <p className="px-4 text-center text-xs text-slate-500">Generating QR code…</p>
+              )}
+            </div>
+
+            <div className="min-w-0 flex-1 space-y-3">
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-600">Secret key</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className="block min-w-0 flex-1 break-all rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-900">
+                    {totpSetup.secret}
+                  </code>
+                  <button
+                    type="button"
+                    className={SECONDARY_BTN_CLASS}
+                    onClick={() => void handleCopySecret()}
+                  >
+                    Copy key
+                  </button>
+                </div>
+              </div>
+
+              {totpSetup.otpauth_url ? (
+                <div>
+                  <p className="mb-1 text-xs font-medium text-slate-600">Authenticator setup link</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <code className="block min-w-0 flex-1 truncate rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-600">
+                      {totpSetup.otpauth_url}
+                    </code>
+                    <button
+                      type="button"
+                      className={SECONDARY_BTN_CLASS}
+                      onClick={() => void handleCopyOtpauth()}
+                    >
+                      Copy link
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
-          <p className="text-[11px] text-slate-500 break-all">otpauth: {totpSetup.otpauth_url}</p>
+
           <Field label="Authenticator code">
             <input
               className={inputClassName()}
               value={totpCode}
               onChange={(e) => setTotpCode(e.target.value)}
-              placeholder="6-digit code"
+              placeholder="6-digit code from the app"
               autoComplete="one-time-code"
+              inputMode="numeric"
             />
           </Field>
           <div className="flex flex-wrap gap-2">
@@ -223,6 +352,7 @@ export function ProfileTwoFactorSection() {
               onClick={() => {
                 setMode(null);
                 setTotpSetup(null);
+                setTotpQrDataUrl("");
               }}
             >
               Cancel
