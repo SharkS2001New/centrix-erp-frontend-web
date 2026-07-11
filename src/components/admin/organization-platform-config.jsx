@@ -1622,7 +1622,11 @@ export function OrganizationStatusPanel({ organization, isActive: isActiveProp, 
       </PlatformFormSection>
 
       {organizationId ? (
-        <OrganizationBillingPanel organizationId={organizationId} organization={organization} />
+        <OrganizationBillingPanel
+          organizationId={organizationId}
+          organization={organization}
+          showRevoke
+        />
       ) : null}
     </div>
   );

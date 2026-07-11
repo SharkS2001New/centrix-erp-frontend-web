@@ -24,6 +24,13 @@ const CARDS = [
     permission: P.admin.company.view,
   },
   {
+    href: "/admin/license",
+    title: "License Information",
+    description: "View your Centrix plan, attached invoice, and contracts.",
+    icon: "📜",
+    permission: P.admin.company.view,
+  },
+  {
     href: "/admin/branches",
     title: "Branches",
     description: "Manage branch locations, contacts, and status.",

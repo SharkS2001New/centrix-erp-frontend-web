@@ -170,6 +170,7 @@ export const NAV_HREF_ICONS = {
   // Administration
   "/admin": "dashboard",
   "/admin/company": "building",
+  "/admin/license": "shield",
   "/admin/branches": "map",
   "/admin/users": "users",
   "/admin/roles": "shield",

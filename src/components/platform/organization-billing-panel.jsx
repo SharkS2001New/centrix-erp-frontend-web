@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 import { PlatformContractViewer } from "@/components/platform/platform-contract-viewer";
 import {
   CONTRACT_STATUS_STYLES,
@@ -38,19 +39,23 @@ function BillingSection({ title, description, children }) {
 }
 
 /**
- * Subscription package + contracts.
- * mode=platform — super-admin org status (manage links).
- * mode=tenant — org admin Company profile (read-only agreement prices).
+ * Subscription package + invoice + contracts.
+ * mode=platform — super-admin org status (manage links / revoke).
+ * mode=tenant — org admin License Information (read-only).
  */
 export function OrganizationBillingPanel({
   organizationId,
   organization,
   mode = "platform",
+  showInvoice = true,
+  showRevoke = false,
 }) {
+  const confirm = useConfirm();
   const isTenant = mode === "tenant";
   const [subscription, setSubscription] = useState(null);
   const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [acting, setActing] = useState(false);
   const [viewerContract, setViewerContract] = useState(null);
 
   const load = useCallback(async () => {
@@ -120,6 +125,32 @@ export function OrganizationBillingPanel({
     }
   }
 
+  async function handleRevoke() {
+    if (!subscription?.id) return;
+    const orgLabel = organization?.org_name || "this organization";
+    const ok = await confirm({
+      title: "Revoke licence?",
+      message: `Revoke the Centrix licence for ${orgLabel}? Users will be signed out immediately and locked out until you extend or re-assign a plan.`,
+      confirmLabel: "Revoke licence",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setActing(true);
+    try {
+      const res = await apiRequest(`/admin/platform-subscriptions/${subscription.id}/revoke`, {
+        method: "POST",
+        body: {},
+      });
+      notifySuccess(res.message ?? "Licence revoked.");
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not revoke licence.");
+    } finally {
+      setActing(false);
+    }
+  }
+
   const overdue = isSubscriptionOverdue(subscription);
   const status = overdue ? "past_due" : subscription?.status;
   const prices = subscription ? resolveAgreementPrices(subscription) : null;
@@ -129,14 +160,21 @@ export function OrganizationBillingPanel({
   const license = subscription ? resolveOrganizationLicense(subscription) : null;
   const licenseExpired = license ? isLicenseExpired(license) : false;
   const licenseSoon = license ? isLicenseExpiringSoon(license) : false;
+  const invoice = subscription?.invoice ?? null;
+  const canRevoke =
+    showRevoke &&
+    !isTenant &&
+    subscription?.id &&
+    subscription.status !== "cancelled" &&
+    subscription.status !== "expired";
 
   return (
     <>
       <BillingSection
-        title={isTenant ? "Your Centrix subscription" : "Subscription package"}
+        title={isTenant ? "Your Centrix plan" : "Subscription package"}
         description={
           isTenant
-            ? "First-time and renewal prices agreed with ALPAC for your organization."
+            ? "Plan, seats, and licence period agreed for your organization."
             : "The plan this tenant is billed under — first payment, renewal, and overdue status."
         }
       >
@@ -220,7 +258,7 @@ export function OrganizationBillingPanel({
               </span>
             </div>
             {!isTenant ? (
-              <div className="mt-3 flex flex-wrap gap-3 text-xs">
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
                 <Link href="/platform/subscriptions" className="font-medium text-[#185FA5] hover:underline">
                   Manage subscriptions
                 </Link>
@@ -230,11 +268,90 @@ export function OrganizationBillingPanel({
                 >
                   Create invoice
                 </Link>
+                {canRevoke ? (
+                  <button
+                    type="button"
+                    disabled={acting}
+                    className="font-medium text-red-600 hover:underline disabled:opacity-50"
+                    onClick={() => void handleRevoke()}
+                  >
+                    {acting ? "Revoking…" : "Revoke licence"}
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>
         )}
       </BillingSection>
+
+      {showInvoice ? (
+        <BillingSection
+          title="Attached invoice"
+          description={
+            isTenant
+              ? "Invoice linked to your current subscription."
+              : "Primary invoice attached to this organization’s subscription."
+          }
+        >
+          {loading ? (
+            <p className="text-sm text-slate-500">Loading invoice…</p>
+          ) : !invoice?.id && !subscription?.invoice_id ? (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40">
+              {isTenant ? (
+                "No invoice is attached to your subscription yet."
+              ) : (
+                <>
+                  No invoice attached.{" "}
+                  <Link href="/platform/subscriptions" className="font-medium text-[#185FA5] hover:underline">
+                    Attach from Subscriptions
+                  </Link>
+                  {" · "}
+                  <Link
+                    href={`/platform/invoices/new?organization=${organizationId}`}
+                    className="font-medium text-[#185FA5] hover:underline"
+                  >
+                    Create invoice
+                  </Link>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {invoice?.invoice_number || `Invoice #${invoice?.id ?? subscription.invoice_id}`}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Issued {formatBillingDate(invoice?.issue_date)}
+                    {invoice?.due_date ? ` · Due ${formatBillingDate(invoice.due_date)}` : ""}
+                  </p>
+                  {invoice?.total != null ? (
+                    <p className="mt-1 text-sm font-medium tabular-nums text-slate-800 dark:text-slate-100">
+                      {formatBillingMoney(invoice.total, invoice.currency)}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  {invoice?.status ? (
+                    <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium capitalize text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                      {invoice.status}
+                    </span>
+                  ) : null}
+                  {!isTenant && (invoice?.id || subscription.invoice_id) ? (
+                    <Link
+                      href={`/platform/invoices/${invoice?.id ?? subscription.invoice_id}`}
+                      className="text-sm font-medium text-[#185FA5] hover:underline"
+                    >
+                      Open invoice
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          )}
+        </BillingSection>
+      ) : null}
 
       <BillingSection
         title="Contracts & quotes"

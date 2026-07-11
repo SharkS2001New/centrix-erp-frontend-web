@@ -9,6 +9,7 @@ export const ORG_ADMIN_PERMISSION_PREFIXES = ["admin.", "accounting.account_mapp
 /** Nav/settings scope for tenant org administration (not platform operational settings). */
 export const ORG_ADMIN_SETTINGS_PATH_PREFIXES = [
   "/admin/company",
+  "/admin/license",
   "/admin/branches",
   "/admin/users",
   "/admin/roles",

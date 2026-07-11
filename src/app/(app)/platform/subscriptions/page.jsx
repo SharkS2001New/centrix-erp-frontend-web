@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/use-confirm";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
   CatalogPageShell,
@@ -57,6 +58,7 @@ function invoiceOptionLabel(inv) {
 
 export default function PlatformSubscriptionsPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [rows, setRows] = useState([]);
   const [plans, setPlans] = useState([]);
   const [organizations, setOrganizations] = useState([]);
@@ -285,16 +287,28 @@ export default function PlatformSubscriptionsPage() {
     }
   }
 
-  async function setStatus(sub, status) {
+  async function revokeLicence(sub) {
+    const orgLabel = sub.organization?.org_name || "this organization";
+    const ok = await confirm({
+      title: "Revoke licence?",
+      message: `Revoke the Centrix licence for ${orgLabel}? Users will be signed out immediately and locked out until you extend or re-assign a plan.`,
+      confirmLabel: "Revoke licence",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setSaving(true);
     try {
-      await apiRequest(`/admin/platform-subscriptions/${sub.id}`, {
-        method: "PATCH",
-        body: { status },
+      const res = await apiRequest(`/admin/platform-subscriptions/${sub.id}/revoke`, {
+        method: "POST",
+        body: {},
       });
-      notifySuccess("Subscription updated.");
+      notifySuccess(res.message ?? "Licence revoked.");
       await load();
     } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Failed to update subscription.");
+      notifyError(e instanceof ApiError ? e.message : "Could not revoke licence.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -490,19 +504,28 @@ export default function PlatformSubscriptionsPage() {
                           </button>
                           {sub.organization_id ? (
                             <Link
+                              href={`/platform/organizations/${sub.organization_id}/admin/license`}
+                              className="text-xs text-slate-600 hover:underline"
+                            >
+                              License info
+                            </Link>
+                          ) : null}
+                          {sub.organization_id ? (
+                            <Link
                               href={`/platform/organizations/${sub.organization_id}`}
                               className="text-xs text-slate-600 hover:underline"
                             >
                               Open organization
                             </Link>
                           ) : null}
-                          {sub.status !== "cancelled" ? (
+                          {sub.status !== "cancelled" && sub.status !== "expired" ? (
                             <button
                               type="button"
-                              className="text-xs text-red-600 hover:underline"
-                              onClick={() => void setStatus(sub, "cancelled")}
+                              className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                              disabled={saving}
+                              onClick={() => void revokeLicence(sub)}
                             >
-                              Cancel
+                              Revoke licence
                             </button>
                           ) : null}
                         </div>

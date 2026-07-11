@@ -14,7 +14,7 @@ import {
 import { EntityPhotoDisplay } from "@/components/media/entity-photo-display";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { confirmRemoveOptions, useConfirm } from "@/lib/use-confirm";
-import { OrganizationBillingPanel } from "@/components/platform/organization-billing-panel";
+import Link from "next/link";
 
 const EMPTY_FORM = {
   org_name: "",
@@ -313,12 +313,21 @@ export default function AdminCompanyPage() {
           </div>
         </form>
 
-        <div className="theme-panel mt-6 space-y-8 rounded-xl border p-6 shadow-sm">
-          <OrganizationBillingPanel
-            organizationId={platformOrgId || orgId}
-            organization={{ org_name: form.org_name, id: orgId }}
-            mode={platformOrgId ? "platform" : "tenant"}
-          />
+        <div className="theme-panel mt-6 rounded-xl border p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-900">License &amp; billing</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            View your Centrix plan, attached invoice, and contract documents.
+          </p>
+          <Link
+            href={
+              platformOrgId
+                ? `/platform/organizations/${platformOrgId}/admin/license`
+                : "/admin/license"
+            }
+            className="mt-3 inline-flex text-sm font-medium text-[#185FA5] hover:underline"
+          >
+            Open License Information →
+          </Link>
         </div>
         </>
       )}
