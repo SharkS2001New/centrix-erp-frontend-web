@@ -33,6 +33,7 @@ export function PlatformAiEmailAssist({
   const [busy, setBusy] = useState(false);
   const [templateId, setTemplateId] = useState(selectedTemplateId || "");
   const [matchedCount, setMatchedCount] = useState(similarReplies?.length || 0);
+  const [useSimilarResponses, setUseSimilarResponses] = useState(false);
   const isReply = variant === "reply";
 
   useEffect(() => {
@@ -50,7 +51,7 @@ export function PlatformAiEmailAssist({
     onSelectedTemplateIdChange?.(id);
   }
 
-  async function run(mode, repliesOverride = null) {
+  async function run(mode, repliesOverride = null, successMessage = null) {
     setBusy(true);
     try {
       const usingTemplate = mode === "from_template";
@@ -66,9 +67,13 @@ export function PlatformAiEmailAssist({
         mode,
         instruction:
           instruction ||
-          (usingTemplate
-            ? "Update this template for the current recipient. Change names, dates, amounts, and other details as needed; keep the overall structure."
-            : undefined),
+          (mode === "reply"
+            ? repliesForAi?.length
+              ? "Read the inbound email and the similar saved responses. Draft a clear, professional reply that matches how we answered similar emails."
+              : "Read the inbound email carefully and draft a clear, professional reply the platform admin can send."
+            : usingTemplate
+              ? "Update this template for the current recipient. Change names, dates, amounts, and other details as needed; keep the overall structure."
+              : undefined),
         subject: usingTemplate ? selectedTemplate.subject : subject,
         body: usingTemplate ? selectedTemplate.body : body,
         placeholders,
@@ -86,15 +91,16 @@ export function PlatformAiEmailAssist({
         body: result.body || body,
       });
       notifySuccess(
-        usingTemplate
-          ? "Drafted from template — review before sending."
-          : mode === "reply"
-            ? (repliesForAi?.length
-                ? `Drafted using ${repliesForAi.length} similar saved response${repliesForAi.length === 1 ? "" : "s"} — review before sending.`
-                : "No similar saved responses found — drafted from this email alone. Review before sending.")
-            : mode === "draft"
-              ? "Draft applied — review before saving."
-              : "Email updated — review before saving.",
+        successMessage ||
+          (usingTemplate
+            ? "Drafted from template — review before sending."
+            : mode === "reply"
+              ? (repliesForAi?.length
+                  ? `Drafted from this email plus ${repliesForAi.length} similar saved response${repliesForAi.length === 1 ? "" : "s"} — review before sending.`
+                  : "Reply drafted from the email above — review before sending.")
+              : mode === "draft"
+                ? "Draft applied — review before saving."
+                : "Email updated — review before saving."),
       );
     } catch (err) {
       notifyError(
@@ -107,15 +113,31 @@ export function PlatformAiEmailAssist({
     }
   }
 
-  async function checkThroughSimilar() {
+  async function draftReplyFromEmail() {
     setBusy(true);
     try {
-      let replies = similarReplies || [];
-      if (typeof onCheckSimilar === "function") {
-        replies = (await onCheckSimilar()) || [];
+      let replies = [];
+      if (useSimilarResponses) {
+        if (typeof onCheckSimilar === "function") {
+          replies = (await onCheckSimilar()) || [];
+        } else {
+          replies = similarReplies || [];
+        }
+        setMatchedCount(Array.isArray(replies) ? replies.length : 0);
+      } else {
+        setMatchedCount(0);
       }
-      setMatchedCount(Array.isArray(replies) ? replies.length : 0);
-      await run("reply", Array.isArray(replies) ? replies : []);
+
+      const list = Array.isArray(replies) ? replies : [];
+      await run(
+        "reply",
+        list,
+        useSimilarResponses
+          ? list.length
+            ? `Drafted from this email plus ${list.length} similar saved response${list.length === 1 ? "" : "s"} — review in the box below.`
+            : "No similar saved responses found — drafted from this email alone. Review before sending."
+          : "Reply drafted from the email above — review in the box below before sending.",
+      );
     } finally {
       setBusy(false);
     }
@@ -130,16 +152,18 @@ export function PlatformAiEmailAssist({
           <div>
             <p className="text-sm font-medium text-sky-950 dark:text-sky-100">AI reply assist</p>
             <p className="mt-0.5 text-xs text-sky-800/80 dark:text-sky-200/80">
-              Use <strong>Check through similar responses</strong> when you want AI to scan replies you
-              saved for future use.{" "}
+              <strong>Draft reply</strong> reads the email above and fills the reply box below. Tick{" "}
+              <strong>Check through similar responses</strong> to also use replies you saved.{" "}
               <strong>Save response for future response</strong> stores this reply (kept up to 3 months).
               Credentials:{" "}
               <Link href="/platform/settings?tab=ai" className="font-medium underline">
                 platform AI settings
               </Link>
               .
-              {matchedCount > 0 ? (
-                <span className="mt-1 block">Last check found {matchedCount} similar saved response{matchedCount === 1 ? "" : "s"}.</span>
+              {useSimilarResponses && matchedCount > 0 ? (
+                <span className="mt-1 block">
+                  Last draft used {matchedCount} similar saved response{matchedCount === 1 ? "" : "s"}.
+                </span>
               ) : null}
             </p>
           </div>
@@ -157,14 +181,29 @@ export function PlatformAiEmailAssist({
             disabled={busy}
           />
         </label>
+        <label className="mt-3 flex items-start gap-2 text-sm text-sky-950 dark:text-sky-100">
+          <input
+            type="checkbox"
+            className="mt-0.5 rounded border-sky-300 text-[#185FA5] focus:ring-[#185FA5]"
+            checked={useSimilarResponses}
+            onChange={(e) => setUseSimilarResponses(e.target.checked)}
+            disabled={busy}
+          />
+          <span>
+            <span className="font-medium">Check through similar responses</span>
+            <span className="block text-xs text-sky-800/80 dark:text-sky-200/80">
+              When checked, Draft reply also reads your saved similar responses and uses them with the email above.
+            </span>
+          </span>
+        </label>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
             className="inline-flex items-center justify-center rounded-lg bg-[#185FA5] px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#144e88] disabled:opacity-60"
             disabled={busy || !inboundEmail}
-            onClick={() => void checkThroughSimilar()}
+            onClick={() => void draftReplyFromEmail()}
           >
-            {busy ? "Checking…" : "Check through similar responses"}
+            {busy ? "Drafting…" : "Draft reply"}
           </button>
           {typeof onSaveForFuture === "function" ? (
             <button
