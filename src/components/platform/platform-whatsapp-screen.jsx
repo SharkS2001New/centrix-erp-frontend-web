@@ -494,11 +494,13 @@ function WhatsappTestPanel() {
               <span className="font-medium text-slate-900">Place real orders in this organization</span>
               <span className="mt-0.5 block text-xs text-slate-500">
                 When enabled, CONFIRM creates a real WhatsApp-sourced order as the selected org user
-                (stock and workflow follow this org’s settings). No WhatsApp messages are sent.
+                (stock and workflow follow this org’s settings). Works even if WhatsApp is not yet
+                enabled for the tenant — so you can prove orders before go-live. No WhatsApp messages
+                are sent.
               </span>
               {placeRealOrders ? (
                 <span className="mt-1 block text-xs font-medium text-rose-800">
-                  Live mode is on — orders will appear in the tenant’s sales queue.
+                  Live mode is on — orders will appear in the tenant’s sales queue as channel WhatsApp.
                 </span>
               ) : null}
               {!canPlaceRealOrders && organizationId ? (
