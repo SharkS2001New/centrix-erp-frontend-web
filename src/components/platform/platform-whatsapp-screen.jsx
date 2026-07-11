@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { CatalogPageShell, Field, PrimaryButton, SECONDARY_BTN_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
@@ -96,6 +96,7 @@ function WhatsappTestPanel() {
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [placeRealOrders, setPlaceRealOrders] = useState(false);
   const [botUserId, setBotUserId] = useState("");
+  const chatScrollRef = useRef(null);
 
   const loadOrganizations = useCallback(async () => {
     try {
@@ -164,6 +165,12 @@ function WhatsappTestPanel() {
       setPlaceRealOrders(false);
     }
   }, [canPlaceRealOrders, placeRealOrders]);
+
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [transcript]);
 
   async function loadCatalog(page = 1, append = false, queryOverride) {
     if (!organizationId || !customerNum) {
@@ -334,8 +341,8 @@ function WhatsappTestPanel() {
         </span>
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <div className="space-y-3">
+      <div className="mt-4 grid gap-4 lg:grid-cols-2 lg:items-start">
+        <div className="min-w-0 space-y-3">
           <Field label="Organization">
             <select
               className={inputClassName()}
@@ -567,14 +574,17 @@ function WhatsappTestPanel() {
           ) : null}
         </div>
 
-        <div className="flex h-[min(36rem,calc(100svh-8.5rem))] max-h-[calc(100svh-8.5rem)] min-h-[18rem] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white lg:sticky lg:top-4 lg:self-start">
+        <div className="flex h-[min(36rem,calc(100svh-8.5rem))] max-h-[min(36rem,calc(100svh-8.5rem))] min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white lg:sticky lg:top-4">
           <div className="shrink-0 border-b border-slate-100 px-4 py-3">
             <p className="text-sm font-semibold text-slate-900">Simulated chat</p>
             <p className="text-xs text-slate-500">
               Type what a customer would send (Hi, Hello, 1, product name, CONFIRM…). Replies mirror production bot text.
             </p>
           </div>
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+          <div
+            ref={chatScrollRef}
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-3"
+          >
             {transcript.length === 0 ? (
               <p className="text-sm text-slate-500">
                 Start with a greeting like <span className="font-mono">Hi</span> or <span className="font-mono">Hello</span>, or click Reset chat.
