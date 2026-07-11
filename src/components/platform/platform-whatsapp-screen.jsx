@@ -94,6 +94,8 @@ function WhatsappTestPanel() {
   const [catalog, setCatalog] = useState(null);
   const [catalogQ, setCatalogQ] = useState("");
   const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [placeRealOrders, setPlaceRealOrders] = useState(false);
+  const [botUserId, setBotUserId] = useState("");
 
   const loadOrganizations = useCallback(async () => {
     try {
@@ -124,9 +126,17 @@ function WhatsappTestPanel() {
       });
       setContext(res);
       setCustomerNum(res.customers?.[0]?.customer_num || "");
+      setBotUserId(
+        res.default_live_bot_user_id
+          ? String(res.default_live_bot_user_id)
+          : res.org_users?.[0]?.id
+            ? String(res.org_users[0].id)
+            : "",
+      );
       setTranscript([]);
       setSessionId(null);
       setCatalog(null);
+      setPlaceRealOrders(false);
     } catch (err) {
       setContext(null);
       notifyError(err instanceof ApiError ? err.message : "Failed to load org WhatsApp preview.");
@@ -143,6 +153,17 @@ function WhatsappTestPanel() {
     () => (context?.customers || []).find((c) => String(c.customer_num) === String(customerNum)),
     [context, customerNum],
   );
+  const canPlaceRealOrders =
+    Boolean(customerNum) &&
+    Boolean(botUserId) &&
+    Boolean(context?.preview_ready) &&
+    (context?.org_users || []).length > 0;
+
+  useEffect(() => {
+    if (!canPlaceRealOrders && placeRealOrders) {
+      setPlaceRealOrders(false);
+    }
+  }, [canPlaceRealOrders, placeRealOrders]);
 
   async function loadCatalog(page = 1, append = false, queryOverride) {
     if (!organizationId || !customerNum) {
@@ -185,6 +206,14 @@ function WhatsappTestPanel() {
       notifyError("Enter a customer message to simulate.");
       return;
     }
+    if (placeRealOrders && !customerNum) {
+      notifyError("Select a customer before placing real test orders.");
+      return;
+    }
+    if (placeRealOrders && !botUserId) {
+      notifyError("Select an organization user to act as the bot.");
+      return;
+    }
     setBusy(true);
     try {
       const res = await apiRequest("/admin/whatsapp/preview/simulate", {
@@ -196,6 +225,8 @@ function WhatsappTestPanel() {
           phone: selectedCustomer?.phone || undefined,
           session_id: sessionId || undefined,
           reset: Boolean(reset),
+          place_real_orders: Boolean(placeRealOrders),
+          bot_user_id: placeRealOrders && botUserId ? Number(botUserId) : undefined,
         },
       });
       setSessionId(res.session?.session_id || null);
@@ -208,10 +239,18 @@ function WhatsappTestPanel() {
           state: res.state,
           would_mutate: res.would_mutate || [],
           cart: res.cart || [],
+          placed_order: res.placed_order || null,
+          dry_run: res.dry_run !== false,
         },
       ]);
       setMessage("");
-      if ((res.would_mutate || []).length) {
+      if (res.placed_order?.order_num) {
+        notifySuccess(
+          `Live test order #${res.placed_order.order_num} created in ${res.organization_name || "the organization"}.`,
+        );
+      } else if ((res.would_mutate || []).includes("place_order")) {
+        notifySuccess("Dry run: order was simulated only — org data was not changed.");
+      } else if ((res.would_mutate || []).length) {
         notifySuccess("Dry run: mutation was simulated only — org data was not changed.");
       }
     } catch (err) {
@@ -236,6 +275,8 @@ function WhatsappTestPanel() {
           customer_num: customerNum || undefined,
           phone: selectedCustomer?.phone || undefined,
           reset: true,
+          place_real_orders: Boolean(placeRealOrders),
+          bot_user_id: placeRealOrders && botUserId ? Number(botUserId) : undefined,
         },
       }).then((res) => {
         setSessionId(res.session?.session_id || null);
@@ -252,19 +293,44 @@ function WhatsappTestPanel() {
     }
   }
 
+  function onTogglePlaceRealOrders(checked) {
+    if (checked && !customerNum) {
+      notifyError("Select a customer before enabling live orders.");
+      return;
+    }
+    if (checked && !botUserId) {
+      notifyError("Select an organization user to act as the bot.");
+      return;
+    }
+    if (checked && !(context?.org_users || []).length) {
+      notifyError("This organization has no active users to act as the bot.");
+      return;
+    }
+    setPlaceRealOrders(checked);
+    setTranscript([]);
+    setSessionId(null);
+    setMessage("HI");
+  }
+
   return (
     <section className="theme-panel mb-6 rounded-xl border p-6 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold theme-heading">Test bot (dry run)</h2>
+          <h2 className="text-sm font-semibold theme-heading">Test bot</h2>
           <p className="mt-1 text-sm theme-subtext">
             Pick a tenant organization to preview how WhatsApp ordering will feel for their customers.
-            Uses that org’s products and customers. Your platform admin account can stand in as the bot
-            user — never creates orders, reduces stock, or sends WhatsApp messages.
+            Uses that org’s products, customers, and sales rules. Optionally place a real order for
+            end-to-end testing — WhatsApp messages are never sent from this screen.
           </p>
         </div>
-        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">
-          Dry run only
+        <span
+          className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+            placeRealOrders
+              ? "border-rose-200 bg-rose-50 text-rose-900"
+              : "border-amber-200 bg-amber-50 text-amber-900"
+          }`}
+        >
+          {placeRealOrders ? "Live orders" : "Dry run only"}
         </span>
       </div>
 
@@ -307,6 +373,32 @@ function WhatsappTestPanel() {
             </select>
           </Field>
 
+          <Field label="Act as bot user (for live orders)">
+            <select
+              className={inputClassName()}
+              value={botUserId}
+              onChange={(e) => {
+                setBotUserId(e.target.value);
+                setTranscript([]);
+                setSessionId(null);
+              }}
+              disabled={!context || !(context?.org_users || []).length}
+            >
+              <option value="">— Select org user —</option>
+              {(context?.org_users || []).map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name || u.username}
+                  {u.username ? ` (@${u.username})` : ""}
+                  {u.is_admin ? " · admin" : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs theme-subtext">
+              Used as the ordering user when “Place real orders” is enabled. Dry run still uses the
+              configured WhatsApp bot / platform admin stand-in.
+            </p>
+          </Field>
+
           {loadingContext ? <p className="text-sm theme-subtext">Loading organization…</p> : null}
           {context ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -331,6 +423,43 @@ function WhatsappTestPanel() {
               ) : null}
             </div>
           ) : null}
+
+          <label
+            className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 text-sm ${
+              placeRealOrders
+                ? "border-rose-300 bg-rose-50/80"
+                : "border-slate-200 bg-white hover:bg-slate-50"
+            }`}
+          >
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={placeRealOrders}
+              disabled={!organizationId || busy}
+              onChange={(e) => onTogglePlaceRealOrders(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium text-slate-900">Place real orders in this organization</span>
+              <span className="mt-0.5 block text-xs text-slate-500">
+                When enabled, CONFIRM creates a real WhatsApp-sourced order as the selected org user
+                (stock and workflow follow this org’s settings). No WhatsApp messages are sent.
+              </span>
+              {placeRealOrders ? (
+                <span className="mt-1 block text-xs font-medium text-rose-800">
+                  Live mode is on — orders will appear in the tenant’s sales queue.
+                </span>
+              ) : null}
+              {!canPlaceRealOrders && organizationId ? (
+                <span className="mt-1 block text-xs text-amber-800">
+                  {!customerNum
+                    ? "Select a customer to enable live orders."
+                    : !botUserId
+                      ? "Select an organization user to act as the bot."
+                      : "This organization has no active users available."}
+                </span>
+              ) : null}
+            </span>
+          </label>
 
           <div className="flex flex-wrap gap-2">
             <button
@@ -461,7 +590,12 @@ function WhatsappTestPanel() {
                   }`}
                 >
                   {row.text}
-                  {row.role === "bot" && (row.would_mutate || []).length ? (
+                  {row.role === "bot" && row.placed_order?.order_num ? (
+                    <p className="mt-2 rounded-lg bg-emerald-100 px-2 py-1 text-[11px] font-medium text-emerald-950">
+                      Live order #{row.placed_order.order_num} saved in this organization
+                    </p>
+                  ) : null}
+                  {row.role === "bot" && !row.placed_order && (row.would_mutate || []).length ? (
                     <p className="mt-2 rounded-lg bg-amber-100 px-2 py-1 text-[11px] font-medium text-amber-950">
                       Simulated only: {(row.would_mutate || []).join(", ")} — org data unchanged
                     </p>

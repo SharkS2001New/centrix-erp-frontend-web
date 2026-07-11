@@ -962,7 +962,7 @@ export function normalizeStockDeductOn(value, { hasPosSales = false, showCheckou
 export function resolveStockDeductTiming(moduleSettings, channel = "backend") {
   const sales = mergeSalesSettings(moduleSettings);
   const normalized = normalizeStockDeductOn(sales.stock_deduct_on);
-  const key = channel === "backoffice" ? "backend" : channel;
+  const key = channel === "backoffice" || channel === "whatsapp" ? "backend" : channel;
   if (normalized[key]) {
     return normalized[key];
   }

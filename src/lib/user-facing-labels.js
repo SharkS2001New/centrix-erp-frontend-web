@@ -20,6 +20,7 @@ export const SALES_CHANNEL_LABELS = {
   erp: "Backoffice",
   backend: "Backoffice",
   backoffice: "Backoffice",
+  whatsapp: "WhatsApp",
   wholesale: "Wholesale",
   online: "Online",
   route: "Route",

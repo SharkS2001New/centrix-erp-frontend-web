@@ -88,7 +88,7 @@ export function isBackofficeSale(sale, capabilities = null) {
   if (sourceKey === "backoffice") return true;
 
   const channel = String(sale?.channel ?? "").toLowerCase();
-  return channel === "backend" || channel === "backoffice" || channel === "erp";
+  return channel === "backend" || channel === "backoffice" || channel === "erp" || channel === "whatsapp";
 }
 
 export function isPosOrMobileSale(sale, capabilities = null) {

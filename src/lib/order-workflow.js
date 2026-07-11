@@ -318,7 +318,8 @@ export function isTerminalStatus(status, workflow) {
 
 export function normalizeSalesChannel(channel = "backend") {
   const key = String(channel ?? "backend").toLowerCase();
-  return key === "backoffice" ? "backend" : key;
+  if (key === "backoffice" || key === "whatsapp") return "backend";
+  return key;
 }
 
 /** Statuses stored on sales after a fully-paid checkout for this org/channel workflow. */
