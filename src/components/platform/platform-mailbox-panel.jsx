@@ -16,6 +16,7 @@ const inputClass =
 
 function emptyCompose() {
   return {
+    draft_id: "",
     organization_id: "",
     invoice_id: "",
     to: "",
@@ -87,6 +88,8 @@ export function PlatformMailboxPanel() {
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [templateSaveAsUpdate, setTemplateSaveAsUpdate] = useState(false);
 
   const activeAccount =
     accounts.find((row) => String(row.id) === String(accountId)) || accounts[0] || null;
@@ -192,8 +195,29 @@ export function PlatformMailboxPanel() {
     setReplyBody("");
     try {
       const res = await apiRequest(`/admin/platform-mail/messages/${id}`);
-      setSelected(res.data ?? null);
+      const msg = res.data ?? null;
+      setSelected(msg);
       setThread(Array.isArray(res.thread) ? res.thread : []);
+
+      if (msg?.folder === "drafts") {
+        const to =
+          Array.isArray(msg.to_addresses) && msg.to_addresses[0] ? String(msg.to_addresses[0]) : "";
+        const orgId = msg.organization_id || msg.meta?.organization_id || "";
+        const invoiceId = msg.meta?.invoice_id || "";
+        setCompose({
+          draft_id: String(msg.id),
+          organization_id: orgId ? String(orgId) : "",
+          invoice_id: invoiceId ? String(invoiceId) : "",
+          to,
+          subject: msg.subject || "",
+          body: msg.body_text || "",
+        });
+        setComposing(true);
+        setSelected(null);
+        setSelectedId(null);
+        if (orgId) void loadOrgInvoices(String(orgId));
+      }
+
       void loadList();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to open message.");
@@ -292,11 +316,13 @@ export function PlatformMailboxPanel() {
           organization_id: compose.organization_id ? Number(compose.organization_id) : null,
           invoice_id: compose.invoice_id ? Number(compose.invoice_id) : null,
           account_id: accountId || undefined,
+          draft_id: compose.draft_id ? Number(compose.draft_id) : null,
         },
       });
       notifySuccess(res.message ?? "Email sent.");
       setCompose(emptyCompose());
       setOrgInvoices([]);
+      setSelectedTemplateId("");
       setComposing(false);
       setFolder("sent");
       if (res.data?.id) {
@@ -308,6 +334,64 @@ export function PlatformMailboxPanel() {
       notifyError(err instanceof ApiError ? err.message : "Failed to send email.");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleSaveDraft() {
+    if (!compose.to.trim() && !compose.subject.trim() && !compose.body.trim()) {
+      notifyError("Write a recipient, subject, or body before saving a draft.");
+      return;
+    }
+    setSavingDraft(true);
+    try {
+      const res = await apiRequest("/admin/platform-mail/drafts", {
+        method: "POST",
+        body: {
+          id: compose.draft_id ? Number(compose.draft_id) : undefined,
+          to: compose.to.trim() || null,
+          subject: compose.subject.trim() || null,
+          body: compose.body,
+          organization_id: compose.organization_id ? Number(compose.organization_id) : null,
+          invoice_id: compose.invoice_id ? Number(compose.invoice_id) : null,
+          account_id: accountId || undefined,
+        },
+      });
+      const draft = res.data;
+      if (draft?.id) {
+        setCompose((prev) => ({ ...prev, draft_id: String(draft.id) }));
+      }
+      notifySuccess(res.message ?? "Draft saved.");
+      if (folder !== "drafts") setFolder("drafts");
+      else await loadList();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to save draft.");
+    } finally {
+      setSavingDraft(false);
+    }
+  }
+
+  async function handleDeleteMessage(messageId) {
+    if (!messageId) return;
+    const ok = await confirm({
+      title: "Delete message",
+      message: "Delete this message permanently?",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+    try {
+      await apiRequest(`/admin/platform-mail/messages/${messageId}`, { method: "DELETE" });
+      notifySuccess("Message deleted.");
+      if (compose.draft_id && String(compose.draft_id) === String(messageId)) {
+        setCompose(emptyCompose());
+        setComposing(false);
+      }
+      if (selectedId === messageId) {
+        setSelectedId(null);
+        setSelected(null);
+      }
+      await loadList();
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Failed to delete message.");
     }
   }
 
@@ -338,6 +422,14 @@ export function PlatformMailboxPanel() {
       compose.subject.trim().slice(0, 80) ||
       (composeTemplates.length ? `Email template ${composeTemplates.length + 1}` : "Client email");
     setTemplateName(suggested);
+    setTemplateSaveAsUpdate(false);
+    setSaveTemplateOpen(true);
+  }
+
+  function openUpdateTemplate() {
+    const tpl = composeTemplates.find((row) => String(row.id) === String(selectedTemplateId));
+    setTemplateName(tpl?.name || compose.subject.trim().slice(0, 80) || "Email template");
+    setTemplateSaveAsUpdate(true);
     setSaveTemplateOpen(true);
   }
 
@@ -352,19 +444,25 @@ export function PlatformMailboxPanel() {
     }
     setSavingTemplate(true);
     try {
+      const updating = templateSaveAsUpdate && selectedTemplateId;
       const res = await apiRequest("/admin/platform-mail/compose-templates", {
         method: "POST",
         body: {
+          ...(updating ? { id: selectedTemplateId } : {}),
           name: templateName.trim(),
           subject: compose.subject.trim(),
           body: compose.body,
         },
       });
       setComposeTemplates(Array.isArray(res.data) ? res.data : []);
-      const saved = (res.data || []).find((row) => row.name === templateName.trim());
+      const saved =
+        (res.data || []).find((row) => row.name === templateName.trim()) ||
+        (updating
+          ? (res.data || []).find((row) => String(row.id) === String(selectedTemplateId))
+          : null);
       if (saved?.id) setSelectedTemplateId(saved.id);
       setSaveTemplateOpen(false);
-      notifySuccess("Email template saved. Use Draft from template next time.");
+      notifySuccess(updating ? "Email template updated." : "Email template saved.");
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not save template.");
     } finally {
@@ -487,6 +585,7 @@ export function PlatformMailboxPanel() {
         <div className="flex gap-1 rounded-lg bg-slate-100 p-0.5">
           {[
             { id: "inbox", label: unreadCount ? `Inbox (${unreadCount})` : "Inbox" },
+            { id: "drafts", label: "Drafts" },
             { id: "sent", label: "Sent" },
             { id: "all", label: "All" },
           ].map((tab) => (
@@ -564,9 +663,10 @@ export function PlatformMailboxPanel() {
       </div>
 
       <p className="text-xs text-slate-500">
-        Select an organization to prefill the recipient, or pick an invoice to attach as PDF. Outbound mail —
-        including auto renewal reminders and 2FA codes — is stored under Sent. Configure IMAP under Email
-        delivery, then use Sync inbox to pull client replies.
+        Select an organization to prefill the recipient, or pick an invoice to attach as PDF. Save drafts
+        from Compose, then finish them under Drafts. Outbound mail — including auto renewal reminders and
+        2FA codes — is stored under Sent. Configure IMAP under Email delivery, then use Sync inbox to pull
+        client replies.
       </p>
 
       {folder === "sent" && mailStats ? (
@@ -635,7 +735,9 @@ export function PlatformMailboxPanel() {
         <div className="theme-panel rounded-xl border p-5 shadow-sm">
           {composing ? (
             <form onSubmit={(e) => void handleSendCompose(e)} className="space-y-3">
-              <h2 className="text-sm font-semibold text-slate-900">New email to client</h2>
+              <h2 className="text-sm font-semibold text-slate-900">
+                {compose.draft_id ? "Edit draft" : "New email to client"}
+              </h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-600">Organization</span>
@@ -714,13 +816,23 @@ export function PlatformMailboxPanel() {
                   Save as template
                 </button>
                 {selectedTemplateId ? (
-                  <button
-                    type="button"
-                    className={SECONDARY_BTN_CLASS}
-                    onClick={() => void handleDeleteTemplate(selectedTemplateId)}
-                  >
-                    Delete template
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className={SECONDARY_BTN_CLASS}
+                      disabled={!compose.subject.trim() && !compose.body.trim()}
+                      onClick={openUpdateTemplate}
+                    >
+                      Update template
+                    </button>
+                    <button
+                      type="button"
+                      className={SECONDARY_BTN_CLASS}
+                      onClick={() => void handleDeleteTemplate(selectedTemplateId)}
+                    >
+                      Delete template
+                    </button>
+                  </>
                 ) : null}
               </div>
               <PlatformAiEmailAssist
@@ -739,7 +851,6 @@ export function PlatformMailboxPanel() {
                   className={inputClass}
                   value={compose.to}
                   onChange={(e) => setCompose((c) => ({ ...c, to: e.target.value }))}
-                  required
                 />
               </label>
               <label className="block text-sm">
@@ -748,7 +859,6 @@ export function PlatformMailboxPanel() {
                   className={inputClass}
                   value={compose.subject}
                   onChange={(e) => setCompose((c) => ({ ...c, subject: e.target.value }))}
-                  required
                 />
               </label>
               <label className="block text-sm">
@@ -758,10 +868,18 @@ export function PlatformMailboxPanel() {
                   rows={12}
                   value={compose.body}
                   onChange={(e) => setCompose((c) => ({ ...c, body: e.target.value }))}
-                  required
                 />
               </label>
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
+                {compose.draft_id ? (
+                  <button
+                    type="button"
+                    className={SECONDARY_BTN_CLASS}
+                    onClick={() => void handleDeleteMessage(Number(compose.draft_id))}
+                  >
+                    Delete draft
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={SECONDARY_BTN_CLASS}
@@ -769,9 +887,18 @@ export function PlatformMailboxPanel() {
                     setComposing(false);
                     setCompose(emptyCompose());
                     setOrgInvoices([]);
+                    setSelectedTemplateId("");
                   }}
                 >
                   Cancel
+                </button>
+                <button
+                  type="button"
+                  className={SECONDARY_BTN_CLASS}
+                  disabled={savingDraft}
+                  onClick={() => void handleSaveDraft()}
+                >
+                  {savingDraft ? "Saving…" : compose.draft_id ? "Update draft" : "Save draft"}
                 </button>
                 <PrimaryButton type="submit" showIcon={false} disabled={sending}>
                   {sending ? "Sending…" : compose.invoice_id ? "Send with invoice" : "Send"}
@@ -782,27 +909,36 @@ export function PlatformMailboxPanel() {
             <p className="text-sm text-slate-500">Select a message or compose a new email to a client.</p>
           ) : (
             <div className="space-y-4">
-              <div>
-                <h2 className="text-base font-semibold text-slate-900">{selected.subject || "(no subject)"}</h2>
-                {selected.kind_label || selected.meta?.kind ? (
-                  <p className="mt-1">
-                    <span className="inline-flex rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
-                      {selected.kind_label || selected.meta?.kind}
-                    </span>
-                  </p>
-                ) : null}
-                <p className="mt-1 text-xs text-slate-500">
-                  {selected.direction === "outbound" ? "To" : "From"}{" "}
-                  {selected.direction === "outbound"
-                    ? (Array.isArray(selected.to_addresses) ? selected.to_addresses.join(", ") : "—")
-                    : `${selected.from_name ? `${selected.from_name} ` : ""}<${selected.from_address}>`}{" "}
-                  · {formatWhen(selected.sent_at || selected.received_at)}
-                </p>
-                {selected.meta?.invoice_id ? (
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">{selected.subject || "(no subject)"}</h2>
+                  {selected.kind_label || selected.meta?.kind ? (
+                    <p className="mt-1">
+                      <span className="inline-flex rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                        {selected.kind_label || selected.meta?.kind}
+                      </span>
+                    </p>
+                  ) : null}
                   <p className="mt-1 text-xs text-slate-500">
-                    Invoice attached · ID {selected.meta.invoice_id}
+                    {selected.direction === "outbound" ? "To" : "From"}{" "}
+                    {selected.direction === "outbound"
+                      ? (Array.isArray(selected.to_addresses) ? selected.to_addresses.join(", ") : "—")
+                      : `${selected.from_name ? `${selected.from_name} ` : ""}<${selected.from_address}>`}{" "}
+                    · {formatWhen(selected.sent_at || selected.received_at)}
                   </p>
-                ) : null}
+                  {selected.meta?.invoice_id ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Invoice attached · ID {selected.meta.invoice_id}
+                    </p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  className={SECONDARY_BTN_CLASS}
+                  onClick={() => void handleDeleteMessage(selected.id)}
+                >
+                  Delete
+                </button>
               </div>
 
               {thread.length > 1 ? (
@@ -848,9 +984,13 @@ export function PlatformMailboxPanel() {
       {saveTemplateOpen ? (
         <div className="fixed inset-0 z-[230] flex items-center justify-center bg-slate-900/50 p-4">
           <div className="theme-modal w-full max-w-md rounded-xl border p-5 shadow-2xl">
-            <h3 className="text-base font-semibold text-slate-900">Save email template</h3>
+            <h3 className="text-base font-semibold text-slate-900">
+              {templateSaveAsUpdate ? "Update email template" : "Save email template"}
+            </h3>
             <p className="mt-1 text-sm text-slate-500">
-              Reuse this subject and body later with “Draft from template” — AI will adapt the details.
+              {templateSaveAsUpdate
+                ? "Overwrite the selected template with the current subject and body."
+                : "Reuse this subject and body later with “Draft from template” — AI will adapt the details."}
             </p>
             <label className="mt-4 block text-sm">
               <span className="mb-1 block text-xs font-medium text-slate-600">Template name</span>
@@ -877,7 +1017,11 @@ export function PlatformMailboxPanel() {
                 disabled={savingTemplate || !templateName.trim()}
                 onClick={() => void handleSaveTemplate()}
               >
-                {savingTemplate ? "Saving…" : "Save template"}
+                {savingTemplate
+                  ? "Saving…"
+                  : templateSaveAsUpdate
+                    ? "Update template"
+                    : "Save template"}
               </PrimaryButton>
             </div>
           </div>

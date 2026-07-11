@@ -499,7 +499,13 @@ export function PlatformWhatsappScreen({ embedded = false } = {}) {
         onSave={saveSettings}
         onCopy={copyWebhookUrl}
       />
-      <WhatsappTestPanel />
+      <p className="text-sm theme-subtext">
+        To dry-run the ordering bot against a tenant, open{" "}
+        <a href="/platform/whatsapp" className="font-medium text-[#185FA5] hover:underline">
+          Integrations → WhatsApp
+        </a>
+        .
+      </p>
     </div>
   );
 
@@ -514,6 +520,30 @@ export function PlatformWhatsappScreen({ embedded = false } = {}) {
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "WhatsApp" }]} />
       {body}
+    </CatalogPageShell>
+  );
+}
+
+export function PlatformWhatsappTestScreen() {
+  return (
+    <CatalogPageShell
+      title="WhatsApp"
+      subtitle="Dry-run the ordering bot against a tenant organization. Webhook URL and verify token stay under Platform settings."
+    >
+      <AdminBreadcrumb
+        items={[
+          { label: "Platform", href: "/platform" },
+          { label: "WhatsApp" },
+        ]}
+      />
+      <div className="mb-4 text-sm theme-subtext">
+        Shared Meta webhook configuration:{" "}
+        <a href="/platform/settings?tab=whatsapp" className="font-medium text-[#185FA5] hover:underline">
+          Platform settings → WhatsApp
+        </a>
+        .
+      </div>
+      <WhatsappTestPanel />
     </CatalogPageShell>
   );
 }

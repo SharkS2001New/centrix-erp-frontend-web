@@ -13,6 +13,7 @@ import {
   platformMailPayloadFromForm,
   suggestImapFromSmtp,
 } from "@/lib/platform-mail-settings";
+import { PLATFORM_INVOICE_DESIGN_TEMPLATES } from "@/lib/platform-invoices";
 import { PLATFORM_EMAIL_PLACEHOLDERS } from "@/lib/platform-ai-compose";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
 import { useConfirm } from "@/lib/use-confirm";
@@ -51,6 +52,7 @@ export function PlatformEmailDeliveryPanel() {
   const [testTo, setTestTo] = useState("");
   const [authTestTo, setAuthTestTo] = useState("");
   const [renewalTestTo, setRenewalTestTo] = useState("");
+  const [invoiceSavedTemplates, setInvoiceSavedTemplates] = useState([]);
 
   const load = useCallback(async (accountId) => {
     setLoading(true);
@@ -61,6 +63,12 @@ export function PlatformEmailDeliveryPanel() {
       setForm(platformMailFormFromApi(res));
       setMailStats(res.stats ?? null);
       setImapTestResult(null);
+      try {
+        const tplRes = await apiRequest("/admin/platform-invoices/saved-templates", { loading: false });
+        setInvoiceSavedTemplates(Array.isArray(tplRes.data) ? tplRes.data : []);
+      } catch {
+        setInvoiceSavedTemplates([]);
+      }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load mail settings.");
       setForm(platformMailFormFromApi(PLATFORM_MAIL_DEFAULTS));
@@ -910,6 +918,55 @@ export function PlatformEmailDeliveryPanel() {
               Comma-separated day offsets (e.g. 30,14,7). One email is sent per matching day.
             </span>
           </label>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">
+                Renewal invoice design
+              </span>
+              <select
+                className={inputClass}
+                value={form.renewal_invoice_design_id || "modern"}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, renewal_invoice_design_id: e.target.value }))
+                }
+              >
+                {PLATFORM_INVOICE_DESIGN_TEMPLATES.map((tpl) => (
+                  <option key={tpl.id} value={tpl.id}>
+                    {tpl.label}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-[11px] text-slate-500">
+                Design used for auto-draft renewal invoice PDFs emailed to org admins.
+              </span>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-600">
+                Saved invoice template (optional)
+              </span>
+              <select
+                className={inputClass}
+                value={form.renewal_invoice_saved_template_id || ""}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, renewal_invoice_saved_template_id: e.target.value }))
+                }
+              >
+                <option value="">— Use design above / plan template —</option>
+                {invoiceSavedTemplates.map((tpl) => (
+                  <option key={tpl.id} value={tpl.id}>
+                    {tpl.name}
+                    {tpl.template_id ? ` (${tpl.template_id})` : ""}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-[11px] text-slate-500">
+                If set, branding/options from this saved template win. Otherwise the plan’s
+                auto-draft template is used, then the design above. Amount always comes from the
+                subscription package renewal price.
+              </span>
+            </label>
+          </div>
 
           <p className="mt-4 text-xs text-slate-500">
             Placeholders: {"{customer_name}"}, {"{company_code}"}, {"{plan_name}"}, {"{expires_on}"},{" "}

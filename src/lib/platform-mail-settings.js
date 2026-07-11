@@ -34,6 +34,8 @@ export const PLATFORM_MAIL_DEFAULTS = {
   renewal_email_subject: "Centrix ERP licence renewal reminder — {company_code}",
   renewal_email_body:
     "Dear {customer_name},\n\nYour Centrix ERP licence for {company_code} ({plan_name}) expires on {expires_on} ({days_remaining} day(s) remaining).\n\nPlease find attached invoice {invoice_number} for {total} to renew your subscription.\n\nIf you have already paid, you can ignore this message.\n\nRegards,\n{from_name}",
+  renewal_invoice_design_id: "modern",
+  renewal_invoice_saved_template_id: "",
   accounts: [],
   account_id: "",
   active_account_id: "",
@@ -114,6 +116,11 @@ export function platformMailFormFromApi(res = {}) {
       settings.renewal_email_subject || PLATFORM_MAIL_DEFAULTS.renewal_email_subject,
     renewal_email_body:
       settings.renewal_email_body || PLATFORM_MAIL_DEFAULTS.renewal_email_body,
+    renewal_invoice_design_id:
+      settings.renewal_invoice_design_id || PLATFORM_MAIL_DEFAULTS.renewal_invoice_design_id,
+    renewal_invoice_saved_template_id: settings.renewal_invoice_saved_template_id
+      ? String(settings.renewal_invoice_saved_template_id)
+      : "",
     accounts,
     account_id: settings.account_id || settings.active_account_id || accounts[0]?.id || "",
     active_account_id: settings.active_account_id || settings.account_id || accounts[0]?.id || "",
@@ -152,6 +159,10 @@ export function platformMailPayloadFromForm(form, extras = {}) {
     subscription_reminder_days: form.subscription_reminder_days.trim() || "30,14,7",
     renewal_email_subject: form.renewal_email_subject.trim(),
     renewal_email_body: form.renewal_email_body.trim(),
+    renewal_invoice_design_id: form.renewal_invoice_design_id?.trim() || "modern",
+    renewal_invoice_saved_template_id: form.renewal_invoice_saved_template_id
+      ? Number(form.renewal_invoice_saved_template_id)
+      : null,
     ...extras,
   };
   if (form.smtp_password?.trim()) {

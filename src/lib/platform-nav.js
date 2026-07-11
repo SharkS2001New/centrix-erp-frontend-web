@@ -47,6 +47,12 @@ export const PLATFORM_LINK_GROUPS = [
         icon: "chat",
         description: "Send mail to clients, sync replies, and respond from one inbox.",
       },
+      {
+        href: "/platform/whatsapp",
+        label: "WhatsApp",
+        icon: "chat",
+        description: "Dry-run the WhatsApp ordering bot against a tenant (no real orders or messages).",
+      },
     ],
   },
   {
@@ -124,7 +130,7 @@ export const PLATFORM_LINK_GROUPS = [
         label: "Platform settings",
         icon: "chat",
         description:
-          "Email delivery (SMTP/IMAP), WhatsApp, renewal reminders, and alert notifications.",
+          "Email delivery (SMTP/IMAP), WhatsApp webhook, renewal reminders, and alert notifications.",
       },
     ],
   },
