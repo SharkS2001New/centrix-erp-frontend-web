@@ -10,6 +10,7 @@ import {
   PLATFORM_BILLING_MODULE_GROUPS,
   PLATFORM_INVOICE_DESIGN_TEMPLATES,
   PLATFORM_INVOICE_STATUSES,
+  PLATFORM_INVOICE_SPACING,
   buildPlatformBillingSummaries,
   calculateInvoiceTotals,
   emptyPlatformInvoiceForm,
@@ -696,6 +697,22 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
                 />
                 Watermark
               </label>
+            </div>
+
+            <div className="mt-3">
+              <Field label="Page spacing / margins">
+                <select
+                  className={inputClass}
+                  value={invoiceOptions.print_spacing || "comfortable"}
+                  onChange={(e) => updateInvoiceOptions({ print_spacing: e.target.value })}
+                >
+                  {PLATFORM_INVOICE_SPACING.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.label} — {row.description}
+                    </option>
+                  ))}
+                </select>
+              </Field>
             </div>
 
             {brandingOpen ? (
