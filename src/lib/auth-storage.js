@@ -25,6 +25,7 @@ const LOGIN_CHANNEL_KEY = "pos_erp_login_channel";
 const WORKSPACE_KEY = "pos_erp_workspace";
 const SCREEN_LOCKED_KEY = "pos_erp_screen_locked";
 const CAPABILITIES_KEY = "pos_erp_capabilities";
+const LOGIN_WARNINGS_KEY = "pos_erp_login_warnings";
 
 export function getToken() {
   if (typeof window === "undefined") return null;
@@ -178,8 +179,43 @@ export function clearSession() {
   localStorage.removeItem(LOGIN_CHANNEL_KEY);
   localStorage.removeItem(WORKSPACE_KEY);
   localStorage.removeItem(CAPABILITIES_KEY);
+  clearLoginWarnings();
   clearWorkspaceRouteMemoryOnLogout();
   clearScreenLocked();
+}
+
+export function getLoginWarnings() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem(LOGIN_WARNINGS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function setLoginWarnings(warnings) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!Array.isArray(warnings) || warnings.length === 0) {
+      sessionStorage.removeItem(LOGIN_WARNINGS_KEY);
+      return;
+    }
+    sessionStorage.setItem(LOGIN_WARNINGS_KEY, JSON.stringify(warnings));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearLoginWarnings() {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(LOGIN_WARNINGS_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function isScreenLocked() {

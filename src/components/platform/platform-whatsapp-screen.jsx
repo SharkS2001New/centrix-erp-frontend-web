@@ -221,13 +221,31 @@ function WhatsappTestPanel() {
       notifyError("Select an organization user to act as the bot.");
       return;
     }
+
+    const outbound = message.trim();
+    const placingLiveOrder =
+      placeRealOrders && !reset && outbound.toUpperCase() === "CONFIRM";
+
     setBusy(true);
+    if (placingLiveOrder) {
+      setTranscript((prev) => [
+        ...(reset ? [] : prev),
+        { role: "user", text: outbound },
+        {
+          role: "bot",
+          text: "⏳ Creating order, please wait…",
+          pending: true,
+        },
+      ]);
+      setMessage("");
+    }
+
     try {
       const res = await apiRequest("/admin/whatsapp/preview/simulate", {
         method: "POST",
         body: {
           organization_id: Number(organizationId),
-          message: message.trim(),
+          message: outbound,
           customer_num: customerNum || undefined,
           phone: selectedCustomer?.phone || undefined,
           session_id: sessionId || undefined,
@@ -237,31 +255,58 @@ function WhatsappTestPanel() {
         },
       });
       setSessionId(res.session?.session_id || null);
-      setTranscript((prev) => [
-        ...(reset ? [] : prev),
-        { role: "user", text: message.trim() },
-        {
-          role: "bot",
-          text: res.reply,
-          state: res.state,
-          would_mutate: res.would_mutate || [],
-          cart: res.cart || [],
-          placed_order: res.placed_order || null,
-          dry_run: res.dry_run !== false,
-        },
-      ]);
-      setMessage("");
+      const botRow = {
+        role: "bot",
+        text: res.reply,
+        state: res.state,
+        would_mutate: res.would_mutate || [],
+        cart: res.cart || [],
+        placed_order: res.placed_order || null,
+        dry_run: res.dry_run !== false,
+        error: Boolean(res.reply && String(res.reply).startsWith("❌")),
+      };
+      setTranscript((prev) => {
+        if (placingLiveOrder) {
+          const withoutPending = prev.filter((row) => !row.pending);
+          return [...withoutPending, botRow];
+        }
+        return [
+          ...(reset ? [] : prev),
+          { role: "user", text: outbound },
+          botRow,
+        ];
+      });
+      if (!placingLiveOrder) {
+        setMessage("");
+      }
       if (res.placed_order?.order_num) {
         notifySuccess(
           `Live test order #${res.placed_order.order_num} created in ${res.organization_name || "the organization"}.`,
         );
+      } else if (placingLiveOrder && botRow.error) {
+        notifyError("Order could not be created. See the chat reply for details.");
       } else if ((res.would_mutate || []).includes("place_order")) {
         notifySuccess("Dry run: order was simulated only — org data was not changed.");
       } else if ((res.would_mutate || []).length) {
         notifySuccess("Dry run: mutation was simulated only — org data was not changed.");
       }
     } catch (err) {
-      notifyError(err instanceof ApiError ? err.message : "Simulation failed.");
+      const errText =
+        err instanceof ApiError ? err.message : "Simulation failed.";
+      if (placingLiveOrder) {
+        setTranscript((prev) => {
+          const withoutPending = prev.filter((row) => !row.pending);
+          return [
+            ...withoutPending,
+            {
+              role: "bot",
+              text: `❌ Error creating order: ${errText}\n\nThe failure was logged for the system errors page.`,
+              error: true,
+            },
+          ];
+        });
+      }
+      notifyError(errText);
     } finally {
       setBusy(false);
     }
@@ -596,7 +641,11 @@ function WhatsappTestPanel() {
                   className={`max-w-[95%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${
                     row.role === "user"
                       ? "ml-auto bg-[#185FA5] text-white"
-                      : "mr-auto bg-slate-100 text-slate-900"
+                      : row.error
+                        ? "mr-auto bg-rose-50 text-rose-950 ring-1 ring-rose-200"
+                        : row.pending
+                          ? "mr-auto bg-amber-50 text-amber-950 ring-1 ring-amber-200"
+                          : "mr-auto bg-slate-100 text-slate-900"
                   }`}
                 >
                   {row.text}
@@ -634,7 +683,7 @@ function WhatsappTestPanel() {
               disabled={busy || !organizationId}
               onClick={() => void sendTest(false)}
             >
-              {busy ? "…" : "Send"}
+              {busy ? (placeRealOrders && message === "" ? "Creating…" : "…") : "Send"}
             </PrimaryButton>
           </div>
         </div>

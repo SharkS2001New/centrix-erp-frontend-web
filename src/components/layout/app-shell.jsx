@@ -22,6 +22,7 @@ import { AppRouteLoading } from "@/components/shared/app-route-loading";
 import { useNavigationBusy, usePendingNavigationHref } from "@/components/shared/navigation-progress-bar";
 import { NetworkStatusBanner } from "@/components/shared/network-status-banner";
 import { LicenseExpiryBanner } from "@/components/shared/license-expiry-banner";
+import { LoginWarningsBanner } from "@/components/shared/login-warnings-banner";
 import {
   beginNavigationIntent,
   finishNavigation,
@@ -116,6 +117,7 @@ export function AppShell({ children }) {
               />
               <NetworkStatusBanner />
               <LicenseExpiryBanner />
+              <LoginWarningsBanner />
               <WorkspaceTabBar />
               <main
                 className={

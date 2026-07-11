@@ -26,6 +26,7 @@ import {
   setSession,
   setStoredCapabilities,
   setStoredWorkspace,
+  setLoginWarnings,
 } from "@/lib/auth-storage";
 import { clearStoredActiveSession } from "@/lib/pos-till";
 import { setStoredCompanyCode } from "@/lib/tenant-config";
@@ -198,6 +199,9 @@ export function AuthProvider({ children }) {
     setOrganization(res.organization ?? null);
     setMemberships(res.memberships ?? []);
     setLoginChannel(channel);
+    if (Array.isArray(res.warnings) && res.warnings.length > 0) {
+      setLoginWarnings(res.warnings);
+    }
     try {
       const caps =
         res.capabilities ??
