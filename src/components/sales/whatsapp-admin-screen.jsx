@@ -138,10 +138,24 @@ export function WhatsappAdminScreen() {
 
   return (
     <CatalogPageShell
-      title="WhatsApp"
+      title="WhatsApp activity"
       subtitle="Customer conversations, help requests from chat, and failed order attempts."
+      action={
+        <Link
+          href="/sales/orders/queues/whatsapp"
+          className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"
+        >
+          WhatsApp orders
+        </Link>
+      }
     >
-      <AdminBreadcrumb items={[{ label: "Sales", href: "/sales/orders" }, { label: "WhatsApp" }]} />
+      <AdminBreadcrumb
+        items={[
+          { label: "Sales", href: "/sales/orders" },
+          { label: "WhatsApp orders", href: "/sales/orders/queues/whatsapp" },
+          { label: "Activity" },
+        ]}
+      />
 
       {!orgReady ? (
         <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">

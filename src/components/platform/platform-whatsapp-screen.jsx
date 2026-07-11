@@ -9,6 +9,7 @@ import {
   platformWhatsappPayloadFromForm,
 } from "@/lib/whatsapp-settings";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { WhatsappTrainingPanel } from "@/components/platform/platform-whatsapp-training-panel";
 
 function WhatsappFields({ form, setForm, loading, saving, onSave, onCopy }) {
   return (
@@ -418,11 +419,19 @@ function WhatsappTestPanel() {
               <option value="">— Unknown / unregistered phone —</option>
               {(context?.customers || []).map((c) => (
                 <option key={c.customer_num} value={c.customer_num}>
-                  {c.customer_name} ({c.customer_num})
+                  {c.customer_name} (#{c.customer_num}
+                  {typeof c.orders_count === "number"
+                    ? ` · ${c.orders_count} order${c.orders_count === 1 ? "" : "s"}`
+                    : ""}
+                  )
                   {c.phone ? ` · ${c.phone}` : ""}
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-xs theme-subtext">
+              Used for cart pricing and Repeat last order. Customers with existing orders are listed
+              first.
+            </p>
           </Field>
 
           <Field label="Act as bot user (for live orders)">
@@ -777,10 +786,12 @@ export function PlatformWhatsappScreen({ embedded = false } = {}) {
 }
 
 export function PlatformWhatsappTestScreen() {
+  const [tab, setTab] = useState("simulator");
+
   return (
     <CatalogPageShell
       title="WhatsApp"
-      subtitle="Dry-run the ordering bot against a tenant organization. Webhook URL and verify token stay under Platform settings."
+      subtitle="Dry-run the ordering bot against a tenant organization, or train keyword replies for unfamiliar customer messages."
     >
       <AdminBreadcrumb
         items={[
@@ -795,7 +806,24 @@ export function PlatformWhatsappTestScreen() {
         </a>
         .
       </div>
-      <WhatsappTestPanel />
+      <div className="mb-6 flex flex-wrap gap-2 border-b border-[var(--theme-border)] pb-3">
+        {[
+          { id: "simulator", label: "Simulator" },
+          { id: "training", label: "Training" },
+        ].map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setTab(item.id)}
+            className={`rounded-lg px-3 py-1.5 text-xs transition ${
+              tab === item.id ? "theme-tab-active" : "theme-tab-inactive"
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      {tab === "training" ? <WhatsappTrainingPanel /> : <WhatsappTestPanel />}
     </CatalogPageShell>
   );
 }

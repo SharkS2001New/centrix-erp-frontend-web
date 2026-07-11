@@ -21,6 +21,7 @@ export function whatsappFormFromApi(res) {
   const settings = res?.settings ?? {};
   return {
     enabled: Boolean(settings.enabled),
+    agent_name: settings.agent_name ?? "",
     display_phone: settings.display_phone ?? "",
     phone_number_id: settings.phone_number_id ?? "",
     waba_id: settings.waba_id ?? "",
@@ -40,6 +41,7 @@ export function whatsappFormFromApi(res) {
 export function whatsappPayloadFromForm(form) {
   const payload = {
     enabled: form.enabled,
+    agent_name: form.agent_name?.trim() || null,
     display_phone: form.display_phone || null,
     phone_number_id: form.phone_number_id || null,
     waba_id: form.waba_id || null,

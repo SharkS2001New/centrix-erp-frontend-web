@@ -19,6 +19,12 @@ import {
   customReportBelongsToWorkspace,
   injectCustomReportsIntoNavSections,
 } from "@/lib/reports/custom-reports";
+import { apiRequest } from "@/lib/api";
+import {
+  PLATFORM_MAIL_AUTO_SYNC_KEY,
+  PLATFORM_MAIL_UNREAD_EVENT,
+  publishPlatformMailUnread,
+} from "@/lib/platform-mailbox-unread";
 
 const STORAGE_KEY = "sidebar-expanded-sections-v7";
 
@@ -97,8 +103,9 @@ function groupNavItemsByLabel(items) {
   return blocks;
 }
 
-function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = false, nested = false }) {
+function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = false, nested = false, badgeCount = 0 }) {
   const active = isNavItemActive(item, pathname);
+  const showBadge = Number(badgeCount) > 0;
 
   return (
     <AppNavLink
@@ -116,12 +123,17 @@ function SidebarNavLink({ item, sectionId, pathname, onNavigate, inFlyout = fals
       } ${active ? "app-sidebar-link-active" : ""}`}
     >
       <NavItemIcon item={item} sectionId={sectionId} />
-      <span className="min-w-0 truncate">{item.label}</span>
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      {showBadge ? (
+        <span className="ml-auto inline-flex min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-[#e5484d] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+          {Number(badgeCount) > 99 ? "99+" : badgeCount}
+        </span>
+      ) : null}
     </AppNavLink>
   );
 }
 
-function SectionNavItems({ items, sectionId, pathname, onNavigate, inFlyout = false }) {
+function SectionNavItems({ items, sectionId, pathname, onNavigate, inFlyout = false, badgeByHref = {} }) {
   const hasGroups = items.some((item) => item.group);
   if (!hasGroups) {
     return items.map((item) => (
@@ -132,6 +144,7 @@ function SectionNavItems({ items, sectionId, pathname, onNavigate, inFlyout = fa
         pathname={pathname}
         onNavigate={onNavigate}
         inFlyout={inFlyout}
+        badgeCount={badgeByHref[item.href] || 0}
       />
     ));
   }
@@ -162,6 +175,7 @@ function SectionNavItems({ items, sectionId, pathname, onNavigate, inFlyout = fa
             onNavigate={onNavigate}
             inFlyout={inFlyout}
             nested={Boolean(block.group)}
+            badgeCount={badgeByHref[item.href] || 0}
           />
         ))}
       </div>
@@ -222,6 +236,7 @@ function CollapsibleNavSection({
   isFlyoutOpen,
   onIconClick,
   onNavigate,
+  badgeByHref = {},
 }) {
   if (section.variant === "link") {
     if (iconOnly) {
@@ -239,7 +254,7 @@ function CollapsibleNavSection({
           title={section.label}
           aria-label={section.label}
         >
-      <NavSectionIcon sectionId={section.id} />
+          <NavSectionIcon sectionId={section.id} />
         </AppNavLink>
       );
     }
@@ -269,6 +284,7 @@ function CollapsibleNavSection({
       pathname={pathname}
       onNavigate={onNavigate}
       inFlyout={false}
+      badgeByHref={badgeByHref}
     />
   );
 
@@ -305,6 +321,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
   const { user, organization, capabilities, isModuleEnabled, hasPermission, isSuperAdmin } = useAuth();
   const [activeFlyoutId, setActiveFlyoutId] = useState(null);
   const [customReportTemplates, setCustomReportTemplates] = useState([]);
+  const [mailboxUnread, setMailboxUnread] = useState(0);
 
   const navContext = useMemo(
     () => ({
@@ -321,6 +338,84 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
 
   const workspaceId =
     getStoredWorkspace() ?? defaultWorkspaceId(capabilities, navContext);
+
+  const platformAdmin = Boolean(isSuperAdmin?.());
+
+  useEffect(() => {
+    if (!platformAdmin) {
+      setMailboxUnread(0);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function refreshUnread() {
+      try {
+        const res = await apiRequest("/admin/platform-mail/messages", {
+          searchParams: { folder: "inbox", limit: 1, offset: 0 },
+          loading: false,
+        });
+        if (cancelled) return;
+        const next = Number(res.unread_count || 0);
+        setMailboxUnread(next);
+        publishPlatformMailUnread(next);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    async function autoSyncOnce() {
+      let already = false;
+      try {
+        already = sessionStorage.getItem(PLATFORM_MAIL_AUTO_SYNC_KEY) === "1";
+      } catch {
+        already = false;
+      }
+      if (already) {
+        await refreshUnread();
+        return;
+      }
+      try {
+        sessionStorage.setItem(PLATFORM_MAIL_AUTO_SYNC_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+      try {
+        await apiRequest("/admin/platform-mail/sync", {
+          method: "POST",
+          body: { limit: 50 },
+          loading: false,
+        });
+      } catch {
+        /* best-effort */
+      }
+      await refreshUnread();
+    }
+
+    void autoSyncOnce();
+
+    function onUnread(event) {
+      const next = Number(event?.detail?.count);
+      if (Number.isFinite(next)) setMailboxUnread(Math.max(0, next));
+    }
+    window.addEventListener(PLATFORM_MAIL_UNREAD_EVENT, onUnread);
+    const interval = window.setInterval(() => {
+      void refreshUnread();
+    }, 120000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(PLATFORM_MAIL_UNREAD_EVENT, onUnread);
+      window.clearInterval(interval);
+    };
+  }, [platformAdmin]);
+
+  const badgeByHref = useMemo(
+    () => ({
+      "/platform/mailbox": mailboxUnread,
+    }),
+    [mailboxUnread],
+  );
 
   useEffect(() => {
     if (!hasPermission(P.reports.builder.view)) {
@@ -498,6 +593,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
                   isFlyoutOpen={activeFlyoutId === section.id}
                   onIconClick={toggleFlyout}
                   onNavigate={handleNavigate}
+                  badgeByHref={badgeByHref}
                 />
               ))}
             </div>
@@ -519,6 +615,7 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
               pathname={pathname}
               onNavigate={handleNavigate}
               inFlyout
+              badgeByHref={badgeByHref}
             />
           </nav>
         </aside>

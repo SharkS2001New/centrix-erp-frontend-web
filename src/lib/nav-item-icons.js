@@ -50,6 +50,7 @@ export const NAV_HREF_ICONS = {
 
   // Sales & orders
   "/sales/orders": "list",
+  "/sales/orders/queues/whatsapp": "chat",
   "/sales/whatsapp": "chat",
 
   // Field sales

@@ -719,7 +719,7 @@ export function distributionOrderQueueNavItems() {
   ];
 }
 
-export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, capabilities = null } = {}) {
+export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, includeWhatsapp = true, capabilities = null } = {}) {
   if (!slug || slug === "all") {
     return {
       slug: "all",
@@ -746,6 +746,21 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, c
       showConnectivityColumn: true,
       lockStatusFilter: false,
       lockSourceFilter: true,
+    };
+  }
+  if (slug === "whatsapp") {
+    if (!includeWhatsapp) return null;
+    return {
+      slug: "whatsapp",
+      title: salesOrderQueueTitle("WhatsApp"),
+      subtitle: "Orders placed by customers over WhatsApp",
+      fixedStatusFilter: null,
+      fixedSourceFilter: "whatsapp",
+      showRouteColumn: true,
+      showDeliveryDateColumn: true,
+      lockStatusFilter: false,
+      lockSourceFilter: true,
+      activityHref: "/sales/whatsapp",
     };
   }
   if (slug === "cancelled") {

@@ -114,8 +114,13 @@ export default function SalesOrdersListScreen({
   const includeMobileOrders = isOrgMobileSalesEnabled(capabilities);
   const includeWhatsappOrders = isPlatformWhatsappEnabled(capabilities);
   const queueConfig = useMemo(
-    () => resolveSalesOrderQueue(queueSlug, orgWorkflow, { includeMobile: includeMobileOrders, capabilities }),
-    [queueSlug, orgWorkflow, includeMobileOrders, capabilities],
+    () =>
+      resolveSalesOrderQueue(queueSlug, orgWorkflow, {
+        includeMobile: includeMobileOrders,
+        includeWhatsapp: includeWhatsappOrders,
+        capabilities,
+      }),
+    [queueSlug, orgWorkflow, includeMobileOrders, includeWhatsappOrders, capabilities],
   );
   const statusOptions = useMemo(
     () => workflowStatusFilterOptions(orgWorkflow),
@@ -210,6 +215,12 @@ export default function SalesOrdersListScreen({
       setSourceFilter("all");
     }
   }, [includeMobileOrders, sourceFilter]);
+
+  useEffect(() => {
+    if (!includeWhatsappOrders && sourceFilter === "whatsapp") {
+      setSourceFilter("all");
+    }
+  }, [includeWhatsappOrders, sourceFilter]);
 
   useEffect(() => {
     if (!includeExternalPos && sourceFilter === "pos") {
@@ -823,6 +834,14 @@ export default function SalesOrdersListScreen({
             >
               {loading || listLoading ? "Refreshing…" : "Refresh"}
             </button>
+            {queueConfig?.activityHref ? (
+              <Link
+                href={queueConfig.activityHref}
+                className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Conversations & help
+              </Link>
+            ) : null}
             <Link
               href="/sales/pos"
               className="inline-flex items-center rounded-lg bg-[var(--theme-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--theme-primary-hover)]"

@@ -145,6 +145,20 @@ export function WhatsappSettingsPanel({ saving, setSaving, setError, setMessage,
 
               {form.enabled ? (
                 <>
+                  <Field label="Bot / agent name">
+                    <input
+                      className={inputClassName()}
+                      value={form.agent_name}
+                      onChange={(e) => setForm((f) => ({ ...f, agent_name: e.target.value }))}
+                      placeholder="e.g. Omega"
+                      maxLength={80}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Shown when customers say Hi or Hello: “My name is … I am a powered WhatsApp Agent from
+                      CentrixERP.” Falls back to your organization name if left blank.
+                    </p>
+                  </Field>
+
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Your Meta credentials

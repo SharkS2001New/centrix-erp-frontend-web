@@ -9,7 +9,7 @@ import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 
 /**
  * Helps platform admins draft/improve email subject + body with platform AI keys.
- * Supports drafting from a saved mailbox template.
+ * Supports drafting from a saved mailbox template, and reply suggestions with memory.
  */
 export function PlatformAiEmailAssist({
   subject,
@@ -20,15 +20,28 @@ export function PlatformAiEmailAssist({
   selectedTemplateId = "",
   onSelectedTemplateIdChange,
   draftContext = null,
+  variant = "compose",
+  inboundEmail = null,
+  similarReplies = [],
+  onCheckSimilar = null,
+  onSaveForFuture = null,
+  savedForFuture = false,
+  savingForFuture = false,
   className = "",
 }) {
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
   const [templateId, setTemplateId] = useState(selectedTemplateId || "");
+  const [matchedCount, setMatchedCount] = useState(similarReplies?.length || 0);
+  const isReply = variant === "reply";
 
   useEffect(() => {
     setTemplateId(selectedTemplateId || "");
   }, [selectedTemplateId]);
+
+  useEffect(() => {
+    setMatchedCount(similarReplies?.length || 0);
+  }, [similarReplies]);
 
   const selectedTemplate = (templates || []).find((row) => String(row.id) === String(templateId)) || null;
 
@@ -37,7 +50,7 @@ export function PlatformAiEmailAssist({
     onSelectedTemplateIdChange?.(id);
   }
 
-  async function run(mode) {
+  async function run(mode, repliesOverride = null) {
     setBusy(true);
     try {
       const usingTemplate = mode === "from_template";
@@ -45,6 +58,9 @@ export function PlatformAiEmailAssist({
         notifyError("Select a saved template first.");
         return;
       }
+
+      const repliesForAi =
+        repliesOverride != null ? repliesOverride : mode === "reply" ? similarReplies : undefined;
 
       const result = await composePlatformEmailWithAi({
         mode,
@@ -58,6 +74,8 @@ export function PlatformAiEmailAssist({
         placeholders,
         template: usingTemplate ? selectedTemplate : null,
         context: draftContext || undefined,
+        inboundEmail: mode === "reply" ? inboundEmail : undefined,
+        similarReplies: mode === "reply" ? repliesForAi : undefined,
       });
       if (!result.subject && !result.body) {
         notifyError("AI returned an empty email. Try a clearer instruction.");
@@ -70,9 +88,13 @@ export function PlatformAiEmailAssist({
       notifySuccess(
         usingTemplate
           ? "Drafted from template — review before sending."
-          : mode === "draft"
-            ? "Draft applied — review before saving."
-            : "Email updated — review before saving.",
+          : mode === "reply"
+            ? (repliesForAi?.length
+                ? `Drafted using ${repliesForAi.length} similar saved response${repliesForAi.length === 1 ? "" : "s"} — review before sending.`
+                : "No similar saved responses found — drafted from this email alone. Review before sending.")
+            : mode === "draft"
+              ? "Draft applied — review before saving."
+              : "Email updated — review before saving.",
       );
     } catch (err) {
       notifyError(
@@ -83,6 +105,96 @@ export function PlatformAiEmailAssist({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function checkThroughSimilar() {
+    setBusy(true);
+    try {
+      let replies = similarReplies || [];
+      if (typeof onCheckSimilar === "function") {
+        replies = (await onCheckSimilar()) || [];
+      }
+      setMatchedCount(Array.isArray(replies) ? replies.length : 0);
+      await run("reply", Array.isArray(replies) ? replies : []);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (isReply) {
+    return (
+      <div
+        className={`rounded-lg border border-sky-200 bg-sky-50/70 p-3 dark:border-sky-900/50 dark:bg-sky-950/30 ${className}`}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium text-sky-950 dark:text-sky-100">AI reply assist</p>
+            <p className="mt-0.5 text-xs text-sky-800/80 dark:text-sky-200/80">
+              Use <strong>Check through similar responses</strong> when you want AI to scan replies you
+              saved for future use.{" "}
+              <strong>Save response for future response</strong> stores this reply (kept up to 3 months).
+              Credentials:{" "}
+              <Link href="/platform/settings?tab=ai" className="font-medium underline">
+                platform AI settings
+              </Link>
+              .
+              {matchedCount > 0 ? (
+                <span className="mt-1 block">Last check found {matchedCount} similar saved response{matchedCount === 1 ? "" : "s"}.</span>
+              ) : null}
+            </p>
+          </div>
+        </div>
+        <label className="mt-3 block text-sm">
+          <span className="mb-1 block text-xs font-medium text-sky-900 dark:text-sky-200">
+            Extra guidance (optional)
+          </span>
+          <textarea
+            className="w-full resize-y rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-sky-800 dark:bg-slate-900 dark:text-slate-100"
+            rows={2}
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            placeholder="e.g. Apologize for the delay and offer a call tomorrow."
+            disabled={busy}
+          />
+        </label>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center justify-center rounded-lg bg-[#185FA5] px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#144e88] disabled:opacity-60"
+            disabled={busy || !inboundEmail}
+            onClick={() => void checkThroughSimilar()}
+          >
+            {busy ? "Checking…" : "Check through similar responses"}
+          </button>
+          {typeof onSaveForFuture === "function" ? (
+            <button
+              type="button"
+              className={
+                savedForFuture
+                  ? "inline-flex items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 shadow-sm hover:bg-emerald-100 disabled:opacity-60"
+                  : "inline-flex items-center justify-center rounded-lg border border-sky-300 bg-white px-3 py-2 text-sm font-medium text-sky-900 shadow-sm hover:bg-sky-50 disabled:opacity-60"
+              }
+              disabled={busy || savingForFuture}
+              onClick={() => void onSaveForFuture()}
+            >
+              {savingForFuture
+                ? "Saving…"
+                : savedForFuture
+                  ? "Saved for future response · Remove"
+                  : "Save response for future response"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className={SECONDARY_BTN_CLASS}
+            disabled={busy || !body?.trim()}
+            onClick={() => void run("improve")}
+          >
+            Improve draft
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

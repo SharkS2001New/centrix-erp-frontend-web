@@ -73,10 +73,21 @@ function normalizeComposeResult(res, fallback = {}) {
  *   instruction?: string,
  *   subject?: string,
  *   body?: string,
- *   mode?: "draft" | "improve" | "shorten" | "formal" | "from_template",
+ *   mode?: "draft" | "improve" | "shorten" | "formal" | "from_template" | "reply",
  *   placeholders?: string[],
  *   template?: { name?: string, subject?: string, body?: string } | null,
  *   context?: Record<string, string | number | null | undefined>,
+ *   inboundEmail?: {
+ *     subject?: string,
+ *     from_address?: string,
+ *     from_name?: string,
+ *     body_text?: string,
+ *   } | null,
+ *   similarReplies?: Array<{
+ *     subject?: string,
+ *     body_text?: string,
+ *     inbound_snippet?: string | null,
+ *   }>,
  * }} input
  */
 export async function composePlatformEmailWithAi(input = {}) {
@@ -85,6 +96,8 @@ export async function composePlatformEmailWithAi(input = {}) {
   const placeholders = input.placeholders ?? PLATFORM_EMAIL_PLACEHOLDERS;
   const template = input.template ?? null;
   const context = input.context ?? {};
+  const inboundEmail = input.inboundEmail ?? null;
+  const similarReplies = Array.isArray(input.similarReplies) ? input.similarReplies : [];
 
   let instruction =
     input.instruction?.trim() ||
@@ -92,7 +105,9 @@ export async function composePlatformEmailWithAi(input = {}) {
       ? "Draft a clear, professional Centrix ERP billing email for a Kenyan business customer."
       : mode === "from_template"
         ? "Adapt this saved email template for the new recipient/context. Keep the same structure and tone; only change details the user asked for."
-        : "Improve this Centrix ERP email. Keep placeholders like {customer_name} unchanged.");
+        : mode === "reply"
+          ? "Draft a professional reply to the inbound email. Prefer the tone and approach of similar past replies when provided."
+          : "Improve this Centrix ERP email. Keep placeholders like {customer_name} unchanged.");
 
   if (mode === "from_template" && template) {
     const contextLines = Object.entries(context)
@@ -123,14 +138,30 @@ export async function composePlatformEmailWithAi(input = {}) {
     body,
     placeholders,
     output_format: "json",
+    ...(inboundEmail
+      ? {
+          inbound_email: {
+            subject: inboundEmail.subject ?? "",
+            from_address: inboundEmail.from_address ?? "",
+            from_name: inboundEmail.from_name ?? "",
+            body_text: inboundEmail.body_text ?? "",
+          },
+        }
+      : {}),
+    ...(similarReplies.length ? { similar_replies: similarReplies } : {}),
     system_hint:
-      mode === "from_template"
-        ? "You help the Centrix platform admin reuse a saved email template. " +
-          "Start from the provided template subject/body. Apply only the requested changes and new context. " +
+      mode === "reply"
+        ? "You help the Centrix platform admin reply to inbound mailbox emails. " +
+          "Read the inbound message and any past similar replies, then suggest a sensible response. " +
+          "Match how similar emails were answered when memory is provided. " +
           "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}. Kenya business English, professional and concise."
-        : "You help the Centrix platform admin write outbound emails (contracts, quotes, renewals). " +
-          "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}. " +
-          "Keep template placeholders exactly as given. Tone: professional, concise, Kenya business English.",
+        : mode === "from_template"
+          ? "You help the Centrix platform admin reuse a saved email template. " +
+            "Start from the provided template subject/body. Apply only the requested changes and new context. " +
+            "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}. Kenya business English, professional and concise."
+          : "You help the Centrix platform admin write outbound emails (contracts, quotes, renewals). " +
+            "Return JSON only: {\"subject\":\"...\",\"body\":\"...\"}. " +
+            "Keep template placeholders exactly as given. Tone: professional, concise, Kenya business English.",
   };
 
   const paths = [`${apiBase}/compose`, `${apiBase}/compose-email`];

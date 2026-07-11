@@ -1,18 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { PrimaryButton, SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
+import { PrimaryButton, SECONDARY_BTN_CLASS, TrashIcon } from "@/components/catalog/catalog-shared";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
 import { formatBillingMoney } from "@/lib/platform-billing";
 import { useConfirm } from "@/lib/use-confirm";
 import { mailboxAccountLabel } from "@/lib/platform-mail-settings";
+import {
+  PLATFORM_MAIL_AUTO_SYNC_KEY,
+  publishPlatformMailUnread,
+} from "@/lib/platform-mailbox-unread";
 
 const MAILBOX_ACCOUNT_KEY = "centrix.platform_mail.active_account_id";
+const PAGE_SIZE = 20;
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
+
+const deleteBtnClass =
+  "inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60";
 
 function emptyCompose() {
   return {
@@ -54,6 +62,17 @@ function defaultInvoiceBody(invoice, orgName, fromName = "Centrix") {
   return `Dear ${name},\n\nPlease find attached invoice ${number} for ${total}.\n\nIf you have questions, reply to this email.\n\nRegards,\n${fromName}`;
 }
 
+function isSavedForAi(message) {
+  return Boolean(message?.meta?.reply_memory?.use_for_ai);
+}
+
+function canSaveAsReplyMemory(message) {
+  if (!message) return false;
+  if (message.direction !== "outbound" || message.folder !== "sent") return false;
+  const kind = message.meta?.kind || message.kind;
+  return Boolean(message.in_reply_to || kind === "reply" || message.meta?.inbound_message_id);
+}
+
 export function PlatformMailboxPanel() {
   const confirm = useConfirm();
   const [folder, setFolder] = useState("inbox");
@@ -79,7 +98,16 @@ export function PlatformMailboxPanel() {
   const [sending, setSending] = useState(false);
   const [replyBody, setReplyBody] = useState("");
   const [compose, setCompose] = useState(() => emptyCompose());
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [hasMore, setHasMore] = useState(false);
+  const [listTotal, setListTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const [similarReplies, setSimilarReplies] = useState([]);
+  const [saveReplyForAi, setSaveReplyForAi] = useState(false);
+  const [savingReplyMemory, setSavingReplyMemory] = useState(false);
+  const autoSyncStarted = useRef(false);
   const [organizations, setOrganizations] = useState([]);
   const [orgInvoices, setOrgInvoices] = useState([]);
   const [loadingOrgInvoices, setLoadingOrgInvoices] = useState(false);
@@ -94,19 +122,28 @@ export function PlatformMailboxPanel() {
   const activeAccount =
     accounts.find((row) => String(row.id) === String(accountId)) || accounts[0] || null;
 
-  const loadList = useCallback(async () => {
-    setLoading(true);
+  const loadList = useCallback(async ({ append = false, offset = 0 } = {}) => {
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     try {
       const res = await apiRequest("/admin/platform-mail/messages", {
         searchParams: {
           folder,
+          limit: PAGE_SIZE,
+          offset,
           ...(search.trim() ? { q: search.trim() } : {}),
           ...(folder === "sent" && kindFilter ? { kind: kindFilter } : {}),
           ...(accountId ? { account_id: accountId } : {}),
         },
+        loading: false,
       });
-      setMessages(Array.isArray(res.data) ? res.data : []);
-      setUnreadCount(Number(res.unread_count || 0));
+      const rows = Array.isArray(res.data) ? res.data : [];
+      setMessages((prev) => (append ? [...prev, ...rows] : rows));
+      const nextUnread = Number(res.unread_count || 0);
+      setUnreadCount(nextUnread);
+      publishPlatformMailUnread(nextUnread);
+      setHasMore(Boolean(res.has_more));
+      setListTotal(Number(res.total || rows.length));
       if (res.stats) setMailStats(res.stats);
       if (Array.isArray(res.accounts)) {
         setAccounts(res.accounts);
@@ -118,9 +155,11 @@ export function PlatformMailboxPanel() {
       }
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load mailbox.");
-      setMessages([]);
+      if (!append) setMessages([]);
+      setHasMore(false);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [folder, search, kindFilter, accountId]);
 
@@ -130,6 +169,7 @@ export function PlatformMailboxPanel() {
     setSelectedId(null);
     setSelected(null);
     setComposing(false);
+    setSimilarReplies([]);
     try {
       localStorage.setItem(MAILBOX_ACCOUNT_KEY, nextId);
     } catch {
@@ -175,8 +215,50 @@ export function PlatformMailboxPanel() {
   }, []);
 
   useEffect(() => {
-    void loadList();
+    const timer = setTimeout(() => setSearch(searchInput.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    void loadList({ append: false, offset: 0 });
   }, [loadList]);
+
+  useEffect(() => {
+    if (autoSyncStarted.current) return;
+    autoSyncStarted.current = true;
+    let already = false;
+    try {
+      already = sessionStorage.getItem(PLATFORM_MAIL_AUTO_SYNC_KEY) === "1";
+    } catch {
+      already = false;
+    }
+    if (already) return;
+
+    try {
+      sessionStorage.setItem(PLATFORM_MAIL_AUTO_SYNC_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+
+    (async () => {
+      setSyncing(true);
+      try {
+        const res = await apiRequest("/admin/platform-mail/sync", {
+          method: "POST",
+          body: { account_id: accountId || undefined, limit: 50 },
+          loading: false,
+        });
+        if (Number(res.imported || 0) > 0) {
+          notifySuccess(res.message ?? "New mail synced.");
+          await loadList({ append: false, offset: 0 });
+        }
+      } catch {
+        /* Auto-sync is best-effort; manual Sync inbox remains available. */
+      } finally {
+        setSyncing(false);
+      }
+    })();
+  }, [accountId, loadList]);
 
   useEffect(() => {
     if (composing) {
@@ -193,11 +275,33 @@ export function PlatformMailboxPanel() {
     setComposing(false);
     setSelectedId(id);
     setReplyBody("");
+    setSimilarReplies([]);
+    setSaveReplyForAi(false);
+    const wasUnread = messages.some((row) => row.id === id && row.folder === "inbox" && !row.read_at);
     try {
-      const res = await apiRequest(`/admin/platform-mail/messages/${id}`);
+      const res = await apiRequest(`/admin/platform-mail/messages/${id}`, { loading: false });
       const msg = res.data ?? null;
       setSelected(msg);
       setThread(Array.isArray(res.thread) ? res.thread : []);
+
+      if (wasUnread) {
+        setMessages((prev) =>
+          prev.map((row) =>
+            row.id === id ? { ...row, read_at: msg?.read_at || new Date().toISOString() } : row,
+          ),
+        );
+        setUnreadCount((prev) => {
+          const next = Math.max(0, prev - 1);
+          publishPlatformMailUnread(next);
+          return next;
+        });
+      }
+
+      if (msg?.direction === "inbound") {
+        // Similar responses are loaded only when the user clicks
+        // "Check through similar responses".
+        setSimilarReplies([]);
+      }
 
       if (msg?.folder === "drafts") {
         const to =
@@ -215,10 +319,9 @@ export function PlatformMailboxPanel() {
         setComposing(true);
         setSelected(null);
         setSelectedId(null);
+        setSimilarReplies([]);
         if (orgId) void loadOrgInvoices(String(orgId));
       }
-
-      void loadList();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to open message.");
     }
@@ -232,7 +335,7 @@ export function PlatformMailboxPanel() {
         body: { account_id: accountId || undefined },
       });
       notifySuccess(res.message ?? "Inbox synced.");
-      await loadList();
+      await loadList({ append: false, offset: 0 });
     } catch (e) {
       const message = e instanceof ApiError ? e.message : "IMAP sync failed.";
       const detail = e instanceof ApiError ? e.body?.detail : null;
@@ -328,7 +431,7 @@ export function PlatformMailboxPanel() {
       if (res.data?.id) {
         await openMessage(res.data.id);
       } else {
-        await loadList();
+        await loadList({ append: false, offset: 0 });
       }
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Failed to send email.");
@@ -362,7 +465,7 @@ export function PlatformMailboxPanel() {
       }
       notifySuccess(res.message ?? "Draft saved.");
       if (folder !== "drafts") setFolder("drafts");
-      else await loadList();
+      else await loadList({ append: false, offset: 0 });
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Failed to save draft.");
     } finally {
@@ -370,17 +473,44 @@ export function PlatformMailboxPanel() {
     }
   }
 
-  async function handleDeleteMessage(messageId) {
+  async function handleDeleteMessage(messageId, event) {
+    event?.stopPropagation?.();
+    event?.preventDefault?.();
     if (!messageId) return;
+    const target = messages.find((row) => row.id === messageId);
     const ok = await confirm({
       title: "Delete message",
-      message: "Delete this message permanently?",
+      message:
+        target?.direction === "inbound"
+          ? "Delete this message from Centrix and from the email account inbox?"
+          : "Delete this message permanently?",
       confirmLabel: "Delete",
     });
     if (!ok) return;
+    setDeletingId(messageId);
     try {
-      await apiRequest(`/admin/platform-mail/messages/${messageId}`, { method: "DELETE" });
-      notifySuccess("Message deleted.");
+      const res = await apiRequest(`/admin/platform-mail/messages/${messageId}`, {
+        method: "DELETE",
+        loading: false,
+      });
+      notifySuccess(
+        res.remote_deleted
+          ? "Message deleted from mailbox and email account."
+          : (res.message ?? "Message deleted."),
+      );
+      const removedUnread = target?.folder === "inbox" && !target?.read_at;
+      setMessages((prev) => prev.filter((row) => row.id !== messageId));
+      setListTotal((prev) => Math.max(0, prev - 1));
+      if (typeof res.unread_count === "number") {
+        setUnreadCount(res.unread_count);
+        publishPlatformMailUnread(res.unread_count);
+      } else if (removedUnread) {
+        setUnreadCount((prev) => {
+          const next = Math.max(0, prev - 1);
+          publishPlatformMailUnread(next);
+          return next;
+        });
+      }
       if (compose.draft_id && String(compose.draft_id) === String(messageId)) {
         setCompose(emptyCompose());
         setComposing(false);
@@ -388,10 +518,12 @@ export function PlatformMailboxPanel() {
       if (selectedId === messageId) {
         setSelectedId(null);
         setSelected(null);
+        setSimilarReplies([]);
       }
-      await loadList();
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Failed to delete message.");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -402,10 +534,14 @@ export function PlatformMailboxPanel() {
     try {
       const res = await apiRequest(`/admin/platform-mail/messages/${selectedId}/reply`, {
         method: "POST",
-        body: { body: replyBody.trim() },
+        body: {
+          body: replyBody.trim(),
+          save_for_ai: saveReplyForAi,
+        },
       });
       notifySuccess(res.message ?? "Reply sent.");
       setReplyBody("");
+      setSaveReplyForAi(false);
       if (res.data?.id) {
         await openMessage(res.data.id);
       }
@@ -414,6 +550,80 @@ export function PlatformMailboxPanel() {
       notifyError(err instanceof ApiError ? err.message : "Failed to send reply.");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function loadSimilarRepliesForSelected() {
+    if (!selectedId) return [];
+    try {
+      const mem = await apiRequest(`/admin/platform-mail/messages/${selectedId}/similar-replies`, {
+        loading: false,
+      });
+      const rows = Array.isArray(mem.data) ? mem.data : [];
+      setSimilarReplies(rows);
+      return rows;
+    } catch (err) {
+      setSimilarReplies([]);
+      notifyError(err instanceof ApiError ? err.message : "Could not load similar saved responses.");
+      return [];
+    }
+  }
+
+  async function handleSaveForFutureFromReply() {
+    const outboundInThread =
+      selected?.direction === "inbound"
+        ? [...thread].reverse().find((item) => item.direction === "outbound" && canSaveAsReplyMemory(item))
+        : null;
+    if (outboundInThread) {
+      await handleToggleReplyMemory(outboundInThread, selected?.id);
+      return;
+    }
+    setSaveReplyForAi((prev) => {
+      const next = !prev;
+      notifySuccess(
+        next
+          ? "This reply will be saved for future similar responses when you send it (kept up to 3 months)."
+          : "This reply will not be saved for AI.",
+      );
+      return next;
+    });
+  }
+
+  async function handleToggleReplyMemory(message, inboundMessageId = null) {
+    if (!message?.id) return;
+    const currentlySaved = isSavedForAi(message);
+    setSavingReplyMemory(true);
+    try {
+      if (currentlySaved) {
+        const res = await apiRequest(`/admin/platform-mail/messages/${message.id}/reply-memory`, {
+          method: "DELETE",
+          loading: false,
+        });
+        const next =
+          res.data ?? {
+            ...message,
+            meta: { ...(message.meta || {}), reply_memory: { use_for_ai: false } },
+          };
+        setSelected((prev) => (prev?.id === message.id ? next : prev));
+        setThread((prev) => prev.map((row) => (row.id === message.id ? { ...row, meta: next.meta } : row)));
+        setMessages((prev) => prev.map((row) => (row.id === message.id ? { ...row, meta: next.meta } : row)));
+        notifySuccess(res.message ?? "Removed from future AI responses.");
+      } else {
+        const res = await apiRequest(`/admin/platform-mail/messages/${message.id}/save-reply-memory`, {
+          method: "POST",
+          body: inboundMessageId ? { inbound_message_id: inboundMessageId } : {},
+          loading: false,
+        });
+        const next = res.data ?? message;
+        setSelected((prev) => (prev?.id === message.id ? next : prev));
+        setThread((prev) => prev.map((row) => (row.id === message.id ? { ...row, meta: next.meta } : row)));
+        setMessages((prev) => prev.map((row) => (row.id === message.id ? { ...row, meta: next.meta } : row)));
+        notifySuccess(res.message ?? "Saved for future similar responses (up to 3 months).");
+      }
+    } catch (err) {
+      notifyError(err instanceof ApiError ? err.message : "Could not update saved response.");
+    } finally {
+      setSavingReplyMemory(false);
     }
   }
 
@@ -515,6 +725,13 @@ export function PlatformMailboxPanel() {
       invoice_currency: invoice?.currency || "",
     };
   })();
+
+  const selectedSavedForAi = isSavedForAi(selected);
+  const selectedCanSaveMemory = canSaveAsReplyMemory(selected);
+  const threadOutboundReply =
+    selected?.direction === "inbound"
+      ? [...thread].reverse().find((item) => item.direction === "outbound" && canSaveAsReplyMemory(item))
+      : null;
 
   return (
     <div className="space-y-4">
@@ -638,12 +855,21 @@ export function PlatformMailboxPanel() {
             <option value="test">SMTP tests</option>
           </select>
         ) : null}
-        <input
-          className={`${inputClass} max-w-xs`}
-          placeholder="Search…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className="relative min-w-[12rem] flex-1 max-w-md">
+          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400" aria-hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.3-4.3" />
+            </svg>
+          </span>
+          <input
+            className={`${inputClass} pl-9`}
+            placeholder="Search mail in this mailbox…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            aria-label="Search mailbox"
+          />
+        </div>
         <button type="button" className={SECONDARY_BTN_CLASS} disabled={syncing} onClick={() => void handleSync()}>
           {syncing ? "Syncing…" : "Sync inbox"}
         </button>
@@ -663,10 +889,10 @@ export function PlatformMailboxPanel() {
       </div>
 
       <p className="text-xs text-slate-500">
-        Select an organization to prefill the recipient, or pick an invoice to attach as PDF. Save drafts
-        from Compose, then finish them under Drafts. Outbound mail — including auto renewal reminders and
-        2FA codes — is stored under Sent. Configure IMAP under Email delivery, then use Sync inbox to pull
-        client replies.
+        Synced inbox mail is stored as metadata + short snippets; the full body loads from IMAP when you
+        open a message. Local copies (including saved AI responses) are auto-deleted after 3 months.
+        Outbound mail you send from Centrix is kept the same way. Use Sync inbox anytime to pull the
+        latest client replies.
       </p>
 
       {folder === "sent" && mailStats ? (
@@ -690,45 +916,94 @@ export function PlatformMailboxPanel() {
           {loading ? (
             <p className="p-4 text-sm text-slate-500">Loading…</p>
           ) : messages.length === 0 ? (
-            <p className="p-4 text-sm text-slate-500">No messages in this folder.</p>
+            <p className="p-4 text-sm text-slate-500">
+              {search ? "No messages match your search." : "No messages in this folder."}
+            </p>
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {messages.map((msg) => {
-                const unread = msg.folder === "inbox" && !msg.read_at;
-                const active = selectedId === msg.id;
-                return (
-                  <li key={msg.id}>
-                    <button
-                      type="button"
-                      className={`w-full px-3 py-3 text-left hover:bg-slate-50 ${
-                        active ? "bg-sky-50" : ""
-                      }`}
-                      onClick={() => void openMessage(msg.id)}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className={`truncate text-sm ${unread ? "font-semibold text-slate-900" : "text-slate-800"}`}>
-                          {msg.direction === "outbound"
-                            ? (Array.isArray(msg.to_addresses) ? msg.to_addresses[0] : "—")
-                            : msg.from_name || msg.from_address}
-                        </span>
-                        <span className="shrink-0 text-[10px] text-slate-400">
-                          {formatWhen(msg.sent_at || msg.received_at)}
-                        </span>
-                      </div>
-                      <div className={`mt-0.5 truncate text-xs ${unread ? "font-medium text-slate-800" : "text-slate-600"}`}>
-                        {msg.kind_label ? (
-                          <span className="mr-1 inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
-                            {msg.kind_label}
+            <>
+              <ul className="divide-y divide-slate-100">
+                {messages.map((msg) => {
+                  const unread = msg.folder === "inbox" && !msg.read_at;
+                  const active = selectedId === msg.id;
+                  return (
+                    <li key={msg.id} className="group relative">
+                      <button
+                        type="button"
+                        className={`w-full px-3 py-3 pr-10 text-left hover:bg-slate-50 ${
+                          active ? "bg-sky-50" : ""
+                        }`}
+                        onClick={() => void openMessage(msg.id)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="flex min-w-0 items-center gap-2">
+                            {unread ? (
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full bg-[#185FA5]"
+                                title="Unread"
+                                aria-label="Unread"
+                              />
+                            ) : (
+                              <span className="h-2 w-2 shrink-0" aria-hidden />
+                            )}
+                            <span
+                              className={`truncate text-sm ${
+                                unread ? "font-semibold text-slate-900" : "text-slate-800"
+                              }`}
+                            >
+                              {msg.direction === "outbound"
+                                ? (Array.isArray(msg.to_addresses) ? msg.to_addresses[0] : "—")
+                                : msg.from_name || msg.from_address}
+                            </span>
                           </span>
-                        ) : null}
-                        {msg.subject || "(no subject)"}
-                      </div>
-                      <div className="mt-0.5 truncate text-[11px] text-slate-400">{previewBody(msg.body_text)}</div>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+                          <span className="shrink-0 text-[10px] text-slate-400">
+                            {formatWhen(msg.sent_at || msg.received_at)}
+                          </span>
+                        </div>
+                        <div
+                          className={`mt-0.5 truncate pl-4 text-xs ${
+                            unread ? "font-medium text-slate-800" : "text-slate-600"
+                          }`}
+                        >
+                          {msg.kind_label ? (
+                            <span className="mr-1 inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                              {msg.kind_label}
+                            </span>
+                          ) : null}
+                          {msg.subject || "(no subject)"}
+                        </div>
+                        <div className="mt-0.5 truncate pl-4 text-[11px] text-slate-400">
+                          {previewBody(msg.body_text)}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        className="absolute right-2 top-2 z-10 rounded-md p-1.5 text-red-600 opacity-0 transition hover:bg-red-50 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-40"
+                        title="Delete"
+                        aria-label="Delete message"
+                        disabled={deletingId === msg.id}
+                        onClick={(e) => void handleDeleteMessage(msg.id, e)}
+                      >
+                        <TrashIcon />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {hasMore ? (
+                <div className="border-t border-slate-100 p-3">
+                  <button
+                    type="button"
+                    className={`${SECONDARY_BTN_CLASS} w-full justify-center`}
+                    disabled={loadingMore}
+                    onClick={() => void loadList({ append: true, offset: messages.length })}
+                  >
+                    {loadingMore
+                      ? "Loading…"
+                      : `Show more (${Math.min(PAGE_SIZE, Math.max(0, listTotal - messages.length))} of ${Math.max(0, listTotal - messages.length)} left)`}
+                  </button>
+                </div>
+              ) : null}
+            </>
           )}
         </div>
 
@@ -874,9 +1149,10 @@ export function PlatformMailboxPanel() {
                 {compose.draft_id ? (
                   <button
                     type="button"
-                    className={SECONDARY_BTN_CLASS}
+                    className={deleteBtnClass}
                     onClick={() => void handleDeleteMessage(Number(compose.draft_id))}
                   >
+                    <TrashIcon />
                     Delete draft
                   </button>
                 ) : null}
@@ -932,13 +1208,40 @@ export function PlatformMailboxPanel() {
                     </p>
                   ) : null}
                 </div>
-                <button
-                  type="button"
-                  className={SECONDARY_BTN_CLASS}
-                  onClick={() => void handleDeleteMessage(selected.id)}
-                >
-                  Delete
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {selectedCanSaveMemory ? (
+                    <button
+                      type="button"
+                      className={
+                        selectedSavedForAi
+                          ? "inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800 shadow-sm hover:bg-emerald-100 disabled:opacity-60"
+                          : "inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-800 shadow-sm hover:bg-sky-100 disabled:opacity-60"
+                      }
+                      disabled={savingReplyMemory}
+                      onClick={() => void handleToggleReplyMemory(selected)}
+                      title={
+                        selectedSavedForAi
+                          ? "Stop using this reply for similar future emails"
+                          : "Save this response for future similar emails (kept up to 3 months)"
+                      }
+                    >
+                      {savingReplyMemory
+                        ? "Saving…"
+                        : selectedSavedForAi
+                          ? "Saved for future response · Remove"
+                          : "Save response for future response"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={deleteBtnClass}
+                    disabled={deletingId === selected.id}
+                    onClick={() => void handleDeleteMessage(selected.id)}
+                  >
+                    <TrashIcon />
+                    {deletingId === selected.id ? "Deleting…" : "Delete"}
+                  </button>
+                </div>
               </div>
 
               {thread.length > 1 ? (
@@ -960,22 +1263,61 @@ export function PlatformMailboxPanel() {
                 </pre>
               )}
 
-              <form onSubmit={(e) => void handleReply(e)} className="space-y-2 border-t border-slate-100 pt-4">
-                <h3 className="text-sm font-semibold text-slate-900">Reply</h3>
-                <textarea
-                  className={inputClass}
-                  rows={6}
-                  value={replyBody}
-                  onChange={(e) => setReplyBody(e.target.value)}
-                  placeholder="Write your reply…"
-                  required
-                />
-                <div className="flex justify-end">
-                  <PrimaryButton type="submit" showIcon={false} disabled={sending || !replyBody.trim()}>
-                    {sending ? "Sending…" : "Send reply"}
-                  </PrimaryButton>
-                </div>
-              </form>
+              {selected.direction === "inbound" || selected.folder === "inbox" ? (
+                <form onSubmit={(e) => void handleReply(e)} className="space-y-3 border-t border-slate-100 pt-4">
+                  <h3 className="text-sm font-semibold text-slate-900">Reply</h3>
+                  {selected.body_from_imap ? (
+                    <p className="text-[11px] text-slate-400">Full message loaded from IMAP.</p>
+                  ) : selected.body_is_snippet ? (
+                    <p className="text-[11px] text-amber-700">
+                      Showing local snippet only — IMAP full body was unavailable.
+                    </p>
+                  ) : null}
+                  <PlatformAiEmailAssist
+                    variant="reply"
+                    subject={selected.subject?.startsWith("Re:") ? selected.subject : `Re: ${selected.subject || ""}`}
+                    body={replyBody}
+                    inboundEmail={{
+                      subject: selected.subject || "",
+                      from_address: selected.from_address || "",
+                      from_name: selected.from_name || "",
+                      body_text: selected.body_text || "",
+                    }}
+                    similarReplies={similarReplies}
+                    onCheckSimilar={loadSimilarRepliesForSelected}
+                    onSaveForFuture={handleSaveForFutureFromReply}
+                    savedForFuture={saveReplyForAi || isSavedForAi(threadOutboundReply)}
+                    savingForFuture={savingReplyMemory}
+                    onApply={({ body }) => setReplyBody(body)}
+                  />
+                  <textarea
+                    className={inputClass}
+                    rows={6}
+                    value={replyBody}
+                    onChange={(e) => setReplyBody(e.target.value)}
+                    placeholder="Write your reply…"
+                    required
+                  />
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      className={deleteBtnClass}
+                      disabled={deletingId === selected.id}
+                      onClick={() => void handleDeleteMessage(selected.id)}
+                    >
+                      <TrashIcon />
+                      Delete
+                    </button>
+                    <PrimaryButton type="submit" showIcon={false} disabled={sending || !replyBody.trim()}>
+                      {sending
+                        ? "Sending…"
+                        : saveReplyForAi
+                          ? "Send & save for future response"
+                          : "Send reply"}
+                    </PrimaryButton>
+                  </div>
+                </form>
+              ) : null}
             </div>
           )}
         </div>

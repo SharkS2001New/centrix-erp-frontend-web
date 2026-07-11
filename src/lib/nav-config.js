@@ -180,7 +180,7 @@ const NAV_SECTION_DEFINITIONS = [
         ordersNav: true,
       },
       {
-        href: "/sales/whatsapp",
+        href: "/sales/orders/queues/whatsapp",
         label: "WhatsApp",
         module: "sales.backend",
         permission: P.sales.orders.view,
