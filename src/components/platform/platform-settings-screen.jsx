@@ -8,11 +8,13 @@ import { SettingsSubTabBar } from "@/components/admin/settings-sub-tabs";
 import { PlatformEmailDeliveryPanel } from "@/components/platform/platform-email-delivery-panel";
 import { PlatformWhatsappScreen } from "@/components/platform/platform-whatsapp-screen";
 import { PlatformAlertNotificationsPanel } from "@/components/platform/platform-alert-notifications-panel";
+import { PlatformR2BackupSettingsPanel } from "@/components/platform/platform-r2-backup-settings-panel";
 
 const TABS = [
   { id: "email", label: "Email delivery" },
   { id: "whatsapp", label: "WhatsApp" },
   { id: "alerts", label: "Alert notifications" },
+  { id: "r2", label: "Cloudflare R2" },
 ];
 
 function resolveTab(tabId, fallback = "email") {
@@ -59,7 +61,9 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
       ? emailSubtitles[emailTab] || "SMTP, IMAP, contract templates, and subscription renewal reminders."
       : activeTab === "whatsapp"
         ? "Shared WhatsApp webhook for all tenant organizations."
-        : "Email digest and instant WhatsApp/email alerts for system errors & reports.";
+        : activeTab === "r2"
+          ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
+          : "Email digest and instant WhatsApp/email alerts for system errors & reports.";
 
   return (
     <CatalogPageShell title="Platform settings" subtitle={subtitle}>
@@ -77,6 +81,7 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
       {activeTab === "email" ? <PlatformEmailDeliveryPanel /> : null}
       {activeTab === "whatsapp" ? <PlatformWhatsappScreen embedded /> : null}
       {activeTab === "alerts" ? <PlatformAlertNotificationsPanel /> : null}
+      {activeTab === "r2" ? <PlatformR2BackupSettingsPanel /> : null}
     </CatalogPageShell>
   );
 }
