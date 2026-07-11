@@ -144,18 +144,19 @@ function WhatsappTestPanel() {
     [context, customerNum],
   );
 
-  async function loadCatalog(page = 1, append = false) {
+  async function loadCatalog(page = 1, append = false, queryOverride) {
     if (!organizationId || !customerNum) {
       notifyError("Choose an organization and customer to preview products.");
       return;
     }
+    const q = queryOverride !== undefined ? String(queryOverride).trim() : catalogQ.trim();
     setLoadingCatalog(true);
     try {
       const res = await apiRequest("/admin/whatsapp/preview/catalog", {
         searchParams: {
           organization_id: organizationId,
           customer_num: customerNum,
-          ...(catalogQ.trim() ? { q: catalogQ.trim() } : {}),
+          ...(q ? { q } : {}),
           page,
         },
         loading: false,
@@ -252,7 +253,7 @@ function WhatsappTestPanel() {
   }
 
   return (
-    <section className="theme-panel rounded-xl border p-6 shadow-sm">
+    <section className="theme-panel mb-6 rounded-xl border p-6 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold theme-heading">Test bot (dry run)</h2>
@@ -336,9 +337,12 @@ function WhatsappTestPanel() {
               type="button"
               className={SECONDARY_BTN_CLASS}
               disabled={!organizationId || !customerNum || loadingCatalog}
-              onClick={() => void loadCatalog(1)}
+              onClick={() => {
+                setCatalogQ("");
+                void loadCatalog(1, false, "");
+              }}
             >
-              {loadingCatalog ? "Loading products…" : "Preview products"}
+              {loadingCatalog ? "Loading…" : "Preview products"}
             </button>
             <button
               type="button"
@@ -350,62 +354,12 @@ function WhatsappTestPanel() {
             </button>
           </div>
 
-          {catalog ? (
-            <div className="space-y-2">
-              <div className="max-h-64 overflow-auto rounded-lg border border-slate-200">
-                <table className="min-w-full text-xs">
-                  <thead className="bg-slate-50 text-left text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2">Code</th>
-                      <th className="px-3 py-2">Product</th>
-                      <th className="px-3 py-2">Stock</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {(catalog.items || []).map((item) => (
-                      <tr key={item.product_code || item.code}>
-                        <td className="px-3 py-2 font-mono">{item.product_code || item.code}</td>
-                        <td className="px-3 py-2">{item.product_name || item.name}</td>
-                        <td className="px-3 py-2">
-                          {item.available_display ?? item.display_qty ?? item.stock_display ?? "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {(catalog.items || []).length === 0 ? (
-                  <p className="px-3 py-4 text-sm text-slate-500">
-                    No in-stock products found
-                    {catalogQ.trim() ? ` for “${catalogQ.trim()}”` : ""}.
-                  </p>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-                <span>
-                  Showing {(catalog.items || []).length}
-                  {catalog.total != null ? ` of ${catalog.total}` : ""} product
-                  {(catalog.items || []).length === 1 ? "" : "s"}
-                </span>
-                {catalog.has_more ? (
-                  <button
-                    type="button"
-                    className={SECONDARY_BTN_CLASS}
-                    disabled={loadingCatalog}
-                    onClick={() => void loadCatalog((catalog.page || 1) + 1, true)}
-                  >
-                    {loadingCatalog ? "Loading…" : "Load more"}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-
           <div className="flex gap-2">
             <input
               className={inputClassName()}
               value={catalogQ}
               onChange={(e) => setCatalogQ(e.target.value)}
-              placeholder="Search products…"
+              placeholder="Search products by name or code…"
               disabled={!organizationId || !customerNum}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -423,19 +377,78 @@ function WhatsappTestPanel() {
               Search
             </button>
           </div>
+
+          {catalog ? (
+            <div className="space-y-2">
+              <div className="max-h-72 overflow-auto rounded-lg border border-slate-200">
+                <table className="min-w-full text-xs">
+                  <thead className="sticky top-0 bg-slate-50 text-left text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Code</th>
+                      <th className="px-3 py-2">Product</th>
+                      <th className="px-3 py-2">Unit price</th>
+                      <th className="px-3 py-2">Stock</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(catalog.items || []).map((item) => (
+                      <tr key={item.product_code || item.code}>
+                        <td className="px-3 py-2 font-mono">{item.product_code || item.code}</td>
+                        <td className="px-3 py-2">{item.product_name || item.name}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {item.sell_on_retail && item.retail_unit_price != null
+                            ? `W ${Number(item.wholesale_unit_price ?? item.unit_price ?? 0).toLocaleString()} / R ${Number(item.retail_unit_price).toLocaleString()}`
+                            : item.unit_price != null || item.wholesale_unit_price != null
+                              ? Number(item.wholesale_unit_price ?? item.unit_price).toLocaleString()
+                              : "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          {item.available_display ?? item.display_qty ?? item.stock_display ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {(catalog.items || []).length === 0 ? (
+                  <p className="px-3 py-4 text-sm text-slate-500">
+                    No products found
+                    {catalogQ.trim() ? ` matching “${catalogQ.trim()}”` : " in stock"}.
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                <span>
+                  Showing {(catalog.items || []).length}
+                  {catalog.total != null ? ` of ${catalog.total}` : ""} product
+                  {(catalog.items || []).length === 1 ? "" : "s"}
+                  {catalogQ.trim() ? " (includes zero stock)" : " (in stock)"}
+                </span>
+                {catalog.has_more ? (
+                  <button
+                    type="button"
+                    className={SECONDARY_BTN_CLASS}
+                    disabled={loadingCatalog}
+                    onClick={() => void loadCatalog((catalog.page || 1) + 1, true)}
+                  >
+                    {loadingCatalog ? "Loading…" : "Load more"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
 
-        <div className="flex min-h-[28rem] flex-col rounded-xl border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-4 py-3">
+        <div className="flex h-[min(36rem,calc(100svh-8.5rem))] max-h-[calc(100svh-8.5rem)] min-h-[18rem] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white lg:sticky lg:top-4 lg:self-start">
+          <div className="shrink-0 border-b border-slate-100 px-4 py-3">
             <p className="text-sm font-semibold text-slate-900">Simulated chat</p>
             <p className="text-xs text-slate-500">
-              Type what a customer would send (HI, 1, product name, CONFIRM…). Replies mirror production bot text.
+              Type what a customer would send (Hi, Hello, 1, product name, CONFIRM…). Replies mirror production bot text.
             </p>
           </div>
-          <div className="flex-1 space-y-3 overflow-auto px-4 py-3">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
             {transcript.length === 0 ? (
               <p className="text-sm text-slate-500">
-                Start with <span className="font-mono">HI</span> or click Reset chat.
+                Start with a greeting like <span className="font-mono">Hi</span> or <span className="font-mono">Hello</span>, or click Reset chat.
               </p>
             ) : (
               transcript.map((row, index) => (
@@ -457,7 +470,7 @@ function WhatsappTestPanel() {
               ))
             )}
           </div>
-          <div className="flex gap-2 border-t border-slate-100 p-3">
+          <div className="flex shrink-0 gap-2 border-t border-slate-100 p-3">
             <input
               className={inputClassName()}
               value={message}
