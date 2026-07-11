@@ -144,7 +144,7 @@ function WhatsappTestPanel() {
     [context, customerNum],
   );
 
-  async function loadCatalog(page = 1) {
+  async function loadCatalog(page = 1, append = false) {
     if (!organizationId || !customerNum) {
       notifyError("Choose an organization and customer to preview products.");
       return;
@@ -160,7 +160,14 @@ function WhatsappTestPanel() {
         },
         loading: false,
       });
-      setCatalog(res);
+      if (append && catalog?.items?.length) {
+        setCatalog({
+          ...res,
+          items: [...(catalog.items || []), ...(res.items || [])],
+        });
+      } else {
+        setCatalog(res);
+      }
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Failed to load products.");
     } finally {
@@ -251,7 +258,8 @@ function WhatsappTestPanel() {
           <h2 className="text-sm font-semibold theme-heading">Test bot (dry run)</h2>
           <p className="mt-1 text-sm theme-subtext">
             Pick a tenant organization to preview how WhatsApp ordering will feel for their customers.
-            Uses real products and customers — never creates orders, reduces stock, or sends WhatsApp messages.
+            Uses that org’s products and customers. Your platform admin account can stand in as the bot
+            user — never creates orders, reduces stock, or sends WhatsApp messages.
           </p>
         </div>
         <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900">
@@ -304,8 +312,14 @@ function WhatsappTestPanel() {
               <p>{context.notice}</p>
               <p className="mt-1">
                 Preview ready: {context.preview_ready ? "yes" : "no"}
-                {context.bot_user?.username ? ` · bot @${context.bot_user.username}` : ""}
-                {context.configured ? " · Meta credentials complete" : " · credentials incomplete"}
+                {context.preview_bot_user?.username
+                  ? ` · bot @${context.preview_bot_user.username}${
+                      context.using_platform_admin_bot ? " (platform admin)" : ""
+                    }`
+                  : context.bot_user?.username
+                    ? ` · bot @${context.bot_user.username}`
+                    : ""}
+                {context.configured ? " · Meta credentials complete" : " · credentials incomplete (dry-run OK)"}
               </p>
               {(context.issues || []).length ? (
                 <ul className="mt-2 list-inside list-disc text-amber-900">
@@ -337,28 +351,52 @@ function WhatsappTestPanel() {
           </div>
 
           {catalog ? (
-            <div className="max-h-64 overflow-auto rounded-lg border border-slate-200">
-              <table className="min-w-full text-xs">
-                <thead className="bg-slate-50 text-left text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">Code</th>
-                    <th className="px-3 py-2">Product</th>
-                    <th className="px-3 py-2">Stock</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {(catalog.items || []).map((item) => (
-                    <tr key={item.product_code || item.code}>
-                      <td className="px-3 py-2 font-mono">{item.product_code || item.code}</td>
-                      <td className="px-3 py-2">{item.product_name || item.name}</td>
-                      <td className="px-3 py-2">{item.available_display ?? item.display_qty ?? item.stock_display ?? "—"}</td>
+            <div className="space-y-2">
+              <div className="max-h-64 overflow-auto rounded-lg border border-slate-200">
+                <table className="min-w-full text-xs">
+                  <thead className="bg-slate-50 text-left text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Code</th>
+                      <th className="px-3 py-2">Product</th>
+                      <th className="px-3 py-2">Stock</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              {(catalog.items || []).length === 0 ? (
-                <p className="px-3 py-4 text-sm text-slate-500">No in-stock products for this customer/branch.</p>
-              ) : null}
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(catalog.items || []).map((item) => (
+                      <tr key={item.product_code || item.code}>
+                        <td className="px-3 py-2 font-mono">{item.product_code || item.code}</td>
+                        <td className="px-3 py-2">{item.product_name || item.name}</td>
+                        <td className="px-3 py-2">
+                          {item.available_display ?? item.display_qty ?? item.stock_display ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {(catalog.items || []).length === 0 ? (
+                  <p className="px-3 py-4 text-sm text-slate-500">
+                    No in-stock products found
+                    {catalogQ.trim() ? ` for “${catalogQ.trim()}”` : ""}.
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                <span>
+                  Showing {(catalog.items || []).length}
+                  {catalog.total != null ? ` of ${catalog.total}` : ""} product
+                  {(catalog.items || []).length === 1 ? "" : "s"}
+                </span>
+                {catalog.has_more ? (
+                  <button
+                    type="button"
+                    className={SECONDARY_BTN_CLASS}
+                    disabled={loadingCatalog}
+                    onClick={() => void loadCatalog((catalog.page || 1) + 1, true)}
+                  >
+                    {loadingCatalog ? "Loading…" : "Load more"}
+                  </button>
+                ) : null}
+              </div>
             </div>
           ) : null}
 
@@ -369,12 +407,18 @@ function WhatsappTestPanel() {
               onChange={(e) => setCatalogQ(e.target.value)}
               placeholder="Search products…"
               disabled={!organizationId || !customerNum}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void loadCatalog(1, false);
+                }
+              }}
             />
             <button
               type="button"
               className={SECONDARY_BTN_CLASS}
               disabled={!organizationId || !customerNum || loadingCatalog}
-              onClick={() => void loadCatalog(1)}
+              onClick={() => void loadCatalog(1, false)}
             >
               Search
             </button>
