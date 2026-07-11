@@ -128,7 +128,7 @@ export function PlatformEmailDeliveryPanel() {
             smtp_host: "",
             smtp_port: 587,
             smtp_encryption: "tls",
-            imap_enabled: false,
+            imap_enabled: true,
             imap_port: 993,
             imap_encryption: "ssl",
             imap_mailbox: "INBOX",
@@ -724,32 +724,33 @@ export function PlatformEmailDeliveryPanel() {
               the API image (imap enabled) only if you need inbox sync.
             </p>
           ) : null}
-          <label className="mt-4 flex items-start gap-3">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={form.imap_enabled}
+          <label className="mt-4 block max-w-sm text-sm">
+            <span className="mb-1 block text-xs font-medium text-slate-600">Mail mode</span>
+            <select
+              className={inputClass}
+              value={form.imap_enabled ? "imap" : "smtp"}
               onChange={(e) => {
-                const enabled = e.target.checked;
+                const mode = e.target.value;
                 setForm((f) => {
-                  if (!enabled) return { ...f, imap_enabled: false };
+                  if (mode === "smtp") return { ...f, imap_enabled: false };
                   const next = suggestImapFromSmtp(f);
                   return { ...next, imap_enabled: true };
                 });
               }}
-            />
-            <span>
-              <span className="block text-sm font-medium text-slate-900">Enable IMAP inbox sync</span>
-              <span className="mt-0.5 block text-xs text-slate-500">
-                Off = SMTP-only (recommended when IMAP is unavailable for this domain).
-              </span>
+            >
+              <option value="imap">IMAP — send + inbox sync</option>
+              <option value="smtp">SMTP — send only</option>
+            </select>
+            <span className="mt-1 block text-xs text-slate-500">
+              Choose SMTP if your provider blocks IMAP. You can still fill IMAP fields and test the
+              connection before switching to IMAP mode.
             </span>
           </label>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
               className={SECONDARY_BTN_CLASS}
-              disabled={saving || !form.smtp_host || !form.imap_enabled}
+              disabled={saving || !form.smtp_host}
               onClick={handleCopyImapFromSmtp}
             >
               Copy from SMTP
@@ -757,9 +758,7 @@ export function PlatformEmailDeliveryPanel() {
             <button
               type="button"
               className={SECONDARY_BTN_CLASS}
-              disabled={
-                saving || testingImap || !form.imap_extension_available || !form.imap_enabled
-              }
+              disabled={saving || testingImap || !form.imap_extension_available}
               onClick={() => void handleTestImap()}
             >
               {testingImap ? "Testing…" : "Test IMAP connection"}
@@ -779,23 +778,18 @@ export function PlatformEmailDeliveryPanel() {
               ) : null}
               {!imapTestResult.ok ? (
                 <p className="mt-2 text-xs">
-                  If your provider blocks IMAP, leave sync disabled and keep using SMTP to send. Otherwise
-                  update the IMAP host/username/password below, save, then test again.
+                  If your provider blocks IMAP, switch Mail mode to SMTP and keep using outbound send.
+                  Otherwise update the IMAP host/username/password below, save, then test again.
                 </p>
               ) : null}
             </div>
           ) : null}
-          <div
-            className={`mt-4 grid gap-4 sm:grid-cols-2 ${
-              form.imap_enabled ? "" : "pointer-events-none opacity-50"
-            }`}
-          >
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="block text-sm sm:col-span-2">
               <span className="mb-1 block text-xs font-medium text-slate-600">Host</span>
               <input
                 className={inputClass}
                 value={form.imap_host}
-                disabled={!form.imap_enabled}
                 onChange={(e) => setForm((f) => ({ ...f, imap_host: e.target.value }))}
                 placeholder="imap.gmail.com"
               />
@@ -805,7 +799,6 @@ export function PlatformEmailDeliveryPanel() {
               <input
                 className={inputClass}
                 value={form.imap_port}
-                disabled={!form.imap_enabled}
                 onChange={(e) => setForm((f) => ({ ...f, imap_port: e.target.value }))}
               />
             </label>
@@ -814,7 +807,6 @@ export function PlatformEmailDeliveryPanel() {
               <select
                 className={inputClass}
                 value={form.imap_encryption}
-                disabled={!form.imap_enabled}
                 onChange={(e) => setForm((f) => ({ ...f, imap_encryption: e.target.value }))}
               >
                 <option value="ssl">SSL</option>
@@ -827,7 +819,6 @@ export function PlatformEmailDeliveryPanel() {
               <input
                 className={inputClass}
                 value={form.imap_username}
-                disabled={!form.imap_enabled}
                 onChange={(e) => setForm((f) => ({ ...f, imap_username: e.target.value }))}
               />
             </label>
@@ -837,7 +828,6 @@ export function PlatformEmailDeliveryPanel() {
                 type="password"
                 className={inputClass}
                 value={form.imap_password}
-                disabled={!form.imap_enabled}
                 onChange={(e) => setForm((f) => ({ ...f, imap_password: e.target.value }))}
                 placeholder={
                   form.imap_password_set
@@ -854,7 +844,6 @@ export function PlatformEmailDeliveryPanel() {
               <input
                 className={inputClass}
                 value={form.imap_mailbox}
-                disabled={!form.imap_enabled}
                 onChange={(e) => setForm((f) => ({ ...f, imap_mailbox: e.target.value }))}
                 placeholder="INBOX"
               />

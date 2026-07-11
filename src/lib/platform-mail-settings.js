@@ -11,7 +11,7 @@ export const PLATFORM_MAIL_DEFAULTS = {
   smtp_username: "",
   smtp_password: "",
   smtp_encryption: "tls",
-  imap_enabled: false,
+  imap_enabled: true,
   imap_host: "",
   imap_port: "993",
   imap_username: "",
