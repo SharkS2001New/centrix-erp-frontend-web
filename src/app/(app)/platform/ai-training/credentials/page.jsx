@@ -1,7 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { PlatformAiCredentialsScreen } from "@/components/platform/platform-ai-credentials-screen";
-
-export default function PlatformAiCredentialsPage() {
-  return <PlatformAiCredentialsScreen />;
+/** @deprecated Use /platform/settings?tab=ai */
+export default function PlatformAiCredentialsRedirectPage() {
+  redirect("/platform/settings?tab=ai");
 }

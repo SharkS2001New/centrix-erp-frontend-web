@@ -14,9 +14,6 @@ import {
   aiTrainingWorkspacePath,
 } from "@/lib/platform-ai-training";
 import { PLATFORM_COMPANY_CODE } from "@/lib/admin-scope";
-import {
-  PlatformAiTrainingNav,
-} from "@/components/platform/platform-ai-training-nav";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
@@ -310,7 +307,6 @@ export function PlatformAiTrainingScreen() {
     >
       <AdminBreadcrumb items={[{ label: "Platform", href: "/platform" }, { label: "AI training" }]} />
 
-      <PlatformAiTrainingNav />
       <PlatformAiTrainingTabs activeTab={activeTab} onChange={setActiveTab} />
 
       {activeTab === "knowledge" ? (
@@ -487,11 +483,11 @@ export function PlatformAiTrainingScreen() {
 
             {!status?.enabled ? (
               <p className="theme-text-muted mt-3 text-sm">
-                Enable platform AI training and add an API key on the{" "}
-                <Link href="/platform/ai-training/credentials" className="theme-link font-medium underline">
-                  Credentials
+                Enable platform AI and add an API key under{" "}
+                <Link href="/platform/settings?tab=ai" className="theme-link font-medium underline">
+                  Platform settings → AI credentials
                 </Link>{" "}
-                page before testing chat.
+                before testing chat.
               </p>
             ) : !previewOrgId ? (
               <p className="theme-text-muted mt-3 text-sm">

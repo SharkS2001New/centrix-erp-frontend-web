@@ -55,7 +55,7 @@ export function PlatformAiDocumentAssist({
         </p>
         <p className="mt-0.5 text-xs text-indigo-800/80 dark:text-indigo-200/80">
           Uses your{" "}
-          <Link href="/platform/ai-training/credentials" className="font-medium underline">
+          <Link href="/platform/settings?tab=ai" className="font-medium underline">
             platform AI credentials
           </Link>{" "}
           to propose a title, reference, and short notes from the customer / plan already on this form.

@@ -155,7 +155,7 @@ export async function composePlatformEmailWithAi(input = {}) {
   throw (
     lastError ??
     new ApiError(
-      "Platform AI compose is not available yet. Save AI credentials under Platform → AI training → Credentials, then add POST /admin/ai-training/compose on the API.",
+      "Platform AI compose is not available yet. Save AI credentials under Platform settings → AI credentials, then add POST /admin/ai-training/compose on the API.",
       404,
     )
   );
@@ -245,7 +245,7 @@ export async function composePlatformDocumentFieldsWithAi(input = {}) {
   throw (
     lastError ??
     new ApiError(
-      "Platform AI compose is not available yet. Save AI credentials under Platform → AI training → Credentials.",
+      "Platform AI compose is not available yet. Save AI credentials under Platform settings → AI credentials.",
       404,
     )
   );

@@ -9,10 +9,12 @@ import { PlatformEmailDeliveryPanel } from "@/components/platform/platform-email
 import { PlatformWhatsappScreen } from "@/components/platform/platform-whatsapp-screen";
 import { PlatformAlertNotificationsPanel } from "@/components/platform/platform-alert-notifications-panel";
 import { PlatformR2BackupSettingsPanel } from "@/components/platform/platform-r2-backup-settings-panel";
+import { PlatformAiCredentialsScreen } from "@/components/platform/platform-ai-credentials-screen";
 
 const TABS = [
   { id: "email", label: "Email delivery" },
   { id: "whatsapp", label: "WhatsApp" },
+  { id: "ai", label: "AI credentials" },
   { id: "alerts", label: "Alert notifications" },
   { id: "r2", label: "Cloudflare R2" },
 ];
@@ -30,6 +32,9 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
   useEffect(() => {
     if (requestedTab === "mailbox") {
       router.replace("/platform/mailbox");
+    }
+    if (requestedTab === "ai-credentials" || requestedTab === "credentials") {
+      router.replace("/platform/settings?tab=ai");
     }
   }, [requestedTab, router]);
 
@@ -61,9 +66,11 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
       ? emailSubtitles[emailTab] || "SMTP, IMAP, contract templates, and subscription renewal reminders."
       : activeTab === "whatsapp"
         ? "Shared WhatsApp webhook URL and verify token for all tenants."
-        : activeTab === "r2"
-          ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
-          : "Email digest and instant WhatsApp/email alerts for system errors & reports.";
+        : activeTab === "ai"
+          ? "OpenAI API key and model for platform-admin AI tools (email assist, training console)."
+          : activeTab === "r2"
+            ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
+            : "Email digest and instant WhatsApp/email alerts for system errors & reports.";
 
   return (
     <CatalogPageShell title="Platform settings" subtitle={subtitle}>
@@ -80,6 +87,7 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
 
       {activeTab === "email" ? <PlatformEmailDeliveryPanel /> : null}
       {activeTab === "whatsapp" ? <PlatformWhatsappScreen embedded /> : null}
+      {activeTab === "ai" ? <PlatformAiCredentialsScreen embedded /> : null}
       {activeTab === "alerts" ? <PlatformAlertNotificationsPanel /> : null}
       {activeTab === "r2" ? <PlatformR2BackupSettingsPanel /> : null}
     </CatalogPageShell>

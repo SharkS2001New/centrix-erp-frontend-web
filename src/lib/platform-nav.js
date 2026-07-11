@@ -39,7 +39,7 @@ export const PLATFORM_LINK_GROUPS = [
         href: "/platform/ai-training",
         label: "AI training",
         icon: "star",
-        description: "Platform test console and OpenAI credentials for super-admin knowledge training.",
+        description: "Platform-wide knowledge notes and test console for the ERP assistant.",
       },
       {
         href: "/platform/mailbox",
@@ -130,7 +130,7 @@ export const PLATFORM_LINK_GROUPS = [
         label: "Platform settings",
         icon: "chat",
         description:
-          "Email delivery (SMTP/IMAP), WhatsApp webhook, renewal reminders, and alert notifications.",
+          "Email delivery, WhatsApp webhook, AI credentials, renewal reminders, and alert notifications.",
       },
     ],
   },

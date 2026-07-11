@@ -92,7 +92,7 @@ export function PlatformAiEmailAssist({
           <p className="text-sm font-medium text-indigo-950 dark:text-indigo-100">AI email assist</p>
           <p className="mt-0.5 text-xs text-indigo-800/80 dark:text-indigo-200/80">
             Uses your{" "}
-            <Link href="/platform/ai-training/credentials" className="font-medium underline">
+            <Link href="/platform/settings?tab=ai" className="font-medium underline">
               platform AI credentials
             </Link>
             . Save a good email as a template, then draft from it and tell AI what to change.
