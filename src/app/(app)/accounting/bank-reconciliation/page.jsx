@@ -11,6 +11,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { accountOptionLabel, formatAccountingAmount } from "@/lib/accounting-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { readTextFile } from "@/lib/read-text-file";
 
 function statusBadge(status) {
   if (status === "completed") {
@@ -81,7 +82,8 @@ export default function BankReconciliationListPage() {
         },
       });
       notifySuccess("Bank reconciliation started.");
-      router.push(`/accounting/bank-reconciliation/${created.id}`);
+      const tab = form.csv.trim() ? "?tab=statement" : "";
+      router.push(`/accounting/bank-reconciliation/${created.id}${tab}`);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to create reconciliation");
     } finally {
@@ -206,6 +208,22 @@ export default function BankReconciliationListPage() {
               <span className="mb-1 block font-medium text-slate-700">
                 Import statement CSV (optional)
               </span>
+              <input
+                type="file"
+                accept=".csv,.txt,text/csv"
+                className="mb-2 block w-full text-sm text-slate-600"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const text = await readTextFile(file);
+                    setForm((prev) => ({ ...prev, csv: text }));
+                  } catch {
+                    notifyError("Could not read the CSV file.");
+                  }
+                  e.target.value = "";
+                }}
+              />
               <textarea
                 value={form.csv}
                 onChange={(e) => setForm((prev) => ({ ...prev, csv: e.target.value }))}
@@ -214,7 +232,7 @@ export default function BankReconciliationListPage() {
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs"
               />
               <p className="mt-1 text-xs text-slate-500">
-                Columns: date, description, reference, amount (or debit/credit).
+                Paste CSV text or choose a .csv file. Supported columns: date / transaction date, description / narrative, reference, amount (or debit/credit).
               </p>
             </label>
           </div>

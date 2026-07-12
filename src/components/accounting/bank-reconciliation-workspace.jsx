@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { CatalogPageShell, formatShortDate } from "@/components/catalog/catalog-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { formatAccountingAmount } from "@/lib/accounting-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { readTextFile } from "@/lib/read-text-file";
 
 function DifferenceBanner({ reconciliation, varianceOk }) {
   const variance = Number(reconciliation?.variance ?? 0);
@@ -65,6 +67,7 @@ function DifferenceBanner({ reconciliation, varianceOk }) {
 
 export function BankReconciliationWorkspace({ reconciliationId }) {
   const confirm = useConfirm();
+  const searchParams = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -72,7 +75,9 @@ export function BankReconciliationWorkspace({ reconciliationId }) {
   const [selectedBookId, setSelectedBookId] = useState(null);
   const [importCsv, setImportCsv] = useState("");
   const [importing, setImporting] = useState(false);
-  const [activePanel, setActivePanel] = useState("reconcile");
+  const [activePanel, setActivePanel] = useState(
+    searchParams.get("tab") === "statement" ? "statement" : "reconcile",
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -209,7 +214,8 @@ export function BankReconciliationWorkspace({ reconciliationId }) {
       );
       setData(res);
       setImportCsv("");
-      notifySuccess("Bank statement lines imported.");
+      setActivePanel("statement");
+      notifySuccess(`Imported ${res.statement_lines?.length ?? 0} statement line(s).`);
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to import statement lines");
     } finally {
@@ -445,6 +451,22 @@ export function BankReconciliationWorkspace({ reconciliationId }) {
           {editable ? (
             <div className="theme-panel mb-6 rounded-xl border p-4 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-900">Import bank statement</h2>
+              <input
+                type="file"
+                accept=".csv,.txt,text/csv"
+                className="mt-3 block w-full text-sm text-slate-600"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const text = await readTextFile(file);
+                    setImportCsv(text);
+                  } catch {
+                    notifyError("Could not read the CSV file.");
+                  }
+                  e.target.value = "";
+                }}
+              />
               <textarea
                 value={importCsv}
                 onChange={(e) => setImportCsv(e.target.value)}
@@ -452,6 +474,9 @@ export function BankReconciliationWorkspace({ reconciliationId }) {
                 placeholder={"date,description,reference,amount\n2026-06-01,Deposit,DEP-1,1500"}
                 className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs"
               />
+              <p className="mt-2 text-xs text-slate-500">
+                Upload a .csv file or paste rows here. Bank exports with headers like &quot;Transaction Date&quot; and debit/credit columns are supported.
+              </p>
               <button
                 type="button"
                 disabled={importing || busy || !importCsv.trim()}

@@ -5,7 +5,7 @@ import { apiV1BaseUrl } from "./api-base-url";
 import { beginAppLoading, endAppLoading, isPageNavigationLoading } from "./app-loading";
 import { emitSystemIssue } from "./system-issue-dispatcher";
 import { logApiErrorIssue, logSlowRequestIssue } from "./system-issue-reports";
-import { formatSlowLatencyMessage, parseServerDurationMs } from "./latency-split";
+import { parseServerDurationMs } from "./latency-split";
 import { notifyError as showErrorToast } from "./notify";
 import { handleCacheInvalidation } from "./cache-invalidation";
 import { mayAffectInAppNotifications, notifyNotificationsChanged } from "./notification-events";
@@ -451,28 +451,13 @@ async function performApiRequest(path, url, options = {}) {
 
     if (trackIssues) {
       const serverMs = parseServerDurationMs(res, data);
-      const slowReport = await logSlowRequestIssue({
+      await logSlowRequestIssue({
         path: apiPath,
         method,
         status: res.status,
         durationMs,
         serverMs,
       });
-      if (slowReport?.id) {
-        emitSystemIssue({
-          type: "slow",
-          message: formatSlowLatencyMessage({
-            mode: "request",
-            clientRttMs: durationMs,
-            serverMs,
-          }),
-          reportId: slowReport.id,
-          apiPath,
-          httpMethod: method,
-          httpStatus: res.status,
-          durationMs,
-        });
-      }
     }
 
     if (mayAffectInAppNotifications(method, apiPath, data)) {

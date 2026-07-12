@@ -1,6 +1,6 @@
-/** Event bus for system errors and slow requests (consumed by SystemIssueProvider). */
+/** Event bus for user-facing system error prompts (consumed by SystemIssueProvider). */
 
-/** @typedef {{ type: 'error' | 'slow', message: string, reportId?: string | null, pageUrl?: string, apiPath?: string, httpMethod?: string, httpStatus?: number | null, durationMs?: number | null, canReport?: boolean }} SystemIssueEvent */
+/** @typedef {{ type: 'error', message: string, reportId?: string | null, pageUrl?: string, apiPath?: string, httpMethod?: string, httpStatus?: number | null, durationMs?: number | null, canReport?: boolean }} SystemIssueEvent */
 
 /** @type {Set<(event: SystemIssueEvent) => void>} */
 const listeners = new Set();

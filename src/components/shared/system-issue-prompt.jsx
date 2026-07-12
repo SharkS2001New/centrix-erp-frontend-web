@@ -4,7 +4,6 @@ import { createPortal } from "react-dom";
 
 export function SystemIssuePrompt({
   open,
-  kind,
   message,
   reportId,
   notes,
@@ -17,13 +16,9 @@ export function SystemIssuePrompt({
 }) {
   if (!open || typeof document === "undefined") return null;
 
-  const isError = kind === "error";
-  const title = isError ? "Something went wrong" : "This is taking longer than expected";
-  const helperText = isError
-    ? technicalViewer
-      ? "Technical details are shown below. You can still report this to track it on the system issues board."
-      : "An error was logged automatically. You can notify the System Administrator with extra details to help resolve it faster."
-    : "This module responded slowly. You can report it to the System Administrator so it can be investigated.";
+  const helperText = technicalViewer
+    ? "Technical details are shown below. You can still report this to track it on the system issues board."
+    : "An error was logged automatically. You can notify the System Administrator with extra details to help resolve it faster.";
 
   return createPortal(
     <div className="fixed inset-0 z-[190] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-[1px]">
@@ -34,7 +29,7 @@ export function SystemIssuePrompt({
         aria-labelledby="system-issue-title"
       >
         <h2 id="system-issue-title" className="text-lg font-semibold text-slate-900">
-          {title}
+          Something went wrong
         </h2>
         <p className="mt-2 text-sm text-slate-600">{helperText}</p>
         <p

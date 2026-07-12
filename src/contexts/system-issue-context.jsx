@@ -16,8 +16,10 @@ export function SystemIssueProvider({ children }) {
 
   useEffect(() => {
     return subscribeSystemIssues((event) => {
+      // Slow requests are logged silently for superadmin; only errors prompt the user.
+      if (event.type === "slow") return;
+
       setPrompt({
-        kind: event.type,
         message: event.message,
         reportId: event.reportId ?? null,
         apiPath: event.apiPath ?? null,
@@ -44,7 +46,7 @@ export function SystemIssueProvider({ children }) {
     try {
       const res = await submitSystemIssueReport(
         {
-          kind: prompt.kind === "slow" ? "slow" : "error",
+          kind: "error",
           message: prompt.message,
           user_notes: notes.trim() || undefined,
           api_path: prompt.apiPath ?? undefined,
@@ -70,7 +72,6 @@ export function SystemIssueProvider({ children }) {
       {children}
       <SystemIssuePrompt
         open={Boolean(prompt)}
-        kind={prompt?.kind ?? "error"}
         message={prompt?.message ?? ""}
         reportId={prompt?.reportId}
         notes={notes}

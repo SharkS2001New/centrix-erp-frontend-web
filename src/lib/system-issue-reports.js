@@ -80,7 +80,7 @@ export function shouldAutoLogApiError(path, status) {
   return status >= 500 || status === 0;
 }
 
-export function shouldPromptSlowRequest(path, durationMs) {
+export function shouldLogSlowRequest(path, durationMs) {
   if (isIgnoredIssuePath(path)) return false;
   if (path === "/health" || path.endsWith("/health")) return false;
   return durationMs >= SLOW_REQUEST_THRESHOLD_MS;
@@ -143,7 +143,7 @@ export async function logSlowRequestIssue({
   durationMs,
   serverMs = null,
 }) {
-  if (!shouldPromptSlowRequest(path, durationMs)) return null;
+  if (!shouldLogSlowRequest(path, durationMs)) return null;
 
   const split = classifyLatency({ clientRttMs: durationMs, serverMs });
 
