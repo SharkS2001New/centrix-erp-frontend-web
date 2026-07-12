@@ -12,6 +12,7 @@ import {
   platformMailFormFromApi,
   platformMailPayloadFromForm,
   suggestImapFromSmtp,
+  isZohoMailHost,
 } from "@/lib/platform-mail-settings";
 import { PLATFORM_INVOICE_DESIGN_TEMPLATES } from "@/lib/platform-invoices";
 import { PLATFORM_EMAIL_PLACEHOLDERS } from "@/lib/platform-ai-compose";
@@ -707,6 +708,28 @@ export function PlatformEmailDeliveryPanel() {
             sending. When IMAP matches SMTP login, use “Copy from SMTP” and leave the IMAP password blank
             to reuse the saved SMTP password.
           </p>
+          {isZohoMailHost(form.imap_host) || isZohoMailHost(form.smtp_host) ? (
+            <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">
+              <p className="font-medium">Zoho Mail IMAP</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                <li>
+                  Host: <code>imap.zoho.com</code> (US), <code>imap.zoho.eu</code>, or{" "}
+                  <code>imap.zoho.in</code> — use <code>imappro.zoho.com</code> for Zoho Mail Plus /
+                  custom domain (<code>smtppro</code>).
+                </li>
+                <li>Port <strong>993</strong>, encryption <strong>SSL</strong>, folder <strong>INBOX</strong>.</li>
+                <li>Username must be the <strong>full email address</strong>.</li>
+                <li>
+                  Turn on <strong>IMAP Access</strong> in Zoho Mail → Settings → Mail Accounts.
+                </li>
+                <li>
+                  If login keeps failing with 2FA, create a Zoho{" "}
+                  <strong>Application-Specific Password</strong> and paste it in IMAP password (and SMTP
+                  if needed).
+                </li>
+              </ul>
+            </div>
+          ) : null}
           <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
             <p className="font-medium text-slate-900">Recommended modes</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-4">

@@ -43,7 +43,48 @@ export const PLATFORM_MAIL_DEFAULTS = {
   label: "Primary",
 };
 
-/** Map common SMTP hosts to IMAP hosts (Gmail / Microsoft / smtp.* → imap.*). */
+/** Map common SMTP hosts to IMAP hosts (Gmail / Zoho / Microsoft / smtp.* → imap.*). */
+export function suggestImapHostFromSmtp(smtpHost) {
+  const host = String(smtpHost || "").trim().toLowerCase();
+  if (!host) return "";
+
+  let imapHost = host;
+  if (host === "smtp.office365.com" || host === "smtp-mail.outlook.com") {
+    imapHost = "outlook.office365.com";
+  } else if (host.includes("gmail.com") || host.includes("googlemail.com")) {
+    imapHost = "imap.gmail.com";
+  } else if (host.startsWith("smtppro.")) {
+    imapHost = `imappro.${host.slice("smtppro.".length)}`;
+  } else if (host.startsWith("smtp.")) {
+    imapHost = `imap.${host.slice("smtp.".length)}`;
+  }
+
+  return normalizeImapHost(imapHost);
+}
+
+/** Fix SMTP host pasted into IMAP, and Zoho region / Mail Plus hosts. */
+export function normalizeImapHost(host) {
+  const h = String(host || "").trim().toLowerCase();
+  const map = {
+    "smtp.zoho.com": "imap.zoho.com",
+    "smtp.zoho.eu": "imap.zoho.eu",
+    "smtp.zoho.in": "imap.zoho.in",
+    "smtp.zoho.com.au": "imap.zoho.com.au",
+    "smtppro.zoho.com": "imappro.zoho.com",
+    "smtppro.zoho.eu": "imappro.zoho.eu",
+    "smtppro.zoho.in": "imappro.zoho.in",
+    "smtppro.zoho.com.au": "imappro.zoho.com.au",
+  };
+  if (map[h]) return map[h];
+  if (h.startsWith("smtppro.")) return `imappro.${h.slice("smtppro.".length)}`;
+  if (h.startsWith("smtp.") && h.includes("zoho.")) return `imap.${h.slice("smtp.".length)}`;
+  return h;
+}
+
+export function isZohoMailHost(host) {
+  return String(host || "").toLowerCase().includes("zoho.");
+}
+
 export function suggestImapFromSmtp(form) {
   const smtpHost = String(form.smtp_host || "").trim().toLowerCase();
   const smtpUser = String(form.smtp_username || "").trim();
@@ -51,15 +92,9 @@ export function suggestImapFromSmtp(form) {
   const next = { ...form };
 
   if (!String(next.imap_host || "").trim() && smtpHost) {
-    let imapHost = smtpHost;
-    if (smtpHost.startsWith("smtp.")) {
-      imapHost = `imap.${smtpHost.slice(5)}`;
-    } else if (smtpHost === "smtp.office365.com" || smtpHost === "smtp-mail.outlook.com") {
-      imapHost = "outlook.office365.com";
-    } else if (smtpHost.includes("gmail.com") || smtpHost.includes("googlemail.com")) {
-      imapHost = "imap.gmail.com";
-    }
-    next.imap_host = imapHost;
+    next.imap_host = suggestImapHostFromSmtp(smtpHost);
+  } else if (String(next.imap_host || "").trim()) {
+    next.imap_host = normalizeImapHost(next.imap_host);
   }
 
   if (!String(next.imap_port || "").trim()) next.imap_port = "993";
