@@ -132,6 +132,7 @@ export function PlatformEmailDeliveryPanel() {
             imap_port: 993,
             imap_encryption: "ssl",
             imap_mailbox: "INBOX",
+            imap_sync_filter: "primary",
           },
         },
       });
@@ -847,6 +848,26 @@ export function PlatformEmailDeliveryPanel() {
                 onChange={(e) => setForm((f) => ({ ...f, imap_mailbox: e.target.value }))}
                 placeholder="INBOX"
               />
+              <span className="mt-1 block text-xs text-slate-500">
+                Use <strong>INBOX</strong>. Gmail Primary / Updates are tabs inside INBOX, not folder names.
+              </span>
+            </label>
+            <label className="block text-sm sm:col-span-2">
+              <span className="mb-1 block text-xs font-medium text-slate-600">
+                Gmail inbox tab to sync
+              </span>
+              <select
+                className={inputClass}
+                value={form.imap_sync_filter || "primary"}
+                onChange={(e) => setForm((f) => ({ ...f, imap_sync_filter: e.target.value }))}
+              >
+                <option value="primary">Primary (default)</option>
+                <option value="updates">Updates</option>
+                <option value="all">All mail in INBOX</option>
+              </select>
+              <span className="mt-1 block text-xs text-slate-500">
+                For Gmail only. Choose Primary to pull client mail from the Primary tab instead of Updates.
+              </span>
             </label>
           </div>
         </section>

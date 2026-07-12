@@ -18,6 +18,7 @@ export const PLATFORM_MAIL_DEFAULTS = {
   imap_password: "",
   imap_encryption: "ssl",
   imap_mailbox: "INBOX",
+  imap_sync_filter: "primary",
   contract_email_subject: "Centrix ERP {kind}: {title}",
   contract_email_body:
     "Dear {customer_name},\n\nPlease find attached your Centrix ERP {kind} ({reference}).\n\nFirst payment: {first_payment}\nRenewal: {renewal_payment}\n\nIf you have questions, reply to this email.\n\nRegards,\n{from_name}",
@@ -95,6 +96,9 @@ export function platformMailFormFromApi(res = {}) {
     imap_password_set: Boolean(settings.imap_password_set),
     imap_encryption: settings.imap_encryption || "ssl",
     imap_mailbox: settings.imap_mailbox || "INBOX",
+    imap_sync_filter: ["primary", "updates", "all"].includes(settings.imap_sync_filter)
+      ? settings.imap_sync_filter
+      : "primary",
     imap_extension_available: settings.imap_extension_available !== false,
     outbound_ready: Boolean(settings.outbound_ready),
     inbox_sync_ready: Boolean(settings.inbox_sync_ready),
@@ -149,6 +153,9 @@ export function platformMailPayloadFromForm(form, extras = {}) {
     imap_username: form.imap_username.trim(),
     imap_encryption: form.imap_encryption || "ssl",
     imap_mailbox: form.imap_mailbox.trim() || "INBOX",
+    imap_sync_filter: ["primary", "updates", "all"].includes(form.imap_sync_filter)
+      ? form.imap_sync_filter
+      : "primary",
     contract_email_subject: form.contract_email_subject.trim(),
     contract_email_body: form.contract_email_body.trim(),
     auth_mail_use_dedicated: Boolean(form.auth_mail_use_dedicated),
