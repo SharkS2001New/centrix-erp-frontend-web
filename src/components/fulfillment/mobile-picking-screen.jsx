@@ -33,6 +33,12 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function daysAgoIso(days) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
 function formatDisplayDate(dateStr) {
   if (!dateStr) return "—";
   const d = new Date(`${String(dateStr).slice(0, 10)}T12:00:00`);
@@ -56,7 +62,8 @@ export function MobilePickingScreen() {
   const allowed = isDistributionOpsEnabled(capabilities);
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
 
-  const [listDate, setListDate] = useState(todayIso());
+  const [fromDate, setFromDate] = useState(daysAgoIso(5));
+  const [toDate, setToDate] = useState(todayIso());
   const [search, setSearch] = useState("");
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -82,7 +89,7 @@ export function MobilePickingScreen() {
     setError(null);
     try {
       const res = await apiRequest("/dispatch-trips", {
-        searchParams: { from_date: listDate, to_date: listDate, per_page: 100 },
+        searchParams: { from_date: fromDate, to_date: toDate, per_page: 100 },
       });
       const rows = (res.data ?? []).filter(
         (row) =>
@@ -96,7 +103,7 @@ export function MobilePickingScreen() {
     } finally {
       setLoading(false);
     }
-  }, [listDate]);
+  }, [fromDate, toDate]);
 
   const loadPickingDetail = useCallback(
     async (tripId) => {
@@ -497,12 +504,20 @@ export function MobilePickingScreen() {
       {error ? <DashboardErrorBanner message={error} className="mb-4" /> : null}
 
       <FilterToolbar>
-        <Field label="Date">
+        <Field label="From">
           <input
             type="date"
             className={inputClassName()}
-            value={listDate}
-            onChange={(e) => setListDate(e.target.value)}
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+          />
+        </Field>
+        <Field label="To">
+          <input
+            type="date"
+            className={inputClassName()}
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
           />
         </Field>
         <SearchInput

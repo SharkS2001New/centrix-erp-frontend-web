@@ -47,7 +47,7 @@ export default function MobilePickingSheetsScreen() {
   const organizationName = organization?.name ?? capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME;
   const general = generalSettings();
 
-  const [fromDate, setFromDate] = useState(daysAgoIso(7));
+  const [fromDate, setFromDate] = useState(daysAgoIso(5));
   const [toDate, setToDate] = useState(todayIso());
   const [search, setSearch] = useState("");
   const [sheets, setSheets] = useState([]);

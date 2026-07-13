@@ -1,3 +1,7 @@
+import { formatOrgNumber } from "@/lib/format";
+import { GENERAL_DEFAULTS } from "@/lib/general-settings";
+import { currentMonthDateRange } from "@/lib/dashboard-dates";
+
 export const ACCOUNT_TYPES = [
   { value: "asset", label: "Asset" },
   { value: "liability", label: "Liability" },
@@ -10,8 +14,10 @@ export function accountTypeLabel(type) {
   return ACCOUNT_TYPES.find((t) => t.value === type)?.label ?? type ?? "—";
 }
 
-import { formatOrgNumber } from "@/lib/format";
-import { GENERAL_DEFAULTS } from "@/lib/general-settings";
+/** Default from/to for accounting reports and registers (current calendar month). */
+export function defaultAccountingDateRange() {
+  return currentMonthDateRange();
+}
 
 export function formatAccountingAmount(value, settings = GENERAL_DEFAULTS) {
   if (value == null || value === "") return "—";

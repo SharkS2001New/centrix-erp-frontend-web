@@ -12,7 +12,7 @@ import {
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
-import { formatAccountingAmount } from "@/lib/accounting-shared";
+import { formatAccountingAmount, defaultAccountingDateRange } from "@/lib/accounting-shared";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 
 const GAAP_SUMMARY_LABELS = {
@@ -26,13 +26,14 @@ const GAAP_SUMMARY_LABELS = {
 
 export default function CashFlowPage() {
   const { user } = useAuth();
+  const initialRange = useMemo(() => defaultAccountingDateRange(), []);
   const [mode, setMode] = useState("gaap");
   const [rows, setRows] = useState([]);
   const [sections, setSections] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(initialRange.from);
+  const [toDate, setToDate] = useState(initialRange.to);
   const [branchId, setBranchId] = useState("");
   const [branches, setBranches] = useState([]);
 

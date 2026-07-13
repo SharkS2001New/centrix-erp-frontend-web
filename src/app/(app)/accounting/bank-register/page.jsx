@@ -4,14 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { CatalogPageShell, formatShortDate } from "@/components/catalog/catalog-shared";
-import { accountOptionLabel, formatAccountingAmount } from "@/lib/accounting-shared";
+import { accountOptionLabel, formatAccountingAmount, defaultAccountingDateRange } from "@/lib/accounting-shared";
 import { notifyError } from "@/lib/notify";
 
 export default function BankRegisterPage() {
+  const initialRange = defaultAccountingDateRange();
   const [bankAccounts, setBankAccounts] = useState([]);
   const [accountId, setAccountId] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState(new Date().toISOString().slice(0, 10));
+  const [fromDate, setFromDate] = useState(initialRange.from);
+  const [toDate, setToDate] = useState(initialRange.to);
   const [register, setRegister] = useState(null);
   const [loading, setLoading] = useState(true);
 

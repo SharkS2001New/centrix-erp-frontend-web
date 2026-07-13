@@ -47,7 +47,7 @@ export default function MobileLoadingSheetsScreen() {
     capabilities?.module_settings?.distribution,
   );
 
-  const [fromDate, setFromDate] = useState(daysAgoIso(7));
+  const [fromDate, setFromDate] = useState(daysAgoIso(5));
   const [toDate, setToDate] = useState(todayIso());
   const [search, setSearch] = useState("");
   const [sheets, setSheets] = useState([]);

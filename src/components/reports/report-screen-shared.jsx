@@ -16,6 +16,7 @@ import {
   TABLE_FOOTER_ROW_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { formatReportCell } from "@/lib/reports/format";
+import { REPORT_EXTRA_FILTERS } from "@/lib/reports/report-filter-config";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { ReportQueryFilterFieldsStructured } from "@/components/reports/report-query-filter-fields";
 import { ReportBranchSearchSelect } from "@/components/reports/report-filter-search-select";
@@ -76,6 +77,16 @@ export function ReportFilterBar({
   loading = false,
   showBranchFilter = true,
 }) {
+  const hasQueryFilters = Boolean(
+    reportKey && onQueryFilterChange && (REPORT_EXTRA_FILTERS[reportKey]?.length ?? 0) > 0,
+  );
+  const hasExtraFilters = (extraFilters ?? []).length > 0;
+  const hasAnyFilterControl = showDateRange || showBranchFilter || hasQueryFilters || hasExtraFilters;
+
+  if (!hasAnyFilterControl) {
+    return null;
+  }
+
   return (
     <div className={`mb-6 ${FILTER_BAR_CLASS}`}>
       <div className="flex flex-wrap items-end gap-3">

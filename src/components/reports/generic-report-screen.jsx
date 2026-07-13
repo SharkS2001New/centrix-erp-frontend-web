@@ -10,6 +10,7 @@ import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
 import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
+import { REPORT_EXTRA_FILTERS } from "@/lib/reports/report-filter-config";
 import {
   buildReportQueryParams,
   reportShowsDateRange,
@@ -61,6 +62,8 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const [branches, setBranches] = useState([]);
 
   const showDateFilters = reportShowsDateRange(reportKey);
+  const hasQueryFilters = (REPORT_EXTRA_FILTERS[reportKey]?.length ?? 0) > 0;
+  const showFilterToolbar = showDateFilters || multiBranch || hasQueryFilters;
 
   useEffect(() => {
     apiRequest("/branches", { searchParams: { per_page: 100 } })
@@ -116,7 +119,11 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     if (!rows.length || !columns.length) return {};
     const totals = {};
     for (const col of columns) {
-      if (!/amount|total|paid|balance|vat|gross|net|qty|quantity|count|orders|revenue|collected|discount|credit|debit|sales|profit|expense|due|outstanding|variance|float/i.test(col)) {
+      if (
+        !/amount|total|paid|balance|vat|gross|net|qty|quantity|count|orders|revenue|collected|discount|credit|debit|sales|profit|expense|due|outstanding|variance|float|value|line_items/i.test(
+          col,
+        )
+      ) {
         continue;
       }
       if (isInventoryQtyField(col)) {
@@ -189,6 +196,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
         ) : null
       }
       toolbar={
+        showFilterToolbar ? (
         <FilterToolbar>
           <Link href="/reports" className="pb-2 text-sm text-[#185FA5] hover:underline">
             ← All reports
@@ -245,6 +253,13 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
             Refresh
           </PrimaryButton>
         </FilterToolbar>
+        ) : (
+          <div className="mb-4">
+            <Link href="/reports" className="text-sm text-[#185FA5] hover:underline">
+              ← All reports
+            </Link>
+          </div>
+        )
       }
       banner={
         error ? (

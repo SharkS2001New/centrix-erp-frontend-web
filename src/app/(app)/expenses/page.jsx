@@ -27,6 +27,7 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { EXPENSE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { defaultAccountingDateRange } from "@/lib/accounting-shared";
 
 const SORT_STORAGE_KEY = "centrix-erp-expenses-sort";
 
@@ -86,24 +87,6 @@ function sumAmounts(expenses) {
   return expenses.reduce((sum, e) => sum + Number(e.expense_amount ?? 0), 0);
 }
 
-function expenseDateRange(dateFilter) {
-  const now = new Date();
-  const pad = (d) => d.toISOString().slice(0, 10);
-  if (dateFilter === "today") {
-    const today = pad(now);
-    return { from_date: today, to_date: today };
-  }
-  if (dateFilter === "month") {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    return { from_date: pad(start), to_date: pad(now) };
-  }
-  if (dateFilter === "year") {
-    const start = new Date(now.getFullYear(), 0, 1);
-    return { from_date: pad(start), to_date: pad(now) };
-  }
-  return {};
-}
-
 export default function ExpensesPage() {
   const confirm = useConfirm();
   const { user } = useAuth();
@@ -111,6 +94,7 @@ export default function ExpensesPage() {
   const urlFromDate = searchParams.get("from_date") ?? "";
   const urlToDate = searchParams.get("to_date") ?? "";
   const hasUrlDateRange = Boolean(urlFromDate && urlToDate);
+  const monthRange = useMemo(() => defaultAccountingDateRange(), []);
 
   const [expenses, setExpenses] = useState([]);
   const [totalExpenses, setTotalExpenses] = useState(0);
@@ -123,7 +107,8 @@ export default function ExpensesPage() {
   const [listLoading, setListLoading] = useState(false);
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [groupFilter, setGroupFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("all");
+  const [fromDate, setFromDate] = useState(hasUrlDateRange ? urlFromDate : monthRange.from);
+  const [toDate, setToDate] = useState(hasUrlDateRange ? urlToDate : monthRange.to);
   const [statusFilter, setStatusFilter] = useState("active");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
@@ -171,7 +156,7 @@ export default function ExpensesPage() {
         status: statusFilter,
         ...(hasUrlDateRange
           ? { from_date: urlFromDate, to_date: urlToDate }
-          : expenseDateRange(dateFilter)),
+          : { from_date: fromDate, to_date: toDate }),
       };
 
       const searchParams = buildPageParams({
@@ -193,7 +178,7 @@ export default function ExpensesPage() {
     } finally {
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, groupFilter, dateFilter, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
+  }, [page, pageSize, debouncedSearch, groupFilter, fromDate, toDate, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
 
   useEffect(() => {
     loadReferenceData();
@@ -240,7 +225,7 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, groupFilter, dateFilter, statusFilter, pageSize, sort, sortDir]);
+  }, [debouncedSearch, groupFilter, fromDate, toDate, statusFilter, pageSize, sort, sortDir]);
 
   const activeSortLabel = sort
     ? `${EXPENSE_SORT_COLUMNS[sort] ?? sort} (${sortDir === "desc" ? "high to low" : "low to high"})`
@@ -417,7 +402,12 @@ export default function ExpensesPage() {
                 page: 1,
                 perPage: 200,
                 q: debouncedSearch,
-                extra: groupFilter !== "all" ? { expense_group_id: groupFilter } : {},
+                extra: {
+                  status: statusFilter,
+                  from_date: hasUrlDateRange ? urlFromDate : fromDate,
+                  to_date: hasUrlDateRange ? urlToDate : toDate,
+                  ...(groupFilter !== "all" ? { expense_group_id: groupFilter } : {}),
+                },
               })
             }
             disabled={loading}
@@ -453,16 +443,22 @@ export default function ExpensesPage() {
             ...groups.map((g) => ({ value: String(g.id), label: g.group_name })),
           ]}
         />
-        <FilterSelect
-          value={dateFilter}
-          onChange={(e) => setDateFilter(e.target.value)}
-          options={[
-            { value: "all", label: "All dates" },
-            { value: "today", label: "Today" },
-            { value: "month", label: "This month" },
-            { value: "year", label: "This year" },
-          ]}
-        />
+        <Field label="From">
+          <input
+            type="date"
+            className={inputClassName()}
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+          />
+        </Field>
+        <Field label="To">
+          <input
+            type="date"
+            className={inputClassName()}
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+          />
+        </Field>
         <FilterSelect
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}

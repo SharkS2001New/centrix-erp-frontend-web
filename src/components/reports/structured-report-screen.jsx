@@ -40,10 +40,12 @@ export function StructuredReportScreen({ definition }) {
 function StandardReportScreen({ definition }) {
   const { user, isOrgWide, capabilities } = useAuth();
   const multiBranch = isMultiBranchCatalog(capabilities);
-  const defaultRange = useMemo(
-    () => defaultReportDateRange(definition.defaultDateRangeDays ?? 29),
-    [definition.defaultDateRangeDays],
-  );
+  const defaultRange = useMemo(() => {
+    if (definition.emptyDateRange) {
+      return { from: "", to: "" };
+    }
+    return defaultReportDateRange(definition.defaultDateRangeDays ?? 29);
+  }, [definition.defaultDateRangeDays, definition.emptyDateRange]);
   const branchInitialized = useRef(false);
   const [rows, setRows] = useState([]);
   const [reportMeta, setReportMeta] = useState(null);
@@ -137,8 +139,8 @@ function StandardReportScreen({ definition }) {
   }, [rows, definition.kpis]);
 
   const columns = useMemo(
-    () => filterStructuredReportColumns(definition.columns ?? []),
-    [definition.columns],
+    () => filterStructuredReportColumns(definition.columns ?? [], { multiBranch }),
+    [definition.columns, multiBranch],
   );
 
   const footerTotals = useMemo(() => {
@@ -146,10 +148,8 @@ function StandardReportScreen({ definition }) {
     const totals = {};
     for (const col of columns) {
       if (!col.total) continue;
-      const sum = rows.reduce((acc, row) => {
-        const raw = col.accessor ? col.accessor(row) : row[col.key];
-        return acc + (Number(raw) || 0);
-      }, 0);
+      // Sum raw numeric fields — accessors often return packaged display strings.
+      const sum = rows.reduce((acc, row) => acc + (Number(row[col.key]) || 0), 0);
       totals[col.key] = isInventoryQtyField(col.key) ? "—" : formatReportCell(col.key, sum);
     }
     return totals;

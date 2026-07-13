@@ -17,7 +17,7 @@ import {
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
-import { accountOptionLabel, formatAccountingAmount } from "@/lib/accounting-shared";
+import { accountOptionLabel, formatAccountingAmount, defaultAccountingDateRange } from "@/lib/accounting-shared";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 
 function formatCell(key, value) {
@@ -72,6 +72,7 @@ export function AccountingReportScreen({
 }) {
   const { user, capabilities } = useAuth();
   const multiBranch = isMultiBranchCatalog(capabilities);
+  const monthRange = useMemo(() => defaultAccountingDateRange(), []);
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState(null);
   const [meta, setMeta] = useState(null);
@@ -79,8 +80,8 @@ export function AccountingReportScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(monthRange.from);
+  const [toDate, setToDate] = useState(monthRange.to);
   const [branchId, setBranchId] = useState("");
   const [accountId, setAccountId] = useState("");
   const [search, setSearch] = useState("");

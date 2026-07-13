@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
+import { defaultAccountingDateRange } from "@/lib/accounting-shared";
 import { formatReportKes } from "@/lib/reports/format";
 import {
   ReportFilterBar,
@@ -17,16 +18,21 @@ function pct(part, whole) {
 }
 
 export function ProfitLossReportScreen({ definition }) {
-  const { user, capabilities } = useAuth();
+  const { user, capabilities, isOrgWide } = useAuth();
   const multiBranch = isMultiBranchCatalog(capabilities);
+  const defaultRange = useMemo(() => defaultAccountingDateRange(), []);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(defaultRange.from);
+  const [toDate, setToDate] = useState(defaultRange.to);
   const [branchId, setBranchId] = useState("");
   const [branches, setBranches] = useState([]);
-  const [applied, setApplied] = useState({ fromDate: "", toDate: "", branchId: "" });
+  const [applied, setApplied] = useState({
+    fromDate: defaultRange.from,
+    toDate: defaultRange.to,
+    branchId: "",
+  });
 
   useEffect(() => {
     apiRequest("/branches", { searchParams: { per_page: 100 } })
@@ -35,8 +41,14 @@ export function ProfitLossReportScreen({ definition }) {
   }, []);
 
   useEffect(() => {
-    if (user?.branch_id && !branchId) setBranchId(String(user.branch_id));
-  }, [user?.branch_id, branchId]);
+    if (!user) return;
+    if (isOrgWide?.()) return;
+    if (user.branch_id && !branchId) {
+      const bid = String(user.branch_id);
+      setBranchId(bid);
+      setApplied((prev) => ({ ...prev, branchId: bid }));
+    }
+  }, [user, isOrgWide, branchId]);
 
   const loadReport = useCallback(async () => {
     setLoading(true);
@@ -83,15 +95,33 @@ export function ProfitLossReportScreen({ definition }) {
     { label: "Net Profit", amount: totals.net_profit, bold: true, highlight: true },
   ];
 
+  const grossMargin = totals.gross_revenue > 0 ? (totals.gross_profit / totals.gross_revenue) * 100 : null;
+  const netMargin = totals.gross_revenue > 0 ? (totals.net_profit / totals.gross_revenue) * 100 : null;
+
   const kpis = [
     { id: "revenue", label: "Gross Sales", value: formatReportKes(totals.gross_revenue) },
-    { id: "gp", label: "Gross Profit", value: formatReportKes(totals.gross_profit) },
+    {
+      id: "gp",
+      label: "Gross Profit",
+      value: formatReportKes(totals.gross_profit),
+      hint: grossMargin != null ? `${grossMargin.toFixed(1)}% margin` : undefined,
+    },
     { id: "expenses", label: "Expenses", value: formatReportKes(totals.total_expenses) },
-    { id: "net", label: "Net Profit", value: formatReportKes(totals.net_profit) },
+    {
+      id: "net",
+      label: "Net Profit",
+      value: formatReportKes(totals.net_profit),
+      hint: netMargin != null ? `${netMargin.toFixed(1)}% of sales` : undefined,
+    },
   ];
 
   const branchLabel = branches.find((b) => String(b.id) === applied.branchId)?.branch_name
     ?? (applied.branchId ? "" : "All branches");
+
+  const periodLabel =
+    applied.fromDate && applied.toDate
+      ? `${applied.fromDate} → ${applied.toDate}`
+      : applied.fromDate || applied.toDate || "All dates";
 
   const exportColumns = [
     { key: "label", label: "Particulars", accessor: (row) => row.label },
@@ -113,7 +143,7 @@ export function ProfitLossReportScreen({ definition }) {
     <ReportPageShell
       section={definition.section}
       title={definition.title}
-      subtitle={definition.subtitle}
+      subtitle={`${definition.subtitle} · ${periodLabel}`}
       exportConfig={{
         filename: definition.key ?? "profit-loss",
         columns: exportColumns,
@@ -141,11 +171,12 @@ export function ProfitLossReportScreen({ definition }) {
         onExtraChange={() => {}}
         onFilter={() => setApplied({ fromDate, toDate, branchId })}
         onReset={() => {
-          const bid = user?.branch_id ? String(user.branch_id) : "";
-          setFromDate("");
-          setToDate("");
+          const range = defaultAccountingDateRange();
+          const bid = isOrgWide?.() ? "" : user?.branch_id ? String(user.branch_id) : "";
+          setFromDate(range.from);
+          setToDate(range.to);
           setBranchId(bid);
-          setApplied({ fromDate: "", toDate: "", branchId: bid });
+          setApplied({ fromDate: range.from, toDate: range.to, branchId: bid });
         }}
         loading={loading}
         showBranchFilter={multiBranch}
@@ -155,8 +186,16 @@ export function ProfitLossReportScreen({ definition }) {
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading report…</p>
+      ) : rows.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
+          No profit &amp; loss rows for this period. Try widening the date range.
+        </p>
       ) : (
         <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
+          <div className="border-b border-slate-100 px-4 py-3 text-sm text-slate-600">
+            Operational P&amp;L from sales, COGS, and expenses
+            {multiBranch ? ` · ${branchLabel}` : ""}
+          </div>
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="theme-table-head-row text-left text-xs font-semibold uppercase tracking-wide">
@@ -172,7 +211,11 @@ export function ProfitLossReportScreen({ definition }) {
                   className={`border-b border-slate-100 ${row.highlight ? "bg-slate-50" : ""}`}
                 >
                   <td className={`px-4 py-3 text-slate-800 ${row.bold ? "font-semibold" : ""}`}>{row.label}</td>
-                  <td className={`px-4 py-3 text-right ${row.bold ? "font-semibold" : ""}`}>
+                  <td
+                    className={`px-4 py-3 text-right tabular-nums ${row.bold ? "font-semibold" : ""} ${
+                      row.amount < 0 ? "text-red-700" : row.highlight ? "text-emerald-800" : ""
+                    }`}
+                  >
                     {formatReportKes(Math.abs(row.amount))}
                     {row.amount < 0 ? " (Dr)" : ""}
                   </td>
@@ -183,6 +226,11 @@ export function ProfitLossReportScreen({ definition }) {
               ))}
             </tbody>
           </table>
+          {rows.length > 1 ? (
+            <div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+              Statement aggregates {rows.length} daily/branch period rows in the selected range.
+            </div>
+          ) : null}
         </div>
       )}
     </ReportPageShell>

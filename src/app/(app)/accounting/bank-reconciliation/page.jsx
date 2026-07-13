@@ -12,6 +12,7 @@ import {
 import { accountOptionLabel, formatAccountingAmount } from "@/lib/accounting-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { readTextFile } from "@/lib/read-text-file";
+import { useConfirm, confirmDeleteOptions } from "@/lib/use-confirm";
 
 function statusBadge(status) {
   if (status === "completed") {
@@ -25,10 +26,12 @@ function statusBadge(status) {
 
 export default function BankReconciliationListPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [rows, setRows] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     chart_of_account_id: "",
@@ -88,6 +91,27 @@ export default function BankReconciliationListPage() {
       notifyError(e instanceof ApiError ? e.message : "Failed to create reconciliation");
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function deleteReconciliation(row) {
+    const ok = await confirm(
+      confirmDeleteOptions(
+        row.title || `reconciliation for ${row.account_code}`,
+        "Delete this open bank reconciliation? Statement lines and matches will be removed. This cannot be undone.",
+      ),
+    );
+    if (!ok) return;
+
+    setDeletingId(row.id);
+    try {
+      await apiRequest(`/accounting/bank-reconciliations/${row.id}`, { method: "DELETE" });
+      notifySuccess("Bank reconciliation deleted.");
+      await load();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to delete reconciliation");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -301,12 +325,24 @@ export default function BankReconciliationListPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/accounting/bank-reconciliation/${row.id}`}
-                      className="text-sm font-medium text-[#185FA5] hover:underline"
-                    >
-                      Open
-                    </Link>
+                    <div className="flex items-center justify-end gap-3">
+                      <Link
+                        href={`/accounting/bank-reconciliation/${row.id}`}
+                        className="text-sm font-medium text-[#185FA5] hover:underline"
+                      >
+                        Open
+                      </Link>
+                      {row.status === "in_progress" ? (
+                        <button
+                          type="button"
+                          disabled={deletingId === row.id}
+                          onClick={() => void deleteReconciliation(row)}
+                          className="text-sm font-medium text-red-600 hover:underline disabled:opacity-50"
+                        >
+                          {deletingId === row.id ? "Deleting…" : "Delete"}
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))

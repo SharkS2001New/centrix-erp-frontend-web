@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { CatalogPageShell, formatShortDate } from "@/components/catalog/catalog-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { formatAccountingAmount } from "@/lib/accounting-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { useConfirm } from "@/lib/use-confirm";
+import { useConfirm, confirmDeleteOptions } from "@/lib/use-confirm";
 import { readTextFile } from "@/lib/read-text-file";
 
 function DifferenceBanner({ reconciliation, varianceOk }) {
@@ -67,6 +67,7 @@ function DifferenceBanner({ reconciliation, varianceOk }) {
 
 export function BankReconciliationWorkspace({ reconciliationId }) {
   const confirm = useConfirm();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -246,6 +247,27 @@ export function BankReconciliationWorkspace({ reconciliationId }) {
     }
   }
 
+  async function deleteReconciliation() {
+    const ok = await confirm(
+      confirmDeleteOptions(
+        reconciliation?.title || "this bank reconciliation",
+        "Delete this open reconciliation? Statement lines and matches will be removed. This cannot be undone.",
+      ),
+    );
+    if (!ok) return;
+
+    setBusy(true);
+    try {
+      await apiRequest(`/accounting/bank-reconciliations/${reconciliationId}`, { method: "DELETE" });
+      notifySuccess("Bank reconciliation deleted.");
+      router.push("/accounting/bank-reconciliation");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to delete reconciliation");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading && !reconciliation) {
     return (
       <CatalogPageShell title="Bank reconciliation" subtitle="Loading…">
@@ -302,6 +324,16 @@ export function BankReconciliationWorkspace({ reconciliationId }) {
               className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60"
             >
               Finish now
+            </button>
+          ) : null}
+          {editable ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={deleteReconciliation}
+              className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+            >
+              Delete
             </button>
           ) : null}
         </div>

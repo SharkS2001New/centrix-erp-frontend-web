@@ -61,7 +61,7 @@ export function DistributionLoadingListsScreen() {
     capabilities?.module_settings?.distribution,
   );
 
-  const [fromDate, setFromDate] = useState(daysAgoIso(14));
+  const [fromDate, setFromDate] = useState(daysAgoIso(5));
   const [toDate, setToDate] = useState(todayIso());
   const [search, setSearch] = useState("");
   const [trips, setTrips] = useState([]);

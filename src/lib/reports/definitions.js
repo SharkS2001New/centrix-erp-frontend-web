@@ -113,7 +113,7 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-supplier": {
     title: "Sales by Supplier",
-    subtitle: "Revenue and VAT grouped by product supplier",
+    subtitle: "Revenue and VAT by product supplier (packaged qty)",
     section: "Sales",
     apiPath: "/reports/sales-by-supplier",
     dateColumn: "sale_date",
@@ -122,10 +122,10 @@ export const REPORT_DEFINITIONS = {
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "supplier_code", label: "Supplier Code", accessor: (r) => r.supplier_code || "—", link: "supplier" },
       { key: "supplier_name", label: "Supplier", accessor: (r) => r.supplier_name, link: "supplier" },
+      { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
       { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
       { key: "order_count", label: "Orders", accessor: (r) => r.order_count, align: "right", total: true },
-      { key: "products_sold", label: "Products", accessor: (r) => r.products_sold, align: "right", total: true },
-      { key: "qty_sold", label: "Qty Sold", accessor: (r) => r.qty_sold, align: "right", total: true },
+      { key: "qty_sold", label: "Qty Sold", accessor: (r) => formatInventoryQtyWithUom(r.qty_sold, r), align: "right", total: true },
       {
         key: "net_ex_vat",
         label: "Net (ex VAT)",
@@ -138,8 +138,7 @@ export const REPORT_DEFINITIONS = {
       { key: "total_discount", label: "Discount", accessor: (r) => r.total_discount, align: "right", total: true },
     ],
     kpis: vatReportKpis("total_revenue", "total_vat"),
-    footerTotals: ["order_count", "products_sold", "qty_sold", "total_vat", "total_revenue", "total_discount"],
-    charts: [{ type: "bar", title: "Revenue by supplier", labelKey: "supplier_name", valueKey: "total_revenue" }],
+    footerTotals: ["order_count", "qty_sold", "total_vat", "total_revenue", "total_discount"],
   },
 
   "sales-by-channel": {
@@ -193,7 +192,7 @@ export const REPORT_DEFINITIONS = {
 
   "category-sales": {
     title: "Sales by Category",
-    subtitle: "Category revenue with VAT",
+    subtitle: "Category revenue with VAT and packaged qty",
     section: "Sales",
     apiPath: "/reports/category-sales",
     dateColumn: "sale_date",
@@ -202,7 +201,8 @@ export const REPORT_DEFINITIONS = {
       { key: "sale_date", label: "Date", accessor: (r) => r.sale_date },
       { key: "category_name", label: "Category", accessor: (r) => r.category_name },
       { key: "subcategory_name", label: "Subcategory", accessor: (r) => r.subcategory_name },
-      { key: "qty_sold", label: "Qty Sold", accessor: (r) => r.qty_sold, align: "right", total: true },
+      { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
+      { key: "qty_sold", label: "Qty Sold", accessor: (r) => formatInventoryQtyWithUom(r.qty_sold, r), align: "right", total: true },
       {
         key: "net_ex_vat",
         label: "Net (ex VAT)",
@@ -240,10 +240,23 @@ export const REPORT_DEFINITIONS = {
       {
         key: "reorder_point",
         label: "Reorder Point",
-        accessor: (r) =>
-          Number(r.reorder_point) > 0
-            ? formatInventoryQtyWithUom(r.reorder_point, r)
-            : "—",
+        accessor: (r) => {
+          const mode = r.stock_alert_mode ?? "per_product";
+          const globalThreshold = Number(r.global_low_stock_threshold);
+          const productPoint = Number(r.reorder_point);
+          if (mode === "global" && Number.isFinite(globalThreshold) && globalThreshold > 0) {
+            return formatInventoryQtyWithUom(globalThreshold, r);
+          }
+          if (mode === "both") {
+            const parts = [];
+            if (productPoint > 0) parts.push(`Product ${formatInventoryQtyWithUom(productPoint, r)}`);
+            if (Number.isFinite(globalThreshold) && globalThreshold > 0) {
+              parts.push(`Global ${formatInventoryQtyWithUom(globalThreshold, r)}`);
+            }
+            return parts.length ? parts.join(" · ") : "—";
+          }
+          return productPoint > 0 ? formatInventoryQtyWithUom(productPoint, r) : "—";
+        },
         align: "right",
       },
       {
@@ -273,8 +286,18 @@ export const REPORT_DEFINITIONS = {
         compute: (rows) => ({
           value: String(
             rows.filter((r) => {
-              const qty = Number(r.total_base_units ?? r.total_quantity) || 0;
-              return qty > 0 && Number(r.reorder_point) > 0 && qty <= Number(r.reorder_point);
+              const qty = Number(r.available_total_units ?? r.total_base_units ?? r.total_quantity) || 0;
+              if (qty <= 0) return false;
+              const mode = r.stock_alert_mode ?? "per_product";
+              const globalThreshold = Number(r.global_low_stock_threshold) || 0;
+              const productPoint = Number(r.reorder_point) || 0;
+              const threshold =
+                mode === "global"
+                  ? globalThreshold
+                  : mode === "both"
+                    ? Math.max(productPoint, globalThreshold)
+                    : productPoint;
+              return threshold > 0 && qty <= threshold;
             }).length,
           ),
           tone: "warning",
@@ -444,17 +467,122 @@ export const REPORT_DEFINITIONS = {
     variant: "profit-loss",
   },
 
+  "open-lpo": {
+    title: "Open LPO lines",
+    subtitle: "Purchase order lines still pending receive",
+    section: "Purchases",
+    apiPath: "/reports/open-lpo",
+    dateColumn: "order_date",
+    showDateRange: true,
+    columns: [
+      { key: "lpo_no", label: "LPO", accessor: (r) => r.lpo_no, link: "lpo" },
+      { key: "supplier_name", label: "Supplier", accessor: (r) => r.supplier_name, link: "supplier" },
+      { key: "status_name", label: "Status", accessor: (r) => r.status_name },
+      { key: "order_date", label: "Order date", accessor: (r) => r.order_date },
+      { key: "due_date", label: "Due date", accessor: (r) => r.due_date },
+      { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
+      {
+        key: "ordered_qty",
+        label: "Ordered",
+        accessor: (r) => formatInventoryQtyWithUom(r.ordered_qty, r),
+        align: "right",
+      },
+      {
+        key: "received_qty",
+        label: "Received",
+        accessor: (r) => formatInventoryQtyWithUom(r.received_qty, r),
+        align: "right",
+      },
+      {
+        key: "pending_qty",
+        label: "Pending",
+        accessor: (r) => formatInventoryQtyWithUom(r.pending_qty, r),
+        align: "right",
+      },
+      { key: "cost_price", label: "Unit cost", accessor: (r) => r.cost_price, align: "right" },
+      {
+        key: "pending_value",
+        label: "Pending value",
+        accessor: (r) => r.pending_value,
+        align: "right",
+        total: true,
+      },
+    ],
+    kpis: [
+      {
+        id: "lines",
+        label: "Open lines",
+        compute: (rows) => ({ value: String(rows.length) }),
+      },
+      {
+        id: "pending_value",
+        label: "Pending value",
+        compute: (rows) => ({ value: kes(sum(rows, "pending_value")) }),
+      },
+    ],
+    footerTotals: ["pending_value"],
+  },
+
+  "purchases-by-supplier": {
+    title: "Purchases by supplier",
+    subtitle: "LPO totals and pending receive by supplier",
+    section: "Purchases",
+    apiPath: "/reports/purchases-by-supplier",
+    dateColumn: "order_date",
+    showDateRange: true,
+    columns: [
+      { key: "order_date", label: "Order date", accessor: (r) => r.order_date },
+      { key: "supplier_code", label: "Supplier code", accessor: (r) => r.supplier_code || "—", link: "supplier" },
+      { key: "supplier_name", label: "Supplier", accessor: (r) => r.supplier_name, link: "supplier" },
+      { key: "lpo_no", label: "LPO", accessor: (r) => r.lpo_no, link: "lpo" },
+      { key: "status_name", label: "Status", accessor: (r) => r.status_name },
+      { key: "due_date", label: "Due date", accessor: (r) => r.due_date },
+      { key: "line_items", label: "Lines", accessor: (r) => r.line_items, align: "right", total: true },
+      { key: "total_qty_ordered", label: "Ordered qty", accessor: (r) => r.total_qty_ordered, align: "right" },
+      { key: "total_qty_received", label: "Received qty", accessor: (r) => r.total_qty_received, align: "right" },
+      { key: "total_qty_pending", label: "Pending qty", accessor: (r) => r.total_qty_pending, align: "right" },
+      { key: "pending_value", label: "Pending value", accessor: (r) => r.pending_value, align: "right", total: true },
+      { key: "total_amount", label: "LPO total", accessor: (r) => r.total_amount, align: "right", total: true },
+    ],
+    kpis: [
+      {
+        id: "lpos",
+        label: "LPOs",
+        compute: (rows) => ({ value: String(rows.length) }),
+      },
+      {
+        id: "total",
+        label: "LPO total",
+        compute: (rows) => ({ value: kes(sum(rows, "total_amount")) }),
+      },
+      {
+        id: "pending",
+        label: "Pending value",
+        compute: (rows) => ({ value: kes(sum(rows, "pending_value")) }),
+      },
+    ],
+    footerTotals: ["line_items", "pending_value", "total_amount"],
+  },
+
   "top-debtors": {
     title: "Top Debtors Report",
     subtitle: "Customers with outstanding balances",
     section: "Finance",
     apiPath: "/reports/top-debtors",
     dateColumn: null,
-    showDateRange: false,
+    showDateRange: true,
+    emptyDateRange: true,
     columns: [
       { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name, link: "customer" },
       { key: "route_name", label: "Route", accessor: (r) => r.route_name },
-      { key: "current_balance", label: "Outstanding", accessor: (r) => r.current_balance, align: "right", total: true },
+      {
+        key: "outstanding_balance",
+        label: "Outstanding",
+        accessor: (r) =>
+          Number(r.outstanding_balance ?? Math.max(Number(r.current_balance) || 0, Number(r.invoice_balance) || 0)),
+        align: "right",
+        total: true,
+      },
       { key: "open_invoices", label: "Open Invoices", accessor: (r) => r.open_invoices, align: "right", total: true },
       { key: "invoice_balance", label: "Invoice Balance", accessor: (r) => r.invoice_balance, align: "right", total: true },
     ],
@@ -467,10 +595,22 @@ export const REPORT_DEFINITIONS = {
       {
         id: "outstanding",
         label: "Total Outstanding",
-        compute: (rows) => ({ value: kes(sum(rows, "current_balance")) }),
+        compute: (rows) => ({
+          value: kes(
+            rows.reduce(
+              (acc, r) =>
+                acc +
+                Number(
+                  r.outstanding_balance ??
+                    Math.max(Number(r.current_balance) || 0, Number(r.invoice_balance) || 0),
+                ),
+              0,
+            ),
+          ),
+        }),
       },
     ],
-    footerTotals: ["current_balance", "open_invoices", "invoice_balance"],
+    footerTotals: ["outstanding_balance", "open_invoices", "invoice_balance"],
   },
 
   "invoice-payments": {

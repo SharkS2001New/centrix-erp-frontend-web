@@ -7,6 +7,7 @@ import { useOrgFormat } from "@/lib/org-format";
 import {
   CatalogPageShell,
   Field,
+  PaginationBar,
   PrimaryLink,
   SearchInput,
   SECONDARY_BTN_CLASS,
@@ -22,6 +23,8 @@ import {
 } from "@/components/inventory/inventory-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_TRANSFER_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
+import { parsePaginator } from "@/lib/paginated-api";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import { P } from "@/lib/permission-codes";
 
 export default function InventoryTransfersPage() {
@@ -29,11 +32,16 @@ export default function InventoryTransfersPage() {
   const { capabilities, user } = useAuth();
   const showInterBranch = isMultiBranchCatalog(capabilities);
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [products, setProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(15);
   const initialRange = defaultDateRange(30);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
@@ -44,20 +52,32 @@ export default function InventoryTransfersPage() {
     try {
       const [res, catalogProducts, uomRes] = await Promise.all([
         apiRequest("/reports/stock-transfers", {
-          searchParams: { from_date: fromDate, to_date: toDate, per_page: 200 },
+          searchParams: {
+            from_date: fromDate,
+            to_date: toDate,
+            per_page: pageSize,
+            page,
+            ...(appliedSearch.trim() ? { q: appliedSearch.trim() } : {}),
+          },
         }),
         fetchProductCatalogCached(user?.organization_id, { status: "all" }),
         apiRequest("/uoms", { searchParams: { per_page: 200 } }),
       ]);
-      setRows(res.data ?? []);
+      const parsed = parsePaginator(res);
+      setRows(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
       setProducts(catalogProducts ?? []);
       setUoms(uomRes.data ?? []);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load transfers");
+      setRows([]);
+      setTotal(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
-  }, [fromDate, toDate, user?.organization_id]);
+  }, [fromDate, toDate, page, pageSize, appliedSearch, user?.organization_id]);
 
   const uomByProduct = useMemo(() => buildUomByProductCode(products, uoms), [products, uoms]);
 
@@ -65,11 +85,14 @@ export default function InventoryTransfersPage() {
     load();
   }, [load]);
 
-  const filtered = rows.filter((r) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return [r.product_code, r.product_name, r.from_location, r.to_location].join(" ").toLowerCase().includes(q);
-  });
+  useEffect(() => {
+    setPage(1);
+  }, [fromDate, toDate, pageSize, appliedSearch]);
+
+  function applySearch() {
+    setPage(1);
+    setAppliedSearch(search.trim());
+  }
 
   return (
     <CatalogPageShell
@@ -90,8 +113,13 @@ export default function InventoryTransfersPage() {
             filename="stock-transfers"
             apiPath="/reports/stock-transfers"
             columns={STOCK_TRANSFER_EXPORT_COLUMNS}
-            totalCount={filtered.length}
-            getSearchParams={() => ({ per_page: 200, from_date: fromDate, to_date: toDate })}
+            totalCount={total}
+            getSearchParams={() => ({
+              per_page: 200,
+              from_date: fromDate,
+              to_date: toDate,
+              ...(appliedSearch.trim() ? { q: appliedSearch.trim() } : {}),
+            })}
             disabled={loading}
           />
           <PrimaryLink href="/inventory/transfers/new" permission={P.inventory.transfers.create} showIcon={false}>
@@ -125,7 +153,14 @@ export default function InventoryTransfersPage() {
         <Field label="To">
           <input type="date" className={inputClassName()} value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </Field>
-        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Product…" />
+        <SearchInput
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Product…"
+        />
+        <button type="button" onClick={applySearch} className={SECONDARY_BTN_CLASS}>
+          Search
+        </button>
       </div>
 
       {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
@@ -148,14 +183,14 @@ export default function InventoryTransfersPage() {
                   Loading…
                 </td>
               </tr>
-            ) : filtered.length === 0 ? (
+            ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
                   No transfers in this period.
                 </td>
               </tr>
             ) : (
-              filtered.map((r, i) => (
+              rows.map((r, i) => (
                 <tr key={`${r.transfer_date}-${r.product_code}-${i}`} className="border-t border-slate-100">
                   <td className="px-4 py-3">{date(r.transfer_date)}</td>
                   <td className="px-4 py-3">
@@ -175,6 +210,17 @@ export default function InventoryTransfersPage() {
             )}
           </tbody>
         </table>
+        <PaginationBar
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          pageSize={pageSize}
+          onChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
       </div>
     </CatalogPageShell>
   );

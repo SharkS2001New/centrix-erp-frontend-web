@@ -5,7 +5,6 @@ import { resolveSalesChannelsFromCapabilities } from "@/lib/sales-channels";
 export const REPORTS_WITHOUT_DATE_FILTER = new Set([
   "price-list",
   "low-stock",
-  "top-debtors",
   "ar-aging",
   "accounts-receivable",
   "headcount",
@@ -13,10 +12,18 @@ export const REPORTS_WITHOUT_DATE_FILTER = new Set([
 ]);
 
 /** Send from_date/to_date but omit date_column (backend applies custom date logic). */
-export const REPORTS_DATE_WITHOUT_COLUMN = new Set(["sales-by-customer", "stock-chain"]);
+export const REPORTS_DATE_WITHOUT_COLUMN = new Set([
+  "sales-by-customer",
+  "stock-chain",
+  "top-debtors",
+]);
 
 /** AR / payment reports are org-scoped; branch filter applies via invoice branch. */
-export const REPORTS_WITHOUT_BRANCH_FILTER = new Set([]);
+export const REPORTS_WITHOUT_BRANCH_FILTER = new Set([
+  "top-debtors",
+  "open-lpo",
+  "purchases-by-supplier",
+]);
 
 export const SALES_CHANNEL_OPTIONS = [
   { value: "", label: "All channels" },
@@ -93,6 +100,8 @@ export const REPORT_DATE_COLUMNS = {
   "stock-transfers": "transfer_date",
   "branch-stock-transfers": "transfer_date",
   returns: "return_date",
+  "purchases-by-supplier": "order_date",
+  "open-lpo": "order_date",
   expenses: "expense_date",
   "journal-register": "entry_date",
   "general-ledger": "entry_date",
@@ -151,6 +160,9 @@ export const REPORT_EXTRA_FILTERS = {
   ],
   "credit-outstanding": [
     { id: "payment_status", label: "Payment", type: "select", optionsKey: "paymentStatuses" },
+  ],
+  "top-debtors": [
+    { id: "q", label: "Search", type: "text", placeholder: "Customer name, number, or phone…" },
   ],
   "invoice-payments": [
     { id: "q", label: "Search", type: "text", placeholder: "Customer, invoice #, or reference…" },

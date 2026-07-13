@@ -1,8 +1,8 @@
 /** Org columns are implicit from the signed-in tenant. */
 const HIDDEN_ORG_COLUMNS = new Set(["organization_id", "organization_name"]);
 
-/** Branch id is redundant when the organization has a single branch. */
-const HIDDEN_SINGLE_BRANCH_COLUMNS = new Set(["branch_id"]);
+/** Branch id/name are redundant when the organization has a single branch. */
+const HIDDEN_SINGLE_BRANCH_COLUMNS = new Set(["branch_id", "branch_name"]);
 
 /** Product code is redundant in reports when product name is available (catalogue pages keep both). */
 const HIDDEN_PRODUCT_CODE_COLUMN = "product_code";
@@ -99,10 +99,13 @@ export function reportColumnLabel(key) {
 
 /**
  * Hide product code from structured/custom report column defs when product name is present.
+ * Hide branch name when the org has a single branch.
  *
  * @param {Array<{ key: string, label?: string }>} columns
+ * @param {{ multiBranch?: boolean }} [options]
  */
-export function filterStructuredReportColumns(columns = []) {
+export function filterStructuredReportColumns(columns = [], options = {}) {
+  const { multiBranch = true } = options;
   const hasProductName = columns.some((col) => col.key === "product_name");
   const hasCustomerName = columns.some((col) => col.key === "customer_name");
 
@@ -110,6 +113,7 @@ export function filterStructuredReportColumns(columns = []) {
     .filter((col) => {
       if (hasProductName && col.key === HIDDEN_PRODUCT_CODE_COLUMN) return false;
       if (hasCustomerName && HIDDEN_CUSTOMER_ID_COLUMNS.has(col.key)) return false;
+      if (!multiBranch && HIDDEN_SINGLE_BRANCH_COLUMNS.has(col.key)) return false;
       return true;
     })
     .map((col) => {
