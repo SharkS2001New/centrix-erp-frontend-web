@@ -17,6 +17,7 @@ import {
   orderSourceLabel,
   pipelineStepIndex,
   resolveOrderSourceKey,
+  salePlacedAt,
 } from "@/lib/sales";
 
 export { formatSaleKes, formatReceiptNumber, formatOrderNumber, formatSalePlacedDateTime, salePlacedAt };
