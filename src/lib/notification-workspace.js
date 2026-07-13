@@ -27,9 +27,9 @@ export function notificationBelongsToWorkspace(item, workspaceId) {
     return pathBelongsToWorkspace(path, workspaceId);
   }
 
-  const module = item?.action_request?.module;
-  if (module) {
-    return (MODULES_BY_WORKSPACE[workspaceId] ?? []).includes(module);
+  const requestModule = item?.action_request?.module;
+  if (requestModule) {
+    return (MODULES_BY_WORKSPACE[workspaceId] ?? []).includes(requestModule);
   }
 
   return workspaceId === "backoffice";
