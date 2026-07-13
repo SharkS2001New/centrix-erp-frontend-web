@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError, notifyActionError } from "@/lib/api";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
@@ -10,6 +10,8 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { canApproveDiscountRequests } from "@/lib/sales-settings";
 import { canApproveLpoRequests } from "@/lib/procurement-settings";
 import { resolveNotificationLinkAccess } from "@/lib/notification-action-url";
+import { notificationWorkspaceQueryParam } from "@/lib/notification-workspace";
+import { resolveActiveWorkspace, workspacesFromCapabilities } from "@/lib/workspaces";
 import { ApprovalNotificationDetails, isDiscountApprovalNotification, isDiscountApprovalOutcomeNotification, isLpoApprovalNotification } from "@/components/notifications/approval-notification-details";
 import { NotificationActionLink } from "@/components/notifications/notification-action-link";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
@@ -123,9 +125,18 @@ function NotificationRow({ item, busy, onApprove, onReject, onOpen, onDismiss, c
 
 export function NotificationBell() {
   const router = useRouter();
+  const pathname = usePathname();
   const { capabilities, user, organization, isSuperAdmin, hasPermission } = useAuth();
   const canApproveDiscounts = canApproveDiscountRequests({ hasPermission, capabilities });
   const canApproveLpos = canApproveLpoRequests({ hasPermission, capabilities });
+  const workspaceId = useMemo(() => {
+    const workspaces = workspacesFromCapabilities(capabilities);
+    return resolveActiveWorkspace(workspaces, getStoredWorkspace(), pathname)?.id ?? null;
+  }, [capabilities, pathname]);
+  const workspaceParams = useMemo(
+    () => notificationWorkspaceQueryParam(workspaceId),
+    [workspaceId],
+  );
   const [open, setOpen] = useState(false);
   const [count, setCount] = useState(0);
   const [items, setItems] = useState([]);
@@ -139,7 +150,10 @@ export function NotificationBell() {
 
   const maybeToastNewOutcomes = useCallback(async () => {
     try {
-      const res = await apiRequest("/notifications?limit=10", { loading: false });
+      const res = await apiRequest("/notifications?limit=10", {
+        loading: false,
+        searchParams: workspaceParams,
+      });
       const rows = Array.isArray(res?.data) ? res.data : [];
       const latestOutcome = rows.find((item) => isDiscountApprovalOutcomeNotification(item) && !item.is_read);
       if (!latestOutcome) return;
@@ -151,11 +165,14 @@ export function NotificationBell() {
     } catch {
       /* non-blocking */
     }
-  }, []);
+  }, [workspaceParams]);
 
   const fetchCount = useCallback(async () => {
     try {
-      const res = await apiRequest("/notifications/unread-count", { loading: false });
+      const res = await apiRequest("/notifications/unread-count", {
+        loading: false,
+        searchParams: workspaceParams,
+      });
       const nextCount = Number(res?.count ?? 0);
       if (countInitializedRef.current && nextCount > previousCountRef.current) {
         void maybeToastNewOutcomes();
@@ -166,19 +183,22 @@ export function NotificationBell() {
     } catch {
       /* ignore polling errors */
     }
-  }, [maybeToastNewOutcomes]);
+  }, [maybeToastNewOutcomes, workspaceParams]);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiRequest("/notifications?limit=15", { loading: false });
+      const res = await apiRequest("/notifications?limit=15", {
+        loading: false,
+        searchParams: workspaceParams,
+      });
       setItems(Array.isArray(res?.data) ? res.data : []);
     } catch (err) {
       notifyActionError(err instanceof ApiError ? err : new ApiError("Could not load notifications.", 0), "Could not load notifications.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [workspaceParams]);
 
   useEffect(() => {
     void fetchCount();
@@ -212,13 +232,13 @@ export function NotificationBell() {
       window.removeEventListener("focus", onFocus);
       unsubscribe();
     };
-  }, [fetchCount, fetchList, open]);
+  }, [fetchCount, fetchList, open, workspaceParams]);
 
   useEffect(() => {
     if (open) {
       void fetchList();
     }
-  }, [open, fetchList]);
+  }, [open, fetchList, workspaceParams]);
 
   const refreshAll = useCallback(async () => {
     await Promise.all([fetchCount(), open ? fetchList() : Promise.resolve()]);
@@ -352,7 +372,11 @@ export function NotificationBell() {
   const clearAll = useCallback(async () => {
     setClearing(true);
     try {
-      await apiRequest("/notifications/clear-all", { method: "POST", loading: false });
+      await apiRequest("/notifications/clear-all", {
+        method: "POST",
+        loading: false,
+        searchParams: workspaceParams,
+      });
       notifySuccess("Notifications cleared.");
       await refreshAll();
     } catch (err) {
@@ -360,19 +384,23 @@ export function NotificationBell() {
     } finally {
       setClearing(false);
     }
-  }, [refreshAll]);
+  }, [refreshAll, workspaceParams]);
 
   const markAllRead = useCallback(async () => {
     setClearing(true);
     try {
-      await apiRequest("/notifications/read-all", { method: "POST", loading: false });
+      await apiRequest("/notifications/read-all", {
+        method: "POST",
+        loading: false,
+        searchParams: workspaceParams,
+      });
       await refreshAll();
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not mark notifications as read.");
     } finally {
       setClearing(false);
     }
-  }, [refreshAll]);
+  }, [refreshAll, workspaceParams]);
 
   const displayCount = count > 99 ? "99+" : String(count);
 
