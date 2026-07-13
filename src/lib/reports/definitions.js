@@ -1,7 +1,13 @@
 import { inventoryTransactionTypeLabel, salesChannelLabel } from "@/lib/user-facing-labels";
-import { formatInventoryQtyWithUom } from "@/lib/inventory-qty-display";
+import {
+  formatInventoryQtyWithUom,
+  formatReorderPointDisplay,
+  formatReportQuantity,
+} from "@/lib/inventory-qty-display";
+import { formatDisplayQty } from "@/lib/stock-uom";
+import { lpoRowDisplayNumber } from "@/lib/lpo-display";
 
-/** @typedef {{ key: string, label: string, accessor: (row: object) => unknown, align?: 'left'|'right', badge?: (row: object) => { label: string, tone: string } | null, total?: boolean }} ReportColumn */
+/** @typedef {{ key: string, label: string, accessor: (row: object) => unknown, align?: 'left'|'right', badge?: (row: object) => { label: string, tone: string } | null, total?: boolean, sumFromRow?: (row: object) => number, footerCompute?: (rows: object[]) => number }} ReportColumn */
 
 /** @typedef {{ id: string, label: string, compute: (rows: object[]) => { value: string, hint?: string, tone?: string } }} ReportKpi */
 
@@ -92,7 +98,7 @@ export const REPORT_DEFINITIONS = {
       {
         key: "qty_sold",
         label: "Qty Sold",
-        accessor: (r) => formatInventoryQtyWithUom(r.qty_sold, r),
+        accessor: (r) => formatReportQuantity(r.qty_sold, r, "qty_sold"),
         align: "right",
         total: true,
       },
@@ -100,6 +106,7 @@ export const REPORT_DEFINITIONS = {
         key: "net_ex_vat",
         label: "Net (ex VAT)",
         accessor: (r) => netExVatAmount(r, "total_revenue", "total_vat"),
+        sumFromRow: (r) => netExVatAmount(r, "total_revenue", "total_vat"),
         align: "right",
         total: true,
       },
@@ -108,7 +115,7 @@ export const REPORT_DEFINITIONS = {
       { key: "total_discount", label: "Discount", accessor: (r) => r.total_discount, align: "right", total: true },
     ],
     kpis: vatReportKpis("total_revenue", "total_vat"),
-    footerTotals: ["qty_sold", "total_vat", "total_revenue", "total_discount"],
+    footerTotals: ["qty_sold", "net_ex_vat", "total_vat", "total_revenue", "total_discount"],
   },
 
   "sales-by-supplier": {
@@ -125,11 +132,12 @@ export const REPORT_DEFINITIONS = {
       { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
       { key: "channel", label: "Channel", accessor: (r) => salesChannelLabel(r.channel) },
       { key: "order_count", label: "Orders", accessor: (r) => r.order_count, align: "right", total: true },
-      { key: "qty_sold", label: "Qty Sold", accessor: (r) => formatInventoryQtyWithUom(r.qty_sold, r), align: "right", total: true },
+      { key: "qty_sold", label: "Qty Sold", accessor: (r) => formatReportQuantity(r.qty_sold, r, "qty_sold"), align: "right", total: true },
       {
         key: "net_ex_vat",
         label: "Net (ex VAT)",
         accessor: (r) => netExVatAmount(r, "total_revenue", "total_vat"),
+        sumFromRow: (r) => netExVatAmount(r, "total_revenue", "total_vat"),
         align: "right",
         total: true,
       },
@@ -138,7 +146,7 @@ export const REPORT_DEFINITIONS = {
       { key: "total_discount", label: "Discount", accessor: (r) => r.total_discount, align: "right", total: true },
     ],
     kpis: vatReportKpis("total_revenue", "total_vat"),
-    footerTotals: ["order_count", "qty_sold", "total_vat", "total_revenue", "total_discount"],
+    footerTotals: ["order_count", "qty_sold", "net_ex_vat", "total_vat", "total_revenue", "total_discount"],
   },
 
   "sales-by-channel": {
@@ -179,6 +187,7 @@ export const REPORT_DEFINITIONS = {
         key: "net_ex_vat",
         label: "Net (ex VAT)",
         accessor: (r) => netExVatAmount(r, "gross_sales", "total_vat"),
+        sumFromRow: (r) => netExVatAmount(r, "gross_sales", "total_vat"),
         align: "right",
         total: true,
       },
@@ -187,7 +196,7 @@ export const REPORT_DEFINITIONS = {
       { key: "amount_collected", label: "Collected", accessor: (r) => r.amount_collected, align: "right", total: true },
     ],
     kpis: vatReportKpis("gross_sales", "total_vat"),
-    footerTotals: ["order_count", "total_vat", "gross_sales", "amount_collected"],
+    footerTotals: ["order_count", "net_ex_vat", "total_vat", "gross_sales", "amount_collected"],
   },
 
   "category-sales": {
@@ -202,11 +211,12 @@ export const REPORT_DEFINITIONS = {
       { key: "category_name", label: "Category", accessor: (r) => r.category_name },
       { key: "subcategory_name", label: "Subcategory", accessor: (r) => r.subcategory_name },
       { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
-      { key: "qty_sold", label: "Qty Sold", accessor: (r) => formatInventoryQtyWithUom(r.qty_sold, r), align: "right", total: true },
+      { key: "qty_sold", label: "Qty Sold", accessor: (r) => formatReportQuantity(r.qty_sold, r, "qty_sold"), align: "right", total: true },
       {
         key: "net_ex_vat",
         label: "Net (ex VAT)",
         accessor: (r) => netExVatAmount(r, "revenue", "vat"),
+        sumFromRow: (r) => netExVatAmount(r, "revenue", "vat"),
         align: "right",
         total: true,
       },
@@ -215,7 +225,7 @@ export const REPORT_DEFINITIONS = {
       { key: "discounts", label: "Discount", accessor: (r) => r.discounts, align: "right", total: true },
     ],
     kpis: vatReportKpis("revenue", "vat"),
-    footerTotals: ["qty_sold", "vat", "revenue", "discounts"],
+    footerTotals: ["qty_sold", "net_ex_vat", "vat", "revenue", "discounts"],
   },
 
   "low-stock": {
@@ -245,17 +255,17 @@ export const REPORT_DEFINITIONS = {
           const globalThreshold = Number(r.global_low_stock_threshold);
           const productPoint = Number(r.reorder_point);
           if (mode === "global" && Number.isFinite(globalThreshold) && globalThreshold > 0) {
-            return formatInventoryQtyWithUom(globalThreshold, r);
+            return `${formatDisplayQty(globalThreshold)} base units`;
           }
           if (mode === "both") {
             const parts = [];
-            if (productPoint > 0) parts.push(`Product ${formatInventoryQtyWithUom(productPoint, r)}`);
+            if (productPoint > 0) parts.push(`Product ${formatReorderPointDisplay(r)}`);
             if (Number.isFinite(globalThreshold) && globalThreshold > 0) {
-              parts.push(`Global ${formatInventoryQtyWithUom(globalThreshold, r)}`);
+              parts.push(`Global ${formatDisplayQty(globalThreshold)} base units`);
             }
             return parts.length ? parts.join(" · ") : "—";
           }
-          return productPoint > 0 ? formatInventoryQtyWithUom(productPoint, r) : "—";
+          return productPoint > 0 ? formatReorderPointDisplay(r) : "—";
         },
         align: "right",
       },
@@ -475,7 +485,7 @@ export const REPORT_DEFINITIONS = {
     dateColumn: "order_date",
     showDateRange: true,
     columns: [
-      { key: "lpo_no", label: "LPO", accessor: (r) => r.lpo_no, link: "lpo" },
+      { key: "lpo_no", label: "LPO", accessor: (r) => lpoRowDisplayNumber(r), link: "lpo" },
       { key: "supplier_name", label: "Supplier", accessor: (r) => r.supplier_name, link: "supplier" },
       { key: "status_name", label: "Status", accessor: (r) => r.status_name },
       { key: "order_date", label: "Order date", accessor: (r) => r.order_date },
@@ -484,19 +494,19 @@ export const REPORT_DEFINITIONS = {
       {
         key: "ordered_qty",
         label: "Ordered",
-        accessor: (r) => formatInventoryQtyWithUom(r.ordered_qty, r),
+        accessor: (r) => formatReportQuantity(r.ordered_qty, r, "ordered_qty"),
         align: "right",
       },
       {
         key: "received_qty",
         label: "Received",
-        accessor: (r) => formatInventoryQtyWithUom(r.received_qty, r),
+        accessor: (r) => formatReportQuantity(r.received_qty, r, "received_qty"),
         align: "right",
       },
       {
         key: "pending_qty",
         label: "Pending",
-        accessor: (r) => formatInventoryQtyWithUom(r.pending_qty, r),
+        accessor: (r) => formatReportQuantity(r.pending_qty, r, "pending_qty"),
         align: "right",
       },
       { key: "cost_price", label: "Unit cost", accessor: (r) => r.cost_price, align: "right" },
@@ -525,7 +535,7 @@ export const REPORT_DEFINITIONS = {
 
   "purchases-by-supplier": {
     title: "Purchases by supplier",
-    subtitle: "LPO totals and pending receive by supplier",
+    subtitle: "Purchase order lines by supplier with packaged quantities",
     section: "Purchases",
     apiPath: "/reports/purchases-by-supplier",
     dateColumn: "order_date",
@@ -534,20 +544,49 @@ export const REPORT_DEFINITIONS = {
       { key: "order_date", label: "Order date", accessor: (r) => r.order_date },
       { key: "supplier_code", label: "Supplier code", accessor: (r) => r.supplier_code || "—", link: "supplier" },
       { key: "supplier_name", label: "Supplier", accessor: (r) => r.supplier_name, link: "supplier" },
-      { key: "lpo_no", label: "LPO", accessor: (r) => r.lpo_no, link: "lpo" },
+      { key: "lpo_no", label: "LPO", accessor: (r) => lpoRowDisplayNumber(r), link: "lpo" },
       { key: "status_name", label: "Status", accessor: (r) => r.status_name },
       { key: "due_date", label: "Due date", accessor: (r) => r.due_date },
-      { key: "line_items", label: "Lines", accessor: (r) => r.line_items, align: "right", total: true },
-      { key: "total_qty_ordered", label: "Ordered qty", accessor: (r) => r.total_qty_ordered, align: "right" },
-      { key: "total_qty_received", label: "Received qty", accessor: (r) => r.total_qty_received, align: "right" },
-      { key: "total_qty_pending", label: "Pending qty", accessor: (r) => r.total_qty_pending, align: "right" },
+      { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
+      {
+        key: "total_qty_ordered",
+        label: "Ordered qty",
+        accessor: (r) => formatReportQuantity(r.total_qty_ordered, r, "total_qty_ordered"),
+        align: "right",
+      },
+      {
+        key: "total_qty_received",
+        label: "Received qty",
+        accessor: (r) => formatReportQuantity(r.total_qty_received, r, "total_qty_received"),
+        align: "right",
+      },
+      {
+        key: "total_qty_pending",
+        label: "Pending qty",
+        accessor: (r) => formatReportQuantity(r.total_qty_pending, r, "total_qty_pending"),
+        align: "right",
+      },
       { key: "pending_value", label: "Pending value", accessor: (r) => r.pending_value, align: "right", total: true },
-      { key: "total_amount", label: "LPO total", accessor: (r) => r.total_amount, align: "right", total: true },
+      {
+        key: "total_amount",
+        label: "LPO total",
+        accessor: (r) => r.total_amount,
+        align: "right",
+        total: true,
+        footerCompute: (rows) =>
+          rows.reduce((acc, row) => {
+            const key = row.lpo_no;
+            if (key == null || acc.seen.has(key)) return acc;
+            acc.seen.add(key);
+            acc.sum += Number(row.total_amount) || 0;
+            return acc;
+          }, { seen: new Set(), sum: 0 }).sum,
+      },
     ],
     kpis: [
       {
         id: "lpos",
-        label: "LPOs",
+        label: "LPO lines",
         compute: (rows) => ({ value: String(rows.length) }),
       },
       {
@@ -561,7 +600,7 @@ export const REPORT_DEFINITIONS = {
         compute: (rows) => ({ value: kes(sum(rows, "pending_value")) }),
       },
     ],
-    footerTotals: ["line_items", "pending_value", "total_amount"],
+    footerTotals: ["pending_value", "total_amount"],
   },
 
   "top-debtors": {
@@ -571,7 +610,7 @@ export const REPORT_DEFINITIONS = {
     apiPath: "/reports/top-debtors",
     dateColumn: null,
     showDateRange: true,
-    emptyDateRange: true,
+    defaultDateRangeDays: 6,
     columns: [
       { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name, link: "customer" },
       { key: "route_name", label: "Route", accessor: (r) => r.route_name },
@@ -849,7 +888,7 @@ function formatQty(value) {
 }
 
 function stockStatus(row) {
-  const qty = Number(row.total_base_units) || 0;
+  const qty = Number(row.available_total_units ?? row.total_base_units ?? row.total_quantity) || 0;
   if (qty <= 0) return { label: "Out of Stock", tone: "danger" };
   if (row.product_alert === "REORDER") return { label: "Low Stock", tone: "warning" };
   return { label: "In Stock", tone: "success" };

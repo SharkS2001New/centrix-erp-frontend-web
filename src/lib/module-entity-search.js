@@ -1,5 +1,6 @@
 import { buildPageParams } from "@/lib/paginated-api";
 import { P } from "@/lib/permission-codes";
+import { lpoRowDisplayNumber } from "@/lib/lpo-display";
 
 /**
  * Workspace-scoped record search for the topbar (each module searches its own data).
@@ -83,7 +84,7 @@ export const WORKSPACE_ENTITY_SEARCH = {
       permission: P.purchasing.lpo.view,
       mapItem: (row) => ({
         id: `lpo:${row.id ?? row.lpo_no}`,
-        label: String(row.lpo_no ?? row.reference ?? `LPO #${row.id}`),
+        label: lpoRowDisplayNumber(row),
         subtitle: row.supplier_name ? String(row.supplier_name) : undefined,
         href: row.lpo_no ? `/lpo/${row.lpo_no}` : `/lpo?q=${encodeURIComponent(String(row.lpo_no ?? row.reference ?? ""))}`,
       }),

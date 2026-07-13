@@ -14,6 +14,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import { receiptPaymentDetailsFromApi } from "@/lib/receipt-payment-details";
+import { calendarDateInTimezone } from "@/lib/datetime";
 import { isAdminUser } from "@/components/customers/customer-form";
 
 export const EMPTY_ROUTE_FORM = {
@@ -372,12 +373,39 @@ export function isSaleInPeriod(sale, period, reference = new Date()) {
   return true;
 }
 
+export function isSaleInDateRange(sale, fromDate, toDate) {
+  const ts = getSaleTimestamp(sale);
+  if (!ts) return false;
+  if (!fromDate && !toDate) return true;
+  const day = calendarDateInTimezone(ts);
+  if (!day) return false;
+  if (fromDate && day < fromDate) return false;
+  if (toDate && day > toDate) return false;
+  return true;
+}
+
 /** @returns {Map<number, { total: number, count: number }>} */
 export function aggregateSalesByRoute(sales, period = "day") {
   const map = new Map();
   for (const sale of sales) {
     const routeId = effectiveSaleRouteId(sale);
     if (!isActiveRouteSale(sale) || !isSaleInPeriod(sale, period) || routeId == null) continue;
+    const cur = map.get(routeId) ?? { total: 0, count: 0 };
+    cur.total += Number(sale.order_total ?? 0);
+    cur.count += 1;
+    map.set(routeId, cur);
+  }
+  return map;
+}
+
+/** @returns {Map<number, { total: number, count: number }>} */
+export function aggregateSalesByRouteInRange(sales, fromDate, toDate) {
+  const map = new Map();
+  for (const sale of sales) {
+    const routeId = effectiveSaleRouteId(sale);
+    if (!isActiveRouteSale(sale) || !isSaleInDateRange(sale, fromDate, toDate) || routeId == null) {
+      continue;
+    }
     const cur = map.get(routeId) ?? { total: 0, count: 0 };
     cur.total += Number(sale.order_total ?? 0);
     cur.count += 1;

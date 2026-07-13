@@ -104,6 +104,14 @@ export function suggestVehicleCode(plate) {
   return base || `VEH-${Date.now().toString(36).toUpperCase()}`;
 }
 
+export function driverDisplayName(driver) {
+  if (!driver) return "—";
+  const name = String(driver.full_name ?? driver.driver_name ?? "").trim();
+  if (name) return name;
+  const code = String(driver.driver_code ?? "").trim();
+  return code || "—";
+}
+
 function coerceId(value) {
   if (value == null || value === "") return null;
   const n = Number(value);

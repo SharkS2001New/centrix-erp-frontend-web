@@ -27,16 +27,17 @@ import { ROUTE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { useConfirm } from "@/lib/use-confirm";
 import {
   CatalogPageShell,
-  FilterSelect,
+  Field,
   IconButton,
   PaginationBar,
   PencilIcon,
-  SALES_PERIOD_OPTIONS,
   SearchInput,
   SECONDARY_BTN_CLASS,
   StatCard,
   TrashIcon,
+  inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { defaultDateRange, formatCompactDateRange } from "@/lib/datetime";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
@@ -64,7 +65,9 @@ export default function RoutesPage() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const { search, setSearch } = useListUrlSearch();
-  const [salesPeriod, setSalesPeriod] = useState("day");
+  const defaultRange = useMemo(() => defaultDateRange(7), []);
+  const [fromDate, setFromDate] = useState(defaultRange.from);
+  const [toDate, setToDate] = useState(defaultRange.to);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
 
@@ -91,7 +94,12 @@ export default function RoutesPage() {
     try {
       const [routeRes, custRes] = await Promise.all([
         apiRequest("/routes", {
-          searchParams: { per_page: 200, include_stats: 1, stats_period: salesPeriod },
+          searchParams: {
+            per_page: 200,
+            include_stats: 1,
+            stats_from_date: fromDate,
+            stats_to_date: toDate,
+          },
         }),
         apiRequest("/customers", { searchParams: { per_page: 500 } }),
       ]);
@@ -102,7 +110,7 @@ export default function RoutesPage() {
     } finally {
       setLoading(false);
     }
-  }, [salesPeriod]);
+  }, [fromDate, toDate]);
 
   useEffect(() => {
     setLoading(true);
@@ -141,8 +149,7 @@ export default function RoutesPage() {
     };
   }, [routes, customers, periodSales]);
 
-  const periodLabel =
-    SALES_PERIOD_OPTIONS.find((o) => o.value === salesPeriod)?.label ?? "Today";
+  const periodLabel = formatCompactDateRange(fromDate, toDate);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -171,7 +178,7 @@ export default function RoutesPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, salesPeriod]);
+  }, [search, fromDate, toDate]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -378,11 +385,11 @@ export default function RoutesPage() {
             <StatCard label="Active routes" value={stats.activeRoutes.toLocaleString()} />
             <StatCard label="Customers on routes" value={stats.routeCustomers.toLocaleString()} />
             <StatCard
-              label={`Sales · ${periodLabel.toLowerCase()}`}
+              label={`Sales · ${periodLabel}`}
               value={formatRouteKes(stats.salesTotal)}
             />
             <StatCard
-              label={`Orders · ${periodLabel.toLowerCase()}`}
+              label={`Orders · ${periodLabel}`}
               value={stats.ordersCount.toLocaleString()}
             />
           </div>
@@ -395,11 +402,22 @@ export default function RoutesPage() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search route…"
           />
-          <FilterSelect
-            value={salesPeriod}
-            onChange={(e) => setSalesPeriod(e.target.value)}
-            options={SALES_PERIOD_OPTIONS}
-          />
+          <Field label="From">
+            <input
+              type="date"
+              className={inputClassName()}
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+            />
+          </Field>
+          <Field label="To">
+            <input
+              type="date"
+              className={inputClassName()}
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+            />
+          </Field>
         </div>
       }
     >
@@ -422,7 +440,7 @@ export default function RoutesPage() {
                     <th className="px-4 py-2.5">Region</th>
                     <th className="px-4 py-2.5">Customers</th>
                     <th className="px-4 py-2.5 text-right">
-                      Sales ({periodLabel.toLowerCase()})
+                      Sales ({periodLabel})
                     </th>
                     <th className="px-4 py-2.5 text-right">Orders</th>
                     <th className="px-4 py-2.5">Status</th>

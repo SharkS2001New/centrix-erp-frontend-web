@@ -6,6 +6,7 @@ import { apiRequest } from "@/lib/api";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import {
   countDeliveriesByDriver,
+  driverDisplayName,
   todayDeliveryStats,
 } from "@/components/fulfillment/fulfillment-shared";
 import {
@@ -92,8 +93,9 @@ export function FulfillmentDashboardContent() {
     return [...drivers]
       .map((d) => ({
         id: d.id,
-        name: d.driver_name ?? d.driver_code ?? "—",
-        route: routes.find((r) => r.id === d.route_id)?.route_name ?? "—",
+        name: driverDisplayName(d),
+        route:
+          routes.find((r) => r.id === (d.default_route_id ?? d.route_id))?.route_name ?? "—",
         deliveries: deliveriesByDriver.get(d.id) ?? 0,
         status: d.is_active === false ? "Inactive" : "Active",
       }))

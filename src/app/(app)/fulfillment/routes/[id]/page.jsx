@@ -8,19 +8,20 @@ import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { routeOrderSourcesText } from "@/lib/distribution-settings";
 import { formatOrderNumber } from "@/lib/sales";
+import { defaultDateRange, formatCompactDateRange } from "@/lib/datetime";
 import {
-  aggregateSalesByRoute,
+  effectiveSaleRouteId,
   formatRouteKes,
   isActiveRouteSale,
-  isSaleInPeriod,
+  isSaleInDateRange,
   normalizeRouteId,
 } from "@/components/routes/route-form";
 import {
-  FilterSelect,
-  SALES_PERIOD_OPTIONS,
+  Field,
   StatCard,
   formatShortDate,
   getSaleTimestamp,
+  inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
@@ -32,7 +33,9 @@ export default function RouteDetailPage() {
   const [route, setRoute] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [sales, setSales] = useState([]);
-  const [salesPeriod, setSalesPeriod] = useState("day");
+  const defaultRange = useMemo(() => defaultDateRange(7), []);
+  const [fromDate, setFromDate] = useState(defaultRange.from);
+  const [toDate, setToDate] = useState(defaultRange.to);
   const [loading, setLoading] = useState(true);
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -66,25 +69,31 @@ export default function RouteDetailPage() {
   }, [loadData]);
 
   const salesStats = useMemo(() => {
-    const byRoute = aggregateSalesByRoute(sales, salesPeriod);
-    return byRoute.get(normalizeRouteId(routeId)) ?? { total: 0, count: 0 };
-  }, [sales, salesPeriod, routeId]);
+    let total = 0;
+    let count = 0;
+    for (const sale of sales) {
+      if (!isActiveRouteSale(sale) || !isSaleInDateRange(sale, fromDate, toDate)) continue;
+      if (normalizeRouteId(effectiveSaleRouteId(sale)) !== normalizeRouteId(routeId)) continue;
+      total += Number(sale.order_total ?? 0);
+      count += 1;
+    }
+    return { total, count };
+  }, [sales, fromDate, toDate, routeId]);
 
   const recentSales = useMemo(
     () =>
       sales
-        .filter((s) => isActiveRouteSale(s) && isSaleInPeriod(s, salesPeriod))
+        .filter((s) => isActiveRouteSale(s) && isSaleInDateRange(s, fromDate, toDate))
         .sort((a, b) => {
           const ta = getSaleTimestamp(a)?.getTime() ?? 0;
           const tb = getSaleTimestamp(b)?.getTime() ?? 0;
           return tb - ta;
         })
         .slice(0, 8),
-    [sales, salesPeriod],
+    [sales, fromDate, toDate],
   );
 
-  const periodLabel =
-    SALES_PERIOD_OPTIONS.find((o) => o.value === salesPeriod)?.label ?? "Today";
+  const periodLabel = formatCompactDateRange(fromDate, toDate);
 
   const isActive = useMemo(() => route && route.is_active !== false, [route]);
 
@@ -121,11 +130,24 @@ export default function RouteDetailPage() {
               <h2 className="text-lg font-semibold text-slate-900">{route.route_name}</h2>
               <p className="text-sm text-slate-500">{route.direction || "No region set"}</p>
             </div>
-            <FilterSelect
-              value={salesPeriod}
-              onChange={(e) => setSalesPeriod(e.target.value)}
-              options={SALES_PERIOD_OPTIONS}
-            />
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="From">
+                <input
+                  type="date"
+                  className={inputClassName()}
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                />
+              </Field>
+              <Field label="To">
+                <input
+                  type="date"
+                  className={inputClassName()}
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                />
+              </Field>
+            </div>
           </div>
 
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

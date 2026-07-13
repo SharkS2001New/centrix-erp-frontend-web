@@ -137,3 +137,15 @@ export function defaultDateRange(days = 7) {
   const from = addDaysToCalendarDate(to, -(days - 1));
   return { from, to };
 }
+
+export function formatCompactDateRange(from, to) {
+  if (!from || !to) return "selected period";
+  const formatPart = (value) =>
+    formatInTimezone(value.includes("T") ? value : `${value}T12:00:00+03:00`, {
+      day: "numeric",
+      month: "short",
+      year: from.slice(0, 4) !== to.slice(0, 4) ? "numeric" : undefined,
+    }) ?? value;
+  if (from === to) return formatPart(from);
+  return `${formatPart(from)} – ${formatPart(to)}`;
+}

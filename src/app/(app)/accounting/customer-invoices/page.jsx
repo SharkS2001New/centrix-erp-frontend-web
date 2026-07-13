@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -12,12 +12,15 @@ import { canManagePayments } from "@/lib/access-control";
 import { P } from "@/lib/permission-codes";
 import { useOrgFormat } from "@/lib/org-format";
 import { normalizeCustomerInvoice } from "@/lib/customer-invoices";
+import { defaultDateRange } from "@/lib/datetime";
 import {
   CatalogPageShell,
+  Field,
   FilterSelect,
   PaginationBar,
   SearchInput,
   SECONDARY_BTN_CLASS,
+  inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { CUSTOMER_INVOICE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
@@ -45,6 +48,9 @@ export default function CustomerInvoicesPage() {
   const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
+  const defaultRange = useMemo(() => defaultDateRange(7), []);
+  const [fromDate, setFromDate] = useState(defaultRange.from);
+  const [toDate, setToDate] = useState(defaultRange.to);
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(20);
@@ -56,6 +62,8 @@ export default function CustomerInvoicesPage() {
       const extra = {};
       if (presetCustomer) extra.customer_num = presetCustomer;
       if (statusFilter !== "all") extra.payment_status = statusFilter;
+      if (fromDate) extra.from_date = fromDate;
+      if (toDate) extra.to_date = toDate;
 
       const searchParamsApi = buildPageParams({
         page,
@@ -74,7 +82,7 @@ export default function CustomerInvoicesPage() {
       setLoading(false);
       setListLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, statusFilter, presetCustomer]);
+  }, [page, pageSize, debouncedSearch, statusFilter, presetCustomer, fromDate, toDate]);
 
   useEffect(() => {
     load();
@@ -82,7 +90,7 @@ export default function CustomerInvoicesPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter, presetCustomer]);
+  }, [debouncedSearch, statusFilter, presetCustomer, fromDate, toDate]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -113,6 +121,8 @@ export default function CustomerInvoicesPage() {
               const extra = {};
               if (presetCustomer) extra.customer_num = presetCustomer;
               if (statusFilter !== "all") extra.payment_status = statusFilter;
+              if (fromDate) extra.from_date = fromDate;
+              if (toDate) extra.to_date = toDate;
               return buildPageParams({ page: 1, perPage: 200, q: debouncedSearch, extra });
             }}
             disabled={loading || listLoading}
@@ -138,6 +148,22 @@ export default function CustomerInvoicesPage() {
             { value: "2", label: "Paid" },
           ]}
         />
+        <Field label="From">
+          <input
+            type="date"
+            className={inputClassName()}
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+          />
+        </Field>
+        <Field label="To">
+          <input
+            type="date"
+            className={inputClassName()}
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+          />
+        </Field>
       </div>
 
       {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}

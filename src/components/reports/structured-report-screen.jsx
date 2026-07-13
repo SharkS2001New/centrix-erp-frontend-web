@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { formatReportCell } from "@/lib/reports/format";
-import { isInventoryQtyField } from "@/lib/inventory-qty-display";
+import { isInventoryQtyField, isLpoPackQtyField } from "@/lib/inventory-qty-display";
 import { loadFullReportDataset } from "@/lib/paginated-fetch";
 import {
   ReportFilterBar,
@@ -148,9 +148,15 @@ function StandardReportScreen({ definition }) {
     const totals = {};
     for (const col of columns) {
       if (!col.total) continue;
-      // Sum raw numeric fields — accessors often return packaged display strings.
-      const sum = rows.reduce((acc, row) => acc + (Number(row[col.key]) || 0), 0);
-      totals[col.key] = isInventoryQtyField(col.key) ? "—" : formatReportCell(col.key, sum);
+      const sum = col.footerCompute
+        ? col.footerCompute(rows)
+        : col.sumFromRow
+          ? rows.reduce((acc, row) => acc + (Number(col.sumFromRow(row)) || 0), 0)
+          : rows.reduce((acc, row) => acc + (Number(row[col.key]) || 0), 0);
+      totals[col.key] =
+        isInventoryQtyField(col.key) || isLpoPackQtyField(col.key)
+          ? "—"
+          : formatReportCell(col.key, sum);
     }
     return totals;
   }, [rows, columns, definition.footerTotals]);

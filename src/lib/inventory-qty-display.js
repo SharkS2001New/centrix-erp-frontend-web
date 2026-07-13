@@ -1,4 +1,22 @@
-import { formatDisplayQty, formatMixedStockDisplay, uomLabelFrom } from "@/lib/stock-uom";
+import { formatLpoPackQtyDisplay } from "@/components/lpo/lpo-product-utils";
+import { fullPackageLabel } from "@/lib/uom-packaging";
+import {
+  baseToDisplayQty,
+  formatDisplayQty,
+  formatMixedStockDisplay,
+  uomConversionFactor,
+  uomLabelFrom,
+} from "@/lib/stock-uom";
+
+/** LPO / purchase order line quantities are stored in wholesale packs, not base units. */
+const LPO_PACK_QTY_FIELDS = new Set([
+  "ordered_qty",
+  "received_qty",
+  "pending_qty",
+  "total_qty_ordered",
+  "total_qty_received",
+  "total_qty_pending",
+]);
 
 const EXCLUDED_INVENTORY_QTY_KEYS = new Set([
   "conversion_factor",
@@ -18,9 +36,14 @@ const EXCLUDED_INVENTORY_QTY_KEYS = new Set([
 const INVENTORY_QTY_KEY_PATTERN =
   /qty|quantity|units_received|units_moved|quantity_change|quantity_before|quantity_after|quantity_moved|total_moved|reserved_qty|reorder_point|on_hand|current_shop|current_store|shop_quantity|store_quantity|total_base|total_qty|in_qty|out_qty/i;
 
+export function isLpoPackQtyField(key) {
+  return LPO_PACK_QTY_FIELDS.has(key);
+}
+
 /** True when a report/list column key holds a base-unit inventory quantity. */
 export function isInventoryQtyField(key) {
   if (!key || EXCLUDED_INVENTORY_QTY_KEYS.has(key)) return false;
+  if (isLpoPackQtyField(key)) return false;
   return INVENTORY_QTY_KEY_PATTERN.test(key);
 }
 
@@ -74,4 +97,27 @@ export function formatInventoryQtyWithUom(baseQty, row) {
 
   const label = uom.full_name ?? uomLabelFrom(uom);
   return formatMixedStockDisplay(n, uom, label).text;
+}
+
+/** Reorder point is stored in base units; display as package count (e.g. 10 Cartons). */
+export function formatReorderPointDisplay(row) {
+  const point = Number(row?.reorder_point ?? 0);
+  if (!Number.isFinite(point) || point <= 0) return "—";
+  const uom = resolveUomFromInventoryRow(row);
+  const factor = uomConversionFactor(uom);
+  const displayQty = baseToDisplayQty(point, factor);
+  const label = fullPackageLabel(uom) ?? uom?.full_name ?? uomLabelFrom(uom) ?? "units";
+  return `${formatDisplayQty(displayQty)} ${label}`;
+}
+
+/** Format report quantity — LPO pack fields vs inventory base-unit fields. */
+export function formatReportQuantity(value, row, key) {
+  if (value == null || value === "") return "—";
+  if (isLpoPackQtyField(key)) {
+    return formatLpoPackQtyDisplay(value, resolveUomFromInventoryRow(row));
+  }
+  if (isInventoryQtyField(key)) {
+    return formatInventoryQtyWithUom(value, row);
+  }
+  return String(value);
 }

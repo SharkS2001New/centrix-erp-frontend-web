@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
-import { AccountingHelpButton } from "@/components/accounting/accounting-help";
 import { formatAccountingAmount } from "@/lib/accounting-shared";
 import { normalizeCustomerInvoice } from "@/lib/customer-invoices";
 import { currentMonthDateRange } from "@/lib/dashboard-dates";
@@ -126,12 +125,7 @@ export function AccountingDashboardContent() {
     <CatalogPageShell
       title="Accounting dashboard"
       subtitle="Financial position and month-to-date performance"
-      action={
-        <div className="flex flex-wrap items-center gap-2">
-          <AccountingHelpButton />
-          <PrimaryLink href="/accounting/journal-entries/new">New entry</PrimaryLink>
-        </div>
-      }
+      action={<PrimaryLink href="/accounting/journal-entries/new">New entry</PrimaryLink>}
     >
       <DashboardErrorBanner message={error} />
 

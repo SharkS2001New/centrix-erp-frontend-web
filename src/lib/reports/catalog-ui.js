@@ -78,7 +78,6 @@ export const REPORT_CATEGORY_DEFS = [
     description: "Customer balances, aging, and collections",
     icon: "customers",
     keys: [
-      "customer-statement",
       "ar-aging",
       "credit-outstanding",
       "top-debtors",

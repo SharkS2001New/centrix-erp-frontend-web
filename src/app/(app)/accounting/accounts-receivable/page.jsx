@@ -15,6 +15,7 @@ export default function AccountsReceivablePage() {
     <AccountingReportScreen
       title="Accounts Receivable"
       apiPath="/reports/accounts-receivable"
+      defaultDateRangeDays={6}
       emptyLabel="No outstanding receivables."
       intro={
         <div className="mb-4 theme-panel rounded-xl border px-5 py-4 shadow-sm">

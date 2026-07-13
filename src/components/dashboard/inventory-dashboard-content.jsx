@@ -6,7 +6,7 @@ import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import { formatInventoryKes } from "@/components/inventory/inventory-shared";
-import { formatInventoryQtyWithUom } from "@/lib/inventory-qty-display";
+import { formatInventoryQtyWithUom, formatReorderPointDisplay } from "@/lib/inventory-qty-display";
 import {
   DashboardErrorBanner,
   DashboardKpiGrid,
@@ -251,9 +251,11 @@ export function InventoryDashboardContent() {
                   Number(r.available_store_quantity ?? r.store_quantity ?? 0),
               }))}
               formatValue={(key, value, row) =>
-                key === "available_total_units" || key === "reorder_point"
+                key === "available_total_units"
                   ? formatInventoryQtyWithUom(value, row)
-                  : value
+                  : key === "reorder_point"
+                    ? formatReorderPointDisplay(row)
+                    : value
               }
               viewAllHref="/reports/low-stock"
             />

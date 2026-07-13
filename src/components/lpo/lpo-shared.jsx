@@ -7,6 +7,13 @@ import {
   formatPackQtyString,
   orderCountsObjectFromPackQty,
 } from "./lpo-product-utils";
+import {
+  formatPoNumber,
+  lpoOrderDate,
+  lpoRowDisplayNumber,
+} from "@/lib/lpo-display";
+
+export { formatPoNumber, lpoOrderDate, lpoRowDisplayNumber };
 
 export function formatLpoKes(value, settings = GENERAL_DEFAULTS) {
   return formatOrgCurrency(value, settings);
@@ -40,32 +47,8 @@ export function formatLpoAmount(value) {
   return n.toLocaleString("en-KE", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-export function formatPoNumber(lpoNo, orderDate = null) {
-  const n = Number(lpoNo);
-  if (!Number.isFinite(n) || n <= 0) return "—";
-  const raw = orderDate ?? new Date();
-  const d = new Date(String(raw).includes("T") ? raw : `${raw}T12:00:00`);
-  const year = Number.isNaN(d.getTime()) ? new Date().getFullYear() : d.getFullYear();
-  return `LPO-${year}-${String(n).padStart(4, "0")}`;
-}
-
 export function lpoCanDelete(lpo) {
   return Boolean(lpo?.can_delete ?? lpoCanEdit(lpo));
-}
-
-/** Best available LPO creation/sent date from API row. */
-export function lpoOrderDate(lpo) {
-  if (!lpo) return null;
-  return lpo.order_date ?? lpo.created_at ?? lpo.sent_at ?? null;
-}
-
-export function lpoRowDisplayNumber(row) {
-  if (!row) return "—";
-  const ref = String(row?.reference_number ?? "").trim();
-  if (ref) return ref;
-  if (row?.po_number) return row.po_number;
-  const seq = row?.lpo_seq ?? row?.lpo_no;
-  return formatPoNumber(seq, row?.lpo_order_date ?? row?.order_date ?? row?.created_at ?? row?.sent_at);
 }
 
 /** Printed / linked PO number — custom reference overrides generated LPO-YYYY-####. */

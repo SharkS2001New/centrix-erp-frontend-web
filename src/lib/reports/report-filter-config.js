@@ -6,16 +6,22 @@ export const REPORTS_WITHOUT_DATE_FILTER = new Set([
   "price-list",
   "low-stock",
   "ar-aging",
-  "accounts-receivable",
   "headcount",
   "items-currently-in-stock",
 ]);
+
+/** Default inclusive window length (days ending today) per report. */
+export const REPORT_DEFAULT_DATE_RANGE_DAYS = {
+  "top-debtors": 6,
+  "accounts-receivable": 6,
+};
 
 /** Send from_date/to_date but omit date_column (backend applies custom date logic). */
 export const REPORTS_DATE_WITHOUT_COLUMN = new Set([
   "sales-by-customer",
   "stock-chain",
   "top-debtors",
+  "accounts-receivable",
 ]);
 
 /** AR / payment reports are org-scoped; branch filter applies via invoice branch. */
@@ -24,6 +30,9 @@ export const REPORTS_WITHOUT_BRANCH_FILTER = new Set([
   "open-lpo",
   "purchases-by-supplier",
 ]);
+
+/** Generic report tables without a page totals footer row. */
+export const REPORTS_WITHOUT_TABLE_FOOTER = new Set(["mobile-route-sales"]);
 
 export const SALES_CHANNEL_OPTIONS = [
   { value: "", label: "All channels" },
@@ -216,6 +225,10 @@ export function reportShowsDateRange(reportKey) {
   return !REPORTS_WITHOUT_DATE_FILTER.has(reportKey);
 }
 
+export function reportDefaultDateRangeDays(reportKey) {
+  return REPORT_DEFAULT_DATE_RANGE_DAYS[reportKey] ?? 29;
+}
+
 export function reportDateColumn(reportKey) {
   return REPORT_DATE_COLUMNS[reportKey] ?? "sale_date";
 }
@@ -226,6 +239,10 @@ export function reportSendsDateColumn(reportKey) {
 
 export function reportHidesBranchFilter(reportKey) {
   return REPORTS_WITHOUT_BRANCH_FILTER.has(reportKey);
+}
+
+export function reportShowsTableFooter(reportKey) {
+  return !REPORTS_WITHOUT_TABLE_FOOTER.has(reportKey);
 }
 
 /** @param {string} reportKey @param {Record<string, string>} values */

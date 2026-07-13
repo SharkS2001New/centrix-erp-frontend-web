@@ -37,7 +37,7 @@ export function PurchasesPanel({ items, supplierId, onSelectLpo }) {
                   href={`/lpo/${row.lpo_no}`}
                   className="font-mono font-medium text-[#185FA5] hover:underline"
                 >
-                  PO-{lpoRowDisplayNumber(row)}
+                  {lpoRowDisplayNumber(row)}
                 </Link>
               </td>
               <td className="py-2.5 pr-3 text-slate-700">{row.status_name}</td>

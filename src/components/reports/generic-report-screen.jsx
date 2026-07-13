@@ -13,14 +13,16 @@ import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/rep
 import { REPORT_EXTRA_FILTERS } from "@/lib/reports/report-filter-config";
 import {
   buildReportQueryParams,
+  reportDefaultDateRangeDays,
   reportShowsDateRange,
+  reportShowsTableFooter,
 } from "@/lib/reports/report-filter-config";
 import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options";
 import { ReportQueryFilterFields } from "@/components/reports/report-query-filter-fields";
 import { ReportBranchSearchSelect } from "@/components/reports/report-filter-search-select";
 import { reportVatKpis } from "@/lib/reports/vat-summary";
 import { formatReportCell, formatReportKes } from "@/lib/reports/format";
-import { isInventoryQtyField } from "@/lib/inventory-qty-display";
+import { isInventoryQtyField, isLpoPackQtyField } from "@/lib/inventory-qty-display";
 import { ReportKpiGrid } from "@/components/reports/report-screen-shared";
 import { ReportCellLink } from "@/components/reports/report-cell-link";
 import {
@@ -47,7 +49,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const payrollRunId = urlParams.get("payroll_run_id") ?? "";
   const { user, isOrgWide, capabilities } = useAuth();
   const multiBranch = isMultiBranchCatalog(capabilities);
-  const defaultRange = useMemo(() => defaultReportDateRange(), []);
+  const defaultRange = useMemo(() => defaultReportDateRange(reportDefaultDateRangeDays(reportKey)), [reportKey]);
   const branchInitialized = useRef(false);
   const filterOptions = useReportFilterOptions(reportKey);
   const [rows, setRows] = useState([]);
@@ -116,7 +118,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   }, [rows, multiBranch]);
 
   const footerTotals = useMemo(() => {
-    if (!rows.length || !columns.length) return {};
+    if (!reportShowsTableFooter(reportKey) || !rows.length || !columns.length) return {};
     const totals = {};
     for (const col of columns) {
       if (
@@ -126,7 +128,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       ) {
         continue;
       }
-      if (isInventoryQtyField(col)) {
+      if (isInventoryQtyField(col) || isLpoPackQtyField(col)) {
         totals[col] = "—";
         continue;
       }
@@ -134,7 +136,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       totals[col] = formatCell(col, sum);
     }
     return totals;
-  }, [rows, columns]);
+  }, [rows, columns, reportKey]);
 
   const branchLabel = branches.find((b) => String(b.id) === branchId)?.branch_name
     ?? (branchId ? "" : "All branches");

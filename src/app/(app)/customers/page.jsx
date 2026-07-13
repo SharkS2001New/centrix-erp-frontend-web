@@ -575,13 +575,6 @@ export default function CustomersPage() {
             onImported={reloadAll}
           />
           <Link
-            href="/reports/customer-statement"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            <StatementIcon />
-            Customer Statement
-          </Link>
-          <Link
             href="/customers/new"
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-[#E6F1FB] hover:bg-[#144f8a]"
           >

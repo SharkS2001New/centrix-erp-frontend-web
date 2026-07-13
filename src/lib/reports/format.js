@@ -1,13 +1,15 @@
 import { formatOrgCurrency, formatOrgDate, formatOrgNumber } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
 import {
-  formatInventoryQtyWithUom,
+  formatReportQuantity,
   isInventoryQtyField,
+  isLpoPackQtyField,
 } from "@/lib/inventory-qty-display";
 import {
   inventoryTransactionTypeLabel,
   salesChannelLabel,
 } from "@/lib/user-facing-labels";
+import { lpoRowDisplayNumber } from "@/lib/lpo-display";
 
 export function formatReportKes(value, settings = GENERAL_DEFAULTS) {
   if (value == null || value === "") return "—";
@@ -23,25 +25,72 @@ export function formatReportNumber(value, decimals = 2, settings = GENERAL_DEFAU
   return formatOrgNumber(n, settings, { decimals });
 }
 
+const REPORT_COUNT_FIELD_KEYS = new Set([
+  "orders",
+  "order_count",
+  "total_orders",
+  "total_items",
+  "open_invoices",
+  "line_items",
+  "expense_count",
+  "payment_count",
+  "products_sold",
+  "transaction_count",
+  "transactions",
+  "incident_count",
+  "transfer_count",
+  "reservation_count",
+]);
+
+function isReportCountField(key) {
+  if (!key) return false;
+  if (REPORT_COUNT_FIELD_KEYS.has(key)) return true;
+  if (/_(count|orders)$/i.test(key)) return true;
+  return false;
+}
+
+function isReportCurrencyField(key) {
+  if (!key || isReportCountField(key) || isInventoryQtyField(key) || isLpoPackQtyField(key)) {
+    return false;
+  }
+  return /amount|total|paid|balance|vat|gross|net|price|cost|kes|value|float|variance|expected|actual|sales|revenue|profit|expense|debit|credit|collected|outstanding|due|purchased|invoiced/i.test(
+    key,
+  );
+}
+
 export function formatReportCell(key, value, settings = GENERAL_DEFAULTS, row = null) {
   if (value == null || value === "") return "—";
+  if (key === "lpo_no") return lpoRowDisplayNumber(row ?? { lpo_no: value });
   if (key === "channel") return salesChannelLabel(value);
   if (key === "transaction_type") return inventoryTransactionTypeLabel(value);
   if (typeof value === "boolean") return value ? "Yes" : "No";
 
-  // API decimals often arrive as strings; still format inventory qty with package UOM.
-  if (isInventoryQtyField(key) && row && (typeof value === "number" || isPlainNumericString(value))) {
-    return formatInventoryQtyWithUom(value, row);
+  if (
+    row &&
+    (isInventoryQtyField(key) || isLpoPackQtyField(key)) &&
+    (typeof value === "number" || isPlainNumericString(value))
+  ) {
+    return formatReportQuantity(value, row, key);
   }
 
   if (typeof value === "number") {
-    if (/amount|total|paid|balance|vat|gross|net|price|cost|kes|value|float|variance|expected|actual|sales|revenue|profit|expense|debit|credit|collected|outstanding|due/i.test(key)) {
+    if (isReportCurrencyField(key)) {
       return formatReportKes(value, settings);
     }
-    if (/qty|quantity|count|orders|transactions/i.test(key)) {
+    if (isReportCountField(key) || /qty|quantity/i.test(key)) {
       return formatReportNumber(value, 0, settings);
     }
     return formatReportNumber(value, 2, settings);
+  }
+  if (typeof value === "string" && isPlainNumericString(value)) {
+    if (row && (isInventoryQtyField(key) || isLpoPackQtyField(key))) {
+      return formatReportQuantity(value, row, key);
+    }
+    const n = Number(value);
+    if (isReportCurrencyField(key)) return formatReportKes(n, settings);
+    if (isReportCountField(key) || /qty|quantity/i.test(key)) {
+      return formatReportNumber(n, 0, settings);
+    }
   }
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
     return formatOrgDate(value, settings);

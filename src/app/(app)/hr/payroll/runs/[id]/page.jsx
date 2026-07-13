@@ -21,6 +21,10 @@ import {
   periodLabel,
 } from "@/components/hr/hr-shared";
 import { mergeHrPayrollSettings } from "@/lib/hr-settings";
+import {
+  printPayrollReceipt,
+  printPayrollReceipts,
+} from "@/components/hr/payroll-receipt-print";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { ApprovalPendingNotice } from "@/components/approval-reminder-button";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
@@ -29,7 +33,7 @@ export default function PayrollRunDetailPage() {
   const params = useParams();
   const router = useRouter();
   const confirm = useConfirm();
-  const { user, hasPermission, capabilities } = useAuth();
+  const { user, hasPermission, capabilities, organization, generalSettings } = useAuth();
   const admin = isAdminUser(user);
   const canApprove = canApprovePayrollRuns({ hasPermission, capabilities });
   const canProcess = hasPermission(P.hr.payroll.create) || hasPermission(P.hr.manage);
@@ -272,12 +276,29 @@ export default function PayrollRunDetailPage() {
                 </PrimaryButton>
               ) : null}
               {["processed", "paid"].includes(run.status) && lines.length > 0 ? (
-                <Link
-                  href={`/reports/bank-transfer?payroll_run_id=${run.id}`}
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Bank transfer report
-                </Link>
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      printPayrollReceipts({
+                        lines,
+                        run,
+                        period,
+                        organization,
+                        generalSettings: generalSettings(),
+                      })
+                    }
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Print receipts
+                  </button>
+                  <Link
+                    href={`/reports/bank-transfer?payroll_run_id=${run.id}`}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Bank transfer report
+                  </Link>
+                </>
               ) : null}
               {admin && payrollRunCanDelete(run) ? (
                 <button
@@ -380,6 +401,26 @@ export default function PayrollRunDetailPage() {
             open={!!selectedLine}
             onClose={closeLineDetail}
             wide
+            footer={
+              breakdownLine && ["processed", "paid"].includes(run.status) ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    printPayrollReceipt({
+                      line: breakdownLine,
+                      employee: breakdownEmployee,
+                      run,
+                      period,
+                      organization,
+                      generalSettings: generalSettings(),
+                    })
+                  }
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Print receipt
+                </button>
+              ) : null
+            }
           >
             <PayrollBreakdownPanel
               line={breakdownLine}

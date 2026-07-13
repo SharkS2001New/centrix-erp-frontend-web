@@ -46,8 +46,13 @@ const HIDDEN_REPORT_UOM_DETAIL_COLUMNS = new Set([
 /** Customer id/code columns — customer_name is sufficient in customer-facing reports. */
 const HIDDEN_CUSTOMER_ID_COLUMNS = new Set(["customer_num", "customer_code"]);
 
+/** Cashier id is redundant when salesperson name is shown. */
+const HIDDEN_CASHIER_ID_COLUMNS = new Set(["cashier_id"]);
+
 const REPORT_COLUMN_LABELS = {
-  product_name: "Product",
+  salesperson: "Salesperson",
+  total_orders: "Total orders",
+  total_items: "Total items",
   first_received_at: "First receive",
   first_adjustment_at: "First adjustment",
   first_entered_at: "First stock in",
@@ -83,6 +88,12 @@ export function isRedundantReportColumn(key, { multiBranch = false, showProductC
   if (
     HIDDEN_CUSTOMER_ID_COLUMNS.has(key)
     && rowKeys.includes("customer_name")
+  ) {
+    return true;
+  }
+  if (
+    HIDDEN_CASHIER_ID_COLUMNS.has(key)
+    && rowKeys.includes("salesperson")
   ) {
     return true;
   }

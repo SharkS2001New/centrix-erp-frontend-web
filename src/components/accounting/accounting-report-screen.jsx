@@ -18,6 +18,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { accountOptionLabel, formatAccountingAmount, defaultAccountingDateRange } from "@/lib/accounting-shared";
+import { defaultReportDateRange } from "@/lib/reports/report-filters";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 
 function formatCell(key, value) {
@@ -69,10 +70,14 @@ export function AccountingReportScreen({
   backHref = "/accounting",
   emptyLabel = "No rows for this filter.",
   intro = null,
+  defaultDateRangeDays = null,
 }) {
   const { user, capabilities } = useAuth();
   const multiBranch = isMultiBranchCatalog(capabilities);
-  const monthRange = useMemo(() => defaultAccountingDateRange(), []);
+  const monthRange = useMemo(
+    () => (defaultDateRangeDays != null ? defaultReportDateRange(defaultDateRangeDays) : defaultAccountingDateRange()),
+    [defaultDateRangeDays],
+  );
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState(null);
   const [meta, setMeta] = useState(null);
