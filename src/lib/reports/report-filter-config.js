@@ -5,13 +5,13 @@ import { resolveSalesChannelsFromCapabilities } from "@/lib/sales-channels";
 export const REPORTS_WITHOUT_DATE_FILTER = new Set([
   "price-list",
   "low-stock",
-  "ar-aging",
   "headcount",
   "items-currently-in-stock",
 ]);
 
 /** Default inclusive window length (days ending today) per report. */
 export const REPORT_DEFAULT_DATE_RANGE_DAYS = {
+  "ar-aging": 6,
   "top-debtors": 6,
   "accounts-receivable": 6,
 };
@@ -119,6 +119,7 @@ export const REPORT_DATE_COLUMNS = {
   "profit-loss-gl": "entry_date",
   "cash-flow": "entry_date",
   "invoice-payments": "date_paid",
+  "ar-aging": "invoice_date",
   "kra-receipts": "receipt_date",
   "till-sessions": "session_date",
   "audit-trail": "created_at",

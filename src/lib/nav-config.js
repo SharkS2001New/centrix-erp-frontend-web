@@ -442,13 +442,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "customers_suppliers",
         permission: P.purchasing.supplier_returns.view,
       },
-      {
-        href: "/reports/supplier-statement",
-        label: "Supplier Statement",
-        module: "customers_suppliers",
-        permission: P.purchasing.suppliers.view,
-        reportKey: "supplier-statement",
-      },
     ],
   },
   {

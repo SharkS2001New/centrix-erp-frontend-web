@@ -318,13 +318,6 @@ export default function SuppliersPage() {
             exportColumns={exportColumns}
             onImported={reloadAll}
           />
-          <Link
-            href="/reports/supplier-statement"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            <StatementIcon />
-            Supplier Statement
-          </Link>
           <PrimaryLink href="/suppliers/new" permission={P.purchasing.suppliers.create}>
             Add Supplier
           </PrimaryLink>
