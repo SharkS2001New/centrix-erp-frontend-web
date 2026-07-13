@@ -4,6 +4,7 @@ import {
   baseToDisplayQty,
   formatDisplayQty,
   formatMixedStockDisplay,
+  formatPosCartQty,
   uomConversionFactor,
   uomLabelFrom,
 } from "@/lib/stock-uom";
@@ -99,15 +100,20 @@ export function formatInventoryQtyWithUom(baseQty, row) {
   return formatMixedStockDisplay(n, uom, label).text;
 }
 
-/** Reorder point is stored in base units; display as package count (e.g. 10 Cartons). */
-export function formatReorderPointDisplay(row) {
-  const point = Number(row?.reorder_point ?? 0);
+/** Convert a base-unit quantity to the product's pack label (e.g. 240 base → 10 Cartons). */
+export function formatBaseQtyAsProductPack(baseQty, row) {
+  const point = Number(baseQty);
   if (!Number.isFinite(point) || point <= 0) return "—";
   const uom = resolveUomFromInventoryRow(row);
   const factor = uomConversionFactor(uom);
   const displayQty = baseToDisplayQty(point, factor);
   const label = fullPackageLabel(uom) ?? uom?.full_name ?? uomLabelFrom(uom) ?? "units";
   return `${formatDisplayQty(displayQty)} ${label}`;
+}
+
+/** Reorder point is stored in base units; display as package count (e.g. 10 Cartons). */
+export function formatReorderPointDisplay(row) {
+  return formatBaseQtyAsProductPack(row?.reorder_point, row);
 }
 
 /** Format report quantity — LPO pack fields vs inventory base-unit fields. */
@@ -117,7 +123,29 @@ export function formatReportQuantity(value, row, key) {
     return formatLpoPackQtyDisplay(value, resolveUomFromInventoryRow(row));
   }
   if (isInventoryQtyField(key)) {
+    if (key === "quantity") {
+      return formatCustomerReturnReportQty(value, row);
+    }
     return formatInventoryQtyWithUom(value, row);
   }
   return String(value);
+}
+
+/** Customer / legacy return report lines — show pack labels (e.g. 50 Pieces, 2 Cartons). */
+export function formatCustomerReturnReportQty(value, row) {
+  if (value == null || value === "") return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+
+  const uom = resolveUomFromInventoryRow(row);
+  if (uom) {
+    return formatPosCartQty(n, uom);
+  }
+
+  const soldUom = row?.sold_uom ?? row?.uom;
+  if (soldUom) {
+    return `${formatDisplayQty(n)} ${String(soldUom).trim()}`;
+  }
+
+  return formatDisplayQty(n);
 }

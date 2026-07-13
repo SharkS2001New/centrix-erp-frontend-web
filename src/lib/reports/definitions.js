@@ -1,5 +1,7 @@
 import { inventoryTransactionTypeLabel, salesChannelLabel } from "@/lib/user-facing-labels";
 import {
+  formatCustomerReturnReportQty,
+  formatBaseQtyAsProductPack,
   formatInventoryQtyWithUom,
   formatReorderPointDisplay,
   formatReportQuantity,
@@ -255,13 +257,13 @@ export const REPORT_DEFINITIONS = {
           const globalThreshold = Number(r.global_low_stock_threshold);
           const productPoint = Number(r.reorder_point);
           if (mode === "global" && Number.isFinite(globalThreshold) && globalThreshold > 0) {
-            return `${formatDisplayQty(globalThreshold)} base units`;
+            return formatBaseQtyAsProductPack(globalThreshold, r);
           }
           if (mode === "both") {
             const parts = [];
             if (productPoint > 0) parts.push(`Product ${formatReorderPointDisplay(r)}`);
             if (Number.isFinite(globalThreshold) && globalThreshold > 0) {
-              parts.push(`Global ${formatDisplayQty(globalThreshold)} base units`);
+              parts.push(`Global ${formatBaseQtyAsProductPack(globalThreshold, r)}`);
             }
             return parts.length ? parts.join(" · ") : "—";
           }
@@ -682,6 +684,36 @@ export const REPORT_DEFINITIONS = {
       },
     ],
     footerTotals: ["amount_paid"],
+  },
+
+  returns: {
+    title: "Customer Returns Report",
+    subtitle: "Approved customer return lines with packaged quantities",
+    section: "Inventory",
+    apiPath: "/reports/returns",
+    dateColumn: "return_date",
+    showDateRange: true,
+    columns: [
+      { key: "return_date", label: "Date", accessor: (r) => r.return_date },
+      { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name, link: "customer" },
+      {
+        key: "product_name",
+        label: "Product",
+        accessor: (r) => r.product_name ?? r.product_code,
+        link: "product",
+      },
+      {
+        key: "quantity",
+        label: "Qty",
+        accessor: (r) => formatCustomerReturnReportQty(r.quantity, r),
+        align: "right",
+        total: true,
+      },
+      { key: "stock_location", label: "Location", accessor: (r) => r.stock_location ?? "—" },
+      { key: "reason", label: "Reason", accessor: (r) => r.reason ?? "—" },
+      { key: "returned_by", label: "Returned by", accessor: (r) => r.returned_by },
+    ],
+    footerTotals: ["quantity"],
   },
 
   "stock-movement": {
