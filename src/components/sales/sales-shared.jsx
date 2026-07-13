@@ -12,13 +12,14 @@ import {
   SALE_STATUS_LABELS,
   formatOrderNumber,
   formatReceiptNumber,
+  formatSalePlacedDateTime,
   formatSaleKes,
   orderSourceLabel,
   pipelineStepIndex,
   resolveOrderSourceKey,
 } from "@/lib/sales";
 
-export { formatSaleKes, formatReceiptNumber, formatOrderNumber };
+export { formatSaleKes, formatReceiptNumber, formatOrderNumber, formatSalePlacedDateTime, salePlacedAt };
 
 const SALE_STATUS_TONES = {
   draft: "bg-slate-100 text-slate-700 ring-slate-300/50",

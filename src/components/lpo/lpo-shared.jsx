@@ -128,9 +128,11 @@ export function lpoLineReturnedLabel(line) {
 
 export function lpoLineStatusLabel(line) {
   const status = line?.receive_status;
+  const offer = Number(line?.offer_qty ?? 0);
+  const hasOffer = offer > 0.0001;
   if (status === "fully_returned") return "Fully returned";
-  if (status === "complete") return "Received";
-  if (status === "partial") return "Partially received";
+  if (status === "complete") return hasOffer ? "Received (+ offer)" : "Received";
+  if (status === "partial") return hasOffer ? "Partial (+ offer)" : "Partially received";
   return "Open";
 }
 

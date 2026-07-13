@@ -1,7 +1,7 @@
 "use client";
 
 import { formatShortDate } from "@/components/catalog/catalog-shared";
-import { formatSaleKes } from "@/lib/sales";
+import { formatSaleKes, formatSalePlacedDateTime, salePlacedAt } from "@/lib/sales";
 
 export function orderTableColumnCount({
   showBranchColumn = false,
@@ -88,14 +88,14 @@ export function saleCreatedByLabel(sale) {
 }
 
 export function saleCreatedOnValue(sale) {
-  return sale?.created_at ?? null;
+  return salePlacedAt(sale);
 }
 
 export function SaleCreatedByCell({ sale }) {
   return (
     <div>
-      <p className="font-medium text-slate-800">{saleCreatedByLabel(sale)}</p>
-      <p className="text-xs text-slate-500">Created on {formatShortDate(saleCreatedOnValue(sale))}</p>
+      <p className="font-medium tabular-nums text-slate-800">{formatSalePlacedDateTime(sale)}</p>
+      <p className="text-xs text-slate-500">{saleCreatedByLabel(sale)}</p>
     </div>
   );
 }

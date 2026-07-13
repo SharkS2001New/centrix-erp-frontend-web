@@ -1,5 +1,7 @@
 import {
   formatLinePackQty,
+  lpoLineOfferQty,
+  lpoSessionOfferBase,
   packQtyFromReceiveBase,
   receiveBaseForLine,
 } from "@/components/inventory/lpo-receive-stock";
@@ -47,6 +49,7 @@ function mapGrnLine({
   uom,
   orderedLabel,
   receivedLabel,
+  offerLabel = null,
   receivedBase,
   costPerPack,
 }) {
@@ -56,9 +59,20 @@ function mapGrnLine({
     product_name: line.product_name ?? line.product_code,
     ordered_label: orderedLabel,
     received_label: receivedLabel,
+    offer_label: offerLabel,
     received_base: receivedBase,
     unit_cost: Number(costPerPack ?? 0),
     line_total: lineTotal,
+  };
+}
+
+function formatGrnReceivedLabel(receivedBase, uom, offerPack = 0) {
+  const receivedLabel = formatStockQty(receivedBase, uom);
+  if (offerPack <= 0.0001) return { receivedLabel, offerLabel: null };
+  const offerLabel = formatLinePackQty(offerPack, uom);
+  return {
+    receivedLabel: `${receivedLabel} (+ ${offerLabel} offer)`,
+    offerLabel,
   };
 }
 
@@ -74,12 +88,22 @@ export function buildGrnFromReceiveSession(lpoSummary, receiveCounts, uomById, o
     const receiveBase = receiveBaseForLine(lineKey, uom, receiveCounts);
     if (receiveBase <= 0) continue;
 
+    const priorReceived = priorReceivedByLineId[lineKey] ?? Number(line.received_qty ?? 0);
+    const sessionOfferBase = lpoSessionOfferBase(line, uom, receiveCounts, priorReceived);
+    const sessionOfferPack = packQtyFromReceiveBase(sessionOfferBase, uom);
+    const { receivedLabel, offerLabel } = formatGrnReceivedLabel(
+      receiveBase,
+      uom,
+      sessionOfferPack,
+    );
+
     lines.push(
       mapGrnLine({
         line,
         uom,
         orderedLabel: formatLinePackQty(line.ordered_qty, uom),
-        receivedLabel: formatStockQty(receiveBase, uom),
+        receivedLabel,
+        offerLabel,
         receivedBase: receiveBase,
         costPerPack: line.cost_price,
       }),
@@ -121,12 +145,19 @@ export function buildGrnFromLpoSummary(lpoSummary, uomById, options = {}) {
     const receivedBase = receivedBaseOnLine(line, resolveUom(line, uomById));
     if (receivedBase <= 0) continue;
     const uom = resolveUom(line, uomById);
+    const offerPack = lpoLineOfferQty(line);
+    const { receivedLabel, offerLabel } = formatGrnReceivedLabel(
+      receivedBase,
+      uom,
+      offerPack,
+    );
     lines.push(
       mapGrnLine({
         line,
         uom,
         orderedLabel: formatLinePackQty(line.ordered_qty, uom),
-        receivedLabel: formatStockQty(receivedBase, uom),
+        receivedLabel,
+        offerLabel,
         receivedBase,
         costPerPack: line.cost_price,
       }),

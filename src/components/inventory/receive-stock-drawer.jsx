@@ -145,9 +145,6 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
       for (const line of toPost) {
         const packQty = Number(receiveQty[line.id]);
         const factor = Number(line.conversion_factor ?? 1);
-        if (packQty > Number(line.remaining_qty ?? 0) + 0.0001) {
-          throw new Error(`Receiving qty exceeds remaining for ${line.product_name}`);
-        }
         await apiRequest("/inventory/receive", {
           method: "POST",
           body: {
@@ -322,14 +319,12 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
                       <input
                         type="number"
                         min="0"
-                        max={line.remaining_qty}
                         step="any"
                         className={`${inputClassName()} w-24 text-right`}
                         value={receiveQty[line.id] ?? ""}
                         onChange={(e) =>
                           setReceiveQty((p) => ({ ...p, [line.id]: e.target.value }))
                         }
-                        disabled={Number(line.remaining_qty) <= 0}
                       />
                     </div>
                   </li>

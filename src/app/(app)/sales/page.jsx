@@ -7,7 +7,6 @@ import { apiRequest } from "@/lib/api";
 import {
   CatalogPageShell,
   PrimaryLink,
-  formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import {
   DashboardPanel,
@@ -21,8 +20,11 @@ import { OrderSummaryStats, summarizeOrders } from "@/components/sales/sales-ord
 import {
   buildHourlySalesChart,
   filterSalesByPeriod,
+  formatReceiptNumber,
   formatSaleKes,
+  formatSalePlacedDateTime,
   saleCustomerLabel,
+  salePlacedAt,
 } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
 
@@ -60,15 +62,15 @@ export default function SalesDashboardPage() {
   const recentOrders = useMemo(
     () =>
       [...todaySales]
-        .sort((a, b) => new Date(b.completed_at ?? b.created_at) - new Date(a.completed_at ?? a.created_at))
+        .sort((a, b) => new Date(salePlacedAt(b)) - new Date(salePlacedAt(a)))
         .slice(0, 8)
         .map((sale) => ({
           id: sale.id,
-          receipt: sale.receipt_number ?? sale.sale_id,
+          receipt: formatReceiptNumber(sale),
           customer: saleCustomerLabel(sale),
           total: sale.order_total,
           status: sale.status,
-          time: sale.completed_at ?? sale.created_at,
+          placedAt: salePlacedAt(sale),
         })),
     [todaySales],
   );
@@ -124,9 +126,9 @@ export default function SalesDashboardPage() {
                   render: (row) => <SaleStatusBadge status={row.status} />,
                 },
                 {
-                  key: "time",
-                  label: "Time",
-                  render: (row) => formatShortDate(row.time),
+                  key: "placedAt",
+                  label: "Placed",
+                  render: (row) => formatSalePlacedDateTime(row.placedAt),
                 },
               ]}
               rows={recentOrders}

@@ -24,12 +24,15 @@ import {
   buildInitialReceiveCounts,
   fillReceiveCountsForLines,
   formatLinePackQty,
+  lpoLineCanReceive,
   lpoLineOpenRemainingBase,
+  lpoSessionOfferBase,
   packQtyFromReceiveBase,
   receiveBaseForLine,
   uomForManualReceiveLine,
 } from "@/components/inventory/lpo-receive-stock";
 import { formatQty, InventoryPageShell } from "@/components/inventory/inventory-shared";
+import { LpoReceivedQtyCell } from "@/components/lpo/lpo-received-qty";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { uomStockTakeLevels } from "@/lib/uom-packaging";
 import { baseToDisplayQty, displayToBaseQty } from "@/lib/stock-uom";
@@ -183,10 +186,6 @@ export default function ReceiveStockPage() {
       for (const line of toPost) {
         const uom = line.unit_id ? uomById.get(line.unit_id) : null;
         const receiveBase = receiveBaseForLine(String(line.id), uom, receiveCounts);
-        const remainingBase = lpoLineOpenRemainingBase(line, uom);
-        if (receiveBase > remainingBase + 0.0001) {
-          throw new Error(`Receiving qty exceeds remaining for ${line.product_name}`);
-        }
         await apiRequest("/inventory/receive", {
           method: "POST",
           body: {
@@ -386,6 +385,12 @@ export default function ReceiveStockPage() {
                         const status =
                           line.receive_status ??
                           (openRemainingBase <= 0 ? "complete" : "open");
+                        const canReceive = lpoLineCanReceive(line);
+                        const sessionOfferBase = lpoSessionOfferBase(
+                          line,
+                          lineUom,
+                          receiveCounts,
+                        );
                         return (
                           <tr key={line.id} className="border-b border-slate-100">
                             <td className="px-3 py-2.5">
@@ -398,7 +403,7 @@ export default function ReceiveStockPage() {
                               {formatLinePackQty(line.ordered_qty, lineUom)}
                             </td>
                             <td className="px-3 py-2.5 text-right tabular-nums text-slate-600">
-                              {formatLinePackQty(line.received_qty ?? 0, lineUom)}
+                              <LpoReceivedQtyCell line={line} uom={lineUom} />
                             </td>
                             <td className="px-3 py-2.5 text-right align-top">
                               {lineUom ? (
@@ -414,17 +419,27 @@ export default function ReceiveStockPage() {
                               )}
                             </td>
                             <td className="px-3 py-2.5">
-                              {openRemainingBase <= 0 ? (
-                                <span className="block text-right text-slate-400">—</span>
+                              {canReceive ? (
+                                <div>
+                                  <StockTakeCountInputs
+                                    lineId={lineKey}
+                                    uom={lineUom}
+                                    counts={receiveCounts}
+                                    onChange={setLpoReceiveCount}
+                                    showPreview
+                                  />
+                                  {sessionOfferBase > 0 ? (
+                                    <p className="mt-1 text-right text-[11px] font-medium text-amber-700">
+                                      + {formatLinePackQty(
+                                        packQtyFromReceiveBase(sessionOfferBase, lineUom),
+                                        lineUom,
+                                      )}{" "}
+                                      offer
+                                    </p>
+                                  ) : null}
+                                </div>
                               ) : (
-                                <StockTakeCountInputs
-                                  lineId={lineKey}
-                                  uom={lineUom}
-                                  counts={receiveCounts}
-                                  onChange={setLpoReceiveCount}
-                                  maxBase={openRemainingBase}
-                                  showPreview
-                                />
+                                <span className="block text-right text-slate-400">—</span>
                               )}
                             </td>
                             <td className="px-3 py-2.5">

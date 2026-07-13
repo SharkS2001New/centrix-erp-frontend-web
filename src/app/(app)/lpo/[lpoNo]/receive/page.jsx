@@ -18,7 +18,9 @@ import {
   buildInitialReceiveCounts,
   fillReceiveCountsForLines,
   formatLinePackQty,
+  lpoLineCanReceive,
   lpoLineOpenRemainingBase,
+  lpoSessionOfferBase,
   packQtyFromReceiveBase,
   receiveBaseForLine,
 } from "@/components/inventory/lpo-receive-stock";
@@ -35,6 +37,7 @@ import {
 } from "@/components/lpo/lpo-shared";
 import { baseToDisplayQty } from "@/lib/stock-uom";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
+import { LpoReceivedQtyCell } from "@/components/lpo/lpo-received-qty";
 
 function formatReturnedCell(line, uom) {
   const returned = lpoLineReturnedQty(line);
@@ -123,10 +126,6 @@ export default function LpoReceivePage() {
         const uom = line.unit_id ? uomById.get(line.unit_id) : null;
         const lineKey = String(line.id);
         const receiveBase = receiveBaseForLine(lineKey, uom, receiveCounts);
-        const openRemainingBase = lpoLineOpenRemainingBase(line, uom);
-        if (receiveBase > openRemainingBase + 0.0001) {
-          throw new Error(`Receiving qty exceeds remaining for ${line.product_name}`);
-        }
         await apiRequest("/inventory/receive", {
           method: "POST",
           body: {
@@ -299,7 +298,12 @@ export default function LpoReceivePage() {
                       0,
                       openRemainingBase - receivingNowBase,
                     );
-                    const canReceive = openRemainingBase > 0;
+                    const canReceive = lpoLineCanReceive(line);
+                    const sessionOfferBase = lpoSessionOfferBase(
+                      line,
+                      lineUom,
+                      receiveCounts,
+                    );
 
                     return (
                       <tr
@@ -319,7 +323,7 @@ export default function LpoReceivePage() {
                           </td>
                         ) : null}
                         <td className="py-3 pr-1 text-right align-top tabular-nums text-slate-600">
-                          {formatLinePackQty(line.received_qty ?? 0, lineUom)}
+                          <LpoReceivedQtyCell line={line} uom={lineUom} />
                         </td>
                         <td className="py-3 pr-3 text-right align-top">
                           {lineUom ? (
@@ -336,14 +340,24 @@ export default function LpoReceivePage() {
                         </td>
                         <td className="py-3 pr-3 align-top">
                           {canReceive ? (
-                            <StockTakeCountInputs
-                              lineId={lineKey}
-                              uom={lineUom}
-                              counts={receiveCounts}
-                              onChange={setLpoReceiveCount}
-                              maxBase={openRemainingBase}
-                              showPreview
-                            />
+                            <div>
+                              <StockTakeCountInputs
+                                lineId={lineKey}
+                                uom={lineUom}
+                                counts={receiveCounts}
+                                onChange={setLpoReceiveCount}
+                                showPreview
+                              />
+                              {sessionOfferBase > 0 ? (
+                                <p className="mt-1 text-right text-xs font-medium text-amber-700">
+                                  + {formatLinePackQty(
+                                    packQtyFromReceiveBase(sessionOfferBase, lineUom),
+                                    lineUom,
+                                  )}{" "}
+                                  offer
+                                </p>
+                              ) : null}
+                            </div>
                           ) : (
                             <span className="block text-right text-slate-400">—</span>
                           )}

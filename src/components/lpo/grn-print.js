@@ -64,10 +64,12 @@ function reconciliationRows(reconciliation) {
 
 function buildGrnItemsTable(grn) {
   const showOrdered = grn.lines.some((line) => line.ordered_label && line.ordered_label !== "—");
+  const showOffer = grn.lines.some((line) => line.offer_label);
   const columns = [
     { key: "product_name", label: "ITEM" },
     ...(showOrdered ? [{ key: "ordered_label", label: "ORDERED", align: "right" }] : []),
     { key: "received_label", label: "RECEIVED", align: "right" },
+    ...(showOffer ? [{ key: "offer_label", label: "OFFER", align: "right" }] : []),
     { key: "unit_cost", label: "UNIT COST", align: "right" },
     { key: "line_total", label: "AMOUNT", align: "right" },
   ];
@@ -76,6 +78,7 @@ function buildGrnItemsTable(grn) {
     product_name: line.product_name ?? line.product_code ?? "—",
     ordered_label: line.ordered_label ?? "—",
     received_label: line.received_label ?? "—",
+    offer_label: line.offer_label ?? "—",
     unit_cost: line.unit_cost > 0 ? formatDocAmount(line.unit_cost) : "—",
     line_total: line.line_total > 0 ? formatDocAmount(line.line_total) : "—",
   }));

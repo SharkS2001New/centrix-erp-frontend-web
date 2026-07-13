@@ -8,7 +8,6 @@ import {
 import { uomStockTakeLevels } from "@/lib/uom-packaging";
 import {
   baseToDisplayQty,
-  clampHierarchyCountsToMaxBase,
   displayToBaseQty,
   stockTakeCountsToBase,
 } from "@/lib/stock-uom";
@@ -25,15 +24,49 @@ export function uomForManualReceiveLine(line, uomById) {
   return line?.unit_id ? uomById.get(line.unit_id) ?? null : null;
 }
 
+/** Whether a PO line can still accept goods (open, partial, or offer qty over order). */
+export function lpoLineCanReceive(line) {
+  return (line?.receive_status ?? "open") !== "fully_returned";
+}
+
 /** Open qty on PO line in base units: ordered − already received − returns. */
 export function lpoLineOpenRemainingBase(line, uom) {
   const orderedBase = displayToBaseQty(Number(line.ordered_qty ?? 0), uom);
   const receivedBase = displayToBaseQty(Number(line.received_qty ?? 0), uom);
+  const offerBase = displayToBaseQty(lpoLineOfferQty(line), uom);
+  const paidReceivedBase = Math.max(0, receivedBase - offerBase);
   const returnedBase = displayToBaseQty(
     Number(line.committed_return_qty ?? line.returned_qty ?? 0),
     uom,
   );
-  return Math.max(0, orderedBase - receivedBase - returnedBase);
+  return Math.max(0, orderedBase - paidReceivedBase - returnedBase);
+}
+
+/** Offer / bonus qty already recorded on the PO line (pack units). */
+export function lpoLineOfferQty(line) {
+  const stored = Number(line?.offer_qty ?? 0);
+  if (stored > 0.0001) return stored;
+  const received = Number(line?.received_qty ?? 0);
+  const ordered = Number(line?.ordered_qty ?? 0);
+  return Math.max(0, received - ordered);
+}
+
+/** Offer qty in this receive session (base units), when receiving above PO remaining. */
+export function lpoSessionOfferBase(line, uom, receiveCounts, priorReceivedPack = null) {
+  const lineKey = String(line.id);
+  const receivingNow = receiveBaseForLine(lineKey, uom, receiveCounts);
+  if (receivingNow <= 0) return 0;
+
+  const priorReceived = priorReceivedPack ?? Number(line.received_qty ?? 0);
+  const priorOffer = lpoLineOfferQty({
+    ...line,
+    received_qty: priorReceived,
+  });
+  const orderedBase = displayToBaseQty(Number(line.ordered_qty ?? 0), uom);
+  const paidReceivedBase = displayToBaseQty(Math.max(0, priorReceived - priorOffer), uom);
+  const roomBase = Math.max(0, orderedBase - paidReceivedBase);
+
+  return Math.max(0, receivingNow - roomBase);
 }
 
 export function formatLinePackQty(qty, uom) {
@@ -53,26 +86,7 @@ export function buildInitialReceiveCounts(lines, uomById, baseQty = 0) {
 }
 
 export function applyLpoReceiveCountUpdate(prev, key, value, lines, uomById) {
-  const colon = key.indexOf(":");
-  if (colon < 0) return prev;
-  const lineIdStr = key.slice(0, colon);
-  const levelKey = key.slice(colon + 1);
-  const next = { ...prev, [key]: value };
-  const line = (lines ?? []).find((l) => String(l.id) === lineIdStr);
-  if (!line || !levelKey) return next;
-
-  const uom = line.unit_id ? uomById.get(line.unit_id) : null;
-  if (!uom) return next;
-
-  const openRemainingBase = lpoLineOpenRemainingBase(line, uom);
-  const levels = uomStockTakeLevels(uom);
-  const byKey = readStockTakeCounts(lineIdStr, levels, next);
-  const clamped = clampHierarchyCountsToMaxBase(byKey, levelKey, uom, openRemainingBase);
-  const result = { ...next };
-  for (const level of levels) {
-    result[countKey(lineIdStr, level.key)] = String(clamped[level.key] ?? 0);
-  }
-  return result;
+  return { ...prev, [key]: value };
 }
 
 export function fillReceiveCountsForLines(lines, uomById, receiveCounts) {

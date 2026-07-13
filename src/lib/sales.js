@@ -1,7 +1,7 @@
 import { humanizeBackendTerm, salesChannelLabel } from "@/lib/user-facing-labels";
 import { formatOrgCurrency } from "@/lib/format";
 import { GENERAL_DEFAULTS } from "@/lib/general-settings";
-import { getSaleTimestamp, isSameCalendarDay } from "@/lib/datetime";
+import { getSaleTimestamp, isSameCalendarDay, formatAppDateTime } from "@/lib/datetime";
 import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import {
   DEFAULT_ORDER_WORKFLOW,
@@ -163,6 +163,19 @@ export function formatOrderNumber(saleOrNum) {
 /** Order number and receipt number are the same formatted value (S + padded order_num). */
 export function formatReceiptNumber(sale) {
   return formatOrderNumber(sale);
+}
+
+/** When the order was first placed (booked), not when it was completed/paid. */
+export function salePlacedAt(sale) {
+  return sale?.created_at ?? sale?.completed_at ?? null;
+}
+
+export function formatSalePlacedDateTime(valueOrSale) {
+  const value =
+    valueOrSale != null && typeof valueOrSale === "object"
+      ? salePlacedAt(valueOrSale)
+      : valueOrSale;
+  return formatAppDateTime(value);
 }
 
 /** Original legacy order total (before returns zero out the live sale total). */

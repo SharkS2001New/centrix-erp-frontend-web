@@ -13,6 +13,7 @@ import {
   LPO_STATUS,
 } from "./lpo-shared";
 import { formatLpoPackQtyDisplay } from "./lpo-product-utils";
+import { LpoReceivedQtyCell } from "./lpo-received-qty";
 
 function formatReturnedCell(line, uom) {
   const returned = lpoLineReturnedQty(line);
@@ -81,7 +82,7 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
                   {formatLpoPackQtyDisplay(line.ordered_qty, uom)}
                 </td>
                 <td className="px-1 py-2.5 text-right align-middle tabular-nums">
-                  {formatLpoPackQtyDisplay(line.received_qty ?? 0, uom)}
+                  <LpoReceivedQtyCell line={line} uom={uom} />
                 </td>
                 {showReturned ? (
                   <td className="px-1 py-2.5 text-right align-middle tabular-nums text-[var(--theme-accent-orange)]">
