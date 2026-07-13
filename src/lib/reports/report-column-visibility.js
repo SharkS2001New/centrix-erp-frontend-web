@@ -46,6 +46,9 @@ const HIDDEN_REPORT_UOM_DETAIL_COLUMNS = new Set([
 /** Customer id/code columns — customer_name is sufficient in customer-facing reports. */
 const HIDDEN_CUSTOMER_ID_COLUMNS = new Set(["customer_num", "customer_code"]);
 
+/** Supplier id is redundant when supplier name is shown. */
+const HIDDEN_SUPPLIER_ID_COLUMNS = new Set(["supplier_id"]);
+
 /** Cashier id is redundant when salesperson name is shown. */
 const HIDDEN_CASHIER_ID_COLUMNS = new Set(["cashier_id"]);
 
@@ -92,6 +95,12 @@ export function isRedundantReportColumn(key, { multiBranch = false, showProductC
     return true;
   }
   if (
+    HIDDEN_SUPPLIER_ID_COLUMNS.has(key)
+    && rowKeys.includes("supplier_name")
+  ) {
+    return true;
+  }
+  if (
     HIDDEN_CASHIER_ID_COLUMNS.has(key)
     && rowKeys.includes("salesperson")
   ) {
@@ -119,11 +128,13 @@ export function filterStructuredReportColumns(columns = [], options = {}) {
   const { multiBranch = true } = options;
   const hasProductName = columns.some((col) => col.key === "product_name");
   const hasCustomerName = columns.some((col) => col.key === "customer_name");
+  const hasSupplierName = columns.some((col) => col.key === "supplier_name");
 
   return columns
     .filter((col) => {
       if (hasProductName && col.key === HIDDEN_PRODUCT_CODE_COLUMN) return false;
       if (hasCustomerName && HIDDEN_CUSTOMER_ID_COLUMNS.has(col.key)) return false;
+      if (hasSupplierName && HIDDEN_SUPPLIER_ID_COLUMNS.has(col.key)) return false;
       if (!multiBranch && HIDDEN_SINGLE_BRANCH_COLUMNS.has(col.key)) return false;
       return true;
     })

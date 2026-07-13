@@ -199,7 +199,9 @@ export function apiModuleLabel(path) {
     .replace(/^\/api\/v1\//i, "")
     .replace(/^\/api\//i, "")
     .replace(/^\/+/, "");
-  const first = normalized.split("/").filter(Boolean)[0] ?? "application";
+  const segments = normalized.split("/").filter(Boolean);
+  const first = segments[0] ?? "application";
+  const second = segments[1] ?? "";
 
   const labels = {
     organizations: "Platform",
@@ -224,6 +226,23 @@ export function apiModuleLabel(path) {
     notifications: "Notifications",
     "action-requests": "Approvals",
   };
+
+  if (first === "reports") {
+    const accountingReports = new Set([
+      "accounts-receivable",
+      "accounts-payable",
+      "general-ledger",
+      "trial-balance",
+      "balance-sheet",
+      "profit-loss-gl",
+      "cash-flow",
+      "subledger-reconciliation",
+      "journal-register",
+    ]);
+    if (accountingReports.has(second)) {
+      return "Accounting";
+    }
+  }
 
   return labels[first] ?? first.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
