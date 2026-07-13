@@ -17,12 +17,12 @@ import {
 import { ReportsDashboardSection } from "@/components/dashboard/reports-dashboard-section";
 import { HourlySalesChart } from "@/components/sales/sales-shared";
 import { OrderSummaryStats, summarizeOrders } from "@/components/sales/sales-orders-shared";
+import { SaleCreatedByCell } from "@/components/sales/sales-orders-columns";
 import {
   buildHourlySalesChart,
   filterSalesByPeriod,
   formatReceiptNumber,
   formatSaleKes,
-  formatSalePlacedDateTime,
   saleCustomerLabel,
   salePlacedAt,
 } from "@/lib/sales";
@@ -66,11 +66,11 @@ export default function SalesDashboardPage() {
         .slice(0, 8)
         .map((sale) => ({
           id: sale.id,
+          sale,
           receipt: formatReceiptNumber(sale),
           customer: saleCustomerLabel(sale),
           total: sale.order_total,
           status: sale.status,
-          placedAt: salePlacedAt(sale),
         })),
     [todaySales],
   );
@@ -126,9 +126,9 @@ export default function SalesDashboardPage() {
                   render: (row) => <SaleStatusBadge status={row.status} />,
                 },
                 {
-                  key: "placedAt",
-                  label: "Placed",
-                  render: (row) => formatSalePlacedDateTime(row.placedAt),
+                  key: "placedBy",
+                  label: "Placed by",
+                  render: (row) => <SaleCreatedByCell sale={row.sale} />,
                 },
               ]}
               rows={recentOrders}

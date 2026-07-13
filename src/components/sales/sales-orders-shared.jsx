@@ -47,6 +47,7 @@ import {
   saleVatCell,
   salePaymentReferenceLabel,
   SaleCreatedByCell,
+  saleCreatedByLabel,
 } from "@/components/sales/sales-orders-columns";
 import {
   OrderSourceBadge,
@@ -725,7 +726,7 @@ export function OrderListTableHead({
       <th className="px-4 py-2.5">Status</th>
       <th className="px-4 py-2.5">Method</th>
       {showSourceColumn ? <th className="px-4 py-2.5">Source</th> : null}
-      <th className="px-4 py-2.5">Placed</th>
+      <th className="px-4 py-2.5">Placed by</th>
       <th className="px-4 py-2.5 w-28 text-right">Actions</th>
     </tr>
   );
@@ -1034,10 +1035,8 @@ export function OrderDetailHeader({ sale, workflow, capabilities = null }) {
           label="Created via"
           value={orderSourceLabel(sale.order_source, sale.channel, capabilities)}
         />
-        <DetailMeta
-          label="Placed"
-          value={formatSalePlacedDateTime(sale)}
-        />
+        <DetailMeta label="Placed by" value={saleCreatedByLabel(sale)} />
+        <DetailMeta label="Placed on" value={formatSalePlacedDateTime(sale)} />
         <DetailMeta label="Order total" value={formatSaleKes(sale.order_total)} highlight />
       </dl>
     </div>

@@ -94,8 +94,8 @@ export function saleCreatedOnValue(sale) {
 export function SaleCreatedByCell({ sale }) {
   return (
     <div>
-      <p className="font-medium tabular-nums text-slate-800">{formatSalePlacedDateTime(sale)}</p>
-      <p className="text-xs text-slate-500">{saleCreatedByLabel(sale)}</p>
+      <p className="font-medium text-slate-800">{saleCreatedByLabel(sale)}</p>
+      <p className="text-xs tabular-nums text-slate-500">{formatSalePlacedDateTime(sale)}</p>
     </div>
   );
 }
