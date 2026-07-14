@@ -99,7 +99,11 @@ export default function TripDetailPage() {
         ...(nextPicking?.lines ?? []).map((line) => line.product_code),
         ...(nextLoading?.lines ?? []).map((line) => line.product_code),
       ];
-      const { products, uoms: uomRows } = await fetchCatalogForProductCodes(apiRequest, productCodes);
+      const { products, uoms: uomRows } = await fetchCatalogForProductCodes(
+        apiRequest,
+        productCodes,
+        user?.organization_id,
+      );
       const uomMap = buildUomByProductCode(products, uomRows);
 
       setTrip(tripRes);
@@ -129,7 +133,7 @@ export default function TripDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id, user?.full_name, user?.username]);
+  }, [id, user?.full_name, user?.username, user?.organization_id]);
 
   useEffect(() => {
     loadTrip();

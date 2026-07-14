@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiRequest } from "@/lib/api";
 import { Field, FormModal, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
 import { cartTotals, formatSaleKes, getPaymentMethodKind } from "@/lib/sales";
+import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
+import { searchCreditCustomers } from "@/lib/credit-customer-search";
 
 const WALK_IN = { customer_num: null, label: "Walk-in" };
 
@@ -14,7 +17,8 @@ export function CheckoutModal({
   error,
   onCheckout,
 }) {
-  const [customers, setCustomers] = useState([]);
+  const [customerOptions, setCustomerOptions] = useState([]);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [customerNum, setCustomerNum] = useState("");
   const [paymentMethodCode, setPaymentMethodCode] = useState("CASH");
@@ -33,19 +37,20 @@ export function CheckoutModal({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    Promise.all([
-      apiRequest("/customers", { searchParams: { per_page: 100 } }).catch(() => ({ data: [] })),
-      apiRequest("/payment-methods", { searchParams: { per_page: 50, "filter[is_active]": 1 } }).catch(
-        () => ({ data: [] }),
-      ),
-    ]).then(([custRes, methodsRes]) => {
-      if (cancelled) return;
-      setCustomers(custRes.data ?? []);
-      const methods = methodsRes.data ?? [];
-      setPaymentMethods(methods);
-      const cash = methods.find((m) => getPaymentMethodKind(m) === "cash");
-      if (cash) setPaymentMethodCode(cash.method_code);
-    });
+    setCustomerNum("");
+    setSelectedCustomer(null);
+    setCustomerOptions([]);
+    setAmountReceived("");
+    setReference("");
+    apiRequest("/payment-methods", { searchParams: { per_page: 50, "filter[is_active]": 1 } })
+      .catch(() => ({ data: [] }))
+      .then((methodsRes) => {
+        if (cancelled) return;
+        const methods = methodsRes.data ?? [];
+        setPaymentMethods(methods);
+        const cash = methods.find((m) => getPaymentMethodKind(m) === "cash");
+        if (cash) setPaymentMethodCode(cash.method_code);
+      });
     return () => {
       cancelled = true;
     };
@@ -57,6 +62,17 @@ export function CheckoutModal({
     }
   }, [open, totals.total, kind]);
 
+  const searchCustomersForSelect = useCallback(async (query) => {
+    const rows = await searchCreditCustomers(query, { perPage: 30 });
+    setCustomerOptions(rows);
+    return rows;
+  }, []);
+
+  function handleCustomerChange(nextValue, option) {
+    setCustomerNum(nextValue);
+    setSelectedCustomer(option?.customer ?? null);
+  }
+
   function handleSubmit() {
     const body = {
       status: isCredit ? "pending_payment" : "completed",
@@ -65,9 +81,11 @@ export function CheckoutModal({
       pay_now: isCredit ? 0 : Math.min(received, totals.total),
     };
     if (customerNum) body.customer_num = Number(customerNum);
-    if (isCredit) body.customer_name_override = customers.find(
-      (c) => String(c.customer_num) === customerNum,
-    )?.customer_name;
+    if (isCredit) {
+      body.customer_name_override =
+        selectedCustomer?.customer_name ??
+        customerOptions.find((c) => String(c.value) === String(customerNum))?.customer?.customer_name;
+    }
     onCheckout?.(body);
   }
 
@@ -97,18 +115,19 @@ export function CheckoutModal({
       </div>
 
       <Field label="Customer">
-        <select
-          className={inputClassName()}
+        <PosSearchableSelect
           value={customerNum}
-          onChange={(e) => setCustomerNum(e.target.value)}
-        >
-          <option value="">{WALK_IN.label}</option>
-          {customers.map((c) => (
-            <option key={c.customer_num} value={String(c.customer_num)}>
-              {c.customer_name ?? `Customer #${c.customer_num}`}
-            </option>
-          ))}
-        </select>
+          onChange={handleCustomerChange}
+          options={customerOptions}
+          loadOptions={searchCustomersForSelect}
+          minSearchLength={1}
+          disabled={saving}
+          placeholder={WALK_IN.label}
+          searchPlaceholder="Search by name, phone, or customer #…"
+          idleSearchLabel={`${WALK_IN.label} by default — type to pick a customer`}
+          emptyLabel="No matching customers"
+          inputClassName={inputClassName()}
+        />
       </Field>
 
       <Field label="Payment method">

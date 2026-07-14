@@ -9,7 +9,8 @@ import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import { usePosSession } from "@/contexts/pos-session-context";
-import { filterByOrganization, orgListParams } from "@/lib/admin";
+import { filterByOrganization } from "@/lib/admin";
+import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cache";
 import {
   CatalogPageShell,
   FilterSelect,
@@ -286,17 +287,17 @@ export function TillManagementScreen() {
     setMetaLoading(true);
     setPageError(null);
     try {
-      const [tillRes, branchRes, userRes, sessionRes] = await Promise.all([
+      const [tillRes, branchesData, usersData, sessionRes] = await Promise.all([
         apiRequest("/tills", { searchParams: { per_page: 200 } }),
-        apiRequest("/branches", { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
-        apiRequest("/users", { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
+        fetchBranchesCached(organizationId),
+        fetchUsersCached(organizationId),
         apiRequest("/till-float-sessions", {
           searchParams: { per_page: 200, "filter[status]": "open" },
         }).catch(() => ({ data: [] })),
       ]);
       setTills(tillRes.data ?? []);
-      setBranches(filterByOrganization(branchRes.data, organizationId));
-      setUsers(filterByOrganization(userRes.data, organizationId));
+      setBranches(filterByOrganization(branchesData, organizationId));
+      setUsers(filterByOrganization(usersData, organizationId));
       const sessions = sessionRes.data ?? [];
       setOpenSessions(sessions);
       const reportEntries = await mapWithConcurrency(

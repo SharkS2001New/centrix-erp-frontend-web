@@ -3,6 +3,8 @@
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchProductGroupCountsCached, fetchVatsCached } from "@/lib/reference-data-cache";
+import { useAuth } from "@/contexts/auth-context";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import { P } from "@/lib/permission-codes";
 import {
@@ -42,9 +44,10 @@ const EMPTY_FORM = {
 
 export default function VatsPage() {
   const { adminPath, isPlatformManaged } = useAdminApi();
+  const { user } = useAuth();
   const confirm = useConfirm();
   const [vats, setVats] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [productCountByVatId, setProductCountByVatId] = useState(() => ({}));
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -67,20 +70,24 @@ export default function VatsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [vatRes, prodRes, userRes] = await Promise.all([
-        apiRequest(adminPath("/vats"), { searchParams: { per_page: 100 } }),
-        apiRequest(adminPath("/products"), { searchParams: { per_page: 200 } }),
+      const [vatsData, groupCounts, userRes] = await Promise.all([
+        isPlatformManaged
+          ? apiRequest(adminPath("/vats"), { searchParams: { per_page: 100 } }).then(
+              (res) => res.data ?? res ?? [],
+            )
+          : fetchVatsCached(user?.organization_id),
+        fetchProductGroupCountsCached(user?.organization_id).catch(() => ({ by_vat_id: {} })),
         apiRequest(adminPath("/users"), { searchParams: { per_page: 200 } }),
       ]);
-      setVats(vatRes.data ?? vatRes ?? []);
-      setProducts(prodRes.data ?? []);
+      setVats(vatsData ?? []);
+      setProductCountByVatId(groupCounts?.by_vat_id ?? {});
       setUsers(userRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load VAT rates");
     } finally {
       setLoading(false);
     }
-  }, [adminPath]);
+  }, [adminPath, isPlatformManaged, user?.organization_id]);
 
   useEffect(() => {
     loadData();
@@ -90,13 +97,11 @@ export default function VatsPage() {
 
   const productCountByVat = useMemo(() => {
     const map = new Map();
-    for (const p of products) {
-      if (p.vat_id != null) {
-        map.set(p.vat_id, (map.get(p.vat_id) ?? 0) + 1);
-      }
+    for (const [vatId, count] of Object.entries(productCountByVatId ?? {})) {
+      map.set(Number(vatId) || vatId, Number(count) || 0);
     }
     return map;
-  }, [products]);
+  }, [productCountByVatId]);
 
   const pageRowIds = useMemo(() => vats.map((v) => v.id), [vats]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);

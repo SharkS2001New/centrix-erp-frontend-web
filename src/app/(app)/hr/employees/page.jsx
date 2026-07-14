@@ -96,7 +96,7 @@ export default function HrEmployeesPage() {
         perPage: pageSize,
         q: debouncedSearch,
         filters,
-        extra,
+        extra: { ...extra, fields: "lean" },
       });
       const empRes = await apiRequest("/employees", { searchParams });
       const parsed = parsePaginator(empRes);

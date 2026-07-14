@@ -11,6 +11,7 @@ import {
 import {
   buildReportOrgHeaderHtml,
   buildReportWatermarkHtml,
+  reportWatermarkCss,
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
 
@@ -117,28 +118,7 @@ export function brandedDocumentStyles(generalSettings = null) {
   .signatures p { margin: 0 0 10px; }
   .sig-line { display: inline-block; min-width: 180px; border-bottom: 1px dotted #000; }
   ${documentPrintEdgeFooterStyles(generalSettings, { variant: "sale_invoice" })}
-  .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-  .watermark-text {
-    position: absolute;
-    top: 48%;
-    left: 50%;
-    transform: translate(-50%, -50%) rotate(-32deg);
-    font-size: ${px(64)};
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    color: rgba(15, 23, 42, 0.06);
-    white-space: nowrap;
-  }
-  .watermark-logo {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    max-width: 70%;
-    max-height: 70%;
-    opacity: 0.05;
-    object-fit: contain;
-  }
+  ${reportWatermarkCss()}
   .extra-block { margin: 8px 0; font-size: ${px(9)}; }
   @media print {
     html, body { height: auto !important; min-height: 0 !important; }
@@ -153,7 +133,6 @@ export function brandedDocumentStyles(generalSettings = null) {
     .signatures { font-size: ${px(10, true)}; }
     .doc-footer-text { font-size: ${fpx(8, true)}; }
     .extra-block { font-size: ${px(9, true)}; }
-    .watermark-text { color: rgba(15, 23, 42, 0.08); font-size: ${px(64, true)}; }
   }
 `;
 }

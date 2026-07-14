@@ -74,7 +74,7 @@ export function LpoProductSearchPanel({
     setSearching(true);
     setSearchError(null);
     try {
-      const searchParams = { per_page: 80, q: trimmed };
+      const searchParams = { per_page: 80, q: trimmed, fields: "lean" };
       if (branchId) searchParams.branch_id = branchId;
       const res = await apiRequest("/products", {
         searchParams,

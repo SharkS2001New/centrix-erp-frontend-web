@@ -5,6 +5,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import {
+  fetchCategoriesCached,
+  fetchDriversCached,
+  fetchRoutesCached,
+  fetchSubCategoriesCached,
+  fetchUomsCached,
+  fetchVehiclesCached,
+} from "@/lib/reference-data-cache";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import { usePosSession } from "@/contexts/pos-session-context";
@@ -581,33 +589,35 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const loadSale = useCallback(async () => {
     setLoading(true);
     try {
-      const [saleData, payRes, methodsRes, subRes, catRes, returnsRes, uomRes, routeRes, driverRes, vehicleRes] = await Promise.all([
-        apiRequest(`/sales/${saleId}`),
-        apiRequest("/sale-payments", {
-          searchParams: { per_page: 50, "filter[sale_id]": saleId },
-        }).catch(() => ({ data: [] })),
-        apiRequest("/payment-methods", { searchParams: { per_page: 50 } }).catch(() => ({ data: [] })),
-        apiRequest("/subcategories", { searchParams: { per_page: 500 } }).catch(() => ({ data: [] })),
-        apiRequest("/categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-        apiRequest("/customer-returns", {
-          searchParams: { sale_id: saleId, per_page: 50 },
-        }).catch(() => ({ data: [] })),
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-        apiRequest("/routes", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-        apiRequest("/drivers", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-        apiRequest("/vehicles", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-      ]);
+      const orgId = user?.organization_id;
+      const [saleData, payRes, methodsRes, subs, cats, returnsRes, uoms, routes, driversData, vehiclesData] =
+        await Promise.all([
+          apiRequest(`/sales/${saleId}`),
+          apiRequest("/sale-payments", {
+            searchParams: { per_page: 50, "filter[sale_id]": saleId },
+          }).catch(() => ({ data: [] })),
+          apiRequest("/payment-methods", { searchParams: { per_page: 50 } }).catch(() => ({ data: [] })),
+          fetchSubCategoriesCached(orgId).catch(() => []),
+          fetchCategoriesCached(orgId).catch(() => []),
+          apiRequest("/customer-returns", {
+            searchParams: { sale_id: saleId, per_page: 50 },
+          }).catch(() => ({ data: [] })),
+          fetchUomsCached(orgId).catch(() => []),
+          fetchRoutesCached(orgId).catch(() => []),
+          fetchDriversCached(orgId).catch(() => []),
+          fetchVehiclesCached(orgId).catch(() => []),
+        ]);
 
       setSale(saleData);
       setPayments(payRes.data ?? []);
       setPaymentMethods(methodsRes.data ?? []);
-      setSubCategories(subRes.data ?? []);
-      setCategories(catRes.data ?? []);
+      setSubCategories(subs ?? []);
+      setCategories(cats ?? []);
       setOrderReturns(returnsRes.data ?? []);
-      setUoms(uomRes.data ?? []);
-      setRoutes(routeRes.data ?? []);
-      setDrivers(driverRes.data ?? []);
-      setVehicles(vehicleRes.data ?? []);
+      setUoms(uoms ?? []);
+      setRoutes(routes ?? []);
+      setDrivers(driversData ?? []);
+      setVehicles(vehiclesData ?? []);
 
       const { branchName, cashierName, customer } = await loadOrderRelatedDetails(saleData);
       setBranchName(branchName);
@@ -618,7 +628,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     } finally {
       setLoading(false);
     }
-  }, [saleId]);
+  }, [saleId, user?.organization_id]);
 
   useEffect(() => {
     loadSale();

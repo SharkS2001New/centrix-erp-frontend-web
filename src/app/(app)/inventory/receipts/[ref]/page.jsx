@@ -4,7 +4,8 @@ import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
-import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
+import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { buildGrnFromStockReceiptGroup } from "@/lib/grn-document";
 import { printGoodsReceivedNote } from "@/components/lpo/grn-print";
 import { useAuth } from "@/contexts/auth-context";
@@ -36,7 +37,7 @@ export default function StockReceiptDetailPage() {
     setLoading(true);
     try {
       const isSingleId = ref.startsWith("RCPT-");
-      const [receiptRes, catalogProducts, uomRes] = await Promise.all([
+      const [receiptRes, uomRows] = await Promise.all([
         isSingleId
           ? apiRequest(`/stock-receipts/${ref.replace("RCPT-", "")}`)
           : apiRequest("/stock-receipts", {
@@ -46,8 +47,7 @@ export default function StockReceiptDetailPage() {
                 "filter[invoice_number]": ref,
               },
             }),
-        fetchProductCatalogCached(user?.organization_id, { status: "all" }),
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
+        fetchUomsCached(user?.organization_id),
       ]);
       const filtered = isSingleId
         ? [receiptRes]
@@ -55,8 +55,12 @@ export default function StockReceiptDetailPage() {
             (row) => (row.invoice_number ?? "").trim() === ref,
           );
       setRows(filtered);
+      setUoms(uomRows ?? []);
+      const codes = filtered.map((row) => row.product_code).filter(Boolean);
+      const catalogProducts = await fetchProductsByCodesCached(user?.organization_id, codes, {
+        status: "all",
+      });
       setProducts(catalogProducts ?? []);
-      setUoms(uomRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load receipt");
     } finally {
@@ -185,7 +189,21 @@ export default function StockReceiptDetailPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right text-slate-600">
-                          {row.cost_price != null ? `KES ${Number(row.cost_price).toLocaleString("en-KE")}` : "—"}
+                          {row.cost_price != null ? (
+                            <div>
+                              <p>{`KES ${Number(row.cost_price).toLocaleString("en-KE")}`}</p>
+                              {row.original_cost_price != null &&
+                              Math.abs(Number(row.original_cost_price) - Number(row.cost_price)) >
+                                0.00005 ? (
+                                <p className="mt-0.5 text-[11px] text-slate-400">
+                                  Original cost: KES{" "}
+                                  {Number(row.original_cost_price).toLocaleString("en-KE")}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : (
+                            "—"
+                          )}
                         </td>
                       </tr>
                     );

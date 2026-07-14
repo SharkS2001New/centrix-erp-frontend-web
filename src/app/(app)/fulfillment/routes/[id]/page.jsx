@@ -13,7 +13,6 @@ import {
   effectiveSaleRouteId,
   formatRouteKes,
   isActiveRouteSale,
-  isSaleInDateRange,
   normalizeRouteId,
 } from "@/components/routes/route-form";
 import {
@@ -37,60 +36,81 @@ export default function RouteDetailPage() {
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
   const [loading, setLoading] = useState(true);
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [routeData, custRes, salesRes] = await Promise.all([
-        apiRequest(`/routes/${routeId}`),
-        apiRequest("/customers", {
-          searchParams: { per_page: 200, "filter[route_id]": routeId },
-        }),
-        apiRequest("/sales", {
-          searchParams: {
-            per_page: 200,
-            route_orders: 1,
-            route_id: routeId,
-            exclude_statuses: "cancelled,expired,held",
-          },
-        }),
-      ]);
-      setRoute(routeData);
-      setCustomers((custRes.data ?? []).filter((c) => !c.deleted_at));
-      setSales(salesRes.data ?? []);
-    } catch (e) {
-      notifyError(e instanceof Error ? e.message : "Failed to load route");
-    } finally {
-      setLoading(false);
-    }
-  }, [routeId]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const [routeData, custRes] = await Promise.all([
+          apiRequest(`/routes/${routeId}`),
+          apiRequest("/customers", {
+            searchParams: { per_page: 200, "filter[route_id]": routeId },
+          }),
+        ]);
+        if (cancelled) return;
+        setRoute(routeData);
+        setCustomers((custRes.data ?? []).filter((c) => !c.deleted_at));
+      } catch (e) {
+        if (!cancelled) {
+          notifyError(e instanceof Error ? e.message : "Failed to load route");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [routeId]);
+
+  const loadSales = useCallback(async () => {
+    try {
+      const salesRes = await apiRequest("/sales", {
+        searchParams: {
+          per_page: 200,
+          with_items: 0,
+          route_orders: 1,
+          route_id: routeId,
+          exclude_statuses: "cancelled,expired,held",
+          from_date: fromDate,
+          to_date: toDate,
+          date_field: "placed",
+        },
+      });
+      setSales(salesRes.data ?? []);
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : "Failed to load route sales");
+    }
+  }, [routeId, fromDate, toDate]);
+
+  useEffect(() => {
+    void loadSales();
+  }, [loadSales]);
 
   const salesStats = useMemo(() => {
     let total = 0;
     let count = 0;
     for (const sale of sales) {
-      if (!isActiveRouteSale(sale) || !isSaleInDateRange(sale, fromDate, toDate)) continue;
+      if (!isActiveRouteSale(sale)) continue;
       if (normalizeRouteId(effectiveSaleRouteId(sale)) !== normalizeRouteId(routeId)) continue;
       total += Number(sale.order_total ?? 0);
       count += 1;
     }
     return { total, count };
-  }, [sales, fromDate, toDate, routeId]);
+  }, [sales, routeId]);
 
   const recentSales = useMemo(
     () =>
       sales
-        .filter((s) => isActiveRouteSale(s) && isSaleInDateRange(s, fromDate, toDate))
+        .filter((s) => isActiveRouteSale(s))
         .sort((a, b) => {
           const ta = getSaleTimestamp(a)?.getTime() ?? 0;
           const tb = getSaleTimestamp(b)?.getTime() ?? 0;
           return tb - ta;
         })
         .slice(0, 8),
-    [sales, fromDate, toDate],
+    [sales],
   );
 
   const periodLabel = formatCompactDateRange(fromDate, toDate);

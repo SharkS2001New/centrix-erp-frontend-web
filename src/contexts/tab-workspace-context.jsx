@@ -95,10 +95,14 @@ export function TabWorkspaceProvider({ children }) {
 
   const storeActiveHref = useMemo(() => {
     if (!workspaceId) return normalizeTabHref(pathname);
-    return (
-      getWorkspaceTabState(tabStore, workspaceId).activeHref ?? normalizeTabHref(pathname)
-    );
-  }, [pathname, tabStore, workspaceId]);
+    const state = getWorkspaceTabState(tabStore, workspaceId);
+    if (state.activeHref && pathBelongsToWorkspace(state.activeHref, workspaceId)) {
+      return state.activeHref;
+    }
+    const fromPath = normalizeTabHref(pathname);
+    if (pathBelongsToWorkspace(fromPath, workspaceId)) return fromPath;
+    return state.tabs[0]?.href ?? workspaceHomePath(workspaceId, capabilities);
+  }, [capabilities, pathname, tabStore, workspaceId]);
 
   useEffect(() => {
     if (!enabled) {

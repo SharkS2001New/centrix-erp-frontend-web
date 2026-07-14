@@ -6,6 +6,8 @@ import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useAuth } from "@/contexts/auth-context";
+import { fetchCategoriesCached, fetchUsersCached } from "@/lib/reference-data-cache";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { PRICE_HISTORY_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
@@ -120,6 +122,7 @@ function groupByProduct(rows) {
 const RECORDS_PAGE_SIZE = 50;
 
 export default function PriceHistoryPage() {
+  const { user } = useAuth();
   const [records, setRecords] = useState([]);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -136,16 +139,17 @@ export default function PriceHistoryPage() {
 
   const loadReferenceData = useCallback(async () => {
     try {
-      const [catRes, userRes] = await Promise.all([
-        apiRequest("/categories", { searchParams: { per_page: 200 } }),
-        apiRequest("/users", { searchParams: { per_page: 200 } }),
+      const orgId = user?.organization_id;
+      const [cats, usersData] = await Promise.all([
+        fetchCategoriesCached(orgId),
+        fetchUsersCached(orgId),
       ]);
-      setCategories(catRes.data ?? []);
-      setUsers(userRes.data ?? []);
+      setCategories(cats ?? []);
+      setUsers(usersData ?? []);
     } catch {
       /* non-blocking */
     }
-  }, []);
+  }, [user?.organization_id]);
 
   const loadRecords = useCallback(async () => {
     setListLoading(true);

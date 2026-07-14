@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
 import { CustomerLocationSection } from "@/components/customers/customer-location-section";
@@ -59,45 +59,29 @@ export default function CustomerDetailPage() {
     }
 
     try {
-      if (cust.branch_id) {
-        const branch = await apiRequest(`/branches/${cust.branch_id}`);
-        setBranchName(branch.branch_name ?? null);
-      } else {
-        setBranchName(null);
-      }
+      const [branchRes, routeRes, salesRes] = await Promise.all([
+        cust.branch_id
+          ? apiRequest(`/branches/${cust.branch_id}`).catch(() => null)
+          : Promise.resolve(null),
+        cust.route_id
+          ? apiRequest(`/routes/${cust.route_id}`).catch(() => null)
+          : Promise.resolve(null),
+        apiRequest(`/customers/${customerNum}/sales`, {
+          searchParams: { per_page: 20, with_items: 0 },
+        }).catch(() => ({ data: [] })),
+      ]);
+      setBranchName(branchRes?.branch_name ?? null);
+      setRouteName(routeRes?.route_name ?? null);
+      setOrders(salesRes.data ?? []);
+      setProductByCode({});
     } catch {
       setBranchName(null);
-    }
-
-    try {
-      if (cust.route_id) {
-        const route = await apiRequest(`/routes/${cust.route_id}`);
-        setRouteName(route.route_name ?? null);
-      } else {
-        setRouteName(null);
-      }
-    } catch {
       setRouteName(null);
-    }
-
-    try {
-      const salesRes = await apiRequest(`/customers/${customerNum}/sales`, {
-        searchParams: { per_page: 20 },
-      });
-      setOrders(salesRes.data ?? []);
-    } catch {
       setOrders([]);
     }
 
-    try {
-      const catalogProducts = await fetchProductCatalogCached(user?.organization_id, { status: "all" });
-      setProductByCode(indexProductsByCode(catalogProducts ?? []));
-    } catch {
-      setProductByCode({});
-    }
-
     setLoading(false);
-  }, [customerNum, user?.organization_id]);
+  }, [customerNum]);
 
   useEffect(() => {
     loadData();
@@ -119,10 +103,18 @@ export default function CustomerDetailPage() {
     setItemsLoadingId(orderId);
     try {
       const sale = await apiRequest(`/sales/${orderId}`);
+      const items = sale.items ?? [];
       setOrderItemsById((prev) => ({
         ...prev,
-        [orderId]: sale.items ?? [],
+        [orderId]: items,
       }));
+      const codes = items.map((line) => line.product_code).filter(Boolean);
+      if (codes.length) {
+        const catalog = await fetchProductsByCodesCached(user?.organization_id, codes, {
+          status: "all",
+        });
+        setProductByCode((prev) => ({ ...prev, ...indexProductsByCode(catalog) }));
+      }
     } catch {
       setOrderItemsById((prev) => ({ ...prev, [orderId]: [] }));
     } finally {

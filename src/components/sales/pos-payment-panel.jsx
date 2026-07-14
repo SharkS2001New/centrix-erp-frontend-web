@@ -398,6 +398,9 @@ export function PosPaymentPanel({
         creditAmount: creditAmountDue,
       });
     }
+    if (cfg.rejectOverpayment && amountPaid - checkoutTotal > 0.01) {
+      return `Payment of ${formatSaleKes(amountPaid)} exceeds the amount due of ${formatSaleKes(checkoutTotal)}. Enter the correct amount to continue.`;
+    }
     if (cfg.allowPartialPayment && amountPaid > 0 && amountPaid + 0.01 < checkoutTotal) {
       return null;
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
@@ -11,12 +11,20 @@ import { useAuth } from "@/contexts/auth-context";
 import {
   Field,
   FilterSelect,
+  FILTER_CONTROL_CLASS,
   PaginationBar,
   SearchInput,
   SECONDARY_BTN_CLASS,
 } from "@/components/catalog/catalog-shared";
-import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
+import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import { defaultProductBranchId, isMultiBranchCatalog } from "@/lib/catalog-scope";
+import {
+  fetchBranchesCached,
+  fetchCategoriesCached,
+  fetchRetailPackagesCached,
+  fetchSubCategoriesCached,
+} from "@/lib/reference-data-cache";
+import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import {
   baseToDisplayQty,
   formatInventoryKes,
@@ -160,6 +168,7 @@ export default function CurrentStockPage() {
 
   const [stockRows, setStockRows] = useState([]);
   const [subcategories, setSubcategories] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [branches, setBranches] = useState([]);
   const [branchId, setBranchId] = useState("");
   const [retailPackages, setRetailPackages] = useState([]);
@@ -167,6 +176,7 @@ export default function CurrentStockPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
+  const [buildingAllPriceList, setBuildingAllPriceList] = useState(false);
   const [visibleColumnIds, setVisibleColumnIds] = useState(defaultVisibleColumnIds);
   const [columnsOpen, setColumnsOpen] = useState(false);
 
@@ -192,21 +202,22 @@ export default function CurrentStockPage() {
 
   const loadReferenceData = useCallback(async () => {
     try {
-      const [subRes, branchRes, retailRes] = await Promise.all([
-        apiRequest("/sub-categories", { searchParams: { per_page: 500 } }),
-        apiRequest("/branches", { searchParams: { per_page: 200 } }),
-        apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }),
+      const [subsData, catsData, branchRows, retailData] = await Promise.all([
+        fetchSubCategoriesCached(user?.organization_id),
+        fetchCategoriesCached(user?.organization_id),
+        fetchBranchesCached(user?.organization_id),
+        fetchRetailPackagesCached(user?.organization_id),
       ]);
-      const branchRows = branchRes.data ?? [];
-      setSubcategories(subRes.data ?? []);
-      setBranches(branchRows);
-      setRetailPackages(retailRes.data ?? []);
+      setSubcategories(subsData ?? []);
+      setCategories(catsData ?? []);
+      setBranches(branchRows ?? []);
+      setRetailPackages(retailData ?? []);
       if (user?.branch_id) {
         setBranchId(String(user.branch_id));
-      } else if (branchRows.length === 1) {
+      } else if ((branchRows ?? []).length === 1) {
         setBranchId(String(branchRows[0].id));
       } else {
-        const fallback = defaultProductBranchId(capabilities, user, branchRows);
+        const fallback = defaultProductBranchId(capabilities, user, branchRows ?? []);
         if (fallback) setBranchId(fallback);
       }
     } catch (e) {
@@ -408,18 +419,68 @@ export default function CurrentStockPage() {
     generatePriceList(selected);
   }
 
-  const subcategoryOptions = useMemo(
-    () =>
-      [...subcategories]
-        .sort((a, b) =>
-          String(a.subcategory_name ?? "").localeCompare(String(b.subcategory_name ?? "")),
-        )
-        .map((sub) => ({
+  async function generateAllInStockPriceList() {
+    if (!branchId) return;
+    setBuildingAllPriceList(true);
+    try {
+      const baseParams = {
+        branch_id: branchId,
+        in_stock_only: 1,
+        q: debouncedSearch || undefined,
+        subcategory_id: subcategoryFilter !== "all" ? subcategoryFilter : undefined,
+        location: locationFilter !== "all" ? locationFilter : undefined,
+      };
+      const allRows = await fetchAllPaginatedRowsSmart("/reports/stock-on-hand", baseParams, {
+        perPage: 200,
+      });
+      const enrichedRows = (allRows ?? []).map((row) => {
+        const base = enrichStockRow(row);
+        return {
+          ...base,
+          retailPackage: retailByCode.get(row.product_code) ?? null,
+          product: {
+            product_code: row.product_code,
+            product_name: row.product_name,
+            unit_price: Number(row.wholesale_price ?? 0),
+            sell_on_retail: false,
+          },
+        };
+      });
+      generatePriceList(enrichedRows);
+      notifySuccess(`Price list ready for ${enrichedRows.length} in-stock item(s).`);
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : "Failed to build full price list");
+    } finally {
+      setBuildingAllPriceList(false);
+    }
+  }
+
+  const subcategoryOptions = useMemo(() => {
+    const options = [{ value: "all", label: "All subcategories" }];
+    const byCat = new Map();
+    for (const sub of subcategories) {
+      const catId = String(sub.category_id ?? "");
+      if (!byCat.has(catId)) byCat.set(catId, []);
+      byCat.get(catId).push(sub);
+    }
+    for (const [catId, subs] of byCat) {
+      const cat = categories.find((c) => String(c.id) === catId);
+      options.push({
+        value: `hdr-${catId}`,
+        label: cat?.category_name ?? "Uncategorized",
+        isHeader: true,
+      });
+      for (const sub of [...subs].sort((a, b) =>
+        String(a.subcategory_name ?? "").localeCompare(String(b.subcategory_name ?? "")),
+      )) {
+        options.push({
           value: String(sub.id),
           label: sub.subcategory_name ?? `Subcategory #${sub.id}`,
-        })),
-    [subcategories],
-  );
+        });
+      }
+    }
+    return options;
+  }, [subcategories, categories]);
 
   const totals = useMemo(() => {
     let shop = 0;
@@ -462,14 +523,20 @@ export default function CurrentStockPage() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search product…"
         />
-        <Field label="Categories">
-          <HrSearchableSelect
-            value={subcategoryFilter === "all" ? "" : subcategoryFilter}
-            onChange={(value) => setSubcategoryFilter(value || "all")}
-            options={subcategoryOptions}
-            placeholder="All categories"
-            emptyLabel="No subcategories found"
-          />
+        <Field label="Subcategory">
+          <div className="min-w-[14rem]">
+            <PosSearchableSelect
+              value={subcategoryFilter}
+              onChange={(value) => setSubcategoryFilter(value || "all")}
+              options={subcategoryOptions}
+              placeholder="All subcategories"
+              searchPlaceholder="Search subcategory…"
+              minSearchLength={0}
+              idleSearchLabel="Type to search subcategory"
+              emptyLabel="No subcategories found"
+              inputClassName={FILTER_CONTROL_CLASS}
+            />
+          </div>
         </Field>
         {multiBranch ? (
           <Field label="Branch">
@@ -495,6 +562,14 @@ export default function CurrentStockPage() {
           className="rounded-lg border border-[#185FA5] bg-[#185FA5] px-3 py-2 text-sm font-medium text-white hover:bg-[#0C447C] disabled:opacity-50"
         >
           Price list (this page)
+        </button>
+        <button
+          type="button"
+          onClick={() => void generateAllInStockPriceList()}
+          disabled={loading || listLoading || buildingAllPriceList || !branchId}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          {buildingAllPriceList ? "Building…" : "Price list (all in stock)"}
         </button>
         <div className="relative">
           <button

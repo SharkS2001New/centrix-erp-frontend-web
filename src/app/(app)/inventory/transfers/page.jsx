@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
+import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { useOrgFormat } from "@/lib/org-format";
 import {
   CatalogPageShell,
@@ -50,7 +51,7 @@ export default function InventoryTransfersPage() {
     setLoading(true);
     setError(null);
     try {
-      const [res, catalogProducts, uomRes] = await Promise.all([
+      const [res, uomRows] = await Promise.all([
         apiRequest("/reports/stock-transfers", {
           searchParams: {
             from_date: fromDate,
@@ -60,20 +61,26 @@ export default function InventoryTransfersPage() {
             ...(appliedSearch.trim() ? { q: appliedSearch.trim() } : {}),
           },
         }),
-        fetchProductCatalogCached(user?.organization_id, { status: "all" }),
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
+        fetchUomsCached(user?.organization_id),
       ]);
       const parsed = parsePaginator(res);
-      setRows(parsed.items);
+      const items = parsed.items;
+      setRows(items);
       setTotal(parsed.total);
       setTotalPages(parsed.totalPages);
+      setUoms(uomRows ?? []);
+
+      const codes = items.map((row) => row.product_code).filter(Boolean);
+      const catalogProducts = await fetchProductsByCodesCached(user?.organization_id, codes, {
+        status: "all",
+      });
       setProducts(catalogProducts ?? []);
-      setUoms(uomRes.data ?? []);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load transfers");
       setRows([]);
       setTotal(0);
       setTotalPages(1);
+      setProducts([]);
     } finally {
       setLoading(false);
     }

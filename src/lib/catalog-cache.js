@@ -178,6 +178,46 @@ export async function fetchProductByCodeCached(organizationId, productCode, opti
   }
 }
 
+/**
+ * Fetch only the products needed for a code list (batch via product_codes).
+ * @param {string[]} productCodes
+ * @returns {Promise<object[]>}
+ */
+export async function fetchProductsByCodesCached(organizationId, productCodes, { status = "all" } = {}) {
+  const unique = [
+    ...new Set(
+      (productCodes ?? [])
+        .map((code) => String(code ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (unique.length === 0) return [];
+
+  void resolveOrgId(organizationId);
+
+  const chunkSize = 100;
+  const rows = [];
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const searchParams = {
+      product_codes: chunk.join(","),
+      per_page: Math.min(chunk.length, 200),
+      page: 1,
+    };
+    if (status !== "all") searchParams.status = status;
+    const res = await apiRequest("/products", {
+      searchParams,
+      loading: false,
+      reportIssues: false,
+    });
+    const pageRows = Array.isArray(res?.data) ? res.data : [];
+    for (const row of pageRows) {
+      rows.push(stripProductStockFields(row));
+    }
+  }
+  return rows;
+}
+
 export async function isProductCodeInCatalogCached(organizationId, productCode, options = {}) {
   const product = await fetchProductByCodeCached(organizationId, productCode, {
     status: "all",

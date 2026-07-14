@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { filterByOrganization, orgListParams } from "@/lib/admin";
+import { filterByOrganization } from "@/lib/admin";
+import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cache";
 import { isTillFloatWorkflowEnabled, areSalesDiscountsEnabled } from "@/lib/sales-settings";
 import { openPrintWindow } from "@/lib/open-print-window";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
@@ -298,13 +299,13 @@ export function EndOfDayReportScreen() {
   useEffect(() => {
     if (!organizationId) return;
     Promise.all([
-      apiRequest("/branches", { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
-      apiRequest("/users", { searchParams: { per_page: 200, ...orgListParams(organizationId) } }),
+      fetchBranchesCached(organizationId),
+      fetchUsersCached(organizationId),
     ])
-      .then(([branchRes, userRes]) => {
-        const list = filterByOrganization(branchRes.data ?? [], organizationId);
+      .then(([branchesData, usersData]) => {
+        const list = filterByOrganization(branchesData ?? [], organizationId);
         setBranches(list);
-        setUsers(filterByOrganization(userRes.data ?? [], organizationId));
+        setUsers(filterByOrganization(usersData ?? [], organizationId));
         if (!branchId && user?.branch_id) {
           setBranchId(String(user.branch_id));
         } else if (!branchId && list[0]) {

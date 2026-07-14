@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  fetchSuppliersCached,
+  fetchUomsCached,
+  fetchVatsCached,
+} from "@/lib/reference-data-cache";
 import { LpoFormFields, LpoFormShell } from "@/components/lpo/lpo-form";
 import { buildLpoFullBody, EMPTY_LPO_FORM, isLpoHeaderComplete } from "@/components/lpo/lpo-shared";
 
@@ -36,23 +41,24 @@ export default function NewLpoPage() {
 
   useEffect(() => {
     const branchId = user?.branch_id;
+    const orgId = user?.organization_id;
     Promise.all([
-      apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
-      apiRequest("/uoms", { searchParams: { per_page: 200 } }),
-      apiRequest("/vats", { searchParams: { per_page: 50 } }),
+      fetchSuppliersCached(orgId),
+      fetchUomsCached(orgId),
+      fetchVatsCached(orgId),
       branchId
         ? apiRequest(`/branches/${branchId}`).catch(() => null)
         : apiRequest("/branches", { searchParams: { per_page: 1 } }).then((r) => r.data?.[0]),
     ])
-      .then(([supRes, uomRes, vatRes, branch]) => {
-        setSuppliers(supRes.data ?? []);
-        setUoms(uomRes.data ?? uomRes ?? []);
-        setVats(vatRes.data ?? vatRes ?? []);
+      .then(([suppliersData, uomsData, vatsData, branch]) => {
+        setSuppliers(suppliersData ?? []);
+        setUoms(uomsData ?? []);
+        setVats(vatsData ?? []);
         const addr = branch?.branch_address?.trim();
         if (addr) setBranchAddress(addr);
       })
       .catch(() => setFormError("Failed to load form data."));
-  }, [user?.branch_id]);
+  }, [user?.branch_id, user?.organization_id]);
 
   async function save() {
     if (!isLpoHeaderComplete(form)) {

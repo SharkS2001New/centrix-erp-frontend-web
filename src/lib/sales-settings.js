@@ -88,7 +88,7 @@ const SALES_DEFAULTS = {
     mobile: "order_completed",
     backend: "order_completed",
   },
-  orders_list_default_days: 5,
+  orders_list_default_days: 6,
   orders_list_sort: "-created_at",
 };
 
@@ -110,6 +110,19 @@ export function normalizeOrdersListDefaultDays(value) {
 export function normalizeOrdersListSort(value) {
   const sort = String(value ?? "").trim();
   return ORDERS_LIST_SORT_VALUES.has(sort) ? sort : SALES_DEFAULTS.orders_list_sort;
+}
+
+/** Working window for order lists: today + previous 5 days (6 calendar days inclusive). */
+export const ORDERS_HOT_WINDOW_DAYS = 6;
+
+/**
+ * True when the list From date is older than the hot window — UI can show
+ * “loading from archives” while the same /sales API still returns the rows.
+ */
+export function orderListDateRangeUsesArchive(fromDate, hotDays = ORDERS_HOT_WINDOW_DAYS) {
+  if (!fromDate) return true;
+  const hotFrom = defaultDateRange(Math.max(1, Number(hotDays) || ORDERS_HOT_WINDOW_DAYS)).from;
+  return String(fromDate) < String(hotFrom);
 }
 
 export function getOrdersListDefaultDateRange(moduleSettings) {
@@ -336,7 +349,7 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
   invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
   stock_deduct_on: "order_created",
-  orders_list_default_days: "5",
+  orders_list_default_days: "6",
   orders_list_sort: "-created_at",
 };
 
@@ -519,16 +532,16 @@ export function shouldShowDistributionLoadingLists(capabilities) {
   return isDistributionOpsEnabled(capabilities);
 }
 
-/** Sidebar entry for either mobile loading sheets or distribution trip loading lists. */
+/**
+ * Field Sales (Backoffice) loading lists — only when Distribution is off.
+ * When Distribution is enabled, loading lists live under the Distribution module.
+ */
 export function shouldShowLoadingListNav(capabilities) {
-  return shouldShowMobileLoadingSheets(capabilities) || shouldShowDistributionLoadingLists(capabilities);
+  return shouldShowMobileLoadingSheets(capabilities);
 }
 
-/** Preferred route for the loading list nav item. */
+/** Preferred route for the Field Sales loading list nav item. */
 export function loadingListNavHref(capabilities) {
-  if (shouldShowDistributionLoadingLists(capabilities)) {
-    return "/fulfillment/loading-lists";
-  }
   return "/sales/loading-sheets";
 }
 
@@ -1081,6 +1094,8 @@ export function getCheckoutPaymentConfig(moduleSettings, options = {}) {
       checkoutContext === "order_payment" &&
       Boolean(modules.sales) &&
       Boolean(sales.allow_credit_pay_now),
+    /** Collecting against an existing sale — never accept more than balance due. */
+    rejectOverpayment: checkoutContext === "order_payment",
     enableCheckoutCustomerName:
       checkoutContext === "pos" &&
       hasPosSales &&

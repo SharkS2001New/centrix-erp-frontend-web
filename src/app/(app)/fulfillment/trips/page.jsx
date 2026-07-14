@@ -5,6 +5,7 @@ import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platfor
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { fetchRoutesCached } from "@/lib/reference-data-cache";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import {
   CatalogPageShell,
@@ -70,7 +71,7 @@ function formatTripCash(trip) {
 }
 
 export default function TripsPage() {
-  const { capabilities } = useAuth();
+  const { capabilities, user } = useAuth();
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
 
   const [trips, setTrips] = useState([]);
@@ -97,7 +98,7 @@ export default function TripsPage() {
     setError(null);
     setLoading(true);
     try {
-      const [tripRes, routeRes] = await Promise.all([
+      const [tripRes, routes] = await Promise.all([
         apiRequest("/dispatch-trips", {
           searchParams: {
             per_page: 200,
@@ -106,16 +107,16 @@ export default function TripsPage() {
             ...(statusFilter !== "all" ? { "filter[status]": statusFilter } : {}),
           },
         }),
-        apiRequest("/routes", { searchParams: { per_page: 200 } }),
+        fetchRoutesCached(user?.organization_id),
       ]);
       setTrips(tripRes.data ?? []);
-      setRoutes(routeRes.data ?? []);
+      setRoutes(routes ?? []);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load trips");
     } finally {
       setLoading(false);
     }
-  }, [fromDate, toDate, statusFilter]);
+  }, [fromDate, toDate, statusFilter, user?.organization_id]);
 
   useEffect(() => {
     loadData();
@@ -291,10 +292,14 @@ export default function TripsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right text-slate-700">
-                    {formatSaleKes(trip.financial_summary?.total_profit ?? 0)}
+                    {trip.financial_summary?.total_profit == null
+                      ? "—"
+                      : formatSaleKes(trip.financial_summary.total_profit)}
                   </td>
                   <td className="px-4 py-3 text-right font-medium text-emerald-800">
-                    {formatSaleKes(trip.financial_summary?.net_profit ?? trip.financial_summary?.total_profit ?? 0)}
+                    {trip.financial_summary?.net_profit == null
+                      ? "—"
+                      : formatSaleKes(trip.financial_summary.net_profit)}
                   </td>
                   <td className="px-4 py-3 text-right text-slate-700">
                     {formatTripProfitMargin(trip.financial_summary?.profit_margin_percent)}

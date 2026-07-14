@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAppRouter } from "@/lib/use-app-router";
@@ -32,6 +33,7 @@ import {
   TABLE_SECTION_ROW_CLASS,
   TABLE_SHELL_CLASS,
   inputClassName,
+  FILTER_CONTROL_CLASS,
 } from "@/components/catalog/catalog-shared";
 import { resolveProductAudit } from "@/lib/product-audit";
 import { PermissionGate } from "@/components/permission-gate";
@@ -46,8 +48,11 @@ import {
   fetchSubCategoriesCached,
   fetchSuppliersCached,
   fetchUomsCached,
+  fetchUsersCached,
   fetchVatsCached,
+  fetchRetailPackagesCached,
 } from "@/lib/reference-data-cache";
+import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import {
   BatchActionBar,
   BatchDeleteButton,
@@ -415,14 +420,17 @@ export default function ProductsPage() {
           () => fetchBranchesCached(user?.organization_id).then((data) => ({ data })),
         ],
         deferred: [
-          () => apiRequest("/users", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+          () =>
+            fetchUsersCached(user?.organization_id)
+              .then((data) => ({ data }))
+              .catch(() => ({ data: [] })),
           () => fetchVatsCached(user?.organization_id).then((data) => ({ data })).catch(() => ({ data: [] })),
           () => fetchUomsCached(user?.organization_id).then((data) => ({ data })),
           () => fetchSuppliersCached(user?.organization_id).then((data) => ({ data })),
           () =>
-            apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }).catch(() => ({
-              data: [],
-            })),
+            fetchRetailPackagesCached(user?.organization_id)
+              .then((data) => ({ data }))
+              .catch(() => ({ data: [] })),
           () => apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
         ],
         concurrency: 3,
@@ -485,6 +493,7 @@ export default function ProductsPage() {
           stock_status: stockFilter !== "all" ? stockFilter : undefined,
           pricing: pricingFilter !== "all" ? pricingFilter : undefined,
           branch_id: effectiveStockBranchId ?? undefined,
+          fields: "lean",
         },
       });
       const prodRes = await apiRequest("/products", { searchParams });
@@ -528,10 +537,9 @@ export default function ProductsPage() {
   }, [loadReferenceData]);
 
   useEffect(() => {
-    if (loading) return;
     loadProducts();
     loadCatalogStats();
-  }, [loading, loadProducts, loadCatalogStats]);
+  }, [loadProducts, loadCatalogStats]);
 
   function openDeleteDialog(product) {
     setDeletingProduct(product);
@@ -662,6 +670,44 @@ export default function ProductsPage() {
     if (categoryFilter === "all") return subCategories;
     return subCategories.filter((s) => String(s.category_id) === categoryFilter);
   }, [subCategories, categoryFilter]);
+
+  const categorySelectOptions = useMemo(
+    () => [
+      { value: "all", label: "All categories" },
+      ...categories.map((c) => ({ value: String(c.id), label: c.category_name })),
+    ],
+    [categories],
+  );
+
+  const subcategorySelectOptions = useMemo(() => {
+    const options = [{ value: "all", label: "All sub-categories" }];
+    if (categoryFilter !== "all") {
+      for (const s of subCategoryOptions) {
+        options.push({ value: String(s.id), label: s.subcategory_name });
+      }
+      return options;
+    }
+    const byCat = new Map();
+    for (const s of subCategoryOptions) {
+      const catId = String(s.category_id ?? "");
+      if (!byCat.has(catId)) byCat.set(catId, []);
+      byCat.get(catId).push(s);
+    }
+    for (const [catId, subs] of byCat) {
+      const cat = categories.find((c) => String(c.id) === catId);
+      options.push({
+        value: `hdr-${catId}`,
+        label: cat?.category_name ?? "Uncategorized",
+        isHeader: true,
+      });
+      for (const s of [...subs].sort((a, b) =>
+        String(a.subcategory_name ?? "").localeCompare(String(b.subcategory_name ?? "")),
+      )) {
+        options.push({ value: String(s.id), label: s.subcategory_name });
+      }
+    }
+    return options;
+  }, [subCategoryOptions, categoryFilter, categories]);
 
   useEffect(() => {
     if (pendingRestoredSearch.current !== null) {
@@ -883,28 +929,33 @@ export default function ProductsPage() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name or code…"
         />
-          <FilterSelect
-            value={categoryFilter}
-            onChange={(e) => {
-              setCategoryFilter(e.target.value);
-              setSubCategoryFilter("all");
-            }}
-            options={[
-              { value: "all", label: "All categories" },
-              ...categories.map((c) => ({ value: String(c.id), label: c.category_name })),
-            ]}
-          />
-          <FilterSelect
-            value={subCategoryFilter}
-            onChange={(e) => setSubCategoryFilter(e.target.value)}
-            options={[
-              { value: "all", label: "All sub-categories" },
-              ...subCategoryOptions.map((s) => ({
-                value: String(s.id),
-                label: s.subcategory_name,
-              })),
-            ]}
-          />
+          <div className="min-w-[10.5rem] shrink-0">
+            <PosSearchableSelect
+              value={categoryFilter}
+              onChange={(next) => {
+                setCategoryFilter(next || "all");
+                setSubCategoryFilter("all");
+              }}
+              options={categorySelectOptions}
+              placeholder="All categories"
+              searchPlaceholder="Search category…"
+              minSearchLength={0}
+              idleSearchLabel="Type to search category"
+              inputClassName={FILTER_CONTROL_CLASS}
+            />
+          </div>
+          <div className="min-w-[12rem] shrink-0">
+            <PosSearchableSelect
+              value={subCategoryFilter}
+              onChange={(next) => setSubCategoryFilter(next || "all")}
+              options={subcategorySelectOptions}
+              placeholder="All sub-categories"
+              searchPlaceholder="Search subcategory…"
+              minSearchLength={0}
+              idleSearchLabel="Type to search subcategory"
+              inputClassName={FILTER_CONTROL_CLASS}
+            />
+          </div>
           <FilterSelect
             value={stockFilter}
             onChange={(e) => setStockFilter(e.target.value)}
@@ -1296,9 +1347,27 @@ function ColumnPicker({
   onToggleColumn,
   onReset,
 }) {
+  const buttonRef = useRef(null);
+  const [menuStyle, setMenuStyle] = useState(null);
+
+  useEffect(() => {
+    if (!open || !buttonRef.current) {
+      setMenuStyle(null);
+      return;
+    }
+    const rect = buttonRef.current.getBoundingClientRect();
+    setMenuStyle({
+      position: "fixed",
+      top: rect.bottom + 8,
+      right: Math.max(8, window.innerWidth - rect.right),
+      zIndex: 80,
+    });
+  }, [open]);
+
   return (
     <div className="relative shrink-0">
       <button
+        ref={buttonRef}
         type="button"
         onClick={onToggle}
         className={`${SECONDARY_BTN_CLASS} gap-2 px-3 py-2.5`}
@@ -1306,55 +1375,61 @@ function ColumnPicker({
         <ColumnsIcon />
         Columns
       </button>
-      {open && (
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 z-10 cursor-default"
-            aria-label="Close column picker"
-            onClick={onClose}
-          />
-          <div className="theme-panel absolute right-0 z-20 mt-2 w-56 rounded-xl border p-3 shadow-lg">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="theme-subtext text-xs font-semibold uppercase tracking-wide">
-                Show columns
-              </p>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <>
               <button
                 type="button"
-                onClick={onReset}
-                className="text-xs font-medium text-blue-600 hover:text-blue-500"
+                className="fixed inset-0 z-[70] cursor-default"
+                aria-label="Close column picker"
+                onClick={onClose}
+              />
+              <div
+                style={menuStyle ?? undefined}
+                className="theme-panel fixed z-[80] w-56 rounded-xl border p-3 shadow-lg"
               >
-                Reset
-              </button>
-            </div>
-            <ul className="max-h-72 space-y-1 overflow-y-auto">
-              {PRODUCT_COLUMNS.map((col) => {
-                const checked = visibleColumnIds.includes(col.id);
-                return (
-                  <li key={col.id}>
-                    <label
-                      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
-                        col.required
-                          ? "theme-subtext cursor-not-allowed opacity-60"
-                          : "cursor-pointer text-[var(--theme-text-muted)] hover:bg-[var(--theme-hover)]"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={col.required}
-                        onChange={() => onToggleColumn(col.id)}
-                        className="rounded border-slate-300"
-                      />
-                      {col.label}
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        </>
-      )}
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="theme-subtext text-xs font-semibold uppercase tracking-wide">
+                    Show columns
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onReset}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-500"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <ul className="max-h-72 space-y-1 overflow-y-auto">
+                  {PRODUCT_COLUMNS.map((col) => {
+                    const checked = visibleColumnIds.includes(col.id);
+                    return (
+                      <li key={col.id}>
+                        <label
+                          className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
+                            col.required
+                              ? "theme-subtext cursor-not-allowed opacity-60"
+                              : "cursor-pointer text-[var(--theme-text-muted)] hover:bg-[var(--theme-hover)]"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={col.required}
+                            onChange={() => onToggleColumn(col.id)}
+                            className="rounded border-slate-300"
+                          />
+                          {col.label}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

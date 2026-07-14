@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import {
+  buildUomByProductCode,
+  collectFulfillmentProductCodes,
+  fetchCatalogForProductCodes,
+} from "@/lib/fulfillment-quantity";
 import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
@@ -22,9 +26,6 @@ import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
-import {
-  buildUomByProductCode,
-} from "@/lib/fulfillment-quantity";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -129,19 +130,24 @@ export function DistributionLoadingListsScreen() {
     setDetailError(null);
     setDetailLoading(true);
     try {
-      const [tripRes, listRes, pickRes, catalogProducts, uomRes] = await Promise.all([
+      const [tripRes, listRes, pickRes] = await Promise.all([
         apiRequest(`/dispatch-trips/${trip.id}`),
         apiRequest(`/dispatch-trips/${trip.id}/loading-list`),
         apiRequest(`/dispatch-trips/${trip.id}/picking-list`),
-        fetchProductCatalogCached(organization?.id, { status: "all" }),
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
       ]);
-      setCatalogProducts(catalogProducts ?? []);
-      setUoms(uomRes.data ?? []);
+      const loading_list = listRes.loading_list ?? listRes;
+      const picking_list = pickRes.picking_list ?? pickRes;
+      const { products, uoms: uomRows } = await fetchCatalogForProductCodes(
+        apiRequest,
+        collectFulfillmentProductCodes(loading_list, picking_list),
+        organization?.id,
+      );
+      setCatalogProducts(products ?? []);
+      setUoms(uomRows ?? []);
       setDetail({
         trip: tripRes,
-        loading_list: listRes.loading_list ?? listRes,
-        picking_list: pickRes.picking_list ?? pickRes,
+        loading_list,
+        picking_list,
         financial_summary: listRes.financial_summary ?? tripRes.financial_summary ?? null,
       });
     } catch (e) {

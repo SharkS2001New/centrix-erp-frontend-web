@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
 import {
   ReadonlyHierarchyQty,
@@ -21,6 +22,7 @@ import {
   lpoLineCanReceive,
   lpoLineOpenRemainingBase,
   lpoSessionOfferBase,
+  lpoSessionStockUnitCost,
   packQtyFromReceiveBase,
   receiveBaseForLine,
 } from "@/components/inventory/lpo-receive-stock";
@@ -74,13 +76,13 @@ export default function LpoReceivePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [res, uomRes] = await Promise.all([
+      const [res, uomsData] = await Promise.all([
         apiRequest(`/lpo-mst/${lpoNo}/summary`),
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
+        fetchUomsCached(user?.organization_id),
       ]);
-      setUoms(uomRes.data ?? uomRes ?? []);
+      const uomList = uomsData ?? [];
+      setUoms(uomList);
       setData(res);
-      const uomList = uomRes.data ?? uomRes ?? [];
       const uomMap = new Map(uomList.map((u) => [u.id, u]));
       setReceiveCounts(buildInitialReceiveCounts(res.lines, uomMap, 0));
     } catch (e) {
@@ -88,7 +90,7 @@ export default function LpoReceivePage() {
     } finally {
       setLoading(false);
     }
-  }, [lpoNo]);
+  }, [lpoNo, user?.organization_id]);
 
   useEffect(() => {
     load();
@@ -304,6 +306,11 @@ export default function LpoReceivePage() {
                       lineUom,
                       receiveCounts,
                     );
+                    const stockUnitCost = lpoSessionStockUnitCost(
+                      line,
+                      lineUom,
+                      receiveCounts,
+                    );
 
                     return (
                       <tr
@@ -362,8 +369,23 @@ export default function LpoReceivePage() {
                             <span className="block text-right text-slate-400">—</span>
                           )}
                         </td>
-                        <td className="py-3 pr-3 text-right align-top">
-                          {formatLpoKes(line.cost_price)}
+                        <td className="py-3 pr-3 text-right align-top tabular-nums">
+                          <div>
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                              Original cost
+                            </p>
+                            <p>{formatLpoKes(line.cost_price)}</p>
+                            {stockUnitCost != null ? (
+                              <>
+                                <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-amber-700">
+                                  Stock unit cost
+                                </p>
+                                <p className="font-medium text-amber-800">
+                                  {formatLpoKes(stockUnitCost)}
+                                </p>
+                              </>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     );

@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { apiRequest } from "@/lib/api";
+import { apiRequest } from "@/lib/api"
+import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-column-visibility";
@@ -68,8 +69,8 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const showFilterToolbar = showDateFilters || multiBranch || hasQueryFilters;
 
   useEffect(() => {
-    apiRequest("/branches", { searchParams: { per_page: 100 } })
-      .then((res) => setBranches(res.data ?? []))
+    fetchBranchesCached()
+      .then((rows) => setBranches(rows ?? []))
       .catch(() => setBranches([]));
   }, []);
 

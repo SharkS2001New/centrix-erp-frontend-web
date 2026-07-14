@@ -5,7 +5,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
+import {
+  fetchCategoriesCached,
+  fetchSubCategoriesCached,
+  fetchSuppliersCached,
+  fetchUomsCached,
+} from "@/lib/reference-data-cache";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useAuth } from "@/contexts/auth-context";
@@ -76,17 +82,16 @@ export default function StockTakeSessionPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [sess, loadedLines, productRows, uomRes, categoryRes, subCategoryRes, supplierRes] =
+      const [sess, loadedLines, uomRows, categoryRows, subCategoryRows, supplierRows] =
         await Promise.all([
         apiRequest(`/stock-take-sessions/${sessionId}`),
         fetchAllPaginatedRowsSmart("/stock-take-lines", {
           "filter[session_id]": sessionId,
         }),
-        fetchProductCatalogCached(organization?.id, { status: "all" }),
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
-        apiRequest("/categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-        apiRequest("/sub-categories", { searchParams: { per_page: 500 } }).catch(() => ({ data: [] })),
-        apiRequest("/suppliers", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+        fetchUomsCached(organization?.id),
+        fetchCategoriesCached(organization?.id).catch(() => []),
+        fetchSubCategoriesCached(organization?.id).catch(() => []),
+        fetchSuppliersCached(organization?.id).catch(() => []),
       ]);
       setSession(sess);
       const allowedLocations =
@@ -99,14 +104,19 @@ export default function StockTakeSessionPage() {
         allowedLocations.includes(line.stock_location),
       );
       setLines(filteredLines);
+      setUoms(uomRows ?? []);
+      setCategories(categoryRows ?? []);
+      setSubCategories(subCategoryRows ?? []);
+      setSuppliers(supplierRows ?? []);
+
+      const codes = filteredLines.map((line) => line.product_code).filter(Boolean);
+      const productRows = await fetchProductsByCodesCached(organization?.id, codes, {
+        status: "all",
+      });
       setProducts(productRows);
-      setUoms(uomRes.data ?? []);
-      setCategories(categoryRes.data ?? []);
-      setSubCategories(subCategoryRes.data ?? []);
-      setSuppliers(supplierRes.data ?? []);
 
       const prodMap = new Map(productRows.map((p) => [p.product_code, p]));
-      const uomMap = new Map((uomRes.data ?? []).map((u) => [u.id, u]));
+      const uomMap = new Map((uomRows ?? []).map((u) => [u.id, u]));
       const initial = {};
       for (const line of filteredLines) {
         const product = prodMap.get(line.product_code);
@@ -123,7 +133,7 @@ export default function StockTakeSessionPage() {
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, organization?.id]);
 
   useEffect(() => {
     load();

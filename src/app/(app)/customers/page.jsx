@@ -38,6 +38,7 @@ import {
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { customerExportColumnsFromVisibleIds } from "@/lib/catalog-list-export-columns";
+import { fetchRoutesCached, fetchUsersCached } from "@/lib/reference-data-cache";
 
 const COLUMN_STORAGE_KEY = "centrix-erp-customers-visible-columns";
 const SORT_STORAGE_KEY = "centrix-erp-customers-sort";
@@ -297,7 +298,7 @@ function renderCell(colId, customer, handlers) {
 export default function CustomersPage() {
   const router = useRouter();
   const confirm = useConfirm();
-  const { capabilities } = useAuth();
+  const { capabilities, user } = useAuth();
   const routeCustomersOnly = isRouteOnlyCustomers(capabilities);
 
   const [customers, setCustomers] = useState([]);
@@ -348,20 +349,21 @@ export default function CustomersPage() {
 
   const loadReferenceData = useCallback(async () => {
     try {
-      const [routeRes, userRes, statsRes] = await Promise.all([
-        apiRequest("/routes", { searchParams: { per_page: 200 } }),
-        apiRequest("/users", { searchParams: { per_page: 200 } }),
+      const orgId = user?.organization_id;
+      const [routes, usersData, statsRes] = await Promise.all([
+        fetchRoutesCached(orgId),
+        fetchUsersCached(orgId),
         apiRequest("/customers/summary").catch(() => null),
       ]);
-      setRoutes(routeRes.data ?? []);
-      setUsers(userRes.data ?? []);
+      setRoutes(routes ?? []);
+      setUsers(usersData ?? []);
       if (statsRes) setCustomerStats(statsRes);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load customers");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.organization_id]);
 
   const loadCustomers = useCallback(async () => {
     setListLoading(true);

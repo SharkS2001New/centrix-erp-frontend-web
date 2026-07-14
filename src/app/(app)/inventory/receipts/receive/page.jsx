@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
+import { fetchSuppliersCached, fetchUomsCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
@@ -68,18 +69,15 @@ export default function ReceiveStockPage() {
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     Promise.all([
-      apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
-      fetchProductCatalogCached(user?.organization_id, { status: "all" }),
-      apiRequest("/uoms", { searchParams: { per_page: 200 } }),
+      fetchSuppliersCached(user?.organization_id),
+      fetchUomsCached(user?.organization_id),
     ])
-      .then(([supRes, catalogProducts, uomRes]) => {
-        setSuppliers(supRes.data ?? []);
-        setProducts(catalogProducts ?? []);
-        setUoms(uomRes.data ?? []);
+      .then(([supRows, uomRows]) => {
+        setSuppliers(supRows ?? []);
+        setUoms(uomRows ?? []);
       })
       .catch(() => {
         setSuppliers([]);
-        setProducts([]);
         setUoms([]);
       });
   }, [user?.organization_id]);
@@ -89,6 +87,17 @@ export default function ReceiveStockPage() {
     () => new Map(products.map((p) => [p.product_code, p])),
     [products],
   );
+
+  function mergeProducts(nextProducts) {
+    if (!nextProducts?.length) return;
+    setProducts((prev) => {
+      const map = new Map(prev.map((p) => [p.product_code, p]));
+      for (const product of nextProducts) {
+        if (product?.product_code) map.set(product.product_code, product);
+      }
+      return [...map.values()];
+    });
+  }
 
   function setReceiveCount(key, value) {
     setReceiveCounts((prev) => ({ ...prev, [key]: value }));
@@ -108,6 +117,7 @@ export default function ReceiveStockPage() {
 
   function addManualProduct(product) {
     if (manualLines.some((l) => l.product_code === product.product_code)) return;
+    mergeProducts([product]);
     const uom = product.uom ?? uomById.get(product.unit_id);
     setManualLines((prev) => [
       ...prev,
@@ -120,8 +130,8 @@ export default function ReceiveStockPage() {
     }));
   }
 
-  function addManualProducts(products) {
-    for (const product of products) {
+  function addManualProducts(productsToAdd) {
+    for (const product of productsToAdd) {
       addManualProduct(product);
     }
   }
@@ -150,6 +160,11 @@ export default function ReceiveStockPage() {
         const res = await apiRequest(`/lpo-mst/${lpoNo}/summary`);
         setLpoData(res);
         setReceiveCounts(buildInitialReceiveCounts(res.lines, uomById, 0));
+        const codes = (res.lines ?? []).map((line) => line.product_code).filter(Boolean);
+        const catalog = await fetchProductsByCodesCached(user?.organization_id, codes, {
+          status: "all",
+        });
+        mergeProducts(catalog);
       } catch (e) {
         notifyError(e instanceof Error ? e.message : "Failed to load purchase order");
         setLpoData(null);
@@ -157,7 +172,7 @@ export default function ReceiveStockPage() {
         setLoadingLpo(false);
       }
     },
-    [uomById],
+    [uomById, user?.organization_id],
   );
 
   useEffect(() => {

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
+import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { formatShortDate, IconButton, TrashIcon } from "@/components/catalog/catalog-shared";
 import { lpoSupplierInvoiceFilePath } from "@/components/lpo/lpo-supplier-invoice-doc";
 import { ProtectedFileLink } from "@/components/media/protected-file-preview";
@@ -27,6 +29,7 @@ import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 export default function LpoDetailPage() {
   const params = useParams();
   const confirm = useConfirm();
+  const { user } = useAuth();
   const lpoNo = params.lpoNo;
 
   const [data, setData] = useState(null);
@@ -43,18 +46,18 @@ export default function LpoDetailPage() {
     setError(null);
     setLoading(true);
     try {
-      const [res, uomRes] = await Promise.all([
+      const [res, uomsData] = await Promise.all([
         apiRequest(`/lpo-mst/${lpoNo}/summary`),
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
+        fetchUomsCached(user?.organization_id),
       ]);
       setData(res);
-      setUoms(uomRes.data ?? uomRes ?? []);
+      setUoms(uomsData ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load LPO");
     } finally {
       setLoading(false);
     }
-  }, [lpoNo]);
+  }, [lpoNo, user?.organization_id]);
 
   useEffect(() => {
     load();

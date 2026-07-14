@@ -11,9 +11,11 @@ import {
   saleLineQtyLabel,
 } from "@/lib/sale-line-items";
 import { formatReceiptNumber, formatSaleKes } from "@/components/sales/sales-shared";
-import { indexSalesWithItems, OrderExpandIcon } from "@/components/sales/sales-orders-shared";
+import { OrderExpandIcon } from "@/components/sales/sales-orders-shared";
 import { saleCustomerLabel } from "@/lib/sales";
 import { useConfirm } from "@/lib/use-confirm";
+import { fetchUomsCached } from "@/lib/reference-data-cache";
+import { useAuth } from "@/contexts/auth-context";
 
 function orderKey(order) {
   return String(order?.id ?? "");
@@ -25,6 +27,7 @@ function heldOrderTitle(order) {
 
 export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange, embedded = false }) {
   const confirm = useConfirm();
+  const { user } = useAuth();
   const [mounted, setMounted] = useState(false);
   const [rows, setRows] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -43,16 +46,16 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
 
   const loadUoms = useCallback(async () => {
     try {
-      const res = await apiRequest("/uoms", { searchParams: { per_page: 500 } });
+      const uoms = await fetchUomsCached(user?.organization_id);
       const map = new Map();
-      for (const u of res.data ?? []) {
+      for (const u of uoms ?? []) {
         if (u?.id != null) map.set(u.id, u);
       }
       setUomById(map);
     } catch {
       setUomById(new Map());
     }
-  }, []);
+  }, [user?.organization_id]);
 
   const loadHeldOrders = useCallback(async () => {
     setListError(null);
@@ -61,7 +64,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
       const res = await apiRequest("/sales", {
         searchParams: {
           per_page: 200,
-          with_items: 1,
+          with_items: 0,
           "filter[status]": "held",
         },
       });
@@ -69,7 +72,7 @@ export function PosHeldOrdersOverlay({ open, onClose, onRestored, onCountChange,
       const count = Number(res.total ?? list.length);
       setRows(list);
       setTotalCount(count);
-      setDetailsById(indexSalesWithItems(list));
+      setDetailsById({});
       onCountChange?.(count);
     } catch (e) {
       setListError(e instanceof Error ? e.message : "Failed to load held orders");

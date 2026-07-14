@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
+import {
+  fetchBranchesCached,
+  fetchEmployeesCached,
+  fetchUsersCached,
+} from "@/lib/reference-data-cache";
 import { Field, FormModal, inputClassName } from "@/components/catalog/catalog-shared";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { EntityPhotoField } from "@/components/media/entity-photo-field";
@@ -55,23 +60,23 @@ export function useEmployeeFormResources() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [deptRes, posRes, shiftRes, branchRes, userRes, empRes] = await Promise.all([
+      const orgId = user?.organization_id;
+      const [deptRes, posRes, shiftRes, branchesData, usersData, employeesData] = await Promise.all([
         apiRequest("/departments", { searchParams: { per_page: 200 } }),
         apiRequest("/positions", { searchParams: { per_page: 200 } }),
         apiRequest("/work-shifts", { searchParams: { per_page: 200 } }),
-        apiRequest("/branches", { searchParams: { per_page: 200 } }),
-        apiRequest("/users", { searchParams: { per_page: 200 } }),
-        apiRequest("/employees", { searchParams: { per_page: 200 } }),
+        fetchBranchesCached(orgId),
+        fetchUsersCached(orgId),
+        fetchEmployeesCached(orgId),
       ]);
-      const orgId = user?.organization_id;
       setDepartments(deptRes.data ?? []);
       setPositions(posRes.data ?? []);
       setShifts(shiftRes.data ?? []);
       setBranches(
-        (branchRes.data ?? []).filter((b) => !orgId || b.organization_id === orgId),
+        (branchesData ?? []).filter((b) => !orgId || b.organization_id === orgId),
       );
-      setUsers(userRes.data ?? []);
-      setEmployees(empRes.data ?? []);
+      setUsers(usersData ?? []);
+      setEmployees(employeesData ?? []);
     } finally {
       setLoading(false);
     }

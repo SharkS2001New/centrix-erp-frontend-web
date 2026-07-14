@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { fetchRetailPackagesCached } from "@/lib/reference-data-cache";
 import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
 import {
   saleLineSoldUnitPrice,
@@ -51,13 +52,11 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     setLoading(true);
     setError(null);
     try {
-      const [detail, retailRes] = await Promise.all([
+      const [detail, retailRows] = await Promise.all([
         sale.items?.length ? Promise.resolve(sale) : apiRequest(`/sales/${sale.id}`),
-        apiRequest("/retail-package-settings", { searchParams: { per_page: 500 } }).catch(() => ({
-          data: [],
-        })),
+        fetchRetailPackagesCached().catch(() => []),
       ]);
-      const retailMap = indexRetailPackages(retailRes.data);
+      const retailMap = indexRetailPackages(retailRows);
       setRetailByCode(retailMap);
       setLines(
         (detail.items ?? []).map((line) => {

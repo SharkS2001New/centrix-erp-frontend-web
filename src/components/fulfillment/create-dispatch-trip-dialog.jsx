@@ -4,7 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
-import { fetchRoutesCached } from "@/lib/reference-data-cache";
+import {
+  fetchDriversCached,
+  fetchEmployeesCached,
+  fetchRoutesCached,
+  fetchVehiclesCached,
+} from "@/lib/reference-data-cache";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { notifyError } from "@/lib/notify";
 
@@ -93,18 +98,17 @@ export function CreateDispatchTripDialog({
     let cancelled = false;
     setRefsLoading(true);
 
+    const orgId = user?.organization_id;
     const loadDrivers = driversFromProps.length
       ? Promise.resolve(driversFromProps)
-      : apiRequest("/drivers", { searchParams: { per_page: 200 } }).then((r) => r.data ?? []);
+      : fetchDriversCached(orgId);
     const loadVehicles = vehiclesFromProps.length
       ? Promise.resolve(vehiclesFromProps)
-      : apiRequest("/vehicles", { searchParams: { per_page: 200 } }).then((r) => r.data ?? []);
-    const loadEmployees = apiRequest("/employees", { searchParams: { per_page: 500 } })
-      .then((r) => r.data ?? [])
-      .catch(() => []);
+      : fetchVehiclesCached(orgId);
+    const loadEmployees = fetchEmployeesCached(orgId).catch(() => []);
 
     Promise.all([
-      fetchRoutesCached(user?.organization_id),
+      fetchRoutesCached(orgId),
       loadDrivers,
       loadVehicles,
       loadEmployees,

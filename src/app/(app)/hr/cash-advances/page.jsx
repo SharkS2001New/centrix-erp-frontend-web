@@ -25,7 +25,9 @@ export default function HrCashAdvancesPage() {
       drawerWide
       apiPath="/employee-cash-advances"
       loadExtra={async () => {
-        const res = await apiRequest("/employees", { searchParams: { per_page: 200 } });
+        const res = await apiRequest("/employees", {
+          searchParams: { per_page: 200, fields: "lean" },
+        });
         return { employees: res.data ?? [] };
       }}
       columns={[

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { fetchBranchesCached, fetchUomsCached } from "@/lib/reference-data-cache";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { LpoProductSearchPanel } from "@/components/lpo/lpo-product-search-panel";
@@ -45,14 +46,15 @@ export default function BranchStockTransferPage() {
 
   useEffect(() => {
     if (!multiBranch) return;
+    const orgId = user?.organization_id;
     Promise.all([
-      apiRequest("/branches", { searchParams: { per_page: 100 } }),
-      apiRequest("/uoms", { searchParams: { per_page: 200 } }),
+      fetchBranchesCached(orgId),
+      fetchUomsCached(orgId),
     ])
-      .then(([branchRes, uomRes]) => {
-        const rows = branchRes.data ?? [];
+      .then(([branchRows, uomRows]) => {
+        const rows = branchRows ?? [];
         setBranches(rows);
-        setUoms(uomRes.data ?? []);
+        setUoms(uomRows ?? []);
         if (!toBranchId && rows.length > 1) {
           const other = rows.find((b) => String(b.id) !== String(defaultBranchId));
           if (other) setToBranchId(String(other.id));
@@ -62,7 +64,7 @@ export default function BranchStockTransferPage() {
         setBranches([]);
         setUoms([]);
       });
-  }, [defaultBranchId, multiBranch, toBranchId]);
+  }, [defaultBranchId, multiBranch, toBranchId, user?.organization_id]);
 
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
   const toBranchOptions = useMemo(

@@ -87,6 +87,62 @@ export function buildReportOrgHeaderHtml(branding) {
   return parts.length ? `<div class="org-header">${parts.join("")}</div>` : "";
 }
 
+/**
+ * Shared print watermark CSS. Font size scales with `--wm-len` (character count)
+ * so long org names fit inside the page after the diagonal rotate — portrait or landscape.
+ */
+export function reportWatermarkCss() {
+  return `
+  .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .watermark-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* Fit diagonal text to page: limit by width and height after ~32° rotate */
+    font-size: clamp(
+      12px,
+      min(
+        calc(155vw / (var(--wm-len, 16) * 1)),
+        calc(240vh / (var(--wm-len, 16) * 1)),
+        52px
+      ),
+      52px
+    );
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: rgba(15, 23, 42, 0.06);
+    white-space: nowrap;
+    max-width: none;
+    line-height: 1;
+    transform: translate(-50%, -50%) rotate(-32deg);
+  }
+  .watermark-logo {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 55%;
+    max-height: 55%;
+    opacity: 0.05;
+    object-fit: contain;
+  }
+  @media print {
+    .watermark-text {
+      color: rgba(15, 23, 42, 0.08);
+      font-size: clamp(
+        11px,
+        min(
+          calc(140vw / (var(--wm-len, 16) * 1)),
+          calc(210vh / (var(--wm-len, 16) * 1)),
+          48px
+        ),
+        48px
+      );
+    }
+  }
+`;
+}
+
 /** @param {ReturnType<resolveReportBranding>} branding */
 export function buildReportWatermarkHtml(branding) {
   const text = branding?.watermarkText?.trim?.() || "";
@@ -97,7 +153,9 @@ export function buildReportWatermarkHtml(branding) {
       ? `<img class="watermark-logo" src="${escapeHtml(branding.logoUrl)}" alt="">`
       : "";
 
-  return `<div class="watermark"><div class="watermark-text">${escapeHtml(text)}</div>${logo}</div>`;
+  const len = Math.max(text.length, 8);
+
+  return `<div class="watermark"><div class="watermark-text" style="--wm-len:${len}">${escapeHtml(text)}</div>${logo}</div>`;
 }
 
 export function reportDocumentStyles(generalSettings = null) {
@@ -120,28 +178,7 @@ export function reportDocumentStyles(generalSettings = null) {
   th { background: #f3f4f6; font-weight: var(--print-w-emphasis, 700); }
   td.num, th.num { text-align: right; }
   tfoot td { font-weight: var(--print-w-emphasis, 700); background: #f3f4f6; }
-  .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-  .watermark-text {
-    position: absolute;
-    top: 48%;
-    left: 50%;
-    transform: translate(-50%, -50%) rotate(-32deg);
-    font-size: ${px(64)};
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    color: rgba(15, 23, 42, 0.06);
-    white-space: nowrap;
-  }
-  .watermark-logo {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    max-width: 70%;
-    max-height: 70%;
-    opacity: 0.05;
-    object-fit: contain;
-  }
+  ${reportWatermarkCss()}
   @media print {
     body { font-size: ${px(11, true)}; }
     .org-name { font-size: ${hpx(18, true)}; }
@@ -149,7 +186,6 @@ export function reportDocumentStyles(generalSettings = null) {
     .meta p { font-size: ${px(12, true)}; }
     .doc-footer { font-size: ${fpx(10, true)}; }
     table { font-size: ${px(11, true)}; }
-    .watermark-text { color: rgba(15, 23, 42, 0.08); font-size: ${px(64, true)}; }
   }
 `;
 }

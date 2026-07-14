@@ -117,7 +117,11 @@ export function MobilePickingScreen() {
         ]);
         const nextPick = pickRes.picking_list ?? pickRes;
         const productCodes = (nextPick?.lines ?? []).map((line) => line.product_code);
-        const { products, uoms: uomRows } = await fetchCatalogForProductCodes(apiRequest, productCodes);
+        const { products, uoms: uomRows } = await fetchCatalogForProductCodes(
+          apiRequest,
+          productCodes,
+          user?.organization_id,
+        );
         const uomMap = buildUomByProductCode(products, uomRows);
         setTrip(tripRes);
         setPickingList(nextPick);
@@ -142,7 +146,7 @@ export function MobilePickingScreen() {
         setDetailLoading(false);
       }
     },
-    [user?.full_name, user?.username],
+    [user?.full_name, user?.username, user?.organization_id],
   );
 
   useEffect(() => {

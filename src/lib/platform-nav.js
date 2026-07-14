@@ -77,6 +77,12 @@ export const PLATFORM_LINK_GROUPS = [
         icon: "database",
         description: "Backup status and restore operations.",
       },
+      {
+        href: "/platform/health",
+        label: "Infrastructure health",
+        icon: "alert",
+        description: "Test Reverb, scheduler, queue workers, and other app pods.",
+      },
     ],
   },
   {

@@ -90,7 +90,14 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
                   </td>
                 ) : null}
                 <td className="whitespace-nowrap px-2 py-2.5 text-right align-middle tabular-nums">
-                  {formatLpoKes(line.cost_price)}
+                  <div>
+                    <p>{formatLpoKes(line.cost_price)}</p>
+                    {Number(line.offer_qty ?? 0) > 0.0001 ? (
+                      <p className="theme-subtext mt-0.5 text-[10px]">
+                        Original cost price (PO)
+                      </p>
+                    ) : null}
+                  </div>
                 </td>
                 <td className="px-2 py-2.5 text-right align-middle font-medium tabular-nums">
                   {formatLpoKes(line.line_total)}

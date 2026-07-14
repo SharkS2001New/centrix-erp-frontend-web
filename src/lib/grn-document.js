@@ -2,6 +2,7 @@ import {
   formatLinePackQty,
   lpoLineOfferQty,
   lpoSessionOfferBase,
+  offerAdjustedUnitCost,
   packQtyFromReceiveBase,
   receiveBaseForLine,
 } from "@/components/inventory/lpo-receive-stock";
@@ -52,8 +53,16 @@ function mapGrnLine({
   offerLabel = null,
   receivedBase,
   costPerPack,
+  originalCostPerPack = null,
+  stockUnitCost = null,
+  payablePackQty = null,
 }) {
-  const lineTotal = grnLineAmount(receivedBase, uom, costPerPack);
+  const paidPack =
+    payablePackQty != null
+      ? Number(payablePackQty)
+      : grnPackQtyFromBase(receivedBase, uom);
+  const recordCost = Number(originalCostPerPack ?? costPerPack ?? 0);
+  const lineTotal = Math.round(paidPack * recordCost * 100) / 100;
   return {
     product_code: line.product_code,
     product_name: line.product_name ?? line.product_code,
@@ -61,7 +70,12 @@ function mapGrnLine({
     received_label: receivedLabel,
     offer_label: offerLabel,
     received_base: receivedBase,
-    unit_cost: Number(costPerPack ?? 0),
+    unit_cost: Number(stockUnitCost ?? costPerPack ?? recordCost),
+    original_unit_cost: recordCost,
+    stock_unit_cost:
+      stockUnitCost != null && Math.abs(stockUnitCost - recordCost) > 0.00005
+        ? Number(stockUnitCost)
+        : null,
     line_total: lineTotal,
   };
 }
@@ -91,6 +105,14 @@ export function buildGrnFromReceiveSession(lpoSummary, receiveCounts, uomById, o
     const priorReceived = priorReceivedByLineId[lineKey] ?? Number(line.received_qty ?? 0);
     const sessionOfferBase = lpoSessionOfferBase(line, uom, receiveCounts, priorReceived);
     const sessionOfferPack = packQtyFromReceiveBase(sessionOfferBase, uom);
+    const receivedPack = packQtyFromReceiveBase(receiveBase, uom);
+    const paidPack = Math.max(0, receivedPack - sessionOfferPack);
+    const originalCost = Number(line.cost_price ?? 0);
+    const stockUnitCost = offerAdjustedUnitCost({
+      originalCost,
+      paidPackQty: paidPack,
+      receivedPackQty: receivedPack,
+    });
     const { receivedLabel, offerLabel } = formatGrnReceivedLabel(
       receiveBase,
       uom,
@@ -105,7 +127,10 @@ export function buildGrnFromReceiveSession(lpoSummary, receiveCounts, uomById, o
         receivedLabel,
         offerLabel,
         receivedBase: receiveBase,
-        costPerPack: line.cost_price,
+        costPerPack: originalCost,
+        originalCostPerPack: originalCost,
+        stockUnitCost,
+        payablePackQty: paidPack,
       }),
     );
   }
@@ -146,6 +171,14 @@ export function buildGrnFromLpoSummary(lpoSummary, uomById, options = {}) {
     if (receivedBase <= 0) continue;
     const uom = resolveUom(line, uomById);
     const offerPack = lpoLineOfferQty(line);
+    const receivedPack = packQtyFromReceiveBase(receivedBase, uom);
+    const paidPack = Math.max(0, receivedPack - offerPack);
+    const originalCost = Number(line.cost_price ?? 0);
+    const stockUnitCost = offerAdjustedUnitCost({
+      originalCost,
+      paidPackQty: paidPack,
+      receivedPackQty: receivedPack,
+    });
     const { receivedLabel, offerLabel } = formatGrnReceivedLabel(
       receivedBase,
       uom,
@@ -159,7 +192,10 @@ export function buildGrnFromLpoSummary(lpoSummary, uomById, options = {}) {
         receivedLabel,
         offerLabel,
         receivedBase,
-        costPerPack: line.cost_price,
+        costPerPack: originalCost,
+        originalCostPerPack: originalCost,
+        stockUnitCost,
+        payablePackQty: paidPack,
       }),
     );
   }

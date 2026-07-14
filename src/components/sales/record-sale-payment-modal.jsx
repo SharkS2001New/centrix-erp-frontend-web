@@ -36,11 +36,24 @@ export function RecordSalePaymentModal({ open, onClose, saleId, balanceDue, floa
     setSaving(true);
     setError(null);
     try {
+      const entered = parseDecimalInput(amount);
+      const due = Number(balanceDue);
+      if (Number.isFinite(due) && entered - due > 0.01) {
+        setError(
+          `Payment of ${formatSaleKes(entered)} exceeds the amount due of ${formatSaleKes(due)}. Enter the correct amount to continue.`,
+        );
+        return;
+      }
+      if (Number.isFinite(due) && due <= 0.01) {
+        setError("This order has already been fully paid.");
+        return;
+      }
+
       await apiRequest(`/sales/${saleId}/payments`, {
         method: "POST",
         body: {
           payment_method_id: Number(paymentMethodId),
-          amount: parseDecimalInput(amount),
+          amount: entered,
           reference_number: reference.trim() || null,
           ...(floatSessionId ? { float_session_id: floatSessionId } : {}),
         },
@@ -74,7 +87,8 @@ export function RecordSalePaymentModal({ open, onClose, saleId, balanceDue, floa
         <input
           className={inputClassName()}
           type="number"
-          min="0"
+          min="0.01"
+          max={balanceDue != null ? String(balanceDue) : undefined}
           step="any"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}

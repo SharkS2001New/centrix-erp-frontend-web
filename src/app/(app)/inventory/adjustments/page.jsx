@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
+import { fetchUomsCached } from "@/lib/reference-data-cache";
 import {
   Field,
   PaginationBar,
@@ -48,12 +49,12 @@ export default function StockAdjustmentsPage() {
 
   const loadReferenceData = useCallback(async () => {
     try {
-      const uomRes = await apiRequest("/uoms", { searchParams: { per_page: 200 } });
-      setUoms(uomRes.data ?? []);
+      const uomsData = await fetchUomsCached(user?.organization_id);
+      setUoms(uomsData ?? []);
     } catch {
       /* non-blocking */
     }
-  }, []);
+  }, [user?.organization_id]);
 
   const loadRows = useCallback(async () => {
     setListLoading(true);

@@ -8,7 +8,6 @@ import {
   EMPTY_ROUTE_FORM,
   RouteFormFields,
   buildRouteBody,
-  countCustomersByRoute,
   formatRouteKes,
   normalizeRouteId,
   resolveRouteFormBranchId,
@@ -62,7 +61,6 @@ export default function RoutesPage() {
     useRouteFormResources();
 
   const [routes, setRoutes] = useState([]);
-  const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const { search, setSearch } = useListUrlSearch();
   const defaultRange = useMemo(() => defaultDateRange(7), []);
@@ -92,19 +90,15 @@ export default function RoutesPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [routeRes, custRes] = await Promise.all([
-        apiRequest("/routes", {
-          searchParams: {
-            per_page: 200,
-            include_stats: 1,
-            stats_from_date: fromDate,
-            stats_to_date: toDate,
-          },
-        }),
-        apiRequest("/customers", { searchParams: { per_page: 500 } }),
-      ]);
+      const routeRes = await apiRequest("/routes", {
+        searchParams: {
+          per_page: 200,
+          include_stats: 1,
+          stats_from_date: fromDate,
+          stats_to_date: toDate,
+        },
+      });
       setRoutes(routeRes.data ?? []);
-      setCustomers(custRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load routes");
     } finally {
@@ -117,11 +111,6 @@ export default function RoutesPage() {
     loadData();
   }, [loadData]);
 
-  const customerCountByRoute = useMemo(
-    () => countCustomersByRoute(customers),
-    [customers],
-  );
-
   const routeStatsById = useMemo(() => {
     const map = new Map();
     for (const route of routes) {
@@ -130,24 +119,27 @@ export default function RoutesPage() {
       map.set(routeId, {
         total: Number(route.sales_total ?? 0),
         count: Number(route.orders_count ?? 0),
-        customers: Number(route.customer_count ?? customerCountByRoute.get(routeId) ?? 0),
+        customers: Number(route.customer_count ?? 0),
       });
     }
     return map;
-  }, [routes, customerCountByRoute]);
+  }, [routes]);
 
   const periodSales = useMemo(() => sumRouteSales(routeStatsById), [routeStatsById]);
 
   const stats = useMemo(() => {
     const activeRoutes = routes.filter((r) => r.is_active !== false);
-    const routeCustomers = customers.filter((c) => !c.deleted_at && c.route_id != null);
+    let routeCustomers = 0;
+    for (const route of routes) {
+      routeCustomers += Number(route.customer_count ?? 0);
+    }
     return {
       activeRoutes: activeRoutes.length,
-      routeCustomers: routeCustomers.length,
+      routeCustomers,
       salesTotal: periodSales.total,
       ordersCount: periodSales.count,
     };
-  }, [routes, customers, periodSales]);
+  }, [routes, periodSales]);
 
   const periodLabel = formatCompactDateRange(fromDate, toDate);
 
@@ -479,7 +471,7 @@ export default function RoutesPage() {
                           </td>
                           <td className="px-4 py-3 text-slate-700">{route.direction || "—"}</td>
                           <td className="px-4 py-3 text-slate-700">
-                            {routeSales?.customers ?? customerCountByRoute.get(routeId) ?? 0}
+                            {routeSales?.customers ?? 0}
                           </td>
                           <td className="px-4 py-3 text-right font-medium text-slate-800">
                             {formatRouteKes(routeSales?.total ?? 0)}

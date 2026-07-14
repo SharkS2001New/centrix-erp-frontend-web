@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
+import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -56,12 +57,8 @@ export default function DamagesPage() {
 
   const loadReferenceData = useCallback(async () => {
     try {
-      const [catalogProducts, uomRes] = await Promise.all([
-        fetchProductCatalogCached(user?.organization_id, { status: "all" }),
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
-      ]);
-      setProducts(catalogProducts ?? []);
-      setUoms(uomRes.data ?? []);
+      const uomRows = await fetchUomsCached(user?.organization_id);
+      setUoms(uomRows ?? []);
     } catch {
       /* non-blocking */
     }
@@ -81,13 +78,19 @@ export default function DamagesPage() {
       setRows(parsed.items);
       setTotal(parsed.total);
       setTotalPages(parsed.totalPages);
+
+      const codes = parsed.items.map((row) => row.product_code).filter(Boolean);
+      const catalogProducts = await fetchProductsByCodesCached(user?.organization_id, codes, {
+        status: "all",
+      });
+      setProducts(catalogProducts ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load damages");
     } finally {
       setLoading(false);
       setListLoading(false);
     }
-  }, [branchId, fromDate, toDate, page, pageSize]);
+  }, [branchId, fromDate, toDate, page, pageSize, user?.organization_id]);
 
   useEffect(() => {
     loadReferenceData();

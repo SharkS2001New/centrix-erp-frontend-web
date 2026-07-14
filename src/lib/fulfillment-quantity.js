@@ -6,6 +6,8 @@ import {
   formatMixedStockDisplay,
   uomConversionFactor,
 } from "@/lib/stock-uom";
+import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
+import { fetchUomsCached } from "@/lib/reference-data-cache";
 
 /** Map UOM id → record (string-normalized keys). */
 export function buildUomById(uoms = []) {
@@ -78,19 +80,33 @@ export function fulfillmentPickedBaseQty(displayQty, line, uomByProductCode) {
   return displayToBaseQty(display, uom);
 }
 
-/** Load UOM records for specific product codes (trip pick/load lines). */
-export async function fetchCatalogForProductCodes(apiRequest, productCodes) {
+/** Collect product codes from loading/picking list payloads (flat or order-nested). */
+export function collectFulfillmentProductCodes(...lists) {
+  const codes = [];
+  for (const list of lists) {
+    if (!list) continue;
+    for (const line of list.lines ?? []) {
+      if (line?.product_code) codes.push(line.product_code);
+    }
+    for (const order of list.orders ?? []) {
+      for (const line of order.lines ?? []) {
+        if (line?.product_code) codes.push(line.product_code);
+      }
+    }
+  }
+  return codes;
+}
+
+/**
+ * Load products for specific codes (batched) + cached UOMs.
+ * `apiRequest` kept for call-site compatibility; unused.
+ */
+export async function fetchCatalogForProductCodes(_apiRequest, productCodes, organizationId = null) {
   const codes = [...new Set((productCodes ?? []).map((code) => String(code).trim()).filter(Boolean))];
-  const uomRes = await apiRequest("/uoms", { searchParams: { per_page: 500 } });
-  const uoms = uomRes.data ?? [];
-  if (!codes.length) return { products: [], uoms };
-
-  const products = (
-    await Promise.all(
-      codes.map((code) => apiRequest(`/products/${encodeURIComponent(code)}`).catch(() => null)),
-    )
-  ).filter(Boolean);
-
+  const [products, uoms] = await Promise.all([
+    codes.length ? fetchProductsByCodesCached(organizationId, codes, { status: "all" }) : Promise.resolve([]),
+    fetchUomsCached(organizationId),
+  ]);
   return { products, uoms };
 }
 

@@ -26,6 +26,7 @@ import { CustomerReturnDetailModal } from "@/components/sales/customer-return-de
 import { printCustomerReturn } from "@/components/sales/credit-note-print";
 import { ReturnStatusBadge } from "@/components/sales/customer-returns-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
+import { defaultDateRange } from "@/lib/datetime";
 import { useAuth } from "@/contexts/auth-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
@@ -44,8 +45,9 @@ export default function SalesReturnsPage() {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const defaultRange = useMemo(() => defaultDateRange(30), []);
+  const [fromDate, setFromDate] = useState(defaultRange.from);
+  const [toDate, setToDate] = useState(defaultRange.to);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
   const [detailOpen, setDetailOpen] = useState(false);

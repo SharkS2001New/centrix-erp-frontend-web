@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { mergeSalesSettings } from "@/lib/sales-settings";
@@ -24,6 +24,11 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { LOYALTY_CARD_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
+import {
+  creditCustomerToOption,
+  searchCreditCustomers,
+} from "@/lib/credit-customer-search";
 
 const EMPTY_FORM = {
   customer_num: "",
@@ -42,7 +47,7 @@ export default function LoyaltyCardsPage() {
   );
 
   const [rows, setRows] = useState([]);
-  const [customers, setCustomers] = useState([]);
+  const [customerOptions, setCustomerOptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -54,20 +59,29 @@ export default function LoyaltyCardsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [cardRes, custRes] = await Promise.all([
-        apiRequest("/loyalty-cards", {
-          searchParams: { per_page: 200, ...(search.trim() ? { q: search.trim() } : {}) },
-        }),
-        apiRequest("/customers", { searchParams: { per_page: 300 } }),
-      ]);
+      const cardRes = await apiRequest("/loyalty-cards", {
+        searchParams: { per_page: 200, ...(search.trim() ? { q: search.trim() } : {}) },
+      });
       setRows(cardRes.data ?? []);
-      setCustomers(custRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load loyalty cards");
     } finally {
       setLoading(false);
     }
   }, [search]);
+
+  const searchCustomersForSelect = useCallback(async (query) => {
+    const rowsForSelect = await searchCreditCustomers(query, { perPage: 30 });
+    setCustomerOptions(rowsForSelect);
+    return rowsForSelect;
+  }, []);
+
+  const selectedCustomerOption = useMemo(() => {
+    if (!form.customer_num) return null;
+    return (
+      customerOptions.find((row) => String(row.value) === String(form.customer_num)) ?? null
+    );
+  }, [customerOptions, form.customer_num]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -84,6 +98,7 @@ export default function LoyaltyCardsPage() {
     setDrawerMode("create");
     setEditingId(null);
     setForm({ ...EMPTY_FORM, issued_at: new Date().toISOString().slice(0, 10) });
+    setCustomerOptions([]);
     setFormError(null);
     setDrawerOpen(true);
   }
@@ -100,6 +115,17 @@ export default function LoyaltyCardsPage() {
       issued_at: card.issued_at ? String(card.issued_at).slice(0, 10) : "",
       is_active: card.is_active !== false,
     });
+    if (card.customer_num) {
+      setCustomerOptions([
+        creditCustomerToOption({
+          customer_num: card.customer_num,
+          customer_name: card.customer_name,
+          phone_number: card.phone_number,
+        }),
+      ]);
+    } else {
+      setCustomerOptions([]);
+    }
     setFormError(null);
     setDrawerOpen(true);
   }
@@ -110,16 +136,22 @@ export default function LoyaltyCardsPage() {
   }
 
   function updateField(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function handleCustomerChange(nextValue, option) {
     setForm((prev) => {
-      const next = { ...prev, [key]: value };
-      if (key === "customer_num" && value) {
-        const customer = customers.find((c) => String(c.customer_num) === String(value));
-        if (customer?.phone_number && !prev.phone_number) {
-          next.phone_number = customer.phone_number;
-        }
-      }
+      const next = { ...prev, customer_num: nextValue };
+      const phone = option?.customer?.phone_number;
+      if (phone && !prev.phone_number) next.phone_number = phone;
       return next;
     });
+    if (option) {
+      setCustomerOptions((prev) => {
+        if (prev.some((row) => String(row.value) === String(option.value))) return prev;
+        return [option, ...prev];
+      });
+    }
   }
 
   async function saveForm(e) {
@@ -308,20 +340,29 @@ export default function LoyaltyCardsPage() {
         submitLabel={drawerMode === "create" ? "Create card" : "Save changes"}
       >
         <Field label="Customer">
-          <select
-            className={inputClassName()}
-            value={form.customer_num}
-            required
-            disabled={drawerMode === "edit"}
-            onChange={(e) => updateField("customer_num", e.target.value)}
-          >
-            <option value="">Select customer…</option>
-            {customers.map((c) => (
-              <option key={c.customer_num} value={c.customer_num}>
-                {c.customer_name} ({c.customer_num})
-              </option>
-            ))}
-          </select>
+          {drawerMode === "edit" ? (
+            <input
+              className={inputClassName()}
+              value={selectedCustomerOption?.label ?? form.customer_num}
+              disabled
+              readOnly
+            />
+          ) : (
+            <PosSearchableSelect
+              value={form.customer_num}
+              onChange={handleCustomerChange}
+              options={customerOptions}
+              loadOptions={searchCustomersForSelect}
+              minSearchLength={1}
+              disabled={saving}
+              required
+              placeholder="Search customer by name, phone, or #"
+              searchPlaceholder="Search by name, phone, or customer #…"
+              idleSearchLabel="Type a name, phone number, or customer #"
+              emptyLabel="No matching customers"
+              inputClassName={inputClassName()}
+            />
+          )}
         </Field>
         <Field label="Card number">
           <input

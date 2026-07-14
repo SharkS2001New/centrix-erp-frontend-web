@@ -10,7 +10,8 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { canApproveDiscountRequests } from "@/lib/sales-settings";
 import { canApproveLpoRequests } from "@/lib/procurement-settings";
 import { resolveNotificationLinkAccess } from "@/lib/notification-action-url";
-import { notificationWorkspaceQueryParam } from "@/lib/notification-workspace";
+import { notificationWorkspaceQueryParam, filterNotificationsForWorkspace } from "@/lib/notification-workspace";
+import { isRealtimeConfigured } from "@/lib/realtime/notification-echo";
 import { resolveActiveWorkspace, workspacesFromCapabilities } from "@/lib/workspaces";
 import { ApprovalNotificationDetails, isDiscountApprovalNotification, isDiscountApprovalOutcomeNotification, isLpoApprovalNotification } from "@/components/notifications/approval-notification-details";
 import { NotificationActionLink } from "@/components/notifications/notification-action-link";
@@ -155,7 +156,9 @@ export function NotificationBell() {
         searchParams: workspaceParams,
       });
       const rows = Array.isArray(res?.data) ? res.data : [];
-      const latestOutcome = rows.find((item) => isDiscountApprovalOutcomeNotification(item) && !item.is_read);
+      const latestOutcome = filterNotificationsForWorkspace(rows, workspaceId).find(
+        (item) => isDiscountApprovalOutcomeNotification(item) && !item.is_read,
+      );
       if (!latestOutcome) return;
       if (latestOutcome.severity === "danger") {
         notifyError(latestOutcome.message);
@@ -165,7 +168,7 @@ export function NotificationBell() {
     } catch {
       /* non-blocking */
     }
-  }, [workspaceParams]);
+  }, [workspaceId, workspaceParams]);
 
   const fetchCount = useCallback(async () => {
     try {
@@ -192,27 +195,41 @@ export function NotificationBell() {
         loading: false,
         searchParams: workspaceParams,
       });
-      setItems(Array.isArray(res?.data) ? res.data : []);
+      const rows = Array.isArray(res?.data) ? res.data : [];
+      setItems(filterNotificationsForWorkspace(rows, workspaceId));
     } catch (err) {
       notifyActionError(err instanceof ApiError ? err : new ApiError("Could not load notifications.", 0), "Could not load notifications.");
     } finally {
       setLoading(false);
     }
-  }, [workspaceParams]);
+  }, [workspaceId, workspaceParams]);
 
   useEffect(() => {
     void fetchCount();
 
     let timer = null;
     const schedule = () => {
-      if (timer) clearInterval(timer);
-      const interval = document.visibilityState === "visible" ? POLL_VISIBLE_MS : POLL_HIDDEN_MS;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      // Reverb pushes new notifications → notifyNotificationsChanged → fetchCount.
+      // Interval polling is only for orgs without Reverb env configured.
+      if (isRealtimeConfigured()) return;
+      const interval =
+        document.visibilityState === "visible" ? POLL_VISIBLE_MS : POLL_HIDDEN_MS;
       timer = setInterval(() => void fetchCount(), interval);
     };
 
     schedule();
 
-    const onVisibility = () => schedule();
+    const onVisibility = () => {
+      schedule();
+      if (document.visibilityState === "visible") {
+        void fetchCount();
+        if (open) void fetchList();
+      }
+    };
     const onFocus = () => {
       void fetchCount();
       if (open) void fetchList();

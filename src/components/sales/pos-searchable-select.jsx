@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
-
-const defaultInputCls = INPUT_CLASS;
+/** Avoid importing catalog-shared (circular with FilterSelect → this module). */
+const defaultInputCls =
+  "theme-input theme-input-focus h-[38px] w-full min-w-[12rem] rounded-lg border px-3 py-2 text-sm outline-none";
 
 const LIST_MAX_HEIGHT = 200;
 const SEARCH_HEADER_HEIGHT = 44;
@@ -58,10 +58,24 @@ export function PosSearchableSelect({
     if (asyncSearch) return asyncOptions;
     const q = query.trim().toLowerCase();
     if (!q) return options;
-    return options.filter((o) => {
+    // Keep group headers that precede matching options so categories stay visible while searching.
+    const result = [];
+    let pendingHeader = null;
+    for (const o of options) {
+      if (o.isHeader || o.groupHeader) {
+        pendingHeader = o;
+        continue;
+      }
       const text = (o.searchText ?? o.label).toLowerCase();
-      return text.includes(q);
-    });
+      if (text.includes(q)) {
+        if (pendingHeader) {
+          result.push(pendingHeader);
+          pendingHeader = null;
+        }
+        result.push(o);
+      }
+    }
+    return result;
   }, [asyncOptions, asyncSearch, options, query]);
 
   const runSearch = useCallback(
@@ -241,21 +255,30 @@ export function PosSearchableSelect({
               {listMessage}
             </li>
           ) : (
-            filtered.map((o) => (
-              <li key={o.value}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={String(o.value) === String(value)}
-                  onClick={() => pick(o)}
-                  className={`pos-search-select-option block w-full px-3 py-2 text-left text-sm ${
-                    String(o.value) === String(value) ? "pos-search-select-option-active" : ""
-                  }`}
+            filtered.map((o) =>
+              o.isHeader || o.groupHeader ? (
+                <li
+                  key={`hdr-${o.label}`}
+                  className="sticky top-0 z-[1] bg-[var(--theme-surface)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--theme-text-subtle)]"
                 >
                   {o.label}
-                </button>
-              </li>
-            ))
+                </li>
+              ) : (
+                <li key={o.value}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={String(o.value) === String(value)}
+                    onClick={() => pick(o)}
+                    className={`pos-search-select-option block w-full px-3 py-2 text-left text-sm ${
+                      String(o.value) === String(value) ? "pos-search-select-option-active" : ""
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                </li>
+              ),
+            )
           )}
         </ul>
       </div>

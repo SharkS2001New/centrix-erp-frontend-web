@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
+import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { isStockTransferApprovalEnabled } from "@/lib/sales-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
@@ -50,10 +51,10 @@ export default function StockTransferPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    apiRequest("/uoms", { searchParams: { per_page: 200 } })
-      .then((res) => setUoms(res.data ?? []))
+    fetchUomsCached(user?.organization_id)
+      .then((rows) => setUoms(rows ?? []))
       .catch(() => setUoms([]));
-  }, []);
+  }, [user?.organization_id]);
 
   const { uomById } = useInventoryCatalogMaps(uoms);
   const toOptions = useMemo(

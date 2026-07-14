@@ -1,6 +1,6 @@
-/** Session-scoped org cache — 1h TTL unless invalidated by CUD mutations. */
+/** Session-scoped org cache — permanent until CUD invalidation (or explicit clear). */
 
-export const ORG_CACHE_TTL_MS = 60 * 60 * 1000;
+export const ORG_CACHE_TTL_MS = Number.POSITIVE_INFINITY;
 
 /** @type {Map<string, { data?: unknown, promise?: Promise<unknown>, fetchedAt?: number, ttlMs?: number }>} */
 const entries = new Map();
@@ -14,6 +14,7 @@ export function orgCacheKey(organizationId, resource, scope = "") {
 function isFresh(entry) {
   if (!entry?.data || entry.fetchedAt == null) return false;
   const ttl = entry.ttlMs ?? ORG_CACHE_TTL_MS;
+  if (!Number.isFinite(ttl)) return true;
   return Date.now() - entry.fetchedAt <= ttl;
 }
 

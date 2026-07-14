@@ -65,23 +65,41 @@ function reconciliationRows(reconciliation) {
 function buildGrnItemsTable(grn) {
   const showOrdered = grn.lines.some((line) => line.ordered_label && line.ordered_label !== "—");
   const showOffer = grn.lines.some((line) => line.offer_label);
+  const showOriginalCost = grn.lines.some(
+    (line) =>
+      line.stock_unit_cost != null &&
+      Math.abs(Number(line.stock_unit_cost) - Number(line.original_unit_cost ?? line.unit_cost ?? 0)) >
+        0.00005,
+  );
   const columns = [
     { key: "product_name", label: "ITEM" },
     ...(showOrdered ? [{ key: "ordered_label", label: "ORDERED", align: "right" }] : []),
     { key: "received_label", label: "RECEIVED", align: "right" },
     ...(showOffer ? [{ key: "offer_label", label: "OFFER", align: "right" }] : []),
-    { key: "unit_cost", label: "UNIT COST", align: "right" },
+    ...(showOriginalCost
+      ? [{ key: "original_unit_cost", label: "ORIGINAL COST", align: "right" }]
+      : []),
+    {
+      key: "unit_cost",
+      label: showOriginalCost ? "STOCK UNIT COST" : "UNIT COST",
+      align: "right",
+    },
     { key: "line_total", label: "AMOUNT", align: "right" },
   ];
 
-  const rows = (grn.lines ?? []).map((line) => ({
-    product_name: line.product_name ?? line.product_code ?? "—",
-    ordered_label: line.ordered_label ?? "—",
-    received_label: line.received_label ?? "—",
-    offer_label: line.offer_label ?? "—",
-    unit_cost: line.unit_cost > 0 ? formatDocAmount(line.unit_cost) : "—",
-    line_total: line.line_total > 0 ? formatDocAmount(line.line_total) : "—",
-  }));
+  const rows = (grn.lines ?? []).map((line) => {
+    const original = Number(line.original_unit_cost ?? line.unit_cost ?? 0);
+    const stock = Number(line.stock_unit_cost ?? line.unit_cost ?? 0);
+    return {
+      product_name: line.product_name ?? line.product_code ?? "—",
+      ordered_label: line.ordered_label ?? "—",
+      received_label: line.received_label ?? "—",
+      offer_label: line.offer_label ?? "—",
+      original_unit_cost: original > 0 ? formatDocAmount(original) : "—",
+      unit_cost: stock > 0 ? formatDocAmount(stock) : "—",
+      line_total: line.line_total > 0 ? formatDocAmount(line.line_total) : "—",
+    };
+  });
 
   return buildDocItemsTable({
     columns,

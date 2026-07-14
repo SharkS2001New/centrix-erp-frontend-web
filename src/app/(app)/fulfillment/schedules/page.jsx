@@ -5,6 +5,7 @@ import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platfor
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { fetchFulfillmentRefsCached } from "@/lib/reference-data-cache";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import {
   CatalogPageShell,
@@ -37,7 +38,7 @@ const EMPTY_FORM = {
 };
 
 export default function RouteSchedulesPage() {
-  const { capabilities } = useAuth();
+  const { capabilities, user } = useAuth();
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
 
   const [schedules, setSchedules] = useState([]);
@@ -55,22 +56,20 @@ export default function RouteSchedulesPage() {
     setError(null);
     setLoading(true);
     try {
-      const [scheduleRes, routeRes, driverRes, vehicleRes] = await Promise.all([
+      const [scheduleRes, refs] = await Promise.all([
         apiRequest("/route-schedules", { searchParams: { per_page: 200 } }),
-        apiRequest("/routes", { searchParams: { per_page: 200 } }),
-        apiRequest("/drivers", { searchParams: { per_page: 200 } }),
-        apiRequest("/vehicles", { searchParams: { per_page: 200 } }),
+        fetchFulfillmentRefsCached(user?.organization_id),
       ]);
       setSchedules(scheduleRes.data ?? []);
-      setRoutes(routeRes.data ?? []);
-      setDrivers(driverRes.data ?? []);
-      setVehicles(vehicleRes.data ?? []);
+      setRoutes(refs.routes ?? []);
+      setDrivers(refs.drivers ?? []);
+      setVehicles(refs.vehicles ?? []);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load schedules");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.organization_id]);
 
   useEffect(() => {
     loadData();

@@ -2,6 +2,7 @@ import { openPrintWindow } from "@/lib/open-print-window";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import {
   buildReportWatermarkHtml,
+  reportWatermarkCss,
   resolveReportBranding,
 } from "@/lib/reports/report-branding";
 
@@ -517,28 +518,7 @@ function loadingSheetPrintStyles(generalSettings = null) {
       z-index: 1;
     }
     .page-body { }
-    .watermark { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-    .watermark-text {
-      position: absolute;
-      top: 48%;
-      left: 50%;
-      transform: translate(-50%, -50%) rotate(-32deg);
-      font-size: ${px(64)};
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      color: rgba(15, 23, 42, 0.06);
-      white-space: nowrap;
-    }
-    .watermark-logo {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      max-width: 70%;
-      max-height: 70%;
-      opacity: 0.05;
-      object-fit: contain;
-    }
+    ${reportWatermarkCss()}
     .sheet { position: relative; z-index: 1; }
     .org-header { text-align: center; margin-bottom: 16px; }
     .org-logo { display: block; margin: 0 auto 10px; max-height: 56px; max-width: 220px; object-fit: contain; }
@@ -775,7 +755,6 @@ function loadingSheetPrintStyles(generalSettings = null) {
       .signatures h3 { font-size: ${px(12, true)}; }
       .signatures .line { font-size: ${px(11, true)}; }
       .doc-footer, .doc-footer-line { font-size: ${px(10, true)}; }
-      .watermark-text { color: rgba(15, 23, 42, 0.08); font-size: ${px(64, true)}; }
     }
   `;
 }

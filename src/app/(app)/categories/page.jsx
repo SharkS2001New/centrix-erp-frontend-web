@@ -3,7 +3,12 @@
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import {
+  fetchCategoriesCached,
+  fetchProductGroupCountsCached,
+  fetchSubCategoriesCached,
+  fetchUsersCached,
+} from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import {
   ActiveBadge,
@@ -95,7 +100,8 @@ export default function CategoriesPage() {
   const confirm = useConfirm();
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [productCountBySub, setProductCountBySub] = useState(() => new Map());
+  const [productCountByCategory, setProductCountByCategory] = useState(() => new Map());
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const { search, setSearch } = useListUrlSearch();
@@ -124,21 +130,37 @@ export default function CategoriesPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [catRes, subRes, catalogProducts, userRes] = await Promise.all([
-        apiRequest("/categories", { searchParams: { per_page: 200 } }),
-        apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
-        fetchProductCatalogCached(user?.organization_id, { status: "all" }),
-        apiRequest("/users", { searchParams: { per_page: 200 } }),
+      const [categoriesData, subCategoriesData] = await Promise.all([
+        fetchCategoriesCached(user?.organization_id),
+        fetchSubCategoriesCached(user?.organization_id),
       ]);
-      setCategories(catRes.data ?? []);
-      setSubCategories(subRes.data ?? []);
-      setProducts(catalogProducts ?? []);
-      setUsers(userRes.data ?? []);
+      setCategories(categoriesData ?? []);
+      setSubCategories(subCategoriesData ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load categories");
     } finally {
       setLoading(false);
     }
+
+    // Counts + audit names can load after the tree is visible.
+    void Promise.all([
+      fetchProductGroupCountsCached(user?.organization_id),
+      fetchUsersCached(user?.organization_id).catch(() => []),
+    ])
+      .then(([counts, usersData]) => {
+        const bySub = new Map(
+          Object.entries(counts?.by_subcategory_id ?? {}).map(([id, n]) => [String(id), Number(n)]),
+        );
+        const byCat = new Map(
+          Object.entries(counts?.by_category_id ?? {}).map(([id, n]) => [String(id), Number(n)]),
+        );
+        setProductCountBySub(bySub);
+        setProductCountByCategory(byCat);
+        setUsers(usersData ?? []);
+      })
+      .catch(() => {
+        /* counts stay at 0; tree already usable */
+      });
   }, [user?.organization_id]);
 
   useEffect(() => {
@@ -146,26 +168,6 @@ export default function CategoriesPage() {
   }, [loadData]);
 
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
-
-  const productCountBySub = useMemo(() => {
-    const map = new Map();
-    for (const p of products) {
-      if (p.subcategory_id != null) {
-        map.set(p.subcategory_id, (map.get(p.subcategory_id) ?? 0) + 1);
-      }
-    }
-    return map;
-  }, [products]);
-
-  const productCountByCategory = useMemo(() => {
-    const subToCat = new Map(subCategories.map((s) => [s.id, s.category_id]));
-    const map = new Map();
-    for (const p of products) {
-      const catId = subToCat.get(p.subcategory_id);
-      if (catId != null) map.set(catId, (map.get(catId) ?? 0) + 1);
-    }
-    return map;
-  }, [products, subCategories]);
 
   const treeRows = useMemo(
     () => buildTreeRows(categories, subCategories, collapsed, search, typeFilter),
@@ -276,7 +278,7 @@ export default function CategoriesPage() {
 
   async function deleteCategory(cat) {
     const subs = subCategories.filter((s) => s.category_id === cat.id);
-    const prodCount = productCountByCategory.get(cat.id) ?? 0;
+    const prodCount = productCountByCategory.get(String(cat.id)) ?? 0;
     const ok = await confirm({
       title: "Delete category",
       message: `Delete "${cat.category_name}" and ${subs.length} sub-categor${subs.length === 1 ? "y" : "ies"}? ${prodCount} product(s) linked.`,
@@ -294,7 +296,7 @@ export default function CategoriesPage() {
   }
 
   async function deleteSubCategory(sub) {
-    const count = productCountBySub.get(sub.id) ?? 0;
+    const count = productCountBySub.get(String(sub.id)) ?? 0;
     const ok = await confirm({
       title: "Delete sub-category",
       message: `Delete "${sub.subcategory_name}"? ${count} product(s) linked.`,
@@ -502,7 +504,7 @@ export default function CategoriesPage() {
                             <td className="px-4 py-3 text-xs text-slate-400">— root —</td>
                             <td className="px-4 py-3">{subCount}</td>
                             <td className="px-4 py-3">
-                              {productCountByCategory.get(cat.id) ?? 0}
+                              {productCountByCategory.get(String(cat.id)) ?? 0}
                             </td>
                             <td className="px-4 py-3 text-slate-500">
                               {formatShortDate(cat.created_at)}
@@ -553,7 +555,7 @@ export default function CategoriesPage() {
                             <ParentChip label={row.category.category_name} />
                           </td>
                           <td className="px-4 py-3 text-slate-400">—</td>
-                          <td className="px-4 py-3">{productCountBySub.get(sub.id) ?? 0}</td>
+                          <td className="px-4 py-3">{productCountBySub.get(String(sub.id)) ?? 0}</td>
                           <td className="px-4 py-3 text-slate-500">
                             {formatShortDate(sub.created_at)}
                             {creator && (

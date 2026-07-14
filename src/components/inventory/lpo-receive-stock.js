@@ -104,3 +104,44 @@ export function fillReceiveCountsForLines(lines, uomById, receiveCounts) {
 export function packQtyFromReceiveBase(receiveBase, uom) {
   return baseToDisplayQty(receiveBase, uom);
 }
+
+/**
+ * When receiving offer qty above the PO order, stock unit cost is averaged so
+ * total stock value ≈ paid ordered qty × original PO cost.
+ * Returns null when there is no offer in this receive batch.
+ */
+export function offerAdjustedUnitCost({
+  originalCost,
+  paidPackQty,
+  receivedPackQty,
+}) {
+  const cost = Number(originalCost ?? 0);
+  const paid = Math.max(0, Number(paidPackQty ?? 0));
+  const received = Math.max(0, Number(receivedPackQty ?? 0));
+  if (received <= 0.0001 || paid + 0.0001 >= received) {
+    return null;
+  }
+  return Math.round((paid * cost) / received * 10000) / 10000;
+}
+
+/** Preview stock unit cost for the current LPO receive session (pack units). */
+export function lpoSessionStockUnitCost(line, uom, receiveCounts, priorReceivedPack = null) {
+  const lineKey = String(line.id);
+  const receivingNow = receiveBaseForLine(lineKey, uom, receiveCounts);
+  if (receivingNow <= 0) return null;
+
+  const priorReceived = priorReceivedPack ?? Number(line.received_qty ?? 0);
+  const sessionOfferBase = lpoSessionOfferBase(line, uom, receiveCounts, priorReceived);
+  if (sessionOfferBase <= 0.0001) return null;
+
+  const receivedPack = packQtyFromReceiveBase(receivingNow, uom);
+  const offerPack = packQtyFromReceiveBase(sessionOfferBase, uom);
+  const paidPack = Math.max(0, receivedPack - offerPack);
+
+  return offerAdjustedUnitCost({
+    originalCost: line.cost_price,
+    paidPackQty: paidPack,
+    receivedPackQty: receivedPack,
+  });
+}
+

@@ -37,18 +37,28 @@ const HR_LINKS = [
 export function HrDashboardContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [employees, setEmployees] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [recentEmployees, setRecentEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [payrollRuns, setPayrollRuns] = useState([]);
 
   useEffect(() => {
     Promise.all([
-      apiRequest("/employees", { searchParams: { per_page: 500 } }),
+      apiRequest("/employees/summary"),
+      apiRequest("/employees", {
+        searchParams: {
+          per_page: 8,
+          fields: "lean",
+          sort: "created_at",
+          sort_dir: "desc",
+        },
+      }),
       apiRequest("/departments", { searchParams: { per_page: 200 } }),
       apiRequest("/reports/payroll-summary", { searchParams: { per_page: 5 } }).catch(() => ({ data: [] })),
     ])
-      .then(([empRes, deptRes, payrollRes]) => {
-        setEmployees(empRes.data ?? []);
+      .then(([summaryRes, empRes, deptRes, payrollRes]) => {
+        setSummary(summaryRes ?? null);
+        setRecentEmployees(empRes.data ?? []);
         setDepartments(deptRes.data ?? []);
         setPayrollRuns(payrollRes.data ?? []);
       })
@@ -59,45 +69,45 @@ export function HrDashboardContent() {
   const deptById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
 
   const stats = useMemo(() => {
-    const active = employees.filter((e) => e.is_active !== false);
-    const payrollCost = active.reduce((sum, e) => sum + Number(e.base_salary ?? 0), 0);
     return {
-      total: employees.length,
-      active: active.length,
-      departments: departments.filter((d) => d.is_active !== false).length,
-      payrollCost,
+      total: Number(summary?.total ?? 0),
+      active: Number(summary?.active ?? 0),
+      departments: Number(summary?.departments ?? departments.filter((d) => d.is_active !== false).length),
+      payrollCost: Number(summary?.payroll_cost ?? 0),
     };
-  }, [employees, departments]);
+  }, [summary, departments]);
 
   const deptSegments = useMemo(() => {
-    const counts = new Map();
-    for (const emp of employees.filter((e) => e.is_active !== false)) {
-      const name = deptById.get(emp.department_id)?.department_name ?? "Unassigned";
-      counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
+    const counts = summary?.by_department_id ?? {};
+    return Object.entries(counts)
+      .map(([id, value]) => ({
+        label:
+          id === "null"
+            ? "Unassigned"
+            : deptById.get(Number(id))?.department_name ?? `Dept #${id}`,
+        value: Number(value),
+      }))
+      .sort((a, b) => b.value - a.value)
       .slice(0, 6)
-      .map(([label, value], i) => ({
-        label,
-        value,
+      .map((row, i) => ({
+        ...row,
         color: CHART_COLORS[i % CHART_COLORS.length],
       }));
-  }, [employees, deptById]);
+  }, [summary, deptById]);
 
-  const recentEmployees = useMemo(
+  const recentRows = useMemo(
     () =>
-      [...employees]
-        .sort((a, b) => new Date(b.created_at ?? 0) - new Date(a.created_at ?? 0))
-        .slice(0, 6)
-        .map((e) => ({
-          id: e.id,
-          name: composeEmployeeDisplayName(e),
-          department: deptById.get(e.department_id)?.department_name ?? "—",
-          salary: e.base_salary,
-          status: e.is_active === false ? "Inactive" : "Active",
-        })),
-    [employees, deptById],
+      recentEmployees.map((e) => ({
+        id: e.id,
+        name: composeEmployeeDisplayName(e),
+        department:
+          e.department?.department_name ??
+          deptById.get(e.department_id)?.department_name ??
+          "—",
+        salary: e.base_salary,
+        status: e.is_active === false ? "Inactive" : "Active",
+      })),
+    [recentEmployees, deptById],
   );
 
   const kpiItems = [
@@ -134,7 +144,10 @@ export function HrDashboardContent() {
               {payrollRuns.length ? (
                 <ul className="space-y-2 text-sm">
                   {payrollRuns.map((run) => (
-                    <li key={run.payroll_run_id ?? run.id} className="flex justify-between gap-3 border-b border-slate-100 py-2 last:border-0 dark:border-slate-800">
+                    <li
+                      key={run.payroll_run_id ?? run.id}
+                      className="flex justify-between gap-3 border-b border-slate-100 py-2 last:border-0 dark:border-slate-800"
+                    >
                       <span className="text-slate-700 dark:text-slate-200">
                         {run.period_label ?? run.pay_period ?? "Payroll run"}
                       </span>
@@ -165,7 +178,7 @@ export function HrDashboardContent() {
                 { key: "salary", label: "Base salary", align: "right" },
                 { key: "status", label: "Status" },
               ]}
-              rows={recentEmployees}
+              rows={recentRows}
               formatValue={(key, value) => (key === "salary" ? formatHrKesFull(value) : value)}
               viewAllHref="/hr/employees"
             />

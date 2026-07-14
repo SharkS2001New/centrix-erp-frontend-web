@@ -28,8 +28,8 @@ function invalidateReference(resource) {
 
 /**
  * Invalidate org caches after successful API mutations.
- * Reference helpers (suppliers, VAT, UOM, categories, …): max 1h cache, cleared on matching CUD.
- * Products: no client catalog cache — search/list always hit the API.
+ * Reference helpers (categories, UOM, VAT, retail packages, …): permanent until matching CUD.
+ * Products: catalog cache cleared on product mutations.
  */
 export function handleCacheInvalidation(method, path) {
   if (!isMutation(method)) return;
@@ -66,9 +66,14 @@ export function handleCacheInvalidation(method, path) {
     invalidateReference("routes");
     return;
   }
+  if (/^\/retail-package-settings(\/|$)/.test(normalized)) {
+    invalidateReference("retail-package-settings");
+    return;
+  }
 
   if (/^\/products(\/|$)/.test(normalized) || /^\/products\/import/.test(normalized)) {
     invalidateProductCatalogCache(organizationId);
+    invalidateReference("product-group-counts");
   }
 }
 

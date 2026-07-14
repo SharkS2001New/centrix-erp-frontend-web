@@ -101,7 +101,11 @@ export default function MobilePickingSheetsScreen() {
       });
       setDetail(res);
       const productCodes = (res.picking_list?.lines ?? []).map((line) => line.product_code);
-      const { products, uoms } = await fetchCatalogForProductCodes(apiRequest, productCodes);
+      const { products, uoms } = await fetchCatalogForProductCodes(
+        apiRequest,
+        productCodes,
+        organization?.id,
+      );
       setUomByProductCode(buildUomByProductCode(products, uoms));
     } catch (e) {
       setDetail(null);
@@ -109,7 +113,7 @@ export default function MobilePickingSheetsScreen() {
     } finally {
       setDetailLoading(false);
     }
-  }, []);
+  }, [organization?.id]);
 
   async function handlePrint() {
     const pickingList = detail?.picking_list;

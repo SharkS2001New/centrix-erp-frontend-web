@@ -45,6 +45,8 @@ import {
 } from "@/components/catalog/table-row-selection";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { useAuth } from "@/contexts/auth-context";
+import { fetchUsersCached } from "@/lib/reference-data-cache";
 
 function PlusIcon() {
   return (
@@ -59,6 +61,7 @@ function PlusIcon() {
 export default function SuppliersPage() {
   const router = useRouter();
   const confirm = useConfirm();
+  const { user } = useAuth();
 
   const [dashboard, setDashboard] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
@@ -115,18 +118,18 @@ export default function SuppliersPage() {
           /* non-blocking */
         }
       }
-      const [dashRes, userRes] = await Promise.all([
+      const [dashRes, usersData] = await Promise.all([
         apiRequest("/suppliers/dashboard"),
-        apiRequest("/users", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+        fetchUsersCached(user?.organization_id).catch(() => []),
       ]);
       setDashboard(dashRes);
-      setUsers(userRes.data ?? []);
+      setUsers(usersData ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load suppliers");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.organization_id]);
 
   const loadSuppliers = useCallback(async () => {
     setListLoading(true);

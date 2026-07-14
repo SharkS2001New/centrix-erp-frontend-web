@@ -109,7 +109,7 @@ export function PosPriceCheckerModal({
       setError(null);
       try {
         const res = await apiRequest("/products", {
-          searchParams: { per_page: 12, q: trimmed, ...productBranchParams },
+          searchParams: { per_page: 12, q: trimmed, fields: "lean", ...productBranchParams },
         });
         if (seq !== searchSeq.current) return;
         const uomMap = uomById ?? new Map();
@@ -166,7 +166,7 @@ export function PosPriceCheckerModal({
       } catch {
         if (trimmed.length >= MIN_QUERY_LEN) {
           const res = await apiRequest("/products", {
-            searchParams: { per_page: 1, q: trimmed, ...productBranchParams },
+            searchParams: { per_page: 1, q: trimmed, fields: "lean", ...productBranchParams },
           });
           row = (res.data ?? [])[0] ?? null;
         }

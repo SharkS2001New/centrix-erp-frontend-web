@@ -19,19 +19,24 @@ export default function DriverProfilePage() {
 
   const [driver, setDriver] = useState(null);
   const [deliveries, setDeliveries] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [linkedUser, setLinkedUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [driverData, deliveriesRes, userRes] = await Promise.all([
+      const [driverData, deliveriesRes] = await Promise.all([
         apiRequest(`/drivers/${driverId}`),
         apiRequest(`/drivers/${driverId}/deliveries`, { searchParams: { per_page: 200 } }),
-        apiRequest("/users", { searchParams: { per_page: 200 } }),
       ]);
       setDriver(driverData);
       setDeliveries(deliveriesRes.data ?? []);
-      setUsers(userRes.data ?? []);
+
+      if (driverData?.user_id != null) {
+        const userData = await apiRequest(`/users/${driverData.user_id}`).catch(() => null);
+        setLinkedUser(userData);
+      } else {
+        setLinkedUser(null);
+      }
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load driver");
     } finally {
@@ -42,11 +47,6 @@ export default function DriverProfilePage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  const linkedUser = useMemo(
-    () => users.find((u) => u.id === driver?.user_id),
-    [users, driver],
-  );
 
   const deliveryStats = useMemo(() => deliveryStatsFromSales(deliveries), [deliveries]);
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { fetchProductGroupCountsCached, fetchUomsCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import {
   defaultSmallLabelForType,
@@ -146,7 +146,7 @@ export default function UomsPage() {
   const { user } = useAuth();
   const confirm = useConfirm();
   const [uoms, setUoms] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [productCountByUom, setProductCountByUom] = useState(() => new Map());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -174,12 +174,16 @@ export default function UomsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [uomRes, catalogProducts] = await Promise.all([
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
-        fetchProductCatalogCached(user?.organization_id, { status: "all" }),
+      const [uomsData, counts] = await Promise.all([
+        fetchUomsCached(user?.organization_id),
+        fetchProductGroupCountsCached(user?.organization_id),
       ]);
-      setUoms(uomRes.data ?? []);
-      setProducts(catalogProducts ?? []);
+      setUoms(uomsData ?? []);
+      setProductCountByUom(
+        new Map(
+          Object.entries(counts?.by_unit_id ?? {}).map(([id, n]) => [String(id), Number(n)]),
+        ),
+      );
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load units of measure");
     } finally {
@@ -190,16 +194,6 @@ export default function UomsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  const productCountByUom = useMemo(() => {
-    const map = new Map();
-    for (const p of products) {
-      if (p.unit_id != null) {
-        map.set(p.unit_id, (map.get(p.unit_id) ?? 0) + 1);
-      }
-    }
-    return map;
-  }, [products]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -330,7 +324,7 @@ export default function UomsPage() {
   }
 
   async function deleteUom(uom) {
-    const count = productCountByUom.get(uom.id) ?? 0;
+    const count = productCountByUom.get(String(uom.id)) ?? 0;
     const msg =
       count > 0
         ? `"${uom.full_name}" is used by ${count} product(s). Delete anyway?`
@@ -359,7 +353,7 @@ export default function UomsPage() {
     const blocked = ids
       .map((id) => {
         const uom = uomById.get(String(id));
-        const count = uom ? (productCountByUom.get(uom.id) ?? 0) : 0;
+        const count = uom ? (productCountByUom.get(String(uom.id)) ?? 0) : 0;
         return count > 0 ? { id, name: uom?.full_name ?? id, count } : null;
       })
       .filter(Boolean);
@@ -522,7 +516,7 @@ export default function UomsPage() {
                   </tr>
                 ) : (
                   pageSlice.map((uom) => {
-                    const count = productCountByUom.get(uom.id) ?? 0;
+                    const count = productCountByUom.get(String(uom.id)) ?? 0;
                     return (
                       <tr
                         key={uom.id}

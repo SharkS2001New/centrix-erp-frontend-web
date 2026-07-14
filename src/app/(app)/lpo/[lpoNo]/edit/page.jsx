@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  fetchSuppliersCached,
+  fetchUomsCached,
+  fetchVatsCached,
+} from "@/lib/reference-data-cache";
 import { LpoFormFields, LpoFormShell } from "@/components/lpo/lpo-form";
 import {
   buildLpoFullBody,
@@ -33,33 +38,34 @@ export default function EditLpoPage() {
 
   useEffect(() => {
     const branchId = user?.branch_id;
+    const orgId = user?.organization_id;
     Promise.all([
       apiRequest(`/lpo-mst/${lpoNo}/summary`),
-      apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
-      apiRequest("/uoms", { searchParams: { per_page: 200 } }),
-      apiRequest("/vats", { searchParams: { per_page: 50 } }),
+      fetchSuppliersCached(orgId),
+      fetchUomsCached(orgId),
+      fetchVatsCached(orgId),
       branchId
         ? apiRequest(`/branches/${branchId}`).catch(() => null)
         : Promise.resolve(null),
     ])
-      .then(([detail, supRes, uomRes, vatRes, branch]) => {
+      .then(([detail, suppliersData, uomsData, vatsData, branch]) => {
         if (!lpoCanEdit(detail.lpo)) {
           setFormError("This LPO cannot be edited after it has been sent to the supplier.");
           setForm(null);
           return;
         }
-        const uomList = uomRes.data ?? uomRes ?? [];
+        const uomList = uomsData ?? [];
         const uomMap = new Map(uomList.map((u) => [u.id, u]));
         setForm(lpoHeaderToForm(detail.lpo, detail.lines, uomMap));
-        setSuppliers(supRes.data ?? []);
+        setSuppliers(suppliersData ?? []);
         setUoms(uomList);
-        setVats(vatRes.data ?? vatRes ?? []);
+        setVats(vatsData ?? []);
         const addr = branch?.branch_address?.trim();
         if (addr) setBranchAddress(addr);
       })
       .catch(() => setFormError("Failed to load purchase order."))
       .finally(() => setLoading(false));
-  }, [lpoNo, user?.branch_id]);
+  }, [lpoNo, user?.branch_id, user?.organization_id]);
 
   async function save() {
     if (!form) return;

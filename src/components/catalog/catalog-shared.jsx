@@ -187,21 +187,7 @@ export function FilterToolbar({ children, className = "" }) {
   );
 }
 
-export function FilterSelect({ value, onChange, options, className = "" }) {
-  return (
-    <select
-      value={value}
-      onChange={onChange}
-      className={`${FILTER_CONTROL_CLASS} ${className}`.trim()}
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  );
-}
+export { SearchableFilterSelect as FilterSelect } from "@/components/catalog/searchable-filter-select";
 
 export function PaginationBar({
   page,

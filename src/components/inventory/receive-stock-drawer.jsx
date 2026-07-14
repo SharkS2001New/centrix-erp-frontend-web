@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { fetchUomsCached, fetchSuppliersCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import {
   Field,
@@ -10,6 +10,7 @@ import {
   PrimaryButton,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { ProductSearchSelect } from "@/components/catalog/product-search-select";
 import { formatPackagingLabel } from "@/components/lpo/lpo-product-utils";
 import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import { displayToBaseQty } from "@/lib/stock-uom";
@@ -21,7 +22,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
 
   const [mode, setMode] = useState("lpo");
   const [suppliers, setSuppliers] = useState([]);
-  const [products, setProducts] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null);
   const [uoms, setUoms] = useState([]);
   const [lpoOptions, setLpoOptions] = useState([]);
   const [lpoData, setLpoData] = useState(null);
@@ -41,18 +42,15 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
   useEffect(() => {
     if (!open) return;
     Promise.all([
-      apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
-      fetchProductCatalogCached(user?.organization_id, { status: "all" }),
-      apiRequest("/uoms", { searchParams: { per_page: 200 } }),
+      fetchSuppliersCached(user?.organization_id),
+      fetchUomsCached(user?.organization_id),
     ])
-      .then(([supRes, catalogProducts, uomRes]) => {
-        setSuppliers(supRes.data ?? []);
-        setProducts(catalogProducts ?? []);
-        setUoms(uomRes.data ?? []);
+      .then(([supRows, uomRows]) => {
+        setSuppliers(supRows ?? []);
+        setUoms(uomRows ?? []);
       })
       .catch(() => {
         setSuppliers([]);
-        setProducts([]);
         setUoms([]);
       });
   }, [open, user?.organization_id]);
@@ -60,12 +58,10 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
 
   const manualProduct = useMemo(() => {
-    if (!form.product_code) return null;
-    const product = products.find((p) => p.product_code === form.product_code);
-    if (!product) return null;
-    const uom = uomById.get(product.unit_id);
-    return { ...product, uom, factor: Number(uom?.conversion_factor ?? 1) };
-  }, [form.product_code, products, uomById]);
+    if (!form.product_code || !selectedProduct) return null;
+    const uom = uomById.get(selectedProduct.unit_id);
+    return { ...selectedProduct, uom, factor: Number(uom?.conversion_factor ?? 1) };
+  }, [form.product_code, selectedProduct, uomById]);
 
   useEffect(() => {
     if (!open || mode !== "lpo" || !form.supplier_id) {
@@ -119,6 +115,7 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
       product_code: "",
       cost_price: "",
     });
+    setSelectedProduct(null);
     setLpoData(null);
     setReceiveQty({});
     setError(null);
@@ -357,22 +354,23 @@ export function ReceiveStockDrawer({ open, onClose, onSaved }) {
           ) : null}
 
           <Field label="Product">
-            <select
-              className={inputClassName()}
+            <ProductSearchSelect
               value={form.product_code}
-              onChange={(e) => setForm((p) => ({ ...p, product_code: e.target.value }))}
+              onChange={(code) => {
+                setForm((p) => ({ ...p, product_code: code }));
+                if (!code) setSelectedProduct(null);
+              }}
+              onProductSelect={(product) => {
+                setSelectedProduct(product);
+                setForm((p) => ({
+                  ...p,
+                  product_code: product?.product_code ?? "",
+                  cost_price:
+                    product?.last_cost_price != null ? String(product.last_cost_price) : p.cost_price,
+                }));
+              }}
               required
-            >
-              <option value="">Select product…</option>
-              {products.map((p) => {
-                const uom = uomById.get(p.unit_id);
-                return (
-                  <option key={p.product_code} value={p.product_code}>
-                    {p.product_name} ({p.product_code})
-                  </option>
-                );
-              })}
-            </select>
+            />
           </Field>
 
           {manualProduct?.uom ? (

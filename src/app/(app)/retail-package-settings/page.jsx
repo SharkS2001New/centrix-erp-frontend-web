@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
+import {
+  fetchCategoriesCached,
+  fetchRetailPackagesCached,
+  fetchSubCategoriesCached,
+  fetchUomsCached,
+} from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { RetailPricingTiersEditor } from "@/components/catalog/retail-pricing-tiers";
 import {
@@ -99,18 +105,22 @@ export default function RetailPackageSettingsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [setRes, catalogProducts, uomRes, catRes, subRes] = await Promise.all([
-        apiRequest("/retail-package-settings", { searchParams: { per_page: 200 } }),
-        fetchProductCatalogCached(user?.organization_id, { status: "all" }),
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
-        apiRequest("/categories", { searchParams: { per_page: 200 } }),
-        apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
+      const [settingsData, uomsData, categoriesData, subCategoriesData] = await Promise.all([
+        fetchRetailPackagesCached(user?.organization_id),
+        fetchUomsCached(user?.organization_id),
+        fetchCategoriesCached(user?.organization_id),
+        fetchSubCategoriesCached(user?.organization_id),
       ]);
-      setSettings(setRes.data ?? []);
+      setSettings(settingsData ?? []);
+      setUoms(uomsData ?? []);
+      setCategories(categoriesData ?? []);
+      setSubCategories(subCategoriesData ?? []);
+
+      const codes = (settingsData ?? []).map((row) => row.product_code).filter(Boolean);
+      const catalogProducts = await fetchProductsByCodesCached(user?.organization_id, codes, {
+        status: "all",
+      });
       setProducts(catalogProducts ?? []);
-      setUoms(uomRes.data ?? []);
-      setCategories(catRes.data ?? []);
-      setSubCategories(subRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load package settings");
     } finally {

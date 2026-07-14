@@ -20,6 +20,7 @@ export const NAV_HREF_ICONS = {
   "/platform/active-users": "users",
   "/platform/system-issues": "alert",
   "/platform/database-backups": "database",
+  "/platform/health": "alert",
   "/platform/legacy-import-converter": "upload",
   "/platform/organizations": "building",
   "/platform/organizations/new": "plus",

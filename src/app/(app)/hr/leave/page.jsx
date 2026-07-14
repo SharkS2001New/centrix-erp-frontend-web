@@ -20,7 +20,7 @@ export default function HrLeavePage() {
 
   useEffect(() => {
     let cancelled = false;
-    apiRequest("/employees", { searchParams: { per_page: 500 } })
+    apiRequest("/employees", { searchParams: { per_page: 200, fields: "lean" } })
       .then((res) => {
         if (!cancelled) setEmployees(res.data ?? []);
       })

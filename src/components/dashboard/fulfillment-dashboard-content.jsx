@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
+import { fetchFulfillmentRefsCached } from "@/lib/reference-data-cache";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import {
   countDeliveriesByDriver,
@@ -28,6 +30,7 @@ const FULFILLMENT_LINKS = [
 ];
 
 export function FulfillmentDashboardContent() {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [drivers, setDrivers] = useState([]);
@@ -36,21 +39,28 @@ export function FulfillmentDashboardContent() {
   const [sales, setSales] = useState([]);
 
   useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
     Promise.all([
-      apiRequest("/drivers", { searchParams: { per_page: 200 } }),
-      apiRequest("/routes", { searchParams: { per_page: 200 } }),
-      apiRequest("/vehicles", { searchParams: { per_page: 200 } }),
-      apiRequest("/sales", { searchParams: { per_page: 500, with_items: 0 } }),
+      fetchFulfillmentRefsCached(user?.organization_id),
+      apiRequest("/sales", {
+        searchParams: {
+          per_page: 200,
+          with_items: 0,
+          from_date: today,
+          to_date: today,
+          date_field: "placed",
+        },
+      }),
     ])
-      .then(([driverRes, routeRes, vehicleRes, salesRes]) => {
-        setDrivers(driverRes.data ?? []);
-        setRoutes(routeRes.data ?? []);
-        setVehicles(vehicleRes.data ?? []);
+      .then(([refs, salesRes]) => {
+        setDrivers(refs.drivers ?? []);
+        setRoutes(refs.routes ?? []);
+        setVehicles(refs.vehicles ?? []);
         setSales(salesRes.data ?? []);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load fulfillment dashboard"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [user?.organization_id]);
 
   const stats = useMemo(() => {
     const activeDrivers = drivers.filter((d) => d.is_active !== false);

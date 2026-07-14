@@ -35,6 +35,7 @@ import {
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_MOVEMENT_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { INVENTORY_TRANSACTION_TYPE_LABELS } from "@/lib/user-facing-labels";
+import { fetchUomsCached, fetchUsersCached } from "@/lib/reference-data-cache";
 
 const TYPE_OPTIONS = [
   { value: "all", label: "All types" },
@@ -105,16 +106,17 @@ export default function InventoryTransactionsPage() {
 
   const loadReferenceData = useCallback(async () => {
     try {
-      const [uomRes, userRes] = await Promise.all([
-        apiRequest("/uoms", { searchParams: { per_page: 200 } }),
-        apiRequest("/users", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+      const orgId = user?.organization_id;
+      const [uoms, usersData] = await Promise.all([
+        fetchUomsCached(orgId),
+        fetchUsersCached(orgId).catch(() => []),
       ]);
-      setUoms(uomRes.data ?? []);
-      setUsers(userRes.data ?? []);
+      setUoms(uoms ?? []);
+      setUsers(usersData ?? []);
     } catch {
       /* non-blocking */
     }
-  }, []);
+  }, [user?.organization_id]);
 
   const loadMovements = useCallback(async () => {
     setListLoading(true);

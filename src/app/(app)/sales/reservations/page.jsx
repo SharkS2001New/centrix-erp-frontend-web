@@ -20,7 +20,6 @@ import { formatReceiptNumber } from "@/components/sales/sales-shared";
 
 export default function SalesReservationsPage() {
   const [rows, setRows] = useState([]);
-  const [salesById, setSalesById] = useState({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -33,16 +32,6 @@ export default function SalesReservationsPage() {
       });
       const active = (res.data ?? []).filter((r) => !r.released_at);
       setRows(active);
-
-      const saleIds = [...new Set(active.map((r) => r.sale_id).filter(Boolean))];
-      if (saleIds.length) {
-        const salesRes = await apiRequest("/sales", { searchParams: { per_page: 200 } });
-        const map = {};
-        for (const s of salesRes.data ?? []) {
-          if (saleIds.includes(s.id)) map[s.id] = s;
-        }
-        setSalesById(map);
-      }
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load reservations");
     } finally {
@@ -58,7 +47,7 @@ export default function SalesReservationsPage() {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((r) => {
-      const sale = salesById[r.sale_id];
+      const sale = r.sale;
       const receipt = sale ? formatReceiptNumber(sale).toLowerCase() : "";
       return (
         String(r.product_name ?? "").toLowerCase().includes(q) ||
@@ -67,7 +56,7 @@ export default function SalesReservationsPage() {
         String(r.sale_id ?? "").includes(q)
       );
     });
-  }, [rows, search, salesById]);
+  }, [rows, search]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -138,7 +127,7 @@ export default function SalesReservationsPage() {
             </thead>
             <tbody>
               {pageSlice.map((row) => {
-                const sale = salesById[row.sale_id];
+                const sale = row.sale;
                 const orderLabel = sale
                   ? formatReceiptNumber(sale)
                   : row.cart_id

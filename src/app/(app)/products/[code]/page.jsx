@@ -4,6 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import {
+  fetchCategoriesCached,
+  fetchSubCategoriesCached,
+  fetchSuppliersCached,
+  fetchUomsCached,
+  fetchUsersCached,
+  fetchVatsCached,
+} from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { productsCatalogHref } from "@/lib/products-list-state";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
@@ -563,24 +571,25 @@ export default function ProductDetailPage() {
   }, [enriched]);
 
   const loadMeta = useCallback(async () => {
-    const [catRes, subRes, supRes, uomRes, vatRes, retailRes, settingsRes, userRes] = await Promise.all([
-      apiRequest("/categories", { searchParams: { per_page: 200 } }),
-      apiRequest("/sub-categories", { searchParams: { per_page: 200 } }),
-      apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
-      apiRequest("/uoms", { searchParams: { per_page: 100 } }),
-      apiRequest("/vats", { searchParams: { per_page: 50 } }),
+    const orgId = user?.organization_id;
+    const [cats, subs, sups, uoms, vats, retailRes, settingsRes, usersData] = await Promise.all([
+      fetchCategoriesCached(orgId),
+      fetchSubCategoriesCached(orgId),
+      fetchSuppliersCached(orgId),
+      fetchUomsCached(orgId),
+      fetchVatsCached(orgId),
       apiRequest("/retail-package-settings", {
         searchParams: { per_page: 1, "filter[product_code]": productCode },
       }).catch(() => ({ data: [] })),
       apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
-      apiRequest("/users", { searchParams: { per_page: 200 } }),
+      fetchUsersCached(orgId).catch(() => []),
     ]);
-    setCategories(catRes.data ?? []);
-    setSubCategories(subRes.data ?? []);
-    setSuppliers(supRes.data ?? []);
-    setUoms(uomRes.data ?? uomRes ?? []);
-    setVats(vatRes.data ?? vatRes ?? []);
-    setUsers(userRes.data ?? []);
+    setCategories(cats ?? []);
+    setSubCategories(subs ?? []);
+    setSuppliers(sups ?? []);
+    setUoms(uoms ?? []);
+    setVats(vats ?? []);
+    setUsers(usersData ?? []);
     const retailRows = retailRes?.data ?? [];
     setRetailPackage(retailRows[0] ?? null);
     const settingsRows = settingsRes?.data ?? settingsRes ?? [];
@@ -589,7 +598,7 @@ export default function ProductDetailPage() {
     setGlobalReorderLevel(
       threshold != null && threshold !== "" ? Number(threshold) : null,
     );
-  }, [productCode]);
+  }, [productCode, user?.organization_id]);
 
   const loadProduct = useCallback(async () => {
     const searchParams = {};

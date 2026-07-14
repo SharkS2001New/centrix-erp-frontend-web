@@ -39,13 +39,28 @@ const INVENTORY_LINKS = [
   { href: "/reports/low-stock", title: "Low stock report", desc: "Items at or below reorder" },
 ];
 
+function availableTotal(row) {
+  return (
+    Number(row.available_shop_quantity ?? row.shop_quantity ?? 0) +
+    Number(row.available_store_quantity ?? row.store_quantity ?? 0)
+  );
+}
+
 export function InventoryDashboardContent() {
   const { user, isOrgWide } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [stockRows, setStockRows] = useState([]);
+  const [topStockRows, setTopStockRows] = useState([]);
   const [lowStockRows, setLowStockRows] = useState([]);
-  const [inventoryValue, setInventoryValue] = useState({ shop: null, store: null, total: null });
+  const [inventoryValue, setInventoryValue] = useState({
+    shop: null,
+    store: null,
+    total: null,
+    skus: 0,
+    low: 0,
+    out: 0,
+    totalQty: 0,
+  });
 
   useEffect(() => {
     const valuationParams = {};
@@ -54,70 +69,53 @@ export function InventoryDashboardContent() {
     }
 
     Promise.all([
+      apiRequest("/reports/inventory-valuation-summary", { searchParams: valuationParams }),
       apiRequest("/reports/stock-on-hand", {
-        searchParams: { per_page: 200, ...valuationParams },
+        searchParams: {
+          per_page: 10,
+          in_stock_only: 1,
+          sort: "available_desc",
+          ...valuationParams,
+        },
       }),
       apiRequest("/reports/low-stock", { searchParams: { per_page: 10, ...valuationParams } }),
-      apiRequest("/reports/inventory-valuation-summary", { searchParams: valuationParams }),
     ])
-      .then(([stockRes, lowRes, valuationRes]) => {
-        setStockRows(stockRes.data ?? []);
+      .then(([valuationRes, stockRes, lowRes]) => {
+        setTopStockRows(stockRes.data ?? []);
         setLowStockRows(lowRes.data ?? []);
         setInventoryValue({
           shop: valuationRes?.shop_value ?? null,
           store: valuationRes?.store_value ?? null,
           total: valuationRes?.value ?? null,
+          skus: Number(valuationRes?.skus_in_stock ?? 0),
+          low: Number(valuationRes?.skus_low ?? 0),
+          out: Number(valuationRes?.skus_out ?? 0),
+          totalQty: Number(valuationRes?.total_available_units ?? 0),
         });
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load inventory dashboard"))
       .finally(() => setLoading(false));
   }, [user?.branch_id, user?.access_scope, user?.is_admin]);
 
-  const stats = useMemo(() => {
-    const availableTotal = (r) =>
-      Number(r.available_shop_quantity ?? r.shop_quantity ?? 0) +
-      Number(r.available_store_quantity ?? r.store_quantity ?? 0);
-    const inStock = stockRows.filter((r) => availableTotal(r) > 0);
-    const low = stockRows.filter((r) => {
-      const qty = availableTotal(r);
-      if (qty <= 0) return true;
-      return r.product_alert === "REORDER";
-    }).length;
-    const out = stockRows.filter((r) => availableTotal(r) <= 0).length;
-    const totalQty = inStock.reduce((sum, r) => sum + availableTotal(r), 0);
-    return {
-      skus: inStock.length,
-      totalQty,
-      low,
-      out,
-      availableTotal,
-    };
-  }, [stockRows]);
-
   const inStockItems = useMemo(
     () =>
-      [...stockRows]
-        .filter((r) => stats.availableTotal(r) > 0)
-        .sort((a, b) => stats.availableTotal(b) - stats.availableTotal(a))
-        .slice(0, 10)
-        .map((r) => ({
-          ...r,
-          available_total_units: stats.availableTotal(r),
-        })),
-    [stockRows, stats],
+      topStockRows.map((r) => ({
+        ...r,
+        available_total_units: availableTotal(r),
+      })),
+    [topStockRows],
   );
 
   const topByQty = useMemo(
     () =>
-      [...stockRows]
-        .sort((a, b) => stats.availableTotal(b) - stats.availableTotal(a))
+      [...topStockRows]
         .slice(0, 6)
         .map((r, i) => ({
           label: (r.product_name ?? r.product_code ?? "—").slice(0, 18),
-          value: stats.availableTotal(r),
+          value: availableTotal(r),
           color: CHART_COLORS[i % CHART_COLORS.length],
         })),
-    [stockRows, stats],
+    [topStockRows],
   );
 
   const kpiItems = [
@@ -139,9 +137,24 @@ export function InventoryDashboardContent() {
       value: inventoryValue.total != null ? formatReportKes(inventoryValue.total) : "—",
       hint: "Shop + store at cost (on hand)",
     },
-    { id: "skus", label: "SKUs in stock", value: stats.skus.toLocaleString(), hint: "With available quantity" },
-    { id: "low", label: "Low stock", value: stats.low.toLocaleString(), hint: "Below reorder point" },
-    { id: "out", label: "Out of stock", value: stats.out.toLocaleString(), hint: "Zero available" },
+    {
+      id: "skus",
+      label: "SKUs in stock",
+      value: inventoryValue.skus.toLocaleString(),
+      hint: "With on-hand quantity",
+    },
+    {
+      id: "low",
+      label: "Low stock",
+      value: inventoryValue.low.toLocaleString(),
+      hint: "At or below reorder point",
+    },
+    {
+      id: "out",
+      label: "Out of stock",
+      value: inventoryValue.out.toLocaleString(),
+      hint: "Zero on hand",
+    },
   ];
 
   return (
@@ -162,24 +175,21 @@ export function InventoryDashboardContent() {
             <DashboardPanel title="Top products by quantity" subtitle="Highest available units" className="xl:col-span-2">
               <DonutChart segments={topByQty} loading={false} emptyMessage="No stock data." />
             </DashboardPanel>
-            <DashboardPanel
-              title="Stock summary"
-              subtitle="Quick totals"
-            >
+            <DashboardPanel title="Stock summary" subtitle="Quick totals">
               <dl className="space-y-3 text-sm">
                 <div className="flex justify-between gap-4">
                   <dt className="text-slate-500">Total units available</dt>
                   <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
-                    {stats.totalQty.toLocaleString("en-KE", { maximumFractionDigits: 0 })}
+                    {inventoryValue.totalQty.toLocaleString("en-KE", { maximumFractionDigits: 0 })}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-slate-500">Low stock alerts</dt>
-                  <dd className="font-medium text-amber-700">{stats.low}</dd>
+                  <dd className="font-medium text-amber-700">{inventoryValue.low}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-slate-500">Out of stock</dt>
-                  <dd className="font-medium text-red-700">{stats.out}</dd>
+                  <dd className="font-medium text-red-700">{inventoryValue.out}</dd>
                 </div>
                 <div className="flex justify-between gap-4 border-t border-slate-100 pt-3 dark:border-slate-800">
                   <dt className="text-slate-500">Shop value (converted qty × cost)</dt>
@@ -205,7 +215,7 @@ export function InventoryDashboardContent() {
 
           <DashboardSection
             title={ITEMS_CURRENTLY_IN_STOCK_LABEL}
-            subtitle="Products with available quantity right now"
+            subtitle="Highest available quantity right now"
             action={
               <Link href={ITEMS_CURRENTLY_IN_STOCK_HREF} className="text-sm text-[#185FA5] hover:underline">
                 View all
@@ -246,9 +256,7 @@ export function InventoryDashboardContent() {
               ]}
               rows={lowStockRows.map((r) => ({
                 ...r,
-                available_total_units:
-                  Number(r.available_shop_quantity ?? r.shop_quantity ?? 0) +
-                  Number(r.available_store_quantity ?? r.store_quantity ?? 0),
+                available_total_units: availableTotal(r),
               }))}
               formatValue={(key, value, row) =>
                 key === "available_total_units"

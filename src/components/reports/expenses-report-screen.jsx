@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest } from "@/lib/api"
+import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { loadFullReportDataset } from "@/lib/paginated-fetch";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
@@ -31,8 +32,8 @@ export function ExpensesReportScreen({ definition }) {
   const [applied, setApplied] = useState({ fromDate: "", toDate: "", branchId: "" });
 
   useEffect(() => {
-    apiRequest("/branches", { searchParams: { per_page: 100 } })
-      .then((res) => setBranches(res.data ?? []))
+    fetchBranchesCached()
+      .then((rows) => setBranches(rows ?? []))
       .catch(() => setBranches([]));
   }, []);
 

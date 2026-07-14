@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest } from "@/lib/api"
+import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { defaultAccountingDateRange } from "@/lib/accounting-shared";
@@ -35,8 +36,8 @@ export function ProfitLossReportScreen({ definition }) {
   });
 
   useEffect(() => {
-    apiRequest("/branches", { searchParams: { per_page: 100 } })
-      .then((res) => setBranches(res.data ?? []))
+    fetchBranchesCached()
+      .then((rows) => setBranches(rows ?? []))
       .catch(() => setBranches([]));
   }, []);
 
@@ -139,6 +140,13 @@ export function ProfitLossReportScreen({ definition }) {
     },
   ];
 
+  // Materialize accessors for server-side print/PDF (toolbar strips accessors).
+  const exportRows = statementRows.map((row) => ({
+    label: row.label,
+    amount: `${formatReportKes(Math.abs(row.amount))}${row.amount < 0 ? " (Dr)" : ""}`,
+    pct: pct(Math.abs(row.amount), totals.gross_revenue),
+  }));
+
   return (
     <ReportPageShell
       section={definition.section}
@@ -147,7 +155,7 @@ export function ProfitLossReportScreen({ definition }) {
       exportConfig={{
         filename: definition.key ?? "profit-loss",
         columns: exportColumns,
-        getRows: async () => statementRows,
+        getRows: async () => exportRows,
         meta: {
           fromDate: applied.fromDate,
           toDate: applied.toDate,

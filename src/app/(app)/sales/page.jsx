@@ -20,13 +20,13 @@ import { OrderSummaryStats, summarizeOrders } from "@/components/sales/sales-ord
 import { SaleCreatedByCell } from "@/components/sales/sales-orders-columns";
 import {
   buildHourlySalesChart,
-  filterSalesByPeriod,
   formatReceiptNumber,
   formatSaleKes,
   saleCustomerLabel,
   salePlacedAt,
 } from "@/lib/sales";
 import { SaleStatusBadge } from "@/components/sales/sales-shared";
+import { todayCalendarDate } from "@/lib/datetime";
 
 const SALES_LINKS = [
   { href: "/sales/pos", title: "Create order", desc: "Search products, build a cart, and checkout" },
@@ -39,9 +39,18 @@ export default function SalesDashboardPage() {
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const loadData = useCallback(async () => {
+    const today = todayCalendarDate();
     try {
+      // Only today's placed orders — avoid pulling 200 historical rows just to filter client-side.
       const res = await apiRequest("/sales", {
-        searchParams: { per_page: 200, with_items: 0, exclude_status: "held" },
+        searchParams: {
+          per_page: 100,
+          with_items: 0,
+          exclude_status: "held",
+          from_date: today,
+          to_date: today,
+          date_field: "placed",
+        },
       });
       setSales(res.data ?? []);
     } catch (e) {
@@ -55,13 +64,12 @@ export default function SalesDashboardPage() {
     loadData();
   }, [loadData]);
 
-  const todaySales = useMemo(() => filterSalesByPeriod(sales, "day"), [sales]);
-  const orderSummary = useMemo(() => summarizeOrders(todaySales), [todaySales]);
+  const orderSummary = useMemo(() => summarizeOrders(sales), [sales]);
   const hourly = useMemo(() => buildHourlySalesChart(sales), [sales]);
 
   const recentOrders = useMemo(
     () =>
-      [...todaySales]
+      [...sales]
         .sort((a, b) => new Date(salePlacedAt(b)) - new Date(salePlacedAt(a)))
         .slice(0, 8)
         .map((sale) => ({
@@ -72,7 +80,7 @@ export default function SalesDashboardPage() {
           total: sale.order_total,
           status: sale.status,
         })),
-    [todaySales],
+    [sales],
   );
 
   return (

@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError, capturePodDelivery, isMissingProductWeightsError, missingProductWeightsFromError } from "@/lib/api";
-import { fetchRoutesCached } from "@/lib/reference-data-cache";
+import {
+  fetchDriversCached,
+  fetchRoutesCached,
+  fetchVehiclesCached,
+} from "@/lib/reference-data-cache";
 import {
   buildFulfillmentTransitionBody,
   mergeDistributionSettings,
@@ -30,14 +34,14 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
   useEffect(() => {
     if (!distributionSettings.enabled) return;
     Promise.all([
-      apiRequest("/drivers", { searchParams: { per_page: 200 } }),
-      apiRequest("/vehicles", { searchParams: { per_page: 200 } }),
+      fetchDriversCached(user?.organization_id),
+      fetchVehiclesCached(user?.organization_id),
       fetchRoutesCached(user?.organization_id),
     ])
-      .then(([driverRes, vehicleRes, routes]) => {
-        setDrivers(driverRes.data ?? []);
-        setVehicles(vehicleRes.data ?? []);
-        setRoutes(routes ?? []);
+      .then(([driversData, vehiclesData, routesData]) => {
+        setDrivers(driversData ?? []);
+        setVehicles(vehiclesData ?? []);
+        setRoutes(routesData ?? []);
       })
       .catch(() => {});
   }, [distributionSettings.enabled, user?.organization_id]);

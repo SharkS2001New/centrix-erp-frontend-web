@@ -119,7 +119,8 @@ function watermarkHtml(options) {
   }
 
   const label = mode === "text" ? text : text;
-  return `<div class="watermark watermark-text" aria-hidden="true">${escapeHtml(label)}</div>`;
+  const len = Math.max(String(label).length, 8);
+  return `<div class="watermark watermark-text" style="--wm-len:${len}" aria-hidden="true">${escapeHtml(label)}</div>`;
 }
 
 function baseStyles(templateId, options = {}) {
@@ -198,8 +199,24 @@ function baseStyles(templateId, options = {}) {
     a, a:visited { color: inherit; text-decoration: none; }
     .sheet { position: relative; max-width: 800px; margin: 0 auto; background: #fff; border-radius: ${sheetRadius}; overflow: hidden; box-shadow: ${sheetShadow}; border: ${sheetBorder}; }
     .sheet-body { position: relative; z-index: 1; }
-    .watermark { position: absolute; inset: 0; z-index: 0; pointer-events: none; user-select: none; }
-    .watermark-text { display: flex; align-items: center; justify-content: center; font-size: ${space.watermarkText}; font-weight: 800; letter-spacing: 0.08em; color: rgba(15, 23, 42, 0.06); transform: rotate(-28deg); text-transform: uppercase; white-space: nowrap; }
+    .watermark { position: absolute; inset: 0; z-index: 0; pointer-events: none; user-select: none; overflow: hidden; }
+    .watermark-text {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(
+        12px,
+        min(calc(140vw / var(--wm-len, 16)), calc(210vh / var(--wm-len, 16)), 48px),
+        48px
+      );
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: rgba(15, 23, 42, 0.06);
+      transform: rotate(-28deg);
+      text-transform: uppercase;
+      white-space: nowrap;
+      line-height: 1;
+    }
     .watermark-logo { background-repeat: no-repeat; background-position: center; background-size: 40%; opacity: 0.07; }
     .header { padding: ${headerPad}; background: ${headerBg}; color: ${headerColor}; ${headerExtras} }
     .brand { display: flex; align-items: center; gap: ${space.brandGap}; margin-bottom: ${space.brandMarginBottom}; }
@@ -255,7 +272,6 @@ function baseStyles(templateId, options = {}) {
       .footer p { font-size: ${printFooterSize}; margin-bottom: ${p.footerPMargin}; }
       .etims { font-size: ${printFooterSize}; margin: ${p.etimsMargin}; padding: ${p.etimsPad}; }
       .status { font-size: ${printLabelSize}; }
-      .watermark-text { font-size: ${space.printWatermarkText}; }
     }
   `;
 }

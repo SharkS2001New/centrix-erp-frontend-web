@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { useAuth } from "@/contexts/auth-context";
+import { fetchDriversCached, fetchVehiclesCached } from "@/lib/reference-data-cache";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { formatTripRoutesLabel } from "@/lib/trip-routes";
 import { notifyError } from "@/lib/notify";
@@ -37,6 +39,7 @@ export function MergeDispatchTripsDialog({
   const driversFromProps = driversProp ?? EMPTY_LIST;
   const vehiclesFromProps = vehiclesProp ?? EMPTY_LIST;
   const router = useRouter();
+  const { user } = useAuth();
   const [targetTripId, setTargetTripId] = useState("");
   const [driverId, setDriverId] = useState("");
   const [vehicleId, setVehicleId] = useState("");
@@ -63,12 +66,13 @@ export function MergeDispatchTripsDialog({
     if (!open) return;
     let cancelled = false;
     setRefsLoading(true);
+    const orgId = user?.organization_id;
     const loadDrivers = driversFromProps.length
       ? Promise.resolve(driversFromProps)
-      : apiRequest("/drivers", { searchParams: { per_page: 200 } }).then((r) => r.data ?? []);
+      : fetchDriversCached(orgId);
     const loadVehicles = vehiclesFromProps.length
       ? Promise.resolve(vehiclesFromProps)
-      : apiRequest("/vehicles", { searchParams: { per_page: 200 } }).then((r) => r.data ?? []);
+      : fetchVehiclesCached(orgId);
 
     Promise.all([loadDrivers, loadVehicles])
       .then(([drivers, vehicles]) => {
@@ -88,7 +92,7 @@ export function MergeDispatchTripsDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, driversFromProps.length, vehiclesFromProps.length]);
+  }, [open, driversFromProps.length, vehiclesFromProps.length, user?.organization_id]);
 
   const drivers = useMemo(
     () => sortByName(dedupeById([...driversFromProps, ...driversLoaded])),

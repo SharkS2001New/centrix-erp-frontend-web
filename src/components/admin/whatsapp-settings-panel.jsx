@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { whatsappFormFromApi, whatsappPayloadFromForm } from "@/lib/whatsapp-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { useSettingsApi } from "@/contexts/settings-api-context";
+import { fetchBranchesCached, fetchUsersCached } from "@/lib/reference-data-cache";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   WhatsappMetaSetupGuideModal,
@@ -46,15 +47,21 @@ export function WhatsappSettingsPanel({ saving, setSaving, setError, setMessage,
 
   useEffect(() => {
     setLoading(true);
+    const usersPath = organizationApiPath("/users");
+    const branchesPath = organizationApiPath("/branches");
     Promise.all([
       apiRequest(settingsPath("whatsapp")),
-      apiRequest(organizationApiPath("/users"), { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-      apiRequest(organizationApiPath("/branches"), { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+      fetchUsersCached(undefined, { path: usersPath }).catch(() => []),
+      branchesPath === "/branches"
+        ? fetchBranchesCached().catch(() => [])
+        : apiRequest(branchesPath, { searchParams: { per_page: 200 } })
+            .then((r) => r.data ?? [])
+            .catch(() => []),
     ])
-      .then(([res, userRes, branchRes]) => {
+      .then(([res, usersData, branchesData]) => {
         setForm(whatsappFormFromApi(res));
-        setUsers(Array.isArray(userRes?.data) ? userRes.data : []);
-        setBranches(Array.isArray(branchRes?.data) ? branchRes.data : []);
+        setUsers(Array.isArray(usersData) ? usersData : []);
+        setBranches(Array.isArray(branchesData) ? branchesData : []);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load WhatsApp settings"))
       .finally(() => setLoading(false));

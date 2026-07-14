@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
@@ -11,6 +11,11 @@ import { canApproveDiscountRequests } from "@/lib/sales-settings";
 import { canApproveLpoRequests } from "@/lib/procurement-settings";
 import { ApprovalNotificationDetails, isDiscountApprovalNotification, isLpoApprovalNotification } from "@/components/notifications/approval-notification-details";
 import { resolveNotificationLinkAccess } from "@/lib/notification-action-url";
+import {
+  filterNotificationsForWorkspace,
+  notificationWorkspaceQueryParam,
+} from "@/lib/notification-workspace";
+import { resolveActiveWorkspace, workspacesFromCapabilities } from "@/lib/workspaces";
 import { NotificationActionLink } from "@/components/notifications/notification-action-link";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { ActionRequestRejectionDialog } from "@/components/action-request-rejection-dialog";
@@ -119,9 +124,18 @@ function NotificationCard({ item, busy, onApprove, onReject, onOpen, onDismiss, 
 
 export default function NotificationsPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const { capabilities, user, organization, isSuperAdmin, hasPermission } = useAuth();
   const canApproveDiscounts = canApproveDiscountRequests({ hasPermission, capabilities });
   const canApproveLpos = canApproveLpoRequests({ hasPermission, capabilities });
+  const workspaceId = useMemo(() => {
+    const workspaces = workspacesFromCapabilities(capabilities);
+    return resolveActiveWorkspace(workspaces, getStoredWorkspace(), pathname)?.id ?? null;
+  }, [capabilities, pathname]);
+  const workspaceParams = useMemo(
+    () => notificationWorkspaceQueryParam(workspaceId),
+    [workspaceId],
+  );
   const [bucket, setBucket] = useState("pending_approvals");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -138,16 +152,18 @@ export default function NotificationsPage() {
         searchParams: {
           bucket: bucket || undefined,
           per_page: 30,
+          ...workspaceParams,
         },
       });
-      setItems(Array.isArray(res?.data) ? res.data : []);
+      const rows = Array.isArray(res?.data) ? res.data : [];
+      setItems(filterNotificationsForWorkspace(rows, workspaceId));
       setMeta(res?.meta ?? null);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Could not load notifications.");
     } finally {
       setLoading(false);
     }
-  }, [bucket]);
+  }, [bucket, workspaceId, workspaceParams]);
 
   useEffect(() => {
     void load();

@@ -8,6 +8,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
+import { fetchFulfillmentRefsCached } from "@/lib/reference-data-cache";
 import { CatalogPageShell, Field, PaginationBar, PrimaryLink, inputClassName, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { CreateDispatchTripDialog } from "@/components/fulfillment/create-dispatch-trip-dialog";
 import { DashboardSection, DashboardSummaryTable } from "@/components/dashboard/dashboard-shared";
@@ -32,7 +33,7 @@ const EMPTY_LIST = [];
 
 export function DispatchBoardContent() {
   const router = useRouter();
-  const { capabilities } = useAuth();
+  const { capabilities, user } = useAuth();
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
   const distributionSettings = useMemo(
     () => mergeDistributionSettings(capabilities),
@@ -57,6 +58,23 @@ export function DispatchBoardContent() {
     saleIds: [],
   });
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchFulfillmentRefsCached(user?.organization_id)
+      .then(({ routes: nextRoutes, drivers: nextDrivers, vehicles: nextVehicles }) => {
+        if (cancelled) return;
+        setRoutes(nextRoutes ?? []);
+        setDrivers(nextDrivers ?? []);
+        setVehicles(nextVehicles ?? []);
+      })
+      .catch(() => {
+        /* non-blocking refs */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.organization_id]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -71,21 +89,13 @@ export function DispatchBoardContent() {
       }
       if (routeFilter !== "all") extra.route_id = routeFilter;
 
-      const [salesRes, routeRes, driverRes, vehicleRes] = await Promise.all([
-        apiRequest("/sales", {
-          searchParams: buildPageParams({ page, perPage: pageSize, extra }),
-        }),
-        apiRequest("/routes", { searchParams: { per_page: 200 } }),
-        apiRequest("/drivers", { searchParams: { per_page: 200 } }),
-        apiRequest("/vehicles", { searchParams: { per_page: 200 } }),
-      ]);
+      const salesRes = await apiRequest("/sales", {
+        searchParams: buildPageParams({ page, perPage: pageSize, extra }),
+      });
       const parsed = parsePaginator(salesRes);
       setSales(parsed.items);
       setTotalOrders(parsed.total);
       setTotalPages(parsed.totalPages);
-      setRoutes(routeRes.data ?? []);
-      setDrivers(driverRes.data ?? []);
-      setVehicles(vehicleRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load dispatch data");
     } finally {

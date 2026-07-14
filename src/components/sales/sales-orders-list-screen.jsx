@@ -42,7 +42,6 @@ import {
   OrderListTableRow,
   OrderSummaryStats,
   buildOrderContextMenuItems,
-  indexSalesWithItems,
   ORDER_MIN_TOTAL_OPTIONS,
   saleBranchLabel,
   summarizeOrders,
@@ -56,6 +55,8 @@ import {
   getOrdersListDefaultDateRange,
   getOrdersListSort,
   isOrgMobileSalesEnabled,
+  orderListDateRangeUsesArchive,
+  ORDERS_HOT_WINDOW_DAYS,
   orderListPrintAriaLabel,
   sortOrdersForList,
 } from "@/lib/sales-settings";
@@ -147,6 +148,7 @@ export default function SalesOrdersListScreen({
   const [toDate, setToDate] = useState("");
   const [appliedFromDate, setAppliedFromDate] = useState("");
   const [appliedToDate, setAppliedToDate] = useState("");
+  const [listScope, setListScope] = useState(null);
   const [listFiltersInitialized, setListFiltersInitialized] = useState(false);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(15);
@@ -293,6 +295,15 @@ export default function SalesOrdersListScreen({
     showDiscountColumn,
   });
 
+  const loadingFromArchive =
+    Boolean(listScope?.from_archive) ||
+    orderListDateRangeUsesArchive(
+      appliedFromDate,
+      queueConfig?.dateRangeDays || ORDERS_HOT_WINDOW_DAYS,
+    );
+  const showArchiveLoading =
+    (loading || listLoading) && (loadingFromArchive || Boolean(debouncedSearch.trim()));
+
   const loadOrders = useCallback(async () => {
     if (!listFiltersInitialized) return;
     setListLoading(true);
@@ -310,7 +321,7 @@ export default function SalesOrdersListScreen({
 
       const extra = {
         exclude_status: "held",
-        with_items: 1,
+        with_items: 0,
         sort: ordersListSort,
       };
       if (queueConfig?.excludeStatuses?.length) {
@@ -329,6 +340,8 @@ export default function SalesOrdersListScreen({
       }
       if (appliedFromDate) extra.from_date = appliedFromDate;
       if (appliedToDate) extra.to_date = appliedToDate;
+      // Match "Placed by" column — filter on when the order was created/booked.
+      if (appliedFromDate || appliedToDate) extra.date_field = "placed";
       if (minTotalFilter) extra.min_order_total = minTotalFilter;
       if (routeFilter && routeFilter !== "all") {
         extra.route_id = routeFilter;
@@ -348,10 +361,21 @@ export default function SalesOrdersListScreen({
       const parsed = parsePaginator(res);
       const list = sortOrdersForList(parsed.items, ordersListSort);
 
+      setListScope(res?.list_scope ?? null);
       setRows(list);
       setTotalOrders(parsed.total);
       setTotalPages(parsed.totalPages);
-      setDetailsById(indexSalesWithItems(list));
+      // Items load on expand via loadOrderDetail — keep any already-fetched details.
+      setDetailsById((prev) => {
+        const next = { ...prev };
+        for (const sale of list) {
+          const key = String(sale.id);
+          if (next[key]?.items === undefined && sale.items !== undefined) {
+            next[key] = sale;
+          }
+        }
+        return next;
+      });
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load orders");
     } finally {
@@ -938,11 +962,45 @@ export default function SalesOrdersListScreen({
       banner={actionMessage ? <ActionFeedbackBanner message={actionMessage} /> : null}
     >
       <div className="mt-8 space-y-6">
+        {showArchiveLoading ? (
+          <div
+            className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+            role="status"
+            aria-live="polite"
+          >
+            <span
+              className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-amber-700 border-t-transparent"
+              aria-hidden
+            />
+            <span>
+              <strong className="font-semibold">Loading from archives — please wait.</strong>
+              <span className="mt-0.5 block text-xs text-amber-900/80 sm:mt-0 sm:ml-1 sm:inline">
+                Your date range includes orders older than{" "}
+                {listScope?.hot_window_days ||
+                  queueConfig?.dateRangeDays ||
+                  ORDERS_HOT_WINDOW_DAYS}{" "}
+                days
+                {debouncedSearch.trim() ? ", or you searched across history" : ""}.
+              </span>
+            </span>
+          </div>
+        ) : null}
         {!loading ? (
           <OrderSummaryStats summary={summary} hint={summaryHint} />
         ) : null}
 
-        <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
+        <div className="theme-panel theme-table-shell relative overflow-hidden rounded-xl shadow-sm">
+          {showArchiveLoading ? (
+            <div className="absolute inset-0 z-10 flex min-h-[280px] items-center justify-center bg-white/70 backdrop-blur-[1px]">
+              <div className="flex flex-col items-center gap-3 px-6 text-center">
+                <span
+                  className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
+                  aria-hidden
+                />
+                <p className="text-sm font-medium text-slate-800">Loading from archives, please wait…</p>
+              </div>
+            </div>
+          ) : null}
           {loading ? (
             <div className="min-h-[280px]" aria-hidden />
           ) : pageSlice.length === 0 ? (

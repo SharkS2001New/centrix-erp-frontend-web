@@ -774,7 +774,7 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
       showDeliveryDateColumn: true,
       lockStatusFilter: true,
       lockSourceFilter: false,
-      dateRangeDays: 30,
+      dateRangeDays: 6,
       excludeFromMetrics: true,
     };
   }
@@ -856,6 +856,8 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
     showDeliveryDateColumn: false,
     lockStatusFilter: true,
     lockSourceFilter: false,
+    // Completed (and delivered) stay light by default — widen From/To to load older history.
+    ...(step.key === "completed" || step.key === "delivered" ? { dateRangeDays: 6 } : {}),
   };
 }
 

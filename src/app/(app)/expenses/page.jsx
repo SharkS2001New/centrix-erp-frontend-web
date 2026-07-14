@@ -28,6 +28,7 @@ import { EXPENSE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { defaultAccountingDateRange } from "@/lib/accounting-shared";
+import { fetchUsersCached } from "@/lib/reference-data-cache";
 
 const SORT_STORAGE_KEY = "centrix-erp-expenses-sort";
 
@@ -129,22 +130,22 @@ export default function ExpensesPage() {
 
   const loadReferenceData = useCallback(async () => {
     try {
-      const [groupRes, pmRes, userRes, statsRes] = await Promise.all([
+      const [groupRes, pmRes, usersData, statsRes] = await Promise.all([
         apiRequest("/expense-groups", { searchParams: { per_page: 200 } }),
         apiRequest("/payment-methods", { searchParams: { per_page: 50 } }),
-        apiRequest("/users", { searchParams: { per_page: 200 } }),
+        fetchUsersCached(user?.organization_id),
         apiRequest("/expenses/summary").catch(() => null),
       ]);
       setGroups(groupRes.data ?? []);
       setPaymentMethods(pmRes.data ?? []);
-      setUsers(userRes.data ?? []);
+      setUsers(usersData ?? []);
       if (statsRes) setExpenseStats(statsRes);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load expenses");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.organization_id]);
 
   const loadExpenses = useCallback(async () => {
     setListLoading(true);

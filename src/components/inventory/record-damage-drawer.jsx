@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductCatalogCached } from "@/lib/catalog-cache";
+import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { isDamageWriteOffApprovalEnabled } from "@/lib/sales-settings";
 import { notifySuccess } from "@/lib/notify";
@@ -12,6 +12,7 @@ import {
   PrimaryButton,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import { ProductSearchSelect } from "@/components/catalog/product-search-select";
 import { formatPackagingLabel } from "@/components/lpo/lpo-product-utils";
 import {
   DamageMeasureSelect,
@@ -26,7 +27,7 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
   const { user, capabilities, hasPermission } = useAuth();
   const branchId = user?.branch_id ?? 1;
 
-  const [products, setProducts] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null);
   const [uoms, setUoms] = useState([]);
   const [form, setForm] = useState({
     product_code: "",
@@ -41,29 +42,18 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
 
   useEffect(() => {
     if (!open) return;
-    Promise.all([
-      fetchProductCatalogCached(user?.organization_id, { status: "all" }),
-      apiRequest("/uoms", { searchParams: { per_page: 200 } }),
-    ])
-      .then(([catalogProducts, uomRes]) => {
-        setProducts(catalogProducts ?? []);
-        setUoms(uomRes.data ?? []);
-      })
-      .catch(() => {
-        setProducts([]);
-        setUoms([]);
-      });
+    fetchUomsCached(user?.organization_id)
+      .then((uomRows) => setUoms(uomRows ?? []))
+      .catch(() => setUoms([]));
   }, [open, user?.organization_id]);
 
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
 
-  const selectedProduct = useMemo(() => {
-    if (!form.product_code) return null;
-    const product = products.find((p) => p.product_code === form.product_code);
-    if (!product) return null;
-    const uom = uomById.get(product.unit_id);
-    return { ...product, uom };
-  }, [form.product_code, products, uomById]);
+  const productWithUom = useMemo(() => {
+    if (!form.product_code || !selectedProduct) return null;
+    const uom = uomById.get(selectedProduct.unit_id);
+    return { ...selectedProduct, uom };
+  }, [form.product_code, selectedProduct, uomById]);
 
   function reset() {
     setForm({
@@ -74,6 +64,7 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
       reason: "",
       notes: "",
     });
+    setSelectedProduct(null);
     setError(null);
   }
 
@@ -83,18 +74,18 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
     onClose();
   }
 
-  function handleProductChange(productCode) {
-    const product = products.find((p) => p.product_code === productCode);
+  function handleProductSelect(product) {
     const uom = product ? uomById.get(product.unit_id) : null;
+    setSelectedProduct(product);
     setForm((p) => ({
       ...p,
-      product_code: productCode,
+      product_code: product?.product_code ?? "",
       package_type: defaultDamagePackageType(uom),
     }));
   }
 
   function quantityLabel() {
-    const label = damageMeasureLabel(selectedProduct?.uom, form.package_type);
+    const label = damageMeasureLabel(productWithUom?.uom, form.package_type);
     return `Quantity (${label})`;
   }
 
@@ -103,7 +94,7 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
     setSaving(true);
     setError(null);
     try {
-      const uom = selectedProduct?.uom;
+      const uom = productWithUom?.uom;
       const baseQty = damageQtyToBase(form.quantity, form.package_type, uom);
       const reason = [form.reason.trim(), form.notes.trim()].filter(Boolean).join(" — ");
       const body = {
@@ -151,28 +142,24 @@ export function RecordDamageDrawer({ open, onClose, onSaved }) {
         ) : null}
 
         <Field label="Product">
-          <select
-            className={inputClassName()}
+          <ProductSearchSelect
             value={form.product_code}
-            onChange={(e) => handleProductChange(e.target.value)}
+            onChange={(code) => {
+              if (!code) handleProductSelect(null);
+              else setForm((p) => ({ ...p, product_code: code }));
+            }}
+            onProductSelect={handleProductSelect}
             required
-          >
-            <option value="">Select product…</option>
-            {products.map((p) => (
-              <option key={p.product_code} value={p.product_code}>
-                {p.product_name} ({p.product_code})
-              </option>
-            ))}
-          </select>
+          />
         </Field>
 
-        {selectedProduct?.uom ? (
-          <p className="text-xs text-slate-500">Pack size: {formatPackagingLabel(selectedProduct.uom)}</p>
+        {productWithUom?.uom ? (
+          <p className="text-xs text-slate-500">Pack size: {formatPackagingLabel(productWithUom.uom)}</p>
         ) : null}
 
         <Field label="Measured as">
           <DamageMeasureSelect
-            uom={selectedProduct?.uom}
+            uom={productWithUom?.uom}
             value={form.package_type}
             onChange={(package_type) => setForm((p) => ({ ...p, package_type }))}
             className={inputClassName()}

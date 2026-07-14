@@ -5,18 +5,24 @@ import { usePathname } from "next/navigation";
 import { TabPaneActivityProvider } from "@/contexts/tab-pane-activity-context";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { isTabWorkspaceRoute, normalizeTabHref } from "@/lib/tab-workspace";
+import { pathBelongsToWorkspace } from "@/lib/workspaces";
+
+/** Active tab + this many recently visited inactive tabs stay fully mounted. */
+const KEEP_ALIVE_INACTIVE = 2;
 
 /**
- * Keep every open workspace tab mounted so loaded lists/forms stay in memory.
- * Returning to a tab reuses the cached React tree — never swap in fresh Next.js
- * `children` on revisit (that remounts the page and refetches). Closing a tab
- * drops its cache; browser refresh remounts everything.
+ * Keep a hot set of workspace tabs mounted so recent lists/forms stay in memory.
+ * Older inactive tabs are soft-unmounted (React tree dropped; tab chrome stays).
+ * Returning to a soft-unmounted tab remounts from Next.js `children` and refetches.
+ * Closing a tab drops its cache; browser refresh remounts everything.
  */
 export function TabWorkspaceMain({ children }) {
   const pathname = usePathname();
   const { enabled, tabs, activeHref: workspaceActiveHref, workspaceId } = useTabWorkspace();
   const [paneCache, setPaneCache] = useState(() => new Map());
   const [cacheWorkspaceId, setCacheWorkspaceId] = useState(workspaceId);
+  /** Most-recently-active last — used to pick which inactive panes stay hot. */
+  const [visitOrder, setVisitOrder] = useState(() => []);
 
   const routeHref = normalizeTabHref(pathname);
   const activeHref = normalizeTabHref(workspaceActiveHref || routeHref);
@@ -27,25 +33,55 @@ export function TabWorkspaceMain({ children }) {
     for (const tab of tabs) {
       const href = normalizeTabHref(tab.href);
       if (!href || seen.has(href)) continue;
+      if (workspaceId && !pathBelongsToWorkspace(href, workspaceId)) continue;
       seen.add(href);
       hrefs.push(href);
     }
-    if (activeHref && !seen.has(activeHref)) {
+    if (
+      activeHref &&
+      !seen.has(activeHref) &&
+      (!workspaceId || pathBelongsToWorkspace(activeHref, workspaceId))
+    ) {
       hrefs.unshift(activeHref);
     }
     return hrefs;
-  }, [activeHref, tabs]);
+  }, [activeHref, tabs, workspaceId]);
+
+  const liveHrefs = useMemo(() => {
+    const allowed = new Set(mountedHrefs);
+    const live = new Set();
+    if (activeHref && allowed.has(activeHref)) live.add(activeHref);
+
+    for (let i = visitOrder.length - 1; i >= 0 && live.size < 1 + KEEP_ALIVE_INACTIVE; i -= 1) {
+      const href = visitOrder[i];
+      if (allowed.has(href)) live.add(href);
+    }
+
+    return live;
+  }, [activeHref, mountedHrefs, visitOrder]);
 
   // Reset pane cache when the workspace changes (render-safe, no ref reads).
   if (cacheWorkspaceId !== workspaceId) {
     setCacheWorkspaceId(workspaceId);
     setPaneCache(new Map());
+    setVisitOrder([]);
   }
 
-  // Seed / refresh only the *active* route the first time it opens.
-  // Never overwrite an existing pane — that would remount and refetch.
+  // Track LRU visit order for soft-unmount decisions.
+  useLayoutEffect(() => {
+    if (!enabled || !activeHref) return;
+    setVisitOrder((prev) => {
+      const next = prev.filter((href) => href !== activeHref);
+      next.push(activeHref);
+      return next;
+    });
+  }, [activeHref, enabled]);
+
+  // Seed / refresh only the *active* route the first time it opens (or after soft-unmount).
+  // Never overwrite an existing hot pane — that would remount and refetch.
   useLayoutEffect(() => {
     if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) return;
+    if (!workspaceId || !pathBelongsToWorkspace(pathname, workspaceId)) return;
 
     const href = normalizeTabHref(pathname);
     setPaneCache((prev) => {
@@ -54,9 +90,9 @@ export function TabWorkspaceMain({ children }) {
       next.set(href, children);
       return next;
     });
-  }, [children, enabled, pathname]);
+  }, [children, enabled, pathname, workspaceId]);
 
-  // Drop panes for closed tabs.
+  // Drop panes for closed tabs and soft-unmount cold inactive tabs.
   useLayoutEffect(() => {
     if (!enabled) return;
 
@@ -65,14 +101,19 @@ export function TabWorkspaceMain({ children }) {
       let changed = false;
       const next = new Map(prev);
       for (const href of [...next.keys()]) {
-        if (!allowed.has(href)) {
+        if (!allowed.has(href) || !liveHrefs.has(href)) {
           next.delete(href);
           changed = true;
         }
       }
       return changed ? next : prev;
     });
-  }, [enabled, mountedHrefs]);
+
+    setVisitOrder((prev) => {
+      const next = prev.filter((href) => allowed.has(href));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [enabled, liveHrefs, mountedHrefs]);
 
   if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) {
     return children;
@@ -82,6 +123,8 @@ export function TabWorkspaceMain({ children }) {
     <>
       {mountedHrefs.map((href) => {
         const isActive = href === activeHref;
+        if (!liveHrefs.has(href) && !isActive) return null;
+
         const pane = paneCache.get(href) ?? (isActive ? children : null);
         if (!pane) return null;
 

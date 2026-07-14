@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import {
+  fetchEmployeesCached,
+  fetchRoutesCached,
+  fetchUsersCached,
+  fetchVehiclesCached,
+} from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
@@ -50,6 +56,7 @@ export default function DriversPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const handledParams = useRef("");
+  const drawerOptionsLoadedRef = useRef(false);
   const { user } = useAuth();
 
   const [drivers, setDrivers] = useState([]);
@@ -84,26 +91,47 @@ export default function DriversPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [driverRes, routeRes, vehicleRes, userRes, employeeRes, salesRes] = await Promise.all([
+      const today = new Date().toISOString().slice(0, 10);
+      const [driverRes, routes, vehicles, salesRes] = await Promise.all([
         apiRequest("/drivers", { searchParams: { per_page: 200 } }),
-        apiRequest("/routes", { searchParams: { per_page: 200 } }),
-        apiRequest("/vehicles", { searchParams: { per_page: 200 } }),
-        apiRequest("/users", { searchParams: { per_page: 200 } }),
-        apiRequest("/employees", { searchParams: { per_page: 500 } }).catch(() => ({ data: [] })),
-        apiRequest("/sales", { searchParams: { per_page: 500 } }),
+        fetchRoutesCached(user?.organization_id),
+        fetchVehiclesCached(user?.organization_id),
+        apiRequest("/sales", {
+          searchParams: {
+            per_page: 200,
+            with_items: 0,
+            from_date: today,
+            to_date: today,
+            date_field: "placed",
+          },
+        }),
       ]);
       setDrivers(driverRes.data ?? []);
-      setRoutes(routeRes.data ?? []);
-      setVehicles(vehicleRes.data ?? []);
-      setUsers(userRes.data ?? []);
-      setEmployees(employeeRes.data ?? []);
+      setRoutes(routes ?? []);
+      setVehicles(vehicles ?? []);
       setSales(salesRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load drivers");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.organization_id]);
+
+  const loadDrawerOptions = useCallback(async () => {
+    if (drawerOptionsLoadedRef.current) return;
+    drawerOptionsLoadedRef.current = true;
+    try {
+      const orgId = user?.organization_id;
+      const [usersData, employeesData] = await Promise.all([
+        fetchUsersCached(orgId),
+        fetchEmployeesCached(orgId).catch(() => []),
+      ]);
+      setUsers(usersData ?? []);
+      setEmployees(employeesData ?? []);
+    } catch {
+      drawerOptionsLoadedRef.current = false;
+    }
+  }, [user?.organization_id]);
 
   useEffect(() => {
     loadData();
@@ -167,6 +195,7 @@ export default function DriversPage() {
     setForm({ ...EMPTY_DRIVER_FORM });
     setFormError(null);
     setDrawerOpen(true);
+    void loadDrawerOptions();
   }
 
   function openEditDrawer(driver) {
@@ -175,6 +204,7 @@ export default function DriversPage() {
     setForm(driverToForm(driver));
     setFormError(null);
     setDrawerOpen(true);
+    void loadDrawerOptions();
   }
 
   function closeDrawer() {

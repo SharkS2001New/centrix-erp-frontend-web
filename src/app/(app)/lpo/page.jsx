@@ -32,6 +32,7 @@ import { canApproveLpoRequests } from "@/lib/procurement-settings";
 import { formatLpoKes, formatPoNumber, lpoDisplayNumber, lpoOrderDate, LpoStatusBadge } from "@/components/lpo/lpo-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { fetchSuppliersCached } from "@/lib/reference-data-cache";
 
 
 function PlusIcon() {
@@ -72,22 +73,22 @@ export default function LpoListPage() {
 
   const loadReferenceData = useCallback(async () => {
     try {
-      const [dashRes, supRes, statusRes] = await Promise.all([
+      const [dashRes, suppliersData, statusRes] = await Promise.all([
         apiRequest("/lpo-mst/dashboard"),
-        apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
+        fetchSuppliersCached(user?.organization_id),
         apiRequest("/lpo-statuses", { searchParams: { per_page: 50 } }).catch(() => ({
           data: [],
         })),
       ]);
       setDashboard(dashRes);
-      setSuppliers(supRes.data ?? []);
+      setSuppliers(suppliersData ?? []);
       setStatuses(statusRes.data ?? statusRes ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load purchase orders");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.organization_id]);
 
   const loadRows = useCallback(async () => {
     setListLoading(true);

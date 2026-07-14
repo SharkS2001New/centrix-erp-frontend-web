@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest } from "@/lib/api"
+import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { defaultDashboardDateRange } from "@/lib/dashboard-dates";
 import { defaultReportBranchId } from "@/lib/reports/report-filters";
@@ -78,8 +79,8 @@ export function ReportsDashboardSection({
 
   useEffect(() => {
     if (!enabled) return;
-    apiRequest("/branches", { searchParams: { per_page: 100 } })
-      .then((res) => setBranches(res.data ?? []))
+    fetchBranchesCached()
+      .then((rows) => setBranches(rows ?? []))
       .catch(() => setBranches([]));
   }, []);
 

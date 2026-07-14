@@ -7,6 +7,11 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useAuth } from "@/contexts/auth-context";
 import {
+  fetchCategoriesCached,
+  fetchSubCategoriesCached,
+  fetchSuppliersCached,
+} from "@/lib/reference-data-cache";
+import {
   Field,
   FormModal,
   IconButton,
@@ -72,20 +77,21 @@ export default function StockTakeListPage() {
 
   const loadReferenceData = useCallback(async () => {
     try {
-      const [categoryRes, subCategoryRes, supplierRes] = await Promise.all([
-        apiRequest("/categories", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
-        apiRequest("/sub-categories", { searchParams: { per_page: 500 } }).catch(() => ({ data: [] })),
-        apiRequest("/suppliers", { searchParams: { per_page: 200 } }).catch(() => ({ data: [] })),
+      const orgId = user?.organization_id;
+      const [categoriesData, subCategoriesData, suppliersData] = await Promise.all([
+        fetchCategoriesCached(orgId).catch(() => []),
+        fetchSubCategoriesCached(orgId).catch(() => []),
+        fetchSuppliersCached(orgId).catch(() => []),
       ]);
-      setCategories(categoryRes.data ?? []);
-      setSubCategories(subCategoryRes.data ?? []);
-      setSuppliers(supplierRes.data ?? []);
+      setCategories(categoriesData ?? []);
+      setSubCategories(subCategoriesData ?? []);
+      setSuppliers(suppliersData ?? []);
     } catch {
       setCategories([]);
       setSubCategories([]);
       setSuppliers([]);
     }
-  }, []);
+  }, [user?.organization_id]);
 
   const load = useCallback(async () => {
     setLoading(true);
