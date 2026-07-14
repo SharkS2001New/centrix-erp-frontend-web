@@ -7,6 +7,9 @@ export const REPORTS_WITHOUT_DATE_FILTER = new Set([
   "low-stock",
   "headcount",
   "items-currently-in-stock",
+  "staff-turnover",
+  "leave-balance",
+  "hr-dashboard-kpi",
 ]);
 
 /** Default inclusive window length (days ending today) per report. */
@@ -125,6 +128,7 @@ export const REPORT_DATE_COLUMNS = {
   "audit-trail": "created_at",
   "statutory-deductions": "run_date",
   "bank-transfer": "run_date",
+  "payroll-summary": "run_date",
   headcount: "hire_date",
   "contract-expiry": "contract_end_date",
   "stock-receipts": "receipt_date",

@@ -7,6 +7,7 @@ import { apiRequest, resolveCustomerMediaUrl } from "@/lib/api";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
 import { CustomerLocationSection } from "@/components/customers/customer-location-section";
 import { CustomerShopImageField } from "@/components/customers/customer-shop-image-field";
+import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
 import { customerLocationPayload } from "@/lib/customer-location";
 
 export const EMPTY_CUSTOMER_FORM = {
@@ -281,21 +282,16 @@ export function CustomerFormFields({
 
       {routeCustomersOnly || form.customer_type === "route" ? (
         <Field label="Route" required>
-          <select
+          <HrSearchableSelect
             value={form.route_id}
-            onChange={(e) => onChange("route_id", e.target.value)}
+            onChange={(v) => onChange("route_id", v)}
+            options={routes.map((r) => ({
+              value: String(r.id),
+              label: r.route_name ?? `Route #${r.id}`,
+            }))}
+            placeholder="Select route"
             required
-            className={inputClassName()}
-          >
-            <option value="" disabled>
-              Select route
-            </option>
-            {routes.map((r) => (
-              <option key={r.id} value={String(r.id)}>
-                {r.route_name}
-              </option>
-            ))}
-          </select>
+          />
           {routeCustomersOnly ? (
             <p className="mt-1 text-xs text-slate-500">
               Every customer in a distribution company is assigned to a sales or delivery route.
