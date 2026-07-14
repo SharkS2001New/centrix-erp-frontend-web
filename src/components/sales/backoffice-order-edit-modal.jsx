@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchRetailPackagesCached } from "@/lib/reference-data-cache";
 import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
@@ -150,6 +150,8 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
   const { hasPermission } = useAuth();
   const [lines, setLines] = useState([]);
   const [removedIds, setRemovedIds] = useState([]);
+  const [baselineDraft, setBaselineDraft] = useState([]);
+  const [baselineRemovedIds, setBaselineRemovedIds] = useState([]);
   const [retailByCode, setRetailByCode] = useState({});
   const [addProductCode, setAddProductCode] = useState("");
   const [addAsRetail, setAddAsRetail] = useState(false);
@@ -157,8 +159,6 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [leavePromptOpen, setLeavePromptOpen] = useState(false);
-  const baselineRef = useRef([]);
-  const removedBaselineRef = useRef([]);
 
   const posSalesConfig = useMemo(
     () => getPosSalesConfig(capabilities?.module_settings),
@@ -183,14 +183,14 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       setRetailByCode(retailMap);
       const nextLines = (detail.items ?? []).map((line) => buildEditLine(line, uomById, retailMap));
       setLines(nextLines);
-      baselineRef.current = snapshotDraft(nextLines);
-      removedBaselineRef.current = [];
+      setBaselineDraft(snapshotDraft(nextLines));
+      setBaselineRemovedIds([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load order lines.");
       setLines([]);
       setRetailByCode({});
-      baselineRef.current = [];
-      removedBaselineRef.current = [];
+      setBaselineDraft([]);
+      setBaselineRemovedIds([]);
     } finally {
       setLoading(false);
     }
@@ -205,8 +205,8 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       setAddAsRetail(false);
       setError(null);
       setLeavePromptOpen(false);
-      baselineRef.current = [];
-      removedBaselineRef.current = [];
+      setBaselineDraft([]);
+      setBaselineRemovedIds([]);
       return;
     }
     void loadItems();
@@ -222,12 +222,12 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
   );
 
   const dirty = useMemo(() => {
-    if (!draftsEqual(snapshotDraft(lines), baselineRef.current)) return true;
+    if (!draftsEqual(snapshotDraft(lines), baselineDraft)) return true;
     const sortedRemoved = [...removedIds].sort((a, b) => a - b);
-    const sortedBaseline = [...removedBaselineRef.current].sort((a, b) => a - b);
+    const sortedBaseline = [...baselineRemovedIds].sort((a, b) => a - b);
     if (sortedRemoved.length !== sortedBaseline.length) return true;
     return sortedRemoved.some((id, index) => id !== sortedBaseline[index]);
-  }, [lines, removedIds]);
+  }, [lines, removedIds, baselineDraft, baselineRemovedIds]);
 
   const totals = useMemo(() => {
     return lines.reduce(
@@ -376,8 +376,8 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
         body,
       });
       setLeavePromptOpen(false);
-      baselineRef.current = snapshotDraft(lines);
-      removedBaselineRef.current = [];
+      setBaselineDraft(snapshotDraft(lines));
+      setBaselineRemovedIds([]);
       onSaved?.(updated);
       return true;
     } catch (e) {
