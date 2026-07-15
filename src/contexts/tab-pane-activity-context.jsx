@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 const defaultValue = {
   isActive: true,
@@ -18,25 +18,21 @@ const TabPaneActivityContext = createContext(defaultValue);
  * return-to-tab to refetch. Abort only runs when the pane unmounts (tab closed).
  */
 export function TabPaneActivityProvider({ paneHref, isActive, children }) {
-  const abortControllerRef = useRef(null);
-  if (abortControllerRef.current == null) {
-    abortControllerRef.current = new AbortController();
-  }
+  const [abortController] = useState(() => new AbortController());
 
   useEffect(() => {
-    const controller = abortControllerRef.current;
     return () => {
-      controller?.abort();
+      abortController.abort();
     };
-  }, []);
+  }, [abortController]);
 
   const value = useMemo(
     () => ({
       isActive,
       paneHref,
-      abortSignal: abortControllerRef.current?.signal ?? null,
+      abortSignal: abortController.signal,
     }),
-    [isActive, paneHref],
+    [abortController, isActive, paneHref],
   );
 
   return <TabPaneActivityContext.Provider value={value}>{children}</TabPaneActivityContext.Provider>;
