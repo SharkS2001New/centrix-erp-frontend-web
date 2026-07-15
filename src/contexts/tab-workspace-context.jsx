@@ -25,6 +25,7 @@ import {
   setOpenTabReuseChecker,
   shouldReuseOpenTab,
   syncOpenTabUrl,
+  tabPaneKey,
   titleFromPathname,
   writeTabWorkspaceStore,
 } from "@/lib/tab-workspace";
@@ -146,21 +147,29 @@ export function TabWorkspaceProvider({ children }) {
       const normalized = hrefFromLinkProp(href);
       if (!workspaceId || !isTabWorkspaceRoute(normalized)) return;
       if (!pathBelongsToWorkspace(normalized, workspaceId)) return;
+      const paneKey = tabPaneKey(normalized);
+      const storageHref = normalizeTabHref(paneKey);
 
       setTabStore((store) =>
         updateWorkspaceTabs(store, workspaceId, (current) => {
-          const existing = current.tabs.find((tab) => tab.href === normalized);
+          const existing =
+            current.tabs.find((tab) => tab.href === storageHref) ??
+            current.tabs.find((tab) => tabPaneKey(tab.href) === paneKey);
           const resolvedTitle =
-            titleOverridesRef.current.get(normalized) ?? title ?? titleFromPathname(normalized);
+            titleOverridesRef.current.get(storageHref) ??
+            titleOverridesRef.current.get(normalized) ??
+            title ??
+            titleFromPathname(storageHref);
 
           if (existing) {
             return {
               ...current,
-              activeHref: normalized,
+              activeHref: storageHref,
               tabs: current.tabs.map((tab) =>
-                tab.href === normalized
+                tabPaneKey(tab.href) === paneKey
                   ? {
                       ...tab,
+                      href: storageHref,
                       title: resolvedTitle,
                       dirty: dirty || tab.dirty,
                       lastActiveAt: Date.now(),
@@ -170,11 +179,11 @@ export function TabWorkspaceProvider({ children }) {
             };
           }
 
-          const dedupedTabs = current.tabs.filter((tab) => tab.href !== normalized);
+          const dedupedTabs = current.tabs.filter((tab) => tabPaneKey(tab.href) !== paneKey);
           const nextTabs = [
             ...dedupedTabs,
             {
-              href: normalized,
+              href: storageHref,
               title: resolvedTitle,
               dirty,
               lastActiveAt: Date.now(),
@@ -182,7 +191,7 @@ export function TabWorkspaceProvider({ children }) {
           ];
 
           if (nextTabs.length <= TAB_WORKSPACE_MAX_TABS) {
-            return { ...current, activeHref: normalized, tabs: nextTabs };
+            return { ...current, activeHref: storageHref, tabs: nextTabs };
           }
 
           const sorted = [...nextTabs].sort(
@@ -191,7 +200,7 @@ export function TabWorkspaceProvider({ children }) {
           const evicted = sorted[0]?.href;
           return {
             ...current,
-            activeHref: normalized,
+            activeHref: storageHref,
             tabs: nextTabs.filter((tab) => tab.href !== evicted),
           };
         }),

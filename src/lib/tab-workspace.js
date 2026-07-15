@@ -106,7 +106,12 @@ export function hrefFromLinkProp(href) {
 export function findOpenTab(tabs, href) {
   if (!Array.isArray(tabs)) return null;
   const normalized = hrefFromLinkProp(href);
-  return tabs.find((tab) => tab.href === normalized) ?? null;
+  const key = tabPaneKey(normalized);
+  return (
+    tabs.find((tab) => tab.href === normalized) ??
+    tabs.find((tab) => tabPaneKey(tab.href) === key) ??
+    null
+  );
 }
 
 /** Whether an anchor click should switch to an already-open tab instead of default nav. */
@@ -161,13 +166,24 @@ function emptyWorkspaceState() {
 
 function sanitizeTabsForWorkspace(tabs, workspaceId) {
   if (!Array.isArray(tabs) || !workspaceId) return [];
-  return tabs.filter(
+  const filtered = tabs.filter(
     (tab) =>
       tab &&
       typeof tab.href === "string" &&
       isTabWorkspaceRoute(tab.href) &&
       pathBelongsToWorkspace(tab.href, workspaceId),
   );
+
+  // One chrome tab per route path — query-only variants collapse together.
+  const byKey = new Map();
+  for (const tab of filtered) {
+    const key = tabPaneKey(tab.href);
+    const prev = byKey.get(key);
+    if (!prev || (tab.lastActiveAt ?? 0) >= (prev.lastActiveAt ?? 0)) {
+      byKey.set(key, { ...tab, href: normalizeTabHref(tabPaneKey(tab.href)) });
+    }
+  }
+  return [...byKey.values()];
 }
 
 function normalizeWorkspaceState(state, workspaceId) {
