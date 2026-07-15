@@ -108,6 +108,34 @@ function draftsEqual(a, b) {
   return true;
 }
 
+/** @returns {"new" | "edited" | null} */
+function lineChangeKind(line, baselineByKey) {
+  if (line?.id == null) return "new";
+  const base = baselineByKey?.get(lineKey(line));
+  if (!base) return "edited";
+  const qty = String(line.draftQty ?? "");
+  const discount = String(line.draftDiscount ?? 0);
+  const pricing = isRetailLine(line) ? 1 : 0;
+  if (
+    qty !== String(base.draftQty ?? "") ||
+    discount !== String(base.draftDiscount ?? 0) ||
+    pricing !== Number(base.on_wholesale_retail ?? 0)
+  ) {
+    return "edited";
+  }
+  return null;
+}
+
+function lineChangeRowClass(kind) {
+  if (kind === "new") {
+    return "border-l-[3px] border-l-emerald-500 bg-emerald-50/90 dark:border-l-emerald-400 dark:bg-emerald-950/35";
+  }
+  if (kind === "edited") {
+    return "border-l-[3px] border-l-amber-500 bg-amber-50/90 dark:border-l-amber-400 dark:bg-amber-950/35";
+  }
+  return "";
+}
+
 function buildEditLine(line, uomById, retailMap) {
   const editLine = {
     id: line.id,
@@ -428,6 +456,25 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     }, 0);
   }, [lines, retailByCode, uomById, discountEditEnabled, routeMarkupPerUnit]);
 
+  const baselineByKey = useMemo(() => {
+    const map = new Map();
+    for (const row of baselineDraft) {
+      map.set(row.key, row);
+    }
+    return map;
+  }, [baselineDraft]);
+
+  const changeSummary = useMemo(() => {
+    let added = 0;
+    let edited = 0;
+    for (const line of lines) {
+      const kind = lineChangeKind(line, baselineByKey);
+      if (kind === "new") added += 1;
+      else if (kind === "edited") edited += 1;
+    }
+    return { added, edited };
+  }, [lines, baselineByKey]);
+
   function updateQty(key, value) {
     setLines((prev) => prev.map((line) => (lineKey(line) === key ? { ...line, draftQty: value } : line)));
   }
@@ -637,7 +684,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
               Current: <span className="font-medium text-slate-900">{currentCustomerLabel}</span>
             </p>
             <label className="mt-2 block text-xs font-medium text-slate-600">
-              Move to customer
+              Move to a new Customer
             </label>
             <div className="mt-1">
               <PosSearchableSelect
@@ -742,7 +789,30 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
           ) : lines.length === 0 ? (
             <p className="theme-subtext py-8 text-center text-sm">No line items on this order.</p>
           ) : (
-            <table className="w-full border-collapse text-sm">
+            <>
+              {changeSummary.added > 0 || changeSummary.edited > 0 ? (
+                <div className="mb-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-600 dark:text-slate-300">
+                  {changeSummary.added > 0 ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-500 dark:bg-emerald-400"
+                        aria-hidden
+                      />
+                      New item{changeSummary.added === 1 ? "" : "s"} ({changeSummary.added})
+                    </span>
+                  ) : null}
+                  {changeSummary.edited > 0 ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-500 dark:bg-amber-400"
+                        aria-hidden
+                      />
+                      Edited item{changeSummary.edited === 1 ? "" : "s"} ({changeSummary.edited})
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+              <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="theme-table-head border-b text-left text-xs font-medium uppercase tracking-wide">
                   <th className="px-3 py-2">Item</th>
@@ -761,6 +831,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
               <tbody>
                 {lines.map((line) => {
                   const key = lineKey(line);
+                  const changeKind = lineChangeKind(line, baselineByKey);
                   const priced = priceDraftLine(line, uomById, retailByCode, routeMarkupPerUnit, {
                     discountEditEnabled,
                   });
@@ -771,8 +842,25 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                     retailPricingEnabled && line.id == null && allowsRetail;
 
                   return (
-                    <tr key={key} className="theme-table-row border-b last:border-b-0">
-                      <td className="px-3 py-2.5 text-slate-800">{lineLabel(line)}</td>
+                    <tr
+                      key={key}
+                      className={`theme-table-row border-b last:border-b-0 ${lineChangeRowClass(changeKind)}`}
+                    >
+                      <td className="px-3 py-2.5 text-slate-800 dark:text-slate-100">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{lineLabel(line)}</span>
+                          {changeKind === "new" ? (
+                            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/70 dark:text-emerald-200">
+                              New
+                            </span>
+                          ) : null}
+                          {changeKind === "edited" ? (
+                            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900 dark:bg-amber-900/70 dark:text-amber-200">
+                              Edited
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
                       {retailPricingEnabled ? (
                         <td className="px-3 py-2.5">
                           {canTogglePricing ? (
@@ -792,8 +880,8 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                             <span
                               className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
                                 isRetailLine(line)
-                                  ? "bg-violet-100 text-violet-800"
-                                  : "bg-slate-100 text-slate-600"
+                                  ? "bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-200"
+                                  : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
                               }`}
                               title={
                                 line.id == null && !allowsRetail
@@ -818,7 +906,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                           aria-label={`Quantity for ${lineLabel(line)}`}
                         />
                       </td>
-                      <td className="px-3 py-2.5 text-right text-slate-700">
+                      <td className="px-3 py-2.5 text-right text-slate-700 dark:text-slate-200">
                         {formatSaleKes(unitPrice)}
                       </td>
                       {discountEditEnabled ? (
@@ -835,7 +923,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                           />
                         </td>
                       ) : null}
-                      <td className="px-3 py-2.5 text-right font-medium text-slate-900">
+                      <td className="px-3 py-2.5 text-right font-medium text-slate-900 dark:text-slate-50">
                         {formatSaleKes(amount)}
                       </td>
                       <td className="px-2 py-2.5 text-center">
@@ -843,7 +931,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                           type="button"
                           disabled={saving || lines.length <= 1}
                           onClick={() => removeLine(line)}
-                          className="inline-flex rounded-md p-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex rounded-md p-1.5 text-red-600 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-950/40"
                           aria-label={`Remove ${lineLabel(line)}`}
                           title="Remove item"
                         >
@@ -855,6 +943,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                 })}
               </tbody>
             </table>
+            </>
           )}
         </div>
 
