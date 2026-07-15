@@ -96,6 +96,7 @@ export function ReportExportToolbar({
           key: col.key,
           label: col.label,
           align: columns.find((c) => (c.key ?? c.label) === col.key)?.align,
+          ...(col.printAsRow ? { print_as_row: true } : {}),
         })),
         meta: fullMeta,
         footerRow,

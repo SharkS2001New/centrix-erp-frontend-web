@@ -316,7 +316,12 @@ function StandardReportScreen({ definition }) {
 
       {loading ? null : (
         <>
-          <ReportTable columns={columns} rows={displayRows} footerTotals={footerTotals} />
+          <ReportTable
+            columns={columns}
+            rows={displayRows}
+            footerTotals={footerTotals}
+            groupBy={definition.groupBy ?? null}
+          />
           <PaginationBar
             page={page}
             totalPages={totalPages}

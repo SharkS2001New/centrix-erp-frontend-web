@@ -4,7 +4,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { SECONDARY_BTN_CLASS } from "@/components/catalog/catalog-shared";
 import { useBackgroundTasks } from "@/contexts/background-task-context";
-import { queueReportExport, serializeExportMeta, buildReportExportRequest } from "@/lib/report-export-api";
+import { queueReportExport, serializeExportMeta, buildReportExportRequest, serializeExportColumns } from "@/lib/report-export-api";
 import { reportPrintedAt } from "@/lib/reports/export";
 import { ImportExportIcons } from "@/components/catalog/catalog-import-export-shared";
 
@@ -63,7 +63,7 @@ export function CatalogListExport({
           source: "api",
           path: apiPath,
           filename: `${slug}-${stamp}`,
-          columns,
+          columns: serializeExportColumns(columns),
           meta: serializeExportMeta({
             title,
             subtitle: `${title} export`,

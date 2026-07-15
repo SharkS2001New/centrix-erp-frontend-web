@@ -481,17 +481,24 @@ export const REPORT_DEFINITIONS = {
 
   "open-lpo": {
     title: "Open LPO lines",
-    subtitle: "Purchase order lines still pending receive",
+    subtitle: "Purchase order lines still pending receive, grouped by LPO",
     section: "Purchases",
     apiPath: "/reports/open-lpo",
     dateColumn: "order_date",
     showDateRange: true,
+    groupBy: {
+      key: "lpo_no",
+      titleColumnKey: "lpo_no",
+      title: (row) => lpoRowDisplayNumber(row),
+      subtitle: (row) =>
+        [row.supplier_name, row.status_name, row.order_date ? `Ordered ${row.order_date}` : null]
+          .filter(Boolean)
+          .join(" · "),
+      link: "lpo",
+      subtotalKeys: ["pending_value"],
+      subtotalLabel: "LPO total",
+    },
     columns: [
-      { key: "lpo_no", label: "LPO", accessor: (r) => lpoRowDisplayNumber(r), link: "lpo" },
-      { key: "supplier_name", label: "Supplier", accessor: (r) => r.supplier_name, link: "supplier" },
-      { key: "status_name", label: "Status", accessor: (r) => r.status_name },
-      { key: "order_date", label: "Order date", accessor: (r) => r.order_date },
-      { key: "due_date", label: "Due date", accessor: (r) => r.due_date },
       { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
       {
         key: "ordered_qty",
@@ -519,8 +526,16 @@ export const REPORT_DEFINITIONS = {
         align: "right",
         total: true,
       },
+      { key: "due_date", label: "Due date", accessor: (r) => r.due_date },
     ],
     kpis: [
+      {
+        id: "lpos",
+        label: "Open LPOs",
+        compute: (rows) => ({
+          value: String(new Set(rows.map((r) => r.lpo_no)).size),
+        }),
+      },
       {
         id: "lines",
         label: "Open lines",
@@ -537,15 +552,22 @@ export const REPORT_DEFINITIONS = {
 
   "purchases-by-supplier": {
     title: "Purchases by supplier",
-    subtitle: "Purchase order lines by supplier with packaged quantities",
+    subtitle: "Purchase order lines grouped by supplier with packaged quantities",
     section: "Purchases",
     apiPath: "/reports/purchases-by-supplier",
     dateColumn: "order_date",
     showDateRange: true,
+    groupBy: {
+      key: "supplier_id",
+      titleColumnKey: "supplier_name",
+      title: (row) => row.supplier_name || "Unknown supplier",
+      subtitle: (row) => row.supplier_code || null,
+      link: "supplier",
+      subtotalKeys: ["pending_value"],
+      subtotalLabel: "Supplier total",
+    },
     columns: [
       { key: "order_date", label: "Order date", accessor: (r) => r.order_date },
-      { key: "supplier_code", label: "Supplier code", accessor: (r) => r.supplier_code || "—", link: "supplier" },
-      { key: "supplier_name", label: "Supplier", accessor: (r) => r.supplier_name, link: "supplier" },
       { key: "lpo_no", label: "LPO", accessor: (r) => lpoRowDisplayNumber(r), link: "lpo" },
       { key: "status_name", label: "Status", accessor: (r) => r.status_name },
       { key: "due_date", label: "Due date", accessor: (r) => r.due_date },
@@ -587,6 +609,13 @@ export const REPORT_DEFINITIONS = {
     ],
     kpis: [
       {
+        id: "suppliers",
+        label: "Suppliers",
+        compute: (rows) => ({
+          value: String(new Set(rows.map((r) => r.supplier_id ?? r.supplier_name)).size),
+        }),
+      },
+      {
         id: "lpos",
         label: "LPO lines",
         compute: (rows) => ({ value: String(rows.length) }),
@@ -594,7 +623,17 @@ export const REPORT_DEFINITIONS = {
       {
         id: "total",
         label: "LPO total",
-        compute: (rows) => ({ value: kes(sum(rows, "total_amount")) }),
+        compute: (rows) => ({
+          value: kes(
+            rows.reduce((acc, row) => {
+              const key = row.lpo_no;
+              if (key == null || acc.seen.has(key)) return acc;
+              acc.seen.add(key);
+              acc.sum += Number(row.total_amount) || 0;
+              return acc;
+            }, { seen: new Set(), sum: 0 }).sum,
+          ),
+        }),
       },
       {
         id: "pending",

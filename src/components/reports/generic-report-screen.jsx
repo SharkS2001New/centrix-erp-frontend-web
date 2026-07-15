@@ -147,10 +147,11 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     if (!sample) return [];
     return filterReportColumnKeys(Object.keys(sample), { multiBranch }).map((key) => ({
       key,
-      label: labelizeKey(key),
+      label: key === "notes" && reportKey === "stock-transfers" ? "Reason" : labelizeKey(key),
       accessor: (row) => formatCell(key, row[key], row),
+      ...(key === "notes" && reportKey === "stock-transfers" ? { printAsRow: true } : {}),
     }));
-  }, [rows, multiBranch]);
+  }, [rows, multiBranch, reportKey]);
 
   const exportSearchParams = useMemo(() => {
     const searchParams = buildReportQueryParams(reportKey, {

@@ -140,8 +140,12 @@ export default function VehiclesPage() {
   function updateField(key, value) {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
-      if (key === "plate_number" && drawerMode === "create" && !prev.vehicle_code.trim()) {
-        next.vehicle_code = suggestVehicleCode(value);
+      // Keep auto-code in sync while typing the plate, until the user edits the code.
+      if (key === "plate_number" && drawerMode === "create") {
+        const previousSuggestion = suggestVehicleCode(prev.plate_number);
+        if (!prev.vehicle_code.trim() || prev.vehicle_code === previousSuggestion) {
+          next.vehicle_code = suggestVehicleCode(value);
+        }
       }
       return next;
     });

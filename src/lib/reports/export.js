@@ -45,12 +45,13 @@ export function buildReportMeta({
   };
 }
 
-/** @param {Array<{ key?: string, label: string, accessor?: Function, align?: string }>} columns */
+/** @param {Array<{ key?: string, label: string, accessor?: Function, align?: string, printAsRow?: boolean, print_as_row?: boolean }>} columns */
 export function normalizeExportColumns(columns) {
   return (columns ?? []).map((col) => ({
     key: col.key ?? col.label,
     label: col.label,
     align: col.align,
+    printAsRow: Boolean(col.printAsRow || col.print_as_row),
     getValue: (row) => {
       const raw = typeof col.accessor === "function" ? col.accessor(row) : row[col.key];
       if (raw == null) return "";
@@ -68,7 +69,10 @@ export function buildReportPrintHtml({
   branding = null,
   generalSettings = null,
 }) {
-  const headers = columns.map((col) => col.label);
+  const tableColumns = (columns ?? []).filter((col) => !col.printAsRow && !col.print_as_row);
+  const noteColumns = (columns ?? []).filter((col) => col.printAsRow || col.print_as_row);
+  const headers = tableColumns.map((col) => col.label);
+  const colSpan = Math.max(1, tableColumns.length);
   const period =
     meta.fromDate || meta.toDate
       ? `${meta.fromDate ? formatOrgDate(meta.fromDate) : "—"} – ${meta.toDate ? formatOrgDate(meta.toDate) : "—"}`
@@ -88,6 +92,7 @@ export function buildReportPrintHtml({
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(meta.title)}</title>
 <style>
 ${reportDocumentStyles(generalSettings)}
+tr.note-row td { background: #f8fafc; color: #334155; font-size: 0.92em; padding-top: 4px; padding-bottom: 6px; }
 </style></head><body>
 ${watermarkHtml}
 ${orgHeaderHtml}
@@ -96,26 +101,34 @@ ${orgHeaderHtml}
 </div>
 <table><thead><tr>${headers
     .map((header, index) => {
-      const align = columns[index]?.align === "right" ? " class=\"num\"" : "";
+      const align = tableColumns[index]?.align === "right" ? ' class="num"' : "";
       return `<th${align}>${escapeHtml(header)}</th>`;
     })
     .join("")}</tr></thead>
 <tbody>${rows
-    .map(
-      (row) =>
-        `<tr>${columns
-          .map((col) => {
-            const align = col.align === "right" ? " class=\"num\"" : "";
-            return `<td${align}>${escapeHtml(col.getValue(row))}</td>`;
-          })
-          .join("")}</tr>`,
-    )
+    .map((row) => {
+      const main = `<tr>${tableColumns
+        .map((col) => {
+          const align = col.align === "right" ? ' class="num"' : "";
+          return `<td${align}>${escapeHtml(col.getValue(row))}</td>`;
+        })
+        .join("")}</tr>`;
+      const notes = noteColumns
+        .map((col) => {
+          const value = String(col.getValue(row) ?? "").trim();
+          if (!value) return "";
+          const label = String(col.label ?? "Reason").trim() || "Reason";
+          return `<tr class="note-row"><td colspan="${colSpan}"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</td></tr>`;
+        })
+        .join("");
+      return `${main}${notes}`;
+    })
     .join("")}</tbody>
 ${
   footerRow
-    ? `<tfoot><tr>${columns
+    ? `<tfoot><tr>${tableColumns
         .map((col, index) => {
-          const align = col.align === "right" ? " class=\"num\"" : "";
+          const align = col.align === "right" ? ' class="num"' : "";
           const value = footerRow[col.key] ?? (index === 0 ? "Totals" : "");
           return `<td${align}>${escapeHtml(value)}</td>`;
         })

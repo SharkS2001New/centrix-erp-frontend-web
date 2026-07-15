@@ -476,19 +476,13 @@ export default function LpoReceivePage() {
                         </td>
                         <td className="py-3 pr-3 text-right align-top tabular-nums">
                           <div>
-                            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                              Original cost
+                            <p className="font-medium text-slate-900">
+                              {formatLpoKes(stockUnitCost ?? line.cost_price)}
                             </p>
-                            <p>{formatLpoKes(line.cost_price)}</p>
                             {stockUnitCost != null ? (
-                              <>
-                                <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-amber-700">
-                                  Stock unit cost
-                                </p>
-                                <p className="font-medium text-amber-800">
-                                  {formatLpoKes(stockUnitCost)}
-                                </p>
-                              </>
+                              <p className="mt-1 text-xs font-medium text-amber-700">
+                                Original price {formatLpoKes(line.cost_price)}
+                              </p>
                             ) : null}
                           </div>
                         </td>

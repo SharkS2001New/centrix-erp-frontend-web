@@ -3,12 +3,13 @@ import { EXPORT_EMPTY_ROWS_MESSAGE } from "@/lib/background-task-errors";
 import { reportPrintedAt, slugifyReportFilename } from "@/lib/reports/export";
 import { sanitizeExportSearchParams } from "@/lib/report-export-limits";
 
-/** @param {Array<{ key?: string, label: string, align?: string }>} columns */
+/** @param {Array<{ key?: string, label: string, align?: string, printAsRow?: boolean }>} columns */
 export function serializeExportColumns(columns) {
   return (columns ?? []).map((col) => ({
     key: col.key ?? col.label,
     label: col.label,
     align: col.align ?? undefined,
+    ...(col.printAsRow || col.print_as_row ? { print_as_row: true } : {}),
   }));
 }
 

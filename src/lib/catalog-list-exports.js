@@ -177,12 +177,13 @@ export const STOCK_MOVEMENT_EXPORT_COLUMNS = [
 ];
 
 export const STOCK_TRANSFER_EXPORT_COLUMNS = [
-  { key: "created_at", label: "Date" },
+  { key: "transfer_date", label: "Date" },
   { key: "product_code", label: "Product code" },
   { key: "product_name", label: "Product" },
   { key: "from_location", label: "From" },
   { key: "to_location", label: "To" },
-  { key: "quantity_moved", label: "Qty moved", align: "right" },
+  { key: "total_moved", label: "Qty moved", align: "right" },
+  { key: "notes", label: "Reason", printAsRow: true },
 ];
 
 export const STOCK_TAKE_SESSION_EXPORT_COLUMNS = [

@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
@@ -153,10 +154,53 @@ export function ReportFilterBar({
   );
 }
 
-export function ReportTable({ columns, rows, footerTotals = {}, emptyLabel = "No rows for this filter." }) {
+function groupReportRows(rows, groupBy) {
+  if (!groupBy?.key || !rows?.length) return null;
+
+  const order = [];
+  const map = new Map();
+  for (const row of rows) {
+    const id = row[groupBy.key] ?? `__${groupBy.title?.(row) ?? row.supplier_name ?? ""}`;
+    if (!map.has(id)) {
+      map.set(id, { id, sample: row, rows: [] });
+      order.push(id);
+    }
+    map.get(id).rows.push(row);
+  }
+  return order.map((id) => map.get(id));
+}
+
+function renderReportDataCells(columns, row) {
+  return columns.map((col) => {
+    const badge = col.badge?.(row);
+    const raw = col.accessor(row);
+    return (
+      <td
+        key={col.key}
+        className={`whitespace-nowrap px-4 py-2.5 theme-text-muted ${col.align === "right" ? "text-right" : "text-left"}`}
+      >
+        {badge ? (
+          <ReportBadge label={badge.label} tone={badge.tone} />
+        ) : (
+          <ReportCellLink columnKey={col.key} row={row} value={raw} link={col.link} />
+        )}
+      </td>
+    );
+  });
+}
+
+export function ReportTable({
+  columns,
+  rows,
+  footerTotals = {},
+  groupBy = null,
+  emptyLabel = "No rows for this filter.",
+}) {
   if (!rows.length) {
     return <div className={EMPTY_STATE_CLASS}>{emptyLabel}</div>;
   }
+
+  const sections = groupReportRows(rows, groupBy);
 
   return (
     <div className={TABLE_SHELL_CLASS}>
@@ -175,34 +219,96 @@ export function ReportTable({ columns, rows, footerTotals = {}, emptyLabel = "No
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, idx) => (
-              <tr
-                key={row.id ?? idx}
-                className={`${TABLE_BODY_ROW_CLASS} ${row.legacy_archive ? "theme-legacy-archive-row" : ""}`}
-              >
-                {columns.map((col) => {
-                  const badge = col.badge?.(row);
-                  const raw = col.accessor(row);
+            {sections
+              ? sections.map((section) => {
+                  const title =
+                    (typeof groupBy.title === "function"
+                      ? groupBy.title(section.sample)
+                      : section.sample?.[groupBy.titleKey]) || "—";
+                  const subtitle =
+                    typeof groupBy.subtitle === "function"
+                      ? groupBy.subtitle(section.sample)
+                      : groupBy.subtitleKey
+                        ? section.sample?.[groupBy.subtitleKey]
+                        : null;
+                  const subtotalKeys = groupBy.subtotalKeys ?? [];
+                  const subtotals = {};
+                  for (const key of subtotalKeys) {
+                    const col = columns.find((c) => c.key === key);
+                    const total = section.rows.reduce(
+                      (acc, row) => acc + (Number(row[key]) || 0),
+                      0,
+                    );
+                    subtotals[key] = formatReportCell(key, total, undefined, section.sample);
+                    if (col?.footerCompute) {
+                      subtotals[key] = formatReportCell(
+                        key,
+                        col.footerCompute(section.rows),
+                        undefined,
+                        section.sample,
+                      );
+                    }
+                  }
+
                   return (
-                    <td
-                      key={col.key}
-                      className={`whitespace-nowrap px-4 py-2.5 theme-text-muted ${col.align === "right" ? "text-right" : "text-left"}`}
-                    >
-                      {badge ? (
-                        <ReportBadge label={badge.label} tone={badge.tone} />
-                      ) : (
-                        <ReportCellLink
-                          columnKey={col.key}
-                          row={row}
-                          value={raw}
-                          link={col.link}
-                        />
-                      )}
-                    </td>
+                    <Fragment key={section.id}>
+                      <tr className="border-b border-slate-200 bg-slate-50/90">
+                        <td colSpan={columns.length} className="px-4 py-2.5">
+                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                            <span className="text-sm font-semibold theme-heading">
+                              {groupBy.link ? (
+                                <ReportCellLink
+                                  columnKey={groupBy.titleColumnKey ?? groupBy.key}
+                                  row={section.sample}
+                                  value={title}
+                                  link={groupBy.link}
+                                />
+                              ) : (
+                                title
+                              )}
+                            </span>
+                            {subtitle ? (
+                              <span className="font-mono text-xs theme-subtext">{subtitle}</span>
+                            ) : null}
+                            <span className="text-xs theme-subtext">
+                              {section.rows.length} line{section.rows.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                      {section.rows.map((row, idx) => (
+                        <tr
+                          key={row.id ?? `${section.id}-${idx}`}
+                          className={`${TABLE_BODY_ROW_CLASS} ${row.legacy_archive ? "theme-legacy-archive-row" : ""}`}
+                        >
+                          {renderReportDataCells(columns, row)}
+                        </tr>
+                      ))}
+                      {subtotalKeys.length ? (
+                        <tr className="border-b border-slate-200 bg-slate-50/50 text-xs font-medium theme-text-muted">
+                          {columns.map((col, idx) => (
+                            <td
+                              key={col.key}
+                              className={`whitespace-nowrap px-4 py-2 ${col.align === "right" ? "text-right" : "text-left"}`}
+                            >
+                              {idx === 0
+                                ? (groupBy.subtotalLabel ?? "Group total")
+                                : subtotals[col.key] ?? ""}
+                            </td>
+                          ))}
+                        </tr>
+                      ) : null}
+                    </Fragment>
                   );
-                })}
-              </tr>
-            ))}
+                })
+              : rows.map((row, idx) => (
+                  <tr
+                    key={row.id ?? idx}
+                    className={`${TABLE_BODY_ROW_CLASS} ${row.legacy_archive ? "theme-legacy-archive-row" : ""}`}
+                  >
+                    {renderReportDataCells(columns, row)}
+                  </tr>
+                ))}
           </tbody>
           {Object.keys(footerTotals).length ? (
             <tfoot>
