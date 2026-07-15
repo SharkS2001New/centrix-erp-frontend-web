@@ -11,19 +11,25 @@ const defaultValue = {
 const TabPaneActivityContext = createContext(defaultValue);
 
 /**
- * Marks a tab pane as active or suspended. Suspended panes stay mounted
- * (hidden) so loaded data and form state survive switching tabs.
- *
- * In-flight fetches are NOT aborted on suspend — that was forcing every
- * return-to-tab to refetch. Abort only runs when the pane unmounts (tab closed).
+ * Marks a tab pane as active or suspended. Suspended panes abort in-flight requests
+ * but keep their React tree mounted (preserves form input state).
  */
 export function TabPaneActivityProvider({ paneHref, isActive, children }) {
-  const [abortController] = useState(() => new AbortController());
+  const [abortController, setAbortController] = useState(() => new AbortController());
 
   useEffect(() => {
-    return () => {
-      abortController.abort();
-    };
+    if (isActive) return undefined;
+
+    setAbortController((prev) => {
+      prev.abort();
+      return new AbortController();
+    });
+    return undefined;
+  }, [isActive]);
+
+  useEffect(() => {
+    const controller = abortController;
+    return () => controller.abort();
   }, [abortController]);
 
   const value = useMemo(
@@ -32,7 +38,7 @@ export function TabPaneActivityProvider({ paneHref, isActive, children }) {
       paneHref,
       abortSignal: abortController.signal,
     }),
-    [abortController, isActive, paneHref],
+    [isActive, paneHref, abortController],
   );
 
   return <TabPaneActivityContext.Provider value={value}>{children}</TabPaneActivityContext.Provider>;
@@ -43,27 +49,23 @@ export function useTabPaneActive() {
 }
 
 /**
- * Run an effect only while this tab pane is active (e.g. polling).
- * Does not re-run merely because the user returns to a suspended tab — deps must change.
+ * Run an effect only while this tab pane is active (e.g. polling, refetch).
+ * Does not re-run when the user returns to a suspended form tab.
  */
 export function useTabAwareEffect(effect, deps) {
   const { isActive } = useTabPaneActive();
-  const isActiveRef = useRef(isActive);
 
   useEffect(() => {
-    isActiveRef.current = isActive;
-  }, [isActive]);
-
-  useEffect(() => {
-    if (!isActiveRef.current) return undefined;
+    if (!isActive) return undefined;
     return effect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- caller supplies deps; isActive is gated via ref
-  }, deps);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- caller supplies deps
+  }, [isActive, ...deps]);
 }
 
 /**
  * Load data once the first time a pane becomes active. Skips reload when returning
- * to a suspended tab so already-loaded data and unsaved inputs stay put.
+ * to a suspended form tab so unsaved inputs are not reset. Retries if the first
+ * load was aborted (tab switched away mid-fetch).
  */
 export function useTabAwareInitialLoad(loadFn) {
   const { isActive } = useTabPaneActive();
@@ -78,7 +80,7 @@ export function useTabAwareInitialLoad(loadFn) {
         await loadFn();
         if (!cancelled) completedRef.current = true;
       } catch {
-        /* allow retry if the first load failed */
+        /* allow retry when the pane is active again after abort */
       }
     })();
 

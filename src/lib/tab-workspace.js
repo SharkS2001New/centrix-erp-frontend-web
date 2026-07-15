@@ -37,49 +37,9 @@ export function normalizeTabHref(href) {
   }
 }
 
-/** Pathname only (no query) — keep-alive panes are keyed by route path. */
-export function tabPaneKey(href) {
-  const normalized = normalizeTabHref(href);
-  const q = normalized.indexOf("?");
-  return q === -1 ? normalized : normalized.slice(0, q);
-}
-
 function normalizePathname(pathname) {
   if (!pathname || pathname === "/") return "/";
   return pathname.replace(/\/+$/, "") || "/";
-}
-
-/**
- * Update the address bar for an already-open keep-alive tab without triggering
- * Next.js App Router's history patch (ACTION_RESTORE), which remounts the page.
- *
- * Next patches pushState/replaceState: when the state object already has `__NA`,
- * it skips syncing usePathname and skips the soft navigation. We require that
- * marker so switching Tab 1 ↔ Tab 2 only flips our React pane visibility.
- */
-export function syncOpenTabUrl(href) {
-  if (typeof window === "undefined") return;
-  const normalized = normalizeTabHref(href);
-  const current = normalizeTabHref(
-    `${window.location.pathname}${window.location.search}`,
-  );
-  if (current === normalized) return;
-
-  const prev =
-    window.history.state && typeof window.history.state === "object"
-      ? window.history.state
-      : {};
-
-  window.history.replaceState(
-    {
-      ...prev,
-      // Next.js private marker: skip ACTION_RESTORE on the patched replaceState.
-      __NA: true,
-      centrixTabWorkspace: normalized,
-    },
-    "",
-    normalized,
-  );
 }
 
 /** Normalize a Next.js `Link` href prop (string or route object). */
@@ -106,12 +66,7 @@ export function hrefFromLinkProp(href) {
 export function findOpenTab(tabs, href) {
   if (!Array.isArray(tabs)) return null;
   const normalized = hrefFromLinkProp(href);
-  const key = tabPaneKey(normalized);
-  return (
-    tabs.find((tab) => tab.href === normalized) ??
-    tabs.find((tab) => tabPaneKey(tab.href) === key) ??
-    null
-  );
+  return tabs.find((tab) => tab.href === normalized) ?? null;
 }
 
 /** Whether an anchor click should switch to an already-open tab instead of default nav. */
@@ -166,24 +121,13 @@ function emptyWorkspaceState() {
 
 function sanitizeTabsForWorkspace(tabs, workspaceId) {
   if (!Array.isArray(tabs) || !workspaceId) return [];
-  const filtered = tabs.filter(
+  return tabs.filter(
     (tab) =>
       tab &&
       typeof tab.href === "string" &&
       isTabWorkspaceRoute(tab.href) &&
       pathBelongsToWorkspace(tab.href, workspaceId),
   );
-
-  // One chrome tab per route path — query-only variants collapse together.
-  const byKey = new Map();
-  for (const tab of filtered) {
-    const key = tabPaneKey(tab.href);
-    const prev = byKey.get(key);
-    if (!prev || (tab.lastActiveAt ?? 0) >= (prev.lastActiveAt ?? 0)) {
-      byKey.set(key, { ...tab, href: normalizeTabHref(tabPaneKey(tab.href)) });
-    }
-  }
-  return [...byKey.values()];
 }
 
 function normalizeWorkspaceState(state, workspaceId) {
@@ -215,17 +159,8 @@ function normalizeStore(raw) {
 /** @returns {TabWorkspaceStore} */
 export function readTabWorkspaceStore(organizationId) {
   if (typeof window === "undefined") return {};
-  const key = tabStorageKey(organizationId);
   try {
-    let raw = window.sessionStorage.getItem(key);
-    if (!raw) {
-      // One-time migrate from localStorage (tab chrome only — not page data).
-      raw = window.localStorage.getItem(key);
-      if (raw) {
-        window.sessionStorage.setItem(key, raw);
-        window.localStorage.removeItem(key);
-      }
-    }
+    const raw = window.sessionStorage.getItem(tabStorageKey(organizationId));
     if (!raw) return {};
     return normalizeStore(JSON.parse(raw));
   } catch {
@@ -236,10 +171,8 @@ export function readTabWorkspaceStore(organizationId) {
 /** @param {TabWorkspaceStore} store */
 export function writeTabWorkspaceStore(organizationId, store) {
   if (typeof window === "undefined") return;
-  const key = tabStorageKey(organizationId);
   try {
-    window.sessionStorage.setItem(key, JSON.stringify(store));
-    window.localStorage.removeItem(key);
+    window.sessionStorage.setItem(tabStorageKey(organizationId), JSON.stringify(store));
   } catch {
     // ignore quota errors
   }
@@ -276,43 +209,15 @@ export function recallWorkspaceTabLandingPath(organizationId, workspaceId) {
 export function clearAllTabWorkspaceMemory() {
   if (typeof window === "undefined") return;
   try {
-    const keys = new Set();
-    for (let i = 0; i < localStorage.length; i += 1) {
-      const key = localStorage.key(i);
-      if (key?.startsWith("centrix-tab-workspace:")) keys.add(key);
-    }
+    const keys = [];
     for (let i = 0; i < sessionStorage.length; i += 1) {
       const key = sessionStorage.key(i);
-      if (key?.startsWith("centrix-tab-workspace:")) keys.add(key);
+      if (key?.startsWith("centrix-tab-workspace:")) keys.push(key);
     }
-    keys.forEach((key) => {
-      window.localStorage.removeItem(key);
-      window.sessionStorage.removeItem(key);
-    });
+    keys.forEach((key) => window.sessionStorage.removeItem(key));
   } catch {
     /* ignore */
   }
-}
-
-/** @type {Set<string>} */
-const mountedTabPaneKeys = new Set();
-
-/** Mark that a route pane was visited/mounted this session (safe to switch without router.push). */
-export function markTabPaneMounted(href) {
-  const key = tabPaneKey(href);
-  if (key) mountedTabPaneKeys.add(key);
-}
-
-export function unmarkTabPaneMounted(href) {
-  mountedTabPaneKeys.delete(tabPaneKey(href));
-}
-
-export function isTabPaneMounted(href) {
-  return mountedTabPaneKeys.has(tabPaneKey(href));
-}
-
-export function clearMountedTabPanes() {
-  mountedTabPaneKeys.clear();
 }
 
 /** @type {((href: string) => boolean) | null} */
