@@ -57,12 +57,36 @@ export function getPendingHref() {
   return pendingHref;
 }
 
+/** @type {Set<() => void>} */
+const navigationSealListeners = new Set();
+
+/**
+ * Register a sync callback that runs at the start of beginNavigationIntent —
+ * before Next soft-nav can swap the live page tree. Used to freeze tab panes.
+ */
+export function subscribeNavigationSeal(listener) {
+  navigationSealListeners.add(listener);
+  return () => navigationSealListeners.delete(listener);
+}
+
+function emitNavigationSeal() {
+  navigationSealListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch {
+      /* ignore seal listener errors */
+    }
+  });
+}
+
 /**
  * Call as soon as the user clicks an internal link (before the route changes).
  * Returns false when navigation is already in progress — caller should block the click.
  */
 export function beginNavigationIntent(label = "Opening page…", href = null) {
   if (navigating) return false;
+  // Seal keep-alive panes with the current live tree BEFORE children swap.
+  emitNavigationSeal();
   navigating = true;
   pageNavigationActive = true;
   activeLabel = label;

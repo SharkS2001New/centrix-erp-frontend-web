@@ -37,6 +37,13 @@ export function normalizeTabHref(href) {
   }
 }
 
+/** Pathname only (no query) — keep-alive panes are keyed by route path. */
+export function tabPaneKey(href) {
+  const normalized = normalizeTabHref(href);
+  const q = normalized.indexOf("?");
+  return q === -1 ? normalized : normalized.slice(0, q);
+}
+
 function normalizePathname(pathname) {
   if (!pathname || pathname === "/") return "/";
   return pathname.replace(/\/+$/, "") || "/";
