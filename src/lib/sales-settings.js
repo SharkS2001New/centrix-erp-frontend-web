@@ -166,13 +166,16 @@ export function sortOrdersForList(orders, sortKey = "-created_at") {
         sale?.customer_name ??
         "",
     ).toLowerCase();
+  /** Prefer placed time so newly created orders stay above older completed ones. */
+  const placedAt = (sale) =>
+    new Date(sale?.created_at ?? sale?.completed_at ?? 0).getTime();
 
   if (sort === "created_at") {
-    return items.sort(
-      (a, b) =>
-        new Date(a.completed_at ?? a.created_at ?? 0).getTime() -
-        new Date(b.completed_at ?? b.created_at ?? 0).getTime(),
-    );
+    return items.sort((a, b) => {
+      const delta = placedAt(a) - placedAt(b);
+      if (delta !== 0) return delta;
+      return Number(a.order_num ?? a.id ?? 0) - Number(b.order_num ?? b.id ?? 0);
+    });
   }
 
   if (sort === "-order_num") {
@@ -216,10 +219,10 @@ export function sortOrdersForList(orders, sortKey = "-created_at") {
     return items.sort((a, b) => label(a).localeCompare(label(b)));
   }
 
+  // Default / -created_at: newest placed first.
   return items.sort((a, b) => {
-    const aTime = new Date(a.completed_at ?? a.created_at ?? 0).getTime();
-    const bTime = new Date(b.completed_at ?? b.created_at ?? 0).getTime();
-    if (bTime !== aTime) return bTime - aTime;
+    const delta = placedAt(b) - placedAt(a);
+    if (delta !== 0) return delta;
     return Number(b.order_num ?? b.id ?? 0) - Number(a.order_num ?? a.id ?? 0);
   });
 }

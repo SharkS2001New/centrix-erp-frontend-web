@@ -68,7 +68,7 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
         <tbody>
           {lines.map((line, i) => {
             const uom = line.unit_id ? uomById.get(line.unit_id) : null;
-            const { vat: lineVat } = computeLpoLineTotals(line);
+            const { net: lineNet, vat: lineVat } = computeLpoLineTotals(line);
             const lineReturned = lpoLineReturnedQty(line);
 
             return (
@@ -100,7 +100,7 @@ export function LpoDetailOrderItemsTable({ lines, uomById, lpo, lpoNo, supplierR
                   </div>
                 </td>
                 <td className="px-2 py-2.5 text-right align-middle font-medium tabular-nums">
-                  {formatLpoKes(line.line_total)}
+                  {formatLpoKes(line.line_total ?? lineNet)}
                 </td>
                 <td className="px-2 py-2.5 text-right align-middle tabular-nums theme-subtext">
                   {lineVat > 0 ? formatLpoAmount(lineVat) : "—"}

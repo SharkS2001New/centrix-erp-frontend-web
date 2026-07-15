@@ -89,6 +89,13 @@ import { SalePosPaymentPanel } from "@/components/sales/sale-pos-payment-panel";
 import { ActionFeedbackBanner } from "@/components/shared/action-feedback-banner";
 import { usePosSession } from "@/contexts/pos-session-context";
 
+/** First click on these columns should show newest / highest first. */
+const ORDERS_TABLE_SORT_FIRST_DIR = {
+  created_at: "desc",
+  order_num: "desc",
+  order_total: "desc",
+};
+
 function indexPaymentRefs(payments) {
   const map = new Map();
   for (const payment of payments ?? []) {
@@ -184,7 +191,9 @@ export default function SalesOrdersListScreen({
     sortActive: tableSortActive,
     toggleSort: toggleTableSort,
     clearSort: clearTableSort,
-  } = useTableSort("sales-orders-table-sort");
+  } = useTableSort("sales-orders-table-sort", {
+    firstDirByColumn: ORDERS_TABLE_SORT_FIRST_DIR,
+  });
 
   const effectiveStatusFilter = queueConfig?.lockStatusFilter
     ? queueConfig.fixedStatusFilter

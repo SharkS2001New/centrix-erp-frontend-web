@@ -164,7 +164,7 @@ export function recalcReturnLineFromCounts(line, counts, uomById) {
 
 export function emptyReturnLineFromSaleItem(item) {
   const qty = Number(item.quantity_sold ?? item.quantity ?? 0);
-  const unitPrice = Number(item.unit_price ?? item.selling_price ?? 0);
+  const unitPrice = Number(item.unit_price ?? item.display_unit_price ?? item.selling_price ?? 0);
   const alreadyReturned = Number(item.already_returned ?? 0);
   const maxReturnQty =
     item.max_return_qty != null
@@ -201,6 +201,9 @@ export function recalcReturnLine(line) {
   const clampedQty = maxQty > 0 ? Math.min(returnQty, maxQty) : returnQty;
   const lineTotal = Number(line.line_total);
   const remainingQty = maxQty || Number(line.quantity_sold) || 0;
+  // Keep invoice sold/display unit price — do not divide amount by base qty
+  // (that yields piece price while qty is shown in cartons/packs).
+  const unitPrice = Number(line.unit_price) || 0;
 
   let amount;
   if (Number.isFinite(lineTotal) && lineTotal > 0 && remainingQty > 0) {
@@ -209,12 +212,8 @@ export function recalcReturnLine(line) {
         ? lineTotal
         : Math.round(lineTotal * (clampedQty / remainingQty) * 100) / 100;
   } else {
-    const unitPrice = Number(line.unit_price) || 0;
-    amount = Math.round(clampedQty * unitPrice * 100) / 100;
+    amount = 0;
   }
-
-  const unitPrice =
-    clampedQty > 0 ? Math.round((amount / clampedQty) * 100) / 100 : Number(line.unit_price) || 0;
 
   return {
     ...line,

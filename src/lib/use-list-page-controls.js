@@ -61,13 +61,18 @@ export function useListPageSize(defaultSize = 10, { persist = true } = {}) {
   return { pageSize, setPageSize };
 }
 
+const EMPTY_FIRST_DIR = Object.freeze({});
+
 /**
  * Column sort state for server-paginated tables.
- * Cycles: unsorted → asc → desc → unsorted.
+ * Default cycle: unsorted → asc → desc → unsorted.
+ * Pass `firstDirByColumn` to prefer desc-first for date/id columns.
  *
  * @param {string | null | undefined} storageKey
+ * @param {{ firstDirByColumn?: Record<string, "asc" | "desc"> }} [options]
  */
-export function useTableSort(storageKey) {
+export function useTableSort(storageKey, options = {}) {
+  const firstDirByColumn = options.firstDirByColumn ?? EMPTY_FIRST_DIR;
   const [sort, setSort] = useState(null);
   const [sortDir, setSortDir] = useState("asc");
 
@@ -96,11 +101,13 @@ export function useTableSort(storageKey) {
   const toggleSort = useCallback(
     (column) => {
       if (!column) return { sort: null, sortDir: "asc" };
+      const firstDir = firstDirByColumn[column] === "desc" ? "desc" : "asc";
+      const secondDir = firstDir === "desc" ? "asc" : "desc";
       let nextSort = column;
-      let nextDir = "asc";
+      let nextDir = firstDir;
       if (sort === column) {
-        if (sortDir === "asc") {
-          nextDir = "desc";
+        if (sortDir === firstDir) {
+          nextDir = secondDir;
         } else {
           nextSort = null;
           nextDir = "asc";
@@ -111,7 +118,7 @@ export function useTableSort(storageKey) {
       persist(nextSort, nextDir);
       return { sort: nextSort, sortDir: nextDir };
     },
-    [sort, sortDir, persist],
+    [sort, sortDir, persist, firstDirByColumn],
   );
 
   const clearSort = useCallback(() => {
