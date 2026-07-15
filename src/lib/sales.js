@@ -160,6 +160,33 @@ export function formatOrderNumber(saleOrNum) {
   return `S${String(saleOrNum).padStart(4, "0")}`;
 }
 
+/**
+ * Parse display order # (S0034, s34, #34) to the numeric order_num, or null.
+ */
+export function parseOrderNumberQuery(query) {
+  const q = String(query ?? "").trim().replace(/^#+/, "");
+  if (!q) return null;
+
+  const sMatch = q.match(/^S0*(\d+)$/i);
+  if (sMatch) return Number(sMatch[1]);
+
+  if (/^\d+$/.test(q)) return Number(q);
+
+  return null;
+}
+
+/** Normalize list search so S0034 reaches the API as the order number digits. */
+export function normalizeSalesListSearchQuery(query) {
+  const q = String(query ?? "").trim();
+  if (!q) return "";
+  const stripped = q.replace(/^#+/, "");
+  const orderNum = parseOrderNumberQuery(stripped);
+  if (orderNum != null && /^S/i.test(stripped)) {
+    return String(orderNum);
+  }
+  return q;
+}
+
 /** Order number and receipt number are the same formatted value (S + padded order_num). */
 export function formatReceiptNumber(sale) {
   return formatOrderNumber(sale);

@@ -459,23 +459,23 @@ export function LpoDetailActions({ lpo, lpoNo, onDelete, deleting, printContext 
             {deleting ? "Deleting…" : "Delete"}
           </button>
         ) : null}
+        {lpo.can_receive !== false && Number(lpo.lpo_status_code) >= 2 && Number(lpo.lpo_status_code) < 5 ? (
+          <Link
+            href={`/lpo/${lpoNo}/receive`}
+            className="theme-primary-btn rounded-lg px-3 py-1.5 text-sm font-medium"
+          >
+            Receive Items
+          </Link>
+        ) : Number(lpo.lpo_status_code) >= 3 && Number(lpo.lpo_status_code) < 5 ? (
+          <span
+            className="theme-secondary-btn cursor-not-allowed rounded-lg px-3 py-1.5 text-sm font-medium opacity-50"
+            title="All items were returned to the supplier"
+          >
+            Receive Items
+          </span>
+        ) : null}
         {lpo.lpo_status_code >= 3 ? (
           <>
-            {lpo.can_receive !== false ? (
-              <Link
-                href={`/lpo/${lpoNo}/receive`}
-                className="theme-secondary-btn rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--theme-primary)]"
-              >
-                Receive stock
-              </Link>
-            ) : (
-              <span
-                className="theme-secondary-btn cursor-not-allowed rounded-lg px-3 py-1.5 text-sm font-medium opacity-50"
-                title="All items were returned to the supplier"
-              >
-                Receive stock
-              </span>
-            )}
             {lpo.can_create_return !== false ? (
               <Link
                 href={`/lpo/${lpoNo}/supplier-return`}

@@ -88,7 +88,8 @@ const SALES_DEFAULTS = {
     mobile: "order_completed",
     backend: "order_completed",
   },
-  orders_list_default_days: 6,
+  orders_list_default_days: 14,
+  orders_list_search_days: 30,
   orders_list_sort: "-created_at",
 };
 
@@ -107,13 +108,26 @@ export function normalizeOrdersListDefaultDays(value) {
   return Math.min(90, Math.max(1, Math.round(days)));
 }
 
+/** Search window days — never narrower than the list date filter window. */
+export function normalizeOrdersListSearchDays(value, defaultListDays = SALES_DEFAULTS.orders_list_default_days) {
+  const minDays = Math.max(1, normalizeOrdersListDefaultDays(defaultListDays));
+  const days = Number(value);
+  if (!Number.isFinite(days) || days < 1) {
+    return Math.max(SALES_DEFAULTS.orders_list_search_days, minDays);
+  }
+  return Math.min(90, Math.max(minDays, Math.round(days)));
+}
+
 export function normalizeOrdersListSort(value) {
   const sort = String(value ?? "").trim();
   return ORDERS_LIST_SORT_VALUES.has(sort) ? sort : SALES_DEFAULTS.orders_list_sort;
 }
 
-/** Working window for order lists: today + previous 5 days (6 calendar days inclusive). */
-export const ORDERS_HOT_WINDOW_DAYS = 6;
+/** Default / hot working window for order lists (calendar days, including today). */
+export const ORDERS_HOT_WINDOW_DAYS = 14;
+
+/** Fallback search window when platform has not set orders_list_search_days. */
+export const ORDERS_SEARCH_WINDOW_DAYS = 30;
 
 /**
  * True when the list From date is older than the hot window — UI can show
@@ -130,14 +144,28 @@ export function getOrdersListDefaultDateRange(moduleSettings) {
   return defaultDateRange(normalizeOrdersListDefaultDays(sales.orders_list_default_days));
 }
 
+export function getOrdersListSearchDays(moduleSettings) {
+  const sales = mergeSalesSettings(moduleSettings);
+  const listDays = normalizeOrdersListDefaultDays(sales.orders_list_default_days);
+  return normalizeOrdersListSearchDays(sales.orders_list_search_days, listDays);
+}
+
 export function getOrdersListSort(moduleSettings) {
   const sales = mergeSalesSettings(moduleSettings);
   return normalizeOrdersListSort(sales.orders_list_sort);
 }
 
 export function sortOrdersForList(orders, sortKey = "-created_at") {
-  const sort = normalizeOrdersListSort(sortKey);
+  const sort = String(sortKey ?? "-created_at").trim() || "-created_at";
   const items = [...(orders ?? [])];
+  const label = (sale) =>
+    String(
+      sale?.customer?.customer_name ??
+        sale?.customer_display_name ??
+        sale?.customer_name_override ??
+        sale?.customer_name ??
+        "",
+    ).toLowerCase();
 
   if (sort === "created_at") {
     return items.sort(
@@ -157,6 +185,35 @@ export function sortOrdersForList(orders, sortKey = "-created_at") {
     return items.sort(
       (a, b) => Number(a.order_num ?? a.id ?? 0) - Number(b.order_num ?? b.id ?? 0),
     );
+  }
+
+  if (sort === "-order_total") {
+    return items.sort((a, b) => Number(b.order_total ?? 0) - Number(a.order_total ?? 0));
+  }
+  if (sort === "order_total") {
+    return items.sort((a, b) => Number(a.order_total ?? 0) - Number(b.order_total ?? 0));
+  }
+  if (sort === "-status") {
+    return items.sort((a, b) => String(b.status ?? "").localeCompare(String(a.status ?? "")));
+  }
+  if (sort === "status") {
+    return items.sort((a, b) => String(a.status ?? "").localeCompare(String(b.status ?? "")));
+  }
+  if (sort === "-channel") {
+    return items.sort((a, b) =>
+      String(b.channel ?? b.order_source ?? "").localeCompare(String(a.channel ?? a.order_source ?? "")),
+    );
+  }
+  if (sort === "channel") {
+    return items.sort((a, b) =>
+      String(a.channel ?? a.order_source ?? "").localeCompare(String(b.channel ?? b.order_source ?? "")),
+    );
+  }
+  if (sort === "-customer_name") {
+    return items.sort((a, b) => label(b).localeCompare(label(a)));
+  }
+  if (sort === "customer_name") {
+    return items.sort((a, b) => label(a).localeCompare(label(b)));
   }
 
   return items.sort((a, b) => {
@@ -349,7 +406,8 @@ export const EMPTY_SALES_ORGANIZATION_FORM = {
   invoice_print_delivery_terms: DEFAULT_INVOICE_DELIVERY_TERMS.join("\n"),
   invoice_print_footer_lines: DEFAULT_INVOICE_FOOTER_LINES.join("\n"),
   stock_deduct_on: "order_created",
-  orders_list_default_days: "6",
+  orders_list_default_days: "14",
+  orders_list_search_days: "30",
   orders_list_sort: "-created_at",
 };
 
@@ -419,6 +477,12 @@ export function salesOrganizationFormFromApi(res) {
     ...invoicePrintFormFromApi(sales),
     stock_deduct_on: sales.stock_deduct_on || "order_created",
     orders_list_default_days: String(normalizeOrdersListDefaultDays(sales.orders_list_default_days)),
+    orders_list_search_days: String(
+      normalizeOrdersListSearchDays(
+        sales.orders_list_search_days,
+        normalizeOrdersListDefaultDays(sales.orders_list_default_days),
+      ),
+    ),
     orders_list_sort: normalizeOrdersListSort(sales.orders_list_sort),
   };
 }
@@ -508,6 +572,10 @@ export function salesOrganizationPayloadFromForm(form, capabilities = null) {
     point_cash_value: Number(withDiscountApproval.point_cash_value) || 0,
     points_earn_per_kes: Number(withDiscountApproval.points_earn_per_kes) || 0,
     orders_list_default_days: normalizeOrdersListDefaultDays(
+      withDiscountApproval.orders_list_default_days,
+    ),
+    orders_list_search_days: normalizeOrdersListSearchDays(
+      withDiscountApproval.orders_list_search_days,
       withDiscountApproval.orders_list_default_days,
     ),
     orders_list_sort: normalizeOrdersListSort(withDiscountApproval.orders_list_sort),

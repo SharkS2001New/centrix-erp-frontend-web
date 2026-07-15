@@ -3,7 +3,7 @@
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
 import { fetchSuppliersCached, fetchUomsCached } from "@/lib/reference-data-cache";
@@ -11,6 +11,9 @@ import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
 import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
+import { SupplierInvoiceModal } from "@/components/lpo/supplier-invoice-modal";
+import { lpoSupplierInvoiceFilePath } from "@/components/lpo/lpo-supplier-invoice-doc";
+import { ProtectedFileLink } from "@/components/media/protected-file-preview";
 import {
   InventoryProductLines,
   useInventoryCatalogMaps,
@@ -36,7 +39,7 @@ import { formatQty, InventoryPageShell } from "@/components/inventory/inventory-
 import { LpoReceivedQtyCell } from "@/components/lpo/lpo-received-qty";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { uomStockTakeLevels } from "@/lib/uom-packaging";
-import { baseToDisplayQty, displayToBaseQty } from "@/lib/stock-uom";
+import { baseToDisplayQty } from "@/lib/stock-uom";
 
 function makeReceiptRef(userRef) {
   const trimmed = userRef?.trim();
@@ -48,6 +51,7 @@ function makeReceiptRef(userRef) {
 
 export default function ReceiveStockPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const branchId = user?.branch_id ?? 1;
 
@@ -65,8 +69,12 @@ export default function ReceiveStockPage() {
     stock_location: "store",
     invoice_number: "",
   });
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [loadingLpo, setLoadingLpo] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [prefillDone, setPrefillDone] = useState(false);
+
   useEffect(() => {
     Promise.all([
       fetchSuppliersCached(user?.organization_id),
@@ -87,6 +95,13 @@ export default function ReceiveStockPage() {
     () => new Map(products.map((p) => [p.product_code, p])),
     [products],
   );
+
+  const supplierInvoices = useMemo(() => {
+    const lpoNo = form.lpo_no;
+    return (lpoData?.supplier_invoices ?? []).filter(
+      (inv) => inv.id != null && Number(inv.lpo_no) === Number(lpoNo),
+    );
+  }, [lpoData?.supplier_invoices, form.lpo_no]);
 
   function mergeProducts(nextProducts) {
     if (!nextProducts?.length) return;
@@ -148,11 +163,25 @@ export default function ReceiveStockPage() {
       .catch(() => setLpoOptions([]));
   }, [mode, form.supplier_id]);
 
+  const applyInvoiceSelection = useCallback((invoiceId, invoices) => {
+    const id = String(invoiceId ?? "");
+    setSelectedInvoiceId(id);
+    if (!id) return;
+    const inv = (invoices ?? []).find((row) => String(row.id) === id);
+    if (inv?.supplier_invoice_number) {
+      setForm((p) => ({
+        ...p,
+        invoice_number: String(inv.supplier_invoice_number).trim(),
+      }));
+    }
+  }, []);
+
   const loadLpo = useCallback(
     async (lpoNo) => {
       if (!lpoNo) {
         setLpoData(null);
         setReceiveCounts({});
+        setSelectedInvoiceId("");
         return;
       }
       setLoadingLpo(true);
@@ -165,6 +194,14 @@ export default function ReceiveStockPage() {
           status: "all",
         });
         mergeProducts(catalog);
+        const invoices = (res.supplier_invoices ?? []).filter(
+          (inv) => inv.id != null && Number(inv.lpo_no) === Number(lpoNo),
+        );
+        if (invoices.length > 0) {
+          applyInvoiceSelection(invoices[0].id, invoices);
+        } else {
+          setSelectedInvoiceId("");
+        }
       } catch (e) {
         notifyError(e instanceof Error ? e.message : "Failed to load purchase order");
         setLpoData(null);
@@ -172,12 +209,29 @@ export default function ReceiveStockPage() {
         setLoadingLpo(false);
       }
     },
-    [uomById, user?.organization_id],
+    [uomById, user?.organization_id, applyInvoiceSelection],
   );
 
   useEffect(() => {
     if (mode === "lpo" && form.lpo_no) loadLpo(form.lpo_no);
   }, [mode, form.lpo_no, loadLpo]);
+
+  useEffect(() => {
+    if (prefillDone) return;
+    const lpoNo = searchParams.get("lpo_no");
+    const supplierId = searchParams.get("supplier_id");
+    if (!lpoNo && !supplierId) {
+      setPrefillDone(true);
+      return;
+    }
+    setMode("lpo");
+    setForm((p) => ({
+      ...p,
+      supplier_id: supplierId ? String(supplierId) : p.supplier_id,
+      lpo_no: lpoNo ? String(lpoNo) : p.lpo_no,
+    }));
+    setPrefillDone(true);
+  }, [searchParams, prefillDone]);
 
   function updateManualLine(index, patch) {
     setManualLines((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -192,6 +246,15 @@ export default function ReceiveStockPage() {
     });
     if (toPost.length === 0) {
       notifyError("Enter quantity to receive for at least one line.");
+      return;
+    }
+    if (supplierInvoices.length === 0) {
+      notifyError("Attach the supplier invoice for this LPO before receiving items.");
+      setInvoiceModalOpen(true);
+      return;
+    }
+    if (!selectedInvoiceId) {
+      notifyError("Select the supplier invoice that covers these items.");
       return;
     }
 
@@ -348,15 +411,85 @@ export default function ReceiveStockPage() {
                   <option value="shop">Shop</option>
                 </select>
               </Field>
-              <Field label="Receipt reference (optional)">
+              <Field label="Receipt reference">
                 <input
                   className={inputClassName()}
                   value={form.invoice_number}
                   onChange={(e) => setForm((p) => ({ ...p, invoice_number: e.target.value }))}
-                  placeholder="Supplier invoice or GRN number"
+                  placeholder="Filled from supplier invoice"
                 />
               </Field>
             </div>
+
+            {form.lpo_no && !loadingLpo ? (
+              <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">Supplier invoice</h3>
+                    <p className="text-xs text-slate-500">
+                      Attach the invoice covering the items you are receiving.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceModalOpen(true)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50"
+                  >
+                    {supplierInvoices.length ? "Attach another" : "Attach invoice"}
+                  </button>
+                </div>
+                {supplierInvoices.length === 0 ? (
+                  <p className="text-sm text-amber-800">
+                    No supplier invoice on this LPO yet. Attach the invoice document before
+                    completing the receipt.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {supplierInvoices.map((inv) => {
+                      const selected = String(selectedInvoiceId) === String(inv.id);
+                      return (
+                        <label
+                          key={inv.id}
+                          className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 ${
+                            selected
+                              ? "border-[var(--theme-primary)] bg-white"
+                              : "border-slate-200 bg-white"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="supplier_invoice"
+                            className="mt-1"
+                            checked={selected}
+                            onChange={() => applyInvoiceSelection(inv.id, supplierInvoices)}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-medium text-slate-900">
+                              {inv.supplier_invoice_number}
+                            </span>
+                            <span className="block text-xs text-slate-500">
+                              {inv.invoice_date ? `Dated ${inv.invoice_date}` : "No invoice date"}
+                            </span>
+                            {inv.has_document ? (
+                              <ProtectedFileLink
+                                filePath={lpoSupplierInvoiceFilePath(inv.id)}
+                                className="mt-1 inline-block text-xs font-medium text-[var(--theme-primary)] hover:underline"
+                              >
+                                View document
+                              </ProtectedFileLink>
+                            ) : (
+                              <span className="mt-1 block text-xs text-amber-700">
+                                Document missing — re-attach recommended
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            ) : null}
 
             {loadingLpo ? (
               <p className="text-sm text-slate-500">Loading order lines…</p>
@@ -445,7 +578,8 @@ export default function ReceiveStockPage() {
                                   />
                                   {sessionOfferBase > 0 ? (
                                     <p className="mt-1 text-right text-[11px] font-medium text-amber-700">
-                                      + {formatLinePackQty(
+                                      +{" "}
+                                      {formatLinePackQty(
                                         packQtyFromReceiveBase(sessionOfferBase, lineUom),
                                         lineUom,
                                       )}{" "}
@@ -571,6 +705,18 @@ export default function ReceiveStockPage() {
           </form>
         )}
       </div>
+
+      {form.lpo_no && form.supplier_id ? (
+        <SupplierInvoiceModal
+          open={invoiceModalOpen}
+          onClose={() => setInvoiceModalOpen(false)}
+          lpoNo={form.lpo_no}
+          supplierId={form.supplier_id}
+          onSaved={async () => {
+            await loadLpo(form.lpo_no);
+          }}
+        />
+      ) : null}
     </InventoryPageShell>
   );
 }

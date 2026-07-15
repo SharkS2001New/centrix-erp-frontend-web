@@ -37,6 +37,9 @@ import {
   lpoLineReturnedQty,
   lpoOrderDate,
 } from "@/components/lpo/lpo-shared";
+import { SupplierInvoiceModal } from "@/components/lpo/supplier-invoice-modal";
+import { lpoSupplierInvoiceFilePath } from "@/components/lpo/lpo-supplier-invoice-doc";
+import { ProtectedFileLink } from "@/components/media/protected-file-preview";
 import { baseToDisplayQty } from "@/lib/stock-uom";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { LpoReceivedQtyCell } from "@/components/lpo/lpo-received-qty";
@@ -61,17 +64,41 @@ export default function LpoReceivePage() {
   const [saving, setSaving] = useState(false);
   const [postedGrn, setPostedGrn] = useState(null);
   const [printingGrn, setPrintingGrn] = useState(false);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const { uomById } = useInventoryCatalogMaps(uoms);
   const showReturned = useMemo(
     () => lpoHasSupplierReturns(data?.lines ?? [], data?.supplier_returns ?? []),
     [data?.lines, data?.supplier_returns],
   );
+  const supplierInvoices = useMemo(
+    () =>
+      (data?.supplier_invoices ?? []).filter(
+        (inv) => inv.id != null && Number(inv.lpo_no) === Number(lpoNo),
+      ),
+    [data?.supplier_invoices, lpoNo],
+  );
   const supplierInvoiceNumber = useMemo(() => {
-    const invoices = (data?.supplier_invoices ?? []).filter(
-      (inv) => inv.id != null && Number(inv.lpo_no) === Number(lpoNo),
+    if (selectedInvoiceId) {
+      const selected = supplierInvoices.find((inv) => String(inv.id) === String(selectedInvoiceId));
+      if (selected?.supplier_invoice_number?.trim()) {
+        return selected.supplier_invoice_number.trim();
+      }
+    }
+    return supplierInvoices[0]?.supplier_invoice_number?.trim() || null;
+  }, [selectedInvoiceId, supplierInvoices]);
+
+  useEffect(() => {
+    if (supplierInvoices.length === 0) {
+      setSelectedInvoiceId("");
+      return;
+    }
+    setSelectedInvoiceId((prev) =>
+      prev && supplierInvoices.some((inv) => String(inv.id) === String(prev))
+        ? prev
+        : String(supplierInvoices[0].id),
     );
-    return invoices[0]?.supplier_invoice_number?.trim() || null;
-  }, [data?.supplier_invoices, lpoNo]);
+  }, [supplierInvoices]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,6 +143,15 @@ export default function LpoReceivePage() {
 
     if (toPost.length === 0) {
       notifyError("Enter quantity to receive for at least one line.");
+      return;
+    }
+    if (supplierInvoices.length === 0) {
+      notifyError("Attach the supplier invoice for this LPO before receiving items.");
+      setInvoiceModalOpen(true);
+      return;
+    }
+    if (!selectedInvoiceId) {
+      notifyError("Select the supplier invoice that covers these items.");
       return;
     }
 
@@ -192,13 +228,14 @@ export default function LpoReceivePage() {
             label: lpo ? lpoDisplayNumber(lpo) : "Purchase order",
             href: `/lpo/${lpoNo}`,
           },
-          { label: "Receive stock" },
+          { label: "Receive Items" },
         ]}
       />
       <div className="mb-6">
-        <h1 className="text-2xl font-medium text-slate-900">Stock receipt from LPO</h1>
+        <h1 className="text-2xl font-medium text-slate-900">Receive Items</h1>
         <p className="mt-1 text-base text-slate-500">
-          Posts inventory and updates received quantities on the purchase order.
+          Posts inventory and updates received quantities on the purchase order. Attach the supplier
+          invoice covering these items before confirming.
         </p>
       </div>
 
@@ -247,6 +284,74 @@ export default function LpoReceivePage() {
                 </div>
               </dl>
             </div>
+          </section>
+
+          <section className="theme-panel rounded-xl border p-6 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Supplier invoice</h2>
+                <p className="text-sm text-slate-500">
+                  Required — attach the invoice document for the items you are receiving.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInvoiceModalOpen(true)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50"
+              >
+                {supplierInvoices.length ? "Attach another" : "Attach invoice"}
+              </button>
+            </div>
+            {supplierInvoices.length === 0 ? (
+              <p className="text-sm text-amber-800">
+                No supplier invoice attached yet. Upload the supplier invoice before posting the
+                receipt.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {supplierInvoices.map((inv) => {
+                  const selected = String(selectedInvoiceId) === String(inv.id);
+                  return (
+                    <label
+                      key={inv.id}
+                      className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 ${
+                        selected
+                          ? "border-[var(--theme-primary)] bg-[var(--theme-primary-muted)]"
+                          : "border-slate-200 bg-slate-50"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="lpo_supplier_invoice"
+                        className="mt-1"
+                        checked={selected}
+                        onChange={() => setSelectedInvoiceId(String(inv.id))}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-medium text-slate-900">
+                          {inv.supplier_invoice_number}
+                        </span>
+                        <span className="block text-xs text-slate-500">
+                          {inv.invoice_date ? `Dated ${inv.invoice_date}` : "No invoice date"}
+                        </span>
+                        {inv.has_document ? (
+                          <ProtectedFileLink
+                            filePath={lpoSupplierInvoiceFilePath(inv.id)}
+                            className="mt-1 inline-block text-xs font-medium text-[var(--theme-primary)] hover:underline"
+                          >
+                            View document
+                          </ProtectedFileLink>
+                        ) : (
+                          <span className="mt-1 block text-xs text-amber-700">
+                            Document missing — re-attach recommended
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
           <section className="theme-panel rounded-xl border p-6 shadow-sm">
@@ -446,6 +551,18 @@ export default function LpoReceivePage() {
             </Link>
           </div>
         </div>
+      ) : null}
+
+      {lpo?.supplier_id ? (
+        <SupplierInvoiceModal
+          open={invoiceModalOpen}
+          onClose={() => setInvoiceModalOpen(false)}
+          lpoNo={lpoNo}
+          supplierId={lpo.supplier_id}
+          onSaved={async () => {
+            await load();
+          }}
+        />
       ) : null}
     </div>
   );

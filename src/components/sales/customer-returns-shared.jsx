@@ -327,10 +327,13 @@ export function legacyFullReturnLine(line) {
   });
 }
 
-/** Parse invoice / receipt reference from user input (S0001, INV-1005, or raw number). */
+/** Parse invoice / receipt reference from user input (S0001, AR-1005, INV-1005, or raw number). */
 export function parseInvoiceNumber(query) {
   const q = String(query ?? "").trim();
   if (!q) return null;
+
+  const arMatch = q.match(/^AR-?(\d+)$/i);
+  if (arMatch) return Number(arMatch[1]);
 
   const invMatch = q.match(/^INV-?(\d+)$/i);
   if (invMatch) return Number(invMatch[1]);
@@ -341,4 +344,31 @@ export function parseInvoiceNumber(query) {
   if (/^\d+$/.test(q)) return Number(q);
 
   return null;
+}
+
+/**
+ * Sales list query params for return invoice lookup.
+ * Exact order # (S0168 / 168) is resolved without a status or date box —
+ * the API skips the list date window for digit / S-prefixed lookups.
+ */
+export function salesReturnSearchParams(query, statusIn = []) {
+  const q = String(query ?? "").trim();
+  const orderNum = parseInvoiceNumber(q);
+  const params = { per_page: 15 };
+
+  if (orderNum != null) {
+    // Prefer S-prefixed so the API uses exact order_num matching.
+    params.q = `S${orderNum}`;
+    // Any sale that can have returnable lines — not only literal "completed".
+    params.exclude_statuses = "cancelled,expired,held,draft,pending_approval";
+    return params;
+  }
+
+  params.q = q;
+  if (statusIn.length > 0) {
+    params.status_in = statusIn.join(",");
+  } else {
+    params.status_in = "paid,processed,delivered,completed";
+  }
+  return params;
 }

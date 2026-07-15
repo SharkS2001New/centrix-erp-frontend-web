@@ -22,6 +22,7 @@ import {
   buildOrderWorkflowTimeline,
   canCancelOrder,
   getOrderWorkflow,
+  isCheckoutCompleteStatus,
   isPaymentGatedWorkflowTransition,
   PAYMENT_STEP_KEYS,
   resolveOrderWorkflowActions,
@@ -814,7 +815,9 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const printLabel = orderDocumentPrintLabel(capabilities?.module_settings, capabilities);
   const showDiscountColumn = shouldShowSalesDiscountColumn(capabilities?.module_settings);
   const createReturnHref =
-    sale?.id && sale?.status === "completed" ? `/sales/returns/new?sale_id=${sale.id}` : null;
+    sale?.id && isCheckoutCompleteStatus(sale.status, saleWorkflow, sale.channel ?? "backend")
+      ? `/sales/returns/new?sale_id=${sale.id}`
+      : null;
   const totalReturned = useMemo(
     () =>
       orderReturns

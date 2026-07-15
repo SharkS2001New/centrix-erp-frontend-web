@@ -8,7 +8,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
-import { useListPageSize } from "@/lib/use-list-page-controls";
+import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
 import { fetchBranchesCached, fetchRoutesAndUomsCached } from "@/lib/reference-data-cache";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
@@ -31,6 +31,7 @@ import {
   PaginationBar,
   SearchInput,
   SECONDARY_BTN_CLASS,
+  ActiveSortChip,
 } from "@/components/catalog/catalog-shared";
 import { defaultDateRange, isoDate } from "@/components/inventory/inventory-shared";
 import { shouldShowSalesDiscountColumn, canApproveDiscountRequests } from "@/lib/sales-settings";
@@ -53,6 +54,7 @@ import { routeOrderSourcesText } from "@/lib/distribution-settings";
 import {
   defaultOrderListPrintDocumentType,
   getOrdersListDefaultDateRange,
+  getOrdersListSearchDays,
   getOrdersListSort,
   isOrgMobileSalesEnabled,
   orderListDateRangeUsesArchive,
@@ -73,6 +75,7 @@ import { useFulfillmentTransition } from "@/lib/use-fulfillment-transition";
 import {
   formatOrderNumber,
   isOrderEditActionVisible,
+  normalizeSalesListSearchQuery,
   shouldOpenBackofficeOrderEdit,
   shouldRestoreOrderToCart,
 } from "@/lib/sales";
@@ -165,6 +168,23 @@ export default function SalesOrdersListScreen({
   const [editSale, setEditSale] = useState(null);
   const [paySale, setPaySale] = useState(null);
   const [rejectContext, setRejectContext] = useState(null);
+  const [columnFilters, setColumnFilters] = useState({
+    order: "",
+    customer: "",
+    amount: "",
+    status: "",
+    method: "",
+    source: "",
+    placed_by: "",
+  });
+  const debouncedColumnFilters = useDebouncedValue(columnFilters, 350);
+  const {
+    sort: tableSort,
+    sortDir: tableSortDir,
+    sortActive: tableSortActive,
+    toggleSort: toggleTableSort,
+    clearSort: clearTableSort,
+  } = useTableSort("sales-orders-table-sort");
 
   const effectiveStatusFilter = queueConfig?.lockStatusFilter
     ? queueConfig.fixedStatusFilter
@@ -187,8 +207,29 @@ export default function SalesOrdersListScreen({
     ];
   }, [routeById]);
 
-  const ordersListSort = useMemo(
-    () => getOrdersListSort(capabilities?.module_settings),
+  const ordersListSort = useMemo(() => {
+    if (tableSort) {
+      return tableSortDir === "desc" ? `-${tableSort}` : tableSort;
+    }
+    return getOrdersListSort(capabilities?.module_settings);
+  }, [tableSort, tableSortDir, capabilities?.module_settings]);
+
+  const activeSortLabel = useMemo(() => {
+    if (!tableSortActive || !tableSort) return null;
+    const labels = {
+      order_num: "Order #",
+      customer_name: "Customer",
+      order_total: "Amount",
+      status: "Status",
+      channel: "Source",
+      created_at: "Placed date",
+    };
+    const dir = tableSortDir === "desc" ? "high to low / newest first" : "low to high / oldest first";
+    return `${labels[tableSort] ?? tableSort} (${dir})`;
+  }, [tableSortActive, tableSort, tableSortDir]);
+
+  const ordersSearchDays = useMemo(
+    () => getOrdersListSearchDays(capabilities?.module_settings),
     [capabilities?.module_settings],
   );
 
@@ -313,11 +354,14 @@ export default function SalesOrdersListScreen({
     setListLoading(true);
     try {
       const filters = {};
+      const statusFromColumn = String(debouncedColumnFilters.status ?? "").trim();
       const statusParam = queueConfig?.lockStatusFilter
         ? queueConfig.fixedStatusFilter
-        : effectiveStatusFilter !== "all"
-          ? effectiveStatusFilter
-          : null;
+        : statusFromColumn
+          ? statusFromColumn
+          : effectiveStatusFilter !== "all"
+            ? effectiveStatusFilter
+            : null;
       if (statusParam) filters.status = statusParam;
       if (queueConfig?.fixedPaymentStatusFilter) {
         filters.payment_status = queueConfig.fixedPaymentStatusFilter;
@@ -350,14 +394,40 @@ export default function SalesOrdersListScreen({
       if (routeFilter && routeFilter !== "all") {
         extra.route_id = routeFilter;
       }
-      if (!routeOrdersOnly && effectiveSourceFilter && effectiveSourceFilter !== "all") {
-        extra.order_source = effectiveSourceFilter;
+      const sourceFromColumn = String(debouncedColumnFilters.source ?? "").trim();
+      const sourceParam = !routeOrdersOnly
+        ? sourceFromColumn ||
+          (effectiveSourceFilter && effectiveSourceFilter !== "all" ? effectiveSourceFilter : "")
+        : "";
+      if (sourceParam) {
+        extra.order_source = sourceParam;
+      }
+
+      const orderCol = String(debouncedColumnFilters.order ?? "").trim();
+      const customerCol = String(debouncedColumnFilters.customer ?? "").trim();
+      const amountCol = String(debouncedColumnFilters.amount ?? "").trim();
+      const methodCol = String(debouncedColumnFilters.method ?? "").trim();
+      const placedByCol = String(debouncedColumnFilters.placed_by ?? "").trim();
+      if (orderCol) extra.filter_order = orderCol;
+      if (customerCol) extra.filter_customer = customerCol;
+      if (amountCol) extra.filter_amount = amountCol;
+      if (methodCol) extra.filter_method = methodCol;
+      if (placedByCol) extra.filter_placed_by = placedByCol;
+      if (sourceFromColumn) extra.filter_source = sourceFromColumn;
+
+      const searchQ = normalizeSalesListSearchQuery(debouncedSearch);
+      // Searching expands the effective date window using the platform search days setting.
+      if (searchQ && appliedFromDate && appliedToDate) {
+        const searchRange = defaultDateRange(ordersSearchDays);
+        if (String(appliedFromDate) > String(searchRange.from)) {
+          extra.from_date = searchRange.from;
+        }
       }
 
       const searchParams = buildPageParams({
         page,
         perPage: pageSize,
-        q: debouncedSearch,
+        q: searchQ || undefined,
         filters,
         extra,
       });
@@ -400,11 +470,17 @@ export default function SalesOrdersListScreen({
     routeFilter,
     listFiltersInitialized,
     ordersListSort,
+    ordersSearchDays,
+    debouncedColumnFilters,
   ]);
 
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedColumnFilters]);
 
   async function loadOrderDetail(orderId) {
     const key = String(orderId);
@@ -884,7 +960,7 @@ export default function SalesOrdersListScreen({
           <SearchInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search receipt, customer, order #…"
+            placeholder="Search S0034, customer, order #…"
           />
           <Field label="From">
             <input
@@ -984,7 +1060,10 @@ export default function SalesOrdersListScreen({
                   queueConfig?.dateRangeDays ||
                   ORDERS_HOT_WINDOW_DAYS}{" "}
                 days
-                {debouncedSearch.trim() ? ", or you searched across history" : ""}.
+                {debouncedSearch.trim()
+                  ? `, or search is scoped to the last ${ordersSearchDays} days`
+                  : ""}
+                .
               </span>
             </span>
           </div>
@@ -1029,6 +1108,22 @@ export default function SalesOrdersListScreen({
                 </button>
               </div>
               <div className="overflow-x-auto">
+                {tableSortActive ? (
+                  <div className="px-4 pt-3">
+                    <ActiveSortChip
+                      label={activeSortLabel}
+                      onClear={() => {
+                        clearTableSort();
+                        setPage(1);
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <p className="px-4 pt-2 text-[11px] text-slate-500">
+                    Sorted by newest orders first. Click a column header to change sort; use the row
+                    below to filter.
+                  </p>
+                )}
                 <table
                   className={`w-full border-collapse text-sm ${
                     showPaymentBreakdownColumns ? "min-w-[1240px]" : "min-w-[1040px]"
@@ -1043,6 +1138,22 @@ export default function SalesOrdersListScreen({
                       showSourceColumn={showSourceColumn}
                       showDiscountColumn={showDiscountColumn}
                       showPaymentBreakdownColumns={showPaymentBreakdownColumns}
+                      sort={tableSort}
+                      sortDir={tableSortDir}
+                      onSort={(columnId) => {
+                        toggleTableSort(columnId);
+                        setPage(1);
+                      }}
+                      columnFilters={columnFilters}
+                      onColumnFilterChange={(key, value) => {
+                        setColumnFilters((prev) => ({ ...prev, [key]: value }));
+                      }}
+                      statusOptions={
+                        queueConfig?.lockStatusFilter
+                          ? []
+                          : statusOptions
+                      }
+                      sourceOptions={showSourceColumn ? sourceOptions : []}
                     />
                   </thead>
                   <tbody>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { formatShortDate, formatKesCompact, getSaleTimestamp, StatCard, TABLE_HEAD_ROW_CLASS } from "@/components/catalog/catalog-shared";
+import { formatShortDate, formatKesCompact, getSaleTimestamp, StatCard, SortableColumnHeader, TABLE_HEAD_ROW_CLASS } from "@/components/catalog/catalog-shared";
 import { formatCustomerKes } from "@/components/customers/customer-form";
 import {
   isLegacySale,
@@ -723,6 +723,9 @@ export function OrderRowActions({
   );
 }
 
+const COLUMN_FILTER_INPUT_CLASS =
+  "w-full min-w-0 rounded border border-[var(--theme-border)] bg-[var(--theme-surface)] px-2 py-1 text-xs text-[var(--theme-text)] placeholder:text-[var(--theme-text-subtle)] focus:border-[var(--theme-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--theme-primary)]";
+
 export function OrderListTableHead({
   showBranchColumn,
   showRouteColumn = false,
@@ -731,31 +734,131 @@ export function OrderListTableHead({
   showSourceColumn = true,
   showDiscountColumn = false,
   showPaymentBreakdownColumns = false,
+  sort = null,
+  sortDir = "desc",
+  onSort,
+  columnFilters = {},
+  onColumnFilterChange,
+  statusOptions = [],
+  sourceOptions = [],
 }) {
+  const filtersEnabled = typeof onColumnFilterChange === "function";
+  const sortable = typeof onSort === "function";
+
+  function header(label, columnId, align = "left") {
+    if (!sortable || !columnId) {
+      return label;
+    }
+    return (
+      <SortableColumnHeader
+        label={label}
+        columnId={columnId}
+        sort={sort}
+        sortDir={sortDir}
+        onSort={onSort}
+        align={align}
+      />
+    );
+  }
+
+  function filterCell(key, placeholder = "Filter…", type = "text", options = null) {
+    if (!filtersEnabled) return null;
+    if (options) {
+      return (
+        <select
+          className={COLUMN_FILTER_INPUT_CLASS}
+          value={columnFilters[key] ?? ""}
+          onChange={(e) => onColumnFilterChange(key, e.target.value)}
+          aria-label={`Filter ${placeholder}`}
+        >
+          <option value="">All</option>
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      );
+    }
+    return (
+      <input
+        type={type}
+        className={COLUMN_FILTER_INPUT_CLASS}
+        value={columnFilters[key] ?? ""}
+        onChange={(e) => onColumnFilterChange(key, e.target.value)}
+        placeholder={placeholder}
+        aria-label={`Filter ${placeholder}`}
+      />
+    );
+  }
+
   return (
-    <tr className={TABLE_HEAD_ROW_CLASS}>
-      <th className="w-12 px-4 py-2.5" aria-label="Expand" />
-      <th className="px-4 py-2.5">Order</th>
-      <th className="px-4 py-2.5">Customer</th>
-      {showBranchColumn ? <th className="px-4 py-2.5">Branch</th> : null}
-      {showRouteColumn ? <th className="px-4 py-2.5">Route</th> : null}
-      {showDeliveryDateColumn ? <th className="px-4 py-2.5">Delivery date</th> : null}
-      {showConnectivityColumn ? <th className="px-4 py-2.5">Connectivity</th> : null}
-      <th className="px-4 py-2.5 text-right">Amount</th>
-      {showPaymentBreakdownColumns ? (
-        <>
-          <th className="px-4 py-2.5 text-right">Amount paid</th>
-          <th className="px-4 py-2.5 text-right">Balance</th>
-        </>
+    <>
+      <tr className={TABLE_HEAD_ROW_CLASS}>
+        <th className="w-12 px-4 py-2.5" aria-label="Expand" />
+        <th className="px-4 py-2.5">{header("Order", "order_num")}</th>
+        <th className="px-4 py-2.5">{header("Customer", "customer_name")}</th>
+        {showBranchColumn ? <th className="px-4 py-2.5">Branch</th> : null}
+        {showRouteColumn ? <th className="px-4 py-2.5">Route</th> : null}
+        {showDeliveryDateColumn ? <th className="px-4 py-2.5">Delivery date</th> : null}
+        {showConnectivityColumn ? <th className="px-4 py-2.5">Connectivity</th> : null}
+        <th className="px-4 py-2.5 text-right">{header("Amount", "order_total", "right")}</th>
+        {showPaymentBreakdownColumns ? (
+          <>
+            <th className="px-4 py-2.5 text-right">Amount paid</th>
+            <th className="px-4 py-2.5 text-right">Balance</th>
+          </>
+        ) : null}
+        {showDiscountColumn ? <th className="px-4 py-2.5 text-right">Discount</th> : null}
+        <th className="px-4 py-2.5 text-right">VAT</th>
+        <th className="px-4 py-2.5">{header("Status", "status")}</th>
+        <th className="px-4 py-2.5">Method</th>
+        {showSourceColumn ? <th className="px-4 py-2.5">{header("Source", "channel")}</th> : null}
+        <th className="px-4 py-2.5">{header("Placed by", "created_at")}</th>
+        <th className="px-4 py-2.5 w-28 text-right">Actions</th>
+      </tr>
+      {filtersEnabled ? (
+        <tr className="border-b border-[var(--theme-border)] bg-[color-mix(in_srgb,var(--theme-surface-muted)_70%,transparent)]">
+          <th className="w-12 px-2 py-1.5" />
+          <th className="px-2 py-1.5 font-normal">{filterCell("order", "Order #")}</th>
+          <th className="px-2 py-1.5 font-normal">{filterCell("customer", "Customer")}</th>
+          {showBranchColumn ? <th className="px-2 py-1.5" /> : null}
+          {showRouteColumn ? <th className="px-2 py-1.5" /> : null}
+          {showDeliveryDateColumn ? <th className="px-2 py-1.5" /> : null}
+          {showConnectivityColumn ? <th className="px-2 py-1.5" /> : null}
+          <th className="px-2 py-1.5 font-normal">{filterCell("amount", "Amount")}</th>
+          {showPaymentBreakdownColumns ? (
+            <>
+              <th className="px-2 py-1.5" />
+              <th className="px-2 py-1.5" />
+            </>
+          ) : null}
+          {showDiscountColumn ? <th className="px-2 py-1.5" /> : null}
+          <th className="px-2 py-1.5" />
+          <th className="px-2 py-1.5 font-normal">
+            {filterCell(
+              "status",
+              "Status",
+              "text",
+              statusOptions.filter((o) => o.value && o.value !== "all"),
+            )}
+          </th>
+          <th className="px-2 py-1.5 font-normal">{filterCell("method", "Method")}</th>
+          {showSourceColumn ? (
+            <th className="px-2 py-1.5 font-normal">
+              {filterCell(
+                "source",
+                "Source",
+                "text",
+                sourceOptions.filter((o) => o.value && o.value !== "all"),
+              )}
+            </th>
+          ) : null}
+          <th className="px-2 py-1.5 font-normal">{filterCell("placed_by", "Name")}</th>
+          <th className="px-2 py-1.5" />
+        </tr>
       ) : null}
-      {showDiscountColumn ? <th className="px-4 py-2.5 text-right">Discount</th> : null}
-      <th className="px-4 py-2.5 text-right">VAT</th>
-      <th className="px-4 py-2.5">Status</th>
-      <th className="px-4 py-2.5">Method</th>
-      {showSourceColumn ? <th className="px-4 py-2.5">Source</th> : null}
-      <th className="px-4 py-2.5">Placed by</th>
-      <th className="px-4 py-2.5 w-28 text-right">Actions</th>
-    </tr>
+    </>
   );
 }
 

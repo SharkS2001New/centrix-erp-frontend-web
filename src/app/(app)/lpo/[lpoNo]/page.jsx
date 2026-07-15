@@ -184,8 +184,27 @@ export default function LpoDetailPage() {
           {!lpo.can_edit ? (
             <p className="theme-inset-panel rounded-lg border px-4 py-3 text-sm theme-subtext">
               This LPO was sent to the supplier and can no longer be edited or deleted. Use workflow
-              actions above or receive stock. Payments are allowed only after all items are received.
+              actions above or receive items. Payments are allowed only after all items are received.
             </p>
+          ) : null}
+          {lpo.can_receive !== false &&
+          Number(lpo.lpo_status_code) >= 2 &&
+          Number(lpo.lpo_status_code) < 5 ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-[var(--theme-accent-text)]">Ready to receive</p>
+                <p className="text-sm theme-subtext">
+                  Record received quantities against this purchase order and attach the supplier
+                  invoice.
+                </p>
+              </div>
+              <Link
+                href={`/lpo/${lpoNo}/receive`}
+                className="theme-primary-btn rounded-lg px-4 py-2 text-sm font-medium"
+              >
+                Receive Items
+              </Link>
+            </div>
           ) : null}
           {lpo.lpo_status_code >= 3 && Number(lpo.received_payable_total) > 0 ? (
             <p className="rounded-lg border border-[var(--theme-primary)]/30 bg-[var(--theme-primary-muted)] px-4 py-3 text-sm text-[var(--theme-accent-text)]">

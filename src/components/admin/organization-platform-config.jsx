@@ -10,7 +10,7 @@ import {
   orderWorkflowFromApi,
 } from "@/components/admin/order-workflow-settings";
 import { DEFAULT_ORDER_WORKFLOW, workflowPipelineSteps } from "@/lib/order-workflow";
-import { normalizeStockDeductOn, normalizeOrdersListDefaultDays, normalizeOrdersListSort } from "@/lib/sales-settings";
+import { normalizeStockDeductOn, normalizeOrdersListDefaultDays, normalizeOrdersListSearchDays, normalizeOrdersListSort } from "@/lib/sales-settings";
 import { OrdersListDefaultsFields } from "@/components/admin/orders-list-defaults-fields";
 import {
   DOMAIN_MODULE_ORDER,
@@ -247,7 +247,8 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
     reserve_stock_on_cart: true,
     cart_reservation_ttl_minutes: "15",
-    orders_list_default_days: "5",
+    orders_list_default_days: "14",
+    orders_list_search_days: "30",
     orders_list_sort: "-created_at",
     order_expiry_enabled: true,
     order_expiry_days: "5",
@@ -284,6 +285,12 @@ export function salesPlatformFromApi(apiPayload) {
         ? String(Math.min(15, Math.max(0, Number(apiPayload.cart_reservation_ttl_minutes) || 0)))
         : "15",
     orders_list_default_days: String(normalizeOrdersListDefaultDays(apiPayload.orders_list_default_days)),
+    orders_list_search_days: String(
+      normalizeOrdersListSearchDays(
+        apiPayload.orders_list_search_days,
+        normalizeOrdersListDefaultDays(apiPayload.orders_list_default_days),
+      ),
+    ),
     orders_list_sort: normalizeOrdersListSort(apiPayload.orders_list_sort),
     order_expiry_enabled: apiPayload.order_expiry_enabled !== false,
     order_expiry_days: String(
@@ -448,7 +455,7 @@ export function OrganizationPlatformSalesSettings({
     {salesEnabled ? (
       <PlatformFormSection
         title="Orders list"
-        description="Default date range and sort order when staff open Sales → Orders and workflow order queues."
+        description="Platform defaults for Sales → Orders date filter and search scope. Distribution orgs typically need a wider window than wholesale/retail — adjust per organization."
       >
         <OrdersListDefaultsFields
           value={salesPlatform}

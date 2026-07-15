@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { ReturnProofField } from "@/components/returns/return-proof-field";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
+import { checkoutCompleteStatuses, getChannelWorkflow } from "@/lib/order-workflow";
 import {
   REFUND_METHODS,
   RETURN_REASONS,
@@ -18,6 +19,7 @@ import {
   emptyReturnLineFromSaleItem,
   initReturnLineCounts,
   parseInvoiceNumber,
+  salesReturnSearchParams,
   applyReturnAllLines,
   buildReturnCountsForLines,
   clearReturnAllLines,
@@ -40,7 +42,11 @@ export function CustomerReturnForm({
   initialSaleId = "",
 }) {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, capabilities } = useAuth();
+  const returnSearchStatuses = useMemo(
+    () => checkoutCompleteStatuses(getChannelWorkflow(capabilities, "backend"), "backend"),
+    [capabilities],
+  );
   const [invoiceQuery, setInvoiceQuery] = useState("");
   const [saleOptions, setSaleOptions] = useState([]);
   const [saleId, setSaleId] = useState("");
@@ -122,16 +128,14 @@ export function CustomerReturnForm({
       return;
     }
     const timer = setTimeout(() => {
-      const orderNum = parseInvoiceNumber(q);
-      const searchQ = orderNum != null ? String(orderNum) : q;
       apiRequest("/sales", {
-        searchParams: { q: searchQ, per_page: 15, "filter[status]": "completed" },
+        searchParams: salesReturnSearchParams(q, returnSearchStatuses),
       })
         .then((res) => setSaleOptions(res.data ?? []))
         .catch(() => setSaleOptions([]));
     }, 300);
     return () => clearTimeout(timer);
-  }, [invoiceQuery]);
+  }, [invoiceQuery, returnSearchStatuses]);
 
   const loadSale = useCallback(async (id, displayQuery) => {
     if (!id) return;
@@ -196,9 +200,25 @@ export function CustomerReturnForm({
     setLoadingSale(true);
     setError(null);
     try {
-      const searchQ = orderNum != null ? String(orderNum) : q;
+      const looksLikeAr = /^AR-?/i.test(q) || (!orderNum && /[A-Za-z]/.test(q));
+      if (looksLikeAr) {
+        const invRes = await apiRequest("/customer-invoices", {
+          searchParams: { q, per_page: 15 },
+        });
+        const invoices = invRes.data ?? [];
+        const invMatch =
+          invoices.find(
+            (inv) => String(inv.invoice_number ?? "").toLowerCase() === q.toLowerCase(),
+          ) ??
+          (invoices.length === 1 ? invoices[0] : null);
+        if (invMatch?.sale_id) {
+          await loadSale(invMatch.sale_id, invMatch.invoice_number ?? q);
+          return;
+        }
+      }
+
       const res = await apiRequest("/sales", {
-        searchParams: { q: searchQ, per_page: 15, "filter[status]": "completed" },
+        searchParams: salesReturnSearchParams(q, returnSearchStatuses),
       });
       const sales = res.data ?? [];
       const match =
@@ -222,7 +242,7 @@ export function CustomerReturnForm({
     } finally {
       setLoadingSale(false);
     }
-  }, [invoiceQuery, saleOptions, loadSale]);
+  }, [invoiceQuery, saleOptions, loadSale, returnSearchStatuses]);
 
   function updateLine(index, returnQty) {
     setReturnAll(false);
@@ -384,7 +404,7 @@ export function CustomerReturnForm({
                   resolveAndLoadInvoice();
                 }
               }}
-              placeholder="S0001 or INV-1005"
+              placeholder="S0168, AR-168, or 168"
               list="return-sale-options"
             />
             <button
