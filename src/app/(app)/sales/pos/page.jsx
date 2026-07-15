@@ -1,9 +1,11 @@
 "use client";
 
-import PosScreen from "@/components/sales/pos-screen";
-import { useTabTitle } from "@/contexts/tab-workspace-context";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import SalesPos from "@/components/sales/pos-screen";
 
-export default function PosPage() {
-  useTabTitle("Create order");
-  return <PosScreen />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <SalesPos />;
 }

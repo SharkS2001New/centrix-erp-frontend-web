@@ -1,7 +1,11 @@
 "use client";
 
-import { SupplierStatementScreen } from "@/components/reports/supplier-statement-screen";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { ReportsSupplierStatementScreen } from "@/components/tab-screens/reports-supplier-statement";
 
-export default function SupplierStatementPage() {
-  return <SupplierStatementScreen />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <ReportsSupplierStatementScreen />;
 }

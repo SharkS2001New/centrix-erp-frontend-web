@@ -1,14 +1,11 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-import { useParams } from "next/navigation";
-import { OrderSummaryScreen } from "@/components/sales/order-summary-screen";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { SalesOrdersIdScreen } from "@/components/tab-screens/sales-orders-id";
 
-export default function SaleOrderDetailPage() {
-  const params = useParams();
-  const searchParams = useSearchParams();
-  const saleId = params.id;
-  const backHref = searchParams.get("from") || "/sales/orders";
-
-  return <OrderSummaryScreen saleId={saleId} backHref={backHref} />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <SalesOrdersIdScreen />;
 }

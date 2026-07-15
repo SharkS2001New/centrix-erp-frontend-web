@@ -1,12 +1,11 @@
 "use client";
 
-import { Suspense } from "react";
-import { MobilePickingScreen } from "@/components/fulfillment/mobile-picking-screen";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { FulfillmentPickingScreen } from "@/components/tab-screens/fulfillment-picking";
 
-export default function FulfillmentPickingPage() {
-  return (
-    <Suspense fallback={<p className="p-6 text-sm text-slate-500">Loading warehouse picking…</p>}>
-      <MobilePickingScreen />
-    </Suspense>
-  );
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <FulfillmentPickingScreen />;
 }

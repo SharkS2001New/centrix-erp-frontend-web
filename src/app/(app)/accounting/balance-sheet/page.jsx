@@ -1,13 +1,11 @@
 "use client";
 
-import { AccountingReportScreen } from "@/components/accounting/accounting-report-screen";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { AccountingBalanceSheetScreen } from "@/components/tab-screens/accounting-balance-sheet";
 
-export default function BalanceSheetPage() {
-  return (
-    <AccountingReportScreen
-      title="Balance Sheet"
-      apiPath="/reports/balance-sheet"
-      emptyLabel="No balance sheet amounts as of this date."
-    />
-  );
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <AccountingBalanceSheetScreen />;
 }

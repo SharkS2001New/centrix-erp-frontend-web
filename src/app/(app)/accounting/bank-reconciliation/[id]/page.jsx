@@ -1,10 +1,11 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { BankReconciliationWorkspace } from "@/components/accounting/bank-reconciliation-workspace";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { AccountingBankReconciliationIdScreen } from "@/components/tab-screens/accounting-bank-reconciliation-id";
 
-export default function BankReconciliationDetailPage() {
-  const params = useParams();
-
-  return <BankReconciliationWorkspace reconciliationId={params.id} />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <AccountingBankReconciliationIdScreen />;
 }

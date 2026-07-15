@@ -1,6 +1,11 @@
-import { redirect } from "next/navigation";
+"use client";
 
-/** Local printing (print agent) moved to Administration. */
-export default function SalesTillPrintingRedirectPage() {
-  redirect("/admin/till-printing");
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { SalesTillPrintingScreen } from "@/components/tab-screens/sales-till-printing";
+
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <SalesTillPrintingScreen />;
 }

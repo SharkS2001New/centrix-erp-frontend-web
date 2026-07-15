@@ -1,7 +1,11 @@
 "use client";
 
-import { ReportBuilderScreen } from "@/components/reports/report-builder-screen";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { ReportsBuilderScreen } from "@/components/tab-screens/reports-builder";
 
-export default function ReportBuilderPage() {
-  return <ReportBuilderScreen />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <ReportsBuilderScreen />;
 }

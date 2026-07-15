@@ -1,7 +1,11 @@
 "use client";
 
-import { EndOfDayReportScreen } from "@/components/pos/end-of-day-report-screen";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { SalesEndOfDayScreen } from "@/components/tab-screens/sales-end-of-day";
 
-export default function EndOfDaySalesPage() {
-  return <EndOfDayReportScreen />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <SalesEndOfDayScreen />;
 }

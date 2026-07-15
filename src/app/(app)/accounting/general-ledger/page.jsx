@@ -1,15 +1,11 @@
 "use client";
 
-import { AccountingReportScreen } from "@/components/accounting/accounting-report-screen";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { AccountingGeneralLedgerScreen } from "@/components/tab-screens/accounting-general-ledger";
 
-export default function GeneralLedgerPage() {
-  return (
-    <AccountingReportScreen
-      title="General Ledger"
-      apiPath="/reports/general-ledger"
-      showAccountFilter
-      enableSearch
-      emptyLabel="No posted journal lines for this filter."
-    />
-  );
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <AccountingGeneralLedgerScreen />;
 }

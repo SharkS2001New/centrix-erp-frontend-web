@@ -1,5 +1,11 @@
-import { DistributionLoadingListsScreen } from "@/components/fulfillment/distribution-loading-lists-screen";
+"use client";
 
-export default function FulfillmentLoadingListsPage() {
-  return <DistributionLoadingListsScreen />;
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { FulfillmentLoadingListsScreen } from "@/components/tab-screens/fulfillment-loading-lists";
+
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <FulfillmentLoadingListsScreen />;
 }

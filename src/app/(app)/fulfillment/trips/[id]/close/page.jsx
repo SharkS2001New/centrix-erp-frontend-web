@@ -1,9 +1,11 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { TripCloseReconciliation } from "@/components/fulfillment/trip-close-reconciliation";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { FulfillmentTripsIdCloseScreen } from "@/components/tab-screens/fulfillment-trips-id-close";
 
-export default function TripClosePage() {
-  const { id } = useParams();
-  return <TripCloseReconciliation tripId={id} />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <FulfillmentTripsIdCloseScreen />;
 }

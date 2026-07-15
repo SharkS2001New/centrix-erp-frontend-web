@@ -1,21 +1,11 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
-import { RecordSupplierReturnForm } from "@/components/suppliers/record-supplier-return-form";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { SuppliersReturnsIdEditScreen } from "@/components/tab-screens/suppliers-returns-id-edit";
 
-export default function EditSupplierReturnPage() {
-  const params = useParams();
-  const router = useRouter();
-  const documentId = params.id;
-
-  return (
-    <RecordSupplierReturnForm
-      editDocumentId={documentId}
-      backHref="/suppliers/returns"
-      backLabel="← Back to supplier returns"
-      pageTitle={`Edit supplier return #${documentId}`}
-      pageSubtitle="Update products, quantities, or return reason. Approved returns recalculate stock when saved."
-      onSuccess={() => router.push("/suppliers/returns")}
-    />
-  );
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <SuppliersReturnsIdEditScreen />;
 }

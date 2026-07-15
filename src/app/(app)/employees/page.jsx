@@ -1,5 +1,11 @@
-import { redirect } from "next/navigation";
+"use client";
 
-export default function EmployeesRedirectPage() {
-  redirect("/hr/employees");
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { EmployeesScreen } from "@/components/tab-screens/employees";
+
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <EmployeesScreen />;
 }

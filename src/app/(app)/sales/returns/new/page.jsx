@@ -1,24 +1,11 @@
 "use client";
 
-import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import { CustomerReturnForm } from "@/components/sales/customer-return-form";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { SalesReturnsNewScreen } from "@/components/tab-screens/sales-returns-new";
 
-function NewCustomerReturnContent() {
-  const searchParams = useSearchParams();
-  const initialSaleId = searchParams.get("sale_id") ?? "";
-
-  return (
-    <div className="theme-workspace min-h-full">
-      <CustomerReturnForm initialSaleId={initialSaleId} />
-    </div>
-  );
-}
-
-export default function NewCustomerReturnPage() {
-  return (
-    <Suspense fallback={<p className="theme-subtext p-6 text-sm">Loading return form…</p>}>
-      <NewCustomerReturnContent />
-    </Suspense>
-  );
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <SalesReturnsNewScreen />;
 }

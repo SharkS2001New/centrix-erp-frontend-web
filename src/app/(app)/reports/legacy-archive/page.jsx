@@ -1,9 +1,11 @@
-import { LegacyArchiveReportScreen } from "@/components/reports/legacy-archive-report-screen";
+"use client";
 
-export const metadata = {
-  title: "Legacy sales archive",
-};
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { ReportsLegacyArchiveScreen } from "@/components/tab-screens/reports-legacy-archive";
 
-export default function LegacyArchiveReportPage() {
-  return <LegacyArchiveReportScreen />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <ReportsLegacyArchiveScreen />;
 }

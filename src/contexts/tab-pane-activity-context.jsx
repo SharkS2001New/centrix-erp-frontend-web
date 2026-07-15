@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 
 const defaultValue = {
   isActive: true,
@@ -11,34 +11,21 @@ const defaultValue = {
 const TabPaneActivityContext = createContext(defaultValue);
 
 /**
- * Marks a tab pane as active or suspended. Suspended panes abort in-flight requests
- * but keep their React tree mounted (preserves form input state).
+ * Marks a tab pane as active or suspended.
+ *
+ * Keep-alive panes must NOT share an AbortController that aborts on suspend or
+ * unmount — React Strict Mode remounts and tab switches were surfacing
+ * AbortError on create/edit forms. Request cancellation belongs inside the
+ * screen (local effects), not the tab host.
  */
 export function TabPaneActivityProvider({ paneHref, isActive, children }) {
-  const [abortController, setAbortController] = useState(() => new AbortController());
-
-  useEffect(() => {
-    if (isActive) return undefined;
-
-    setAbortController((prev) => {
-      prev.abort();
-      return new AbortController();
-    });
-    return undefined;
-  }, [isActive]);
-
-  useEffect(() => {
-    const controller = abortController;
-    return () => controller.abort();
-  }, [abortController]);
-
   const value = useMemo(
     () => ({
       isActive,
       paneHref,
-      abortSignal: abortController.signal,
+      abortSignal: null,
     }),
-    [isActive, paneHref, abortController],
+    [isActive, paneHref],
   );
 
   return <TabPaneActivityContext.Provider value={value}>{children}</TabPaneActivityContext.Provider>;
@@ -65,7 +52,7 @@ export function useTabAwareEffect(effect, deps) {
 /**
  * Load data once the first time a pane becomes active. Skips reload when returning
  * to a suspended form tab so unsaved inputs are not reset. Retries if the first
- * load was aborted (tab switched away mid-fetch).
+ * load failed while the pane was active.
  */
 export function useTabAwareInitialLoad(loadFn) {
   const { isActive } = useTabPaneActive();
@@ -80,7 +67,7 @@ export function useTabAwareInitialLoad(loadFn) {
         await loadFn();
         if (!cancelled) completedRef.current = true;
       } catch {
-        /* allow retry when the pane is active again after abort */
+        /* allow retry when the pane is active again after a failed load */
       }
     })();
 

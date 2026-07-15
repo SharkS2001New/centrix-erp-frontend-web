@@ -1,13 +1,11 @@
 "use client";
 
-import { AccountingReportScreen } from "@/components/accounting/accounting-report-screen";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { AccountingProfitLossScreen } from "@/components/tab-screens/accounting-profit-loss";
 
-export default function ProfitLossPage() {
-  return (
-    <AccountingReportScreen
-      title="Profit & Loss"
-      apiPath="/reports/profit-loss-gl"
-      emptyLabel="No revenue or expense activity for this period."
-    />
-  );
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <AccountingProfitLossScreen />;
 }

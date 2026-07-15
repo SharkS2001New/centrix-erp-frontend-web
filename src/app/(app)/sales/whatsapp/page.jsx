@@ -1,12 +1,11 @@
 "use client";
 
-import { Suspense } from "react";
-import { WhatsappAdminScreen } from "@/components/sales/whatsapp-admin-screen";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { SalesWhatsappScreen } from "@/components/tab-screens/sales-whatsapp";
 
-export default function SalesWhatsappPage() {
-  return (
-    <Suspense fallback={<p className="p-6 text-sm text-slate-500">Loading…</p>}>
-      <WhatsappAdminScreen />
-    </Suspense>
-  );
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <SalesWhatsappScreen />;
 }

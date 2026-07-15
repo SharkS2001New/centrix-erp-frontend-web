@@ -1,24 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/auth-context";
-import MobilePickingSheetsScreen from "@/components/sales/mobile-picking-sheets-screen";
-import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { SalesPickingListsScreen } from "@/components/tab-screens/sales-picking-lists";
 
-export default function SalesPickingListsPage() {
-  const router = useRouter();
-  const { capabilities } = useAuth();
-
-  useEffect(() => {
-    if (isDistributionOpsEnabled(capabilities)) {
-      router.replace("/fulfillment/picking");
-    }
-  }, [capabilities, router]);
-
-  if (isDistributionOpsEnabled(capabilities)) {
-    return null;
-  }
-
-  return <MobilePickingSheetsScreen />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <SalesPickingListsScreen />;
 }

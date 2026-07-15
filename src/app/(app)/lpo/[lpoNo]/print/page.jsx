@@ -1,39 +1,11 @@
 "use client";
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useAuth } from "@/contexts/auth-context";
-import { runLpoPrintClick } from "@/components/lpo/lpo-order-print";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { LpoLpoNoPrintScreen } from "@/components/tab-screens/lpo-lpoNo-print";
 
-export default function LpoPrintPage() {
-  const params = useParams();
-  const lpoNo = params.lpoNo;
-  const { user, capabilities } = useAuth();
-
-  async function handlePrint() {
-    await runLpoPrintClick(lpoNo, { variant: "lpo", user, capabilities });
-  }
-
-  return (
-    <div className="mx-auto max-w-md p-8 text-center">
-      <p className="mb-4 text-sm text-slate-600">
-        LPO printing now opens the browser print dialog directly from the LPO screen.
-      </p>
-      <div className="flex flex-wrap justify-center gap-2">
-        <button
-          type="button"
-          onClick={handlePrint}
-          className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#144f8a]"
-        >
-          Print LPO
-        </button>
-        <Link
-          href={`/lpo/${lpoNo}`}
-          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Back to LPO
-        </Link>
-      </div>
-    </div>
-  );
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <LpoLpoNoPrintScreen />;
 }

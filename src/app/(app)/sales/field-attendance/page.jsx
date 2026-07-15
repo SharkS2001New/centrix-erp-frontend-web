@@ -1,5 +1,11 @@
-import MobileFieldAttendanceScreen from "@/components/sales/mobile-field-attendance-screen";
+"use client";
 
-export default function FieldAttendancePage() {
-  return <MobileFieldAttendanceScreen />;
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { SalesFieldAttendanceScreen } from "@/components/tab-screens/sales-field-attendance";
+
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <SalesFieldAttendanceScreen />;
 }

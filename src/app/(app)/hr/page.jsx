@@ -1,7 +1,11 @@
 "use client";
 
-import { HrDashboardContent } from "@/components/dashboard/hr-dashboard-content";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { HrScreen } from "@/components/tab-screens/hr";
 
-export default function HrDashboardPage() {
-  return <HrDashboardContent />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <HrScreen />;
 }

@@ -1,17 +1,11 @@
 "use client";
 
-import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
-import { AdminOverviewCards } from "@/components/admin/admin-overview-cards";
-import { CatalogPageShell } from "@/components/catalog/catalog-shared";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { AdminScreen } from "@/components/tab-screens/admin";
 
-export default function AdminOverviewPage() {
-  return (
-    <CatalogPageShell
-      title="Admin home"
-      subtitle="Shortcuts to company setup, users, and access control."
-    >
-      <AdminBreadcrumb items={[{ label: "Admin home" }]} />
-      <AdminOverviewCards />
-    </CatalogPageShell>
-  );
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <AdminScreen />;
 }

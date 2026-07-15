@@ -132,6 +132,8 @@ import {
 } from "./pos-utility-modals";
 import { filterByOrganization, orgListParams } from "@/lib/admin";
 import { P } from "@/lib/permission-codes";
+import { formDraftKey } from "@/stores/form-drafts";
+import { useFormDraft } from "@/hooks/use-form-draft";
 import {
   createBranchTill,
   indexOpenSessionsByTill,
@@ -171,6 +173,18 @@ const EMPTY_LINE = {
   discount: "0",
   unit_price: "",
 };
+
+function isEmptyPosLineForm(lineForm) {
+  if (!lineForm) return true;
+  return (
+    !lineForm.product_code &&
+    !lineForm.description &&
+    !lineForm.package &&
+    String(lineForm.quantity ?? "1") === "1" &&
+    String(lineForm.discount ?? "0") === "0" &&
+    !lineForm.unit_price
+  );
+}
 
 function cartLineRef(line) {
   return line?.update_code ?? line?.id ?? null;
@@ -619,6 +633,65 @@ export function PosScreen({ standalone = false }) {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [lineForm, setLineForm] = useState(EMPTY_LINE);
   const [unitPriceTouched, setUnitPriceTouched] = useState(false);
+
+  const posUiDraftValue = useMemo(
+    () => ({
+      lineForm,
+      sellFromShop,
+      sellWholesale,
+      isRouteOrder,
+      selectedRouteId,
+    }),
+    [lineForm, sellFromShop, sellWholesale, isRouteOrder, selectedRouteId],
+  );
+  const posUiDraftValueRef = useRef(posUiDraftValue);
+  posUiDraftValueRef.current = posUiDraftValue;
+
+  const applyPosUiDraft = useCallback((next) => {
+    const value = typeof next === "function" ? next(posUiDraftValueRef.current) : next;
+    if (!value || typeof value !== "object") return;
+    if (value.lineForm && typeof value.lineForm === "object") {
+      setLineForm({ ...EMPTY_LINE, ...value.lineForm });
+      const code = value.lineForm.product_code?.trim?.() || value.lineForm.product_code;
+      if (code) {
+        setSelectedProductCode(code);
+        setSelectedProduct((prev) =>
+          prev?.product_code === code
+            ? prev
+            : {
+                product_code: code,
+                product_name: value.lineForm.description || code,
+              },
+        );
+      }
+    }
+    if (typeof value.sellFromShop === "boolean") setSellFromShop(value.sellFromShop);
+    if (typeof value.sellWholesale === "boolean") setSellWholesale(value.sellWholesale);
+    if (typeof value.isRouteOrder === "boolean") setIsRouteOrder(value.isRouteOrder);
+    if (value.selectedRouteId != null) setSelectedRouteId(String(value.selectedRouteId));
+  }, []);
+
+  const isPosUiDraftBaseline = useCallback(
+    (value) => {
+      if (!value) return true;
+      return (
+        isEmptyPosLineForm(value.lineForm) &&
+        value.sellFromShop === true &&
+        value.sellWholesale === true &&
+        Boolean(value.isRouteOrder) === Boolean(lockedToRouteOrder) &&
+        !value.selectedRouteId
+      );
+    },
+    [lockedToRouteOrder],
+  );
+
+  const { clearDraft: clearPosUiDraft } = useFormDraft({
+    draftKey: formDraftKey("pos-order", standalone ? "pos" : "backoffice"),
+    value: posUiDraftValue,
+    setValue: applyPosUiDraft,
+    isBaseline: isPosUiDraftBaseline,
+  });
+
   const [cart, setCart] = useState(null);
   const [selectedLineId, setSelectedLineId] = useState(null);
   const [editingLineId, setEditingLineId] = useState(null);
@@ -2502,6 +2575,8 @@ export function PosScreen({ standalone = false }) {
       rememberCompletedPosOrder(sale);
       setCart(null);
       setSelectedLineId(null);
+      clearPosUiDraft();
+      clearLineEntry();
       schedulePosReceiptPrint(sale);
       return sale;
     } catch (e) {
@@ -2648,6 +2723,7 @@ export function PosScreen({ standalone = false }) {
       });
       setCompletedSale(sale);
       setSaveOrderOpen(false);
+      clearPosUiDraft();
       clearLineEntry();
       setSelectedLineId(null);
       await loadCashierCart();

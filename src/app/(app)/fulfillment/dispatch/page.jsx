@@ -1,7 +1,11 @@
 "use client";
 
-import { DispatchBoardContent } from "@/components/fulfillment/dispatch-board-content";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { FulfillmentDispatchScreen } from "@/components/tab-screens/fulfillment-dispatch";
 
-export default function DispatchBoardPage() {
-  return <DispatchBoardContent />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <FulfillmentDispatchScreen />;
 }

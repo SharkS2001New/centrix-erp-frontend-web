@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { apiV1BaseUrl } from "@/lib/api-base-url";
+import { apiFetchCredentials } from "@/lib/auth-config";
 import { isProductCodeInCatalogCached } from "@/lib/catalog-cache";
-import { getStoredOrganization } from "@/lib/auth-storage";
+import { getStoredOrganization, getToken } from "@/lib/auth-storage";
 import { Field, inputClassName, parseDecimalInput } from "@/components/catalog/catalog-shared";
 import { RetailPricingTiersEditor, defaultRetailPricingTier } from "@/components/catalog/retail-pricing-tiers";
 import {
@@ -337,19 +339,44 @@ export function useProductFormResources() {
 }
 
 async function isProductCodeAvailable(code) {
-  const orgId = getStoredOrganization()?.id;
-  const taken = await isProductCodeInCatalogCached(orgId, code);
-  return !taken;
+  try {
+    const orgId = getStoredOrganization()?.id;
+    const taken = await isProductCodeInCatalogCached(orgId, code);
+    return !taken;
+  } catch {
+    // Availability probe failed — treat as available; save will enforce uniqueness.
+    return true;
+  }
+}
+
+/**
+ * Ask the API for a SKU when the dedicated endpoint exists.
+ * Many backends route GET /products/{code} ahead of /products/generate-code, so
+ * failures are expected. Uses a quiet fetch (not apiRequest) to avoid Next.js
+ * treating a 404 product-lookup miss as a runtime ApiError overlay.
+ */
+async function tryServerGeneratedSku() {
+  try {
+    const token = getToken();
+    const headers = { Accept: "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${apiV1BaseUrl()}/products/generate-code`, {
+      method: "GET",
+      headers,
+      credentials: apiFetchCredentials(),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    const code = data?.code ?? data?.data?.code;
+    return code ? String(code) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function generateProductSku() {
-  try {
-    const res = await apiRequest("/products/generate-code");
-    const code = res?.code ?? res?.data?.code;
-    if (code) return String(code);
-  } catch {
-    // Fall through to client-side generation.
-  }
+  const fromServer = await tryServerGeneratedSku();
+  if (fromServer) return fromServer;
 
   for (let attempt = 0; attempt < 30; attempt++) {
     const candidate = String(Math.floor(100000 + Math.random() * 900000));
@@ -358,7 +385,8 @@ export async function generateProductSku() {
     }
   }
 
-  throw new ApiError("Could not generate a unique SKU. Try again or enter a barcode.", 503, null);
+  // Last resort — still return a code so the user can save / edit.
+  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 function RetailPackageFields({ form, onChange, productUom }) {

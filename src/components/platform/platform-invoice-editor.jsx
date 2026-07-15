@@ -27,6 +27,8 @@ import { buildPlatformInvoiceHtml, printPlatformInvoice } from "@/lib/platform-i
 import { PlatformInvoiceViewer } from "@/components/platform/platform-invoice-viewer";
 import { PlatformAiEmailAssist } from "@/components/platform/platform-ai-email-assist";
 import { formatBillingMoney } from "@/lib/platform-billing";
+import { formDraftKey } from "@/stores/form-drafts";
+import { useFormDraft } from "@/hooks/use-form-draft";
 
 function Field({ label, children, className = "" }) {
   return (
@@ -39,6 +41,20 @@ function Field({ label, children, className = "" }) {
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500";
+
+function isEmptyPlatformInvoiceDraft(value) {
+  if (!value) return true;
+  return (
+    !value.organization_id &&
+    !value.invoice_number &&
+    !value.bill_to_name &&
+    !value.bill_to_email &&
+    !value.bill_to_phone &&
+    !value.bill_to_address &&
+    !(value.line_items?.length) &&
+    !(value.selected_modules?.length)
+  );
+}
 
 async function imageFileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -56,6 +72,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   const presetOrganizationId = searchParams.get("organization")?.trim() ?? "";
   const presetDesignId = searchParams.get("design")?.trim() ?? "";
   const [form, setForm] = useState(() => emptyPlatformInvoiceForm());
+  const [serverForm, setServerForm] = useState(null);
   const [organizations, setOrganizations] = useState([]);
   const [moduleSummaries, setModuleSummaries] = useState([]);
   const [savedTemplates, setSavedTemplates] = useState([]);
@@ -74,6 +91,25 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
   const [presetDesignApplied, setPresetDesignApplied] = useState(false);
   const [brandingOpen, setBrandingOpen] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
+
+  const isBaseline = useCallback(
+    (value) => {
+      if (isEdit) {
+        if (!serverForm || !value) return true;
+        return JSON.stringify(value) === JSON.stringify(serverForm);
+      }
+      return isEmptyPlatformInvoiceDraft(value);
+    },
+    [isEdit, serverForm],
+  );
+
+  const { clearDraft } = useFormDraft({
+    draftKey: formDraftKey("platform-invoice", invoiceId ?? "new"),
+    value: form,
+    setValue: setForm,
+    enabled: !loading && (!isEdit || serverForm != null),
+    isBaseline,
+  });
 
   const totals = useMemo(
     () => calculateInvoiceTotals(form.line_items, form.tax_rate),
@@ -159,7 +195,9 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
     try {
       const res = await apiRequest(`/admin/platform-invoices/${invoiceId}`);
       const record = res.data;
-      setForm(invoiceRecordToForm(record));
+      const next = invoiceRecordToForm(record);
+      setServerForm(next);
+      setForm(next);
       await loadBillingContext(record.organization_id ?? "", {
         syncBillTo: false,
         syncSeller: false,
@@ -293,6 +331,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
         : await apiRequest("/admin/platform-invoices", { method: "POST", body: payload });
       notifySuccess(res.message ?? "Invoice saved.");
       const saved = res.data;
+      clearDraft();
       if (saved) {
         setForm((prev) => {
           const next = invoiceRecordToForm(saved);
@@ -300,6 +339,7 @@ export function PlatformInvoiceEditor({ invoiceId = null, onSaved }) {
           if (!(saved.seller ?? saved.bill_from)) {
             next.seller = prev.seller;
           }
+          setServerForm(next);
           return next;
         });
       }

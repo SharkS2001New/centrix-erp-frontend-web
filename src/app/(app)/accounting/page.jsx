@@ -1,7 +1,11 @@
 "use client";
 
-import { AccountingDashboardContent } from "@/components/dashboard/accounting-dashboard-content";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { AccountingScreen } from "@/components/tab-screens/accounting";
 
-export default function AccountingDashboardPage() {
-  return <AccountingDashboardContent />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <AccountingScreen />;
 }

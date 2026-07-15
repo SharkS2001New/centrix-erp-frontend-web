@@ -1,5 +1,11 @@
-import { redirect } from "next/navigation";
+"use client";
 
-export default function SettingsRedirectPage() {
-  redirect("/admin/settings");
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { SettingsScreen } from "@/components/tab-screens/settings";
+
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <SettingsScreen />;
 }

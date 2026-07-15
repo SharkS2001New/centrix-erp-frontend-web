@@ -49,13 +49,19 @@ export function paramsFromTabHref(href) {
     [/^\/lpo\/([^/]+)/, "lpoNo"],
     [/^\/products\/([^/]+)/, "code"],
     [/^\/customers\/([^/]+)/, "id"],
+    [/^\/suppliers\/returns\/([^/]+)/, "id"],
     [/^\/suppliers\/([^/]+)/, "id"],
     [/^\/hr\/employees\/([^/]+)/, "id"],
     [/^\/hr\/payroll\/runs\/([^/]+)/, "id"],
     [/^\/accounting\/customer-invoices\/([^/]+)/, "id"],
     [/^\/accounting\/journal-entries\/([^/]+)/, "id"],
+    [/^\/accounting\/bank-reconciliation\/([^/]+)/, "id"],
+    [/^\/sales\/orders\/queues\/([^/]+)/, "slug"],
+    [/^\/sales\/orders\/([^/]+)/, "id"],
     [/^\/sales\/returns\/([^/]+)/, "id"],
+    [/^\/reports\/custom\/([^/]+)/, "id"],
     [/^\/reports\/([^/]+)/, "key"],
+    [/^\/routes\/([^/]+)/, "id"],
     [/^\/platform\/organizations\/([^/]+)/, "id"],
   ];
 
@@ -63,7 +69,21 @@ export function paramsFromTabHref(href) {
     const match = pathname.match(re);
     if (!match) continue;
     const value = decodeURIComponent(match[1]);
-    if (["new", "edit", "page"].includes(value)) continue;
+    if (
+      [
+        "new",
+        "edit",
+        "page",
+        "returns",
+        "payments",
+        "queues",
+        "custom",
+        "print",
+        "receive",
+      ].includes(value)
+    ) {
+      continue;
+    }
     params[key] = value;
   }
 

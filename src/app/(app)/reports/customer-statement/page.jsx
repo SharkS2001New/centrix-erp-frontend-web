@@ -1,7 +1,11 @@
 "use client";
 
-import { CustomerStatementScreen } from "@/components/reports/customer-statement-screen";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { ReportsCustomerStatementScreen } from "@/components/tab-screens/reports-customer-statement";
 
-export default function CustomerStatementPage() {
-  return <CustomerStatementScreen />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <ReportsCustomerStatementScreen />;
 }

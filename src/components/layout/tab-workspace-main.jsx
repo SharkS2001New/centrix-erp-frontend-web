@@ -1,78 +1,76 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { TabPaneActivityProvider } from "@/contexts/tab-pane-activity-context";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { TabPaneRouterFreeze } from "@/components/layout/tab-pane-router-freeze";
+import { SCREEN_COMPONENTS } from "@/lib/screen-registry-components";
+import {
+  isRegisteredHref,
+  pathnameFromTabHref,
+  resolveScreen,
+} from "@/lib/screen-registry";
 import { isTabWorkspaceRoute, normalizeTabHref } from "@/lib/tab-workspace";
 
 /**
- * Keep every open workspace tab mounted so loaded lists/forms stay in memory.
- * Returning to a tab reuses the cached React tree — never swap in fresh Next.js
- * `children` on revisit (that remounts the page and refetches). Closing a tab
- * drops its cache; browser refresh remounts everything.
+ * Desktop Tab Manager host.
+ *
+ * Registered screens stay mounted while their tab is open — one instance per
+ * concrete pathname (so /customers/1 and /customers/2 are separate panes).
+ * Unregistered routes use live Next.js `children` for the active URL only.
  */
+function RegisteredTabPane({ entry, paneHref, isActive }) {
+  const Screen = SCREEN_COMPONENTS[entry.id];
+  if (!Screen) return null;
+  return (
+    <div
+      className={isActive ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}
+      aria-hidden={!isActive}
+      data-tab-workspace-pane={paneHref}
+      data-tab-suspended={!isActive || undefined}
+      data-tab-registry={entry.id}
+    >
+      <TabPaneRouterFreeze href={paneHref}>
+        <Screen />
+      </TabPaneRouterFreeze>
+    </div>
+  );
+}
+
 export function TabWorkspaceMain({ children }) {
   const pathname = usePathname();
-  const { enabled, tabs, activeHref: workspaceActiveHref, workspaceId } = useTabWorkspace();
-  const [paneCache, setPaneCache] = useState(() => new Map());
-  const [cacheWorkspaceId, setCacheWorkspaceId] = useState(workspaceId);
+  const { enabled, tabs, activeHref: workspaceActiveHref } = useTabWorkspace();
 
   const routeHref = normalizeTabHref(pathname);
   const activeHref = normalizeTabHref(workspaceActiveHref || routeHref);
+  const activePath = pathnameFromTabHref(activeHref);
+  const activeIsRegistered = isRegisteredHref(activeHref);
 
-  const mountedHrefs = useMemo(() => {
-    const hrefs = [];
-    const seen = new Set();
+  /** One mounted instance per concrete pathname (query string ignored). */
+  const registeredPanes = useMemo(() => {
+    /** @type {Map<string, { path: string, href: string, entry: NonNullable<ReturnType<typeof resolveScreen>> }>} */
+    const byPath = new Map();
+
     for (const tab of tabs) {
       const href = normalizeTabHref(tab.href);
-      if (!href || seen.has(href)) continue;
-      seen.add(href);
-      hrefs.push(href);
-    }
-    if (activeHref && !seen.has(activeHref)) {
-      hrefs.unshift(activeHref);
-    }
-    return hrefs;
-  }, [activeHref, tabs]);
-
-  // Reset pane cache when the workspace changes (render-safe, no ref reads).
-  if (cacheWorkspaceId !== workspaceId) {
-    setCacheWorkspaceId(workspaceId);
-    setPaneCache(new Map());
-  }
-
-  // Seed / refresh only the *active* route the first time it opens.
-  // Never overwrite an existing pane — that would remount and refetch.
-  useLayoutEffect(() => {
-    if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) return;
-
-    const href = normalizeTabHref(pathname);
-    setPaneCache((prev) => {
-      if (prev.has(href)) return prev;
-      const next = new Map(prev);
-      next.set(href, children);
-      return next;
-    });
-  }, [children, enabled, pathname]);
-
-  // Drop panes for closed tabs.
-  useLayoutEffect(() => {
-    if (!enabled) return;
-
-    const allowed = new Set(mountedHrefs);
-    setPaneCache((prev) => {
-      let changed = false;
-      const next = new Map(prev);
-      for (const href of [...next.keys()]) {
-        if (!allowed.has(href)) {
-          next.delete(href);
-          changed = true;
-        }
+      const entry = resolveScreen(href);
+      if (!entry) continue;
+      const path = pathnameFromTabHref(href);
+      if (!byPath.has(path) || path === activePath) {
+        byPath.set(path, { path, href, entry });
       }
-      return changed ? next : prev;
-    });
-  }, [enabled, mountedHrefs]);
+    }
+
+    if (activeHref && isRegisteredHref(activeHref)) {
+      const entry = resolveScreen(activeHref);
+      if (entry) {
+        byPath.set(activePath, { path: activePath, href: activeHref, entry });
+      }
+    }
+
+    return [...byPath.values()];
+  }, [activeHref, activePath, tabs]);
 
   if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) {
     return children;
@@ -80,24 +78,25 @@ export function TabWorkspaceMain({ children }) {
 
   return (
     <>
-      {mountedHrefs.map((href) => {
-        const isActive = href === activeHref;
-        const pane = paneCache.get(href) ?? (isActive ? children : null);
-        if (!pane) return null;
-
+      {registeredPanes.map(({ path, href, entry }) => {
+        const isActive = path === activePath;
         return (
-          <TabPaneActivityProvider key={href} paneHref={href} isActive={isActive}>
-            <div
-              className={isActive ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}
-              aria-hidden={!isActive}
-              data-tab-workspace-pane={href}
-              data-tab-suspended={!isActive || undefined}
-            >
-              {pane}
-            </div>
+          <TabPaneActivityProvider key={`registry:${path}`} paneHref={href} isActive={isActive}>
+            <RegisteredTabPane entry={entry} paneHref={href} isActive={isActive} />
           </TabPaneActivityProvider>
         );
       })}
+
+      {!activeIsRegistered ? (
+        <TabPaneActivityProvider key={`next:${activePath}`} paneHref={activeHref} isActive>
+          <div
+            className="flex min-h-0 min-w-0 flex-1 flex-col"
+            data-tab-workspace-pane={activeHref}
+          >
+            {children}
+          </div>
+        </TabPaneActivityProvider>
+      ) : null}
     </>
   );
 }

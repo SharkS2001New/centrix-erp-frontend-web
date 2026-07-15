@@ -1,6 +1,11 @@
-import { redirect } from "next/navigation";
+"use client";
 
-/** Field attendance is now part of the unified HR attendance page. */
-export default function HrFieldAttendanceRedirectPage() {
-  redirect("/hr/attendance#field-sessions");
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { HrFieldAttendanceScreen } from "@/components/tab-screens/hr-field-attendance";
+
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <HrFieldAttendanceScreen />;
 }

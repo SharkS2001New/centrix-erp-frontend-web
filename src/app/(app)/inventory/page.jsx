@@ -1,7 +1,11 @@
 "use client";
 
-import { InventoryDashboardContent } from "@/components/dashboard/inventory-dashboard-content";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { InventoryScreen } from "@/components/tab-screens/inventory";
 
-export default function InventoryDashboardPage() {
-  return <InventoryDashboardContent />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <InventoryScreen />;
 }

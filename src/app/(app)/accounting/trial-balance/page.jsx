@@ -1,13 +1,11 @@
 "use client";
 
-import { AccountingReportScreen } from "@/components/accounting/accounting-report-screen";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { AccountingTrialBalanceScreen } from "@/components/tab-screens/accounting-trial-balance";
 
-export default function TrialBalancePage() {
-  return (
-    <AccountingReportScreen
-      title="Trial Balance"
-      apiPath="/reports/trial-balance"
-      emptyLabel="No account balances for this period."
-    />
-  );
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <AccountingTrialBalanceScreen />;
 }

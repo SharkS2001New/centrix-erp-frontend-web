@@ -1,5 +1,11 @@
-import { redirect } from "next/navigation";
+"use client";
 
-export default function SalesXReportRedirectPage() {
-  redirect("/sales/pos");
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { SalesXReportScreen } from "@/components/tab-screens/sales-x-report";
+
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <SalesXReportScreen />;
 }

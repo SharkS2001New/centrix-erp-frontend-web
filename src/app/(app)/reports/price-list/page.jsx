@@ -1,7 +1,11 @@
 "use client";
 
-import { ProductPriceSheetScreen } from "@/components/reports/product-price-sheet-screen";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { ReportsPriceListScreen } from "@/components/tab-screens/reports-price-list";
 
-export default function PriceListReportPage() {
-  return <ProductPriceSheetScreen />;
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <ReportsPriceListScreen />;
 }

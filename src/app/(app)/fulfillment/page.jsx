@@ -1,11 +1,11 @@
 "use client";
 
-import { FulfillmentDashboardContent } from "@/components/dashboard/fulfillment-dashboard-content";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { FulfillmentScreen } from "@/components/tab-screens/fulfillment";
 
-export default function FulfillmentDashboardPage() {
-  return (
-    <div>
-      <FulfillmentDashboardContent />
-    </div>
-  );
+/** Tab workspace hosts this screen from the registry when enabled. */
+export default function Page() {
+  const { enabled } = useTabWorkspace();
+  if (enabled) return null;
+  return <FulfillmentScreen />;
 }

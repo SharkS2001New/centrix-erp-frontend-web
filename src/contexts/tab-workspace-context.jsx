@@ -28,6 +28,7 @@ import {
   writeTabWorkspaceStore,
 } from "@/lib/tab-workspace";
 import { finishNavigation } from "@/lib/app-loading";
+import { useTabPaneActive } from "@/contexts/tab-pane-activity-context";
 import {
   pathBelongsToWorkspace,
   resolveActiveWorkspace,
@@ -146,7 +147,10 @@ export function TabWorkspaceProvider({ children }) {
         updateWorkspaceTabs(store, workspaceId, (current) => {
           const existing = current.tabs.find((tab) => tab.href === normalized);
           const resolvedTitle =
-            titleOverridesRef.current.get(normalized) ?? title ?? titleFromPathname(normalized);
+            titleOverridesRef.current.get(normalized) ??
+            (existing ? existing.title : null) ??
+            title ??
+            titleFromPathname(normalized);
 
           if (existing) {
             return {
@@ -327,35 +331,39 @@ export function TabWorkspaceProvider({ children }) {
       const normalized = normalizeTabHref(href);
       if (!workspaceId) return;
 
+      const index = tabs.findIndex((tab) => tab.href === normalized);
+      if (index === -1) return;
+
+      const nextTabs = tabs.filter((tab) => tab.href !== normalized);
+      const closingActiveRoute = normalizeTabHref(pathname) === normalized;
+      const navigateTo = closingActiveRoute
+        ? (nextTabs[Math.max(0, index - 1)]?.href ??
+          nextTabs[0]?.href ??
+          workspaceHomePath(workspaceId, capabilities))
+        : null;
+
+      titleOverridesRef.current.delete(normalized);
+
       setTabStore((store) =>
         updateWorkspaceTabs(store, workspaceId, (current) => {
-          const index = current.tabs.findIndex((tab) => tab.href === normalized);
-          if (index === -1) return current;
-
-          const nextTabs = current.tabs.filter((tab) => tab.href !== normalized);
-          titleOverridesRef.current.delete(normalized);
-
-          if (normalizeTabHref(pathname) === normalized) {
-            const fallback = nextTabs[Math.max(0, index - 1)] ?? nextTabs[0];
-            if (fallback?.href) {
-              router.push(fallback.href);
-            } else {
-              router.push(workspaceHomePath(workspaceId, capabilities));
-            }
-          }
-
+          if (!current.tabs.some((tab) => tab.href === normalized)) return current;
+          const remaining = current.tabs.filter((tab) => tab.href !== normalized);
           return {
             ...current,
-            tabs: nextTabs,
+            tabs: remaining,
             activeHref:
               current.activeHref === normalized
-                ? (nextTabs[Math.max(0, index - 1)]?.href ?? nextTabs[0]?.href ?? null)
+                ? (remaining[Math.max(0, index - 1)]?.href ?? remaining[0]?.href ?? null)
                 : current.activeHref,
           };
         }),
       );
+
+      if (navigateTo) {
+        router.push(navigateTo);
+      }
     },
-    [capabilities, pathname, router, workspaceId],
+    [capabilities, pathname, router, tabs, workspaceId],
   );
 
   const setTabTitle = useCallback(
@@ -446,13 +454,16 @@ export function useTabWorkspace() {
   return useContext(TabWorkspaceContext);
 }
 
-/** Override the active tab title (e.g. customer name on a detail page). */
-export function useTabTitle(title) {
+/** Override a tab title (e.g. customer name on a detail page). */
+export function useTabTitle(title, href) {
   const pathname = usePathname();
+  const { paneHref } = useTabPaneActive();
   const { enabled, setTabTitle } = useTabWorkspace();
+  // Prefer explicit href, then this pane's href (keep-alive), then live route.
+  const targetHref = href || paneHref || pathname;
 
   useEffect(() => {
-    if (!enabled || !title) return;
-    setTabTitle(pathname, title);
-  }, [enabled, pathname, setTabTitle, title]);
+    if (!enabled || !title || !targetHref) return;
+    setTabTitle(targetHref, title);
+  }, [enabled, setTabTitle, targetHref, title]);
 }
