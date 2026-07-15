@@ -32,6 +32,12 @@ import {
   draftLinesMatchAdvisedDiscounts,
   hasPerLineAdvisedDiscounts,
 } from "@/lib/advised-discount-lines";
+import {
+  creditCustomerToOption,
+  fetchCreditCustomerByNum,
+  searchCreditCustomers,
+} from "@/lib/credit-customer-search";
+import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 
 function lineLabel(line) {
   const code = line?.product_code ?? line?.product?.product_code ?? "";
@@ -254,12 +260,40 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [leavePromptOpen, setLeavePromptOpen] = useState(false);
+  const [customerNum, setCustomerNum] = useState("");
+  const [baselineCustomerNum, setBaselineCustomerNum] = useState("");
+  const [customerOptions, setCustomerOptions] = useState([]);
+  const [customerLoading, setCustomerLoading] = useState(false);
+
+  const currentCustomerLabel = useMemo(() => {
+    const fromSale =
+      sale?.customer?.customer_name?.trim() ||
+      sale?.customer_name?.trim() ||
+      sale?.customer_name_override?.trim() ||
+      "";
+    if (fromSale && sale?.customer_num) {
+      return `${fromSale} (#${sale.customer_num})`;
+    }
+    if (fromSale) return fromSale;
+    if (sale?.customer_num) return `Customer #${sale.customer_num}`;
+    return "Walk-in / no customer";
+  }, [sale]);
 
   const posSalesConfig = useMemo(
     () => getPosSalesConfig(capabilities?.module_settings),
     [capabilities?.module_settings],
   );
   const retailPricingEnabled = Boolean(posSalesConfig.enableRetailPricing);
+
+  const searchCustomersForSelect = useCallback(async (query) => {
+    const rows = await searchCreditCustomers(query, { perPage: 30 });
+    setCustomerOptions((prev) => {
+      const byValue = new Map(prev.map((row) => [String(row.value), row]));
+      for (const row of rows) byValue.set(String(row.value), row);
+      return Array.from(byValue.values());
+    });
+    return rows;
+  }, []);
 
   const loadItems = useCallback(async () => {
     if (!sale?.id) return;
@@ -269,6 +303,10 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     setAddProductCode("");
     setAddAsRetail(false);
     setLeavePromptOpen(false);
+    const originalCustomer = sale?.customer_num != null ? String(sale.customer_num) : "";
+    setCustomerNum(originalCustomer);
+    setBaselineCustomerNum(originalCustomer);
+    setCustomerOptions([]);
     try {
       const [detail, retailRows] = await Promise.all([
         // Always load full sale so route_id / fulfillment_meta are present for markup rules.
@@ -305,6 +343,27 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       setLines(nextLines);
       setBaselineDraft(snapshotDraft(nextLines));
       setBaselineRemovedIds([]);
+
+      const resolvedCustomerNum =
+        detail.customer_num != null ? String(detail.customer_num) : originalCustomer;
+      setCustomerNum(resolvedCustomerNum);
+      setBaselineCustomerNum(resolvedCustomerNum);
+      if (resolvedCustomerNum) {
+        setCustomerLoading(true);
+        try {
+          const customer =
+            detail.customer?.customer_num != null
+              ? detail.customer
+              : await fetchCreditCustomerByNum(resolvedCustomerNum);
+          if (customer) {
+            setCustomerOptions([creditCustomerToOption(customer)]);
+          }
+        } catch {
+          // Keep num; select still works once user searches.
+        } finally {
+          setCustomerLoading(false);
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load order lines.");
       setLines([]);
@@ -331,6 +390,10 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       setLeavePromptOpen(false);
       setBaselineDraft([]);
       setBaselineRemovedIds([]);
+      setCustomerNum("");
+      setBaselineCustomerNum("");
+      setCustomerOptions([]);
+      setCustomerLoading(false);
       return;
     }
     void loadItems();
@@ -345,13 +408,16 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     [capabilities?.module_settings, hasPermission, sale],
   );
 
+  const customerDirty = String(customerNum ?? "") !== String(baselineCustomerNum ?? "");
+
   const dirty = useMemo(() => {
+    if (customerDirty) return true;
     if (!draftsEqual(snapshotDraft(lines), baselineDraft)) return true;
     const sortedRemoved = [...removedIds].sort((a, b) => a - b);
     const sortedBaseline = [...baselineRemovedIds].sort((a, b) => a - b);
     if (sortedRemoved.length !== sortedBaseline.length) return true;
     return sortedRemoved.some((id, index) => id !== sortedBaseline[index]);
-  }, [lines, removedIds, baselineDraft, baselineRemovedIds]);
+  }, [lines, removedIds, baselineDraft, baselineRemovedIds, customerDirty]);
 
   const totals = useMemo(() => {
     return lines.reduce((sum, line) => {
@@ -458,6 +524,10 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       setError("An order must keep at least one line item.");
       return false;
     }
+    if (customerDirty && !customerNum) {
+      setError("Select the correct customer for this order.");
+      return false;
+    }
 
     const payload = [];
     for (const line of lines) {
@@ -502,6 +572,9 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     try {
       const body = { items: payload };
       if (removedIds.length) body.remove_item_ids = removedIds;
+      if (customerDirty && customerNum) {
+        body.customer_num = Number(customerNum);
+      }
       const updated = await apiRequest(`/sales/orders/${sale.id}/line-quantities`, {
         method: "PATCH",
         body,
@@ -509,6 +582,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       setLeavePromptOpen(false);
       setBaselineDraft(snapshotDraft(lines));
       setBaselineRemovedIds([]);
+      setBaselineCustomerNum(customerNum);
       onSaved?.(updated);
       return true;
     } catch (e) {
@@ -543,7 +617,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                 ? matchesAdvisedDiscounts
                   ? "Approver-advised discounts are applied. Save to book this order."
                   : "Adjust pricing per manager guidance, then save to resubmit for approval."
-                : `Add or remove items, adjust quantities${discountEditEnabled ? " and discounts" : ""}, then save.`}
+                : `Change customer if needed, add or remove items, adjust quantities${discountEditEnabled ? " and discounts" : ""}, then save.`}
             </p>
           </div>
           <button
@@ -557,6 +631,44 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
         </div>
 
         <div className="max-h-[min(60vh,520px)] overflow-auto px-5 py-4">
+          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3 dark:border-slate-700 dark:bg-slate-900/40">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Customer</p>
+            <p className="mt-1 text-sm text-slate-700">
+              Current: <span className="font-medium text-slate-900">{currentCustomerLabel}</span>
+            </p>
+            <label className="mt-2 block text-xs font-medium text-slate-600">
+              Move to customer
+            </label>
+            <div className="mt-1">
+              <PosSearchableSelect
+                value={customerNum}
+                onChange={(nextValue, option) => {
+                  setCustomerNum(nextValue);
+                  if (option) {
+                    setCustomerOptions((prev) => {
+                      const without = prev.filter((row) => String(row.value) !== String(option.value));
+                      return [option, ...without];
+                    });
+                  }
+                  setError(null);
+                }}
+                options={customerOptions}
+                loadOptions={searchCustomersForSelect}
+                loading={customerLoading}
+                disabled={saving || loading}
+                placeholder="Search customer name or number…"
+                searchPlaceholder="Type name, phone, or customer #…"
+                emptyLabel="No customers found"
+                idleSearchLabel="Type to search customers…"
+              />
+            </div>
+            {customerDirty ? (
+              <p className="mt-1.5 text-xs font-medium text-amber-700">
+                Customer will update when you save.
+              </p>
+            ) : null}
+          </div>
+
           {canApplyAdvisedDiscounts ? (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-800/50 dark:bg-amber-950/20">
               <p className="text-sm text-amber-900 dark:text-amber-100">
