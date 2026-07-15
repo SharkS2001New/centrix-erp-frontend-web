@@ -8,8 +8,10 @@ import {
   fetchRetailPackagesCached,
   fetchSubCategoriesCached,
   fetchUomsCached,
+  invalidateReferenceResource,
 } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { RetailPricingTiersEditor } from "@/components/catalog/retail-pricing-tiers";
 import {
   CatalogPageShell,
@@ -80,7 +82,7 @@ export default function RetailPackageSettingsPage() {
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const { search, setSearch } = useListUrlSearch();
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subCategoryFilter, setSubCategoryFilter] = useState("all");
   const [page, setPage] = useState(1);
@@ -127,6 +129,17 @@ export default function RetailPackageSettingsPage() {
       setLoading(false);
     }
   }, [user?.organization_id]);
+
+  const refreshData = useCallback(async () => {
+    setLoading(true);
+    const orgId = user?.organization_id;
+    // Permanent caches — Refresh must bust matching keys (same rule as Categories / UOMs).
+    invalidateReferenceResource("retail-package-settings", orgId);
+    invalidateReferenceResource("categories", orgId);
+    invalidateReferenceResource("sub-categories", orgId);
+    invalidateReferenceResource("uoms", orgId);
+    await loadData();
+  }, [loadData, user?.organization_id]);
 
   useEffect(() => {
     loadData();
@@ -353,7 +366,7 @@ export default function RetailPackageSettingsPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => void loadData()}
+            onClick={() => void refreshData()}
             disabled={loading}
             className={SECONDARY_BTN_CLASS}
           >
@@ -374,7 +387,7 @@ export default function RetailPackageSettingsPage() {
             sampleRow={["SKU001", "11", "2.5", "pcs", "carton", "12", "0"]}
             apiPath="/retail-package-settings/import-batch"
             normalizeRows={(rows) => filterNonEmptyImportRows(rows, ["product_code"])}
-            onImported={loadData}
+            onImported={refreshData}
             importPage="retail_packages"
           />
           <CatalogListExport

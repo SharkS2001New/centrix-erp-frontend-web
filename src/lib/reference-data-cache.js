@@ -6,6 +6,7 @@ import {
   orgCacheKey,
   clearOrgCache,
 } from "@/lib/org-cache";
+import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 
 function resolveOrgId(organizationId) {
   return organizationId ?? getStoredOrganization()?.id ?? null;
@@ -34,7 +35,7 @@ export function fetchProductGroupCountsCached(organizationId) {
   }, { ttlMs: 60_000 });
 }
 
-/** Invalidate one reference resource after CUD (suppliers, vats, uoms, etc.). Max TTL is 1h. */
+/** Invalidate one reference resource after CUD (suppliers, vats, uoms, etc.). Permanent until matching CUD or explicit Refresh. */
 export function invalidateReferenceResource(resource, organizationId) {
   invalidateOrgCacheResource(resolveOrgId(organizationId), resource);
 }
@@ -122,10 +123,13 @@ export function fetchRetailPackagesCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "retail-package-settings");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/retail-package-settings", {
-      searchParams: { per_page: 500 },
-    });
-    return res.data ?? [];
+    // Permanent until CUD (same as categories / UOMs). Paginate fully — orgs can
+    // have one setting per product, which exceeds a single per_page:200 window.
+    return fetchAllPaginatedRowsSmart(
+      "/retail-package-settings",
+      {},
+      { perPage: 200, message: "Loading retail package settings…" },
+    );
   });
 }
 

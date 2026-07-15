@@ -8,6 +8,7 @@ import {
   fetchProductGroupCountsCached,
   fetchSubCategoriesCached,
   fetchUsersCached,
+  invalidateReferenceResource,
 } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import {
@@ -166,6 +167,15 @@ export default function CategoriesPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const refreshData = useCallback(async () => {
+    setLoading(true);
+    const orgId = user?.organization_id;
+    invalidateReferenceResource("categories", orgId);
+    invalidateReferenceResource("sub-categories", orgId);
+    invalidateReferenceResource("product-group-counts", orgId);
+    await loadData();
+  }, [loadData, user?.organization_id]);
 
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 
@@ -372,7 +382,7 @@ export default function CategoriesPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => void loadData()}
+            onClick={() => void refreshData()}
             disabled={loading}
             className={SECONDARY_BTN_CLASS}
           >

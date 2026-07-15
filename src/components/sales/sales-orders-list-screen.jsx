@@ -278,6 +278,9 @@ export default function SalesOrdersListScreen({
   const showSourceColumn = !routeOrdersOnly && sourceOptions.length > 2;
   const showSourceFilter = !routeOrdersOnly && sourceOptions.length > 2;
   const showDiscountColumn = shouldShowSalesDiscountColumn(capabilities?.module_settings);
+  const showPaymentBreakdownColumns =
+    String(queueConfig?.fixedPaymentStatusFilter ?? "").toLowerCase() === "partial" ||
+    String(queueSlug ?? "").toLowerCase() === "pending_payment";
   const showApprovalColumn =
     queueSlug === "pending-approval" || queueSlug === "pending_approval";
   const showRejectionStrip = queueSlug === "editable";
@@ -293,6 +296,7 @@ export default function SalesOrdersListScreen({
     showConnectivityColumn,
     showSourceColumn,
     showDiscountColumn,
+    showPaymentBreakdownColumns,
   });
 
   const loadingFromArchive =
@@ -1025,7 +1029,11 @@ export default function SalesOrdersListScreen({
                 </button>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1040px] border-collapse text-sm">
+                <table
+                  className={`w-full border-collapse text-sm ${
+                    showPaymentBreakdownColumns ? "min-w-[1240px]" : "min-w-[1040px]"
+                  }`}
+                >
                   <thead>
                     <OrderListTableHead
                       showBranchColumn={showBranchColumn}
@@ -1034,6 +1042,7 @@ export default function SalesOrdersListScreen({
                       showConnectivityColumn={showConnectivityColumn}
                       showSourceColumn={showSourceColumn}
                       showDiscountColumn={showDiscountColumn}
+                      showPaymentBreakdownColumns={showPaymentBreakdownColumns}
                     />
                   </thead>
                   <tbody>
@@ -1070,6 +1079,7 @@ export default function SalesOrdersListScreen({
                           paymentRefsBySaleId={paymentRefsBySaleId}
                           columnCount={columnCount}
                           showDiscountColumn={showDiscountColumn}
+                          showPaymentBreakdownColumns={showPaymentBreakdownColumns}
                           showApprovalColumn={showApprovalColumn}
                           showRejectionStrip={showRejectionStrip}
                           queueSlug={queueSlug}

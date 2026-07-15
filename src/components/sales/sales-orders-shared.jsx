@@ -23,6 +23,7 @@ import {
   pipelineStatusIndex,
   resolveOrderWorkflowActions,
   canCancelOrder,
+  saleBalanceDue,
   shouldShowPaymentStatusBadge,
   workflowPipelineSteps,
   workflowStatusLabel,
@@ -710,6 +711,7 @@ export function OrderListTableHead({
   showConnectivityColumn = false,
   showSourceColumn = true,
   showDiscountColumn = false,
+  showPaymentBreakdownColumns = false,
 }) {
   return (
     <tr className={TABLE_HEAD_ROW_CLASS}>
@@ -721,6 +723,12 @@ export function OrderListTableHead({
       {showDeliveryDateColumn ? <th className="px-4 py-2.5">Delivery date</th> : null}
       {showConnectivityColumn ? <th className="px-4 py-2.5">Connectivity</th> : null}
       <th className="px-4 py-2.5 text-right">Amount</th>
+      {showPaymentBreakdownColumns ? (
+        <>
+          <th className="px-4 py-2.5 text-right">Amount paid</th>
+          <th className="px-4 py-2.5 text-right">Balance</th>
+        </>
+      ) : null}
       {showDiscountColumn ? <th className="px-4 py-2.5 text-right">Discount</th> : null}
       <th className="px-4 py-2.5 text-right">VAT</th>
       <th className="px-4 py-2.5">Status</th>
@@ -758,6 +766,7 @@ export function OrderListTableRow({
   columnCount = 10,
   capabilities = null,
   showDiscountColumn = false,
+  showPaymentBreakdownColumns = false,
   showApprovalColumn = false,
   showRejectionStrip = false,
   canApproveDiscounts = false,
@@ -767,6 +776,8 @@ export function OrderListTableRow({
 }) {
   const href = `/sales/orders/${sale.id}`;
   const items = detail?.items ?? sale.items ?? [];
+  const amountPaid = Number(sale?.amount_paid ?? 0);
+  const balanceDue = saleBalanceDue(sale);
   const approvalReason =
     sale?.action_request?.reason ?? sale?.discount_approval_reason ?? null;
   const discountRevisionSubmitted = isDiscountRevisionSubmitted(sale);
@@ -908,6 +919,20 @@ export function OrderListTableRow({
         <td className="px-4 py-3 text-right font-medium text-slate-900">
           {formatSaleKes(sale.order_total)}
         </td>
+        {showPaymentBreakdownColumns ? (
+          <>
+            <td className="px-4 py-3 text-right tabular-nums text-slate-700">
+              {formatSaleKes(amountPaid)}
+            </td>
+            <td
+              className={`px-4 py-3 text-right tabular-nums font-medium ${
+                balanceDue > 0.01 ? "text-amber-800" : "text-slate-700"
+              }`}
+            >
+              {formatSaleKes(balanceDue)}
+            </td>
+          </>
+        ) : null}
         {showDiscountColumn ? (
           <td className="px-4 py-3 text-right text-slate-700">
             {Number(sale.total_discount ?? sale.order_discount ?? 0) > 0

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductGroupCountsCached, fetchUomsCached } from "@/lib/reference-data-cache";
+import { fetchProductGroupCountsCached, fetchUomsCached, invalidateReferenceResource } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import {
   defaultSmallLabelForType,
@@ -194,6 +194,14 @@ export default function UomsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const refreshData = useCallback(async () => {
+    setLoading(true);
+    const orgId = user?.organization_id;
+    invalidateReferenceResource("uoms", orgId);
+    invalidateReferenceResource("product-group-counts", orgId);
+    await loadData();
+  }, [loadData, user?.organization_id]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -429,7 +437,7 @@ export default function UomsPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => void loadData()}
+            onClick={() => void refreshData()}
             disabled={loading}
             className={SECONDARY_BTN_CLASS}
           >

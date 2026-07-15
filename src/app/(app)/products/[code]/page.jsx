@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   fetchCategoriesCached,
+  fetchRetailPackagesCached,
   fetchSubCategoriesCached,
   fetchSuppliersCached,
   fetchUomsCached,
@@ -572,15 +573,13 @@ export default function ProductDetailPage() {
 
   const loadMeta = useCallback(async () => {
     const orgId = user?.organization_id;
-    const [cats, subs, sups, uoms, vats, retailRes, settingsRes, usersData] = await Promise.all([
+    const [cats, subs, sups, uoms, vats, retailRows, settingsRes, usersData] = await Promise.all([
       fetchCategoriesCached(orgId),
       fetchSubCategoriesCached(orgId),
       fetchSuppliersCached(orgId),
       fetchUomsCached(orgId),
       fetchVatsCached(orgId),
-      apiRequest("/retail-package-settings", {
-        searchParams: { per_page: 1, "filter[product_code]": productCode },
-      }).catch(() => ({ data: [] })),
+      fetchRetailPackagesCached(orgId).catch(() => []),
       apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
       fetchUsersCached(orgId).catch(() => []),
     ]);
@@ -590,8 +589,10 @@ export default function ProductDetailPage() {
     setUoms(uoms ?? []);
     setVats(vats ?? []);
     setUsers(usersData ?? []);
-    const retailRows = retailRes?.data ?? [];
-    setRetailPackage(retailRows[0] ?? null);
+    const matched = (retailRows ?? []).find(
+      (row) => String(row.product_code) === String(productCode),
+    );
+    setRetailPackage(matched ?? null);
     const settingsRows = settingsRes?.data ?? settingsRes ?? [];
     const settings = Array.isArray(settingsRows) ? settingsRows[0] : settingsRows;
     const threshold = settings?.global_low_stock_threshold;

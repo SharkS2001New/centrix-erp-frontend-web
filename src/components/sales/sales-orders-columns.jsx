@@ -10,6 +10,7 @@ export function orderTableColumnCount({
   showConnectivityColumn = false,
   showSourceColumn = true,
   showDiscountColumn = false,
+  showPaymentBreakdownColumns = false,
 }) {
   let count = showSourceColumn ? 10 : 9;
   if (showBranchColumn) count += 1;
@@ -17,6 +18,7 @@ export function orderTableColumnCount({
   if (showDeliveryDateColumn) count += 1;
   if (showConnectivityColumn) count += 1;
   if (showDiscountColumn) count += 1;
+  if (showPaymentBreakdownColumns) count += 2;
   return count;
 }
 

@@ -649,6 +649,8 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     [payments],
   );
   const balanceDue = saleBalanceDue(sale, totalPaid);
+  const paymentStatusKey = String(sale?.payment_status ?? "").toLowerCase();
+  const showPaymentBreakdownCards = paymentStatusKey === "partial";
   const canRecordPayment = !readOnlyWorkflow && canRecordOrderPayment(sale, totalPaid);
   const paymentStatusHint = orderPaymentStatusHint(sale, totalPaid, capabilities);
   const cancellationAllowed = useMemo(
@@ -973,7 +975,11 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
             </div>
           ) : null}
 
-          <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <div
+            className={`mb-6 grid gap-4 sm:grid-cols-2 ${
+              showPaymentBreakdownCards ? "xl:grid-cols-7" : "xl:grid-cols-5"
+            }`}
+          >
             <SummaryInfoCard
               label="Customer"
               value={customerCardName}
@@ -1001,13 +1007,33 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
             <SummaryInfoCard
               label="Total amount"
               value={formatSaleKes(sale.order_total)}
-              hint={paymentStatusHint}
+              hint={showPaymentBreakdownCards ? null : paymentStatusHint}
               hintClassName={
                 String(sale.payment_status).toLowerCase() === "paid"
                   ? "font-medium text-emerald-600"
                   : "text-slate-400"
               }
             />
+            {showPaymentBreakdownCards ? (
+              <>
+                <SummaryInfoCard
+                  label="Amount paid"
+                  value={formatSaleKes(totalPaid || sale.amount_paid)}
+                  linkLabel="View payments"
+                  onLinkClick={() => setActiveTab("payments")}
+                />
+                <SummaryInfoCard
+                  label="Balance"
+                  value={formatSaleKes(balanceDue)}
+                  hint={paymentStatusHint}
+                  hintClassName={
+                    balanceDue > 0.01
+                      ? "font-medium text-amber-700"
+                      : "font-medium text-emerald-600"
+                  }
+                />
+              </>
+            ) : null}
           </div>
 
           <div className="mb-6 border-b border-[var(--theme-border)]">
