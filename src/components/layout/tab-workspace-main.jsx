@@ -3,6 +3,7 @@
 import { useLayoutEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { TabPaneActivityProvider } from "@/contexts/tab-pane-activity-context";
+import { TabPaneRouterFreeze } from "@/components/layout/tab-pane-router-freeze";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { isTabWorkspaceRoute, normalizeTabHref } from "@/lib/tab-workspace";
 import { pathBelongsToWorkspace } from "@/lib/workspaces";
@@ -116,7 +117,7 @@ export function TabWorkspaceMain({ children }) {
               data-tab-workspace-pane={href}
               data-tab-suspended={!isActive || undefined}
             >
-              {pane}
+              <TabPaneRouterFreeze href={href}>{pane}</TabPaneRouterFreeze>
             </div>
           </TabPaneActivityProvider>
         );

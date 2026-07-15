@@ -18,11 +18,16 @@ export function TabPaneActivityProvider({ paneHref, isActive, children }) {
   const [abortController, setAbortController] = useState(() => new AbortController());
 
   useEffect(() => {
-    if (isActive) return undefined;
+    if (isActive) {
+      // Fresh signal only when returning after a suspend abort — avoids churning
+      // load callbacks on every tab switch when the previous signal is still usable.
+      setAbortController((prev) => (prev.signal.aborted ? new AbortController() : prev));
+      return undefined;
+    }
 
     setAbortController((prev) => {
-      prev.abort();
-      return new AbortController();
+      if (!prev.signal.aborted) prev.abort();
+      return prev;
     });
     return undefined;
   }, [isActive]);
@@ -49,17 +54,19 @@ export function useTabPaneActive() {
 }
 
 /**
- * Run an effect only while this tab pane is active (e.g. polling, refetch).
- * Does not re-run when the user returns to a suspended form tab.
+ * Run an effect only while this tab pane is active (e.g. polling).
+ * Does not re-run merely because the user returns to a suspended tab — deps must change.
  */
 export function useTabAwareEffect(effect, deps) {
   const { isActive } = useTabPaneActive();
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
 
   useEffect(() => {
-    if (!isActive) return undefined;
+    if (!isActiveRef.current) return undefined;
     return effect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- caller supplies deps
-  }, [isActive, ...deps]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- caller supplies deps; isActive is gated via ref
+  }, deps);
 }
 
 /**

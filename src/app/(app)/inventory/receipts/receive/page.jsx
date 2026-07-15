@@ -11,7 +11,6 @@ import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
 import {
-  computeLpoLineTotals,
   formatLpoKes,
   lpoRowDisplayNumber,
 } from "@/components/lpo/lpo-shared";
@@ -35,6 +34,7 @@ import {
   lpoLineCanReceive,
   lpoLineOpenRemainingBase,
   lpoSessionOfferBase,
+  lpoSessionReceiveAmount,
   lpoSessionStockUnitCost,
   packQtyFromReceiveBase,
   receiveBaseForLine,
@@ -515,8 +515,8 @@ export default function ReceiveStockPage() {
                       <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
                         <th className="px-3 py-2 font-medium">Product</th>
                         <th className="px-3 py-2 font-medium text-right">Ordered</th>
-                        <th className="px-3 py-2 font-medium text-right">Cost</th>
-                        <th className="px-3 py-2 font-medium text-right">Amount</th>
+                        <th className="px-3 py-2 font-medium text-right">Cost per unit</th>
+                        <th className="px-3 py-2 font-medium text-right">Total amount</th>
                         <th className="px-3 py-2 font-medium text-right">Received</th>
                         <th className="px-3 py-2 font-medium text-right">Remaining</th>
                         <th className="px-3 py-2 font-medium text-right">Receiving now</th>
@@ -551,8 +551,13 @@ export default function ReceiveStockPage() {
                           line.packaging_label ||
                           lineUom?.package_name ||
                           "pack";
-                        const { net: lineNet } = computeLpoLineTotals(line);
                         const stockUnitCost = lpoSessionStockUnitCost(
+                          line,
+                          lineUom,
+                          receiveCounts,
+                        );
+                        const unitCost = stockUnitCost ?? Number(line.cost_price ?? 0);
+                        const totalAmount = lpoSessionReceiveAmount(
                           line,
                           lineUom,
                           receiveCounts,
@@ -571,7 +576,7 @@ export default function ReceiveStockPage() {
                             <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">
                               <div>
                                 <p className="font-medium text-slate-900">
-                                  {formatLpoKes(stockUnitCost ?? line.cost_price)}
+                                  {formatLpoKes(unitCost)}
                                 </p>
                                 <p className="text-[11px] text-slate-500">per {packLabel}</p>
                                 {stockUnitCost != null ? (
@@ -582,7 +587,7 @@ export default function ReceiveStockPage() {
                               </div>
                             </td>
                             <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-900">
-                              {formatLpoKes(line.line_total ?? lineNet)}
+                              {formatLpoKes(totalAmount)}
                             </td>
                             <td className="px-3 py-2.5 text-right tabular-nums text-slate-600">
                               <LpoReceivedQtyCell line={line} uom={lineUom} />

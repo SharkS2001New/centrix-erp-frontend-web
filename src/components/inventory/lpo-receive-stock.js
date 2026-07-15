@@ -145,3 +145,22 @@ export function lpoSessionStockUnitCost(line, uom, receiveCounts, priorReceivedP
   });
 }
 
+/**
+ * Billable amount for qty entered in this receive session.
+ * Offer / bonus packs are free — only paid pack qty × PO cost per unit.
+ */
+export function lpoSessionReceiveAmount(line, uom, receiveCounts, priorReceivedPack = null) {
+  const lineKey = String(line.id);
+  const receivingNow = receiveBaseForLine(lineKey, uom, receiveCounts);
+  if (receivingNow <= 0) return 0;
+
+  const priorReceived = priorReceivedPack ?? Number(line.received_qty ?? 0);
+  const sessionOfferBase = lpoSessionOfferBase(line, uom, receiveCounts, priorReceived);
+  const receivedPack = packQtyFromReceiveBase(receivingNow, uom);
+  const offerPack = packQtyFromReceiveBase(sessionOfferBase, uom);
+  const paidPack = Math.max(0, receivedPack - offerPack);
+  const cost = Number(line.cost_price ?? 0);
+
+  return Math.round(paidPack * cost * 100) / 100;
+}
+

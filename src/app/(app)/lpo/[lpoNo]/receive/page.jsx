@@ -22,6 +22,7 @@ import {
   lpoLineCanReceive,
   lpoLineOpenRemainingBase,
   lpoSessionOfferBase,
+  lpoSessionReceiveAmount,
   lpoSessionStockUnitCost,
   packQtyFromReceiveBase,
   receiveBaseForLine,
@@ -368,15 +369,16 @@ export default function LpoReceivePage() {
               ) : null}
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] table-fixed border-collapse text-base">
+              <table className="w-full min-w-[980px] table-fixed border-collapse text-base">
                 <colgroup>
-                  <col className="w-[22%]" />
-                  <col className="w-[11%]" />
-                  {showReturned ? <col className="w-[10%]" /> : null}
-                  <col className="w-[11%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[16%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[9%]" />
+                  {showReturned ? <col className="w-[9%]" /> : null}
                   <col className="w-[10%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[12%]" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-sm font-medium text-slate-500">
@@ -388,7 +390,8 @@ export default function LpoReceivePage() {
                     <th className="py-2.5 pr-1 text-right">Already received</th>
                     <th className="py-2.5 pr-3 text-right">Remaining</th>
                     <th className="py-2.5 pr-3 text-right">Receiving now</th>
-                    <th className="py-2.5 pr-3 text-right">Cost</th>
+                    <th className="py-2.5 pr-3 text-right">Cost per unit</th>
+                    <th className="py-2.5 pr-3 text-right">Total amount</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -416,6 +419,18 @@ export default function LpoReceivePage() {
                       lineUom,
                       receiveCounts,
                     );
+                    const unitCost = stockUnitCost ?? Number(line.cost_price ?? 0);
+                    const totalAmount = lpoSessionReceiveAmount(
+                      line,
+                      lineUom,
+                      receiveCounts,
+                    );
+                    const packLabel =
+                      line.package_name ||
+                      line.packaging_label ||
+                      lineUom?.package_name ||
+                      lineUom?.full_name ||
+                      "unit";
 
                     return (
                       <tr
@@ -477,14 +492,18 @@ export default function LpoReceivePage() {
                         <td className="py-3 pr-3 text-right align-top tabular-nums">
                           <div>
                             <p className="font-medium text-slate-900">
-                              {formatLpoKes(stockUnitCost ?? line.cost_price)}
+                              {formatLpoKes(unitCost)}
                             </p>
+                            <p className="text-xs text-slate-500">per {packLabel}</p>
                             {stockUnitCost != null ? (
                               <p className="mt-1 text-xs font-medium text-amber-700">
-                                Original price {formatLpoKes(line.cost_price)}
+                                Original {formatLpoKes(line.cost_price)}
                               </p>
                             ) : null}
                           </div>
+                        </td>
+                        <td className="py-3 pr-3 text-right align-top tabular-nums font-medium text-slate-900">
+                          {formatLpoKes(totalAmount)}
                         </td>
                       </tr>
                     );
