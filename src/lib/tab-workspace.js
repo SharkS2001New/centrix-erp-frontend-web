@@ -159,8 +159,17 @@ function normalizeStore(raw) {
 /** @returns {TabWorkspaceStore} */
 export function readTabWorkspaceStore(organizationId) {
   if (typeof window === "undefined") return {};
+  const key = tabStorageKey(organizationId);
   try {
-    const raw = window.sessionStorage.getItem(tabStorageKey(organizationId));
+    let raw = window.localStorage.getItem(key);
+    if (!raw) {
+      // Migrate older sessionStorage tab chrome to localStorage once.
+      raw = window.sessionStorage.getItem(key);
+      if (raw) {
+        window.localStorage.setItem(key, raw);
+        window.sessionStorage.removeItem(key);
+      }
+    }
     if (!raw) return {};
     return normalizeStore(JSON.parse(raw));
   } catch {
@@ -171,8 +180,10 @@ export function readTabWorkspaceStore(organizationId) {
 /** @param {TabWorkspaceStore} store */
 export function writeTabWorkspaceStore(organizationId, store) {
   if (typeof window === "undefined") return;
+  const key = tabStorageKey(organizationId);
   try {
-    window.sessionStorage.setItem(tabStorageKey(organizationId), JSON.stringify(store));
+    window.localStorage.setItem(key, JSON.stringify(store));
+    window.sessionStorage.removeItem(key);
   } catch {
     // ignore quota errors
   }
@@ -209,12 +220,19 @@ export function recallWorkspaceTabLandingPath(organizationId, workspaceId) {
 export function clearAllTabWorkspaceMemory() {
   if (typeof window === "undefined") return;
   try {
-    const keys = [];
+    const keys = new Set();
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("centrix-tab-workspace:")) keys.add(key);
+    }
     for (let i = 0; i < sessionStorage.length; i += 1) {
       const key = sessionStorage.key(i);
-      if (key?.startsWith("centrix-tab-workspace:")) keys.push(key);
+      if (key?.startsWith("centrix-tab-workspace:")) keys.add(key);
     }
-    keys.forEach((key) => window.sessionStorage.removeItem(key));
+    keys.forEach((key) => {
+      window.localStorage.removeItem(key);
+      window.sessionStorage.removeItem(key);
+    });
   } catch {
     /* ignore */
   }

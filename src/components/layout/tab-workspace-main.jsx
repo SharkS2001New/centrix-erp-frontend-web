@@ -7,25 +7,20 @@ import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { isTabWorkspaceRoute, normalizeTabHref } from "@/lib/tab-workspace";
 import { pathBelongsToWorkspace } from "@/lib/workspaces";
 
-/** Active tab + this many recently visited inactive tabs stay fully mounted. */
-const KEEP_ALIVE_INACTIVE = 2;
-
 /**
- * Keep a hot set of workspace tabs mounted so recent lists/forms stay in memory.
- * Older inactive tabs are soft-unmounted (React tree dropped; tab chrome stays).
- * Returning to a soft-unmounted tab remounts from Next.js `children` and refetches.
- * Closing a tab drops its cache; browser refresh remounts everything.
+ * Keep every open workspace tab fully mounted (in memory).
+ * Soft-unmounting inactive tabs was dropping form state when switching away
+ * and back. Cap is TAB_WORKSPACE_MAX_TABS, so memory stays bounded.
+ * Closing a tab drops its cache; a full browser refresh remounts panes
+ * (tab chrome is restored from localStorage).
  */
 export function TabWorkspaceMain({ children }) {
   const pathname = usePathname();
   const { enabled, tabs, activeHref: workspaceActiveHref, workspaceId } = useTabWorkspace();
   const [paneCache, setPaneCache] = useState(() => new Map());
   const [cacheWorkspaceId, setCacheWorkspaceId] = useState(workspaceId);
-  /** Most-recently-active last — used to pick which inactive panes stay hot. */
-  const [visitOrder, setVisitOrder] = useState(() => []);
 
-  const routeHref = normalizeTabHref(pathname);
-  const activeHref = normalizeTabHref(workspaceActiveHref || routeHref);
+  const activeHref = normalizeTabHref(workspaceActiveHref || pathname);
 
   const mountedHrefs = useMemo(() => {
     const hrefs = [];
@@ -47,35 +42,23 @@ export function TabWorkspaceMain({ children }) {
     return hrefs;
   }, [activeHref, tabs, workspaceId]);
 
+  /** Always keep all open tabs live so in-progress work survives tab switches. */
   const liveHrefs = useMemo(() => {
-    const allowed = new Set(mountedHrefs);
-    const live = new Set();
-    if (activeHref && allowed.has(activeHref)) live.add(activeHref);
-
-    for (let i = visitOrder.length - 1; i >= 0 && live.size < 1 + KEEP_ALIVE_INACTIVE; i -= 1) {
-      const href = visitOrder[i];
-      if (allowed.has(href)) live.add(href);
+    const live = new Set(mountedHrefs);
+    // Dirty tabs stay pinned (covers any future soft-unmount policy changes).
+    for (const tab of tabs) {
+      if (!tab?.dirty) continue;
+      const href = normalizeTabHref(tab.href);
+      if (href) live.add(href);
     }
-
     return live;
-  }, [activeHref, mountedHrefs, visitOrder]);
+  }, [mountedHrefs, tabs]);
 
   // Reset pane cache when the workspace changes (render-safe, no ref reads).
   if (cacheWorkspaceId !== workspaceId) {
     setCacheWorkspaceId(workspaceId);
     setPaneCache(new Map());
-    setVisitOrder([]);
   }
-
-  // Track LRU visit order for soft-unmount decisions.
-  useLayoutEffect(() => {
-    if (!enabled || !activeHref) return;
-    setVisitOrder((prev) => {
-      const next = prev.filter((href) => href !== activeHref);
-      next.push(activeHref);
-      return next;
-    });
-  }, [activeHref, enabled]);
 
   // Seed / refresh only the *active* route the first time it opens (or after soft-unmount).
   // Never overwrite an existing hot pane — that would remount and refetch.
@@ -92,26 +75,23 @@ export function TabWorkspaceMain({ children }) {
     });
   }, [children, enabled, pathname, workspaceId]);
 
-  // Drop panes for closed tabs and soft-unmount cold inactive tabs.
+  // Drop panes for closed tabs only (open tabs stay mounted for the session).
   useLayoutEffect(() => {
     if (!enabled) return;
 
     const allowed = new Set(mountedHrefs);
+    for (const href of liveHrefs) allowed.add(href);
+
     setPaneCache((prev) => {
       let changed = false;
       const next = new Map(prev);
       for (const href of [...next.keys()]) {
-        if (!allowed.has(href) || !liveHrefs.has(href)) {
+        if (!allowed.has(href)) {
           next.delete(href);
           changed = true;
         }
       }
       return changed ? next : prev;
-    });
-
-    setVisitOrder((prev) => {
-      const next = prev.filter((href) => allowed.has(href));
-      return next.length === prev.length ? prev : next;
     });
   }, [enabled, liveHrefs, mountedHrefs]);
 

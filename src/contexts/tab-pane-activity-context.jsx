@@ -11,9 +11,8 @@ const defaultValue = {
 const TabPaneActivityContext = createContext(defaultValue);
 
 /**
- * Marks a tab pane as active or suspended. Suspended (still-hot) panes abort
- * in-flight requests but keep their React tree mounted. Cold tabs may be
- * soft-unmounted by TabWorkspaceMain and remount when reopened.
+ * Marks a tab pane as active or suspended. Suspended panes stay mounted
+ * (hidden) so unsaved form work is kept in memory while you use other tabs.
  */
 export function TabPaneActivityProvider({ paneHref, isActive, children }) {
   const [abortController, setAbortController] = useState(() => new AbortController());
