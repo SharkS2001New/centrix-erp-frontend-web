@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext, useMemo, useRef } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import {
   PathParamsContext,
   PathnameContext,
@@ -38,17 +38,20 @@ function parseHref(href) {
 export function TabPaneRouterFreeze({ href, children }) {
   const livePathname = useContext(PathnameContext);
   const liveParams = useContext(PathParamsContext);
-  const frozenParamsRef = useRef(null);
+  const [frozenParams, setFrozenParams] = useState(null);
 
   const { pathname, searchParams } = useMemo(() => parseHref(href), [href]);
+  const routeMatches =
+    livePathname != null && pathOnly(livePathname) === pathname;
 
-  // While this pane's route is the live Next.js route, mirror dynamic params.
-  // After navigating away, keep the last matching params so useParams stays stable.
-  if (livePathname != null && pathOnly(livePathname) === pathname) {
-    frozenParamsRef.current = liveParams;
-  }
+  // Capture dynamic params while this pane owns the live route; keep them after leave.
+  useEffect(() => {
+    if (routeMatches) {
+      setFrozenParams(liveParams);
+    }
+  }, [routeMatches, liveParams]);
 
-  const params = frozenParamsRef.current ?? liveParams;
+  const params = routeMatches ? liveParams : (frozenParams ?? liveParams);
 
   return (
     <PathnameContext.Provider value={pathname}>

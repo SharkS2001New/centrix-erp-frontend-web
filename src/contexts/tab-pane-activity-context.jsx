@@ -60,7 +60,10 @@ export function useTabPaneActive() {
 export function useTabAwareEffect(effect, deps) {
   const { isActive } = useTabPaneActive();
   const isActiveRef = useRef(isActive);
-  isActiveRef.current = isActive;
+
+  useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
 
   useEffect(() => {
     if (!isActiveRef.current) return undefined;
