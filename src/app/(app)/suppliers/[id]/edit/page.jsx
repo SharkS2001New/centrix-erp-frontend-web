@@ -11,6 +11,8 @@ import {
   SupplierFormPageShell,
   supplierToForm,
 } from "@/components/suppliers/supplier-form";
+import { formDraftKey } from "@/stores/form-drafts";
+import { useFormDraft } from "@/hooks/use-form-draft";
 
 export default function EditSupplierPage() {
   const params = useParams();
@@ -18,18 +20,37 @@ export default function EditSupplierPage() {
   const supplierId = params.id;
 
   const [form, setForm] = useState(null);
+  const [serverForm, setServerForm] = useState(null);
   const [supplierCode, setSupplierCode] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [formError, setFormError] = useState(null);
 
+  const isBaseline = useCallback(
+    (value) => {
+      if (!serverForm || !value) return true;
+      return JSON.stringify(value) === JSON.stringify(serverForm);
+    },
+    [serverForm],
+  );
+
+  const { clearDraft } = useFormDraft({
+    draftKey: supplierId ? formDraftKey("supplier", supplierId) : null,
+    value: form,
+    setValue: setForm,
+    enabled: !loading && form != null && serverForm != null,
+    isBaseline,
+  });
+
   const loadSupplier = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
       const supplier = await apiRequest(`/suppliers/${supplierId}`);
-      setForm(supplierToForm(supplier));
+      const next = supplierToForm(supplier);
+      setServerForm(next);
+      setForm(next);
       setSupplierCode(supplier.supplier_code ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load supplier");
@@ -59,6 +80,7 @@ export default function EditSupplierPage() {
         method: "PUT",
         body: buildSupplierBody(form),
       });
+      clearDraft();
       router.push(`/suppliers/${supplierId}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");

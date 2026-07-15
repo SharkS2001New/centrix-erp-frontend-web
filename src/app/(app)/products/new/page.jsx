@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -22,6 +22,8 @@ import { resolveOpeningStockBranchId } from "@/components/products/product-inven
 import { SubcategoryCreateModal } from "@/components/products/subcategory-create-modal";
 import { useTabFormDirty } from "@/hooks/use-tab-form-dirty";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
+import { formDraftKey } from "@/stores/form-drafts";
+import { useFormDraft } from "@/hooks/use-form-draft";
 
 export default function NewProductPage() {
   const router = useRouter();
@@ -53,6 +55,24 @@ export default function NewProductPage() {
   const [isDirty, setIsDirty] = useState(false);
 
   useTabFormDirty(isDirty);
+
+  const isBaseline = useCallback((value) => {
+    const keys = Object.keys(EMPTY_PRODUCT_FORM);
+    return keys.every((key) => {
+      if (key === "unit_id" || key === "vat_id") return true;
+      const left = value?.[key];
+      const right = EMPTY_PRODUCT_FORM[key];
+      return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+    });
+  }, []);
+
+  const { clearDraft } = useFormDraft({
+    draftKey: formDraftKey("product", "new"),
+    value: form,
+    setValue: setForm,
+    enabled: !loading,
+    isBaseline,
+  });
 
   useEffect(() => {
     if (loading) return;
@@ -149,6 +169,7 @@ export default function NewProductPage() {
       const code = saved.product_code ?? form.product_code.trim();
       await saveRetailPackageSetting(form, code);
       setIsDirty(false);
+      clearDraft();
       if (tabWorkspaceEnabled) clearTabDirty(pathname);
       router.push(`/products/${encodeURIComponent(code)}`);
     } catch (e) {

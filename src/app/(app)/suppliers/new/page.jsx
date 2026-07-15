@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -11,12 +11,26 @@ import {
   SupplierFormFields,
   SupplierFormPageShell,
 } from "@/components/suppliers/supplier-form";
+import { formDraftKey } from "@/stores/form-drafts";
+import { useFormDraft } from "@/hooks/use-form-draft";
 
 export default function NewSupplierPage() {
   const router = useRouter();
   const [form, setForm] = useState(EMPTY_SUPPLIER_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+
+  const isBaseline = useCallback(
+    (value) => JSON.stringify(value) === JSON.stringify(EMPTY_SUPPLIER_FORM),
+    [],
+  );
+
+  const { clearDraft } = useFormDraft({
+    draftKey: formDraftKey("supplier", "new"),
+    value: form,
+    setValue: setForm,
+    isBaseline,
+  });
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -35,6 +49,7 @@ export default function NewSupplierPage() {
         method: "POST",
         body: buildSupplierBody(form),
       });
+      clearDraft();
       router.push(`/suppliers/${created.id}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -11,6 +11,8 @@ import {
 } from "@/lib/reference-data-cache";
 import { LpoFormFields, LpoFormShell } from "@/components/lpo/lpo-form";
 import { buildLpoFullBody, EMPTY_LPO_FORM, isLpoHeaderComplete } from "@/components/lpo/lpo-shared";
+import { formDraftKey } from "@/stores/form-drafts";
+import { useFormDraft } from "@/hooks/use-form-draft";
 
 export default function NewLpoPage() {
   const router = useRouter();
@@ -33,11 +35,33 @@ export default function NewLpoPage() {
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
   const vatById = useMemo(() => new Map(vats.map((v) => [v.id, v])), [vats]);
 
+  const isBaseline = useCallback(
+    (value) => {
+      const baseline = {
+        ...EMPTY_LPO_FORM,
+        supplier_id: presetSupplier ? String(presetSupplier) : "",
+      };
+      const normalize = (v) => ({
+        ...v,
+        delivery_address: v?.delivery_address || "",
+      });
+      return JSON.stringify(normalize(value)) === JSON.stringify(normalize(baseline));
+    },
+    [presetSupplier],
+  );
+
+  const { clearDraft } = useFormDraft({
+    draftKey: formDraftKey("lpo", "new"),
+    value: form,
+    setValue: setForm,
+    isBaseline,
+  });
+
   useEffect(() => {
     if (branchAddress && !form.delivery_address) {
       setForm((f) => ({ ...f, delivery_address: branchAddress }));
     }
-  }, [branchAddress]);
+  }, [branchAddress, form.delivery_address]);
 
   useEffect(() => {
     const branchId = user?.branch_id;
@@ -78,6 +102,7 @@ export default function NewLpoPage() {
     try {
       const created = await apiRequest("/lpo-mst/full", { method: "POST", body });
       const lpoNo = created?.lpo?.lpo_no ?? created?.lpo_no;
+      clearDraft();
       router.push(lpoNo ? `/lpo/${lpoNo}` : "/lpo");
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");

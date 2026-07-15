@@ -25,6 +25,8 @@ import {
 } from "@/components/products/product-form";
 import { SubcategoryCreateModal } from "@/components/products/subcategory-create-modal";
 import { productsCatalogHref } from "@/lib/products-list-state";
+import { formDraftKey } from "@/stores/form-drafts";
+import { useFormDraft } from "@/hooks/use-form-draft";
 
 export default function EditProductPage() {
   const params = useParams();
@@ -52,6 +54,7 @@ export default function EditProductPage() {
   } = useProductFormResources();
 
   const [form, setForm] = useState(EMPTY_PRODUCT_FORM);
+  const [serverForm, setServerForm] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [subcategoryModalOpen, setSubcategoryModalOpen] = useState(false);
   const [productLoading, setProductLoading] = useState(true);
@@ -62,6 +65,22 @@ export default function EditProductPage() {
   const productLoadedRef = useRef(false);
 
   useTabFormDirty(isDirty);
+
+  const isBaseline = useCallback(
+    (value) => {
+      if (!serverForm || !value) return true;
+      return JSON.stringify(value) === JSON.stringify(serverForm);
+    },
+    [serverForm],
+  );
+
+  const { clearDraft } = useFormDraft({
+    draftKey: formDraftKey("product", productCode),
+    value: form,
+    setValue: setForm,
+    enabled: !metaLoading && !productLoading && serverForm != null,
+    isBaseline,
+  });
 
   const loadProduct = useCallback(async () => {
     if (abortSignal?.aborted) return;
@@ -82,9 +101,9 @@ export default function EditProductPage() {
       if (abortSignal?.aborted) return;
       const product = productRes.data ?? productRes;
       const uom = uoms.find((u) => String(u.id) === String(product.unit_id)) ?? null;
-      setForm(
-        productToForm({ ...product, is_active: !product.deleted_at }, retailPackage, uom),
-      );
+      const next = productToForm({ ...product, is_active: !product.deleted_at }, retailPackage, uom);
+      setServerForm(next);
+      setForm(next);
     } catch (e) {
       if (e?.name === "AbortError" || abortSignal?.aborted) return;
       setLoadError(e instanceof Error ? e.message : "Failed to load product");
@@ -174,6 +193,7 @@ export default function EditProductPage() {
       });
       await saveRetailPackageSetting(form, productCode);
       setIsDirty(false);
+      clearDraft();
       if (tabWorkspaceEnabled) clearTabDirty(pathname);
       router.push(`/products/${encodeURIComponent(productCode)}`);
     } catch (e) {

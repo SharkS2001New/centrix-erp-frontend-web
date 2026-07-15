@@ -20,6 +20,8 @@ import {
   validateCustomerLocationFields,
 } from "@/components/customers/customer-form";
 import { confirmRemoveOptions, useConfirm } from "@/lib/use-confirm";
+import { formDraftKey } from "@/stores/form-drafts";
+import { useFormDraft } from "@/hooks/use-form-draft";
 
 export default function EditCustomerPage() {
   const params = useParams();
@@ -33,6 +35,7 @@ export default function EditCustomerPage() {
     useCustomerFormResources();
 
   const [form, setForm] = useState(null);
+  const [serverForm, setServerForm] = useState(null);
   const [shopImageFile, setShopImageFile] = useState(null);
   const [shopImagePreview, setShopImagePreview] = useState(null);
   const [locationError, setLocationError] = useState(null);
@@ -42,11 +45,29 @@ export default function EditCustomerPage() {
   const [removingShopImage, setRemovingShopImage] = useState(false);
   const [formError, setFormError] = useState(null);
 
+  const isBaseline = useCallback(
+    (value) => {
+      if (!serverForm || !value) return true;
+      return JSON.stringify(value) === JSON.stringify(serverForm);
+    },
+    [serverForm],
+  );
+
+  const { clearDraft } = useFormDraft({
+    draftKey: customerNum ? formDraftKey("customer", customerNum) : null,
+    value: form,
+    setValue: setForm,
+    enabled: !loading && form != null && serverForm != null,
+    isBaseline,
+  });
+
   const loadCustomer = useCallback(async () => {
     setLoading(true);
     try {
       const customer = await apiRequest(`/customers/${customerNum}`);
-      setForm(customerToForm(customer));
+      const next = customerToForm(customer);
+      setServerForm(next);
+      setForm(next);
       setShopImagePreview(null);
       setShopImageFile(null);
     } catch (e) {
@@ -168,6 +189,7 @@ export default function EditCustomerPage() {
             resolveCustomerMediaUrl(withImage.shop_image_url ?? withImage.shop_image) ?? "",
         }));
       }
+      clearDraft();
       router.push(`/customers/${customerNum}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");

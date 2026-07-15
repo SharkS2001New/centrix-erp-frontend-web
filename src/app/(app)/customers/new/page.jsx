@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
@@ -17,6 +17,19 @@ import {
   useCustomerFormResources,
   validateCustomerLocationFields,
 } from "@/components/customers/customer-form";
+import { formDraftKey } from "@/stores/form-drafts";
+import { useFormDraft } from "@/hooks/use-form-draft";
+
+function isEmptyCustomerDraft(form, routeCustomersOnly) {
+  const baseline = {
+    ...EMPTY_CUSTOMER_FORM,
+    customer_type: routeCustomersOnly ? "route" : EMPTY_CUSTOMER_FORM.customer_type,
+  };
+  return Object.keys(baseline).every((key) => {
+    if (key === "branch_id") return true;
+    return String(form?.[key] ?? "") === String(baseline[key] ?? "");
+  });
+}
 
 export default function NewCustomerPage() {
   const router = useRouter();
@@ -34,6 +47,19 @@ export default function NewCustomerPage() {
   const [locationError, setLocationError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+
+  const isBaseline = useCallback(
+    (value) => isEmptyCustomerDraft(value, routeCustomersOnly),
+    [routeCustomersOnly],
+  );
+
+  const { clearDraft } = useFormDraft({
+    draftKey: formDraftKey("customer", "new"),
+    value: form,
+    setValue: setForm,
+    enabled: !loading,
+    isBaseline,
+  });
 
   useEffect(() => {
     if (!loading && defaultBranch) {
@@ -97,6 +123,7 @@ export default function NewCustomerPage() {
       if (shopImageFile) {
         await uploadCustomerShopImage(created.customer_num, shopImageFile);
       }
+      clearDraft();
       router.push(`/customers/${created.customer_num}`);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
