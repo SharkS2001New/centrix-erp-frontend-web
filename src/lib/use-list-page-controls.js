@@ -31,24 +31,32 @@ function readStoredSort(storageKey) {
   }
 }
 
-/** Persisted rows-per-page preference (shared across list screens). */
-export function useListPageSize(defaultSize = 10) {
+/** Rows-per-page preference. Pass `{ persist: false }` to keep session-only (resets to default on reload). */
+export function useListPageSize(defaultSize = 10, { persist = true } = {}) {
   const [pageSize, setPageSizeState] = useState(defaultSize);
 
   useEffect(() => {
-    setPageSizeState(readStoredPageSize(defaultSize));
-  }, [defaultSize]);
-
-  const setPageSize = useCallback((size) => {
-    const n = Number(size);
-    if (!LIST_PAGE_SIZE_OPTIONS.includes(n)) return;
-    setPageSizeState(n);
-    try {
-      localStorage.setItem(LIST_PAGE_SIZE_STORAGE_KEY, String(n));
-    } catch {
-      /* ignore */
+    if (!persist) {
+      setPageSizeState(defaultSize);
+      return;
     }
-  }, []);
+    setPageSizeState(readStoredPageSize(defaultSize));
+  }, [defaultSize, persist]);
+
+  const setPageSize = useCallback(
+    (size) => {
+      const n = Number(size);
+      if (!LIST_PAGE_SIZE_OPTIONS.includes(n)) return;
+      setPageSizeState(n);
+      if (!persist) return;
+      try {
+        localStorage.setItem(LIST_PAGE_SIZE_STORAGE_KEY, String(n));
+      } catch {
+        /* ignore */
+      }
+    },
+    [persist],
+  );
 
   return { pageSize, setPageSize };
 }

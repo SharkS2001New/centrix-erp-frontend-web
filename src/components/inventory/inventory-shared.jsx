@@ -329,7 +329,7 @@ export function groupStockReceipts(rows) {
         ref,
         receipt_no: ref,
         date: row.created_at ?? row.receipt_date,
-        received_by: row.received_by,
+        received_by: row.received_by_name ?? row.received_by,
         stock_location: row.stock_location,
         line_count: 1,
         total_units: Number(row.units_received ?? 0),

@@ -154,7 +154,7 @@ export default function SalesOrdersListScreen({
   const [listScope, setListScope] = useState(null);
   const [listFiltersInitialized, setListFiltersInitialized] = useState(false);
   const [page, setPage] = useState(1);
-  const { pageSize, setPageSize } = useListPageSize(15);
+  const { pageSize, setPageSize } = useListPageSize(10, { persist: false });
   const [detailsById, setDetailsById] = useState({});
   const [detailLoadingId, setDetailLoadingId] = useState(null);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
@@ -348,6 +348,8 @@ export default function SalesOrdersListScreen({
     );
   const showArchiveLoading =
     (loading || listLoading) && (loadingFromArchive || Boolean(debouncedSearch.trim()));
+  const showTableLoading = loading || (listLoading && rows.length === 0);
+  const showRefreshOverlay = listLoading && !loading && rows.length > 0 && !showArchiveLoading;
 
   const loadOrders = useCallback(async () => {
     if (!listFiltersInitialized) return;
@@ -1084,8 +1086,34 @@ export default function SalesOrdersListScreen({
               </div>
             </div>
           ) : null}
-          {loading ? (
-            <div className="min-h-[280px]" aria-hidden />
+          {showRefreshOverlay ? (
+            <div
+              className="absolute inset-0 z-10 flex min-h-[120px] items-start justify-center bg-white/50 pt-16 backdrop-blur-[0.5px]"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
+                <span
+                  className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
+                  aria-hidden
+                />
+                Loading orders…
+              </div>
+            </div>
+          ) : null}
+          {showTableLoading ? (
+            <div
+              className="flex min-h-[280px] flex-col items-center justify-center gap-3 px-6 text-center"
+              role="status"
+              aria-live="polite"
+            >
+              <span
+                className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
+                aria-hidden
+              />
+              <p className="text-sm font-medium text-slate-800">Loading orders…</p>
+              <p className="text-xs text-slate-500">Fetching the latest sales and orders for this view.</p>
+            </div>
           ) : pageSlice.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-slate-500">No orders match your filters.</p>
           ) : (

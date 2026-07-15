@@ -10,7 +10,7 @@ import { fetchSuppliersCached, fetchUomsCached } from "@/lib/reference-data-cach
 import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
-import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
+import { formatLpoKes, lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import { SupplierInvoiceModal } from "@/components/lpo/supplier-invoice-modal";
 import { lpoSupplierInvoiceFilePath } from "@/components/lpo/lpo-supplier-invoice-doc";
 import { ProtectedFileLink } from "@/components/media/protected-file-preview";
@@ -505,11 +505,12 @@ export default function ReceiveStockPage() {
                   </button>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="w-full min-w-[720px] border-collapse text-sm">
+                  <table className="w-full min-w-[820px] border-collapse text-sm">
                     <thead>
                       <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
                         <th className="px-3 py-2 font-medium">Product</th>
                         <th className="px-3 py-2 font-medium text-right">Ordered</th>
+                        <th className="px-3 py-2 font-medium text-right">Cost</th>
                         <th className="px-3 py-2 font-medium text-right">Received</th>
                         <th className="px-3 py-2 font-medium text-right">Remaining</th>
                         <th className="px-3 py-2 font-medium text-right">Receiving now</th>
@@ -539,6 +540,11 @@ export default function ReceiveStockPage() {
                           lineUom,
                           receiveCounts,
                         );
+                        const packLabel =
+                          line.package_name ||
+                          line.packaging_label ||
+                          lineUom?.package_name ||
+                          "pack";
                         return (
                           <tr key={line.id} className="border-b border-slate-100">
                             <td className="px-3 py-2.5">
@@ -549,6 +555,10 @@ export default function ReceiveStockPage() {
                             </td>
                             <td className="px-3 py-2.5 text-right tabular-nums">
                               {formatLinePackQty(line.ordered_qty, lineUom)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">
+                              <p className="font-medium">{formatLpoKes(line.cost_price)}</p>
+                              <p className="text-[11px] text-slate-500">per {packLabel}</p>
                             </td>
                             <td className="px-3 py-2.5 text-right tabular-nums text-slate-600">
                               <LpoReceivedQtyCell line={line} uom={lineUom} />

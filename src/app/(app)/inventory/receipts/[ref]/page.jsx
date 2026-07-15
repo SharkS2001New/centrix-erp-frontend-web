@@ -88,12 +88,15 @@ export default function StockReceiptDetailPage() {
         ? {
             ref,
             date: receiptDate,
-            received_by: header?.received_by_name ?? user?.full_name ?? user?.username,
+            received_by:
+              header?.received_by_name ??
+              (typeof header?.received_by === "string" ? header.received_by : null) ??
+              null,
             stock_location: header?.stock_location,
             lines: rows,
           }
         : null,
-    [rows, ref, receiptDate, header, user],
+    [rows, ref, receiptDate, header],
   );
 
   async function printGrn() {

@@ -35,7 +35,7 @@ export const FEATURED_REPORT_KEYS = [
 export const REPORT_DEFINITIONS = {
   "daily-sales": {
     title: "Daily Sales Report",
-    subtitle: "Daily sales summary by branch and channel",
+    subtitle: "Daily sales by branch/channel across booked → completed (incl. unpaid / partial)",
     section: "Sales",
     apiPath: "/reports/daily-sales",
     dateColumn: "sale_day",
@@ -88,7 +88,7 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-product": {
     title: "Sales by Product",
-    subtitle: "Revenue and VAT by product",
+    subtitle: "Revenue and VAT by product across booked → completed orders",
     section: "Sales",
     apiPath: "/reports/sales-by-product",
     dateColumn: "sale_date",
@@ -122,7 +122,7 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-supplier": {
     title: "Sales by Supplier",
-    subtitle: "Revenue and VAT by product supplier (packaged qty)",
+    subtitle: "Revenue and VAT by product supplier across booked → completed orders",
     section: "Sales",
     apiPath: "/reports/sales-by-supplier",
     dateColumn: "sale_date",
@@ -153,7 +153,7 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-channel": {
     title: "Sales by Channel",
-    subtitle: "Gross sales, VAT, and collections by channel",
+    subtitle: "Gross sales, VAT, and collections by channel across booked → completed orders",
     section: "Sales",
     apiPath: "/reports/sales-by-channel",
     dateColumn: "sale_date",
@@ -175,7 +175,7 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-user": {
     title: "Sales by User",
-    subtitle: "Sales performance by user with VAT breakdown",
+    subtitle: "Orders by user across booked → completed (incl. unpaid / partial), with VAT breakdown",
     section: "Sales",
     apiPath: "/reports/sales-by-user",
     dateColumn: "sale_date",
@@ -203,7 +203,7 @@ export const REPORT_DEFINITIONS = {
 
   "category-sales": {
     title: "Sales by Category",
-    subtitle: "Category revenue with VAT and packaged qty",
+    subtitle: "Category revenue with VAT across booked → completed orders",
     section: "Sales",
     apiPath: "/reports/category-sales",
     dateColumn: "sale_date",
@@ -778,7 +778,7 @@ export const REPORT_DEFINITIONS = {
 
   "vat-collected": {
     title: "VAT Collected Report",
-    subtitle: "VAT collected on completed sales",
+    subtitle: "VAT on sales across booked → completed orders (incl. unpaid / partial)",
     section: "Finance",
     apiPath: "/reports/vat-collected",
     dateColumn: "sale_date",

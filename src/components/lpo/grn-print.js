@@ -159,7 +159,7 @@ export async function printGoodsReceivedNote(
     { label: "PHONE:", value: supplierPhone },
     { label: "K.R.A PIN:", value: supplierPin },
     { label: "YOUR REF:", value: lpo.reference_number ?? "—" },
-    { label: "RECEIVED BY:", value: grn.received_by ?? footerPrintedBy ?? "—" },
+    { label: "RECEIVED BY:", value: grn.received_by ?? "—" },
   ]);
 
   const itemsTable = buildGrnItemsTable(grn);
@@ -185,7 +185,7 @@ export async function printGoodsReceivedNote(
     </div>
     ${recon}
     <div class="signatures">
-      <p>Received by: <span class="sig-line">${escapeHtml(grn.received_by ?? footerPrintedBy ?? "")}</span></p>
+      <p>Received by: <span class="sig-line">${escapeHtml(grn.received_by ?? "")}</span></p>
       <p>Checked by: <span class="sig-line">&nbsp;</span></p>
       <p>Authorised by: <span class="sig-line">&nbsp;</span></p>
     </div>
@@ -221,26 +221,35 @@ export async function printGrnForLpoSummary(
 ) {
   const { buildGrnFromLpoSummary, buildGrnFromReceiveSession } = await import("@/lib/grn-document");
 
+  const recordedReceiver =
+    lpoSummary?.lpo?.received_by_name ??
+    (Array.isArray(lpoSummary?.lpo?.received_by_names)
+      ? lpoSummary.lpo.received_by_names.filter(Boolean).join(", ")
+      : null) ??
+    null;
+
   const grn =
     mode === "session" && receiveCounts
       ? buildGrnFromReceiveSession(lpoSummary, receiveCounts, uomById, {
           supplierInvoiceNumber,
           receiptDate,
           stockLocation,
-          receivedBy: user?.full_name ?? user?.username ?? null,
+          // Session print: current user is the one posting this receive.
+          receivedBy: recordedReceiver ?? user?.full_name ?? user?.username ?? null,
           priorReceivedByLineId,
         })
       : buildGrnFromLpoSummary(lpoSummary, uomById, {
           supplierInvoiceNumber,
           receiptDate,
           stockLocation,
-          receivedBy: user?.full_name ?? user?.username ?? null,
+          receivedBy: recordedReceiver,
         });
 
   await printGoodsReceivedNote(grn, {
     organization,
     generalSettings: generalSettings ?? mergeGeneralSettings(),
     user,
+    // Footer "Printed by" stays the person generating the document.
     printedBy: user?.full_name ?? user?.username ?? null,
   });
 }

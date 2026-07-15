@@ -75,6 +75,30 @@ export const LPO_STATUS = {
   CANCELLED_RETURNED: 7,
 };
 
+/** Fallback labels when API omits status_name. */
+export const LPO_STATUS_LABELS = {
+  [LPO_STATUS.AWAITING_CHECK]: "Awaiting check",
+  [LPO_STATUS.AWAITING_APPROVAL]: "Awaiting approval",
+  [LPO_STATUS.AWAITING_SEND]: "Awaiting send",
+  [LPO_STATUS.AWAITING_RECEIVE]: "Awaiting receive",
+  [LPO_STATUS.AWAITING_LAST_RECEIVE]: "Partially received",
+  [LPO_STATUS.FULLY_RECEIVED]: "Fully received",
+  [LPO_STATUS.CLEARED]: "Cleared",
+  [LPO_STATUS.CANCELLED_RETURNED]: "Cancelled / returned",
+};
+
+export function lpoStatusDisplayName(statusCode, statusName, clearedFlag = 0) {
+  if (Number(clearedFlag) === 1) {
+    const named = String(statusName ?? "").trim();
+    if (named && /clear|paid/i.test(named)) return named;
+    return LPO_STATUS_LABELS[LPO_STATUS.CLEARED];
+  }
+  const named = String(statusName ?? "").trim();
+  if (named) return named;
+  const code = Number(statusCode);
+  return LPO_STATUS_LABELS[code] ?? (Number.isFinite(code) ? `Status ${code}` : "—");
+}
+
 export function lpoIsCancelledReturned(lpo) {
   return (
     Number(lpo?.lpo_status_code) === LPO_STATUS.CANCELLED_RETURNED ||
@@ -147,37 +171,36 @@ export function lpoCanRecordReturn(lpo, lines = []) {
 }
 
 export function LpoStatusBadge({ statusName, clearedFlag, statusCode, paymentStatus }) {
-  const name = (statusName ?? "").toLowerCase();
+  const label = lpoStatusDisplayName(statusCode, statusName, clearedFlag);
+  const name = label.toLowerCase();
   let className = "bg-slate-100 text-slate-700";
-  const label = statusName ?? "—";
   const code = Number(statusCode);
   const pay = paymentStatus ?? "";
 
-  if (code === LPO_STATUS.CLEARED || name.includes("lpo cleared")) {
+  if (code === LPO_STATUS.CLEARED || name.includes("cleared") || Number(clearedFlag) === 1) {
     className =
       pay === "partial" || name.includes("partially paid")
         ? "bg-amber-50 text-amber-900"
         : "bg-emerald-50 text-emerald-800";
-  } else if (clearedFlag === 1 || name.includes("cleared")) {
-    className = "bg-emerald-50 text-emerald-800";
   } else if (code === LPO_STATUS.FULLY_RECEIVED || name.includes("fully received")) {
     className = "bg-emerald-50 text-emerald-800";
   } else if (
     code === LPO_STATUS.AWAITING_LAST_RECEIVE ||
+    name.includes("partially received") ||
     name.includes("last items")
   ) {
     className = "bg-amber-50 text-amber-800";
-  } else if (code === LPO_STATUS.AWAITING_RECEIVE || name.includes("items to be received")) {
+  } else if (code === LPO_STATUS.AWAITING_RECEIVE || name.includes("awaiting receive") || name.includes("items to be received")) {
     className = "bg-blue-50 text-blue-800";
-  } else if (code === LPO_STATUS.AWAITING_SEND || name.includes("sent to supplier")) {
+  } else if (code === LPO_STATUS.AWAITING_SEND || name.includes("awaiting send") || name.includes("sent to supplier")) {
     className = "bg-indigo-50 text-indigo-800";
   } else if (code === LPO_STATUS.AWAITING_APPROVAL || name.includes("approval")) {
     className = "bg-violet-50 text-violet-800";
-  } else if (code === LPO_STATUS.AWAITING_CHECK || name.includes("checked")) {
+  } else if (code === LPO_STATUS.AWAITING_CHECK || name.includes("checked") || name.includes("awaiting check")) {
     className = "bg-slate-100 text-slate-600";
   } else if (
     code === LPO_STATUS.CANCELLED_RETURNED ||
-    name.includes("returned to supplier")
+    name.includes("returned")
   ) {
     className = "bg-orange-50 text-orange-900";
   }
