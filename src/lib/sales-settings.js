@@ -859,6 +859,31 @@ export function resolveBackofficeOrderTypeMode(sales) {
   return "toggle";
 }
 
+/**
+ * Whether this sale should include route markup in line pricing (edit/add lines).
+ * Matches create-order / checkout rules:
+ * - Route markup sales setting must be on
+ * - Order must have a route (route orders when mode is "route" or user chose route in "toggle")
+ * - "normal" mode does not apply markup unless the sale was already booked with markup
+ */
+export function saleAppliesRouteMarkupPricing(sale, moduleSettings, { standalone = false } = {}) {
+  const sales = mergeSalesSettings(moduleSettings);
+  if (!sales.add_route_markup_prices) return false;
+
+  const routeId = sale?.route_id ?? sale?.route?.id ?? null;
+  if (routeId == null || routeId === "") return false;
+
+  const alreadyApplied = Boolean(sale?.fulfillment_meta?.route_markup?.applied);
+  const mode = resolveRouteOrderTypeMode(sales, { standalone });
+
+  if (mode === "normal") {
+    return alreadyApplied;
+  }
+
+  // mode "route" (locked) or "toggle" (chosen as route): route_id means markup applies
+  return true;
+}
+
 export function resolveAllowEditUnitPrice(sales, { standalone = false } = {}) {
   if (standalone) {
     return Boolean(sales?.allow_pos_edit_unit_price);

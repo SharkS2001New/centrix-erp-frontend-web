@@ -15,9 +15,12 @@ import {
 import {
   computePosLine,
   defaultPosEntryQty,
+  lineDiscountTotal,
   posCartLineTypeLabel,
+  productHasRetailTiers,
 } from "@/lib/pos-line";
-import { getPosSalesConfig, showBackofficeLineDiscountEdit } from "@/lib/sales-settings";
+import { getPosSalesConfig, saleAppliesRouteMarkupPricing, showBackofficeLineDiscountEdit } from "@/lib/sales-settings";
+import { isBackofficeSale } from "@/lib/sales";
 import { useAuth } from "@/contexts/auth-context";
 import { inputClassName, PrimaryButton, TrashIcon } from "@/components/catalog/catalog-shared";
 import { ProductSearchSelect } from "@/components/catalog/product-search-select";
@@ -43,6 +46,12 @@ function lineKey(line) {
 
 function isRetailLine(line) {
   return Number(line?.on_wholesale_retail) === 1;
+}
+
+/** Product can be sold at retail only when retail package tiers exist. */
+function productAllowsRetail(productCode, retailMap) {
+  if (!productCode) return false;
+  return productHasRetailTiers(retailMap[String(productCode)] ?? null);
 }
 
 function indexRetailPackages(rows) {
@@ -98,9 +107,10 @@ function buildEditLine(line, uomById, retailMap) {
     id: line.id,
     clientKey: line.clientKey ?? null,
     product_code: line.product_code,
-    product: line.product,
+    product: line.product ? productWithUom(line.product, uomById) : line.product,
     quantity: Number(line.quantity ?? 0),
     selling_price: Number(line.selling_price ?? 0),
+    display_unit_price: line.display_unit_price,
     amount: Number(line.amount ?? 0),
     product_vat: Number(line.product_vat ?? 0),
     discount_given: Number(line.discount_given ?? 0),
@@ -114,10 +124,90 @@ function buildEditLine(line, uomById, retailMap) {
   };
 }
 
-function buildNewDraftLine(product, uomById, retailMap, { asRetail = false } = {}) {
+/**
+ * POS-aligned pricing for edit drafts: wholesale/retail tiers, package markups, and route markup.
+ */
+function priceDraftLine(
+  line,
+  uomById,
+  retailMap,
+  routeMarkupPerUnit,
+  { discountEditEnabled = false } = {},
+) {
+  const product = productWithUom(
+    line.product ?? {
+      product_code: line.product_code,
+      unit_price: line.selling_price,
+      uom: line.uom,
+    },
+    uomById,
+  );
+  if (!product?.product_code) {
+    return {
+      amount: saleLinePreviewRowAmount(line, line.draftQty, uomById, {
+        retailByCode: retailMap,
+        draftDiscount: line.draftDiscount,
+        discountEditEnabled,
+      }),
+      unitPrice: saleLineSoldUnitPrice(line, uomById, retailMap),
+      baseQty: saleLineEntryQtyToBase(line, line.draftQty, uomById, retailMap),
+      displayUnitPrice: saleLineSoldUnitPrice(line, uomById, retailMap),
+    };
+  }
+
+  const retailPackage = retailMap[line.product_code] ?? null;
+  const asRetail = isRetailLine(line) && productHasRetailTiers(retailPackage);
+  const sellWholesale = !asRetail;
+  const entryQty = String(line.draftQty ?? defaultPosEntryQty(product, sellWholesale, retailPackage));
+
+  const base = computePosLine({
+    product,
+    entryQty,
+    sellWholesale,
+    retailPackage,
+    discount: 0,
+    routeMarkupPerUnit,
+    retailLine: asRetail,
+  });
+
+  let discountTotal = 0;
+  if (discountEditEnabled) {
+    discountTotal = lineDiscountTotal(Number(line.draftDiscount ?? 0), base.packQty);
+  } else if (line.id != null) {
+    const oldBase = Number(line.quantity ?? 0);
+    if (oldBase > 0 && base.baseQty > 0) {
+      discountTotal = Math.round((Number(line.discount_given ?? 0) * base.baseQty) / oldBase * 100) / 100;
+    }
+  }
+
+  const computed =
+    discountTotal > 0
+      ? computePosLine({
+          product,
+          entryQty,
+          sellWholesale,
+          retailPackage,
+          discount: discountTotal,
+          routeMarkupPerUnit,
+          retailLine: asRetail,
+        })
+      : base;
+
+  return {
+    amount: computed.lineAmount,
+    unitPrice: computed.displayUnitPrice,
+    displayUnitPrice: computed.displayUnitPrice,
+    baseQty: computed.baseQty,
+    packQty: computed.packQty,
+    discountTotal: computed.discountApplied,
+  };
+}
+
+function buildNewDraftLine(product, uomById, retailMap, { asRetail = false, routeMarkupPerUnit = 0 } = {}) {
   const productResolved = productWithUom(product, uomById);
   const retailPackage = retailMap[product.product_code] ?? null;
-  const sellWholesale = !asRetail;
+  const useRetail = Boolean(asRetail && productHasRetailTiers(retailPackage));
+  const sellWholesale = !useRetail;
   const entryQty = defaultPosEntryQty(productResolved, sellWholesale, retailPackage);
   const computed = computePosLine({
     product: productResolved,
@@ -125,6 +215,8 @@ function buildNewDraftLine(product, uomById, retailMap, { asRetail = false } = {
     sellWholesale,
     retailPackage,
     discount: 0,
+    routeMarkupPerUnit,
+    retailLine: useRetail,
   });
   const baseQty =
     Number.isFinite(computed.baseQty) && computed.baseQty > 0 ? computed.baseQty : 1;
@@ -136,11 +228,12 @@ function buildNewDraftLine(product, uomById, retailMap, { asRetail = false } = {
     product: productResolved,
     quantity: baseQty,
     selling_price: computed.displayUnitPrice,
+    display_unit_price: computed.displayUnitPrice,
     amount: computed.lineAmount,
     product_vat: 0,
     discount_given: 0,
     uom: productResolved.uom,
-    on_wholesale_retail: asRetail ? 1 : 0,
+    on_wholesale_retail: useRetail ? 1 : 0,
     draftDiscount: 0,
     draftQty: String(entryQty),
   };
@@ -155,6 +248,8 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
   const [retailByCode, setRetailByCode] = useState({});
   const [addProductCode, setAddProductCode] = useState("");
   const [addAsRetail, setAddAsRetail] = useState(false);
+  const [routeMarkupPerUnit, setRouteMarkupPerUnit] = useState(0);
+  const [routeMarkupLabel, setRouteMarkupLabel] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -176,12 +271,37 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     setLeavePromptOpen(false);
     try {
       const [detail, retailRows] = await Promise.all([
-        sale.items?.length ? Promise.resolve(sale) : apiRequest(`/sales/${sale.id}`),
+        // Always load full sale so route_id / fulfillment_meta are present for markup rules.
+        apiRequest(`/sales/${sale.id}`),
         fetchRetailPackagesCached().catch(() => []),
       ]);
+      const saleForPricing = { ...sale, ...detail };
+      const applyMarkup = saleAppliesRouteMarkupPricing(saleForPricing, capabilities?.module_settings, {
+        standalone: !isBackofficeSale(saleForPricing, capabilities),
+      });
+      const routeId = saleForPricing.route_id ?? saleForPricing.route?.id ?? null;
+      const routeRes =
+        applyMarkup && routeId
+          ? await apiRequest(`/routes/${routeId}`).catch(() => saleForPricing.route ?? null)
+          : null;
+
       const retailMap = indexRetailPackages(retailRows);
       setRetailByCode(retailMap);
-      const nextLines = (detail.items ?? []).map((line) => buildEditLine(line, uomById, retailMap));
+      const markup = applyMarkup
+        ? Number(routeRes?.route_markup_price ?? saleForPricing.route?.route_markup_price ?? 0)
+        : 0;
+      const safeMarkup = Number.isFinite(markup) && markup > 0 ? markup : 0;
+      setRouteMarkupPerUnit(safeMarkup);
+      setRouteMarkupLabel(
+        safeMarkup > 0
+          ? `Route markup KES ${safeMarkup.toLocaleString("en-KE")} applied (${
+              routeRes?.route_name ?? saleForPricing.route?.route_name ?? `route #${routeId}`
+            })`
+          : "",
+      );
+      const nextLines = (detail.items ?? sale.items ?? []).map((line) =>
+        buildEditLine(line, uomById, retailMap),
+      );
       setLines(nextLines);
       setBaselineDraft(snapshotDraft(nextLines));
       setBaselineRemovedIds([]);
@@ -189,12 +309,14 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       setError(e instanceof Error ? e.message : "Could not load order lines.");
       setLines([]);
       setRetailByCode({});
+      setRouteMarkupPerUnit(0);
+      setRouteMarkupLabel("");
       setBaselineDraft([]);
       setBaselineRemovedIds([]);
     } finally {
       setLoading(false);
     }
-  }, [sale, uomById]);
+  }, [sale, uomById, capabilities]);
 
   useEffect(() => {
     if (!open || !sale?.id) {
@@ -203,6 +325,8 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       setRetailByCode({});
       setAddProductCode("");
       setAddAsRetail(false);
+      setRouteMarkupPerUnit(0);
+      setRouteMarkupLabel("");
       setError(null);
       setLeavePromptOpen(false);
       setBaselineDraft([]);
@@ -230,17 +354,13 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
   }, [lines, removedIds, baselineDraft, baselineRemovedIds]);
 
   const totals = useMemo(() => {
-    return lines.reduce(
-      (sum, line) =>
-        sum +
-        saleLinePreviewRowAmount(line, line.draftQty, uomById, {
-          retailByCode,
-          draftDiscount: line.draftDiscount,
-          discountEditEnabled,
-        }),
-      0,
-    );
-  }, [lines, retailByCode, uomById, discountEditEnabled]);
+    return lines.reduce((sum, line) => {
+      const priced = priceDraftLine(line, uomById, retailByCode, routeMarkupPerUnit, {
+        discountEditEnabled,
+      });
+      return sum + Number(priced.amount ?? 0);
+    }, 0);
+  }, [lines, retailByCode, uomById, discountEditEnabled, routeMarkupPerUnit]);
 
   function updateQty(key, value) {
     setLines((prev) => prev.map((line) => (lineKey(line) === key ? { ...line, draftQty: value } : line)));
@@ -256,7 +376,13 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     setLines((prev) =>
       prev.map((line) => {
         if (lineKey(line) !== key || line.id != null) return line;
-        const rebuilt = buildNewDraftLine(line.product, uomById, retailByCode, { asRetail });
+        if (asRetail && !productAllowsRetail(line.product_code, retailByCode)) {
+          return line;
+        }
+        const rebuilt = buildNewDraftLine(line.product, uomById, retailByCode, {
+          asRetail,
+          routeMarkupPerUnit,
+        });
         return {
           ...rebuilt,
           clientKey: line.clientKey,
@@ -281,7 +407,11 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
   function handleAddProduct(product) {
     if (!product?.product_code) return;
     setError(null);
-    const asRetail = retailPricingEnabled && addAsRetail;
+    const allowsRetail = productAllowsRetail(product.product_code, retailByCode);
+    const asRetail = retailPricingEnabled && addAsRetail && allowsRetail;
+    if (addAsRetail && !allowsRetail) {
+      setError("This product has wholesale pricing only — added as wholesale.");
+    }
     setLines((prev) => {
       const existing = prev.find(
         (line) =>
@@ -294,7 +424,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
           lineKey(line) === lineKey(existing) ? { ...line, draftQty: String(nextQty) } : line,
         );
       }
-      return [...prev, buildNewDraftLine(product, uomById, retailByCode, { asRetail })];
+      return [...prev, buildNewDraftLine(product, uomById, retailByCode, { asRetail, routeMarkupPerUnit })];
     });
     setAddProductCode("");
   }
@@ -348,7 +478,8 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
           : {
               product_code: line.product_code,
               quantity: baseQty,
-              on_wholesale_retail: isRetailLine(line),
+              on_wholesale_retail:
+                isRetailLine(line) && productAllowsRetail(line.product_code, retailByCode),
             };
 
       if (discountEditEnabled) {
@@ -442,33 +573,46 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
             </div>
           ) : null}
 
+          {routeMarkupLabel ? (
+            <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-800/50 dark:bg-sky-950/20 dark:text-sky-100">
+              {routeMarkupLabel}. Added and updated lines use this markup (same as when the order was
+              created).
+            </div>
+          ) : null}
+
           {!loading ? (
             <div className="mb-4 space-y-2">
               <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
                 Add item
               </label>
               {retailPricingEnabled ? (
-                <div className="flex flex-wrap items-center gap-3 text-sm">
-                  <label className="flex cursor-pointer items-center gap-1.5 text-slate-700">
-                    <input
-                      type="radio"
-                      name="edit-order-add-pricing"
-                      checked={!addAsRetail}
-                      disabled={saving}
-                      onChange={() => setAddAsRetail(false)}
-                    />
-                    Wholesale
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-1.5 text-slate-700">
-                    <input
-                      type="radio"
-                      name="edit-order-add-pricing"
-                      checked={addAsRetail}
-                      disabled={saving}
-                      onChange={() => setAddAsRetail(true)}
-                    />
-                    Retail
-                  </label>
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-3 text-sm">
+                    <label className="flex cursor-pointer items-center gap-1.5 text-slate-700">
+                      <input
+                        type="radio"
+                        name="edit-order-add-pricing"
+                        checked={!addAsRetail}
+                        disabled={saving}
+                        onChange={() => setAddAsRetail(false)}
+                      />
+                      Wholesale
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-1.5 text-slate-700">
+                      <input
+                        type="radio"
+                        name="edit-order-add-pricing"
+                        checked={addAsRetail}
+                        disabled={saving}
+                        onChange={() => setAddAsRetail(true)}
+                      />
+                      Retail
+                    </label>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Retail applies only to products with retail package pricing. Wholesale-only
+                    products are always added as wholesale.
+                  </p>
                 </div>
               ) : null}
               <ProductSearchSelect
@@ -505,13 +649,14 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
               <tbody>
                 {lines.map((line) => {
                   const key = lineKey(line);
-                  const amount = saleLinePreviewRowAmount(line, line.draftQty, uomById, {
-                    retailByCode,
-                    draftDiscount: line.draftDiscount,
+                  const priced = priceDraftLine(line, uomById, retailByCode, routeMarkupPerUnit, {
                     discountEditEnabled,
                   });
-                  const unitPrice = saleLineSoldUnitPrice(line, uomById);
-                  const canTogglePricing = retailPricingEnabled && line.id == null;
+                  const amount = priced.amount;
+                  const unitPrice = priced.unitPrice;
+                  const allowsRetail = productAllowsRetail(line.product_code, retailByCode);
+                  const canTogglePricing =
+                    retailPricingEnabled && line.id == null && allowsRetail;
 
                   return (
                     <tr key={key} className="theme-table-row border-b last:border-b-0">
@@ -538,6 +683,11 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
                                   ? "bg-violet-100 text-violet-800"
                                   : "bg-slate-100 text-slate-600"
                               }`}
+                              title={
+                                line.id == null && !allowsRetail
+                                  ? "This product has wholesale pricing only"
+                                  : undefined
+                              }
                             >
                               {posCartLineTypeLabel(line)}
                             </span>
