@@ -41,7 +41,7 @@ function readSidebarCollapsed() {
   }
 }
 
-/** Chrome that can read tab activeHref (must sit inside TabWorkspaceProvider). */
+/** Chrome can follow tab activeHref when keep-alive switches without router.push. */
 function AppShellChrome({ children }) {
   const routerPathname = usePathname();
   const { enabled, activeHref } = useTabWorkspace();
@@ -74,7 +74,6 @@ function AppShellChrome({ children }) {
 
   useEffect(() => {
     function onPopState(event) {
-      // Keep-alive tab URL sync uses replaceState + __NA — no soft-nav skeleton.
       if (event?.state?.centrixTabWorkspace) {
         finishNavigation();
         return;

@@ -18,6 +18,7 @@ import {
   findOpenTab,
   getWorkspaceTabState,
   hrefFromLinkProp,
+  isTabPaneMounted,
   isTabWorkspaceEnabled,
   isTabWorkspaceRoute,
   normalizeTabHref,
@@ -116,7 +117,9 @@ export function TabWorkspaceProvider({ children }) {
       const normalized = hrefFromLinkProp(href);
       if (!workspaceId || !isTabWorkspaceRoute(normalized)) return false;
       if (!pathBelongsToWorkspace(normalized, workspaceId)) return false;
-      return Boolean(findOpenTab(tabs, normalized));
+      if (!findOpenTab(tabs, normalized)) return false;
+      // Only skip soft-nav when the page was already visited this session.
+      return isTabPaneMounted(tabPaneKey(normalized));
     });
 
     return () => setOpenTabReuseChecker(null);
@@ -215,70 +218,63 @@ export function TabWorkspaceProvider({ children }) {
     upsertTab(pathname, titleFromPathname(pathname));
   }, [enabled, pathname, upsertTab, workspaceId]);
 
+  // Real Next navigations update which tab is active.
   useEffect(() => {
     if (!enabled || !workspaceId || !pathname || !isTabWorkspaceRoute(pathname)) return;
     if (!pathBelongsToWorkspace(pathname, workspaceId)) return;
 
-    const fromRouter = normalizeTabHref(pathname);
-    const fromWindow =
-      typeof window !== "undefined"
-        ? normalizeTabHref(`${window.location.pathname}${window.location.search}`)
-        : fromRouter;
-    // When switching open tabs we only history.pushState — Next's pathname can lag.
-    // Prefer the browser URL when it still points at an open tab.
-    const normalized =
-      fromWindow && findOpenTab(tabs, fromWindow) ? fromWindow : fromRouter;
-
+    const storageHref = normalizeTabHref(tabPaneKey(pathname));
     setTabStore((store) =>
       updateWorkspaceTabs(store, workspaceId, (current) => {
-        if (current.activeHref === normalized) return current;
-        return { ...current, activeHref: normalized };
+        if (tabPaneKey(current.activeHref ?? "") === tabPaneKey(storageHref)) return current;
+        return { ...current, activeHref: storageHref };
       }),
     );
-  }, [enabled, pathname, tabs, workspaceId]);
+  }, [enabled, pathname, workspaceId]);
 
   const switchToHref = useCallback(
     (href) => {
       const normalized = hrefFromLinkProp(href);
-      const isCurrent = normalizeTabHref(pathname) === normalized;
-      const storeCurrent = storeActiveHref === normalized;
+      const paneKey = tabPaneKey(normalized);
+      const storageHref = normalizeTabHref(paneKey);
+      const isCurrentPath = tabPaneKey(pathname) === paneKey;
+      const isStoreCurrent = tabPaneKey(storeActiveHref) === paneKey;
+      const open = Boolean(findOpenTab(tabs, normalized));
+      const mounted = isTabPaneMounted(paneKey);
 
       if (
         enabled &&
         workspaceId &&
         isTabWorkspaceRoute(normalized) &&
         pathBelongsToWorkspace(normalized, workspaceId) &&
-        findOpenTab(tabs, normalized)
+        open &&
+        mounted
       ) {
         setTabStore((store) =>
-          updateWorkspaceTabs(store, workspaceId, (current) => {
-            const existing = current.tabs.find((tab) => tab.href === normalized);
-            if (!existing) return current;
-
-            return {
-              ...current,
-              activeHref: normalized,
-              tabs: current.tabs.map((tab) =>
-                tab.href === normalized ? { ...tab, lastActiveAt: Date.now() } : tab,
-              ),
-            };
-          }),
+          updateWorkspaceTabs(store, workspaceId, (current) => ({
+            ...current,
+            activeHref: storageHref,
+            tabs: current.tabs.map((tab) =>
+              tabPaneKey(tab.href) === paneKey
+                ? { ...tab, lastActiveAt: Date.now() }
+                : tab,
+            ),
+          })),
         );
 
-        // Reuse the mounted keep-alive pane — do not router.push / bare pushState.
-        // Next patches history and would ACTION_RESTORE → remount + refetch.
+        // Already visited this session — show cached pane, no router remount.
         finishNavigation();
-        if (!isCurrent || !storeCurrent) {
+        if (!isCurrentPath || !isStoreCurrent) {
           try {
-            syncOpenTabUrl(normalized);
+            syncOpenTabUrl(storageHref);
           } catch {
-            /* address bar sync is best-effort; pane switch already applied */
+            /* best-effort URL sync */
           }
         }
         return true;
       }
 
-      if (!isCurrent) router.push(normalized);
+      if (!isCurrentPath) router.push(storageHref);
       return false;
     },
     [enabled, pathname, router, storeActiveHref, tabs, workspaceId],
@@ -294,23 +290,21 @@ export function TabWorkspaceProvider({ children }) {
   const navigateToHref = useCallback(
     (href, { replace = false } = {}) => {
       const normalized = hrefFromLinkProp(href);
-      const isCurrent = normalizeTabHref(pathname) === normalized;
-
-      if (isCurrent) return;
+      const storageHref = normalizeTabHref(tabPaneKey(normalized));
 
       if (
         enabled &&
         workspaceId &&
-        isTabWorkspaceRoute(normalized) &&
-        pathBelongsToWorkspace(normalized, workspaceId) &&
-        findOpenTab(tabs, normalized)
+        findOpenTab(tabs, normalized) &&
+        isTabPaneMounted(tabPaneKey(normalized))
       ) {
         switchToHref(normalized);
         return;
       }
 
-      if (replace) router.replace(normalized);
-      else router.push(normalized);
+      if (tabPaneKey(pathname) === tabPaneKey(normalized)) return;
+      if (replace) router.replace(storageHref);
+      else router.push(storageHref);
     },
     [enabled, pathname, router, switchToHref, tabs, workspaceId],
   );
@@ -322,7 +316,9 @@ export function TabWorkspaceProvider({ children }) {
       const normalized = hrefFromLinkProp(href);
       if (!isTabWorkspaceRoute(normalized)) return false;
       if (!workspaceId || !pathBelongsToWorkspace(normalized, workspaceId)) return false;
-      if (!findOpenTab(tabs, normalized)) return false;
+      if (!findOpenTab(tabs, normalized) || !isTabPaneMounted(tabPaneKey(normalized))) {
+        return false;
+      }
 
       event.preventDefault();
       switchToHref(normalized);
@@ -343,7 +339,7 @@ export function TabWorkspaceProvider({ children }) {
       const normalized = normalizeTabHref(anchor.getAttribute("href"));
       if (!isTabWorkspaceRoute(normalized)) return;
       if (!workspaceId || !pathBelongsToWorkspace(normalized, workspaceId)) return;
-      if (!findOpenTab(tabs, normalized)) return;
+      if (!findOpenTab(tabs, normalized) || !isTabPaneMounted(tabPaneKey(normalized))) return;
 
       event.preventDefault();
       switchToHref(normalized);
@@ -356,35 +352,38 @@ export function TabWorkspaceProvider({ children }) {
   const closeTab = useCallback(
     (href) => {
       const normalized = normalizeTabHref(href);
+      const paneKey = tabPaneKey(normalized);
       if (!workspaceId) return;
 
       setTabStore((store) =>
         updateWorkspaceTabs(store, workspaceId, (current) => {
-          const index = current.tabs.findIndex((tab) => tab.href === normalized);
+          const index = current.tabs.findIndex((tab) => tabPaneKey(tab.href) === paneKey);
           if (index === -1) return current;
 
-          const nextTabs = current.tabs.filter((tab) => tab.href !== normalized);
+          const nextTabs = current.tabs.filter((tab) => tabPaneKey(tab.href) !== paneKey);
           titleOverridesRef.current.delete(normalized);
 
-          if (normalizeTabHref(pathname) === normalized) {
+          const closingActive =
+            tabPaneKey(pathname) === paneKey ||
+            tabPaneKey(current.activeHref ?? "") === paneKey;
+
+          if (closingActive) {
             const fallback = nextTabs[Math.max(0, index - 1)] ?? nextTabs[0];
             if (fallback?.href) {
-              router.push(fallback.href);
+              // Prefer cached switch when possible; else soft-nav.
+              if (isTabPaneMounted(tabPaneKey(fallback.href))) {
+                queueMicrotask(() => {
+                  try {
+                    syncOpenTabUrl(fallback.href);
+                  } catch {
+                    /* ignore */
+                  }
+                });
+              } else {
+                router.push(fallback.href);
+              }
             } else {
               router.push(workspaceHomePath(workspaceId, capabilities));
-            }
-          } else if (current.activeHref === normalized) {
-            // Closed the visible keep-alive tab while Next is still on another
-            // open route — flip to the neighbor without soft-navigating.
-            const fallback = nextTabs[Math.max(0, index - 1)] ?? nextTabs[0];
-            if (fallback?.href) {
-              queueMicrotask(() => {
-                try {
-                  syncOpenTabUrl(fallback.href);
-                } catch {
-                  /* ignore */
-                }
-              });
             }
           }
 
@@ -392,7 +391,7 @@ export function TabWorkspaceProvider({ children }) {
             ...current,
             tabs: nextTabs,
             activeHref:
-              current.activeHref === normalized
+              tabPaneKey(current.activeHref ?? "") === paneKey
                 ? (nextTabs[Math.max(0, index - 1)]?.href ?? nextTabs[0]?.href ?? null)
                 : current.activeHref,
           };
@@ -411,7 +410,9 @@ export function TabWorkspaceProvider({ children }) {
       setTabStore((store) =>
         updateWorkspaceTabs(store, workspaceId, (current) => ({
           ...current,
-          tabs: current.tabs.map((tab) => (tab.href === normalized ? { ...tab, title } : tab)),
+          tabs: current.tabs.map((tab) =>
+            tabPaneKey(tab.href) === tabPaneKey(normalized) ? { ...tab, title } : tab,
+          ),
         })),
       );
     },
@@ -427,7 +428,7 @@ export function TabWorkspaceProvider({ children }) {
         updateWorkspaceTabs(store, workspaceId, (current) => ({
           ...current,
           tabs: current.tabs.map((tab) =>
-            tab.href === normalized ? { ...tab, dirty: true } : tab,
+            tabPaneKey(tab.href) === tabPaneKey(normalized) ? { ...tab, dirty: true } : tab,
           ),
         })),
       );
@@ -444,7 +445,7 @@ export function TabWorkspaceProvider({ children }) {
         updateWorkspaceTabs(store, workspaceId, (current) => ({
           ...current,
           tabs: current.tabs.map((tab) =>
-            tab.href === normalized ? { ...tab, dirty: false } : tab,
+            tabPaneKey(tab.href) === tabPaneKey(normalized) ? { ...tab, dirty: false } : tab,
           ),
         })),
       );
@@ -490,7 +491,6 @@ export function useTabWorkspace() {
   return useContext(TabWorkspaceContext);
 }
 
-/** Override the active tab title (e.g. customer name on a detail page). */
 export function useTabTitle(title) {
   const pathname = usePathname();
   const { enabled, setTabTitle } = useTabWorkspace();

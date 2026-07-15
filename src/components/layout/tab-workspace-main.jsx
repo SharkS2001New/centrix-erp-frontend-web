@@ -1,115 +1,40 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { TabPaneActivityProvider } from "@/contexts/tab-pane-activity-context";
 import { TabPaneRouterFreeze } from "@/components/layout/tab-pane-router-freeze";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import {
-  isNavigationPending,
-  subscribeAppLoading,
-  subscribeNavigationSeal,
-} from "@/lib/app-loading";
-import {
   isTabWorkspaceRoute,
+  markTabPaneMounted,
   normalizeTabHref,
   tabPaneKey,
+  unmarkTabPaneMounted,
 } from "@/lib/tab-workspace";
 import { pathBelongsToWorkspace } from "@/lib/workspaces";
 
-/** True when children is (or wraps) the route loading skeleton — never freeze that. */
 function isTabCachePlaceholder(node, depth = 0) {
   if (!node || typeof node !== "object" || depth > 6) return false;
   if (node.props?.["data-tab-cache-placeholder"] != null) return true;
   if (node.props?.role === "status" && node.props?.["aria-busy"]) return true;
-
   const kids = node.props?.children;
-  if (Array.isArray(kids)) {
-    return kids.some((kid) => isTabCachePlaceholder(kid, depth + 1));
-  }
-  if (kids && typeof kids === "object") {
-    return isTabCachePlaceholder(kids, depth + 1);
-  }
+  if (Array.isArray(kids)) return kids.some((kid) => isTabCachePlaceholder(kid, depth + 1));
+  if (kids && typeof kids === "object") return isTabCachePlaceholder(kids, depth + 1);
   return false;
 }
 
 /**
- * One host per route path. Only the live Next pathname host is given
- * `liveChildren`. Other hosts keep private snapshots and stay `hidden`.
+ * Original-style tab panes: keep visited pages mounted and hidden.
  *
- * On soft-nav start we synchronously lock + seal the live host so the next
- * page tree cannot overwrite earlier tabs (Dashboard showing Receive stock).
- */
-function TabPaneHost({ paneKey, isLive, isActive, liveChildren, routeLeaving }) {
-  const [snapshot, setSnapshot] = useState(null);
-  const [locked, setLocked] = useState(false);
-  const isLiveRef = useRef(isLive);
-  const liveChildrenRef = useRef(liveChildren);
-  const snapshotRef = useRef(snapshot);
-
-  useLayoutEffect(() => {
-    isLiveRef.current = isLive;
-    if (liveChildren != null && !isTabCachePlaceholder(liveChildren)) {
-      liveChildrenRef.current = liveChildren;
-    }
-    snapshotRef.current = snapshot;
-  }, [isLive, liveChildren, snapshot]);
-
-  useEffect(() => {
-    return subscribeNavigationSeal(() => {
-      if (!isLiveRef.current) return;
-      setLocked(true);
-      const node = liveChildrenRef.current ?? snapshotRef.current;
-      if (!node || isTabCachePlaceholder(node)) return;
-      setSnapshot(node);
-    });
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!isLive) {
-      setLocked(false);
-      return;
-    }
-    if (routeLeaving || locked) return;
-    if (!liveChildren || isTabCachePlaceholder(liveChildren)) return;
-    setSnapshot((prev) => (prev === liveChildren ? prev : liveChildren));
-  }, [isLive, liveChildren, routeLeaving, locked]);
-
-  const canShowLive =
-    isLive &&
-    !routeLeaving &&
-    !locked &&
-    liveChildren != null &&
-    !isTabCachePlaceholder(liveChildren);
-
-  const pane = canShowLive ? liveChildren : snapshot;
-  if (!pane || isTabCachePlaceholder(pane)) return null;
-
-  return (
-    <TabPaneActivityProvider paneHref={paneKey} isActive={isActive}>
-      <div
-        className={isActive ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}
-        aria-hidden={!isActive}
-        hidden={!isActive}
-        data-tab-workspace-pane={paneKey}
-        data-tab-suspended={!isActive || undefined}
-      >
-        <TabPaneRouterFreeze href={paneKey}>{pane}</TabPaneRouterFreeze>
-      </div>
-    </TabPaneActivityProvider>
-  );
-}
-
-/**
- * Keep every open workspace tab mounted. Next only supplies one live `children`
- * tree — that tree is passed only into the matching path host.
+ * Only the pane matching Next's live pathname receives `children`.
+ * Switching back to an open tab flips visibility — no router remount.
  */
 export function TabWorkspaceMain({ children }) {
   const pathname = usePathname();
   const { enabled, tabs, activeHref: workspaceActiveHref, workspaceId } = useTabWorkspace();
+  const [paneCache, setPaneCache] = useState(() => new Map());
   const [cacheWorkspaceId, setCacheWorkspaceId] = useState(workspaceId);
-  const [paneEpoch, setPaneEpoch] = useState(0);
-  const [routeLeaving, setRouteLeaving] = useState(() => isNavigationPending());
 
   const nextKey = tabPaneKey(pathname);
   const activeHref = normalizeTabHref(workspaceActiveHref || pathname);
@@ -125,34 +50,51 @@ export function TabWorkspaceMain({ children }) {
       seen.add(key);
       keys.push(key);
     }
-    if (
-      activeKey &&
-      !seen.has(activeKey) &&
-      (!workspaceId || pathBelongsToWorkspace(activeKey, workspaceId))
-    ) {
-      keys.unshift(activeKey);
-      seen.add(activeKey);
-    }
-    if (
-      nextKey &&
-      !seen.has(nextKey) &&
-      (!workspaceId || pathBelongsToWorkspace(nextKey, workspaceId))
-    ) {
-      keys.push(nextKey);
+    for (const key of [activeKey, nextKey]) {
+      if (!key || seen.has(key)) continue;
+      if (workspaceId && !pathBelongsToWorkspace(key, workspaceId)) continue;
+      seen.add(key);
+      keys.push(key);
     }
     return keys;
   }, [activeKey, nextKey, tabs, workspaceId]);
 
   if (cacheWorkspaceId !== workspaceId) {
     setCacheWorkspaceId(workspaceId);
-    setPaneEpoch((n) => n + 1);
+    setPaneCache(new Map());
   }
 
-  useEffect(() => {
-    return subscribeAppLoading(({ navigating }) => {
-      setRouteLeaving(navigating);
+  // Continuously refresh the LIVE route's snapshot only — never other tabs.
+  useLayoutEffect(() => {
+    if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) return;
+    if (isTabCachePlaceholder(children)) return;
+
+    markTabPaneMounted(nextKey);
+    setPaneCache((prev) => {
+      if (prev.get(nextKey) === children) return prev;
+      const next = new Map(prev);
+      next.set(nextKey, children);
+      return next;
     });
-  }, []);
+  }, [children, enabled, nextKey, pathname]);
+
+  // Drop closed tabs from cache.
+  useLayoutEffect(() => {
+    if (!enabled) return;
+    const allowed = new Set(mountedKeys);
+    setPaneCache((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const key of [...next.keys()]) {
+        if (!allowed.has(key)) {
+          next.delete(key);
+          unmarkTabPaneMounted(key);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [enabled, mountedKeys]);
 
   if (!enabled || !pathname || !isTabWorkspaceRoute(pathname)) {
     return children;
@@ -160,16 +102,37 @@ export function TabWorkspaceMain({ children }) {
 
   return (
     <>
-      {mountedKeys.map((key) => (
-        <TabPaneHost
-          key={`${paneEpoch}:${key}`}
-          paneKey={key}
-          isLive={key === nextKey}
-          isActive={key === activeKey}
-          routeLeaving={routeLeaving}
-          liveChildren={key === nextKey ? children : null}
-        />
-      ))}
+      {mountedKeys.map((key) => {
+        const isActive = key === activeKey;
+        const isLive = key === nextKey;
+        const cached = paneCache.get(key);
+
+        // Live Next children only in the Next pathname pane.
+        // Other panes show their last snapshot — never adopt a foreign tree.
+        const pane = isLive
+          ? !isTabCachePlaceholder(children)
+            ? children
+            : cached
+          : cached && !isTabCachePlaceholder(cached)
+            ? cached
+            : null;
+
+        if (!pane) return null;
+
+        return (
+          <TabPaneActivityProvider key={key} paneHref={key} isActive={isActive}>
+            <div
+              className={isActive ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}
+              aria-hidden={!isActive}
+              hidden={!isActive}
+              data-tab-workspace-pane={key}
+              data-tab-suspended={!isActive || undefined}
+            >
+              <TabPaneRouterFreeze href={key}>{pane}</TabPaneRouterFreeze>
+            </div>
+          </TabPaneActivityProvider>
+        );
+      })}
     </>
   );
 }

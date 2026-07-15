@@ -217,13 +217,13 @@ export function readTabWorkspaceStore(organizationId) {
   if (typeof window === "undefined") return {};
   const key = tabStorageKey(organizationId);
   try {
-    let raw = window.localStorage.getItem(key);
+    let raw = window.sessionStorage.getItem(key);
     if (!raw) {
-      // Migrate older sessionStorage tab chrome to localStorage once.
-      raw = window.sessionStorage.getItem(key);
+      // One-time migrate from localStorage (tab chrome only — not page data).
+      raw = window.localStorage.getItem(key);
       if (raw) {
-        window.localStorage.setItem(key, raw);
-        window.sessionStorage.removeItem(key);
+        window.sessionStorage.setItem(key, raw);
+        window.localStorage.removeItem(key);
       }
     }
     if (!raw) return {};
@@ -238,8 +238,8 @@ export function writeTabWorkspaceStore(organizationId, store) {
   if (typeof window === "undefined") return;
   const key = tabStorageKey(organizationId);
   try {
-    window.localStorage.setItem(key, JSON.stringify(store));
-    window.sessionStorage.removeItem(key);
+    window.sessionStorage.setItem(key, JSON.stringify(store));
+    window.localStorage.removeItem(key);
   } catch {
     // ignore quota errors
   }
@@ -292,6 +292,27 @@ export function clearAllTabWorkspaceMemory() {
   } catch {
     /* ignore */
   }
+}
+
+/** @type {Set<string>} */
+const mountedTabPaneKeys = new Set();
+
+/** Mark that a route pane was visited/mounted this session (safe to switch without router.push). */
+export function markTabPaneMounted(href) {
+  const key = tabPaneKey(href);
+  if (key) mountedTabPaneKeys.add(key);
+}
+
+export function unmarkTabPaneMounted(href) {
+  mountedTabPaneKeys.delete(tabPaneKey(href));
+}
+
+export function isTabPaneMounted(href) {
+  return mountedTabPaneKeys.has(tabPaneKey(href));
+}
+
+export function clearMountedTabPanes() {
+  mountedTabPaneKeys.clear();
 }
 
 /** @type {((href: string) => boolean) | null} */
