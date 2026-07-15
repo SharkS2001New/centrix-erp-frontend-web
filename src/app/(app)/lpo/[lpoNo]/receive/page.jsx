@@ -22,8 +22,7 @@ import {
   lpoLineCanReceive,
   lpoLineOpenRemainingBase,
   lpoSessionOfferBase,
-  lpoSessionReceiveAmount,
-  lpoSessionStockUnitCost,
+  lpoSessionReceiveMoney,
   packQtyFromReceiveBase,
   receiveBaseForLine,
 } from "@/components/inventory/lpo-receive-stock";
@@ -102,6 +101,11 @@ export default function LpoReceivePage() {
   }, [supplierInvoices]);
 
   const load = useCallback(async () => {
+    if (!lpoNo || lpoNo === "undefined" || Number.isNaN(Number(lpoNo))) {
+      notifyError("Purchase order not found.");
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [res, uomsData] = await Promise.all([
@@ -113,6 +117,10 @@ export default function LpoReceivePage() {
       setData(res);
       const uomMap = new Map(uomList.map((u) => [u.id, u]));
       setReceiveCounts(buildInitialReceiveCounts(res.lines, uomMap, 0));
+      const resolvedNo = res?.lpo?.lpo_no;
+      if (resolvedNo != null && String(resolvedNo) !== String(lpoNo)) {
+        window.history.replaceState(null, "", `/lpo/${resolvedNo}/receive`);
+      }
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load LPO");
     } finally {
@@ -390,8 +398,8 @@ export default function LpoReceivePage() {
                     <th className="py-2.5 pr-1 text-right">Already received</th>
                     <th className="py-2.5 pr-3 text-right">Remaining</th>
                     <th className="py-2.5 pr-3 text-right">Receiving now</th>
-                    <th className="py-2.5 pr-3 text-right">Cost per unit</th>
                     <th className="py-2.5 pr-3 text-right">Total amount</th>
+                    <th className="py-2.5 pr-3 text-right">Cost per unit</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -414,13 +422,7 @@ export default function LpoReceivePage() {
                       lineUom,
                       receiveCounts,
                     );
-                    const stockUnitCost = lpoSessionStockUnitCost(
-                      line,
-                      lineUom,
-                      receiveCounts,
-                    );
-                    const unitCost = stockUnitCost ?? Number(line.cost_price ?? 0);
-                    const totalAmount = lpoSessionReceiveAmount(
+                    const money = lpoSessionReceiveMoney(
                       line,
                       lineUom,
                       receiveCounts,
@@ -489,21 +491,21 @@ export default function LpoReceivePage() {
                             <span className="block text-right text-slate-400">—</span>
                           )}
                         </td>
+                        <td className="py-3 pr-3 text-right align-top tabular-nums font-medium text-slate-900">
+                          {formatLpoKes(money.amount)}
+                        </td>
                         <td className="py-3 pr-3 text-right align-top tabular-nums">
                           <div>
                             <p className="font-medium text-slate-900">
-                              {formatLpoKes(unitCost)}
+                              {formatLpoKes(money.unitCost)}
                             </p>
                             <p className="text-xs text-slate-500">per {packLabel}</p>
-                            {stockUnitCost != null ? (
+                            {money.showOriginal ? (
                               <p className="mt-1 text-xs font-medium text-amber-700">
-                                Original {formatLpoKes(line.cost_price)}
+                                Original {formatLpoKes(money.originalCost)}
                               </p>
                             ) : null}
                           </div>
-                        </td>
-                        <td className="py-3 pr-3 text-right align-top tabular-nums font-medium text-slate-900">
-                          {formatLpoKes(totalAmount)}
                         </td>
                       </tr>
                     );

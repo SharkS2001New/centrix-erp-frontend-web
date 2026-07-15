@@ -103,6 +103,11 @@ export function buildGrnFromReceiveSession(lpoSummary, receiveCounts, uomById, o
     if (receiveBase <= 0) continue;
 
     const priorReceived = priorReceivedByLineId[lineKey] ?? Number(line.received_qty ?? 0);
+    const priorOffer = lpoLineOfferQty({
+      ...line,
+      received_qty: priorReceived,
+    });
+    const priorPaid = Math.max(0, priorReceived - priorOffer);
     const sessionOfferBase = lpoSessionOfferBase(line, uom, receiveCounts, priorReceived);
     const sessionOfferPack = packQtyFromReceiveBase(sessionOfferBase, uom);
     const receivedPack = packQtyFromReceiveBase(receiveBase, uom);
@@ -110,8 +115,8 @@ export function buildGrnFromReceiveSession(lpoSummary, receiveCounts, uomById, o
     const originalCost = Number(line.cost_price ?? 0);
     const stockUnitCost = offerAdjustedUnitCost({
       originalCost,
-      paidPackQty: paidPack,
-      receivedPackQty: receivedPack,
+      paidPackQty: priorPaid + paidPack,
+      receivedPackQty: priorReceived + receivedPack,
     });
     const { receivedLabel, offerLabel } = formatGrnReceivedLabel(
       receiveBase,

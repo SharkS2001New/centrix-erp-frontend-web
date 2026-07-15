@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { AppNavLink } from "@/components/layout/app-nav-link";
 import { getStoredWorkspace } from "@/lib/auth-storage";
+import { normalizeTabHref } from "@/lib/tab-workspace";
 import { isNavItemActive, isNavSectionActive, isNavItemVisible } from "@/lib/nav-config";
 import { defaultWorkspaceId, groupNavSectionsByZone } from "@/lib/workspaces";
 import { buildWorkspaceNavSections } from "@/lib/workspace-nav";
@@ -316,7 +318,12 @@ function CollapsibleNavSection({
 }
 
 export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }) {
-  const pathname = usePathname();
+  const routerPathname = usePathname();
+  const { enabled: tabWorkspaceEnabled, activeHref: tabActiveHref } = useTabWorkspace();
+  const pathname =
+    tabWorkspaceEnabled && tabActiveHref
+      ? normalizeTabHref(tabActiveHref).split("?")[0]
+      : routerPathname;
   const router = useRouter();
   const { user, organization, capabilities, isModuleEnabled, hasPermission, isSuperAdmin } = useAuth();
   const [activeFlyoutId, setActiveFlyoutId] = useState(null);

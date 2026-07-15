@@ -60,8 +60,12 @@ export function LpoAttachmentsPanel({ lpoNo }) {
   async function remove(id) {
     const ok = await confirm(confirmDeleteOptions("this attachment"));
     if (!ok) return;
-    await apiRequest(`/lpo-attachments/${id}`, { method: "DELETE" });
-    await load();
+    try {
+      await apiRequest(`/lpo-attachments/${id}`, { method: "DELETE" });
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to delete attachment");
+    }
   }
 
   return (

@@ -32,6 +32,45 @@ function parseHref(href) {
 }
 
 /**
+ * PathParamsContext does not re-parse from PathnameContext — keep-alive panes must
+ * supply dynamic segments from their own href or useParams() becomes undefined.
+ */
+export function paramsFromTabHref(href) {
+  const pathname = pathOnly(href);
+  const params = {};
+
+  const patterns = [
+    [/^\/fulfillment\/trips\/([^/]+)/, "id"],
+    [/^\/fulfillment\/routes\/([^/]+)/, "id"],
+    [/^\/fulfillment\/drivers\/([^/]+)/, "id"],
+    [/^\/fulfillment\/vehicles\/([^/]+)/, "id"],
+    [/^\/inventory\/stock-take\/([^/]+)/, "id"],
+    [/^\/inventory\/receipts\/([^/]+)/, "ref"],
+    [/^\/lpo\/([^/]+)/, "lpoNo"],
+    [/^\/products\/([^/]+)/, "code"],
+    [/^\/customers\/([^/]+)/, "id"],
+    [/^\/suppliers\/([^/]+)/, "id"],
+    [/^\/hr\/employees\/([^/]+)/, "id"],
+    [/^\/hr\/payroll\/runs\/([^/]+)/, "id"],
+    [/^\/accounting\/customer-invoices\/([^/]+)/, "id"],
+    [/^\/accounting\/journal-entries\/([^/]+)/, "id"],
+    [/^\/sales\/returns\/([^/]+)/, "id"],
+    [/^\/reports\/([^/]+)/, "key"],
+    [/^\/platform\/organizations\/([^/]+)/, "id"],
+  ];
+
+  for (const [re, key] of patterns) {
+    const match = pathname.match(re);
+    if (!match) continue;
+    const value = decodeURIComponent(match[1]);
+    if (["new", "edit", "page"].includes(value)) continue;
+    params[key] = value;
+  }
+
+  return params;
+}
+
+/**
  * Pin Next.js router hooks (usePathname / useSearchParams / useParams) to this
  * tab's href so hidden keep-alive panes do not refetch when another tab navigates.
  */
@@ -41,6 +80,7 @@ export function TabPaneRouterFreeze({ href, children }) {
   const [frozenParams, setFrozenParams] = useState(null);
 
   const { pathname, searchParams } = useMemo(() => parseHref(href), [href]);
+  const hrefParams = useMemo(() => paramsFromTabHref(href), [href]);
   const routeMatches =
     livePathname != null && pathOnly(livePathname) === pathname;
 
@@ -51,7 +91,12 @@ export function TabPaneRouterFreeze({ href, children }) {
     }
   }, [routeMatches, liveParams]);
 
-  const params = routeMatches ? liveParams : (frozenParams ?? liveParams);
+  // Href is authoritative for this pane — never let live list-route params
+  // wipe trip/product ids during navigation races.
+  const params = {
+    ...(routeMatches ? (liveParams ?? {}) : (frozenParams ?? liveParams ?? {})),
+    ...hrefParams,
+  };
 
   return (
     <PathnameContext.Provider value={pathname}>

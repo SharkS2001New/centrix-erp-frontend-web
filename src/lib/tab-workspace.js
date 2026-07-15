@@ -42,6 +42,39 @@ function normalizePathname(pathname) {
   return pathname.replace(/\/+$/, "") || "/";
 }
 
+/**
+ * Update the address bar for an already-open keep-alive tab without triggering
+ * Next.js App Router's history patch (ACTION_RESTORE), which remounts the page.
+ *
+ * Next patches pushState/replaceState: when the state object already has `__NA`,
+ * it skips syncing usePathname and skips the soft navigation. We require that
+ * marker so switching Tab 1 ↔ Tab 2 only flips our React pane visibility.
+ */
+export function syncOpenTabUrl(href) {
+  if (typeof window === "undefined") return;
+  const normalized = normalizeTabHref(href);
+  const current = normalizeTabHref(
+    `${window.location.pathname}${window.location.search}`,
+  );
+  if (current === normalized) return;
+
+  const prev =
+    window.history.state && typeof window.history.state === "object"
+      ? window.history.state
+      : {};
+
+  window.history.replaceState(
+    {
+      ...prev,
+      // Next.js private marker: skip ACTION_RESTORE on the patched replaceState.
+      __NA: true,
+      centrixTabWorkspace: normalized,
+    },
+    "",
+    normalized,
+  );
+}
+
 /** Normalize a Next.js `Link` href prop (string or route object). */
 export function hrefFromLinkProp(href) {
   if (!href) return "/";

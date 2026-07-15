@@ -106,9 +106,8 @@ export function packQtyFromReceiveBase(receiveBase, uom) {
 }
 
 /**
- * When receiving offer qty above the PO order, stock unit cost is averaged so
- * total stock value ≈ paid ordered qty × original PO cost.
- * Returns null when there is no offer in this receive batch.
+ * When paid qty < received qty (offers), stock unit cost = paid value ÷ received qty.
+ * Returns null when there is no offer portion (cost equals the original PO unit cost).
  */
 export function offerAdjustedUnitCost({
   originalCost,
@@ -124,43 +123,74 @@ export function offerAdjustedUnitCost({
   return Math.round((paid * cost) / received * 10000) / 10000;
 }
 
-/** Preview stock unit cost for the current LPO receive session (pack units). */
-export function lpoSessionStockUnitCost(line, uom, receiveCounts, priorReceivedPack = null) {
-  const lineKey = String(line.id);
-  const receivingNow = receiveBaseForLine(lineKey, uom, receiveCounts);
-  if (receivingNow <= 0) return null;
-
-  const priorReceived = priorReceivedPack ?? Number(line.received_qty ?? 0);
-  const sessionOfferBase = lpoSessionOfferBase(line, uom, receiveCounts, priorReceived);
-  if (sessionOfferBase <= 0.0001) return null;
-
-  const receivedPack = packQtyFromReceiveBase(receivingNow, uom);
-  const offerPack = packQtyFromReceiveBase(sessionOfferBase, uom);
-  const paidPack = Math.max(0, receivedPack - offerPack);
-
-  return offerAdjustedUnitCost({
-    originalCost: line.cost_price,
-    paidPackQty: paidPack,
-    receivedPackQty: receivedPack,
-  });
-}
-
 /**
  * Billable amount for qty entered in this receive session.
  * Offer / bonus packs are free — only paid pack qty × PO cost per unit.
  */
 export function lpoSessionReceiveAmount(line, uom, receiveCounts, priorReceivedPack = null) {
+  return lpoSessionReceiveMoney(line, uom, receiveCounts, priorReceivedPack).amount;
+}
+
+/** Preview stock unit cost for the current LPO receive session (pack units). */
+export function lpoSessionStockUnitCost(line, uom, receiveCounts, priorReceivedPack = null) {
+  const money = lpoSessionReceiveMoney(line, uom, receiveCounts, priorReceivedPack);
+  return money.showOriginal ? money.unitCost : null;
+}
+
+/**
+ * Receive money preview that reconciles across partial receipts:
+ *
+ * - Total amount = this receipt only (paid packs now × original PO cost).
+ * - Cost per unit = cumulative: (paid to date × original) ÷ (already received + receiving now).
+ *   So late offers after a line is fully paid still dilute from Already received+current,
+ *   and any sequence of partials ends at the same final cost.
+ * - Original is shown only when that reconciled cost differs from the PO unit cost.
+ */
+export function lpoSessionReceiveMoney(line, uom, receiveCounts, priorReceivedPack = null) {
+  const originalCost = Number(line.cost_price ?? 0);
   const lineKey = String(line.id);
   const receivingNow = receiveBaseForLine(lineKey, uom, receiveCounts);
-  if (receivingNow <= 0) return 0;
-
   const priorReceived = priorReceivedPack ?? Number(line.received_qty ?? 0);
-  const sessionOfferBase = lpoSessionOfferBase(line, uom, receiveCounts, priorReceived);
-  const receivedPack = packQtyFromReceiveBase(receivingNow, uom);
-  const offerPack = packQtyFromReceiveBase(sessionOfferBase, uom);
-  const paidPack = Math.max(0, receivedPack - offerPack);
-  const cost = Number(line.cost_price ?? 0);
+  const priorOffer = lpoLineOfferQty({
+    ...line,
+    received_qty: priorReceived,
+  });
+  const priorPaid = Math.max(0, priorReceived - priorOffer);
 
-  return Math.round(paidPack * cost * 100) / 100;
+  const sessionOfferBase =
+    receivingNow > 0
+      ? lpoSessionOfferBase(line, uom, receiveCounts, priorReceived)
+      : 0;
+  const sessionReceivedPack =
+    receivingNow > 0 ? packQtyFromReceiveBase(receivingNow, uom) : 0;
+  const sessionOfferPack =
+    sessionOfferBase > 0 ? packQtyFromReceiveBase(sessionOfferBase, uom) : 0;
+  const sessionPaidPack = Math.max(0, sessionReceivedPack - sessionOfferPack);
+
+  const amount = Math.round(sessionPaidPack * originalCost * 100) / 100;
+  const paidToDate = priorPaid + sessionPaidPack;
+  const receivedToDate = priorReceived + sessionReceivedPack;
+
+  let unitCost = originalCost;
+  if (receivedToDate > 0.0001) {
+    const adjusted = offerAdjustedUnitCost({
+      originalCost,
+      paidPackQty: paidToDate,
+      receivedPackQty: receivedToDate,
+    });
+    unitCost = adjusted ?? originalCost;
+  }
+
+  const showOriginal = Math.abs(unitCost - originalCost) > 0.00005;
+
+  return {
+    amount,
+    unitCost,
+    originalCost,
+    showOriginal,
+    hasReceiving: receivingNow > 0,
+    paidToDate,
+    receivedToDate,
+  };
 }
 

@@ -43,6 +43,11 @@ export default function LpoDetailPage() {
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
 
   const load = useCallback(async () => {
+    if (!lpoNo || lpoNo === "undefined" || Number.isNaN(Number(lpoNo))) {
+      setError("Purchase order not found.");
+      setLoading(false);
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
@@ -52,6 +57,10 @@ export default function LpoDetailPage() {
       ]);
       setData(res);
       setUoms(uomsData ?? []);
+      const resolvedNo = res?.lpo?.lpo_no;
+      if (resolvedNo != null && String(resolvedNo) !== String(lpoNo)) {
+        window.history.replaceState(null, "", `/lpo/${resolvedNo}`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load LPO");
     } finally {

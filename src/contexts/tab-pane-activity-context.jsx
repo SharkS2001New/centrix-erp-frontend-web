@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 
 const defaultValue = {
   isActive: true,
@@ -12,38 +12,31 @@ const TabPaneActivityContext = createContext(defaultValue);
 
 /**
  * Marks a tab pane as active or suspended. Suspended panes stay mounted
- * (hidden) so unsaved form work is kept in memory while you use other tabs.
+ * (hidden) so loaded data and form state survive switching tabs.
+ *
+ * In-flight fetches are NOT aborted on suspend — that was forcing every
+ * return-to-tab to refetch. Abort only runs when the pane unmounts (tab closed).
  */
 export function TabPaneActivityProvider({ paneHref, isActive, children }) {
-  const [abortController, setAbortController] = useState(() => new AbortController());
+  const abortControllerRef = useRef(null);
+  if (abortControllerRef.current == null) {
+    abortControllerRef.current = new AbortController();
+  }
 
   useEffect(() => {
-    if (isActive) {
-      // Fresh signal only when returning after a suspend abort — avoids churning
-      // load callbacks on every tab switch when the previous signal is still usable.
-      setAbortController((prev) => (prev.signal.aborted ? new AbortController() : prev));
-      return undefined;
-    }
-
-    setAbortController((prev) => {
-      if (!prev.signal.aborted) prev.abort();
-      return prev;
-    });
-    return undefined;
-  }, [isActive]);
-
-  useEffect(() => {
-    const controller = abortController;
-    return () => controller.abort();
-  }, [abortController]);
+    const controller = abortControllerRef.current;
+    return () => {
+      controller?.abort();
+    };
+  }, []);
 
   const value = useMemo(
     () => ({
       isActive,
       paneHref,
-      abortSignal: abortController.signal,
+      abortSignal: abortControllerRef.current?.signal ?? null,
     }),
-    [isActive, paneHref, abortController],
+    [isActive, paneHref],
   );
 
   return <TabPaneActivityContext.Provider value={value}>{children}</TabPaneActivityContext.Provider>;
@@ -74,8 +67,7 @@ export function useTabAwareEffect(effect, deps) {
 
 /**
  * Load data once the first time a pane becomes active. Skips reload when returning
- * to a suspended form tab so unsaved inputs are not reset. Retries if the first
- * load was aborted (tab switched away mid-fetch).
+ * to a suspended tab so already-loaded data and unsaved inputs stay put.
  */
 export function useTabAwareInitialLoad(loadFn) {
   const { isActive } = useTabPaneActive();
@@ -90,7 +82,7 @@ export function useTabAwareInitialLoad(loadFn) {
         await loadFn();
         if (!cancelled) completedRef.current = true;
       } catch {
-        /* allow retry when the pane is active again after abort */
+        /* allow retry if the first load failed */
       }
     })();
 

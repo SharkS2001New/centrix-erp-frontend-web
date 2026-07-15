@@ -34,8 +34,7 @@ import {
   lpoLineCanReceive,
   lpoLineOpenRemainingBase,
   lpoSessionOfferBase,
-  lpoSessionReceiveAmount,
-  lpoSessionStockUnitCost,
+  lpoSessionReceiveMoney,
   packQtyFromReceiveBase,
   receiveBaseForLine,
   uomForManualReceiveLine,
@@ -515,11 +514,11 @@ export default function ReceiveStockPage() {
                       <tr className="theme-table-head-row text-left text-xs uppercase tracking-wide">
                         <th className="px-3 py-2 font-medium">Product</th>
                         <th className="px-3 py-2 font-medium text-right">Ordered</th>
-                        <th className="px-3 py-2 font-medium text-right">Cost per unit</th>
-                        <th className="px-3 py-2 font-medium text-right">Total amount</th>
                         <th className="px-3 py-2 font-medium text-right">Received</th>
                         <th className="px-3 py-2 font-medium text-right">Remaining</th>
                         <th className="px-3 py-2 font-medium text-right">Receiving now</th>
+                        <th className="px-3 py-2 font-medium text-right">Total amount</th>
+                        <th className="px-3 py-2 font-medium text-right">Cost per unit</th>
                         <th className="px-3 py-2 font-medium">Status</th>
                       </tr>
                     </thead>
@@ -551,13 +550,7 @@ export default function ReceiveStockPage() {
                           line.packaging_label ||
                           lineUom?.package_name ||
                           "pack";
-                        const stockUnitCost = lpoSessionStockUnitCost(
-                          line,
-                          lineUom,
-                          receiveCounts,
-                        );
-                        const unitCost = stockUnitCost ?? Number(line.cost_price ?? 0);
-                        const totalAmount = lpoSessionReceiveAmount(
+                        const money = lpoSessionReceiveMoney(
                           line,
                           lineUom,
                           receiveCounts,
@@ -572,22 +565,6 @@ export default function ReceiveStockPage() {
                             </td>
                             <td className="px-3 py-2.5 text-right tabular-nums">
                               {formatLinePackQty(line.ordered_qty, lineUom)}
-                            </td>
-                            <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">
-                              <div>
-                                <p className="font-medium text-slate-900">
-                                  {formatLpoKes(unitCost)}
-                                </p>
-                                <p className="text-[11px] text-slate-500">per {packLabel}</p>
-                                {stockUnitCost != null ? (
-                                  <p className="mt-1 text-[11px] font-medium text-amber-700">
-                                    Original price {formatLpoKes(line.cost_price)}
-                                  </p>
-                                ) : null}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-900">
-                              {formatLpoKes(totalAmount)}
                             </td>
                             <td className="px-3 py-2.5 text-right tabular-nums text-slate-600">
                               <LpoReceivedQtyCell line={line} uom={lineUom} />
@@ -629,6 +606,22 @@ export default function ReceiveStockPage() {
                               ) : (
                                 <span className="block text-right text-slate-400">—</span>
                               )}
+                            </td>
+                            <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-900">
+                              {formatLpoKes(money.amount)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">
+                              <div>
+                                <p className="font-medium text-slate-900">
+                                  {formatLpoKes(money.unitCost)}
+                                </p>
+                                <p className="text-[11px] text-slate-500">per {packLabel}</p>
+                                {money.showOriginal ? (
+                                  <p className="mt-1 text-[11px] font-medium text-amber-700">
+                                    Original price {formatLpoKes(money.originalCost)}
+                                  </p>
+                                ) : null}
+                              </div>
                             </td>
                             <td className="px-3 py-2.5">
                               <span

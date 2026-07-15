@@ -24,6 +24,7 @@ import {
   readTabWorkspaceStore,
   setOpenTabReuseChecker,
   shouldReuseOpenTab,
+  syncOpenTabUrl,
   titleFromPathname,
   writeTabWorkspaceStore,
 } from "@/lib/tab-workspace";
@@ -209,19 +210,29 @@ export function TabWorkspaceProvider({ children }) {
     if (!enabled || !workspaceId || !pathname || !isTabWorkspaceRoute(pathname)) return;
     if (!pathBelongsToWorkspace(pathname, workspaceId)) return;
 
-    const normalized = normalizeTabHref(pathname);
+    const fromRouter = normalizeTabHref(pathname);
+    const fromWindow =
+      typeof window !== "undefined"
+        ? normalizeTabHref(`${window.location.pathname}${window.location.search}`)
+        : fromRouter;
+    // When switching open tabs we only history.pushState — Next's pathname can lag.
+    // Prefer the browser URL when it still points at an open tab.
+    const normalized =
+      fromWindow && findOpenTab(tabs, fromWindow) ? fromWindow : fromRouter;
+
     setTabStore((store) =>
       updateWorkspaceTabs(store, workspaceId, (current) => {
         if (current.activeHref === normalized) return current;
         return { ...current, activeHref: normalized };
       }),
     );
-  }, [enabled, pathname, workspaceId]);
+  }, [enabled, pathname, tabs, workspaceId]);
 
   const switchToHref = useCallback(
     (href) => {
       const normalized = hrefFromLinkProp(href);
       const isCurrent = normalizeTabHref(pathname) === normalized;
+      const storeCurrent = storeActiveHref === normalized;
 
       if (
         enabled &&
@@ -245,16 +256,23 @@ export function TabWorkspaceProvider({ children }) {
           }),
         );
 
-        // Reusing a mounted tab — no loading skeleton / no refetch intent.
+        // Reuse the mounted keep-alive pane — do not router.push / bare pushState.
+        // Next patches history and would ACTION_RESTORE → remount + refetch.
         finishNavigation();
-        if (!isCurrent) router.push(normalized);
+        if (!isCurrent || !storeCurrent) {
+          try {
+            syncOpenTabUrl(normalized);
+          } catch {
+            /* address bar sync is best-effort; pane switch already applied */
+          }
+        }
         return true;
       }
 
       if (!isCurrent) router.push(normalized);
       return false;
     },
-    [enabled, pathname, router, tabs, workspaceId],
+    [enabled, pathname, router, storeActiveHref, tabs, workspaceId],
   );
 
   const activateTab = useCallback(
@@ -345,6 +363,19 @@ export function TabWorkspaceProvider({ children }) {
               router.push(fallback.href);
             } else {
               router.push(workspaceHomePath(workspaceId, capabilities));
+            }
+          } else if (current.activeHref === normalized) {
+            // Closed the visible keep-alive tab while Next is still on another
+            // open route — flip to the neighbor without soft-navigating.
+            const fallback = nextTabs[Math.max(0, index - 1)] ?? nextTabs[0];
+            if (fallback?.href) {
+              queueMicrotask(() => {
+                try {
+                  syncOpenTabUrl(fallback.href);
+                } catch {
+                  /* ignore */
+                }
+              });
             }
           }
 

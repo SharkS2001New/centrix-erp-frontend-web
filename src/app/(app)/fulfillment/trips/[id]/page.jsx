@@ -86,12 +86,24 @@ export default function TripDetailPage() {
   );
 
   const loadTrip = useCallback(async () => {
+    const tripId = Array.isArray(id) ? id[0] : id;
+    if (
+      tripId == null ||
+      tripId === "" ||
+      String(tripId) === "undefined" ||
+      String(tripId) === "null" ||
+      !/^\d+$/.test(String(tripId))
+    ) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const [tripRes, listRes, pickRes] = await Promise.all([
-        apiRequest(`/dispatch-trips/${id}`),
-        apiRequest(`/dispatch-trips/${id}/loading-list`),
-        apiRequest(`/dispatch-trips/${id}/picking-list`),
+        apiRequest(`/dispatch-trips/${tripId}`),
+        apiRequest(`/dispatch-trips/${tripId}/loading-list`),
+        apiRequest(`/dispatch-trips/${tripId}/picking-list`),
       ]);
       const nextPicking = pickRes.picking_list ?? pickRes;
       const nextLoading = listRes.loading_list ?? listRes;

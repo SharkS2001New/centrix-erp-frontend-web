@@ -23,8 +23,9 @@ function TabCloseIcon({ className }) {
 export function WorkspaceTabBar() {
   const pathname = usePathname();
   const { enabled, tabs, activeHref, activateTab, closeTab } = useTabWorkspace();
+  const routeForTabs = activeHref || pathname;
 
-  if (!enabled || tabs.length === 0 || !isTabWorkspaceRoute(pathname)) {
+  if (!enabled || tabs.length === 0 || !isTabWorkspaceRoute(routeForTabs)) {
     return null;
   }
 

@@ -6,7 +6,7 @@ import { AuthGuard } from "@/components/auth-guard";
 import { WorkspaceGuard } from "@/components/auth/workspace-guard";
 import { RoutePermissionGuard } from "@/components/route-permission-guard";
 import { BackgroundTaskProvider } from "@/contexts/background-task-context";
-import { TabWorkspaceProvider } from "@/contexts/tab-workspace-context";
+import { TabWorkspaceProvider, useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { SystemIssueProvider } from "@/contexts/system-issue-context";
 import { AppErrorBoundary } from "@/components/shared/app-error-boundary";
 import { GlobalErrorCapture } from "@/components/shared/global-error-capture";
@@ -28,6 +28,7 @@ import {
   finishNavigation,
 } from "@/lib/app-loading";
 import { handleNavigationIntentClick } from "@/lib/navigation-intent";
+import { normalizeTabHref } from "@/lib/tab-workspace";
 
 const SIDEBAR_COLLAPSED_KEY = "velzon-sidebar-collapsed";
 
@@ -40,8 +41,14 @@ function readSidebarCollapsed() {
   }
 }
 
-export function AppShell({ children }) {
-  const pathname = usePathname();
+/** Chrome that can read tab activeHref (must sit inside TabWorkspaceProvider). */
+function AppShellChrome({ children }) {
+  const routerPathname = usePathname();
+  const { enabled, activeHref } = useTabWorkspace();
+  const pathname =
+    enabled && activeHref
+      ? normalizeTabHref(activeHref).split("?")[0]
+      : routerPathname;
   const navigationBusy = useNavigationBusy();
   const pendingHref = usePendingNavigationHref();
   const isPos = pathname === "/sales/pos";
@@ -66,7 +73,12 @@ export function AppShell({ children }) {
   }, []);
 
   useEffect(() => {
-    function onPopState() {
+    function onPopState(event) {
+      // Keep-alive tab URL sync uses replaceState + __NA — no soft-nav skeleton.
+      if (event?.state?.centrixTabWorkspace) {
+        finishNavigation();
+        return;
+      }
       beginNavigationIntent("Opening page…", window.location.pathname);
     }
     window.addEventListener("popstate", onPopState);
@@ -87,70 +99,76 @@ export function AppShell({ children }) {
   }
 
   return (
+    <div className="app-shell-bg flex h-screen overflow-hidden">
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
+      />
+      {mobileSidebarOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          aria-label="Close sidebar"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      ) : null}
+      <div className="app-content-column flex min-h-0 min-w-0 flex-1 flex-col">
+        <AppTopbar
+          sidebarCollapsed={sidebarCollapsed}
+          mobileSidebarOpen={mobileSidebarOpen}
+          onToggleSidebar={toggleSidebar}
+        />
+        <NetworkStatusBanner />
+        <LicenseExpiryBanner />
+        <LoginWarningsBanner />
+        <WorkspaceTabBar />
+        <main
+          className={
+            isPos
+              ? "app-main-bg relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0"
+              : "app-main-bg relative min-h-0 flex-1 overflow-y-auto p-4 md:p-6 lg:p-8"
+          }
+          aria-busy={navigationBusy || undefined}
+        >
+          <AppErrorBoundary>
+            <div className={isPos ? "flex min-h-0 min-w-0 flex-1 flex-col" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
+              <TabWorkspaceMain>{children}</TabWorkspaceMain>
+            </div>
+          </AppErrorBoundary>
+          {navigationBusy ? (
+            <div
+              className={
+                isPos
+                  ? "absolute inset-0 z-10 overflow-hidden bg-[var(--theme-page-bg)]"
+                  : "absolute inset-0 z-10 overflow-y-auto bg-[var(--theme-page-bg)] p-4 md:p-6 lg:p-8"
+              }
+            >
+              <AppRouteLoading pathname={pendingHref ?? pathname} />
+            </div>
+          ) : null}
+        </main>
+      </div>
+      <AiAssistPanel />
+      <OrderPrintTypePickerHost />
+      <AccountingHelpDialog />
+    </div>
+  );
+}
+
+export function AppShell({ children }) {
+  return (
     <AuthGuard>
       <WorkspaceNavigationTracker />
       <WorkspaceGuard>
         <RoutePermissionGuard>
           <SystemIssueProvider>
-          <GlobalErrorCapture />
-          <BackgroundTaskProvider>
-          <TabWorkspaceProvider>
-          <div className="app-shell-bg flex h-screen overflow-hidden">
-            <Sidebar
-              collapsed={sidebarCollapsed}
-              mobileOpen={mobileSidebarOpen}
-              onMobileClose={() => setMobileSidebarOpen(false)}
-            />
-            {mobileSidebarOpen ? (
-              <button
-                type="button"
-                className="fixed inset-0 z-30 bg-black/40 lg:hidden"
-                aria-label="Close sidebar"
-                onClick={() => setMobileSidebarOpen(false)}
-              />
-            ) : null}
-            <div className="app-content-column flex min-h-0 min-w-0 flex-1 flex-col">
-              <AppTopbar
-                sidebarCollapsed={sidebarCollapsed}
-                mobileSidebarOpen={mobileSidebarOpen}
-                onToggleSidebar={toggleSidebar}
-              />
-              <NetworkStatusBanner />
-              <LicenseExpiryBanner />
-              <LoginWarningsBanner />
-              <WorkspaceTabBar />
-              <main
-                className={
-                  isPos
-                    ? "app-main-bg relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-0"
-                    : "app-main-bg relative min-h-0 flex-1 overflow-y-auto p-4 md:p-6 lg:p-8"
-                }
-                aria-busy={navigationBusy || undefined}
-              >
-                <AppErrorBoundary>
-                  <div className={isPos ? "flex min-h-0 min-w-0 flex-1 flex-col" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
-                    <TabWorkspaceMain>{children}</TabWorkspaceMain>
-                  </div>
-                </AppErrorBoundary>
-                {navigationBusy ? (
-                  <div
-                    className={
-                      isPos
-                        ? "absolute inset-0 z-10 overflow-hidden bg-[var(--theme-page-bg)]"
-                        : "absolute inset-0 z-10 overflow-y-auto bg-[var(--theme-page-bg)] p-4 md:p-6 lg:p-8"
-                    }
-                  >
-                    <AppRouteLoading pathname={pendingHref ?? pathname} />
-                  </div>
-                ) : null}
-              </main>
-            </div>
-            <AiAssistPanel />
-            <OrderPrintTypePickerHost />
-            <AccountingHelpDialog />
-          </div>
-          </TabWorkspaceProvider>
-          </BackgroundTaskProvider>
+            <GlobalErrorCapture />
+            <BackgroundTaskProvider>
+              <TabWorkspaceProvider>
+                <AppShellChrome>{children}</AppShellChrome>
+              </TabWorkspaceProvider>
+            </BackgroundTaskProvider>
           </SystemIssueProvider>
         </RoutePermissionGuard>
       </WorkspaceGuard>
