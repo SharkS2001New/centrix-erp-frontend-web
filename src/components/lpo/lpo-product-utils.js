@@ -171,11 +171,20 @@ export function lineFromEnrichedProduct(product) {
     conversion_factor: Number(product.conversion_factor ?? uom?.conversion_factor ?? 1),
     package_name: packName,
     measure_unit: product.measure_unit ?? measureUnitFromUom(uom),
-    uom: packName,
+    // Keep the real UOM object for measure conversion (damages / transfers / adjustments).
+    // Package label for display lives on package_name / packaging_label.
+    uom: uom && typeof uom === "object" ? uom : null,
     unit_id: product.unit_id,
     vat_rate: product.vat_rate ?? 0,
     order_counts,
     ordered_qty: formatPackQtyString(orderCountsToPackQty(order_counts, uom)),
     cost_price: cost > 0 ? String(Math.trunc(cost)) : "",
   };
+}
+
+/** Resolve UOM for inventory lines (never treat package name strings as UOM rows). */
+export function resolveInventoryLineUom(line, uomById) {
+  if (line?.uom && typeof line.uom === "object") return line.uom;
+  if (line?.unit_id != null && uomById?.get) return uomById.get(line.unit_id) ?? null;
+  return null;
 }

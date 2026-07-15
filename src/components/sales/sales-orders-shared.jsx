@@ -23,6 +23,8 @@ import {
   pipelineStatusIndex,
   resolveOrderWorkflowActions,
   canCancelOrder,
+  canRestoreExpiredOrder,
+  expiredOrderRestoreTarget,
   saleBalanceDue,
   shouldShowPaymentStatusBadge,
   workflowPipelineSteps,
@@ -422,7 +424,24 @@ export function buildOrderContextMenuItems({
     }
   }
 
-  if (disableWorkflowActions || !sale || sale.status === "cancelled" || sale.status === "expired" || sale.status === "completed") {
+  if (sale?.status === "expired" && !disableWorkflowActions && onAdvance) {
+    const restoreTarget = expiredOrderRestoreTarget(sale, workflow, capabilities);
+    if (restoreTarget && canRestoreExpiredOrder(sale, workflow, capabilities)) {
+      items.push({ type: "separator" });
+      items.push({
+        key: "restore-expired",
+        label: busy
+          ? "Restoring…"
+          : `Restore to ${workflowStatusLabel(workflow, restoreTarget)}`,
+        icon: "advance",
+        disabled: busy,
+        onClick: () => onAdvance?.(restoreTarget),
+      });
+    }
+    return items;
+  }
+
+  if (disableWorkflowActions || !sale || sale.status === "cancelled" || sale.status === "completed") {
     return items;
   }
 

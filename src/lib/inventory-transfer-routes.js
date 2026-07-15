@@ -33,6 +33,13 @@ export function transferRouteLabel(from, to) {
   return `${fromLabel} → ${toLabel}`;
 }
 
+export function transferPurposeLabel(to) {
+  return (
+    TRANSFER_TO_OPTIONS.find((o) => o.value === to && !o.location)?.label ??
+    String(to).replace(/_/g, " ")
+  );
+}
+
 export function isStoreToShopTransfer(from, to) {
   return from === "store" && to === "shop";
 }

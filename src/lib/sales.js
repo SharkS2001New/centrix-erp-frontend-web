@@ -201,10 +201,16 @@ export function legacyOrderDisplayTotal(row) {
 
 export function saleCustomerLabel(sale) {
   if (!sale) return "Walk-in";
+  // Registered customers: prefer the org-scoped relation. customer_num is only
+  // unique within an organization — never trust a stale override from another org.
+  if (sale.customer_num) {
+    const relatedName = sale.customer?.customer_name?.trim();
+    if (relatedName) return relatedName;
+    const display = sale.customer_display_name?.trim();
+    if (display) return display;
+  }
   const override = sale.customer_name_override?.trim();
   if (override) return override;
-  const relatedName = sale.customer?.customer_name?.trim();
-  if (relatedName) return relatedName;
   const flatName = sale.customer_name?.trim();
   if (flatName) return flatName;
   if (sale.customer_num) return `Customer #${sale.customer_num}`;

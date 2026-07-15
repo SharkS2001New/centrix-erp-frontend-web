@@ -141,6 +141,7 @@ export function OrderWorkflowPipeline({
   const currentIdx = pipelineStatusIndex(status, workflow);
   const displayIdx = currentIdx >= 0 ? currentIdx : pipelineStepIndex(status, workflow);
   const isCancelled = status === "cancelled";
+  const isExpired = status === "expired";
   const prevStep = currentIdx > 0 ? steps[currentIdx - 1] : null;
   const firstStep = steps[0] ?? null;
   const paidTotal =
@@ -171,6 +172,24 @@ export function OrderWorkflowPipeline({
       </div>
       {isCancelled ? (
         <p className="mt-3 text-sm text-red-600">This order was cancelled.</p>
+      ) : isExpired ? (
+        <>
+          <p className="mt-3 text-sm text-amber-800">
+            This order expired while waiting. Restore it to continue processing.
+          </p>
+          {showWorkflowActions && advanceStep ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!!busyStatus}
+                onClick={() => onAdvance(advanceStep.key)}
+                className="rounded-lg bg-[var(--theme-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-50"
+              >
+                {busyStatus ? "Restoring…" : `Restore to ${advanceStep.label}`}
+              </button>
+            </div>
+          ) : null}
+        </>
       ) : (
         <>
           <div className="mt-4 flex items-center gap-1">

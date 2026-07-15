@@ -218,7 +218,10 @@ export function LpoOrderItemsSection({
                           </span>
                         </td>
                         <td className="px-2 py-2 align-middle text-xs leading-snug text-slate-700">
-                          {(line.packaging_label || line.uom || "—")
+                          {(line.packaging_label ||
+                            line.package_name ||
+                            (typeof line.uom === "string" ? line.uom : null) ||
+                            "—")
                             .split(" · ")
                             .map((part) => part.trim())
                             .filter(Boolean)

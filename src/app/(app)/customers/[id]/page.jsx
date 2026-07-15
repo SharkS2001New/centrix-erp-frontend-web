@@ -14,6 +14,7 @@ import {
   formatCustomerKes,
 } from "@/components/customers/customer-form";
 import { CustomerShopImageDisplay } from "@/components/customers/customer-shop-image-display";
+import { CollectCustomerPaymentModal } from "@/components/customers/collect-customer-payment-modal";
 import { hasValidCustomerLocation } from "@/lib/customer-location";
 import {
   indexProductsByCode,
@@ -21,11 +22,13 @@ import {
 } from "@/lib/sale-line-items";
 import { formatOrderNumber, orderSourceLabel } from "@/lib/sales";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
+import { canManagePayments } from "@/lib/access-control";
 
 export default function CustomerDetailPage() {
   const params = useParams();
   const customerNum = params.id;
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const canCollectPayment = canManagePayments({ hasPermission });
 
   const [customer, setCustomer] = useState(null);
   const [branchName, setBranchName] = useState(null);
@@ -37,6 +40,7 @@ export default function CustomerDetailPage() {
   const [itemsLoadingId, setItemsLoadingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [showCollectPayment, setShowCollectPayment] = useState(false);
   const loadData = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
@@ -140,6 +144,15 @@ export default function CustomerDetailPage() {
         </div>
         {customer && (
           <div className="flex flex-wrap items-center gap-2">
+            {canCollectPayment && Number(customer.current_balance ?? 0) > 0.009 ? (
+              <button
+                type="button"
+                onClick={() => setShowCollectPayment(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+              >
+                Collect payment
+              </button>
+            ) : null}
             <Link
               href={`/accounting/customer-invoices?customer=${customer.customer_num}`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -359,6 +372,17 @@ export default function CustomerDetailPage() {
           </Link>
         </div>
       )}
+
+      {showCollectPayment && customer ? (
+        <CollectCustomerPaymentModal
+          customer={customer}
+          onClose={() => setShowCollectPayment(false)}
+          onSuccess={(updated) => {
+            setCustomer(updated);
+            loadData();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

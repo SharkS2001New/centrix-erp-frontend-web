@@ -573,6 +573,18 @@ export function firstPipelineStatus(workflow) {
   return steps[0]?.key ?? null;
 }
 
+/** Whether an expired order can be restored to the first pipeline step (typically Booked). */
+export function canRestoreExpiredOrder(sale, workflow = null, capabilities = null) {
+  if (String(sale?.status ?? "").toLowerCase() !== "expired") return false;
+  const target = firstPipelineStatus(workflow ?? getOrderWorkflow(capabilities, sale));
+  return Boolean(target);
+}
+
+export function expiredOrderRestoreTarget(sale, workflow = null, capabilities = null) {
+  if (!canRestoreExpiredOrder(sale, workflow, capabilities)) return null;
+  return firstPipelineStatus(workflow ?? getOrderWorkflow(capabilities, sale));
+}
+
 export function resolveSaveOrderStatus({ channel, workflow, hold = false }) {
   if (hold) return "held";
   const wf = workflow ?? buildChannelWorkflow(DEFAULT_ORDER_WORKFLOW, channel);
@@ -1052,7 +1064,7 @@ export function resolveOrderWorkflowActions(
 ) {
   const { disableWorkflowActions = false } = options;
   const status = String(sale?.status ?? "").toLowerCase();
-  if (!sale || status === "cancelled" || status === "expired" || status === "completed") {
+  if (!sale || status === "cancelled" || status === "completed") {
     return { showCollectPayment: false, advanceStatus: null, balanceDue: 0 };
   }
 
@@ -1060,6 +1072,14 @@ export function resolveOrderWorkflowActions(
 
   if (disableWorkflowActions) {
     return { showCollectPayment: false, advanceStatus: null, balanceDue };
+  }
+
+  if (status === "expired") {
+    return {
+      showCollectPayment: false,
+      advanceStatus: expiredOrderRestoreTarget(sale, workflow, capabilities),
+      balanceDue,
+    };
   }
 
   let advanceStatus = primaryWorkflowAdvanceStatus(status, workflow, sale, capabilities);

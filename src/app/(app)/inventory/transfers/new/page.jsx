@@ -10,7 +10,10 @@ import { useAuth } from "@/contexts/auth-context";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { isStockTransferApprovalEnabled } from "@/lib/sales-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
-import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
+import {
+  lineFromEnrichedProduct,
+  resolveInventoryLineUom,
+} from "@/components/lpo/lpo-product-utils";
 import {
   UomMeasureSelect,
   defaultUomMeasureLevel,
@@ -25,6 +28,7 @@ import {
   TRANSFER_FROM_OPTIONS,
   isLocationTransferTarget,
   isStoreToShopTransfer,
+  transferPurposeLabel,
   transferToOptionsFor,
 } from "@/lib/inventory-transfer-routes";
 import { damageQtyToBase } from "@/lib/stock-uom";
@@ -33,6 +37,7 @@ function lineFromProduct(product) {
   const uom = product.uom;
   return {
     ...lineFromEnrichedProduct(product),
+    uom,
     quantity: "1",
     package_type: defaultUomMeasureLevel(uom),
   };
@@ -45,8 +50,8 @@ export default function StockTransferPage() {
 
   const [uoms, setUoms] = useState([]);
   const [lines, setLines] = useState([]);
-  const [fromLocation, setFromLocation] = useState("shop");
-  const [toLocation, setToLocation] = useState("store");
+  const [fromLocation, setFromLocation] = useState("store");
+  const [toLocation, setToLocation] = useState("shop");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -62,7 +67,9 @@ export default function StockTransferPage() {
     [fromLocation],
   );
   const isStoreToShop = isStoreToShopTransfer(fromLocation, toLocation);
-  const showReasonField = !isStoreToShop && isLocationTransferTarget(toLocation);
+  const isPurposeTransfer = !isLocationTransferTarget(toLocation);
+  const showReasonField = !isStoreToShop;
+  const reasonRequired = isPurposeTransfer;
   const useRequestFlow =
     isStockTransferApprovalEnabled(capabilities?.module_settings) &&
     !isStoreToShop &&
@@ -70,7 +77,7 @@ export default function StockTransferPage() {
 
   useEffect(() => {
     if (!toOptions.some((opt) => opt.value === toLocation)) {
-      setToLocation(toOptions[0]?.value ?? "store");
+      setToLocation(toOptions[0]?.value ?? "shop");
     }
   }, [fromLocation, toOptions, toLocation]);
 
@@ -97,7 +104,7 @@ export default function StockTransferPage() {
     setToLocation((prev) =>
       nextToOptions.some((opt) => opt.value === prev)
         ? prev
-        : (nextToOptions[0]?.value ?? "store"),
+        : (nextToOptions[0]?.value ?? "shop"),
     );
   }
 
@@ -108,12 +115,16 @@ export default function StockTransferPage() {
       notifyError("Add at least one product with a quantity.");
       return;
     }
+    if (reasonRequired && !reason.trim()) {
+      notifyError("Add a reason for this transfer (e.g. staff lunch, donation recipient).");
+      return;
+    }
 
     setSaving(true);
     let pendingApproval = false;
     try {
       for (const line of toPost) {
-        const uom = line.uom ?? uomById.get(line.unit_id);
+        const uom = resolveInventoryLineUom(line, uomById);
         const body = {
           branch_id: branchId,
           product_code: line.product_code,
@@ -123,6 +134,8 @@ export default function StockTransferPage() {
         };
         if (showReasonField && reason.trim()) {
           body.notes = reason.trim();
+        } else if (isPurposeTransfer) {
+          body.notes = transferPurposeLabel(toLocation);
         }
         const res = await apiRequest(useRequestFlow ? "/inventory/transfer/request" : "/inventory/transfer", {
           method: "POST",
@@ -147,7 +160,7 @@ export default function StockTransferPage() {
   return (
     <InventoryPageShell
       title="Transfer stock"
-      subtitle="Move stock between locations or record stock leaving for internal use, donations, and more"
+      subtitle="Move stock between shop and store, or issue stock for internal use, donations, and similar purposes"
     >
       <AppBreadcrumb
         items={[
@@ -189,13 +202,25 @@ export default function StockTransferPage() {
           </Field>
         </div>
 
+        {isPurposeTransfer ? (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+            Stock will leave <strong>{fromLocation === "store" ? "store" : "shop"}</strong> for{" "}
+            <strong>{transferPurposeLabel(toLocation)}</strong> — it will not arrive in another stock
+            location.
+          </p>
+        ) : null}
+
         {showReasonField ? (
-          <Field label="Reason (optional)">
+          <Field label={reasonRequired ? "Reason" : "Reason (optional)"} required={reasonRequired}>
             <input
               className={inputClassName()}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g. Staff lunch, damaged display units, donation to church"
+              placeholder={
+                isPurposeTransfer
+                  ? "e.g. Staff lunch, donation to church, sample for marketing"
+                  : "e.g. Rebalancing stock between floors"
+              }
             />
           </Field>
         ) : null}
@@ -225,7 +250,7 @@ export default function StockTransferPage() {
           ]}
           emptyMessage="Search and add products to transfer."
           renderCells={(line, index) => {
-            const uom = line.uom ?? uomById.get(line.unit_id);
+            const uom = resolveInventoryLineUom(line, uomById);
             return (
               <>
                 <td className="px-3 py-2">
@@ -267,7 +292,9 @@ export default function StockTransferPage() {
                 : "Transferring…"
               : useRequestFlow
                 ? "Submit for approval"
-                : "Transfer stock"}
+                : isPurposeTransfer
+                  ? "Issue stock"
+                  : "Transfer stock"}
           </PrimaryButton>
         </div>
       </form>
