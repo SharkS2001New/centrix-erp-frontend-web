@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import { formatAccountingAmount } from "@/lib/accounting-shared";
@@ -13,6 +13,7 @@ import {
   DashboardLoading,
   DashboardPanel,
   DashboardQuickLinks,
+  DashboardRefreshButton,
   DashboardSection,
   DashboardSummaryTable,
 } from "@/components/dashboard/dashboard-shared";
@@ -34,8 +35,9 @@ const ACCOUNTING_LINKS = [
 ];
 
 export function AccountingDashboardContent() {
-  const range = currentMonthDateRange();
+  const range = useMemo(() => currentMonthDateRange(), []);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [trialBalance, setTrialBalance] = useState(null);
   const [profitLoss, setProfitLoss] = useState(null);
@@ -44,26 +46,36 @@ export function AccountingDashboardContent() {
   const [payables, setPayables] = useState([]);
   const [recentInvoices, setRecentInvoices] = useState([]);
 
-  useEffect(() => {
-    Promise.all([
-      apiRequest("/reports/trial-balance"),
-      apiRequest("/reports/profit-loss-gl", { searchParams: { from_date: range.from, to_date: range.to } }),
-      apiRequest("/reports/balance-sheet"),
-      apiRequest("/reports/accounts-receivable", { searchParams: { per_page: 5 } }),
-      apiRequest("/reports/accounts-payable", { searchParams: { per_page: 5 } }),
-      apiRequest("/customer-invoices", { searchParams: { per_page: 5, page: 1 } }),
-    ])
-      .then(([tb, pl, bs, ar, ap, invoicesRes]) => {
-        setTrialBalance(tb.summary ?? null);
-        setProfitLoss(pl.summary ?? null);
-        setBalanceSheet(bs.summary ?? null);
-        setReceivables(ar.data ?? []);
-        setPayables(ap.data ?? []);
-        setRecentInvoices(invoicesRes.data ?? []);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load accounting dashboard"))
-      .finally(() => setLoading(false));
+  const loadDashboard = useCallback(async ({ soft = false } = {}) => {
+    if (soft) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+    try {
+      const [tb, pl, bs, ar, ap, invoicesRes] = await Promise.all([
+        apiRequest("/reports/trial-balance"),
+        apiRequest("/reports/profit-loss-gl", { searchParams: { from_date: range.from, to_date: range.to } }),
+        apiRequest("/reports/balance-sheet"),
+        apiRequest("/reports/accounts-receivable", { searchParams: { per_page: 5 } }),
+        apiRequest("/reports/accounts-payable", { searchParams: { per_page: 5 } }),
+        apiRequest("/customer-invoices", { searchParams: { per_page: 5, page: 1 } }),
+      ]);
+      setTrialBalance(tb.summary ?? null);
+      setProfitLoss(pl.summary ?? null);
+      setBalanceSheet(bs.summary ?? null);
+      setReceivables(ar.data ?? []);
+      setPayables(ap.data ?? []);
+      setRecentInvoices(invoicesRes.data ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load accounting dashboard");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, [range.from, range.to]);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
 
   const kpiItems = useMemo(
     () => [
@@ -125,7 +137,12 @@ export function AccountingDashboardContent() {
     <CatalogPageShell
       title="Accounting dashboard"
       subtitle="Financial position and month-to-date performance"
-      action={<PrimaryLink href="/accounting/journal-entries/new">New entry</PrimaryLink>}
+      action={
+        <div className="flex flex-wrap items-center gap-2">
+          <DashboardRefreshButton onClick={() => void loadDashboard({ soft: true })} loading={loading || refreshing} />
+          <PrimaryLink href="/accounting/journal-entries/new">New entry</PrimaryLink>
+        </div>
+      }
     >
       <DashboardErrorBanner message={error} />
 

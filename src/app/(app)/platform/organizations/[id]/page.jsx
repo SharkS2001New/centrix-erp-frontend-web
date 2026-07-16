@@ -40,6 +40,7 @@ export default function ManageOrganizationPage() {
   const [orgPin, setOrgPin] = useState("");
   const [vatRegno, setVatRegno] = useState("");
   const [administrationEnabled, setAdministrationEnabled] = useState(true);
+  const [enableTabWorkspace, setEnableTabWorkspace] = useState(true);
 
   const domainChildrenMap = useMemo(() => buildDomainChildrenMap(moduleOptions), [moduleOptions]);
 
@@ -72,6 +73,7 @@ export default function ManageOrganizationPage() {
       setDeploymentProfile(org.deployment_profile ?? "wholesale_retail");
       setEnabledModules(normalizeDomainModules(orgRes.effective_modules ?? {}, childrenMap));
       setAdministrationEnabled(Boolean(orgRes.effective_modules?.admin));
+      setEnableTabWorkspace(orgRes.capabilities?.platform_tab_workspace_enabled !== false);
       setSalesPlatform(salesPlatformFromApi(orgRes.sales_platform));
       setOrgActive(org.is_active !== false);
       setOrgName(org.org_name ?? "");
@@ -144,11 +146,16 @@ export default function ManageOrganizationPage() {
           is_active: orgActive,
         },
       });
+      await apiRequest(`/admin/organizations/${orgId}/settings/general`, {
+        method: "PATCH",
+        body: { enable_tab_workspace: Boolean(enableTabWorkspace) },
+      });
       const org = res.organization ?? null;
       setOrganization(org);
       const childrenMap = buildDomainChildrenMap(moduleOptions);
       setEnabledModules(normalizeDomainModules(res.effective_modules ?? enabledModules, childrenMap));
       setAdministrationEnabled(Boolean(res.effective_modules?.admin));
+      setEnableTabWorkspace(enableTabWorkspace);
       setSalesPlatform(salesPlatformFromApi(res.sales_platform));
       setOrgActive(org?.is_active !== false);
       setOrgName(org?.org_name ?? orgName);
@@ -230,6 +237,8 @@ export default function ManageOrganizationPage() {
               profilePresets={profilePresets}
               deploymentProfile={deploymentProfile}
               onProfileChange={onProfileChange}
+              enableTabWorkspace={enableTabWorkspace}
+              onEnableTabWorkspaceChange={setEnableTabWorkspace}
               salesPlatform={salesPlatform ?? defaultSalesPlatformState()}
               onSalesChange={setSalesPlatform}
               enabledModules={enabledModules}

@@ -42,6 +42,13 @@ function normalizePathname(pathname) {
   return pathname.replace(/\/+$/, "") || "/";
 }
 
+/** Pathname only — tab identity ignores ?query so list search does not spawn duplicate tabs. */
+export function pathOnlyFromHref(href) {
+  const normalized = normalizeTabHref(href || "/");
+  const q = normalized.indexOf("?");
+  return q === -1 ? normalized : normalized.slice(0, q);
+}
+
 /** Normalize a Next.js `Link` href prop (string or route object). */
 export function hrefFromLinkProp(href) {
   if (!href) return "/";
@@ -66,7 +73,10 @@ export function hrefFromLinkProp(href) {
 export function findOpenTab(tabs, href) {
   if (!Array.isArray(tabs)) return null;
   const normalized = hrefFromLinkProp(href);
-  return tabs.find((tab) => tab.href === normalized) ?? null;
+  const exact = tabs.find((tab) => tab.href === normalized);
+  if (exact) return exact;
+  const path = pathOnlyFromHref(normalized);
+  return tabs.find((tab) => pathOnlyFromHref(tab.href) === path) ?? null;
 }
 
 /** Whether an anchor click should switch to an already-open tab instead of default nav. */
@@ -119,6 +129,10 @@ function emptyWorkspaceState() {
   return { tabs: [], activeHref: null };
 }
 
+function hrefHasBrokenRouteParam(href) {
+  return /\/(undefined|null)(?=\/|$|\?)/i.test(pathOnlyFromHref(href));
+}
+
 function sanitizeTabsForWorkspace(tabs, workspaceId) {
   if (!Array.isArray(tabs) || !workspaceId) return [];
   return tabs.filter(
@@ -126,7 +140,8 @@ function sanitizeTabsForWorkspace(tabs, workspaceId) {
       tab &&
       typeof tab.href === "string" &&
       isTabWorkspaceRoute(tab.href) &&
-      pathBelongsToWorkspace(tab.href, workspaceId),
+      pathBelongsToWorkspace(tab.href, workspaceId) &&
+      !hrefHasBrokenRouteParam(tab.href),
   );
 }
 

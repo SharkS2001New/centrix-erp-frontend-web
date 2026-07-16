@@ -77,6 +77,19 @@ export function DashboardKpiGrid({ items, variant = "stat" }) {
   );
 }
 
+export function DashboardRefreshButton({ onClick, loading = false, className = "" }) {
+  return (
+    <button
+      type="button"
+      disabled={loading || !onClick}
+      onClick={() => void onClick?.()}
+      className={`theme-secondary-btn inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
+    >
+      {loading ? "Refreshing…" : "Refresh"}
+    </button>
+  );
+}
+
 export function DashboardDateRangeBar({
   fromDate,
   toDate,
@@ -86,6 +99,8 @@ export function DashboardDateRangeBar({
   onToDateChange,
   onBranchChange,
   showBranch = true,
+  onRefresh,
+  refreshing = false,
 }) {
   return (
     <div className="mb-6 flex flex-wrap items-end gap-3">
@@ -117,6 +132,7 @@ export function DashboardDateRangeBar({
           </select>
         </Field>
       ) : null}
+      {onRefresh ? <DashboardRefreshButton onClick={onRefresh} loading={refreshing} /> : null}
     </div>
   );
 }

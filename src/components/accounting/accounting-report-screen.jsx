@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { apiRequest } from "@/lib/api"
+import { apiRequest } from "@/lib/api";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-column-visibility";
+import { normalizeReportRows } from "@/lib/reports/api-response";
 import { parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
@@ -73,7 +74,7 @@ export function AccountingReportScreen({
   intro = null,
   defaultDateRangeDays = null,
 }) {
-  const { user, capabilities } = useAuth();
+  const { user, capabilities, isOrgWide } = useAuth();
   const multiBranch = isMultiBranchCatalog(capabilities);
   const monthRange = useMemo(
     () => (defaultDateRangeDays != null ? defaultReportDateRange(defaultDateRangeDays) : defaultAccountingDateRange()),
@@ -108,8 +109,11 @@ export function AccountingReportScreen({
   }, [showAccountFilter]);
 
   useEffect(() => {
-    if (user?.branch_id && !branchId) setBranchId(String(user.branch_id));
-  }, [user?.branch_id, branchId]);
+    // Only scope to home branch for branch-limited users; org-wide / single-branch
+    // catalogs default to all posted activity (no silent branch filter).
+    if (!multiBranch || isOrgWide?.() || branchId || !user?.branch_id) return;
+    setBranchId(String(user.branch_id));
+  }, [user?.branch_id, branchId, multiBranch, isOrgWide]);
 
   const loadReport = useCallback(async () => {
     setLoading(true);
@@ -133,7 +137,7 @@ export function AccountingReportScreen({
           per_page: parsed.perPage,
         });
       } else {
-        setRows(res.data ?? []);
+        setRows(normalizeReportRows(res));
         setMeta(res.meta ?? null);
       }
       setSummary(res.summary ?? null);

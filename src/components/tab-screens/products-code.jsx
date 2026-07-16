@@ -454,7 +454,11 @@ export function ProductsCodeScreen() {
   const searchParams = useSearchParams();
   const { capabilities, user } = useAuth();
   const includeShelfLocation = isProductShelfLocationEnabled(capabilities);
-  const productCode = decodeURIComponent(params.code);
+  const productCodeRaw = params?.code;
+  const productCode =
+    productCodeRaw != null && String(productCodeRaw) !== "" && String(productCodeRaw) !== "undefined"
+      ? decodeURIComponent(String(productCodeRaw))
+      : "";
 
   const initialTabs = parsePageTabs(searchParams);
   const [mainTab, setMainTab] = useState(initialTabs.mainTab);
@@ -602,6 +606,7 @@ export function ProductsCodeScreen() {
   }, [productCode, user?.organization_id]);
 
   const loadProduct = useCallback(async () => {
+    if (!productCode) return;
     const searchParams = {};
     if (user?.branch_id) searchParams.branch_id = user.branch_id;
     const res = await apiRequest(`/products/${encodeURIComponent(productCode)}`, { searchParams });
@@ -647,6 +652,11 @@ export function ProductsCodeScreen() {
   }, [mainTab, activityView, productCode]);
 
   const loadAll = useCallback(async () => {
+    if (!productCode) {
+      setLoading(false);
+      setError("Product not found");
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
@@ -656,7 +666,7 @@ export function ProductsCodeScreen() {
     } finally {
       setLoading(false);
     }
-  }, [loadMeta, loadProduct]);
+  }, [loadMeta, loadProduct, productCode]);
 
   useEffect(() => {
     loadAll();

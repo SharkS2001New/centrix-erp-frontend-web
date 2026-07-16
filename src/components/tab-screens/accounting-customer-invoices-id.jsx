@@ -9,6 +9,7 @@ import { canManagePayments } from "@/lib/access-control";
 import { P } from "@/lib/permission-codes";
 import { useOrgFormat } from "@/lib/org-format";
 import { normalizeCustomerInvoice } from "@/lib/customer-invoices";
+import { isNumericRouteId, routeParamValue } from "@/lib/route-params";
 import {
   CatalogPageShell,
   Field,
@@ -19,7 +20,8 @@ import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 
 export function AccountingCustomerInvoicesIdScreen() {
   const params = useParams();
-  const invoiceId = params.id;
+  const invoiceId = routeParamValue(params?.id);
+  const invoiceIdValid = isNumericRouteId(invoiceId);
   const { hasPermission, user } = useAuth();
   const { currency, date } = useOrgFormat();
   const canPay =
@@ -47,15 +49,28 @@ export function AccountingCustomerInvoicesIdScreen() {
   }, [user]);
 
   const load = useCallback(async () => {
+    if (!invoiceIdValid) {
+      setInvoice(null);
+      setPayments([]);
+      setMethods([]);
+      setError("Invoice not found");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
       const [inv, payRes, methodsRes] = await Promise.all([
-        apiRequest(`/customer-invoices/${invoiceId}`),
+        apiRequest(`/customer-invoices/${invoiceId}`, { reportIssues: false }),
         apiRequest("/customer-invoice-payments", {
           searchParams: { "filter[customer_invoice_id]": invoiceId, per_page: 100 },
+          reportIssues: false,
         }),
-        apiRequest("/payment-methods", { searchParams: { per_page: 50, "filter[is_active]": 1 } }),
+        apiRequest("/payment-methods", {
+          searchParams: { per_page: 50, "filter[is_active]": 1 },
+          reportIssues: false,
+        }),
       ]);
       setInvoice(normalizeCustomerInvoice(inv));
       setPayments(payRes.data ?? []);
@@ -72,7 +87,7 @@ export function AccountingCustomerInvoicesIdScreen() {
     } finally {
       setLoading(false);
     }
-  }, [invoiceId]);
+  }, [invoiceId, invoiceIdValid]);
 
   useEffect(() => {
     load();

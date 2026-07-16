@@ -4,22 +4,6 @@ import { usePathname } from "next/navigation";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { isTabWorkspaceRoute, normalizeTabHref } from "@/lib/tab-workspace";
 
-function TabCloseIcon({ className }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      className={className}
-      aria-hidden
-    >
-      <path d="M6 6l12 12M18 6L6 18" />
-    </svg>
-  );
-}
-
 export function WorkspaceTabBar() {
   const pathname = usePathname();
   const { enabled, tabs, activeHref, activateTab, closeTab } = useTabWorkspace();
@@ -71,14 +55,14 @@ export function WorkspaceTabBar() {
             </button>
             <button
               type="button"
-              className="mr-1.5 flex shrink-0 items-center justify-center self-center rounded-md p-1 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/50 dark:hover:text-red-400"
+              className="workspace-tab-close mr-1.5 flex h-6 w-6 shrink-0 items-center justify-center self-center rounded-md text-base font-bold leading-none transition-colors"
               aria-label={`Close ${tab.title}`}
               onClick={(event) => {
                 event.stopPropagation();
                 closeTab(tab.href);
               }}
             >
-              <TabCloseIcon className="size-3.5" />
+              ×
             </button>
           </div>
         );

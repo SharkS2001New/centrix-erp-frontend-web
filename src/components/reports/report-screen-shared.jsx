@@ -74,6 +74,7 @@ export function ReportFilterBar({
   onBranchChange,
   onExtraChange,
   onFilter,
+  onRefresh,
   onReset,
   loading = false,
   showBranchFilter = true,
@@ -83,6 +84,7 @@ export function ReportFilterBar({
   );
   const hasExtraFilters = (extraFilters ?? []).length > 0;
   const hasAnyFilterControl = showDateRange || showBranchFilter || hasQueryFilters || hasExtraFilters;
+  const refreshHandler = onRefresh ?? onFilter;
 
   if (!hasAnyFilterControl) {
     return null;
@@ -145,6 +147,16 @@ export function ReportFilterBar({
           <PrimaryButton type="button" showIcon={false} disabled={loading} onClick={onFilter}>
             {loading ? "Loading…" : "Filter"}
           </PrimaryButton>
+          {refreshHandler ? (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void refreshHandler()}
+              className={FILTER_RESET_BTN_CLASS}
+            >
+              {loading ? "Refreshing…" : "Refresh"}
+            </button>
+          ) : null}
           <button type="button" onClick={onReset} className={FILTER_RESET_BTN_CLASS}>
             Reset
           </button>

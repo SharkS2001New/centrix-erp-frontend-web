@@ -7,18 +7,12 @@ import {
   ReadonlyURLSearchParams,
   SearchParamsContext,
 } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
-import { normalizeTabHref } from "@/lib/tab-workspace";
-
-function pathOnly(href) {
-  const normalized = normalizeTabHref(href || "/");
-  const q = normalized.indexOf("?");
-  return q === -1 ? normalized : normalized.slice(0, q);
-}
+import { pathOnlyFromHref } from "@/lib/tab-workspace";
 
 function parseHref(href) {
   try {
     const url = new URL(href || "/", "http://local.invalid");
-    const pathname = pathOnly(url.pathname);
+    const pathname = pathOnlyFromHref(url.pathname);
     return {
       pathname,
       searchParams: new ReadonlyURLSearchParams(url.searchParams),
@@ -36,7 +30,7 @@ function parseHref(href) {
  * supply dynamic segments from their own href or useParams() becomes undefined.
  */
 export function paramsFromTabHref(href) {
-  const pathname = pathOnly(href);
+  const pathname = pathOnlyFromHref(href);
   const params = {};
 
   const patterns = [
@@ -80,11 +74,14 @@ export function paramsFromTabHref(href) {
         "custom",
         "print",
         "receive",
+        "undefined",
+        "null",
       ].includes(value)
     ) {
       continue;
     }
     params[key] = value;
+    break;
   }
 
   return params;
@@ -93,28 +90,37 @@ export function paramsFromTabHref(href) {
 /**
  * Pin Next.js router hooks (usePathname / useSearchParams / useParams) to this
  * tab's href so hidden keep-alive panes do not refetch when another tab navigates.
+ *
+ * When this pane owns the live route, search params come from the live URL so
+ * deep links like ?customer= / ?sale_id= still work. When suspended, the last
+ * live search (or href query) is frozen.
  */
 export function TabPaneRouterFreeze({ href, children }) {
   const livePathname = useContext(PathnameContext);
   const liveParams = useContext(PathParamsContext);
+  const liveSearchParams = useContext(SearchParamsContext);
   const [frozenParams, setFrozenParams] = useState(null);
+  const [frozenSearchParams, setFrozenSearchParams] = useState(null);
 
-  const { pathname, searchParams } = useMemo(() => parseHref(href), [href]);
+  const { pathname, searchParams: hrefSearchParams } = useMemo(() => parseHref(href), [href]);
   const hrefParams = useMemo(() => paramsFromTabHref(href), [href]);
   const routeMatches =
-    livePathname != null && pathOnly(livePathname) === pathname;
+    livePathname != null && pathOnlyFromHref(livePathname) === pathname;
 
-  // Capture dynamic params while this pane owns the live route; keep them after leave.
   useEffect(() => {
-    if (routeMatches) {
-      setFrozenParams(liveParams);
-    }
-  }, [routeMatches, liveParams]);
+    if (!routeMatches) return;
+    setFrozenParams(liveParams);
+    setFrozenSearchParams(liveSearchParams);
+  }, [routeMatches, liveParams, liveSearchParams]);
+
+  const searchParams = routeMatches
+    ? (liveSearchParams ?? hrefSearchParams)
+    : (frozenSearchParams ?? hrefSearchParams);
 
   // Href is authoritative for this pane — never let live list-route params
   // wipe trip/product ids during navigation races.
   const params = {
-    ...(routeMatches ? (liveParams ?? {}) : (frozenParams ?? liveParams ?? {})),
+    ...(routeMatches ? (liveParams ?? {}) : (frozenParams ?? {})),
     ...hrefParams,
   };
 

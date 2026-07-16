@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api"
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
@@ -17,6 +17,7 @@ import {
   DashboardDateRangeBar,
   DashboardKpiGrid,
   DashboardPanel,
+  DashboardRefreshButton,
 } from "@/components/dashboard/dashboard-shared";
 import { WORKSPACE_DASHBOARD_SCOPES } from "@/lib/workspace-reports";
 import { P } from "@/lib/permission-codes";
@@ -25,19 +26,35 @@ export function useReportsDashboard({ fromDate, toDate, branchId, enabled = true
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState(null);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  const reload = useCallback(() => {
+    setReloadToken((token) => token + 1);
+  }, []);
 
   useEffect(() => {
     if (!enabled) return;
+    let cancelled = false;
     setLoading(true);
+    setError(null);
     const searchParams = { from_date: fromDate, to_date: toDate };
     if (branchId) searchParams.branch_id = branchId;
     apiRequest("/reports/dashboard", { searchParams })
-      .then(setDashboard)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load dashboard"))
-      .finally(() => setLoading(false));
-  }, [fromDate, toDate, branchId, enabled]);
+      .then((data) => {
+        if (!cancelled) setDashboard(data);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load dashboard");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fromDate, toDate, branchId, enabled, reloadToken]);
 
-  return { dashboard, loading, error };
+  return { dashboard, loading, error, reload };
 }
 
 export function ReportsDashboardSection({
@@ -51,6 +68,7 @@ export function ReportsDashboardSection({
   workspaceScope = "backoffice",
   onError,
   enabled: enabledProp,
+  refreshKey = 0,
 }) {
   const { user, isOrgWide, hasPermission } = useAuth();
   const canViewReports = hasPermission(P.reports.hub.view);
@@ -66,12 +84,16 @@ export function ReportsDashboardSection({
   const effectiveTo = controlledTo ?? toDate;
   const effectiveBranch = controlledBranch ?? branchId;
 
-  const { dashboard, loading, error } = useReportsDashboard({
+  const { dashboard, loading, error, reload } = useReportsDashboard({
     fromDate: effectiveFrom,
     toDate: effectiveTo,
     branchId: effectiveBranch,
     enabled,
   });
+
+  useEffect(() => {
+    if (refreshKey > 0) reload();
+  }, [refreshKey, reload]);
 
   useEffect(() => {
     if (error && enabled) onError?.(error);
@@ -82,7 +104,7 @@ export function ReportsDashboardSection({
     fetchBranchesCached()
       .then((rows) => setBranches(rows ?? []))
       .catch(() => setBranches([]));
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     if (controlledBranch !== undefined || !user || branchInitialized.current) return;
@@ -144,6 +166,7 @@ export function ReportsDashboardSection({
   const showSalesTrend = scope.charts.includes("sales_trend");
   const showTopProducts = scope.charts.includes("top_products");
   const showSalesByChannel = scope.charts.includes("sales_by_channel");
+  const showDateFilters = showFilters && controlledFrom === undefined;
 
   if (!enabled) {
     return null;
@@ -155,7 +178,7 @@ export function ReportsDashboardSection({
 
   return (
     <div className={compact ? "space-y-4" : "space-y-6"}>
-      {showFilters && controlledFrom === undefined ? (
+      {showDateFilters ? (
         <DashboardDateRangeBar
           fromDate={fromDate}
           toDate={toDate}
@@ -164,8 +187,14 @@ export function ReportsDashboardSection({
           onFromDateChange={setFromDate}
           onToDateChange={setToDate}
           onBranchChange={setBranchId}
+          onRefresh={reload}
+          refreshing={loading}
         />
-      ) : null}
+      ) : (
+        <div className="mb-2 flex justify-end">
+          <DashboardRefreshButton onClick={reload} loading={loading} />
+        </div>
+      )}
 
       {showKpis && kpiItems.length ? <DashboardKpiGrid items={kpiItems} variant="hub" /> : null}
 

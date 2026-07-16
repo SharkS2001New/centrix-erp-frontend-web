@@ -146,6 +146,7 @@ export function ExpensesReportScreen({ definition }) {
         onBranchChange={setBranchId}
         onExtraChange={() => {}}
         onFilter={() => setApplied({ fromDate, toDate, branchId })}
+        onRefresh={() => void loadReport()}
         onReset={() => {
           const bid = user?.branch_id ? String(user.branch_id) : "";
           setFromDate("");

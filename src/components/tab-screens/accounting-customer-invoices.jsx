@@ -224,9 +224,13 @@ export function AccountingCustomerInvoicesScreen() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <Link href={`/accounting/customer-invoices/${inv.id}`} className="text-[#185FA5] hover:underline">
-                        View
-                      </Link>
+                      {inv.id != null && String(inv.id) !== "" && /^\d+$/.test(String(inv.id)) ? (
+                        <Link href={`/accounting/customer-invoices/${inv.id}`} className="text-[#185FA5] hover:underline">
+                          View
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   </tr>
                 );

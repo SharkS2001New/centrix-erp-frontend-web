@@ -171,6 +171,7 @@ export function CustomerReturnForm({
 
   useEffect(() => {
     if (editing || !initialSaleId) return;
+    if (String(initialSaleId) === "undefined" || String(initialSaleId) === "null") return;
     loadSale(initialSaleId);
   }, [editing, initialSaleId, loadSale]);
 

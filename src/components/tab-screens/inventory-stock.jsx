@@ -387,7 +387,8 @@ export function InventoryStockScreen() {
   }
 
   function generatePriceList(sourceRows = pageSlice) {
-    const inStock = sourceRows.filter(
+    const rows = Array.isArray(sourceRows) ? sourceRows : pageSlice;
+    const inStock = rows.filter(
       (row) => Number(row.shop_quantity ?? 0) > 0 || Number(row.store_quantity ?? 0) > 0,
     );
     if (inStock.length === 0) {
@@ -557,7 +558,7 @@ export function InventoryStockScreen() {
         />
         <button
           type="button"
-          onClick={generatePriceList}
+          onClick={() => generatePriceList()}
           disabled={loading || pageSlice.length === 0}
           className="rounded-lg border border-[#185FA5] bg-[#185FA5] px-3 py-2 text-sm font-medium text-white hover:bg-[#0C447C] disabled:opacity-50"
         >

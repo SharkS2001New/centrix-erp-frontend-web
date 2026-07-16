@@ -11,6 +11,7 @@ import {
 import {
   DashboardPanel,
   DashboardQuickLinks,
+  DashboardRefreshButton,
   DashboardSection,
   DashboardSummaryTable,
 } from "@/components/dashboard/dashboard-shared";
@@ -38,8 +39,11 @@ const SALES_LINKS = [
 export function SalesScreen() {
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
-  const loadData = useCallback(async () => {
+  const [refreshing, setRefreshing] = useState(false);
+  const loadData = useCallback(async ({ soft = false } = {}) => {
     const today = todayCalendarDate();
+    if (soft) setRefreshing(true);
+    else setLoading(true);
     try {
       // Only today's placed orders — avoid pulling 200 historical rows just to filter client-side.
       const res = await apiRequest("/sales", {
@@ -57,11 +61,12 @@ export function SalesScreen() {
       notifyError(e instanceof Error ? e.message : "Failed to load sales");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   const orderSummary = useMemo(() => summarizeOrders(sales), [sales]);
@@ -89,6 +94,10 @@ export function SalesScreen() {
       subtitle="Today's performance and period trends"
       action={
         <div className="flex flex-wrap gap-2">
+          <DashboardRefreshButton
+            onClick={() => void loadData({ soft: true })}
+            loading={loading || refreshing}
+          />
           <PrimaryLink href="/sales/pos" showIcon={false}>
             Create order
           </PrimaryLink>

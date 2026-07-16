@@ -63,7 +63,7 @@ export function CustomerStatementScreen() {
   }, [searchParams]);
 
   const loadStatement = useCallback(async () => {
-    if (!appliedCustomer) return;
+    if (!appliedCustomer || String(appliedCustomer) === "undefined") return;
     setLoading(true);
     try {
       const res = await apiRequest(`/reports/customers/${appliedCustomer}/statement`);
@@ -77,8 +77,9 @@ export function CustomerStatementScreen() {
   }, [appliedCustomer]);
 
   useEffect(() => {
+    if (!appliedCustomer || String(appliedCustomer) === "undefined") return;
     loadStatement();
-  }, [loadStatement]);
+  }, [appliedCustomer, loadStatement]);
 
   const customer = data?.customer ?? null;
   const summary = data?.summary ?? null;

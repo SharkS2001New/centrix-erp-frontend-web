@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-shared";
@@ -11,6 +11,7 @@ import {
   DashboardLoading,
   DashboardPanel,
   DashboardQuickLinks,
+  DashboardRefreshButton,
   DashboardSection,
   DashboardSummaryTable,
 } from "@/components/dashboard/dashboard-shared";
@@ -36,35 +37,46 @@ const HR_LINKS = [
 
 export function HrDashboardContent() {
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState(null);
   const [recentEmployees, setRecentEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [payrollRuns, setPayrollRuns] = useState([]);
 
-  useEffect(() => {
-    Promise.all([
-      apiRequest("/employees/summary"),
-      apiRequest("/employees", {
-        searchParams: {
-          per_page: 8,
-          fields: "lean",
-          sort: "created_at",
-          sort_dir: "desc",
-        },
-      }),
-      apiRequest("/departments", { searchParams: { per_page: 200 } }),
-      apiRequest("/reports/payroll-summary", { searchParams: { per_page: 5 } }).catch(() => ({ data: [] })),
-    ])
-      .then(([summaryRes, empRes, deptRes, payrollRes]) => {
-        setSummary(summaryRes ?? null);
-        setRecentEmployees(empRes.data ?? []);
-        setDepartments(deptRes.data ?? []);
-        setPayrollRuns(payrollRes.data ?? []);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load HR dashboard"))
-      .finally(() => setLoading(false));
+  const loadDashboard = useCallback(async ({ soft = false } = {}) => {
+    if (soft) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+    try {
+      const [summaryRes, empRes, deptRes, payrollRes] = await Promise.all([
+        apiRequest("/employees/summary"),
+        apiRequest("/employees", {
+          searchParams: {
+            per_page: 8,
+            fields: "lean",
+            sort: "created_at",
+            sort_dir: "desc",
+          },
+        }),
+        apiRequest("/departments", { searchParams: { per_page: 200 } }),
+        apiRequest("/reports/payroll-summary", { searchParams: { per_page: 5 } }).catch(() => ({ data: [] })),
+      ]);
+      setSummary(summaryRes ?? null);
+      setRecentEmployees(empRes.data ?? []);
+      setDepartments(deptRes.data ?? []);
+      setPayrollRuns(payrollRes.data ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load HR dashboard");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
 
   const deptById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
 
@@ -126,7 +138,12 @@ export function HrDashboardContent() {
     <CatalogPageShell
       title="HR Overview"
       subtitle="Workforce summary and payroll readiness"
-      action={<PrimaryLink href="/hr/employees/new">Add employee</PrimaryLink>}
+      action={
+        <div className="flex flex-wrap items-center gap-2">
+          <DashboardRefreshButton onClick={() => void loadDashboard({ soft: true })} loading={loading || refreshing} />
+          <PrimaryLink href="/hr/employees/new">Add employee</PrimaryLink>
+        </div>
+      }
     >
       <DashboardErrorBanner message={error} />
 

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { canDirectInventoryAction } from "@/lib/approval-permissions";
 import { useAuth } from "@/contexts/auth-context";
-import { fetchUomsCached } from "@/lib/reference-data-cache";
+import { fetchBranchesCached, fetchUomsCached } from "@/lib/reference-data-cache";
 import { isDamageWriteOffApprovalEnabled } from "@/lib/sales-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { lineFromEnrichedProduct } from "@/components/lpo/lpo-product-utils";
@@ -34,21 +34,47 @@ function lineFromProduct(product) {
 
 export function InventoryDamagesNewScreen() {
   const router = useRouter();
-  const { user, capabilities, hasPermission } = useAuth();
-  const branchId = user?.branch_id ?? 1;
+  const { user, capabilities, hasPermission, isOrgWide } = useAuth();
 
+  const [branches, setBranches] = useState([]);
+  const [branchId, setBranchId] = useState("");
   const [uoms, setUoms] = useState([]);
   const [lines, setLines] = useState([]);
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+
   useEffect(() => {
     fetchUomsCached(user?.organization_id)
       .then((rows) => setUoms(rows ?? []))
       .catch(() => setUoms([]));
   }, [user?.organization_id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchBranchesCached(user?.organization_id)
+      .then((rows) => {
+        if (cancelled) return;
+        const list = rows ?? [];
+        setBranches(list);
+        if (user?.branch_id) {
+          setBranchId(String(user.branch_id));
+        } else if (list.length === 1) {
+          setBranchId(String(list[0].id));
+        } else if (list[0]?.id) {
+          setBranchId(String(list[0].id));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setBranches([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.organization_id, user?.branch_id]);
+
   const { uomById } = useInventoryCatalogMaps(uoms);
+  const canPickBranch = typeof isOrgWide === "function" ? isOrgWide() : !user?.branch_id;
 
   function addProduct(product) {
     const code = product.product_code;
@@ -69,6 +95,10 @@ export function InventoryDamagesNewScreen() {
 
   async function submit(e) {
     e.preventDefault();
+    if (!branchId) {
+      notifyError("Select a branch before recording damage.");
+      return;
+    }
     const toPost = lines.filter((line) => line.product_code && Number(line.quantity) > 0);
     if (toPost.length === 0) {
       notifyError("Add at least one product with a quantity.");
@@ -85,7 +115,7 @@ export function InventoryDamagesNewScreen() {
         const uom = uomById.get(line.unit_id);
         const body = {
           product_code: line.product_code,
-          branch_id: branchId,
+          branch_id: Number(branchId),
           quantity: damageQtyToBase(line.quantity, line.package_type, uom),
           package_type: line.package_type,
           uom_label: damageMeasureLabel(uom, line.package_type),
@@ -124,6 +154,25 @@ export function InventoryDamagesNewScreen() {
         className="space-y-5 theme-panel rounded-xl border p-6 shadow-sm"
       >
         <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Branch">
+            <select
+              className={inputClassName()}
+              value={branchId}
+              onChange={(e) => {
+                setBranchId(e.target.value);
+                setLines([]);
+              }}
+              disabled={!canPickBranch && Boolean(user?.branch_id)}
+              required
+            >
+              <option value="">Select branch…</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.branch_name ?? b.name ?? b.branch_code ?? `Branch ${b.id}`}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label="Reason">
             <input
               className={inputClassName()}
@@ -146,6 +195,7 @@ export function InventoryDamagesNewScreen() {
           lines={lines}
           onChange={setLines}
           uomById={uomById}
+          branchId={branchId ? Number(branchId) : null}
           onAddProduct={addProduct}
           onAddProducts={addProducts}
           tableHeaders={[
@@ -154,7 +204,11 @@ export function InventoryDamagesNewScreen() {
             { key: "qty", label: "Qty", align: "right" },
             { key: "loc", label: "Location" },
           ]}
-          emptyMessage="Search and add products to record damage."
+          emptyMessage={
+            branchId
+              ? "Search and add products to record damage."
+              : "Select a branch, then search and add products."
+          }
           renderCells={(line, index) => {
             const uom = uomById.get(line.unit_id);
             return (
@@ -201,7 +255,7 @@ export function InventoryDamagesNewScreen() {
           >
             Cancel
           </Link>
-          <PrimaryButton type="submit" showIcon={false} disabled={saving}>
+          <PrimaryButton type="submit" showIcon={false} disabled={saving || !branchId}>
             {saving ? "Saving…" : "Save damages"}
           </PrimaryButton>
         </div>

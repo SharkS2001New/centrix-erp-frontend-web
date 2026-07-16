@@ -218,6 +218,7 @@ export function FulfillmentSchedulesScreen() {
         onSubmit={handleSave}
         saving={saving}
         error={formError}
+        submitLabel="Save schedule"
       >
         <Field label="Route">
           <select

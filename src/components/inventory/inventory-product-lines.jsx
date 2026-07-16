@@ -13,6 +13,7 @@ export function InventoryProductLines({
   onChange,
   uomById,
   vatById = new Map(),
+  branchId = null,
   renderCells,
   tableHeaders,
   emptyMessage = "No items added yet.",
@@ -83,6 +84,7 @@ export function InventoryProductLines({
         <LpoProductSearchPanel
           uomById={uomById}
           vatById={vatById}
+          branchId={branchId}
           selectionMode="multiple"
           onSelect={addProduct}
           onSelectMany={addProducts}

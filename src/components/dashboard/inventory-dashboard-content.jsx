@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
@@ -13,6 +13,7 @@ import {
   DashboardLoading,
   DashboardPanel,
   DashboardQuickLinks,
+  DashboardRefreshButton,
   DashboardSection,
   DashboardSummaryTable,
 } from "@/components/dashboard/dashboard-shared";
@@ -49,6 +50,7 @@ function availableTotal(row) {
 export function InventoryDashboardContent() {
   const { user, isOrgWide } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [topStockRows, setTopStockRows] = useState([]);
   const [lowStockRows, setLowStockRows] = useState([]);
@@ -62,40 +64,50 @@ export function InventoryDashboardContent() {
     totalQty: 0,
   });
 
-  useEffect(() => {
+  const loadDashboard = useCallback(async ({ soft = false } = {}) => {
+    if (soft) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
     const valuationParams = {};
     if (user?.branch_id && !isOrgWide()) {
       valuationParams.branch_id = user.branch_id;
     }
 
-    Promise.all([
-      apiRequest("/reports/inventory-valuation-summary", { searchParams: valuationParams }),
-      apiRequest("/reports/stock-on-hand", {
-        searchParams: {
-          per_page: 10,
-          in_stock_only: 1,
-          sort: "available_desc",
-          ...valuationParams,
-        },
-      }),
-      apiRequest("/reports/low-stock", { searchParams: { per_page: 10, ...valuationParams } }),
-    ])
-      .then(([valuationRes, stockRes, lowRes]) => {
-        setTopStockRows(stockRes.data ?? []);
-        setLowStockRows(lowRes.data ?? []);
-        setInventoryValue({
-          shop: valuationRes?.shop_value ?? null,
-          store: valuationRes?.store_value ?? null,
-          total: valuationRes?.value ?? null,
-          skus: Number(valuationRes?.skus_in_stock ?? 0),
-          low: Number(valuationRes?.skus_low ?? 0),
-          out: Number(valuationRes?.skus_out ?? 0),
-          totalQty: Number(valuationRes?.total_available_units ?? 0),
-        });
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load inventory dashboard"))
-      .finally(() => setLoading(false));
-  }, [user?.branch_id, user?.access_scope, user?.is_admin]);
+    try {
+      const [valuationRes, stockRes, lowRes] = await Promise.all([
+        apiRequest("/reports/inventory-valuation-summary", { searchParams: valuationParams }),
+        apiRequest("/reports/stock-on-hand", {
+          searchParams: {
+            per_page: 10,
+            in_stock_only: 1,
+            sort: "available_desc",
+            ...valuationParams,
+          },
+        }),
+        apiRequest("/reports/low-stock", { searchParams: { per_page: 10, ...valuationParams } }),
+      ]);
+      setTopStockRows(stockRes.data ?? []);
+      setLowStockRows(lowRes.data ?? []);
+      setInventoryValue({
+        shop: valuationRes?.shop_value ?? null,
+        store: valuationRes?.store_value ?? null,
+        total: valuationRes?.value ?? null,
+        skus: Number(valuationRes?.skus_in_stock ?? 0),
+        low: Number(valuationRes?.skus_low ?? 0),
+        out: Number(valuationRes?.skus_out ?? 0),
+        totalQty: Number(valuationRes?.total_available_units ?? 0),
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load inventory dashboard");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [user?.branch_id, user?.access_scope, user?.is_admin, isOrgWide]);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
 
   const inStockItems = useMemo(
     () =>
@@ -161,7 +173,12 @@ export function InventoryDashboardContent() {
     <CatalogPageShell
       title="Inventory dashboard"
       subtitle="Stock health, valuation, and warehouse activity"
-      action={<PrimaryLink href="/inventory/receipts/receive">Receive stock</PrimaryLink>}
+      action={
+        <div className="flex flex-wrap items-center gap-2">
+          <DashboardRefreshButton onClick={() => void loadDashboard({ soft: true })} loading={loading || refreshing} />
+          <PrimaryLink href="/inventory/receipts/receive">Receive stock</PrimaryLink>
+        </div>
+      }
     >
       <DashboardErrorBanner message={error} />
 

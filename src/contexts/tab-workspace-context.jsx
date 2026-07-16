@@ -21,6 +21,7 @@ import {
   isTabWorkspaceEnabled,
   isTabWorkspaceRoute,
   normalizeTabHref,
+  pathOnlyFromHref,
   readTabWorkspaceStore,
   setOpenTabReuseChecker,
   shouldReuseOpenTab,
@@ -143,23 +144,36 @@ export function TabWorkspaceProvider({ children }) {
       if (!workspaceId || !isTabWorkspaceRoute(normalized)) return;
       if (!pathBelongsToWorkspace(normalized, workspaceId)) return;
 
+      const pathKey = pathOnlyFromHref(normalized);
+
       setTabStore((store) =>
         updateWorkspaceTabs(store, workspaceId, (current) => {
-          const existing = current.tabs.find((tab) => tab.href === normalized);
-          const resolvedTitle =
+          const existing = current.tabs.find(
+            (tab) => pathOnlyFromHref(tab.href) === pathKey,
+          );
+          const overrideTitle =
             titleOverridesRef.current.get(normalized) ??
+            (existing ? titleOverridesRef.current.get(existing.href) : null);
+          const resolvedTitle =
+            overrideTitle ??
             (existing ? existing.title : null) ??
             title ??
             titleFromPathname(normalized);
+
+          if (existing && existing.href !== normalized && overrideTitle) {
+            titleOverridesRef.current.delete(existing.href);
+            titleOverridesRef.current.set(normalized, overrideTitle);
+          }
 
           if (existing) {
             return {
               ...current,
               activeHref: normalized,
               tabs: current.tabs.map((tab) =>
-                tab.href === normalized
+                pathOnlyFromHref(tab.href) === pathKey
                   ? {
                       ...tab,
+                      href: normalized,
                       title: resolvedTitle,
                       dirty: dirty || tab.dirty,
                       lastActiveAt: Date.now(),
@@ -169,7 +183,9 @@ export function TabWorkspaceProvider({ children }) {
             };
           }
 
-          const dedupedTabs = current.tabs.filter((tab) => tab.href !== normalized);
+          const dedupedTabs = current.tabs.filter(
+            (tab) => pathOnlyFromHref(tab.href) !== pathKey,
+          );
           const nextTabs = [
             ...dedupedTabs,
             {
@@ -202,17 +218,26 @@ export function TabWorkspaceProvider({ children }) {
   useEffect(() => {
     if (!enabled || !workspaceId || !pathname || !isTabWorkspaceRoute(pathname)) return;
     if (!pathBelongsToWorkspace(pathname, workspaceId)) return;
-    upsertTab(pathname, titleFromPathname(pathname));
+    const qs = typeof window !== "undefined" ? window.location.search : "";
+    const fullHref = normalizeTabHref(qs ? `${pathname}${qs}` : pathname);
+    upsertTab(fullHref, titleFromPathname(pathname));
   }, [enabled, pathname, upsertTab, workspaceId]);
 
   useEffect(() => {
     if (!enabled || !workspaceId || !pathname || !isTabWorkspaceRoute(pathname)) return;
     if (!pathBelongsToWorkspace(pathname, workspaceId)) return;
 
-    const normalized = normalizeTabHref(pathname);
+    const qs = typeof window !== "undefined" ? window.location.search : "";
+    const normalized = normalizeTabHref(qs ? `${pathname}${qs}` : pathname);
     setTabStore((store) =>
       updateWorkspaceTabs(store, workspaceId, (current) => {
         if (current.activeHref === normalized) return current;
+        // Keep path-matched activeHref in sync even when only the query changes.
+        const pathKey = pathOnlyFromHref(normalized);
+        const hasPath = current.tabs.some((tab) => pathOnlyFromHref(tab.href) === pathKey);
+        if (!hasPath && current.activeHref && pathOnlyFromHref(current.activeHref) === pathKey) {
+          return { ...current, activeHref: normalized };
+        }
         return { ...current, activeHref: normalized };
       }),
     );
@@ -221,25 +246,39 @@ export function TabWorkspaceProvider({ children }) {
   const switchToHref = useCallback(
     (href) => {
       const normalized = hrefFromLinkProp(href);
-      const isCurrent = normalizeTabHref(pathname) === normalized;
+      const qs = typeof window !== "undefined" ? window.location.search : "";
+      const currentHref = normalizeTabHref(qs ? `${pathname}${qs}` : pathname);
+      const isCurrent =
+        pathOnlyFromHref(currentHref) === pathOnlyFromHref(normalized) &&
+        currentHref === normalized;
+
+      const open = findOpenTab(tabs, normalized);
 
       if (
         enabled &&
         workspaceId &&
         isTabWorkspaceRoute(normalized) &&
         pathBelongsToWorkspace(normalized, workspaceId) &&
-        findOpenTab(tabs, normalized)
+        open
       ) {
         setTabStore((store) =>
           updateWorkspaceTabs(store, workspaceId, (current) => {
-            const existing = current.tabs.find((tab) => tab.href === normalized);
-            if (!existing) return current;
+            const pathKey = pathOnlyFromHref(normalized);
+            if (!current.tabs.some((tab) => pathOnlyFromHref(tab.href) === pathKey)) {
+              return current;
+            }
 
             return {
               ...current,
               activeHref: normalized,
               tabs: current.tabs.map((tab) =>
-                tab.href === normalized ? { ...tab, lastActiveAt: Date.now() } : tab,
+                pathOnlyFromHref(tab.href) === pathKey
+                  ? {
+                      ...tab,
+                      href: normalized,
+                      lastActiveAt: Date.now(),
+                    }
+                  : tab,
               ),
             };
           }),

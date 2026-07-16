@@ -17,7 +17,7 @@ import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catal
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
 
 export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage }) {
-  const { settingsPath, isOrganizationScoped } = useSettingsApi();
+  const { settingsPath } = useSettingsApi();
   const afterSave = useSettingsAfterSave();
   const [form, setForm] = useState(generalFormFromApi({}));
   const [loading, setLoading] = useState(true);
@@ -38,7 +38,7 @@ export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage }
     try {
       const res = await apiRequest(settingsPath("general"), {
         method: "PATCH",
-        body: generalPayloadFromForm(form, { includePlatformFields: isOrganizationScoped }),
+        body: generalPayloadFromForm(form),
       });
       setForm(generalFormFromApi(res));
       setMessage("General settings saved.");
@@ -190,29 +190,6 @@ export function GeneralSettingsPanel({ saving, setSaving, setError, setMessage }
                 </Field>
               </div>
             </div>
-
-            {isOrganizationScoped ? (
-              <div>
-                <h3 className="text-sm font-medium text-slate-900">Workspace (platform)</h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Enabled by default for all organizations. Uncheck to turn off the desktop-style tab bar for this org.
-                </p>
-                <label className="mt-3 flex items-start gap-3 text-sm text-slate-800">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={Boolean(form.enable_tab_workspace)}
-                    onChange={(e) => setForm((f) => ({ ...f, enable_tab_workspace: e.target.checked }))}
-                  />
-                  <span>
-                    <span className="font-medium">Enable tab workspace</span>
-                    <span className="mt-0.5 block text-xs text-slate-500">
-                      Users can open Dashboard, Customers, invoices, and other pages in separate in-app tabs.
-                    </span>
-                  </span>
-                </label>
-              </div>
-            ) : null}
           </div>
         )}
         <div className="mt-6">

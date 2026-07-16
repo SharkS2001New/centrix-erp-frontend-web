@@ -23,7 +23,11 @@ export function ReportsKeyScreen() {
 function ReportViewerPageContent() {
   const params = useParams();
   const router = useRouter();
-  const reportKey = params.key;
+  const reportKeyRaw = params?.key;
+  const reportKey =
+    reportKeyRaw != null && String(reportKeyRaw) !== "" && String(reportKeyRaw) !== "undefined"
+      ? String(reportKeyRaw)
+      : null;
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState(null);
 
@@ -37,10 +41,10 @@ function ReportViewerPageContent() {
     }
   }, [redirectsOutsideReports, externalRoute, router]);
 
-  const structured = REPORT_DEFINITIONS[reportKey];
+  const structured = reportKey ? REPORT_DEFINITIONS[reportKey] : null;
 
   useEffect(() => {
-    if (structured || redirectsOutsideReports) return;
+    if (!reportKey || structured || redirectsOutsideReports) return;
     apiRequest("/reports/")
       .then((catalog) => {
         for (const section of Object.values(catalog ?? {})) {
@@ -55,6 +59,14 @@ function ReportViewerPageContent() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load catalog"));
   }, [reportKey, structured, redirectsOutsideReports]);
+
+  if (!reportKey) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center p-6">
+        <p className="text-sm text-slate-500">Loading report…</p>
+      </div>
+    );
+  }
 
   if (redirectsOutsideReports) {
     return <AppRouteLoading pathname={externalRoute} />;

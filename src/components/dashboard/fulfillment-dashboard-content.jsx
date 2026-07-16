@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { fetchFulfillmentRefsCached } from "@/lib/reference-data-cache";
@@ -17,10 +17,12 @@ import {
   DashboardLoading,
   DashboardPanel,
   DashboardQuickLinks,
+  DashboardRefreshButton,
   DashboardSection,
   DashboardSummaryTable,
 } from "@/components/dashboard/dashboard-shared";
 import { DonutChart, CHART_COLORS } from "@/components/reports/report-charts";
+import { toLocalDateInputValue } from "@/lib/dashboard-dates";
 
 const FULFILLMENT_LINKS = [
   { href: "/fulfillment/drivers", title: "Drivers", desc: "Driver roster and assignments" },
@@ -32,35 +34,46 @@ const FULFILLMENT_LINKS = [
 export function FulfillmentDashboardContent() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [drivers, setDrivers] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [sales, setSales] = useState([]);
 
-  useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    Promise.all([
-      fetchFulfillmentRefsCached(user?.organization_id),
-      apiRequest("/sales", {
-        searchParams: {
-          per_page: 200,
-          with_items: 0,
-          from_date: today,
-          to_date: today,
-          date_field: "placed",
-        },
-      }),
-    ])
-      .then(([refs, salesRes]) => {
-        setDrivers(refs.drivers ?? []);
-        setRoutes(refs.routes ?? []);
-        setVehicles(refs.vehicles ?? []);
-        setSales(salesRes.data ?? []);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load fulfillment dashboard"))
-      .finally(() => setLoading(false));
+  const loadDashboard = useCallback(async ({ soft = false } = {}) => {
+    if (soft) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+    const today = toLocalDateInputValue();
+    try {
+      const [refs, salesRes] = await Promise.all([
+        fetchFulfillmentRefsCached(user?.organization_id),
+        apiRequest("/sales", {
+          searchParams: {
+            per_page: 200,
+            with_items: 0,
+            from_date: today,
+            to_date: today,
+            date_field: "placed",
+          },
+        }),
+      ]);
+      setDrivers(refs.drivers ?? []);
+      setRoutes(refs.routes ?? []);
+      setVehicles(refs.vehicles ?? []);
+      setSales(salesRes.data ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load fulfillment dashboard");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, [user?.organization_id]);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
 
   const stats = useMemo(() => {
     const activeDrivers = drivers.filter((d) => d.is_active !== false);
@@ -129,7 +142,12 @@ export function FulfillmentDashboardContent() {
     <CatalogPageShell
       title="Distribution dashboard"
       subtitle="Drivers, routes, and today's delivery performance"
-      action={<PrimaryLink href="/fulfillment/drivers">Manage drivers</PrimaryLink>}
+      action={
+        <div className="flex flex-wrap items-center gap-2">
+          <DashboardRefreshButton onClick={() => void loadDashboard({ soft: true })} loading={loading || refreshing} />
+          <PrimaryLink href="/fulfillment/drivers">Manage drivers</PrimaryLink>
+        </div>
+      }
     >
       <DashboardErrorBanner message={error} />
 

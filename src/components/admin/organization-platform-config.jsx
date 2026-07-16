@@ -81,6 +81,8 @@ export function OrganizationTenantProfile({
   profilePresets = [],
   deploymentProfile,
   onProfileChange,
+  enableTabWorkspace,
+  onEnableTabWorkspaceChange,
 }) {
   const isRegister = mode === "register";
   const description = isRegister
@@ -204,6 +206,29 @@ export function OrganizationTenantProfile({
           </OrgRegisterField>
         ) : null}
       </div>
+
+      {!isRegister && typeof onEnableTabWorkspaceChange === "function" ? (
+        <div className="mt-6 border-t border-slate-200 pt-6">
+          <h3 className="text-sm font-medium text-slate-900">Workspace (platform)</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Enabled by default for all organizations. Uncheck to turn off the desktop-style tab bar for this org.
+          </p>
+          <label className="mt-3 flex items-start gap-3 text-sm text-slate-800">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={Boolean(enableTabWorkspace)}
+              onChange={(e) => onEnableTabWorkspaceChange(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium">Enable tab workspace</span>
+              <span className="mt-0.5 block text-xs text-slate-500">
+                Users can open Dashboard, Customers, invoices, and other pages in separate in-app tabs.
+              </span>
+            </span>
+          </label>
+        </div>
+      ) : null}
     </PlatformFormSection>
   );
 }
@@ -679,6 +704,8 @@ export function OrganizationConfigTabs({
   profilePresets = [],
   deploymentProfile,
   onProfileChange,
+  enableTabWorkspace,
+  onEnableTabWorkspaceChange,
   salesPlatform,
   onSalesChange,
   enabledModules = {},
@@ -707,6 +734,8 @@ export function OrganizationConfigTabs({
           profilePresets={profilePresets}
           deploymentProfile={deploymentProfile}
           onProfileChange={onProfileChange}
+          enableTabWorkspace={enableTabWorkspace}
+          onEnableTabWorkspaceChange={onEnableTabWorkspaceChange}
         />
       ) : null}
 

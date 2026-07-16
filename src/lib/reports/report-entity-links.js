@@ -51,8 +51,9 @@ export function reportEntityHref(type, row) {
     }
     case "invoice": {
       const invoiceId = row.customer_invoice_id ?? row.invoice_id;
-      if (invoiceId != null && invoiceId !== "") {
-        return `/accounting/customer-invoices/${invoiceId}`;
+      const id = invoiceId != null ? String(invoiceId).trim() : "";
+      if (id && id !== "undefined" && id !== "null" && /^\d+$/.test(id)) {
+        return `/accounting/customer-invoices/${id}`;
       }
       return null;
     }

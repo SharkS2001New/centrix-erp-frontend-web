@@ -272,6 +272,7 @@ function StandardReportScreen({ definition }) {
         onBranchChange={setBranchId}
         onExtraChange={(id, value) => setExtraFilters((f) => ({ ...f, [id]: value }))}
         onFilter={applyFilters}
+        onRefresh={() => void loadReport()}
         onReset={resetFilters}
         loading={loading}
         showBranchFilter={multiBranch && !reportHidesBranchFilter(definition.key)}

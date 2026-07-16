@@ -27,6 +27,11 @@ export const REPORT_UI_ROUTES = {
   "subledger-reconciliation": "/reports/subledger-reconciliation",
   "legacy-archive": "/reports/legacy-archive",
   "price-list": "/reports/price-list",
+  "profit-loss-gl": "/accounting/profit-loss",
+  "trial-balance": "/accounting/trial-balance",
+  "balance-sheet": "/accounting/balance-sheet",
+  "cash-flow": "/accounting/cash-flow",
+  "general-ledger": "/accounting/general-ledger",
 };
 
 export function reportHref(key, path) {

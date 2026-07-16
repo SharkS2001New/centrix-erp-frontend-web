@@ -202,6 +202,7 @@ export function CustomReportScreen({ templateId }) {
         onToDateChange={setToDate}
         onBranchChange={setBranchId}
         onFilter={applyFilters}
+        onRefresh={() => void loadReport()}
         onReset={resetFilters}
         loading={loading}
         showBranchFilter={multiBranch}

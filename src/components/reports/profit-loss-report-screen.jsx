@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiRequest } from "@/lib/api"
+import { apiRequest } from "@/lib/api";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
@@ -16,6 +16,11 @@ import {
 function pct(part, whole) {
   if (!whole) return "—";
   return `${((part / whole) * 100).toFixed(1)}%`;
+}
+
+function initialBranchId(user, isOrgWide) {
+  if (!user || isOrgWide?.()) return "";
+  return user.branch_id ? String(user.branch_id) : "";
 }
 
 export function ProfitLossReportScreen({ definition }) {
@@ -34,32 +39,35 @@ export function ProfitLossReportScreen({ definition }) {
     toDate: defaultRange.to,
     branchId: "",
   });
+  const [filtersReady, setFiltersReady] = useState(false);
+  const orgWide = Boolean(isOrgWide?.());
 
   useEffect(() => {
     fetchBranchesCached()
-      .then((rows) => setBranches(rows ?? []))
+      .then((list) => setBranches(list ?? []))
       .catch(() => setBranches([]));
   }, []);
 
+  // Resolve branch scope once auth is available, then load (avoids all-branch scan then re-fetch).
   useEffect(() => {
     if (!user) return;
-    if (isOrgWide?.()) return;
-    if (user.branch_id && !branchId) {
-      const bid = String(user.branch_id);
-      setBranchId(bid);
-      setApplied((prev) => ({ ...prev, branchId: bid }));
-    }
-  }, [user, isOrgWide, branchId]);
+    const bid = orgWide ? "" : user.branch_id ? String(user.branch_id) : "";
+    setBranchId(bid);
+    setApplied((prev) => (prev.branchId === bid ? prev : { ...prev, branchId: bid }));
+    setFiltersReady(true);
+  }, [user, orgWide]);
 
   const loadReport = useCallback(async () => {
+    if (!filtersReady) return;
     setLoading(true);
     setError(null);
     try {
-      const searchParams = { per_page: 200, page: 1, date_column: "period" };
+      const searchParams = { per_page: 1, page: 1, date_column: "period" };
       if (applied.fromDate) searchParams.from_date = applied.fromDate;
       if (applied.toDate) searchParams.to_date = applied.toDate;
       if (applied.branchId) searchParams.branch_id = applied.branchId;
-      const res = await apiRequest(definition.apiPath, { searchParams });
+      // Page-local spinner only — do not hold the global shell overlay on this report.
+      const res = await apiRequest(definition.apiPath, { searchParams, loading: false });
       setRows(res.data ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
@@ -67,7 +75,7 @@ export function ProfitLossReportScreen({ definition }) {
     } finally {
       setLoading(false);
     }
-  }, [applied, definition.apiPath]);
+  }, [applied, definition.apiPath, filtersReady]);
 
   useEffect(() => {
     loadReport();
@@ -147,6 +155,12 @@ export function ProfitLossReportScreen({ definition }) {
     pct: pct(Math.abs(row.amount), totals.gross_revenue),
   }));
 
+  const hasActivity =
+    totals.gross_revenue !== 0 ||
+    totals.cogs !== 0 ||
+    totals.total_expenses !== 0 ||
+    totals.net_profit !== 0;
+
   return (
     <ReportPageShell
       section={definition.section}
@@ -178,9 +192,10 @@ export function ProfitLossReportScreen({ definition }) {
         onBranchChange={setBranchId}
         onExtraChange={() => {}}
         onFilter={() => setApplied({ fromDate, toDate, branchId })}
+        onRefresh={() => void loadReport()}
         onReset={() => {
           const range = defaultAccountingDateRange();
-          const bid = isOrgWide?.() ? "" : user?.branch_id ? String(user.branch_id) : "";
+          const bid = initialBranchId(user, isOrgWide);
           setFromDate(range.from);
           setToDate(range.to);
           setBranchId(bid);
@@ -194,14 +209,14 @@ export function ProfitLossReportScreen({ definition }) {
 
       {loading ? (
         <p className="text-sm text-slate-500">Loading report…</p>
-      ) : rows.length === 0 ? (
+      ) : !hasActivity ? (
         <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
-          No profit &amp; loss rows for this period. Try widening the date range.
+          No profit &amp; loss activity for this period. Try widening the date range.
         </p>
       ) : (
         <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
           <div className="border-b border-slate-100 px-4 py-3 text-sm text-slate-600">
-            Operational P&amp;L from sales, COGS, and expenses
+            Operational P&amp;L from sales, receipts (COGS proxy), and expenses
             {multiBranch ? ` · ${branchLabel}` : ""}
           </div>
           <table className="w-full border-collapse text-sm">
@@ -234,11 +249,6 @@ export function ProfitLossReportScreen({ definition }) {
               ))}
             </tbody>
           </table>
-          {rows.length > 1 ? (
-            <div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
-              Statement aggregates {rows.length} daily/branch period rows in the selected range.
-            </div>
-          ) : null}
         </div>
       )}
     </ReportPageShell>

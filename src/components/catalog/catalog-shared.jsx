@@ -380,7 +380,7 @@ export function UomBadge({ label, variant = "blue" }) {
   );
 }
 
-export function FormModal({ title, open, onClose, onSubmit, saving, error, submitLabel, children }) {
+export function FormModal({ title, open, onClose, onSubmit, saving, error, submitLabel = "Save", children }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -439,7 +439,7 @@ export function FormDrawer({
   onSubmit,
   saving,
   error,
-  submitLabel,
+  submitLabel = "Save",
   wide = false,
   children,
 }) {

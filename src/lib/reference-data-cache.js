@@ -25,7 +25,7 @@ export function fetchProductGroupCountsCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "product-group-counts");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/products/group-counts");
+    const res = await apiRequest("/products/group-counts", { loading: false });
     return {
       by_subcategory_id: res?.by_subcategory_id ?? {},
       by_category_id: res?.by_category_id ?? {},
@@ -44,7 +44,10 @@ export function fetchCategoriesCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "categories");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/categories", { searchParams: { per_page: 200 } });
+    const res = await apiRequest("/categories", {
+      searchParams: { per_page: 200 },
+      loading: false,
+    });
     return res.data ?? [];
   });
 }
@@ -53,7 +56,10 @@ export function fetchSubCategoriesCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "sub-categories");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/sub-categories", { searchParams: { per_page: 500 } });
+    const res = await apiRequest("/sub-categories", {
+      searchParams: { per_page: 500 },
+      loading: false,
+    });
     return res.data ?? [];
   });
 }
@@ -62,7 +68,10 @@ export function fetchVatsCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "vats");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/vats", { searchParams: { per_page: 50 } });
+    const res = await apiRequest("/vats", {
+      searchParams: { per_page: 50 },
+      loading: false,
+    });
     return res.data ?? [];
   });
 }
@@ -71,7 +80,10 @@ export function fetchSuppliersCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "suppliers");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/suppliers", { searchParams: { per_page: 200 } });
+    const res = await apiRequest("/suppliers", {
+      searchParams: { per_page: 200 },
+      loading: false,
+    });
     return res.data ?? [];
   });
 }
@@ -80,7 +92,10 @@ export function fetchUomsCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "uoms");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/uoms", { searchParams: { per_page: 500 } });
+    const res = await apiRequest("/uoms", {
+      searchParams: { per_page: 500 },
+      loading: false,
+    });
     return res.data ?? [];
   });
 }
@@ -101,7 +116,10 @@ export function fetchBranchesCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "branches");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/branches", { searchParams: { per_page: 200 } });
+    const res = await apiRequest("/branches", {
+      searchParams: { per_page: 200 },
+      loading: false,
+    });
     return (res.data ?? []).filter(
       (branch) => !orgId || branch.organization_id === orgId,
     );
@@ -112,7 +130,10 @@ export function fetchRoutesCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "routes");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/routes", { searchParams: { per_page: 200 } });
+    const res = await apiRequest("/routes", {
+      searchParams: { per_page: 200 },
+      loading: false,
+    });
     return (res.data ?? []).filter(
       (route) => !orgId || route.organization_id === orgId,
     );
@@ -137,7 +158,10 @@ export function fetchUsersCached(organizationId, { path = "/users" } = {}) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "users", path === "/users" ? "" : path);
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest(path, { searchParams: { per_page: 200 } });
+    const res = await apiRequest(path, {
+      searchParams: { per_page: 200 },
+      loading: false,
+    });
     return res.data ?? [];
   });
 }
@@ -149,6 +173,7 @@ export function fetchEmployeesCached(organizationId) {
   return fetchOrgCached(key, async () => {
     const res = await apiRequest("/employees", {
       searchParams: { per_page: 200, fields: "lean" },
+      loading: false,
     });
     return res.data ?? [];
   });
@@ -158,7 +183,10 @@ export function fetchDriversCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "drivers");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/drivers", { searchParams: { per_page: 200 } });
+    const res = await apiRequest("/drivers", {
+      searchParams: { per_page: 200 },
+      loading: false,
+    });
     return res.data ?? [];
   });
 }
@@ -167,7 +195,10 @@ export function fetchVehiclesCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "vehicles");
   return fetchOrgCached(key, async () => {
-    const res = await apiRequest("/vehicles", { searchParams: { per_page: 200 } });
+    const res = await apiRequest("/vehicles", {
+      searchParams: { per_page: 200 },
+      loading: false,
+    });
     return res.data ?? [];
   });
 }

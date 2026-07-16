@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { TabPaneActivityProvider } from "@/contexts/tab-pane-activity-context";
 import { useTabWorkspace } from "@/contexts/tab-workspace-context";
 import { TabPaneRouterFreeze } from "@/components/layout/tab-pane-router-freeze";
+import { AppRouteLoading } from "@/components/shared/app-route-loading";
 import { SCREEN_COMPONENTS } from "@/lib/screen-registry-components";
 import {
   isRegisteredHref,
@@ -19,6 +20,7 @@ import { isTabWorkspaceRoute, normalizeTabHref } from "@/lib/tab-workspace";
  * Registered screens stay mounted while their tab is open — one instance per
  * concrete pathname (so /customers/1 and /customers/2 are separate panes).
  * Unregistered routes use live Next.js `children` for the active URL only.
+ * Screen modules load on first open via React.lazy.
  */
 function RegisteredTabPane({ entry, paneHref, isActive }) {
   const Screen = SCREEN_COMPONENTS[entry.id];
@@ -32,7 +34,9 @@ function RegisteredTabPane({ entry, paneHref, isActive }) {
       data-tab-registry={entry.id}
     >
       <TabPaneRouterFreeze href={paneHref}>
-        <Screen />
+        <Suspense fallback={<AppRouteLoading label="Loading page…" />}>
+          <Screen />
+        </Suspense>
       </TabPaneRouterFreeze>
     </div>
   );

@@ -9,6 +9,7 @@ import { isModuleEnabledForNav } from "@/lib/module-registry";
 import {
   DashboardErrorBanner,
   DashboardQuickLinks,
+  DashboardRefreshButton,
   DashboardSection,
 } from "@/components/dashboard/dashboard-shared";
 import { salesChannelLabel } from "@/lib/user-facing-labels";
@@ -32,6 +33,7 @@ const MODULE_LINKS = [
 export function OverviewDashboard() {
   const { user, organization, capabilities, isModuleEnabled, hasPermission } = useAuth();
   const [dashError, setDashError] = useState(null);
+  const [reportsRefreshKey, setReportsRefreshKey] = useState(0);
 
   const enabledModules = useMemo(
     () => Object.entries(capabilities?.modules ?? {}).filter(([, on]) => on).map(([key]) => key),
@@ -59,14 +61,22 @@ export function OverviewDashboard() {
       title="Dashboard"
       subtitle={`Welcome back, ${user?.full_name ?? user?.username ?? "there"}`}
       action={
-        hasPermission(P.reports.hub.view) ? (
-          <Link
-            href="/reports"
-            className="inline-flex items-center theme-secondary-btn rounded-lg border px-4 py-2 text-sm font-medium dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-          >
-            All reports
-          </Link>
-        ) : null
+        <div className="flex flex-wrap items-center gap-2">
+          <DashboardRefreshButton
+            onClick={() => {
+              setDashError(null);
+              setReportsRefreshKey((key) => key + 1);
+            }}
+          />
+          {hasPermission(P.reports.hub.view) ? (
+            <Link
+              href="/reports"
+              className="inline-flex items-center theme-secondary-btn rounded-lg border px-4 py-2 text-sm font-medium dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            >
+              All reports
+            </Link>
+          ) : null}
+        </div>
       }
     >
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -103,7 +113,11 @@ export function OverviewDashboard() {
 
       <DashboardErrorBanner message={dashError} />
 
-      <ReportsDashboardSection workspaceScope="backoffice" onError={setDashError} />
+      <ReportsDashboardSection
+        workspaceScope="backoffice"
+        onError={setDashError}
+        refreshKey={reportsRefreshKey}
+      />
 
       <DashboardSection title="Quick access" subtitle="Jump to a module dashboard" className="mt-8">
         <DashboardQuickLinks links={quickLinks} />
