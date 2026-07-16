@@ -226,6 +226,10 @@ export function buildLpoPrintHtml({
   const supplierPin = supplier?.tax_pin ?? "—";
   const supplierTown = supplier?.town ?? "—";
   const paymentTerms = lpo?.terms?.trim() || "—";
+  const deliverAt =
+    String(lpo?.delivery_address ?? "").trim() ||
+    String(buyer?.address ?? "").trim() ||
+    "—";
 
   const noteLines = resolveLpoDeliveryNotes(lpo, printSettings ?? {});
   const kebsWarning = resolveLpoKebsWarning(printSettings ?? {});
@@ -381,7 +385,7 @@ export function buildLpoPrintHtml({
         <p><span class="meta-label">Created On:</span> ${escapeHtml(formatPrintDate(lpo?.order_date ?? lpo?.created_at))}</p>
         ${lpo?.created_by_name ? `<p><span class="meta-label">Created By:</span> ${escapeHtml(lpo.created_by_name)}</p>` : ""}
         <p><span class="meta-label">Valid Until:</span> ${escapeHtml(formatPrintDate(lpo?.due_date))}</p>
-        <p><span class="meta-label">Deliver At:</span> ${escapeHtml(lpo?.delivery_address || "—")}</p>
+        <p><span class="meta-label">Deliver At:</span> ${escapeHtml(deliverAt)}</p>
         ${lpo?.reference_number ? `<p><span class="meta-label">Your Ref:</span> ${escapeHtml(lpo.reference_number)}</p>` : ""}
       </div>
     </div>

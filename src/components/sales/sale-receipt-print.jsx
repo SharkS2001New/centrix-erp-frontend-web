@@ -227,7 +227,8 @@ export function buildSaleReceiptHtml(
   <style>
     body { font-family: ${font}; margin: 0; padding: 12px; color: #000; background: #fff; font-size: ${px(10)}; ${orgPrintInkStyles(generalSettings, "thermal")} }
     .receipt { width: 320px; margin: 0 auto; }
-    .company-name { text-align: center; font-size: ${hpx(14)}; font-weight: var(--print-w-header, 700); letter-spacing: .04em; margin-bottom: 4px; text-transform: uppercase; }
+    .company-name,
+    .org-name { text-align: center; font-size: ${hpx(14)}; font-weight: var(--print-w-header, 700); letter-spacing: .04em; margin-bottom: 4px; text-transform: uppercase; }
     .company-meta { text-align: center; font-size: ${hpx(10)}; color: #000; line-height: 1.45; font-weight: var(--print-w-header, 600); }
     .doc-title { text-align: center; font-size: ${px(11)}; font-weight: 700; letter-spacing: .12em; margin: 10px 0 8px; text-transform: uppercase; }
     .divider { border-top: 1px dashed #000; margin: 8px 0; }
@@ -276,7 +277,8 @@ export function buildSaleReceiptHtml(
     .center { text-align: center; }
     @media print {
       body { font-size: ${px(10, true)}; }
-      .company-name { font-size: ${hpx(14, true)}; }
+      .company-name,
+      .org-name { font-size: ${hpx(14, true)}; }
       .company-meta { font-size: ${hpx(10, true)}; }
       .doc-title { font-size: ${px(11, true)}; }
       .meta-grid { font-size: ${px(9, true)}; }

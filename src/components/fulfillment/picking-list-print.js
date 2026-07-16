@@ -12,9 +12,9 @@ import {
 import { documentFooterHtmlFromText } from "@/lib/footer-line-format";
 import { formatFulfillmentQty } from "@/lib/fulfillment-quantity";
 import {
+  createOrgPrintPx,
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
-  orgPrintPx,
 } from "@/lib/print-typography";
 
 function escapeHtml(value) {
@@ -108,14 +108,15 @@ function buildPickingLineRows(lines, includeShelfLocation = true, uomByProductCo
 }
 
 function pickingListPrintStyles(generalSettings, includeShelfLocation = true) {
-  const px = (n, important = false) => orgPrintPx(n, generalSettings, important);
-  const fontFamily = orgPrintFontFamilyFromSettings(generalSettings);
+  const printPx = createOrgPrintPx(generalSettings, "loading_sheet");
+  const px = printPx.body;
+  const fontFamily = orgPrintFontFamilyFromSettings(generalSettings, "loading_sheet");
 
   return `
-    ${orgPrintInkStyles(generalSettings)}
-    ${documentPrintEdgeFooterStyles()}
+    ${orgPrintInkStyles(generalSettings, "loading_sheet")}
+    ${documentPrintEdgeFooterStyles(generalSettings, { variant: "loading_sheet" })}
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: ${fontFamily}; color: #0f172a; }
+    body { margin: 0; font-family: ${fontFamily}; color: #0f172a; font-size: ${px(12)}; }
     .page { padding: ${px(24)}; }
     .org-header { text-align: center; margin-bottom: ${px(12)}; }
     .org-logo { max-height: ${px(48)}; margin-bottom: ${px(6)}; }
@@ -139,6 +140,7 @@ function pickingListPrintStyles(generalSettings, includeShelfLocation = true) {
     .summary-row { display: flex; justify-content: space-between; font-size: ${px(12)}; margin: ${px(4)} 0; }
     .empty { text-align: center; color: #64748b; padding: ${px(16)}; }
     @media print {
+      body { font-size: ${px(12, true)}; }
       .page { padding: ${px(12, true)}; }
       thead th { font-size: ${px(11, true)}; }
       tbody td { font-size: ${px(11, true)}; }

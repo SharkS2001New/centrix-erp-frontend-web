@@ -138,14 +138,18 @@ export function LpoFormFields({
                   className={inputClassName()}
                   value={form.delivery_address}
                   onChange={(e) => updateField("delivery_address", e.target.value)}
-                  placeholder="Branch delivery address"
+                  placeholder={branchAddress || "Branch address from Administration → Branches"}
                   required
                 />
                 {branchAddress ? (
                   <p className="mt-1 text-xs text-slate-500">
                     Prefilled from your branch address. You can edit if needed.
                   </p>
-                ) : null}
+                ) : (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Set the branch address under Administration → Branches so this can be prefilled.
+                  </p>
+                )}
               </Field>
               <div className="md:col-span-2 border-t border-slate-100 pt-4">
                 <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">

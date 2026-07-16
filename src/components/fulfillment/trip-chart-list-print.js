@@ -11,9 +11,9 @@ import {
 } from "@/lib/document-print-edge-footer";
 import { documentFooterHtmlFromText } from "@/lib/footer-line-format";
 import {
+  createOrgPrintPx,
   orgPrintFontFamilyFromSettings,
   orgPrintInkStyles,
-  orgPrintPx,
 } from "@/lib/print-typography";
 import { saleCustomerLabel } from "@/lib/sales";
 
@@ -121,14 +121,15 @@ export function buildTripChartCustomerRows({ sales, orders } = {}) {
 }
 
 function tripChartListPrintStyles(generalSettings) {
-  const px = (n, important = false) => orgPrintPx(n, generalSettings, important);
-  const fontFamily = orgPrintFontFamilyFromSettings(generalSettings);
+  const printPx = createOrgPrintPx(generalSettings, "loading_sheet");
+  const px = printPx.body;
+  const fontFamily = orgPrintFontFamilyFromSettings(generalSettings, "loading_sheet");
 
   return `
-    ${orgPrintInkStyles(generalSettings)}
-    ${documentPrintEdgeFooterStyles()}
+    ${orgPrintInkStyles(generalSettings, "loading_sheet")}
+    ${documentPrintEdgeFooterStyles(generalSettings, { variant: "loading_sheet" })}
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: ${fontFamily}; color: #0f172a; }
+    body { margin: 0; font-family: ${fontFamily}; color: #0f172a; font-size: ${px(12)}; }
     .page { padding: ${px(24)}; }
     .org-header { text-align: center; margin-bottom: ${px(12)}; }
     .org-logo { max-height: ${px(48)}; margin-bottom: ${px(6)}; }
@@ -168,7 +169,7 @@ function tripChartListPrintStyles(generalSettings) {
     .signatures .line { font-size: ${px(11)}; margin: ${px(10)} 0; }
     .doc-footer { margin-top: ${px(20)}; font-size: ${px(10)}; color: #64748b; }
     @media print {
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: ${px(12, true)}; }
       .page { padding: ${px(12, true)}; }
     }
   `;

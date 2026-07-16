@@ -126,6 +126,131 @@ export function FulfillmentAssignmentDialog({
   );
 }
 
+/**
+ * Assign or change driver + vehicle on a trip chart before dispatch.
+ */
+export function TripAssignmentDialog({
+  open,
+  trip = null,
+  drivers = [],
+  vehicles = [],
+  onClose,
+  onConfirm,
+  busy = false,
+  title = "Assign driver & vehicle",
+  description = "Select who will drive this trip chart and which vehicle to use before dispatch.",
+  confirmLabel = "Save assignment",
+}) {
+  const activeDrivers = useMemo(
+    () => drivers.filter((d) => d.is_active !== false),
+    [drivers],
+  );
+  const activeVehicles = useMemo(
+    () => vehicles.filter((v) => v.is_active !== false),
+    [vehicles],
+  );
+
+  const [driverId, setDriverId] = useState("");
+  const [vehicleId, setVehicleId] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    const currentDriverId = trip?.driver_id ?? trip?.driver?.id;
+    const currentVehicleId = trip?.vehicle_id ?? trip?.vehicle?.id;
+    const preferredDriver =
+      (currentDriverId != null && activeDrivers.find((d) => Number(d.id) === Number(currentDriverId))) ||
+      activeDrivers[0];
+    setDriverId(preferredDriver?.id != null ? String(preferredDriver.id) : "");
+    const preferredVehicleId =
+      currentVehicleId ?? preferredDriver?.default_vehicle_id ?? "";
+    setVehicleId(preferredVehicleId != null && preferredVehicleId !== "" ? String(preferredVehicleId) : "");
+  }, [open, trip, activeDrivers]);
+
+  useEffect(() => {
+    if (!open || !driverId || vehicleId) return;
+    const driver = activeDrivers.find((d) => String(d.id) === driverId);
+    if (driver?.default_vehicle_id) {
+      setVehicleId(String(driver.default_vehicle_id));
+    }
+  }, [open, driverId, activeDrivers, vehicleId]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div
+        className="theme-panel w-full max-w-md rounded-xl border p-6 shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="trip-assign-title"
+      >
+        <h2 id="trip-assign-title" className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+          {title}
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          {description}
+          {trip?.trip_code ? ` · ${trip.trip_code}` : null}
+        </p>
+
+        <div className="mt-5 space-y-4">
+          <Field label="Driver">
+            <select
+              className={inputClassName()}
+              value={driverId}
+              onChange={(e) => setDriverId(e.target.value)}
+            >
+              <option value="">Select driver…</option>
+              {activeDrivers.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.full_name ?? d.driver_code}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Vehicle">
+            <select
+              className={inputClassName()}
+              value={vehicleId}
+              onChange={(e) => setVehicleId(e.target.value)}
+            >
+              <option value="">Select vehicle…</option>
+              {activeVehicles.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.plate_number ?? v.vehicle_name ?? v.vehicle_code}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200"
+            onClick={onClose}
+            disabled={busy}
+          >
+            Cancel
+          </button>
+          <PrimaryButton
+            type="button"
+            showIcon={false}
+            disabled={busy || !driverId || !vehicleId}
+            onClick={() =>
+              onConfirm({
+                driver_id: Number(driverId),
+                vehicle_id: Number(vehicleId),
+              })
+            }
+          >
+            {busy ? "Saving…" : confirmLabel}
+          </PrimaryButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function emptyLineRows(items) {
   return (items ?? []).map((item) => ({
     sale_item_id: item.id,

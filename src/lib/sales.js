@@ -318,9 +318,65 @@ export function saleStatusLabel(status, workflow) {
 export function getPaymentMethodKind(method) {
   const code = String(method?.method_code ?? "").toUpperCase();
   if (code.includes("CASH")) return "cash";
-  if (code.includes("MPESA") || code.includes("M-PESA")) return "mpesa";
+  if (code.includes("MPESA") || code.includes("M-PESA") || code.includes("M_PESA")) return "mpesa";
   if (code.includes("CREDIT")) return "credit";
+  if (code.includes("CHEQUE") || code.includes("CHECK")) return "cheque";
   return "bank";
+}
+
+/**
+ * Map POS tender codes (CASH / MPESA / EQUITY / …) onto org payment_methods rows.
+ * Bank-specific UI codes fall back to BANK when Equity/KCB/Other rows are not seeded.
+ */
+export function resolvePaymentMethodByCode(methods, code) {
+  const list = Array.isArray(methods) ? methods : [];
+  const wanted = String(code ?? "CASH").toUpperCase().trim() || "CASH";
+  const aliasesByCode = {
+    CASH: ["CASH"],
+    MPESA: ["MPESA", "M-PESA", "M_PESA"],
+    CHEQUE: ["CHEQUE", "CHECK"],
+    CREDIT: ["CREDIT"],
+    CARD: ["CARD"],
+    VOUCHER: ["VOUCHER"],
+    POINTS: ["POINTS"],
+    BANK: ["BANK", "BANK_TRANSFER", "TRANSFER"],
+    EQUITY: ["EQUITY", "BANK", "BANK_TRANSFER", "TRANSFER"],
+    KCB: ["KCB", "BANK", "BANK_TRANSFER", "TRANSFER"],
+    OTHER: ["OTHER", "BANK", "BANK_TRANSFER", "TRANSFER"],
+  };
+  const aliases = aliasesByCode[wanted] ?? [wanted];
+
+  for (const alias of aliases) {
+    const exact = list.find((row) => String(row?.method_code ?? "").toUpperCase() === alias);
+    if (exact) return exact;
+  }
+
+  for (const alias of aliases) {
+    const fuzzy = list.find((row) => {
+      const rowCode = String(row?.method_code ?? "").toUpperCase();
+      return rowCode.includes(alias) || alias.includes(rowCode);
+    });
+    if (fuzzy) return fuzzy;
+  }
+
+  const kindByCode = {
+    CASH: "cash",
+    MPESA: "mpesa",
+    CHEQUE: "cheque",
+    CREDIT: "credit",
+    EQUITY: "bank",
+    KCB: "bank",
+    OTHER: "bank",
+    BANK: "bank",
+    CARD: "bank",
+  };
+  const kind = kindByCode[wanted] ?? null;
+  if (kind) {
+    const byKind = list.find((row) => getPaymentMethodKind(row) === kind);
+    if (byKind) return byKind;
+  }
+
+  return null;
 }
 
 function formatPaymentMethodCode(code) {

@@ -39,6 +39,8 @@ import {
 import { mergeDistributionSettings } from "@/lib/distribution-settings";
 import { formatCollectedCashDefault, resolveTripExpectedCash } from "@/lib/trip-cod";
 import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
+import { TripAssignmentDialog } from "@/components/fulfillment/fulfillment-assignment-dialog";
+import { fetchDriversCached, fetchVehiclesCached } from "@/lib/reference-data-cache";
 import {
   buildUomByProductCode,
   fetchCatalogForProductCodes,
@@ -80,6 +82,9 @@ export function FulfillmentTripsIdScreen() {
   const [collectedCash, setCollectedCash] = useState("");
   const [catalogProducts, setCatalogProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [assignDialog, setAssignDialog] = useState(null);
 
   const uomByProductCode = useMemo(
     () => buildUomByProductCode(catalogProducts, uoms),
@@ -147,6 +152,27 @@ export function FulfillmentTripsIdScreen() {
       setLoading(false);
     }
   }, [id, user?.full_name, user?.username, user?.organization_id]);
+
+  useEffect(() => {
+    const orgId = user?.organization_id;
+    if (!orgId) return;
+    let cancelled = false;
+    Promise.all([fetchDriversCached(orgId), fetchVehiclesCached(orgId)])
+      .then(([driverRows, vehicleRows]) => {
+        if (cancelled) return;
+        setDrivers(driverRows ?? []);
+        setVehicles(vehicleRows ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDrivers([]);
+          setVehicles([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.organization_id]);
 
   useEffect(() => {
     loadTrip();
@@ -260,6 +286,43 @@ export function FulfillmentTripsIdScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function openAssignDialog({ dispatchAfterSave = false } = {}) {
+    setAssignDialog({ dispatchAfterSave });
+  }
+
+  async function saveTripAssignment({ driver_id, vehicle_id }) {
+    const dispatchAfterSave = Boolean(assignDialog?.dispatchAfterSave);
+    setBusy(true);
+    try {
+      await apiRequest(`/dispatch-trips/${id}`, {
+        method: "PATCH",
+        body: { driver_id, vehicle_id },
+      });
+      setAssignDialog(null);
+      notifySuccess(dispatchAfterSave ? "Driver assigned. Dispatching trip…" : "Driver and vehicle saved.");
+      await loadTrip();
+      if (dispatchAfterSave) {
+        await apiRequest(`/dispatch-trips/${id}/start`, { method: "POST" });
+        notifySuccess("Trip dispatched.");
+        await loadTrip();
+      }
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not save driver assignment");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleDispatchClick() {
+    const hasDriver = Boolean(trip?.driver_id ?? trip?.driver?.id);
+    const hasVehicle = Boolean(trip?.vehicle_id ?? trip?.vehicle?.id);
+    if (!hasDriver || !hasVehicle) {
+      openAssignDialog({ dispatchAfterSave: true });
+      return;
+    }
+    void runAction(`/dispatch-trips/${id}/start`);
   }
 
   const canDeleteTrip =
@@ -380,6 +443,10 @@ export function FulfillmentTripsIdScreen() {
     trip.status === "draft" &&
     !loadingLocked &&
     !["completed", "locked"].includes(String(pickingList?.status ?? ""));
+  const hasDriver = Boolean(trip.driver_id ?? trip.driver?.id);
+  const hasVehicle = Boolean(trip.vehicle_id ?? trip.vehicle?.id);
+  const needsAssignment = !hasDriver || !hasVehicle;
+  const canAssignCrew = ["draft", "loading"].includes(trip.status);
   const codEnabled = Boolean(distributionSettings.enableCodReconciliation);
   const expectedCash = resolveTripExpectedCash(trip);
   const showCashSettlement =
@@ -526,6 +593,15 @@ export function FulfillmentTripsIdScreen() {
         <div>
           <p className="text-xs uppercase text-slate-500">Driver</p>
           <p className="mt-1 font-medium text-slate-900">{trip.driver?.full_name ?? "—"}</p>
+          {canAssignCrew ? (
+            <button
+              type="button"
+              className="mt-1 text-xs font-medium text-[#185FA5] hover:underline"
+              onClick={() => openAssignDialog()}
+            >
+              {hasDriver ? "Change driver" : "Set driver"}
+            </button>
+          ) : null}
         </div>
         <div>
           <p className="text-xs uppercase text-slate-500">Turn boys</p>
@@ -542,6 +618,15 @@ export function FulfillmentTripsIdScreen() {
           </p>
           {trip.vehicle?.max_weight_kg ? (
             <p className="text-xs text-slate-500">Max {trip.vehicle.max_weight_kg} kg</p>
+          ) : null}
+          {canAssignCrew && !hasVehicle ? (
+            <button
+              type="button"
+              className="mt-1 text-xs font-medium text-[#185FA5] hover:underline"
+              onClick={() => openAssignDialog()}
+            >
+              Set vehicle
+            </button>
           ) : null}
         </div>
         <div>
@@ -640,15 +725,36 @@ export function FulfillmentTripsIdScreen() {
           ) : null}
 
           {canStart ? (
-            <div id="trip-dispatch">
+            <div id="trip-dispatch" className="flex w-full flex-wrap items-end gap-3">
+              {needsAssignment ? (
+                <p className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Assign a driver and vehicle before dispatch.
+                </p>
+              ) : null}
+              {needsAssignment ? (
+                <PrimaryButton
+                  type="button"
+                  showIcon={false}
+                  disabled={busy}
+                  onClick={() => openAssignDialog({ dispatchAfterSave: false })}
+                >
+                  2. Assign driver & vehicle
+                </PrimaryButton>
+              ) : null}
               <PrimaryButton
                 type="button"
                 showIcon={false}
                 disabled={busy || (lines.length > 0 && !loadingLocked)}
-                title={lines.length > 0 && !loadingLocked ? "Lock the loading list first" : undefined}
-                onClick={() => runAction(`/dispatch-trips/${id}/start`)}
+                title={
+                  lines.length > 0 && !loadingLocked
+                    ? "Lock the loading list first"
+                    : needsAssignment
+                      ? "Assign driver and vehicle, then dispatch"
+                      : undefined
+                }
+                onClick={handleDispatchClick}
               >
-                2. Dispatch trip
+                {needsAssignment ? "2. Assign & dispatch" : "2. Dispatch trip"}
               </PrimaryButton>
             </div>
           ) : null}
@@ -1075,6 +1181,23 @@ export function FulfillmentTripsIdScreen() {
           />
         </div>
       </section>
+
+      <TripAssignmentDialog
+        open={Boolean(assignDialog)}
+        trip={trip}
+        drivers={drivers}
+        vehicles={vehicles}
+        busy={busy}
+        title={assignDialog?.dispatchAfterSave ? "Assign driver before dispatch" : "Assign driver & vehicle"}
+        description={
+          assignDialog?.dispatchAfterSave
+            ? "This trip chart needs a driver and vehicle. Choose them here, then dispatch will continue."
+            : "Select who will drive this trip chart and which vehicle to use before dispatch."
+        }
+        confirmLabel={assignDialog?.dispatchAfterSave ? "Save & dispatch" : "Save assignment"}
+        onClose={() => setAssignDialog(null)}
+        onConfirm={(meta) => void saveTripAssignment(meta)}
+      />
     </CatalogPageShell>
   );
 }

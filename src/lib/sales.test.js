@@ -1,8 +1,33 @@
 import { describe, expect, it } from "vitest";
 import {
+  resolvePaymentMethodByCode,
   shouldOpenBackofficeOrderEdit,
   shouldRestoreOrderToCart,
 } from "@/lib/sales";
+
+describe("resolvePaymentMethodByCode", () => {
+  const methods = [
+    { id: 1, method_code: "CASH", method_name: "Cash" },
+    { id: 2, method_code: "MPESA", method_name: "M-Pesa" },
+    { id: 3, method_code: "BANK", method_name: "Bank Transfer" },
+    { id: 4, method_code: "CHEQUE", method_name: "Cheque" },
+  ];
+
+  it("resolves exact tender codes", () => {
+    expect(resolvePaymentMethodByCode(methods, "CASH")?.id).toBe(1);
+    expect(resolvePaymentMethodByCode(methods, "mpesa")?.id).toBe(2);
+  });
+
+  it("maps Equity/KCB/Other bank tenders onto BANK when dedicated rows are missing", () => {
+    expect(resolvePaymentMethodByCode(methods, "EQUITY")?.id).toBe(3);
+    expect(resolvePaymentMethodByCode(methods, "KCB")?.id).toBe(3);
+    expect(resolvePaymentMethodByCode(methods, "OTHER")?.id).toBe(3);
+  });
+
+  it("returns null when no methods are loaded", () => {
+    expect(resolvePaymentMethodByCode([], "CASH")).toBeNull();
+  });
+});
 
 describe("sales order edit routing", () => {
   const mobileBookedSale = {

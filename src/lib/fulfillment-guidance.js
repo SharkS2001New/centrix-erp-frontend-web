@@ -124,6 +124,12 @@ export function resolveTripDetailGuidance({ trip, loadingList, pickingList, dist
       skipWhen: lineCount === 0,
     },
     {
+      id: "crew",
+      label: "Assign driver & vehicle",
+      hint: "Set who will drive this trip chart and which vehicle to use before leaving the depot.",
+      done: Boolean(trip?.driver_id ?? trip?.driver?.id) && Boolean(trip?.vehicle_id ?? trip?.vehicle?.id),
+    },
+    {
       id: "dispatch",
       label: "Dispatch trip",
       hint: "Vehicle leaves the depot — status becomes In transit. This is when dispatch happens.",
@@ -169,6 +175,9 @@ export function resolveTripDetailGuidance({ trip, loadingList, pickingList, dist
     } else if (nextStep.id === "lock") {
       nextStep.actionLabel = "Lock loading list below";
       nextStep.scrollTo = "trip-lock-loading";
+    } else if (nextStep.id === "crew") {
+      nextStep.actionLabel = "Assign driver below";
+      nextStep.scrollTo = "trip-dispatch";
     } else if (nextStep.id === "dispatch") {
       nextStep.actionLabel = "Dispatch trip below";
       nextStep.scrollTo = "trip-dispatch";

@@ -128,10 +128,6 @@ export function buildSaleInvoiceHtml(
     seller,
   });
   const customerTown = customer?.town ?? (showBranchOnReceipt ? branchName : null) ?? "—";
-  const deliverAt =
-    showBranchOnReceipt && branchName
-      ? [branchName, storeAddress].filter(Boolean).join(" · ") || "—"
-      : storeAddress || "—";
   const paymentTerms = customer?.terms_of_payment ?? paymentLine;
 
   const showDiscountColumn = shouldShowPrintDiscountColumn({
@@ -206,9 +202,8 @@ export function buildSaleInvoiceHtml(
     metaRow("Date", formatInvoiceDateShort(createdOn)),
     metaRow("K.R.A Pin", customer?.kra_pin ?? seller.tax_pin),
     metaRow("Terms of Payment", paymentTerms),
-    metaRow("Location", customerTown !== "—" ? customerTown : deliverAt),
+    metaRow("Location", customerTown),
     metaRow("Valid Until", formatInvoiceDate(validUntil)),
-    metaRow("Deliver At", deliverAt),
   ].join("");
 
   const totalDiscount =

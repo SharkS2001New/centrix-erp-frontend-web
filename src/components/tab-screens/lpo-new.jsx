@@ -58,10 +58,12 @@ export function LpoNewScreen() {
   });
 
   useEffect(() => {
-    if (branchAddress && !form.delivery_address) {
-      setForm((f) => ({ ...f, delivery_address: branchAddress }));
-    }
-  }, [branchAddress, form.delivery_address]);
+    if (!branchAddress) return;
+    setForm((f) => {
+      if (String(f.delivery_address ?? "").trim()) return f;
+      return { ...f, delivery_address: branchAddress };
+    });
+  }, [branchAddress]);
 
   useEffect(() => {
     const branchId = user?.branch_id;
@@ -78,8 +80,13 @@ export function LpoNewScreen() {
         setSuppliers(suppliersData ?? []);
         setUoms(uomsData ?? []);
         setVats(vatsData ?? []);
-        const addr = branch?.branch_address?.trim();
-        if (addr) setBranchAddress(addr);
+        const addr = String(branch?.branch_address ?? "").trim();
+        if (addr) {
+          setBranchAddress(addr);
+          setForm((f) =>
+            String(f.delivery_address ?? "").trim() ? f : { ...f, delivery_address: addr },
+          );
+        }
       })
       .catch(() => setFormError("Failed to load form data."));
   }, [user?.branch_id, user?.organization_id]);

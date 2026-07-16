@@ -121,9 +121,8 @@ export function buildSaleDocumentOrgHeaderHtml(
   const header = buildReportOrgHeaderHtml(branding);
   if (header?.trim()) {
     if (layout === "thermal") {
-      return `<div class="org-brand" style="text-align:center;margin-bottom:8px;">
-      ${header.replace('class="org-name"', 'class="org-name" style="font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;"')}
-    </div>`;
+      // Font size comes from receipt CSS (.org-name / .company-name) so org print settings apply.
+      return `<div class="org-brand" style="text-align:center;margin-bottom:8px;">${header}</div>`;
     }
     return `<div class="org-brand" style="text-align:center;margin-bottom:10px;">${header}</div>`;
   }
@@ -132,7 +131,7 @@ export function buildSaleDocumentOrgHeaderHtml(
   if (!name) return "";
 
   if (layout === "thermal") {
-    return `<div class="org-brand" style="text-align:center;margin-bottom:8px;"><div class="company-name" style="font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">${escapeHtml(name)}</div></div>`;
+    return `<div class="org-brand" style="text-align:center;margin-bottom:8px;"><div class="company-name">${escapeHtml(name)}</div></div>`;
   }
 
   return `<div class="org-brand" style="text-align:center;margin-bottom:10px;"><div class="brand-name">${escapeHtml(name)}</div></div>`;
