@@ -201,30 +201,43 @@ export function InventoryStockScreen() {
   }, []);
 
   const loadReferenceData = useCallback(async () => {
-    try {
-      const [subsData, catsData, branchRows, retailData] = await Promise.all([
-        fetchSubCategoriesCached(user?.organization_id),
-        fetchCategoriesCached(user?.organization_id),
-        fetchBranchesCached(user?.organization_id),
-        fetchRetailPackagesCached(user?.organization_id),
-      ]);
-      setSubcategories(subsData ?? []);
-      setCategories(catsData ?? []);
-      setBranches(branchRows ?? []);
-      setRetailPackages(retailData ?? []);
-      if (user?.branch_id) {
-        setBranchId(String(user.branch_id));
-      } else if ((branchRows ?? []).length === 1) {
-        setBranchId(String(branchRows[0].id));
-      } else {
-        const fallback = defaultProductBranchId(capabilities, user, branchRows ?? []);
-        if (fallback) setBranchId(fallback);
-      }
-    } catch (e) {
-      notifyError(e instanceof Error ? e.message : "Failed to load stock filters");
-    } finally {
-      setLoading(false);
+    // Prefer the user's home branch immediately so stock can load even if some
+    // filter lookups fail (e.g. missing catalogue.view).
+    if (user?.branch_id) {
+      setBranchId(String(user.branch_id));
     }
+
+    const settled = await Promise.allSettled([
+      fetchSubCategoriesCached(user?.organization_id),
+      fetchCategoriesCached(user?.organization_id),
+      fetchBranchesCached(user?.organization_id),
+      fetchRetailPackagesCached(user?.organization_id),
+    ]);
+
+    const [subsResult, catsResult, branchResult, retailResult] = settled;
+    const failed = settled.find((r) => r.status === "rejected");
+    if (failed?.status === "rejected") {
+      notifyError(failed.reason instanceof Error ? failed.reason.message : "Failed to load stock filters");
+    }
+
+    const subsData = subsResult.status === "fulfilled" ? subsResult.value : [];
+    const catsData = catsResult.status === "fulfilled" ? catsResult.value : [];
+    const branchRows = branchResult.status === "fulfilled" ? (branchResult.value ?? []) : [];
+    const retailData = retailResult.status === "fulfilled" ? retailResult.value : [];
+
+    setSubcategories(subsData ?? []);
+    setCategories(catsData ?? []);
+    setBranches(branchRows ?? []);
+    setRetailPackages(retailData ?? []);
+
+    setBranchId((current) => {
+      if (current) return current;
+      if (user?.branch_id) return String(user.branch_id);
+      if ((branchRows ?? []).length === 1) return String(branchRows[0].id);
+      return defaultProductBranchId(capabilities, user, branchRows ?? []) || "";
+    });
+
+    setLoading(false);
   }, [capabilities, user]);
 
   const loadStock = useCallback(async () => {

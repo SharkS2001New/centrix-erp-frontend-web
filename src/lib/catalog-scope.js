@@ -29,16 +29,20 @@ export function defaultProductCatalogScope(capabilities) {
 }
 
 export function defaultProductBranchId(capabilities, user, branches = []) {
-  if (!isMultiBranchCatalog(capabilities)) {
-    return "";
-  }
-  const meta = catalogMetaFromCapabilities(capabilities);
   if (user?.branch_id) {
     return String(user.branch_id);
   }
+  const list = Array.isArray(branches) ? branches : [];
+  if (list.length === 1) {
+    return String(list[0].id);
+  }
+  if (!isMultiBranchCatalog(capabilities)) {
+    return list[0] ? String(list[0].id) : "";
+  }
+  const meta = catalogMetaFromCapabilities(capabilities);
   if (meta.default_branch_id) {
     return String(meta.default_branch_id);
   }
-  const hq = branches.find((b) => b.branch_code === "HQ");
-  return hq ? String(hq.id) : branches[0] ? String(branches[0].id) : "";
+  const hq = list.find((b) => b.branch_code === "HQ");
+  return hq ? String(hq.id) : list[0] ? String(list[0].id) : "";
 }
