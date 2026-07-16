@@ -7,6 +7,8 @@ const MODULES_BY_WORKSPACE = {
   hr: ["hr_payroll"],
   admin: ["admin"],
   pos: ["sales"],
+  hotel_bar_pos: ["hospitality"],
+  hospitality_backoffice: ["hospitality"],
   distribution: [],
 };
 
@@ -17,6 +19,8 @@ const MODULES_BY_WORKSPACE = {
  */
 const PREFIXES_BY_WORKSPACE = {
   pos: ["/pos", "/sales/pos"],
+  hotel_bar_pos: ["/hotel-bar-pos"],
+  hospitality_backoffice: ["/hospitality"],
   backoffice: [
     "/dashboard",
     "/sales",

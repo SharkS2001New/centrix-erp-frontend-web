@@ -17,6 +17,8 @@ export { ORDER_QUEUE_VIEW_PERMISSIONS };
 export const P = {
   dashboard: {
     overview: { view: "dashboard.overview.view" },
+    sales: { view: "dashboard.sales.view" },
+    inventory: { view: "dashboard.inventory.view" },
   },
   catalogue: {
     products: {
@@ -46,7 +48,7 @@ export const P = {
     customer_payments: { view: "payments.customer_payments.view", create: "payments.customer_payments.create", edit: "payments.customer_payments.edit" },
   },
   sales: {
-    dashboard: { view: "sales.dashboard.view" },
+    dashboard: { view: "dashboard.sales.view" },
     order_queues: {
       all: { view: "sales.order_queue_all.view" },
       booked: { view: "sales.order_queue_booked.view" },
@@ -101,7 +103,49 @@ export const P = {
     terminal: { view: "pos.terminal.view" },
     end_of_day: { view: "pos.end_of_day.view" },
   },
+  hotel_bar_pos: {
+    terminal: { view: "hotel_bar_pos.terminal.view" },
+    checks: {
+      view: "hotel_bar_pos.checks.view",
+      create: "hotel_bar_pos.checks.create",
+      edit: "hotel_bar_pos.checks.edit",
+    },
+    room_charge: { create: "hotel_bar_pos.room_charge.create" },
+    shift: { view: "hotel_bar_pos.shift.view", create: "hotel_bar_pos.shift.create" },
+  },
+  hospitality: {
+    dashboard: { view: "hospitality.dashboard.view" },
+    outlets: {
+      view: "hospitality.outlets.view",
+      create: "hospitality.outlets.create",
+      edit: "hospitality.outlets.edit",
+    },
+    rooms: {
+      view: "hospitality.rooms.view",
+      create: "hospitality.rooms.create",
+      edit: "hospitality.rooms.edit",
+    },
+    reservations: {
+      view: "hospitality.reservations.view",
+      create: "hospitality.reservations.create",
+      edit: "hospitality.reservations.edit",
+    },
+    frontdesk: { view: "hospitality.frontdesk.view", edit: "hospitality.frontdesk.edit" },
+    folios: {
+      view: "hospitality.folios.view",
+      create: "hospitality.folios.create",
+      edit: "hospitality.folios.edit",
+    },
+    housekeeping: { view: "hospitality.housekeeping.view", edit: "hospitality.housekeeping.edit" },
+    night_audit: {
+      view: "hospitality.night_audit.view",
+      create: "hospitality.night_audit.create",
+    },
+    reports: { view: "hospitality.reports.view" },
+    settings: { view: "hospitality.settings.view", edit: "hospitality.settings.edit" },
+  },
   inventory: {
+    dashboard: { view: "dashboard.inventory.view" },
     stock: { view: "inventory.stock.view" },
     receipts: { view: "inventory.receipts.view" },
     movements: { view: "inventory.movements.view" },

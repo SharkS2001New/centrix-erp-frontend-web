@@ -20,7 +20,7 @@ import {
 import {
   isProvisionableWorkspaceEnabled,
   patchEnabledModulesForWorkspace,
-  sortProvisionableWorkspaces,
+  provisionableWorkspacesForProfile,
   workspaceToggleIcon,
 } from "@/lib/workspace-modules";
 import { OrganizationCachePanel } from "@/components/admin/organization-cache-panel";
@@ -69,7 +69,10 @@ const PROFILE_TAB_BTN_IDLE = "text-slate-600 hover:text-slate-900";
  *   mode: 'register' | 'manage',
  *   values: Record<string, string>,
  *   onChange: (field: string, value: string) => void,
- *   profilePresets?: Array<{ key: string, label: string }>,
+ *   profilePresets?: Array<{ key: string, label: string, industry?: string }>,
+ *   industries?: Array<{ id: string, label: string, description?: string }>,
+ *   industry?: string,
+ *   onIndustryChange?: (industryId: string) => void,
  *   deploymentProfile?: string,
  *   onProfileChange?: (key: string) => void,
  * }} props
@@ -79,6 +82,9 @@ export function OrganizationTenantProfile({
   values,
   onChange,
   profilePresets = [],
+  industries = [],
+  industry,
+  onIndustryChange,
   deploymentProfile,
   onProfileChange,
   enableTabWorkspace,
@@ -86,8 +92,23 @@ export function OrganizationTenantProfile({
 }) {
   const isRegister = mode === "register";
   const description = isRegister
-    ? "Legal identity and business type for the new organization. Company code is used at sign-in."
-    : "Organization identity and business type. Company code cannot be changed after registration.";
+    ? "Select industry first, then the setup type. Company code is used at sign-in."
+    : "Organization identity and industry. Existing tenants stay on Retail & Distribution unless you switch them to Hotel & Hospitality. Company code cannot be changed after registration.";
+
+  const industryOptions = industries.length
+    ? industries
+    : [
+        { id: "commerce", label: "Retail & Distribution", description: "Shops, wholesale, and logistics." },
+        { id: "hospitality", label: "Hotel & Hospitality", description: "Hotels, bars, and restaurants." },
+      ];
+
+  const setupProfiles = profilePresets.filter((profile) => {
+    if (!industry) return true;
+    if (profile.industry) return profile.industry === industry;
+    const match = industryOptions.find((item) => item.id === industry);
+    const keys = match?.profile_keys ?? match?.profileKeys ?? [];
+    return keys.length === 0 || keys.includes(profile.key);
+  });
 
   return (
     <PlatformFormSection title="Tenant profile" description={description}>
@@ -184,24 +205,46 @@ export function OrganizationTenantProfile({
             onChange={(e) => onChange("vat_regno", e.target.value)}
           />
         </OrgRegisterField>
-        {profilePresets.length > 0 ? (
-          <OrgRegisterField label="Deployment profile *" className="sm:col-span-2 sm:max-w-md">
+        {industryOptions.length > 0 ? (
+          <OrgRegisterField label="Industry *" className="sm:col-span-2 sm:max-w-md">
+            <select
+              className={inputClass}
+              value={industry ?? ""}
+              onChange={(e) => onIndustryChange?.(e.target.value)}
+              required
+            >
+              {industryOptions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              {industryOptions.find((item) => item.id === industry)?.description ||
+                "Applications, roles, and permissions follow the selected industry."}
+            </p>
+          </OrgRegisterField>
+        ) : null}
+        {setupProfiles.length > 0 ? (
+          <OrgRegisterField label="Setup type *" className="sm:col-span-2 sm:max-w-md">
             <select
               className={inputClass}
               value={deploymentProfile}
               onChange={(e) => onProfileChange?.(e.target.value)}
               required
             >
-              {profilePresets.map((profile) => (
+              {setupProfiles.map((profile) => (
                 <option key={profile.key} value={profile.key}>
                   {profile.label}
                 </option>
               ))}
             </select>
             <p className="mt-1 text-xs text-slate-500">
-              {deploymentProfile === "custom"
-                ? "Start from a blank setup and enable only the applications you need on the Applications tab."
-                : "Business type preset. Changing this updates the default application toggles on the Applications tab."}
+              {industry === "hospitality"
+                ? "Hotel & Hospitality setup. Applications tab shows Hotel & Bar POS and Hospitality Backoffice only."
+                : deploymentProfile === "custom"
+                  ? "Start from a blank setup and enable only the applications you need on the Applications tab."
+                  : "Preset within this industry. Changing it updates the default application toggles."}
             </p>
           </OrgRegisterField>
         ) : null}
@@ -702,6 +745,9 @@ export function OrganizationConfigTabs({
   tenantValues,
   onTenantChange,
   profilePresets = [],
+  industries = [],
+  industry,
+  onIndustryChange,
   deploymentProfile,
   onProfileChange,
   enableTabWorkspace,
@@ -721,10 +767,20 @@ export function OrganizationConfigTabs({
 }) {
   const tabs = mode === "register" ? REGISTER_ORG_TABS : MANAGE_ORG_TABS;
   const [activeTab, setActiveTab] = useState("profile");
+  const isHospitality = industry === "hospitality" || deploymentProfile === "hotel_bar";
+  const visibleTabs = isHospitality
+    ? tabs.filter((tab) => tab.id !== "sales" && tab.id !== "workflow")
+    : tabs;
+
+  useEffect(() => {
+    if (isHospitality && (activeTab === "sales" || activeTab === "workflow")) {
+      setActiveTab("profile");
+    }
+  }, [isHospitality, activeTab]);
 
   return (
     <div className="w-full min-w-0 space-y-4">
-      <OrganizationConfigTabBar tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+      <OrganizationConfigTabBar tabs={visibleTabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
       {activeTab === "profile" ? (
         <OrganizationTenantProfile
@@ -732,6 +788,9 @@ export function OrganizationConfigTabs({
           values={tenantValues}
           onChange={onTenantChange}
           profilePresets={profilePresets}
+          industries={industries}
+          industry={industry}
+          onIndustryChange={onIndustryChange}
           deploymentProfile={deploymentProfile}
           onProfileChange={onProfileChange}
           enableTabWorkspace={enableTabWorkspace}
@@ -770,6 +829,8 @@ export function OrganizationConfigTabs({
           onToggle={onToggleModule}
           onSetModules={onSetModules}
           mobileOrdersEnabled={mobileOrdersEnabled}
+          deploymentProfile={deploymentProfile}
+          profilePresets={profilePresets}
         />
       ) : null}
 
@@ -824,9 +885,14 @@ export function OrganizationModuleToggles({
   onToggle,
   onSetModules,
   mobileOrdersEnabled = true,
+  deploymentProfile = null,
+  profilePresets = [],
 }) {
   const domainChildrenMap = useMemo(() => buildDomainChildrenMap(moduleOptions), [moduleOptions]);
-  const workspaces = useMemo(() => sortProvisionableWorkspaces(), []);
+  const workspaces = useMemo(
+    () => provisionableWorkspacesForProfile(deploymentProfile, profilePresets),
+    [deploymentProfile, profilePresets],
+  );
 
   function setWorkspaceEnabled(workspaceId, enable) {
     const next = patchEnabledModulesForWorkspace(
@@ -847,12 +913,21 @@ export function OrganizationModuleToggles({
     }
   }
 
+  const isHotelProfile = deploymentProfile === "hotel_bar";
+
   return (
     <PlatformFormSection
       title="Applications"
-      description="Choose which applications appear on the login workspace screen for this organization. When Administration is disabled, tenant managers cannot open the Administration workspace — configure users and organization settings from the platform instead."
+      description={
+        isHotelProfile
+          ? "For Hotel & Bar tenants, only these two applications can be enabled or disabled. They do not use retail sales / POS carts."
+          : "Choose which applications appear on the login workspace screen for this organization. When Administration is disabled, tenant managers cannot open the Administration workspace — configure users and organization settings from the platform instead."
+      }
     >
       <div className="space-y-4">
+        {workspaces.length === 0 ? (
+          <p className="theme-subtext text-sm">No applications available for this deployment profile.</p>
+        ) : null}
         {workspaces.map((workspace) => {
           const enabled = isProvisionableWorkspaceEnabled(workspace, enabledModules);
           const isDistribution = workspace.id === "distribution";

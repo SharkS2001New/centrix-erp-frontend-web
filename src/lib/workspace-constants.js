@@ -8,12 +8,15 @@ export const WORKSPACE_ICONS = {
   truck: "🚛",
   app: "📱",
   settings: "⚙️",
+  hospitality: "🏨",
 };
 
 /** Display order for the application switcher and choose-workspace screen. */
 export const WORKSPACE_DISPLAY_ORDER = [
   "pos",
   "backoffice",
+  "hotel_bar_pos",
+  "hospitality_backoffice",
   "distribution",
   "accounting",
   "hr",

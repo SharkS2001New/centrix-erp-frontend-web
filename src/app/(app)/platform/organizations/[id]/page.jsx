@@ -14,6 +14,13 @@ import {
 import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-shared";
 import { buildDomainChildrenMap, normalizeDomainModules, patchEnabledModules } from "@/lib/module-registry";
 import { applicationsFromEnabledModules } from "@/lib/workspace-modules";
+import {
+  DEFAULT_INDUSTRY,
+  defaultProfileForIndustry,
+  industryForProfile,
+  normalizeIndustries,
+  profilesForIndustry,
+} from "@/lib/erp-industries";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
 export default function ManageOrganizationPage() {
@@ -25,6 +32,8 @@ export default function ManageOrganizationPage() {
   const [organization, setOrganization] = useState(null);
   const [moduleOptions, setModuleOptions] = useState([]);
   const [profilePresets, setProfilePresets] = useState([]);
+  const [industries, setIndustries] = useState([]);
+  const [industry, setIndustry] = useState(DEFAULT_INDUSTRY);
   const [deploymentProfile, setDeploymentProfile] = useState("wholesale_retail");
   const [enabledModules, setEnabledModules] = useState({});
   const [salesPlatform, setSalesPlatform] = useState(null);
@@ -67,10 +76,18 @@ export default function ManageOrganizationPage() {
       ]);
       setProfilePresets(optionsRes.profiles ?? []);
       setModuleOptions(optionsRes.modules ?? []);
+      const industryList = normalizeIndustries(optionsRes.industries);
+      setIndustries(industryList);
       const org = orgRes.organization ?? {};
       setOrganization(org);
       const childrenMap = buildDomainChildrenMap(optionsRes.modules ?? []);
-      setDeploymentProfile(org.deployment_profile ?? "wholesale_retail");
+      const nextProfile = org.deployment_profile ?? "wholesale_retail";
+      setDeploymentProfile(nextProfile);
+      setIndustry(
+        org.industry ??
+          orgRes.capabilities?.industry ??
+          industryForProfile(nextProfile, industryList, optionsRes.profiles ?? []),
+      );
       setEnabledModules(normalizeDomainModules(orgRes.effective_modules ?? {}, childrenMap));
       setAdministrationEnabled(Boolean(orgRes.effective_modules?.admin));
       setEnableTabWorkspace(orgRes.capabilities?.platform_tab_workspace_enabled !== false);
@@ -111,7 +128,24 @@ export default function ManageOrganizationPage() {
     map[field]?.(value);
   }
 
+  function onIndustryChange(nextIndustry) {
+    setIndustry(nextIndustry);
+    const industryProfiles = profilesForIndustry(profilePresets, nextIndustry, industries);
+    const nextProfile =
+      industryProfiles.find((p) => p.key === defaultProfileForIndustry(nextIndustry, industries))?.key ??
+      industryProfiles[0]?.key ??
+      deploymentProfile;
+    setDeploymentProfile(nextProfile);
+    setEnabledModules(
+      modulesForProfile(profilePresets, nextProfile, moduleOptions, salesPlatform?.enable_mobile_orders !== false),
+    );
+    if (nextIndustry === "hospitality") {
+      setSalesPlatform(defaultSalesPlatformState(nextProfile));
+    }
+  }
+
   function onProfileChange(nextProfile) {
+    setIndustry(industryForProfile(nextProfile, industries, profilePresets));
     setDeploymentProfile(nextProfile);
     setEnabledModules(modulesForProfile(profilePresets, nextProfile, moduleOptions, salesPlatform?.enable_mobile_orders !== false));
   }
@@ -178,7 +212,7 @@ export default function ManageOrganizationPage() {
   return (
     <CatalogPageShell
       title={organization ? organization.org_name : "Organization"}
-      subtitle="Configure tenant profile, sales behaviour, modules, and access."
+      subtitle="Configure industry, setup type, applications, and access for this tenant."
     >
       <AdminBreadcrumb
         items={[
@@ -235,6 +269,9 @@ export default function ManageOrganizationPage() {
               tenantValues={tenantValues}
               onTenantChange={onTenantChange}
               profilePresets={profilePresets}
+              industries={industries}
+              industry={industry}
+              onIndustryChange={onIndustryChange}
               deploymentProfile={deploymentProfile}
               onProfileChange={onProfileChange}
               enableTabWorkspace={enableTabWorkspace}

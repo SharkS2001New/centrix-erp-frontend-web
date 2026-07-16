@@ -14,7 +14,7 @@ const CARDS = [
     title: "Organization settings",
     description: "Sales, inventory, finance, HR, notifications, security, and AI preferences.",
     icon: "⚙️",
-    permission: "admin.manage",
+    permission: P.admin.settings.view,
   },
   {
     href: "/admin/company",

@@ -84,7 +84,11 @@ export function canAccessTenantOrganizationSettings({
   if (isOrgAdministrator(user, capabilities)) {
     return true;
   }
-  return hasPermission(P.admin.manage);
+  return (
+    hasPermission(P.admin.manage) ||
+    hasPermission(P.admin.settings.view) ||
+    hasPermission(P.admin.settings.edit)
+  );
 }
 
 export function isOrgAdministrator(user, capabilities) {

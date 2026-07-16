@@ -23,6 +23,19 @@ export const PROVISIONABLE_WORKSPACES = [
     icon: "building",
   },
   {
+    id: "hotel_bar_pos",
+    label: "Hotel & Bar POS",
+    description:
+      "Hospitality front POS (bar, restaurant, room charge). Uses hospitality checks — not retail sales. Also enables Hospitality Backoffice.",
+    icon: "hospitality",
+  },
+  {
+    id: "hospitality_backoffice",
+    label: "Hospitality Backoffice",
+    description: "Rooms, front desk, folios, housekeeping, and hotel operations.",
+    icon: "building",
+  },
+  {
     id: "distribution",
     label: "Distribution",
     description: "Dispatch, trips, fleet, proof of delivery, and logistics reports.",
@@ -51,6 +64,13 @@ export const PROVISIONABLE_WORKSPACES = [
 
 const WORKSPACE_RANK = new Map(WORKSPACE_DISPLAY_ORDER.map((id, index) => [id, index]));
 
+const HOSPITALITY_CHILDREN = [
+  "hospitality.bar_pos",
+  "hospitality.backend",
+  "hospitality.dashboard",
+  "hospitality.reports",
+];
+
 export function sortProvisionableWorkspaces(workspaces = PROVISIONABLE_WORKSPACES) {
   return [...workspaces].sort(
     (a, b) => (WORKSPACE_RANK.get(a.id) ?? 999) - (WORKSPACE_RANK.get(b.id) ?? 999),
@@ -60,6 +80,12 @@ export function sortProvisionableWorkspaces(workspaces = PROVISIONABLE_WORKSPACE
 function syncSalesDomain(modules) {
   const next = { ...modules };
   next.sales = SALES_CHILDREN.some((key) => Boolean(next[key]));
+  return next;
+}
+
+function syncHospitalityDomain(modules) {
+  const next = { ...modules };
+  next.hospitality = HOSPITALITY_CHILDREN.some((key) => Boolean(next[key]));
   return next;
 }
 
@@ -73,6 +99,13 @@ export function isProvisionableWorkspaceEnabled(workspace, enabledModules = {}) 
         Boolean(enabledModules["sales.backend"]) ||
         Boolean(enabledModules.inventory) ||
         Boolean(enabledModules.customers_suppliers)
+      );
+    case "hotel_bar_pos":
+      return Boolean(enabledModules["hospitality.bar_pos"]);
+    case "hospitality_backoffice":
+      return (
+        Boolean(enabledModules["hospitality.backend"]) ||
+        Boolean(enabledModules["hospitality.dashboard"])
       );
     case "distribution":
       return Boolean(enabledModules.distribution);
@@ -107,6 +140,19 @@ function enableWorkspacePatch(workspaceId) {
         customers_suppliers: true,
         "customers_suppliers.reports": true,
       };
+    case "hotel_bar_pos":
+      return {
+        hospitality: true,
+        "hospitality.bar_pos": true,
+        ...enableWorkspacePatch("hospitality_backoffice"),
+      };
+    case "hospitality_backoffice":
+      return {
+        hospitality: true,
+        "hospitality.backend": true,
+        "hospitality.dashboard": true,
+        "hospitality.reports": true,
+      };
     case "distribution":
       return { distribution: true };
     case "accounting":
@@ -131,6 +177,15 @@ function disableWorkspacePatch(workspaceId) {
         "sales.reports": false,
         inventory: false,
         customers_suppliers: false,
+      };
+    case "hotel_bar_pos":
+      return { "hospitality.bar_pos": false };
+    case "hospitality_backoffice":
+      return {
+        hospitality: false,
+        "hospitality.backend": false,
+        "hospitality.dashboard": false,
+        "hospitality.reports": false,
       };
     case "distribution":
       return { distribution: false };
@@ -184,6 +239,10 @@ export function patchEnabledModulesForWorkspace(
     next = syncSalesDomain(next);
   }
 
+  if (workspaceId === "hotel_bar_pos" || workspaceId === "hospitality_backoffice") {
+    next = syncHospitalityDomain(next);
+  }
+
   return next;
 }
 
@@ -212,6 +271,34 @@ export function modulesFromApplications(applications = {}, moduleOptions = [], m
 
 export function workspaceToggleIcon(iconKey) {
   return WORKSPACE_ICONS[iconKey] ?? WORKSPACE_ICONS.app;
+}
+
+/**
+ * Applications shown on the platform Applications tab for a deployment profile.
+ * Hotel & Bar only exposes the two hospitality apps.
+ *
+ * @param {string | null | undefined} profileKey
+ * @param {Array<{ key: string, application_ids?: string[] | null }>} profilePresets
+ */
+export function provisionableWorkspacesForProfile(profileKey, profilePresets = []) {
+  const profile = profilePresets.find((p) => p.key === profileKey);
+  let ids = profile?.application_ids;
+
+  // Client fallback if API has not yet returned application_ids for hotel.
+  if (ids === undefined && profileKey === "hotel_bar") {
+    ids = ["hotel_bar_pos", "hospitality_backoffice"];
+  }
+
+  if (ids === null || ids === undefined) {
+    return sortProvisionableWorkspaces();
+  }
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return [];
+  }
+
+  const allowed = new Set(ids);
+  return sortProvisionableWorkspaces(PROVISIONABLE_WORKSPACES.filter((ws) => allowed.has(ws.id)));
 }
 
 export { buildDomainChildrenMap, BACKOFFICE_SALES_CHILDREN, SALES_CHILDREN };

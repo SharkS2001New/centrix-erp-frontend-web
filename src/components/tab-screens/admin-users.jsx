@@ -937,7 +937,7 @@ export function AdminUsersScreen() {
   }
 
   return (
-    <AdminGuard strict>
+    <AdminGuard>
       {pageContent}
       <RbacHelpDialog />
     </AdminGuard>

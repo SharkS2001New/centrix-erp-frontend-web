@@ -75,7 +75,8 @@ export default function PlatformOrganizationsPage() {
                 <tr>
                   <th className="px-5 py-3">Company code</th>
                   <th className="px-5 py-3">Organization</th>
-                  <th className="px-5 py-3">Profile</th>
+                  <th className="px-5 py-3">Industry</th>
+                  <th className="px-5 py-3">Setup type</th>
                   <th className="px-5 py-3">Created</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3">Administration</th>
@@ -87,6 +88,10 @@ export default function PlatformOrganizationsPage() {
                   <tr key={org.id}>
                     <td className="px-5 py-3 font-mono text-xs">{org.company_code}</td>
                     <td className="px-5 py-3">{org.org_name}</td>
+                    <td className="px-5 py-3 text-slate-600">
+                      {org.industry_label ??
+                        (org.industry === "hospitality" ? "Hotel & Hospitality" : "Retail & Distribution")}
+                    </td>
                     <td className="px-5 py-3 text-slate-600">{org.deployment_profile ?? "—"}</td>
                     <td className="px-5 py-3 text-slate-600">
                       {org.created_at ? new Date(org.created_at).toLocaleDateString() : "—"}

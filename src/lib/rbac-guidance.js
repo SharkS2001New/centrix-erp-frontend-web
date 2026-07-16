@@ -16,7 +16,8 @@ export const RBAC_GUIDE_PARTS = [
     bullets: [
       "Every user has one role. Roles bundle feature permissions (view, create, edit, approve, delete).",
       "Capabilities on login expand manage aliases — e.g. Sales manage includes order approve for navigation, but approval API checks role-assigned permissions.",
-      "Org administrator (is_admin) unlocks all modules in the UI; approvals still need explicit Approve permissions on the role unless your policy grants them.",
+      "Org administrator (Organization administrator flag) unlocks all module features in the UI; approvals still need explicit Approve permissions on the role unless your policy grants them.",
+      "Role permissions alone also unlock matching Admin screens (Organization settings, Users, etc.) — you do not need the Organization administrator flag for those when the permission is granted.",
       "Use Admin → Users to assign roles; Admin → Roles to edit permission matrices.",
     ],
   },

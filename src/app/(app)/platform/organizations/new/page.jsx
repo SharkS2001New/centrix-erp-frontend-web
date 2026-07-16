@@ -15,6 +15,13 @@ import { CatalogPageShell, PrimaryButton } from "@/components/catalog/catalog-sh
 import { buildDomainChildrenMap, patchEnabledModules } from "@/lib/module-registry";
 import { applicationsFromEnabledModules } from "@/lib/workspace-modules";
 import {
+  DEFAULT_INDUSTRY,
+  defaultProfileForIndustry,
+  industryForProfile,
+  normalizeIndustries,
+  profilesForIndustry,
+} from "@/lib/erp-industries";
+import {
   ProvisionSetupPreview,
   ProvisionTemplateControls,
 } from "@/components/platform/provision-setup-preview";
@@ -37,6 +44,8 @@ export default function RegisterOrganizationPage() {
   const [orgAddress, setOrgAddress] = useState("");
   const [orgPin, setOrgPin] = useState("");
   const [vatRegno, setVatRegno] = useState("");
+  const [industry, setIndustry] = useState(DEFAULT_INDUSTRY);
+  const [industries, setIndustries] = useState([]);
   const [deploymentProfile, setDeploymentProfile] = useState("wholesale_retail");
   const [moduleOptions, setModuleOptions] = useState([]);
   const [profilePresets, setProfilePresets] = useState([]);
@@ -98,24 +107,28 @@ export default function RegisterOrganizationPage() {
       .then((res) => {
         const profiles = res.profiles ?? [];
         const modules = res.modules ?? [];
+        const industryList = normalizeIndustries(res.industries);
         setProfilePresets(profiles);
         setModuleOptions(modules);
+        setIndustries(industryList);
         setTemplates(res.provisioning_templates ?? []);
-        const initialProfile = profiles.find((p) => p.key === "wholesale_retail")
-          ? "wholesale_retail"
-          : profiles[0]?.key;
-        if (initialProfile) {
-          setDeploymentProfile(initialProfile);
-          setEnabledModules(
-            modulesForProfile(
-              profiles,
-              initialProfile,
-              modules,
-              defaultSalesPlatformState(initialProfile).enable_mobile_orders !== false,
-            ),
-          );
-          setSalesPlatform(defaultSalesPlatformState(initialProfile));
-        }
+        const initialIndustry = industryList[0]?.id ?? DEFAULT_INDUSTRY;
+        const industryProfiles = profilesForIndustry(profiles, initialIndustry, industryList);
+        const initialProfile =
+          industryProfiles.find((p) => p.key === defaultProfileForIndustry(initialIndustry, industryList))?.key ??
+          industryProfiles[0]?.key ??
+          "wholesale_retail";
+        setIndustry(initialIndustry);
+        setDeploymentProfile(initialProfile);
+        setEnabledModules(
+          modulesForProfile(
+            profiles,
+            initialProfile,
+            modules,
+            defaultSalesPlatformState(initialProfile).enable_mobile_orders !== false,
+          ),
+        );
+        setSalesPlatform(defaultSalesPlatformState(initialProfile));
       })
       .catch((err) => {
         setOptionsError(
@@ -152,7 +165,7 @@ export default function RegisterOrganizationPage() {
     map[field]?.(value);
   }
 
-  function onProfileChange(nextProfile) {
+  function applyProfile(nextProfile) {
     setDeploymentProfile(nextProfile);
     setEnabledModules(
       modulesForProfile(
@@ -163,6 +176,21 @@ export default function RegisterOrganizationPage() {
       ),
     );
     setSalesPlatform(defaultSalesPlatformState(nextProfile));
+  }
+
+  function onIndustryChange(nextIndustry) {
+    setIndustry(nextIndustry);
+    const industryProfiles = profilesForIndustry(profilePresets, nextIndustry, industries);
+    const nextProfile =
+      industryProfiles.find((p) => p.key === defaultProfileForIndustry(nextIndustry, industries))?.key ??
+      industryProfiles[0]?.key ??
+      "custom";
+    applyProfile(nextProfile);
+  }
+
+  function onProfileChange(nextProfile) {
+    setIndustry(industryForProfile(nextProfile, industries, profilePresets));
+    applyProfile(nextProfile);
   }
 
   function toggleModule(key) {
@@ -185,18 +213,18 @@ export default function RegisterOrganizationPage() {
 
   function applyTemplate(template) {
     if (!template) return;
-    setDeploymentProfile(template.deployment_profile ?? "custom");
+    const nextProfile = template.deployment_profile ?? "custom";
+    setIndustry(industryForProfile(nextProfile, industries, profilePresets));
+    setDeploymentProfile(nextProfile);
     if (template.sales_platform) {
-      setSalesPlatform({ ...defaultSalesPlatformState(template.deployment_profile), ...template.sales_platform });
+      setSalesPlatform({ ...defaultSalesPlatformState(nextProfile), ...template.sales_platform });
     } else {
-      setSalesPlatform(defaultSalesPlatformState(template.deployment_profile));
+      setSalesPlatform(defaultSalesPlatformState(nextProfile));
     }
     if (template.enabled_modules && Object.keys(template.enabled_modules).length > 0) {
       setEnabledModules(template.enabled_modules);
     } else {
-      setEnabledModules(
-        modulesForProfile(profilePresets, template.deployment_profile ?? "custom", moduleOptions),
-      );
+      setEnabledModules(modulesForProfile(profilePresets, nextProfile, moduleOptions));
     }
   }
 
@@ -204,9 +232,13 @@ export default function RegisterOrganizationPage() {
     if (!orgId) return;
     try {
       const snapshot = await apiRequest(`/admin/organizations/${orgId}/provision-snapshot`);
-      setDeploymentProfile(snapshot.deployment_profile ?? "custom");
+      const nextProfile = snapshot.deployment_profile ?? "custom";
+      setIndustry(industryForProfile(nextProfile, industries, profilePresets));
+      setDeploymentProfile(nextProfile);
       if (snapshot.sales_platform) {
-        setSalesPlatform({ ...defaultSalesPlatformState(snapshot.deployment_profile), ...snapshot.sales_platform });
+        setSalesPlatform({ ...defaultSalesPlatformState(nextProfile), ...snapshot.sales_platform });
+      } else {
+        setSalesPlatform(defaultSalesPlatformState(nextProfile));
       }
       if (snapshot.enabled_modules && Object.keys(snapshot.enabled_modules).length > 0) {
         setEnabledModules(snapshot.enabled_modules);
@@ -219,12 +251,22 @@ export default function RegisterOrganizationPage() {
             partial.inventory = true;
             partial.customers_suppliers = true;
           }
+          if (key === "hotel_bar_pos" && value) {
+            partial.hospitality = true;
+            partial["hospitality.bar_pos"] = true;
+          }
+          if (key === "hospitality_backoffice" && value) {
+            partial.hospitality = true;
+            partial["hospitality.backend"] = true;
+          }
           if (key === "distribution" && value) partial.distribution = true;
           if (key === "accounting" && value) partial.accounting = true;
           if (key === "hr" && value) partial.hr_payroll = true;
           if (key === "admin" && value) partial.admin = true;
         }
         setEnabledModules((prev) => patchEnabledModules(prev, partial, domainChildrenMap));
+      } else {
+        setEnabledModules(modulesForProfile(profilePresets, nextProfile, moduleOptions));
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load organization setup.");
@@ -340,7 +382,7 @@ export default function RegisterOrganizationPage() {
   return (
     <CatalogPageShell
       title="Register organization"
-      subtitle="Configure tenant profile, licence (trial or plan), modules, and the first administrator."
+      subtitle="Choose industry first (Retail & Distribution or Hotel & Hospitality), then setup type, applications, licence, and the first administrator."
     >
       <AdminBreadcrumb
         items={[
@@ -495,6 +537,9 @@ export default function RegisterOrganizationPage() {
                 tenantValues={tenantValues}
                 onTenantChange={onTenantChange}
                 profilePresets={profilePresets}
+                industries={industries}
+                industry={industry}
+                onIndustryChange={onIndustryChange}
                 deploymentProfile={deploymentProfile}
                 onProfileChange={onProfileChange}
                 salesPlatform={salesPlatform}

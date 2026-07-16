@@ -13,6 +13,7 @@ export const WORKSPACE_REPORT_MODULES = {
   accounting: ["accounting.reports"],
   hr: ["hr_payroll.reports"],
   distribution: ["distribution.reports"],
+  hospitality_backoffice: ["hospitality.reports"],
 };
 
 /** All product workspaces expose /reports as Report overview. */
@@ -24,6 +25,7 @@ export const WORKSPACE_ANALYTICS_HREFS = {
   accounting: ["/accounting"],
   hr: ["/hr"],
   distribution: ["/fulfillment"],
+  hospitality_backoffice: ["/hospitality"],
 };
 
 /** KPI / chart scopes for embedded analytics sections. */
@@ -55,6 +57,7 @@ export const WORKSPACE_REPORTS_LABEL = {
   accounting: "Accounting reports",
   hr: "Leave, payroll, and workforce reporting",
   distribution: "Route sales and logistics reporting",
+  hospitality_backoffice: "Occupancy, F&B, and hotel operations reporting",
 };
 
 export const WORKSPACE_REPORT_OVERVIEW_LABEL = "Report overview";
@@ -65,6 +68,7 @@ export const WORKSPACE_BUILDER_LABEL = {
   accounting: "Accounting data",
   hr: "Workforce and payroll data",
   distribution: "Sales orders and distribution data",
+  hospitality_backoffice: "Hospitality checks, folios, and room data",
   admin: "All modules",
 };
 

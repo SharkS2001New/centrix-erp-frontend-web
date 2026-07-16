@@ -67,14 +67,14 @@ const NAV_SECTION_DEFINITIONS = [
         href: "/sales",
         label: "Sales analytics",
         module: "sales.dashboard",
-        permission: P.sales.dashboard.view,
+        permission: P.dashboard.sales.view,
         exact: true,
       },
       {
         href: "/inventory",
         label: "Inventory analytics",
         module: "inventory.dashboard",
-        permission: P.inventory.stock.view,
+        permission: P.dashboard.inventory.view,
         exact: true,
       },
       {
@@ -793,6 +793,85 @@ const NAV_SECTION_DEFINITIONS = [
     items: buildReportNavItems(),
   },
   {
+    id: "hospitality_dashboard",
+    label: "Dashboard",
+    icon: "🏨",
+    collapsible: true,
+    items: [
+      {
+        href: "/hospitality",
+        label: "Hospitality overview",
+        module: "hospitality.dashboard",
+        permission: P.hospitality.dashboard.view,
+        exact: true,
+      },
+    ],
+  },
+  {
+    id: "hospitality_rooms",
+    label: "Rooms & guests",
+    icon: "🛏️",
+    collapsible: true,
+    items: [
+      {
+        href: "/hospitality/rooms",
+        label: "Rooms",
+        module: "hospitality.backend",
+        permission: P.hospitality.rooms.view,
+      },
+      {
+        href: "/hospitality/reservations",
+        label: "Reservations",
+        module: "hospitality.backend",
+        permission: P.hospitality.reservations.view,
+      },
+      {
+        href: "/hospitality/front-desk",
+        label: "Front desk",
+        module: "hospitality.backend",
+        permission: P.hospitality.frontdesk.view,
+      },
+      {
+        href: "/hospitality/folios",
+        label: "Guest folios",
+        module: "hospitality.backend",
+        permission: P.hospitality.folios.view,
+      },
+    ],
+  },
+  {
+    id: "hospitality_ops",
+    label: "Operations",
+    icon: "🧹",
+    collapsible: true,
+    items: [
+      {
+        href: "/hospitality/housekeeping",
+        label: "Housekeeping",
+        module: "hospitality.backend",
+        permission: P.hospitality.housekeeping.view,
+      },
+      {
+        href: "/hospitality/outlets",
+        label: "Outlets & floor",
+        module: "hospitality.backend",
+        permission: P.hospitality.outlets.view,
+      },
+      {
+        href: "/hospitality/night-audit",
+        label: "Night audit",
+        module: "hospitality.backend",
+        permission: P.hospitality.night_audit.view,
+      },
+      {
+        href: "/hospitality/settings",
+        label: "Hospitality settings",
+        module: "hospitality.backend",
+        permission: P.hospitality.settings.view,
+      },
+    ],
+  },
+  {
     id: "admin_dashboard",
     label: "Dashboard",
     icon: "📊",
@@ -832,9 +911,8 @@ const NAV_SECTION_DEFINITIONS = [
         href: "/admin/settings",
         label: "Organization settings",
         requireOperationalModule: true,
-        permissionAny: [P.admin.settings.view, "admin.manage"],
+        permissionAny: [P.admin.settings.view, P.admin.settings.edit, "admin.manage"],
         orgAdminOnly: true,
-        requireAdmin: true,
       },
       {
         href: "/admin/till-printing",
@@ -842,7 +920,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "admin",
         permission: P.admin.till_printing.view,
         orgAdminOnly: true,
-        requireAdmin: true,
       },
       {
         href: "/admin/branches",
@@ -865,7 +942,6 @@ const NAV_SECTION_DEFINITIONS = [
         module: "admin",
         permission: P.admin.users.view,
         orgAdminOnly: true,
-        requireAdmin: true,
       },
       {
         href: "/admin/roles",

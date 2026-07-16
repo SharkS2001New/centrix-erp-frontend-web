@@ -25,10 +25,11 @@ import { useConfirm } from "@/lib/use-confirm";
 export function AdminRolesScreen() {
   const confirm = useConfirm();
   const { adminPath } = useAdminApi();
-  const { refreshCapabilities } = useAuth();
+  const { refreshCapabilities, capabilities } = useAuth();
   const [roles, setRoles] = useState([]);
   const [permissionGroups, setPermissionGroups] = useState([]);
   const [permissionApplications, setPermissionApplications] = useState([]);
+  const [industryLabel, setIndustryLabel] = useState(null);
   const [selectedRoleId, setSelectedRoleId] = useState(null);
   const [assignedIds, setAssignedIds] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
@@ -52,6 +53,15 @@ export function AdminRolesScreen() {
     const res = await apiRequest(adminPath("/roles/permissions/matrix"));
     setPermissionApplications(res.applications ?? []);
     setPermissionGroups(res.groups ?? []);
+    if (res.industry) {
+      setIndustryLabel(
+        res.industry === "hospitality"
+          ? "Hotel & Hospitality"
+          : res.industry === "commerce"
+            ? "Retail & Distribution"
+            : res.industry,
+      );
+    }
   }, [adminPath]);
 
   const loadRolePermissions = useCallback(async (roleId) => {
@@ -208,7 +218,11 @@ export function AdminRolesScreen() {
   return (
     <CatalogPageShell
       title="Roles & permissions"
-      subtitle="Assign feature-level access per link and action."
+      subtitle={
+        industryLabel || capabilities?.industry_label
+          ? `Assign feature-level access for ${industryLabel || capabilities.industry_label}.`
+          : "Assign feature-level access per link and action."
+      }
       action={
         <div className="flex flex-wrap items-center gap-2">
           <CatalogListExport

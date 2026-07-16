@@ -17,6 +17,7 @@ export { WORKSPACE_DISPLAY_ORDER, WORKSPACE_ICONS, sortWorkspaces } from "@/lib/
 /** Nav sections shown per workspace (reports filtered further by report module). */
 export const WORKSPACE_SECTION_IDS = {
   pos: [],
+  hotel_bar_pos: [],
   backoffice: [
     "dashboard",
     "products",
@@ -32,6 +33,12 @@ export const WORKSPACE_SECTION_IDS = {
     "inventory",
     "stock_movements",
     "suppliers",
+    "reports",
+  ],
+  hospitality_backoffice: [
+    "hospitality_dashboard",
+    "hospitality_rooms",
+    "hospitality_ops",
     "reports",
   ],
   admin: ["admin_dashboard", "admin_organization", "admin_users", "admin_finance_tax"],
@@ -52,6 +59,12 @@ export const WORKSPACE_NAV_ZONES = {
     {
       label: null,
       sectionIds: ["dashboard", "distribution_ops", "distribution_fleet", "distribution_orders", "reports"],
+    },
+  ],
+  hospitality_backoffice: [
+    {
+      label: null,
+      sectionIds: ["hospitality_dashboard", "hospitality_rooms", "hospitality_ops", "reports"],
     },
   ],
   admin: [
@@ -100,6 +113,8 @@ export const WORKSPACE_DASHBOARD_HREFS = WORKSPACE_ANALYTICS_HREFS;
 /** Route prefixes owned by each workspace (reports handled separately). */
 export const WORKSPACE_PATH_PREFIXES = {
   pos: ["/pos", "/sales/pos"],
+  hotel_bar_pos: ["/hotel-bar-pos"],
+  hospitality_backoffice: ["/hospitality"],
   backoffice: [
     "/dashboard",
     "/sales",
@@ -154,7 +169,7 @@ export function workspaceHomePath(workspaceId, capabilities) {
 
 /** @param {import("@/lib/nav-config").NavItem} item */
 export function navItemBelongsToWorkspace(item, workspaceId) {
-  if (workspaceId === "pos") {
+  if (isTerminalWorkspace(workspaceId)) {
     return false;
   }
 
@@ -253,8 +268,8 @@ export function pathBelongsToWorkspace(pathname, workspaceId) {
     return true;
   }
 
-  if (workspaceId === "pos") {
-    const prefixes = WORKSPACE_PATH_PREFIXES.pos ?? [];
+  if (workspaceId === "pos" || workspaceId === "hotel_bar_pos") {
+    const prefixes = WORKSPACE_PATH_PREFIXES[workspaceId] ?? [];
     return prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   }
 
@@ -412,6 +427,11 @@ export function needsWorkspaceSelection(capabilities, storedWorkspaceId, ctx) {
 
 export function isPosWorkspace(workspaceId) {
   return workspaceId === "pos";
+}
+
+/** Retail POS or Hotel & Bar POS — dedicated full-screen terminal shells. */
+export function isTerminalWorkspace(workspaceId) {
+  return workspaceId === "pos" || workspaceId === "hotel_bar_pos";
 }
 
 export function defaultWorkspaceId(capabilities, ctx) {
