@@ -19,6 +19,7 @@ import {
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 import { printLoadingList } from "@/components/fulfillment/loading-list-print";
 import { printPickingList } from "@/components/fulfillment/picking-list-print";
+import { printTripChartList } from "@/components/fulfillment/trip-chart-list-print";
 import { LoadingListDocumentPreview } from "@/components/fulfillment/loading-list-document-preview";
 import { isDistributionOpsEnabled, isProductShelfLocationEnabled } from "@/lib/distribution-settings";
 import { formatSaleKes } from "@/lib/sales";
@@ -157,6 +158,48 @@ export function DistributionLoadingListsScreen() {
     }
   }
 
+  async function handlePrintTripChart() {
+    if (!selectedTripId) return;
+
+    setDetailError(null);
+    setDetailLoading(true);
+    try {
+      const [tripRes, listRes] = await Promise.all([
+        apiRequest(`/dispatch-trips/${selectedTripId}`),
+        apiRequest(`/dispatch-trips/${selectedTripId}/loading-list`),
+      ]);
+      const freshTrip = tripRes;
+      const freshList = listRes.loading_list ?? listRes;
+      const financialSummary =
+        listRes.financial_summary ?? freshTrip.financial_summary ?? detail?.financial_summary ?? null;
+      setDetail((current) => ({
+        ...current,
+        trip: freshTrip,
+        loading_list: freshList,
+        financial_summary: financialSummary,
+      }));
+      printTripChartList({
+        organization,
+        generalSettings: general,
+        organizationName,
+        trip: freshTrip,
+        loadingList: freshList,
+        sales: freshTrip.sales,
+        orders: freshList.orders,
+        financialSummary,
+        documentFooterText: resolvePrintFooter(
+          mergeGeneralSettings(capabilities?.module_settings),
+          "loading_sheet",
+        ),
+        printedBy: user?.full_name ?? user?.username ?? null,
+      });
+    } catch (e) {
+      setDetailError(e instanceof ApiError ? e.message : "Could not refresh trip chart for print");
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
   async function handlePrintPicking() {
     if (!selectedTripId) return;
 
@@ -248,7 +291,7 @@ export function DistributionLoadingListsScreen() {
   return (
     <CatalogPageShell
       title="Loading lists"
-      subtitle="Preview and print picking lists (by product) and loading lists (by customer order)"
+      subtitle="Preview and print trip chart lists (by customer totals), picking lists, and loading lists"
     >
       {error ? <DashboardErrorBanner message={error} className="mb-4" /> : null}
 
@@ -367,6 +410,9 @@ export function DistributionLoadingListsScreen() {
                   >
                     Open trip
                   </Link>
+                  <PrimaryButton type="button" showIcon={false} onClick={handlePrintTripChart}>
+                    Print trip chart list
+                  </PrimaryButton>
                   <PrimaryButton type="button" showIcon={false} onClick={handlePrintPicking}>
                     Print picking list
                   </PrimaryButton>

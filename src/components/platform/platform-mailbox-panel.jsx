@@ -1416,13 +1416,22 @@ export function PlatformMailboxPanel() {
                         {item.direction === "outbound" ? "You" : item.from_address} ·{" "}
                         {formatWhen(item.sent_at || item.received_at)}
                       </div>
-                      <pre className="mt-1 whitespace-pre-wrap font-sans text-sm">{item.body_text}</pre>
+                      <pre className="mt-1 whitespace-pre-wrap font-sans text-sm">
+                        {String(item.body_text || "").trim() ||
+                          (item.id === selected.id
+                            ? selected.body_imap_detail || "Message body could not be loaded."
+                            : "No body stored for this message.")}
+                      </pre>
                     </div>
                   ))}
                 </div>
               ) : (
                 <pre className="whitespace-pre-wrap rounded-lg bg-slate-50 p-4 font-sans text-sm text-slate-800">
-                  {selected.body_text}
+                  {String(selected.body_text || "").trim() || (
+                    <span className="italic text-slate-500">
+                      {selected.body_imap_detail || "Message body could not be loaded from IMAP."}
+                    </span>
+                  )}
                 </pre>
               )}
 
@@ -1433,7 +1442,8 @@ export function PlatformMailboxPanel() {
                     <p className="text-[11px] text-slate-400">Full message loaded from IMAP.</p>
                   ) : selected.body_is_snippet ? (
                     <p className="text-[11px] text-amber-700">
-                      Showing local snippet only — IMAP full body was unavailable.
+                      Showing local snippet only
+                      {selected.body_imap_detail ? ` — ${selected.body_imap_detail}` : " — IMAP full body was unavailable."}
                     </p>
                   ) : null}
                   <PlatformAiEmailAssist

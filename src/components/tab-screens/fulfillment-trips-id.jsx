@@ -19,6 +19,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import { TripExpensesPanel } from "@/components/fulfillment/trip-expenses-panel";
 import { printLoadingList } from "@/components/fulfillment/loading-list-print";
 import { printPickingList } from "@/components/fulfillment/picking-list-print";
+import { printTripChartList } from "@/components/fulfillment/trip-chart-list-print";
 import { formatTripRoutesLabel } from "@/lib/trip-routes";
 import { printDeliveryNote } from "@/components/fulfillment/delivery-note-print";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
@@ -669,6 +670,39 @@ export function FulfillmentTripsIdScreen() {
             </Link>
 
             <PrimaryButton
+            type="button"
+            showIcon={false}
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const tripRes = await apiRequest(`/dispatch-trips/${id}`);
+                const freshTrip = tripRes;
+                setTrip(freshTrip);
+                printTripChartList({
+                  organization,
+                  generalSettings: generalSettings(),
+                  organizationName: organization?.organization_name ?? organization?.company_name ?? "Trip Chart List",
+                  trip: freshTrip,
+                  sales: freshTrip.sales,
+                  financialSummary: freshTrip.financial_summary,
+                  documentFooterText: resolvePrintFooter(
+                    mergeGeneralSettings(capabilities?.module_settings),
+                    "loading_sheet",
+                  ),
+                  printedBy: user?.full_name ?? user?.username ?? null,
+                });
+              } catch (e) {
+                notifyError(e instanceof ApiError ? e.message : "Could not refresh trip chart for print");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Print trip chart list
+          </PrimaryButton>
+
+          <PrimaryButton
             type="button"
             showIcon={false}
             disabled={busy}
