@@ -24,6 +24,7 @@ import {
   workspaceToggleIcon,
 } from "@/lib/workspace-modules";
 import { OrganizationCachePanel } from "@/components/admin/organization-cache-panel";
+import { PlatformFormSection } from "@/components/admin/platform-form-section";
 import { useConfirm } from "@/lib/use-confirm";
 import {
   ADVANCED_DATA_IMPORT_PAGE_OPTIONS,
@@ -50,15 +51,7 @@ function OrgRegisterField({ label, children, className = "" }) {
   );
 }
 
-export function PlatformFormSection({ title, description, children }) {
-  return (
-    <section className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 shadow-sm">
-      <h2 className="theme-accent-label text-sm font-semibold uppercase tracking-wide">{title}</h2>
-      {description ? <p className="theme-subtext mt-1 text-sm">{description}</p> : null}
-      <div className="mt-4">{children}</div>
-    </section>
-  );
-}
+export { PlatformFormSection } from "@/components/admin/platform-form-section";
 
 const PROFILE_TAB_BTN = "rounded-md px-3 py-1.5 text-sm font-medium transition";
 const PROFILE_TAB_BTN_ACTIVE = "bg-white text-[#185FA5] shadow-sm";

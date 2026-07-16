@@ -1,7 +1,7 @@
 "use client";
 
 import { PasswordInput } from "@/components/auth/password-input";
-import { PlatformFormSection } from "@/components/admin/organization-platform-config";
+import { PlatformFormSection } from "@/components/admin/platform-form-section";
 import {
   buildDomainChildrenMap,
   normalizeDomainModules,

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { PlatformFormSection } from "@/components/admin/organization-platform-config";
+import { PlatformFormSection } from "@/components/admin/platform-form-section";
 import { notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 
