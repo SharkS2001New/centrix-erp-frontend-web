@@ -645,7 +645,9 @@ export function PosScreen({ standalone = false }) {
     [lineForm, sellFromShop, sellWholesale, isRouteOrder, selectedRouteId],
   );
   const posUiDraftValueRef = useRef(posUiDraftValue);
-  posUiDraftValueRef.current = posUiDraftValue;
+  useEffect(() => {
+    posUiDraftValueRef.current = posUiDraftValue;
+  }, [posUiDraftValue]);
 
   const applyPosUiDraft = useCallback((next) => {
     const value = typeof next === "function" ? next(posUiDraftValueRef.current) : next;

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -11,12 +10,17 @@ import {
   CatalogPageShell,
   Field,
   FormDrawer,
+  IconButton,
+  PencilIcon,
   PrimaryButton,
+  TrashIcon,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { ROUTE_SCHEDULE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
+import { useConfirm } from "@/lib/use-confirm";
+import { notifyError, notifySuccess } from "@/lib/notify";
 
 const DAY_OPTIONS = [
   { value: 0, label: "Sunday" },
@@ -37,7 +41,23 @@ const EMPTY_FORM = {
   is_active: true,
 };
 
+function scheduleToForm(schedule) {
+  return {
+    route_id: schedule.route_id != null ? String(schedule.route_id) : "",
+    day_of_week: schedule.day_of_week != null ? String(schedule.day_of_week) : "1",
+    default_driver_id: schedule.default_driver_id != null ? String(schedule.default_driver_id) : "",
+    default_vehicle_id: schedule.default_vehicle_id != null ? String(schedule.default_vehicle_id) : "",
+    departure_time: schedule.departure_time ? String(schedule.departure_time).slice(0, 5) : "",
+    is_active: schedule.is_active !== false,
+  };
+}
+
+function dayLabel(dayOfWeek) {
+  return DAY_OPTIONS.find((d) => d.value === dayOfWeek)?.label ?? `Day ${dayOfWeek}`;
+}
+
 export function FulfillmentSchedulesScreen() {
+  const confirm = useConfirm();
   const { capabilities, user } = useAuth();
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
 
@@ -48,6 +68,8 @@ export function FulfillmentSchedulesScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState("create");
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -78,12 +100,37 @@ export function FulfillmentSchedulesScreen() {
   const grouped = useMemo(() => {
     const map = new Map();
     for (const schedule of schedules) {
-      const routeName = schedule.route?.route_name ?? routes.find((r) => r.id === schedule.route_id)?.route_name ?? `Route #${schedule.route_id}`;
+      const routeName =
+        schedule.route?.route_name ??
+        routes.find((r) => r.id === schedule.route_id)?.route_name ??
+        `Route #${schedule.route_id}`;
       if (!map.has(routeName)) map.set(routeName, []);
       map.get(routeName).push(schedule);
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [schedules, routes]);
+
+  function openCreateDrawer() {
+    setDrawerMode("create");
+    setEditingId(null);
+    setForm({ ...EMPTY_FORM });
+    setFormError(null);
+    setDrawerOpen(true);
+  }
+
+  function openEditDrawer(schedule) {
+    setDrawerMode("edit");
+    setEditingId(schedule.id);
+    setForm(scheduleToForm(schedule));
+    setFormError(null);
+    setDrawerOpen(true);
+  }
+
+  function closeDrawer() {
+    setDrawerOpen(false);
+    setEditingId(null);
+    setFormError(null);
+  }
 
   async function handleSave(e) {
     e.preventDefault();
@@ -94,24 +141,50 @@ export function FulfillmentSchedulesScreen() {
     setSaving(true);
     setFormError(null);
     try {
-      await apiRequest("/route-schedules", {
-        method: "POST",
-        body: {
-          route_id: Number(form.route_id),
-          day_of_week: Number(form.day_of_week),
-          default_driver_id: form.default_driver_id ? Number(form.default_driver_id) : null,
-          default_vehicle_id: form.default_vehicle_id ? Number(form.default_vehicle_id) : null,
-          departure_time: form.departure_time || null,
-          is_active: Boolean(form.is_active),
-        },
-      });
-      setDrawerOpen(false);
+      const body = {
+        route_id: Number(form.route_id),
+        day_of_week: Number(form.day_of_week),
+        default_driver_id: form.default_driver_id ? Number(form.default_driver_id) : null,
+        default_vehicle_id: form.default_vehicle_id ? Number(form.default_vehicle_id) : null,
+        departure_time: form.departure_time || null,
+        is_active: Boolean(form.is_active),
+      };
+      if (drawerMode === "edit" && editingId != null) {
+        await apiRequest(`/route-schedules/${editingId}`, { method: "PUT", body });
+        notifySuccess("Schedule updated");
+      } else {
+        await apiRequest("/route-schedules", { method: "POST", body });
+        notifySuccess("Schedule created");
+      }
+      closeDrawer();
       setForm(EMPTY_FORM);
       await loadData();
     } catch (e) {
       setFormError(e instanceof ApiError ? e.message : "Failed to save schedule");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function deleteSchedule(schedule) {
+    const routeName =
+      schedule.route?.route_name ??
+      routes.find((r) => r.id === schedule.route_id)?.route_name ??
+      `Route #${schedule.route_id}`;
+    const ok = await confirm({
+      title: "Delete route schedule",
+      message: `Delete the ${dayLabel(schedule.day_of_week)} schedule for "${routeName}"?`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await apiRequest(`/route-schedules/${schedule.id}`, { method: "DELETE" });
+      if (editingId === schedule.id) closeDrawer();
+      await loadData();
+      notifySuccess("Schedule deleted");
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Failed to delete schedule");
     }
   }
 
@@ -132,7 +205,6 @@ export function FulfillmentSchedulesScreen() {
       <CatalogPageShell title="Route schedules" subtitle="Recurring driver and vehicle assignments">
         <p className="text-sm text-slate-500">
           Enable distribution operations in <OrgSettingsPlatformHint area="Organization settings → Distribution" />.
-          .
         </p>
       </CatalogPageShell>
     );
@@ -153,7 +225,7 @@ export function FulfillmentSchedulesScreen() {
             getSearchParams={() => ({ per_page: 200 })}
             disabled={loading}
           />
-          <PrimaryButton type="button" showIcon={false} onClick={() => setDrawerOpen(true)}>
+          <PrimaryButton type="button" showIcon={false} onClick={openCreateDrawer}>
             Add schedule
           </PrimaryButton>
         </div>
@@ -179,6 +251,7 @@ export function FulfillmentSchedulesScreen() {
                       <th className="py-2 pr-4">Vehicle</th>
                       <th className="py-2 pr-4">Departure</th>
                       <th className="py-2 pr-4">Active</th>
+                      <th className="py-2 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -186,7 +259,7 @@ export function FulfillmentSchedulesScreen() {
                       .sort((a, b) => a.day_of_week - b.day_of_week)
                       .map((schedule) => (
                         <tr key={schedule.id} className="border-t border-slate-100">
-                          <td className="py-2 pr-4">{DAY_OPTIONS.find((d) => d.value === schedule.day_of_week)?.label}</td>
+                          <td className="py-2 pr-4">{dayLabel(schedule.day_of_week)}</td>
                           <td className="py-2 pr-4">{schedule.default_driver?.full_name ?? "—"}</td>
                           <td className="py-2 pr-4">
                             {schedule.default_vehicle?.plate_number ?? schedule.default_vehicle?.vehicle_name ?? "—"}
@@ -201,6 +274,16 @@ export function FulfillmentSchedulesScreen() {
                               {schedule.is_active ? "Active" : "Inactive"}
                             </button>
                           </td>
+                          <td className="py-2">
+                            <div className="flex justify-end gap-1">
+                              <IconButton label="Edit schedule" onClick={() => openEditDrawer(schedule)}>
+                                <PencilIcon />
+                              </IconButton>
+                              <IconButton label="Delete schedule" onClick={() => deleteSchedule(schedule)}>
+                                <TrashIcon />
+                              </IconButton>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                   </tbody>
@@ -213,12 +296,12 @@ export function FulfillmentSchedulesScreen() {
 
       <FormDrawer
         open={drawerOpen}
-        title="Add route schedule"
-        onClose={() => setDrawerOpen(false)}
+        title={drawerMode === "edit" ? "Edit route schedule" : "Add route schedule"}
+        onClose={closeDrawer}
         onSubmit={handleSave}
         saving={saving}
         error={formError}
-        submitLabel="Save schedule"
+        submitLabel={drawerMode === "edit" ? "Save changes" : "Save schedule"}
       >
         <Field label="Route">
           <select

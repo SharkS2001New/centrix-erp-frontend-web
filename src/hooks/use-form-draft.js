@@ -31,13 +31,12 @@ export function useFormDraft({
   const organizationId = organization?.id ?? user?.organization_id ?? "default";
   const hydratedRef = useRef(false);
   const skipNextSaveRef = useRef(false);
-  const lastDraftKeyRef = useRef(draftKey);
 
-  if (lastDraftKeyRef.current !== draftKey) {
-    lastDraftKeyRef.current = draftKey;
+  // Reset hydration when the draft key changes (must run before hydrate/persist effects).
+  useEffect(() => {
     hydratedRef.current = false;
     skipNextSaveRef.current = false;
-  }
+  }, [draftKey]);
 
   // Hydrate once when form is ready.
   useEffect(() => {

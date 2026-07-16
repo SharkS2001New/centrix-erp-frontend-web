@@ -684,28 +684,30 @@ export function PosPaymentPanel({
     return () => window.clearTimeout(t);
   }, [open, step]);
 
-  enterActionRef.current = (e) => {
-    if (e.key !== "Enter" || saving || step === "saving") return;
-    if (step === "complete") {
-      e.preventDefault();
-      handleOrderCompleteOk();
-      return;
-    }
-    if (step === "customerName") {
-      e.preventDefault();
-      handleCustomerNameContinue();
-      return;
-    }
-    if (step === "confirm") {
-      e.preventDefault();
-      handleConfirmYes();
-      return;
-    }
-    if (step === "payment" && canComplete && !isTypingContext()) {
-      e.preventDefault();
-      handleRequestComplete();
-    }
-  };
+  useEffect(() => {
+    enterActionRef.current = (e) => {
+      if (e.key !== "Enter" || saving || step === "saving") return;
+      if (step === "complete") {
+        e.preventDefault();
+        handleOrderCompleteOk();
+        return;
+      }
+      if (step === "customerName") {
+        e.preventDefault();
+        handleCustomerNameContinue();
+        return;
+      }
+      if (step === "confirm") {
+        e.preventDefault();
+        handleConfirmYes();
+        return;
+      }
+      if (step === "payment" && canComplete && !isTypingContext()) {
+        e.preventDefault();
+        handleRequestComplete();
+      }
+    };
+  });
 
   useEffect(() => {
     if (!open) return;

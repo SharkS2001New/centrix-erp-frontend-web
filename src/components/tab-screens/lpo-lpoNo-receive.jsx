@@ -75,7 +75,9 @@ export function LpoLpoNoReceiveScreen() {
     [receiveCounts, selectedInvoiceId],
   );
   const draftValueRef = useRef(draftValue);
-  draftValueRef.current = draftValue;
+  useEffect(() => {
+    draftValueRef.current = draftValue;
+  }, [draftValue]);
 
   const applyDraft = useCallback((next) => {
     const value = typeof next === "function" ? next(draftValueRef.current) : next;
