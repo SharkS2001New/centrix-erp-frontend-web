@@ -29,7 +29,6 @@ import {
   shouldShowPaymentStatusBadge,
   workflowPipelineSteps,
   isPrintInvoiceVisible,
-} from "@/lib/order-workflow";
   workflowStatusLabel,
 } from "@/lib/order-workflow";
 import {
