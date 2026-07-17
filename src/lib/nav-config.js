@@ -1000,6 +1000,7 @@ const NAV_SECTION_DEFINITIONS = [
         href: "/notifications",
         label: "Notifications",
         module: null,
+        permission: P.admin.notifications.view,
       },
     ],
   },
