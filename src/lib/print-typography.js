@@ -32,7 +32,7 @@ export const ORG_PRINT_FONT_SCALES = [
   { id: "custom", label: "Custom size" },
 ];
 
-export const ORG_PRINT_FONT_SIZE_LIMITS = { min: 8, max: 24, default: 14 };
+export const ORG_PRINT_FONT_SIZE_LIMITS = { min: 8, max: 24, default: 9 };
 
 export const ORG_PRINT_FONT_WEIGHTS = [
   { id: "normal", label: "Normal", value: 400 },
@@ -46,28 +46,42 @@ export const ORG_PRINT_FONT_WEIGHT_DEFAULT = "semibold";
 
 export const ORG_PRINT_SECTIONS = ["header", "body", "footer"];
 
+/**
+ * Crystal Reports–style A4 invoice defaults (pt):
+ * body 9, headers/meta 10, title 14, company 16, footer 8.
+ */
 const VARIANT_BODY_BASE = {
-  a4: { screen: 12, print: 15 },
-  sale_invoice: { screen: 12, print: 15 },
-  lpo: { screen: 12, print: 15 },
+  a4: { screen: 9, print: 9 },
+  sale_invoice: { screen: 9, print: 9 },
+  lpo: { screen: 12, print: 12 },
   loading_sheet: { screen: 12, print: 16 },
   thermal: { screen: 10, print: 11 },
-  report: { screen: 12, print: 15 },
+  report: { screen: 12, print: 12 },
 };
 
 const VARIANT_STANDARD_BODY_PX = {
-  a4: 14,
-  sale_invoice: 14,
-  lpo: 14,
+  a4: 9,
+  sale_invoice: 9,
+  lpo: 12,
   loading_sheet: 16,
   thermal: 11,
-  report: 14,
+  report: 12,
+};
+
+/** CSS length unit for each print variant — A4 docs use pt for printer-faithful sizing. */
+const VARIANT_CSS_UNIT = {
+  a4: "pt",
+  sale_invoice: "pt",
+  lpo: "pt",
+  loading_sheet: "pt",
+  thermal: "px",
+  report: "pt",
 };
 
 export function orgPrintFontFamilyCss(fontId) {
   return (
     ORG_PRINT_FONT_FAMILIES.find((row) => row.id === fontId)?.css
-    ?? ORG_PRINT_FONT_FAMILIES.find((row) => row.id === "times")?.css
+    ?? ORG_PRINT_FONT_FAMILIES.find((row) => row.id === "arial")?.css
   );
 }
 
@@ -133,7 +147,7 @@ export function orgPrintBodyPx(generalSettings, { variant = "a4", print = false 
   return sectionBodyPx(sectionSettings, variant, print);
 }
 
-/** Scale a template px value for header, body, or footer section. */
+/** Scale a template size value for header, body, or footer section. */
 export function orgPrintSectionPx(
   basePx,
   generalSettings,
@@ -142,7 +156,8 @@ export function orgPrintSectionPx(
   const bases = VARIANT_BODY_BASE[variant] ?? VARIANT_BODY_BASE.a4;
   const stdBody = print ? bases.print : bases.screen;
   const bodyPx = sectionBodyPx(resolveOrgPrintSectionSettings(generalSettings, variant, section), variant, print);
-  return `${Math.round(basePx * (bodyPx / stdBody) * 10) / 10}px`;
+  const unit = VARIANT_CSS_UNIT[variant] ?? "px";
+  return `${Math.round(basePx * (bodyPx / stdBody) * 10) / 10}${unit}`;
 }
 
 /** Scale a template px value relative to the body section (legacy helper). */

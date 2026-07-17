@@ -93,8 +93,18 @@ export function CustomerStatementScreen() {
         date: inv.invoice_date,
         document: inv.invoice_number,
         description: "Invoice",
-        debit: Number(inv.invoice_total) || 0,
+        debit: Number(inv.statement_debit ?? inv.invoice_total) || 0,
         credit: 0,
+      });
+    }
+    for (const note of data.credit_notes ?? []) {
+      rows.push({
+        id: `cn-${note.id}`,
+        date: note.credit_date,
+        document: note.credit_note_no ?? note.return_no ?? `CN-${note.id}`,
+        description: "Credit Note",
+        debit: 0,
+        credit: Number(note.total_amount) || 0,
       });
     }
     for (const pay of data.payments ?? []) {
@@ -164,7 +174,7 @@ export function CustomerStatementScreen() {
     <ReportPageShell
       section="Finance"
       title="Customer Statement"
-      subtitle="Running balance from invoices and payments"
+      subtitle="Running balance from invoices, returns, and payments"
       printAction={{
         label: "Print",
         onClick: handlePrint,
@@ -278,6 +288,11 @@ export function CustomerStatementScreen() {
                 id: "invoiced",
                 label: "Total Invoiced",
                 value: formatReportKes(summary?.total_invoiced ?? 0),
+              },
+              {
+                id: "returns",
+                label: "Total Credit Notes",
+                value: formatReportKes(summary?.total_credits ?? 0),
               },
               { id: "paid", label: "Total Paid", value: formatReportKes(summary?.total_paid ?? 0) },
             ]}

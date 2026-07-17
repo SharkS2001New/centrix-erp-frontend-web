@@ -349,11 +349,15 @@ export function parseInvoiceNumber(query) {
  * Sales list query params for return invoice lookup.
  * Exact order # (S0168 / 168) is resolved without a status or date box —
  * the API skips the list date window for digit / S-prefixed lookups.
+ * Archived (and cold-storage) sales are included so old invoices remain returnable.
  */
 export function salesReturnSearchParams(query, statusIn = []) {
   const q = String(query ?? "").trim();
   const orderNum = parseInvoiceNumber(q);
-  const params = { per_page: 15 };
+  const params = {
+    per_page: 15,
+    include_archived: 1,
+  };
 
   if (orderNum != null) {
     // Prefer S-prefixed so the API uses exact order_num matching.

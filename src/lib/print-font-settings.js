@@ -21,14 +21,16 @@ export const PRINT_FONT_VARIANTS = {
   invoice: {
     label: "A4 invoice",
     typographyVariant: "sale_invoice",
-    defaultFamily: "times",
+    defaultFamily: "arial",
     defaultScale: "standard",
-    defaultSizePx: 14,
-    defaultWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
-    defaultHeaderScale: "large",
-    defaultHeaderWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    defaultSizePx: 9,
+    defaultWeight: "normal",
+    defaultHeaderScale: "standard",
+    defaultHeaderSizePx: 16,
+    defaultHeaderWeight: "bold",
     defaultFooterScale: "standard",
-    defaultFooterWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    defaultFooterSizePx: 8,
+    defaultFooterWeight: "normal",
   },
   lpo: {
     label: "LPO",
@@ -70,6 +72,14 @@ export const PRINT_FONT_VARIANTS = {
 };
 
 export const PRINT_FONT_VARIANT_KEYS = Object.keys(PRINT_FONT_VARIANTS);
+
+function variantDefaultHeaderSizePx(config) {
+  return config.defaultHeaderSizePx ?? config.defaultSizePx;
+}
+
+function variantDefaultFooterSizePx(config) {
+  return config.defaultFooterSizePx ?? Math.max(8, config.defaultSizePx - 2);
+}
 
 export function printFontFormKeys(variantKey) {
   return {
@@ -203,10 +213,10 @@ export function resolveOrgPrintSectionSettings(
 
 export function printFontFormDefaults() {
   const defaults = {
-    print_font_family: "times",
+    print_font_family: "arial",
     print_font_scale: "standard",
-    print_font_size_px: "14",
-    print_font_weight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    print_font_size_px: "9",
+    print_font_weight: "normal",
   };
 
   for (const [variantKey, config] of Object.entries(PRINT_FONT_VARIANTS)) {
@@ -216,10 +226,10 @@ export function printFontFormDefaults() {
     defaults[keys.sizePx] = String(config.defaultSizePx);
     defaults[keys.weight] = config.defaultWeight;
     defaults[keys.headerScale] = config.defaultHeaderScale;
-    defaults[keys.headerSizePx] = String(config.defaultSizePx);
+    defaults[keys.headerSizePx] = String(variantDefaultHeaderSizePx(config));
     defaults[keys.headerWeight] = config.defaultHeaderWeight;
     defaults[keys.footerScale] = config.defaultFooterScale;
-    defaults[keys.footerSizePx] = String(Math.max(8, config.defaultSizePx - 2));
+    defaults[keys.footerSizePx] = String(variantDefaultFooterSizePx(config));
     defaults[keys.footerWeight] = config.defaultFooterWeight;
   }
 
@@ -229,9 +239,9 @@ export function printFontFormDefaults() {
 export function printFontFormFromGeneral(general = {}) {
   const merged = { ...printFontFormDefaults(), ...general };
   const result = {
-    print_font_family: merged.print_font_family ?? "times",
+    print_font_family: merged.print_font_family ?? "arial",
     print_font_scale: merged.print_font_scale ?? "standard",
-    print_font_size_px: String(merged.print_font_size_px ?? 14),
+    print_font_size_px: String(merged.print_font_size_px ?? 9),
     print_font_weight: normalizeOrgPrintFontWeight(merged.print_font_weight),
   };
 
@@ -254,7 +264,9 @@ export function printFontFormFromGeneral(general = {}) {
     result[keys.headerScale] =
       merged[keys.headerScale] ?? config.defaultHeaderScale;
     result[keys.headerSizePx] = String(
-      normalizeOrgPrintFontSizePx(merged[keys.headerSizePx] ?? config.defaultSizePx),
+      normalizeOrgPrintFontSizePx(
+        merged[keys.headerSizePx] ?? variantDefaultHeaderSizePx(config),
+      ),
     );
     result[keys.headerWeight] = normalizeOrgPrintFontWeight(
       merged[keys.headerWeight] ?? config.defaultHeaderWeight,
@@ -263,7 +275,7 @@ export function printFontFormFromGeneral(general = {}) {
       merged[keys.footerScale] ?? config.defaultFooterScale;
     result[keys.footerSizePx] = String(
       normalizeOrgPrintFontSizePx(
-        merged[keys.footerSizePx] ?? Math.max(8, config.defaultSizePx - 2),
+        merged[keys.footerSizePx] ?? variantDefaultFooterSizePx(config),
       ),
     );
     result[keys.footerWeight] = normalizeOrgPrintFontWeight(
@@ -276,7 +288,7 @@ export function printFontFormFromGeneral(general = {}) {
 
 export function printFontPayloadFromForm(form = {}) {
   const payload = {
-    print_font_family: form.print_font_invoice_family || form.print_font_family || "times",
+    print_font_family: form.print_font_invoice_family || form.print_font_family || "arial",
     print_font_scale: form.print_font_invoice_scale || form.print_font_scale || "standard",
     print_font_size_px: normalizeOrgPrintFontSizePx(
       form.print_font_invoice_size_px ?? form.print_font_size_px,
@@ -295,14 +307,14 @@ export function printFontPayloadFromForm(form = {}) {
     payload[keys.weight] = normalizeOrgPrintFontWeight(form[keys.weight] ?? config.defaultWeight);
     payload[keys.headerScale] = form[keys.headerScale] || config.defaultHeaderScale;
     payload[keys.headerSizePx] = normalizeOrgPrintFontSizePx(
-      form[keys.headerSizePx] ?? config.defaultSizePx,
+      form[keys.headerSizePx] ?? variantDefaultHeaderSizePx(config),
     );
     payload[keys.headerWeight] = normalizeOrgPrintFontWeight(
       form[keys.headerWeight] ?? config.defaultHeaderWeight,
     );
     payload[keys.footerScale] = form[keys.footerScale] || config.defaultFooterScale;
     payload[keys.footerSizePx] = normalizeOrgPrintFontSizePx(
-      form[keys.footerSizePx] ?? Math.max(8, config.defaultSizePx - 2),
+      form[keys.footerSizePx] ?? variantDefaultFooterSizePx(config),
     );
     payload[keys.footerWeight] = normalizeOrgPrintFontWeight(
       form[keys.footerWeight] ?? config.defaultFooterWeight,

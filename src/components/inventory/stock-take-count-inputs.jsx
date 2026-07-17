@@ -4,6 +4,7 @@ import { inputClassName } from "@/components/catalog/catalog-shared";
 import { uomStockTakeLevels } from "@/lib/uom-packaging";
 import {
   baseToHierarchyCounts,
+  clampHierarchyCountsToMaxBase,
   formatDisplayQty,
   formatMixedStockDisplay,
   stockTakeCountsToBase,
@@ -39,6 +40,7 @@ export function StockTakeCountInputs({
   uom,
   counts,
   onChange,
+  onPatchCounts = null,
   disabled = false,
   showPreview = true,
   maxBase = null,
@@ -53,7 +55,33 @@ export function StockTakeCountInputs({
   const atMax = maxBase != null && baseTotal >= maxBase - 0.0001;
 
   function emitChange(level, rawValue) {
-    onChange(countKey(lineId, level.key), rawValue);
+    if (maxBase == null || maxBase <= 0 || rawValue === "" || rawValue == null) {
+      onChange(countKey(lineId, level.key), rawValue);
+      return;
+    }
+
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed)) {
+      onChange(countKey(lineId, level.key), rawValue);
+      return;
+    }
+
+    const nextByKey = {
+      ...byKey,
+      [level.key]: parsed,
+    };
+    const clamped = clampHierarchyCountsToMaxBase(nextByKey, level.key, uom, maxBase);
+    const patch = {};
+    for (const lvl of levels) {
+      patch[countKey(lineId, lvl.key)] = String(clamped[lvl.key] ?? 0);
+    }
+
+    if (typeof onPatchCounts === "function") {
+      onPatchCounts(patch);
+      return;
+    }
+
+    onChange(countKey(lineId, level.key), patch[countKey(lineId, level.key)]);
   }
 
   function handleKeyDown(level, e) {

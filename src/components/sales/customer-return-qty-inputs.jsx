@@ -15,6 +15,7 @@ export function CustomerReturnQtyInputs({
   uomById,
   counts,
   onCountsChange,
+  onCountsPatch,
   onSimpleQtyChange,
   disabled = false,
 }) {
@@ -51,6 +52,7 @@ export function CustomerReturnQtyInputs({
       uom={uom}
       counts={counts}
       onChange={onCountsChange}
+      onPatchCounts={onCountsPatch}
       disabled={disabled}
       maxBase={maxBase > 0 ? maxBase : null}
       levels={levels}

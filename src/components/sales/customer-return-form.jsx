@@ -265,6 +265,19 @@ export function CustomerReturnForm({
     });
   }
 
+  function updateLineFromCountsPatch(index, patch) {
+    setReturnAll(false);
+    setReturnCounts((prev) => {
+      const nextCounts = { ...prev, ...patch };
+      setLines((prevLines) =>
+        prevLines.map((line, i) =>
+          i === index ? recalcReturnLineFromCounts(line, nextCounts, uomById) : line,
+        ),
+      );
+      return nextCounts;
+    });
+  }
+
   function removeLine(index) {
     setReturnAll(false);
     setLines((prev) => {
@@ -559,6 +572,7 @@ export function CustomerReturnForm({
                       uomById={uomById}
                       counts={returnCounts}
                       onCountsChange={(key, value) => updateLineFromCounts(index, key, value)}
+                      onCountsPatch={(patch) => updateLineFromCountsPatch(index, patch)}
                       onSimpleQtyChange={(value) => updateLine(index, value)}
                       disabled={Number(line.max_return_qty) <= 0 || returnAll}
                     />
