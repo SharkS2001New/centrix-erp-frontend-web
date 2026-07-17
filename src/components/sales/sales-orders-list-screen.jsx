@@ -19,7 +19,6 @@ import {
   resolveSalesOrderQueue,
   saleBalanceDue,
   canCollectPaymentOnQueue,
-  isPaymentCollectionQueueSlug,
   workflowStatusFilterOptions,
 } from "@/lib/order-workflow";
 import {
@@ -798,12 +797,10 @@ export default function SalesOrdersListScreen({
   }
 
   function openCollectPayment(sale) {
-    if (!sale?.id || !canCollectPaymentOnQueue(sale, queueSlug)) return;
+    if (!sale?.id || !canCollectPaymentOnQueue(sale, queueSlug, null, capabilities)) return;
     setContextMenu(null);
     setPaySale(sale);
   }
-
-  const showCollectPaymentAction = isPaymentCollectionQueueSlug(queueSlug);
 
   function applyDateFilter() {
     setAppliedFromDate(fromDate);
@@ -1214,7 +1211,7 @@ export default function SalesOrdersListScreen({
                           printAriaLabel={orderPrintAriaLabel}
                           onOpenActionsMenu={(event) => openActionsMenuFromButton(event, sale)}
                           onCollectPayment={
-                            showCollectPaymentAction && canCollectPaymentOnQueue(sale, queueSlug)
+                            canCollectPaymentOnQueue(sale, queueSlug, null, capabilities)
                               ? () => openCollectPayment(sale)
                               : null
                           }

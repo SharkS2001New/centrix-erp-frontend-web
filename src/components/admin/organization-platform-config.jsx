@@ -755,14 +755,14 @@ function OrderActionStagesFields({ salesPlatform, onPatch }) {
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order actions by stage</p>
       <p className="mt-1 text-xs text-slate-500">
         Choose which workflow stages allow Edit, Print, Collect payment, Cancel, and Customer returns on
-        web Sales and the mobile Orders page. Leave Print empty to allow all stages. Collect still needs
-        an outstanding balance. Cancel still respects the master cancellation toggle. Settings load with
-        org capabilities and refresh when you save.
+        every web Sales order list (Booked, Mobile, Editable, Unpaid, and the rest). Leave Print empty to
+        allow all stages. Collect still needs an outstanding balance. Cancel still respects the master
+        cancellation toggle. Settings load with org capabilities and refresh when you save.
       </p>
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <ActionStageChecklist
           title="Edit order"
-          hint="Web + mobile. At least one stage required."
+          hint="Web. At least one stage required."
           options={actionStatusOptions}
           selected={editStatuses}
           onToggle={(status, checked) =>
@@ -775,7 +775,7 @@ function OrderActionStagesFields({ salesPlatform, onPatch }) {
         />
         <ActionStageChecklist
           title="Print invoice"
-          hint="Web + mobile. Empty = all stages."
+          hint="Web. Empty = all stages."
           options={actionStatusOptions}
           selected={printStatuses}
           onToggle={(status, checked) =>
@@ -788,7 +788,7 @@ function OrderActionStagesFields({ salesPlatform, onPatch }) {
         />
         <ActionStageChecklist
           title="Collect payment"
-          hint="Web + mobile. At least one stage; balance must be outstanding."
+          hint="Web. At least one stage; balance must be outstanding."
           options={actionStatusOptions}
           selected={collectStatuses}
           onToggle={(status, checked) =>
@@ -801,7 +801,7 @@ function OrderActionStagesFields({ salesPlatform, onPatch }) {
         />
         <ActionStageChecklist
           title="Cancel order"
-          hint="Web + mobile. At least one stage. Master cancel toggle still applies."
+          hint="Web. At least one stage. Master cancel toggle still applies."
           options={actionStatusOptions}
           selected={cancelStatuses}
           onToggle={(status, checked) =>
@@ -814,7 +814,7 @@ function OrderActionStagesFields({ salesPlatform, onPatch }) {
         />
         <ActionStageChecklist
           title="Customer returns"
-          hint="Web + mobile. At least one stage for invoice lookup / create return."
+          hint="Web. At least one stage for invoice lookup / create return."
           options={actionStatusOptions}
           selected={returnStatuses}
           onToggle={(status, checked) =>

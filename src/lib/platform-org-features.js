@@ -24,7 +24,9 @@ export function isPlatformCheckoutOnCreateEnabled(capabilities) {
 
 /**
  * Distribution orgs on Save order (no checkout on create) defer payment until fulfillment.
- * Orders may advance through processing while unpaid; Unpaid queues filter by payment status.
+ * Orders may advance through processing while still unpaid on payment_status.
+ * Queue screens still list by workflow status (Booked, Unpaid, Processed, …) so each
+ * category only shows orders in that step — collect payment where the workflow allows it.
  * Does not apply when checkout on create is enabled (typical retail / wholesale POS).
  */
 export function orgDefersPaymentToFulfillment(capabilities) {

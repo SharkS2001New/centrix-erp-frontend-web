@@ -838,28 +838,6 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
   const step = workflowPipelineSteps(workflow).find((s) => s.key === slug);
   if (!step) return null;
 
-  const deferPayment = orgDefersPaymentToFulfillment(capabilities);
-  const paymentStatusFilter = deferPayment ? paymentStatusForCollectionQueue(step.key) : null;
-  if (paymentStatusFilter) {
-    return {
-      slug: step.key,
-      title: salesOrderQueueTitle(step.label),
-      subtitle:
-        step.key === "unpaid"
-          ? "Orders with an outstanding balance (any workflow step)"
-          : "Orders with a partial payment recorded (any workflow step)",
-      fixedStatusFilter: null,
-      fixedPaymentStatusFilter: paymentStatusFilter,
-      fixedSourceFilter: null,
-      showRouteColumn: true,
-      showDeliveryDateColumn: true,
-      lockStatusFilter: true,
-      lockSourceFilter: false,
-      excludeStatuses: ["cancelled", "expired", "completed"],
-      requireOutstandingBalance: true,
-    };
-  }
-
   return {
     slug: step.key,
     title: salesOrderQueueTitle(step.label),
@@ -950,9 +928,11 @@ export function canRecordOrderPayment(sale, totalPaid = null, capabilities = nul
   return allowed.includes(workflowStatus) || allowed.includes(aligned);
 }
 
-/** Collect payment is offered on Unpaid / Partially paid queues only (queue slug gate). */
+/** Whether payment can be collected on this order list (stage config + outstanding balance). */
 export function canCollectPaymentOnQueue(sale, queueSlug, totalPaid = null, capabilities = null) {
-  if (!isPaymentCollectionQueueSlug(queueSlug)) return false;
+  // queueSlug kept for callers; actions follow Order actions by stage on every list
+  // (Booked, Mobile, Editable, Unpaid, View all, …), not a specific queue only.
+  void queueSlug;
   return canRecordOrderPayment(sale, totalPaid, capabilities);
 }
 
