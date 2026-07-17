@@ -68,19 +68,41 @@ export function isRouteOrderSale(sale) {
   return channel === "mobile" || channel === "pos";
 }
 
+/** Mobile field-sales channel (Mobile Orders list), not a workflow status. */
+export function isMobileChannelSale(sale, capabilities = null) {
+  if (!sale) return false;
+  const sourceKey = resolveOrderSourceKey(sale.order_source, sale.channel, capabilities);
+  if (sourceKey === "mobile") return true;
+  return String(sale.channel ?? "").toLowerCase() === "mobile";
+}
+
+/**
+ * True when the order's workflow stage is in `allowed`, or when `mobile` is allowed
+ * and the order is from the mobile channel (Mobile Orders page).
+ */
+export function orderMatchesActionStages(sale, allowedList, workflow = null, capabilities = null) {
+  if (!sale) return false;
+  const allowed = new Set(allowedList ?? []);
+  const raw = String(sale.status ?? "").toLowerCase();
+  if (allowed.has(raw)) return true;
+  const aligned = String(
+    sale.workflow_status ?? (workflow ? alignStatusToWorkflow(raw, workflow) : raw),
+  ).toLowerCase();
+  if (allowed.has(aligned)) return true;
+  return allowed.has("mobile") && isMobileChannelSale(sale, capabilities);
+}
+
 /** Show Edit Order when workflow status is in the tenant's configured edit stages. */
 export function isOrderEditVisible(sale, workflow = null, capabilities = null) {
   if (!sale) return false;
   const raw = String(sale.status ?? "").toLowerCase();
   if (raw === "cancelled" || raw === "expired") return false;
-  const allowed = new Set(
+  return orderMatchesActionStages(
+    sale,
     resolveEditOrderStatuses(salesSettingsFromCapabilities(capabilities)),
+    workflow,
+    capabilities,
   );
-  if (allowed.has(raw)) return true;
-  const aligned = String(
-    sale.workflow_status ?? (workflow ? alignStatusToWorkflow(raw, workflow) : raw),
-  ).toLowerCase();
-  return allowed.has(aligned);
 }
 
 export function isBackofficeSale(sale, capabilities = null) {

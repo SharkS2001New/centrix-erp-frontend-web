@@ -166,5 +166,10 @@ describe("sales-settings order action stages", () => {
         customer_return_statuses: ["delivered"],
       }),
     ).toEqual(["delivered"]);
+    expect(
+      resolveEditOrderStatuses({
+        edit_order_statuses: ["mobile", "bogus"],
+      }),
+    ).toEqual(["mobile"]);
   });
 });

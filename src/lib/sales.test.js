@@ -120,17 +120,30 @@ describe("order action stage gates", () => {
     ).toBe(false);
   });
 
-  it("gates cancel by configured cancel_order_statuses", () => {
+  it("allows mobile channel when Mobile pseudo-stage is configured", () => {
     const caps = {
       module_settings: {
         sales: {
           order_cancellation_enabled: true,
-          cancel_order_statuses: ["unpaid"],
+          edit_order_statuses: ["mobile"],
+          print_invoice_statuses: ["mobile"],
+          collect_payment_statuses: ["mobile"],
+          cancel_order_statuses: ["mobile"],
         },
       },
     };
-    expect(canCancelOrder({ status: "unpaid" }, null, caps)).toBe(true);
-    expect(canCancelOrder({ status: "booked" }, null, caps)).toBe(false);
-    expect(canCancelOrder({ status: "paid" }, null, caps)).toBe(false);
+    const mobileSale = {
+      status: "booked",
+      channel: "mobile",
+      order_source: "mobile",
+      payment_status: "unpaid",
+      order_total: 100,
+      amount_paid: 0,
+    };
+    expect(isOrderEditVisible(mobileSale, null, caps)).toBe(true);
+    expect(isOrderEditVisible({ status: "booked", channel: "backend" }, null, caps)).toBe(false);
+    expect(isPrintInvoiceVisible(mobileSale, caps)).toBe(true);
+    expect(canRecordOrderPayment(mobileSale, null, caps)).toBe(true);
+    expect(canCancelOrder(mobileSale, null, caps)).toBe(true);
   });
 });

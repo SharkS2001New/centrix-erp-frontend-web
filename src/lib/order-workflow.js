@@ -10,6 +10,17 @@ import {
   salesSettingsFromCapabilities,
 } from "@/lib/sales-settings";
 
+/** Mobile Orders / field-sales channel — used as a pseudo stage in Order actions by stage. */
+function saleIsMobileActionTarget(sale) {
+  if (!sale) return false;
+  if (resolveOrderChannel(sale) === "mobile") return true;
+  return String(sale.order_source ?? "").toLowerCase() === "mobile";
+}
+
+function allowedActionStagesInclude(allowedList, key) {
+  return (allowedList ?? []).includes(String(key ?? "").toLowerCase());
+}
+
 export const DEFAULT_ORDER_WORKFLOW = {
   steps: [
     { status: "booked", label: "Booked", enabled: true },
@@ -402,6 +413,18 @@ export function canCancelOrder(saleOrStatus, workflow, capabilities) {
   if (capabilities && !isOrderCancellationEnabled(capabilities)) return false;
   if (typeof saleOrStatus === "object" && saleOrStatus?.can_cancel === false) return false;
   if (typeof saleOrStatus === "object" && saleOrStatus?.can_cancel === true) return true;
+  if (typeof saleOrStatus === "object") {
+    const allowed = resolveCancelOrderStatuses(salesSettingsFromCapabilities(capabilities));
+    if (
+      allowedActionStagesInclude(allowed, "mobile") &&
+      saleIsMobileActionTarget(saleOrStatus)
+    ) {
+      const status = String(saleOrStatus.status ?? "").toLowerCase();
+      if (status && !["cancelled", "expired", "held", "draft"].includes(status)) {
+        return true;
+      }
+    }
+  }
   const status = typeof saleOrStatus === "object" ? saleOrStatus?.status : saleOrStatus;
   return canCancelOrderStatus(status, workflow, capabilities);
 }
@@ -925,7 +948,8 @@ export function canRecordOrderPayment(sale, totalPaid = null, capabilities = nul
 
   const allowed = resolveCollectPaymentStatuses(salesSettingsFromCapabilities(capabilities));
   const aligned = String(sale.workflow_status ?? workflowStatus).toLowerCase();
-  return allowed.includes(workflowStatus) || allowed.includes(aligned);
+  if (allowed.includes(workflowStatus) || allowed.includes(aligned)) return true;
+  return allowedActionStagesInclude(allowed, "mobile") && saleIsMobileActionTarget(sale);
 }
 
 /** Whether payment can be collected on this order list (stage config + outstanding balance). */
@@ -946,7 +970,8 @@ export function isPrintInvoiceVisible(sale, capabilities = null) {
   const allowed = resolvePrintInvoiceStatuses(salesSettingsFromCapabilities(capabilities));
   if (allowed == null) return true;
   const aligned = String(sale.workflow_status ?? status).toLowerCase();
-  return allowed.includes(status) || allowed.includes(aligned);
+  if (allowed.includes(status) || allowed.includes(aligned)) return true;
+  return allowedActionStagesInclude(allowed, "mobile") && saleIsMobileActionTarget(sale);
 }
 
 /** Block manual workflow moves that skip recording payment. */

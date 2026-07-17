@@ -16,6 +16,7 @@ import {
   normalizeOrdersListSearchDays,
   normalizeOrdersListSort,
   normalizeOrderActionStatuses,
+  ORDER_ACTION_MOBILE_OPTION,
 } from "@/lib/sales-settings";
 import { OrdersListDefaultsFields } from "@/components/admin/orders-list-defaults-fields";
 import {
@@ -702,7 +703,11 @@ export function OrganizationOrderWorkflowSettings({
               />
             </div>
           </div>
-          <OrderActionStagesFields salesPlatform={salesPlatform} onPatch={patch} />
+          <OrderActionStagesFields
+            salesPlatform={salesPlatform}
+            onPatch={patch}
+            mobileOrdersEnabled={mobileOrdersEnabled}
+          />
           <OrderWorkflowSettingsEditor
             embedded
             workflow={wf}
@@ -729,7 +734,7 @@ function toggleStatusInList(list, status, checked, { allowEmpty = false } = {}) 
   return next;
 }
 
-function OrderActionStagesFields({ salesPlatform, onPatch }) {
+function OrderActionStagesFields({ salesPlatform, onPatch, mobileOrdersEnabled = true }) {
   const editStatuses = Array.isArray(salesPlatform?.edit_order_statuses)
     ? salesPlatform.edit_order_statuses
     : ["booked", "pending", "editable"];
@@ -746,16 +751,18 @@ function OrderActionStagesFields({ salesPlatform, onPatch }) {
     ? salesPlatform.customer_return_statuses
     : ["paid", "processed", "delivered", "completed"];
 
-  const actionStatusOptions = ORDER_STATUS_OPTIONS.filter(
-    (opt) => !["cancelled", "expired", "draft"].includes(opt.value),
-  );
+  const actionStatusOptions = [
+    ...ORDER_STATUS_OPTIONS.filter((opt) => !["cancelled", "expired", "draft"].includes(opt.value)),
+    ...(mobileOrdersEnabled ? [ORDER_ACTION_MOBILE_OPTION] : []),
+  ];
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order actions by stage</p>
       <p className="mt-1 text-xs text-slate-500">
         Choose which workflow stages allow Edit, Print, Collect payment, Cancel, and Customer returns on
-        every web Sales order list (Booked, Mobile, Editable, Unpaid, and the rest). Leave Print empty to
+        every web Sales order list. Check <span className="font-medium text-slate-600">Mobile</span> to
+        enable those actions on the Mobile Orders page (when mobile orders are on). Leave Print empty to
         allow all stages. Collect still needs an outstanding balance. Cancel still respects the master
         cancellation toggle. Settings load with org capabilities and refresh when you save.
       </p>

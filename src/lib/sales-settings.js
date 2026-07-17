@@ -1084,7 +1084,12 @@ const KNOWN_ORDER_ACTION_STATUSES = new Set([
   "expired",
   "pending_approval",
   "editable",
+  /** Pseudo-stage: Mobile Orders page / mobile-channel sales (not a workflow status). */
+  "mobile",
 ]);
+
+/** Checkbox for Order actions by stage — enables actions on Mobile Orders. */
+export const ORDER_ACTION_MOBILE_OPTION = { value: "mobile", label: "Mobile" };
 
 /** @returns {string[]} */
 export function normalizeOrderActionStatuses(value) {

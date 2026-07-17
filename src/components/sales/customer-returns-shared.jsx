@@ -359,19 +359,25 @@ export function salesReturnSearchParams(query, statusIn = []) {
     include_archived: 1,
   };
 
-  const statuses =
+  const raw =
     Array.isArray(statusIn) && statusIn.length > 0
-      ? statusIn
+      ? statusIn.map((s) => String(s ?? "").toLowerCase())
       : ["paid", "processed", "delivered", "completed"];
+  const includeMobile = raw.includes("mobile");
+  const statuses = raw.filter((s) => s !== "mobile");
+  const defaults = ["paid", "processed", "delivered", "completed"];
+
+  if (includeMobile) {
+    params.order_source = "mobile";
+  }
+  params.status_in = (statuses.length > 0 ? statuses : defaults).join(",");
 
   if (orderNum != null) {
     // Prefer S-prefixed so the API uses exact order_num matching.
     params.q = `S${orderNum}`;
-    params.status_in = statuses.join(",");
     return params;
   }
 
   params.q = q;
-  params.status_in = statuses.join(",");
   return params;
 }
