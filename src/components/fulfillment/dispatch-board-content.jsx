@@ -30,7 +30,6 @@ function isoDate(d = new Date()) {
 
 const EMPTY_LIST = [];
 
-
 export function DispatchBoardContent() {
   const router = useRouter();
   const { capabilities, user } = useAuth();
@@ -40,7 +39,8 @@ export function DispatchBoardContent() {
     [capabilities],
   );
 
-  const [runDate, setRunDate] = useState(() => isoDate());
+  const [fromDate, setFromDate] = useState(() => isoDate());
+  const [toDate, setToDate] = useState(() => isoDate());
   const [routeFilter, setRouteFilter] = useState("all");
   const [sales, setSales] = useState([]);
   const [totalOrders, setTotalOrders] = useState(0);
@@ -78,10 +78,13 @@ export function DispatchBoardContent() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      const start = fromDate <= toDate ? fromDate : toDate;
+      const end = fromDate <= toDate ? toDate : fromDate;
       const extra = {
         dispatch_orders: 1,
         with_items: 0,
-        required_date: runDate,
+        required_date_from: start,
+        required_date_to: end,
       };
       const boardStatuses = dispatchReadyStatuses(distributionSettings);
       if (boardStatuses?.length) {
@@ -101,11 +104,11 @@ export function DispatchBoardContent() {
     } finally {
       setLoading(false);
     }
-  }, [runDate, routeFilter, page, pageSize, distributionSettings]);
+  }, [fromDate, toDate, routeFilter, page, pageSize, distributionSettings]);
 
   useEffect(() => {
     setPage(1);
-  }, [runDate, routeFilter]);
+  }, [fromDate, toDate, routeFilter]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -233,7 +236,7 @@ export function DispatchBoardContent() {
         routes={routes}
         drivers={drivers}
         vehicles={vehicles}
-        defaultDate={runDate}
+        defaultDate={toDate}
         defaultRouteIds={
           createTripDefaults.routeIds.length
             ? createTripDefaults.routeIds
@@ -244,12 +247,20 @@ export function DispatchBoardContent() {
         defaultSaleIds={createTripDefaults.saleIds}
       />
       <div className="mb-6 flex flex-wrap items-end gap-3">
-        <Field label="Delivery date">
+        <Field label="Start date">
           <input
             type="date"
             className={inputClassName()}
-            value={runDate}
-            onChange={(e) => setRunDate(e.target.value)}
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+          />
+        </Field>
+        <Field label="End date">
+          <input
+            type="date"
+            className={inputClassName()}
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
           />
         </Field>
         <Field label="Route">
@@ -280,7 +291,7 @@ export function DispatchBoardContent() {
       ) : (
         <div className="space-y-8">
           {groupedByRoute.length === 0 ? (
-            <p className="text-sm text-slate-500">No orders ready for dispatch on this date.</p>
+            <p className="text-sm text-slate-500">No orders ready for dispatch in this date range.</p>
           ) : (
             groupedByRoute.map((group) => (
               <DashboardSection

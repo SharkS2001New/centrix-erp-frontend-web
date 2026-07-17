@@ -215,66 +215,66 @@ export function buildSaleInvoiceHtml(
   <title>Invoice Receipt ${escapeHtml(invoiceNo)}</title>
   <style>
     @page { size: A4; margin: 0; }
-    body { font-family: ${font}; margin: 0; padding: 16px; font-size: ${px(9)}; line-height: 1.35; box-sizing: border-box; ${orgPrintInkStyles(generalSettings, "sale_invoice")} }
+    body { font-family: ${font}; margin: 0; padding: 16px; font-size: ${px(12)}; line-height: 1.4; box-sizing: border-box; ${orgPrintInkStyles(generalSettings, "sale_invoice")} }
     .page { max-width: 820px; margin: 0 auto; }
     .page-body { }
     .invoice-header-block { break-inside: avoid; page-break-inside: avoid; }
     .org-brand .org-logo { display: block; margin: 0 auto 8px; max-height: 80px; max-width: 300px; object-fit: contain; }
-    .org-brand .org-name { font-size: ${hpx(16)}; font-weight: var(--print-w-header, 700); letter-spacing: 0.04em; text-transform: uppercase; }
-    .brand-name { text-align: center; font-size: ${hpx(16)}; font-weight: var(--print-w-header, 700); letter-spacing: 0.04em; text-transform: uppercase; }
-    .brand-meta { margin-top: 6px; font-size: ${hpx(10)}; text-align: center; font-weight: var(--print-w-header, 600); line-height: 1.45; }
-    .doc-title { text-align: center; font-size: ${px(14)}; font-weight: 700; margin: 10px 0 12px; letter-spacing: 0.08em; text-transform: uppercase; }
-    .meta-sheet { margin-bottom: 12px; font-size: ${px(10)}; }
+    .org-brand .org-name { font-size: ${hpx(24)}; font-weight: var(--print-w-header, 700); letter-spacing: 0.04em; text-transform: uppercase; }
+    .brand-name { text-align: center; font-size: ${hpx(24)}; font-weight: var(--print-w-header, 700); letter-spacing: 0.04em; text-transform: uppercase; }
+    .brand-meta { margin-top: 6px; font-size: ${hpx(11)}; text-align: center; font-weight: var(--print-w-header, 600); line-height: 1.45; }
+    .doc-title { text-align: center; font-size: ${px(15)}; font-weight: 700; margin: 10px 0 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .meta-sheet { margin-bottom: 12px; font-size: ${px(11)}; }
     .meta-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin: 4px 0; }
     .meta-label { font-weight: 700; text-transform: uppercase; white-space: nowrap; }
     .meta-value { text-align: right; flex: 1; min-width: 0; word-break: break-word; font-weight: 600; }
     .meta-value-em { font-style: italic; font-weight: 700; }
-    table.items { width: 100%; border-collapse: collapse; margin: 8px 0 10px; font-size: ${px(9)}; }
+    table.items { width: 100%; border-collapse: collapse; margin: 8px 0 10px; font-size: ${px(11)}; }
     table.items thead { display: table-header-group; }
     table.items th, table.items td { border-top: 1px dotted #000; border-bottom: 1px dotted #000; padding: 5px 6px; vertical-align: top; }
-    table.items th { font-weight: 700; text-align: left; text-transform: uppercase; font-size: ${px(9)}; }
+    table.items th { font-weight: 700; text-align: left; text-transform: uppercase; font-size: ${px(10)}; }
     table.items td.num, table.items th.num { text-align: right; white-space: nowrap; }
     table.items tbody tr { break-inside: avoid; page-break-inside: avoid; }
     .invoice-closing { break-inside: avoid; page-break-inside: avoid; margin-top: 4px; }
     .totals { display: flex; justify-content: flex-end; margin: 6px 0 14px; }
-    .totals-box { min-width: 280px; text-align: right; font-size: ${px(10)}; font-weight: 700; }
+    .totals-box { min-width: 280px; text-align: right; font-size: ${px(12)}; font-weight: 600; }
     .totals-box p { margin: 3px 0; }
-    .totals-box .grand { font-weight: 700; font-size: ${px(10)}; margin-top: 6px; padding-top: 4px; border-top: 1px solid #000; }
-    .served-by { margin: 10px 0 8px; font-size: ${px(9)}; font-weight: 700; text-transform: uppercase; }
-    .body-footer-block { margin: 10px 0 8px; font-size: ${px(9)}; }
+    .totals-box .grand { font-weight: 700; font-size: ${px(13)}; margin-top: 6px; padding-top: 4px; border-top: 1px solid #000; }
+    .served-by { margin: 10px 0 8px; font-size: ${px(11)}; font-weight: 700; text-transform: uppercase; }
+    .body-footer-block { margin: 10px 0 8px; font-size: ${px(11)}; }
     .body-footer-line { margin: 6px 0; font-weight: 700; }
-    .goods-note { margin: 8px 0 4px; font-size: ${px(9)}; font-weight: 700; text-transform: uppercase; }
+    .goods-note { margin: 8px 0 4px; font-size: ${px(11)}; font-weight: 700; text-transform: uppercase; }
     .goods-note-sub { margin: 0 0 0; font-weight: 700; }
-    .receive-signatures { margin: 14px 0 0; font-size: ${px(9)}; max-width: 420px; }
+    .receive-signatures { margin: 14px 0 0; font-size: ${px(11)}; max-width: 420px; }
     .sig-row { display: flex; align-items: baseline; gap: 6px; margin: 0 0 10px; }
     .sig-row:last-child { margin-bottom: 0; }
     .sig-label { white-space: nowrap; min-width: 5.5rem; font-weight: 700; }
     .sig-line { flex: 1; border-bottom: 1px dotted #000; min-height: 1.1em; }
-    .footer-notes { margin: 0 0 8px; text-align: center; font-size: ${fpx(8)}; font-weight: var(--print-w-footer, 400); }
+    .footer-notes { margin: 0 0 8px; text-align: center; font-size: ${fpx(10)}; font-weight: var(--print-w-footer, 600); }
     .footer-notes p { margin: 4px 0; }
-    .pay-instructions { margin: 10px 0 12px; padding: 8px 10px; border: 1px dotted #000; font-size: ${px(9)}; font-weight: 600; }
+    .pay-instructions { margin: 10px 0 12px; padding: 8px 10px; border: 1px dotted #000; font-size: ${px(11)}; font-weight: 600; }
     .pay-instructions .pay-title { font-weight: 700; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
     .pay-instructions .pay-line { display: flex; justify-content: space-between; gap: 12px; margin: 2px 0; }
     .pay-instructions .pay-label { font-weight: 700; }
     .pay-instructions .pay-value { text-align: right; font-weight: 600; }
-    .pay-instructions .pay-note { margin-top: 6px; font-size: ${px(8)}; font-weight: 600; }
+    .pay-instructions .pay-note { margin-top: 6px; font-size: ${px(10)}; font-weight: 600; }
     .center { text-align: center; }
     ${documentPrintEdgeFooterStyles(generalSettings, { variant: "sale_invoice" })}
     @media print {
       html, body { height: auto !important; min-height: 0 !important; }
-      body { font-size: ${px(9, true)}; padding: 0; }
-      .org-brand .org-name, .brand-name { font-size: ${hpx(16, true)}; }
-      .brand-meta { font-size: ${hpx(10, true)}; }
-      .doc-title { font-size: ${px(14, true)}; }
-      .meta-sheet { font-size: ${px(10, true)}; }
-      table.items { font-size: ${px(9, true)}; }
-      table.items th { font-size: ${px(9, true)}; }
-      .totals-box { font-size: ${px(10, true)}; }
-      .totals-box .grand { font-size: ${px(10, true)}; }
-      .served-by, .goods-note, .receive-signatures { font-size: ${px(9, true)}; }
-      .footer-notes { font-size: ${fpx(8, true)}; }
-      .pay-instructions { font-size: ${px(9, true)}; }
-      .pay-instructions .pay-note { font-size: ${px(8, true)}; }
+      body { font-size: ${px(12, true)}; padding: 0; }
+      .org-brand .org-name, .brand-name { font-size: ${hpx(24, true)}; }
+      .brand-meta { font-size: ${hpx(11, true)}; }
+      .doc-title { font-size: ${px(15, true)}; }
+      .meta-sheet { font-size: ${px(11, true)}; }
+      table.items { font-size: ${px(11, true)}; }
+      table.items th { font-size: ${px(10, true)}; }
+      .totals-box { font-size: ${px(12, true)}; }
+      .totals-box .grand { font-size: ${px(13, true)}; }
+      .served-by, .goods-note, .receive-signatures { font-size: ${px(11, true)}; }
+      .footer-notes { font-size: ${fpx(10, true)}; }
+      .pay-instructions { font-size: ${px(11, true)}; }
+      .pay-instructions .pay-note { font-size: ${px(10, true)}; }
       .page { max-width: none; margin: 0; }
     }
   </style>

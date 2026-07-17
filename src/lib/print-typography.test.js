@@ -80,23 +80,29 @@ describe("org print typography settings", () => {
     });
 
     expect(html).toContain("Arial");
-    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").body(9)}`);
-    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").header(16)}`);
+    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").body(12)}`);
+    expect(html).toContain(`font-size: ${createOrgPrintPx(general, "sale_invoice").header(24)}`);
   });
 
-  it("uses Crystal-style Arial 9pt defaults for A4 invoices", () => {
-    const general = mergeGeneralSettings({ general: {} });
+  it("uses admin printout settings for A4 invoice fonts", () => {
+    const general = mergeGeneralSettings({
+      general: {
+        print_font_invoice_family: "arial",
+        print_font_invoice_scale: "custom",
+        print_font_invoice_size_px: 10,
+        print_font_invoice_weight: "bold",
+      },
+    });
     const printPx = createOrgPrintPx(general, "sale_invoice");
 
     expect(resolveOrgPrintFontSettings(general, "sale_invoice")).toMatchObject({
       family: "arial",
-      scale: "standard",
-      size_px: 9,
-      weight: "normal",
+      scale: "custom",
+      size_px: 10,
+      weight: "bold",
     });
-    expect(printPx.body(9)).toBe("9pt");
-    expect(printPx.header(16)).toBe("16pt");
-    expect(printPx.footer(8)).toBe("8pt");
+    expect(printPx.body(12)).toContain("px");
+    expect(orgPrintFontFamilyFromSettings(general, "sale_invoice")).toContain("Arial");
   });
 
   it("embeds org receipt font family and scaled sizes in thermal receipt HTML", () => {

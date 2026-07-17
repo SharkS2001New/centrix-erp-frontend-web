@@ -21,16 +21,14 @@ export const PRINT_FONT_VARIANTS = {
   invoice: {
     label: "A4 invoice",
     typographyVariant: "sale_invoice",
-    defaultFamily: "arial",
+    defaultFamily: "times",
     defaultScale: "standard",
-    defaultSizePx: 9,
-    defaultWeight: "normal",
-    defaultHeaderScale: "standard",
-    defaultHeaderSizePx: 16,
-    defaultHeaderWeight: "bold",
+    defaultSizePx: 14,
+    defaultWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
+    defaultHeaderScale: "large",
+    defaultHeaderWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
     defaultFooterScale: "standard",
-    defaultFooterSizePx: 8,
-    defaultFooterWeight: "normal",
+    defaultFooterWeight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
   },
   lpo: {
     label: "LPO",
@@ -213,10 +211,10 @@ export function resolveOrgPrintSectionSettings(
 
 export function printFontFormDefaults() {
   const defaults = {
-    print_font_family: "arial",
+    print_font_family: "times",
     print_font_scale: "standard",
-    print_font_size_px: "9",
-    print_font_weight: "normal",
+    print_font_size_px: "14",
+    print_font_weight: ORG_PRINT_FONT_WEIGHT_DEFAULT,
   };
 
   for (const [variantKey, config] of Object.entries(PRINT_FONT_VARIANTS)) {
@@ -239,9 +237,9 @@ export function printFontFormDefaults() {
 export function printFontFormFromGeneral(general = {}) {
   const merged = { ...printFontFormDefaults(), ...general };
   const result = {
-    print_font_family: merged.print_font_family ?? "arial",
+    print_font_family: merged.print_font_family ?? "times",
     print_font_scale: merged.print_font_scale ?? "standard",
-    print_font_size_px: String(merged.print_font_size_px ?? 9),
+    print_font_size_px: String(merged.print_font_size_px ?? 14),
     print_font_weight: normalizeOrgPrintFontWeight(merged.print_font_weight),
   };
 
@@ -288,7 +286,7 @@ export function printFontFormFromGeneral(general = {}) {
 
 export function printFontPayloadFromForm(form = {}) {
   const payload = {
-    print_font_family: form.print_font_invoice_family || form.print_font_family || "arial",
+    print_font_family: form.print_font_invoice_family || form.print_font_family || "times",
     print_font_scale: form.print_font_invoice_scale || form.print_font_scale || "standard",
     print_font_size_px: normalizeOrgPrintFontSizePx(
       form.print_font_invoice_size_px ?? form.print_font_size_px,

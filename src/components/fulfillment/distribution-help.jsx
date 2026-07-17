@@ -34,7 +34,7 @@ const WORKFLOW_STEPS = [
     title: "Plan trips on the dispatch board",
     body: "Group orders into a trip chart for a delivery date. Creating a trip does not dispatch the vehicle yet.",
     details: [
-      "Filter by date and route on the Dispatch board.",
+      "Filter by start and end delivery date and route on the Dispatch board.",
       "Select orders and create a trip chart, or create an empty trip from Trips and add orders later.",
       "Status after creation: Draft — not dispatched yet.",
     ],
