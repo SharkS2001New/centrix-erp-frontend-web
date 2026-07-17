@@ -569,6 +569,7 @@ export function OrganizationOrderWorkflowSettings({
   const salesEnabled = Boolean(enabledModules.sales);
   const distributionEnabled = Boolean(enabledModules.distribution);
   const hasPosSales = Boolean(enabledModules["sales.pos"]);
+  const mobileOrdersEnabled = salesPlatform?.enable_mobile_orders !== false;
   const showCheckout = salesPlatform?.show_checkout_on_create_order !== false;
   const stockDeductOn = normalizeStockDeductOn(salesPlatform?.stock_deduct_on, {
     hasPosSales,
