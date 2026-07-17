@@ -9,8 +9,14 @@ import {
   OrderWorkflowSettingsEditor,
   orderWorkflowFromApi,
 } from "@/components/admin/order-workflow-settings";
-import { DEFAULT_ORDER_WORKFLOW, workflowPipelineSteps } from "@/lib/order-workflow";
-import { normalizeStockDeductOn, normalizeOrdersListDefaultDays, normalizeOrdersListSearchDays, normalizeOrdersListSort } from "@/lib/sales-settings";
+import { DEFAULT_ORDER_WORKFLOW, ORDER_STATUS_OPTIONS, workflowPipelineSteps } from "@/lib/order-workflow";
+import {
+  normalizeStockDeductOn,
+  normalizeOrdersListDefaultDays,
+  normalizeOrdersListSearchDays,
+  normalizeOrdersListSort,
+  normalizeOrderActionStatuses,
+} from "@/lib/sales-settings";
 import { OrdersListDefaultsFields } from "@/components/admin/orders-list-defaults-fields";
 import {
   DOMAIN_MODULE_ORDER,
@@ -315,6 +321,11 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     order_expiry_days: "5",
     order_expiry_before_status: "processed",
     order_cancellation_enabled: true,
+    edit_order_statuses: ["booked", "pending", "editable"],
+    print_invoice_statuses: [],
+    collect_payment_statuses: ["unpaid", "pending_payment"],
+    cancel_order_statuses: ["booked", "pending", "unpaid", "processed", "pending_approval", "editable"],
+    customer_return_statuses: ["paid", "processed", "delivered", "completed"],
   };
 }
 
@@ -359,6 +370,25 @@ export function salesPlatformFromApi(apiPayload) {
     ),
     order_expiry_before_status: String(apiPayload.order_expiry_before_status ?? "processed"),
     order_cancellation_enabled: apiPayload.order_cancellation_enabled !== false,
+    edit_order_statuses: (() => {
+      const list = normalizeOrderActionStatuses(apiPayload.edit_order_statuses);
+      return list.length > 0 ? list : ["booked", "pending", "editable"];
+    })(),
+    print_invoice_statuses: normalizeOrderActionStatuses(apiPayload.print_invoice_statuses),
+    collect_payment_statuses: (() => {
+      const list = normalizeOrderActionStatuses(apiPayload.collect_payment_statuses);
+      return list.length > 0 ? list : ["unpaid", "pending_payment"];
+    })(),
+    cancel_order_statuses: (() => {
+      const list = normalizeOrderActionStatuses(apiPayload.cancel_order_statuses);
+      return list.length > 0
+        ? list
+        : ["booked", "pending", "unpaid", "processed", "pending_approval", "editable"];
+    })(),
+    customer_return_statuses: (() => {
+      const list = normalizeOrderActionStatuses(apiPayload.customer_return_statuses);
+      return list.length > 0 ? list : ["paid", "processed", "delivered", "completed"];
+    })(),
   };
 }
 
@@ -672,6 +702,7 @@ export function OrganizationOrderWorkflowSettings({
               />
             </div>
           </div>
+          <OrderActionStagesFields salesPlatform={salesPlatform} onPatch={patch} />
           <OrderWorkflowSettingsEditor
             embedded
             workflow={wf}
@@ -685,6 +716,140 @@ export function OrganizationOrderWorkflowSettings({
         </div>
       )}
     </PlatformFormSection>
+  );
+}
+
+function toggleStatusInList(list, status, checked, { allowEmpty = false } = {}) {
+  const current = Array.isArray(list) ? list : [];
+  if (checked) {
+    return current.includes(status) ? current : [...current, status];
+  }
+  const next = current.filter((item) => item !== status);
+  if (!allowEmpty && next.length === 0) return current;
+  return next;
+}
+
+function OrderActionStagesFields({ salesPlatform, onPatch }) {
+  const editStatuses = Array.isArray(salesPlatform?.edit_order_statuses)
+    ? salesPlatform.edit_order_statuses
+    : ["booked", "pending", "editable"];
+  const printStatuses = Array.isArray(salesPlatform?.print_invoice_statuses)
+    ? salesPlatform.print_invoice_statuses
+    : [];
+  const collectStatuses = Array.isArray(salesPlatform?.collect_payment_statuses)
+    ? salesPlatform.collect_payment_statuses
+    : ["unpaid", "pending_payment"];
+  const cancelStatuses = Array.isArray(salesPlatform?.cancel_order_statuses)
+    ? salesPlatform.cancel_order_statuses
+    : ["booked", "pending", "unpaid", "processed", "pending_approval", "editable"];
+  const returnStatuses = Array.isArray(salesPlatform?.customer_return_statuses)
+    ? salesPlatform.customer_return_statuses
+    : ["paid", "processed", "delivered", "completed"];
+
+  const actionStatusOptions = ORDER_STATUS_OPTIONS.filter(
+    (opt) => !["cancelled", "expired", "draft"].includes(opt.value),
+  );
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order actions by stage</p>
+      <p className="mt-1 text-xs text-slate-500">
+        Choose which workflow stages allow Edit, Print, Collect payment, Cancel, and Customer returns on
+        web Sales and the mobile Orders page. Leave Print empty to allow all stages. Collect still needs
+        an outstanding balance. Cancel still respects the master cancellation toggle. Settings load with
+        org capabilities and refresh when you save.
+      </p>
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <ActionStageChecklist
+          title="Edit order"
+          hint="Web + mobile. At least one stage required."
+          options={actionStatusOptions}
+          selected={editStatuses}
+          onToggle={(status, checked) =>
+            onPatch({
+              edit_order_statuses: toggleStatusInList(editStatuses, status, checked, {
+                allowEmpty: false,
+              }),
+            })
+          }
+        />
+        <ActionStageChecklist
+          title="Print invoice"
+          hint="Web + mobile. Empty = all stages."
+          options={actionStatusOptions}
+          selected={printStatuses}
+          onToggle={(status, checked) =>
+            onPatch({
+              print_invoice_statuses: toggleStatusInList(printStatuses, status, checked, {
+                allowEmpty: true,
+              }),
+            })
+          }
+        />
+        <ActionStageChecklist
+          title="Collect payment"
+          hint="Web + mobile. At least one stage; balance must be outstanding."
+          options={actionStatusOptions}
+          selected={collectStatuses}
+          onToggle={(status, checked) =>
+            onPatch({
+              collect_payment_statuses: toggleStatusInList(collectStatuses, status, checked, {
+                allowEmpty: false,
+              }),
+            })
+          }
+        />
+        <ActionStageChecklist
+          title="Cancel order"
+          hint="Web + mobile. At least one stage. Master cancel toggle still applies."
+          options={actionStatusOptions}
+          selected={cancelStatuses}
+          onToggle={(status, checked) =>
+            onPatch({
+              cancel_order_statuses: toggleStatusInList(cancelStatuses, status, checked, {
+                allowEmpty: false,
+              }),
+            })
+          }
+        />
+        <ActionStageChecklist
+          title="Customer returns"
+          hint="Web + mobile. At least one stage for invoice lookup / create return."
+          options={actionStatusOptions}
+          selected={returnStatuses}
+          onToggle={(status, checked) =>
+            onPatch({
+              customer_return_statuses: toggleStatusInList(returnStatuses, status, checked, {
+                allowEmpty: false,
+              }),
+            })
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function ActionStageChecklist({ title, hint, options, selected, onToggle }) {
+  const selectedSet = new Set(selected);
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3">
+      <p className="text-sm font-semibold text-slate-800">{title}</p>
+      <p className="mt-0.5 text-xs text-slate-500">{hint}</p>
+      <div className="mt-3 max-h-56 space-y-1.5 overflow-y-auto">
+        {options.map((opt) => (
+          <label key={opt.value} className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              className="rounded border-slate-300"
+              checked={selectedSet.has(opt.value)}
+              onChange={(e) => onToggle(opt.value, e.target.checked)}
+            />
+            <span>{opt.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }
 

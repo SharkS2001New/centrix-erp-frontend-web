@@ -91,6 +91,11 @@ const SALES_DEFAULTS = {
   orders_list_default_days: 14,
   orders_list_search_days: 30,
   orders_list_sort: "-created_at",
+  edit_order_statuses: ["booked", "pending", "editable"],
+  print_invoice_statuses: null,
+  collect_payment_statuses: ["unpaid", "pending_payment"],
+  cancel_order_statuses: ["booked", "pending", "unpaid", "processed", "pending_approval", "editable"],
+  customer_return_statuses: ["paid", "processed", "delivered", "completed"],
 };
 
 export const ORDERS_LIST_SORT_OPTIONS = [
@@ -1038,10 +1043,102 @@ export function mergeSalesSettings(moduleSettings) {
     Boolean(sales.discount_approval_enabled_mobile) ||
     Boolean(sales.discount_approval_enabled_backoffice);
 
+  const editStatuses = normalizeOrderActionStatuses(sales.edit_order_statuses);
+  sales.edit_order_statuses =
+    editStatuses.length > 0 ? editStatuses : [...SALES_DEFAULTS.edit_order_statuses];
+
+  if (sales.print_invoice_statuses == null) {
+    sales.print_invoice_statuses = null;
+  } else {
+    const printStatuses = normalizeOrderActionStatuses(sales.print_invoice_statuses);
+    sales.print_invoice_statuses = printStatuses.length > 0 ? printStatuses : null;
+  }
+
+  const collectStatuses = normalizeOrderActionStatuses(sales.collect_payment_statuses);
+  sales.collect_payment_statuses =
+    collectStatuses.length > 0 ? collectStatuses : [...SALES_DEFAULTS.collect_payment_statuses];
+
+  const cancelStatuses = normalizeOrderActionStatuses(sales.cancel_order_statuses);
+  sales.cancel_order_statuses =
+    cancelStatuses.length > 0 ? cancelStatuses : [...SALES_DEFAULTS.cancel_order_statuses];
+
+  const returnStatuses = normalizeOrderActionStatuses(sales.customer_return_statuses);
+  sales.customer_return_statuses =
+    returnStatuses.length > 0 ? returnStatuses : [...SALES_DEFAULTS.customer_return_statuses];
+
   return sales;
 }
 
-/** Stock deduction timing — per channel on sales settings; legacy string applies to all channels. */
+const KNOWN_ORDER_ACTION_STATUSES = new Set([
+  "draft",
+  "held",
+  "booked",
+  "pending",
+  "unpaid",
+  "pending_payment",
+  "paid",
+  "processed",
+  "delivered",
+  "completed",
+  "cancelled",
+  "expired",
+  "pending_approval",
+  "editable",
+]);
+
+/** @returns {string[]} */
+export function normalizeOrderActionStatuses(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const item of value) {
+    const key = String(item ?? "")
+      .trim()
+      .toLowerCase();
+    if (!key || seen.has(key) || !KNOWN_ORDER_ACTION_STATUSES.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
+/** @returns {string[]} */
+export function resolveEditOrderStatuses(salesSettings = null) {
+  const list = normalizeOrderActionStatuses(salesSettings?.edit_order_statuses);
+  return list.length > 0 ? list : [...SALES_DEFAULTS.edit_order_statuses];
+}
+
+/**
+ * Null means print allowed on all stages.
+ * @returns {string[]|null}
+ */
+export function resolvePrintInvoiceStatuses(salesSettings = null) {
+  if (salesSettings?.print_invoice_statuses == null) return null;
+  const list = normalizeOrderActionStatuses(salesSettings.print_invoice_statuses);
+  return list.length > 0 ? list : null;
+}
+
+/** @returns {string[]} */
+export function resolveCollectPaymentStatuses(salesSettings = null) {
+  const list = normalizeOrderActionStatuses(salesSettings?.collect_payment_statuses);
+  return list.length > 0 ? list : [...SALES_DEFAULTS.collect_payment_statuses];
+}
+
+/** @returns {string[]} */
+export function resolveCancelOrderStatuses(salesSettings = null) {
+  const list = normalizeOrderActionStatuses(salesSettings?.cancel_order_statuses);
+  return list.length > 0 ? list : [...SALES_DEFAULTS.cancel_order_statuses];
+}
+
+/** @returns {string[]} */
+export function resolveCustomerReturnStatuses(salesSettings = null) {
+  const list = normalizeOrderActionStatuses(salesSettings?.customer_return_statuses);
+  return list.length > 0 ? list : [...SALES_DEFAULTS.customer_return_statuses];
+}
+
+export function salesSettingsFromCapabilities(capabilities = null) {
+  return mergeSalesSettings(capabilities?.module_settings ?? null);
+}
 export function normalizeStockDeductOn(value, { hasPosSales = false, showCheckoutOnCreate = true } = {}) {
   const allowed = new Set(STOCK_DEDUCT_TIMING_OPTIONS.map((o) => o.value));
   const defaults = { ...SALES_DEFAULTS.stock_deduct_on };

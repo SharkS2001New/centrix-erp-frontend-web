@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  isOrderEditVisible,
   resolvePaymentMethodByCode,
   shouldOpenBackofficeOrderEdit,
   shouldRestoreOrderToCart,
 } from "@/lib/sales";
+import { canRecordOrderPayment, canCancelOrder, isPrintInvoiceVisible } from "@/lib/order-workflow";
 
 describe("resolvePaymentMethodByCode", () => {
   const methods = [
@@ -66,5 +68,69 @@ describe("sales order edit routing", () => {
     const sale = { ...posBookedSale, can_edit_lines: true };
     expect(shouldOpenBackofficeOrderEdit(sale, null, capabilitiesWithPos)).toBe(true);
     expect(shouldRestoreOrderToCart(sale, null, capabilitiesWithPos)).toBe(false);
+  });
+});
+
+describe("order action stage gates", () => {
+  it("gates edit visibility by configured edit_order_statuses", () => {
+    const caps = {
+      module_settings: {
+        sales: { edit_order_statuses: ["unpaid"] },
+      },
+    };
+    expect(isOrderEditVisible({ status: "unpaid" }, null, caps)).toBe(true);
+    expect(isOrderEditVisible({ status: "booked" }, null, caps)).toBe(false);
+  });
+
+  it("allows print on all stages when print list is empty/null", () => {
+    expect(isPrintInvoiceVisible({ status: "unpaid" })).toBe(true);
+    expect(
+      isPrintInvoiceVisible(
+        { status: "unpaid" },
+        { module_settings: { sales: { print_invoice_statuses: ["paid"] } } },
+      ),
+    ).toBe(false);
+    expect(
+      isPrintInvoiceVisible(
+        { status: "paid" },
+        { module_settings: { sales: { print_invoice_statuses: ["paid"] } } },
+      ),
+    ).toBe(true);
+  });
+
+  it("gates collect payment by stage plus outstanding balance", () => {
+    const unpaidSale = {
+      status: "unpaid",
+      payment_status: "unpaid",
+      order_total: 100,
+      amount_paid: 0,
+    };
+    expect(canRecordOrderPayment(unpaidSale)).toBe(true);
+    expect(
+      canRecordOrderPayment(unpaidSale, null, {
+        module_settings: { sales: { collect_payment_statuses: ["delivered"] } },
+      }),
+    ).toBe(false);
+    expect(
+      canRecordOrderPayment(
+        { ...unpaidSale, status: "delivered", amount_paid: 100 },
+        null,
+        { module_settings: { sales: { collect_payment_statuses: ["delivered"] } } },
+      ),
+    ).toBe(false);
+  });
+
+  it("gates cancel by configured cancel_order_statuses", () => {
+    const caps = {
+      module_settings: {
+        sales: {
+          order_cancellation_enabled: true,
+          cancel_order_statuses: ["unpaid"],
+        },
+      },
+    };
+    expect(canCancelOrder({ status: "unpaid" }, null, caps)).toBe(true);
+    expect(canCancelOrder({ status: "booked" }, null, caps)).toBe(false);
+    expect(canCancelOrder({ status: "paid" }, null, caps)).toBe(false);
   });
 });

@@ -12,6 +12,10 @@ import {
   workflowStatusLabel,
   workflowTransitions,
 } from "@/lib/order-workflow";
+import {
+  resolveEditOrderStatuses,
+  salesSettingsFromCapabilities,
+} from "@/lib/sales-settings";
 
 export const SALE_STATUS_LABELS = Object.fromEntries(
   DEFAULT_ORDER_WORKFLOW.steps.map((s) => [s.status, s.label]),
@@ -64,18 +68,19 @@ export function isRouteOrderSale(sale) {
   return channel === "mobile" || channel === "pos";
 }
 
-const ORDER_EDIT_STATUSES = new Set(["booked", "pending", "editable"]);
-
-/** Show Edit Order when workflow status is Booked, Pending, or Editable (discount revision). */
-export function isOrderEditVisible(sale, workflow = null) {
+/** Show Edit Order when workflow status is in the tenant's configured edit stages. */
+export function isOrderEditVisible(sale, workflow = null, capabilities = null) {
   if (!sale) return false;
   const raw = String(sale.status ?? "").toLowerCase();
   if (raw === "cancelled" || raw === "expired") return false;
-  if (ORDER_EDIT_STATUSES.has(raw)) return true;
+  const allowed = new Set(
+    resolveEditOrderStatuses(salesSettingsFromCapabilities(capabilities)),
+  );
+  if (allowed.has(raw)) return true;
   const aligned = String(
     sale.workflow_status ?? (workflow ? alignStatusToWorkflow(raw, workflow) : raw),
   ).toLowerCase();
-  return ORDER_EDIT_STATUSES.has(aligned);
+  return allowed.has(aligned);
 }
 
 export function isBackofficeSale(sale, capabilities = null) {
@@ -104,15 +109,15 @@ export function shouldOpenBackofficeOrderEdit(sale, workflow = null, capabilitie
   if (String(sale?.status ?? "").toLowerCase() === "editable") return true;
 
   const sourceKey = resolveOrderSourceKey(sale?.order_source, sale?.channel, capabilities);
-  if (sourceKey === "mobile" && (isOrderEditVisible(sale, workflow) || sale?.can_edit)) {
+  if (sourceKey === "mobile" && (isOrderEditVisible(sale, workflow, capabilities) || sale?.can_edit)) {
     return true;
   }
 
-  if (isBackofficeSale(sale, capabilities) && (isOrderEditVisible(sale, workflow) || sale?.can_edit)) {
+  if (isBackofficeSale(sale, capabilities) && (isOrderEditVisible(sale, workflow, capabilities) || sale?.can_edit)) {
     return true;
   }
 
-  if (!isOrderEditVisible(sale, workflow)) return false;
+  if (!isOrderEditVisible(sale, workflow, capabilities)) return false;
   return !isPosOrMobileSale(sale, capabilities);
 }
 
@@ -121,7 +126,7 @@ export function shouldRestoreOrderToCart(sale, workflow = null, capabilities = n
   if (sale?.can_edit_lines) return false;
   if (sale?.can_edit === false) return false;
   if (isBackofficeSale(sale, capabilities)) return false;
-  if (!isOrderEditVisible(sale, workflow) && !sale?.can_edit) return false;
+  if (!isOrderEditVisible(sale, workflow, capabilities) && !sale?.can_edit) return false;
   return isPosOrMobileSale(sale, capabilities) || Boolean(sale?.can_edit);
 }
 

@@ -359,19 +359,19 @@ export function salesReturnSearchParams(query, statusIn = []) {
     include_archived: 1,
   };
 
+  const statuses =
+    Array.isArray(statusIn) && statusIn.length > 0
+      ? statusIn
+      : ["paid", "processed", "delivered", "completed"];
+
   if (orderNum != null) {
     // Prefer S-prefixed so the API uses exact order_num matching.
     params.q = `S${orderNum}`;
-    // Any sale that can have returnable lines — not only literal "completed".
-    params.exclude_statuses = "cancelled,expired,held,draft,pending_approval";
+    params.status_in = statuses.join(",");
     return params;
   }
 
   params.q = q;
-  if (statusIn.length > 0) {
-    params.status_in = statusIn.join(",");
-  } else {
-    params.status_in = "paid,processed,delivered,completed";
-  }
+  params.status_in = statuses.join(",");
   return params;
 }

@@ -8,7 +8,10 @@ import { useAuth } from "@/contexts/auth-context";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
 import { ReturnProofField } from "@/components/returns/return-proof-field";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
-import { checkoutCompleteStatuses, getChannelWorkflow } from "@/lib/order-workflow";
+import {
+  resolveCustomerReturnStatuses,
+  salesSettingsFromCapabilities,
+} from "@/lib/sales-settings";
 import {
   REFUND_METHODS,
   RETURN_REASONS,
@@ -44,7 +47,7 @@ export function CustomerReturnForm({
   const router = useRouter();
   const { user, capabilities } = useAuth();
   const returnSearchStatuses = useMemo(
-    () => checkoutCompleteStatuses(getChannelWorkflow(capabilities, "backend"), "backend"),
+    () => resolveCustomerReturnStatuses(salesSettingsFromCapabilities(capabilities)),
     [capabilities],
   );
   const [invoiceQuery, setInvoiceQuery] = useState("");

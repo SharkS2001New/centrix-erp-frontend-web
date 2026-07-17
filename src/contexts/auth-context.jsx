@@ -355,16 +355,8 @@ export function AuthProvider({ children }) {
     [applyAuthPayload, router, switchWorkspace],
   );
 
-  const completeTwoFactorLogin = useCallback(
-    async (challengeToken, code) => {
-      const res = await apiRequest("/auth/2fa/verify", {
-        method: "POST",
-        body: {
-          challenge_token: challengeToken,
-          code: String(code).trim(),
-        },
-        token: null,
-      });
+  const finishAuthenticatedSession = useCallback(
+    async (res) => {
       const caps = await applyAuthPayload(res, WEB_LOGIN_CHANNEL);
       clearLicenseWarningDismissed();
       if (res.must_change_password || res.user?.must_change_password) {
@@ -396,6 +388,55 @@ export function AuthProvider({ children }) {
       return caps;
     },
     [applyAuthPayload, router, switchWorkspace],
+  );
+
+  const completeTwoFactorLogin = useCallback(
+    async (challengeToken, code) => {
+      const res = await apiRequest("/auth/2fa/verify", {
+        method: "POST",
+        body: {
+          challenge_token: challengeToken,
+          code: String(code).trim(),
+        },
+        token: null,
+      });
+      return finishAuthenticatedSession(res);
+    },
+    [finishAuthenticatedSession],
+  );
+
+  const loginWithPasskey = useCallback(
+    async (challengeToken, credential, options = {}) => {
+      const { forceLogout = false } = options;
+      const res = await apiRequest("/auth/passkeys/login", {
+        method: "POST",
+        body: {
+          challenge_token: challengeToken,
+          credential,
+          client_id: getClientId(),
+          login_channel: WEB_LOGIN_CHANNEL,
+          ...(forceLogout ? { force_logout: true } : {}),
+        },
+        token: null,
+      });
+      return finishAuthenticatedSession(res);
+    },
+    [finishAuthenticatedSession],
+  );
+
+  const completeTwoFactorWithPasskey = useCallback(
+    async (passkeyChallengeToken, credential) => {
+      const res = await apiRequest("/auth/2fa/passkey/verify", {
+        method: "POST",
+        body: {
+          challenge_token: passkeyChallengeToken,
+          credential,
+        },
+        token: null,
+      });
+      return finishAuthenticatedSession(res);
+    },
+    [finishAuthenticatedSession],
   );
 
   const switchOrganization = useCallback(
@@ -471,7 +512,9 @@ export function AuthProvider({ children }) {
       loading,
       capabilitiesRefreshing,
       login,
+      loginWithPasskey,
       completeTwoFactorLogin,
+      completeTwoFactorWithPasskey,
       loginChannel,
       switchOrganization,
       switchWorkspace,
@@ -507,7 +550,9 @@ export function AuthProvider({ children }) {
       loading,
       capabilitiesRefreshing,
       login,
+      loginWithPasskey,
       completeTwoFactorLogin,
+      completeTwoFactorWithPasskey,
       loginChannel,
       switchOrganization,
       switchWorkspace,

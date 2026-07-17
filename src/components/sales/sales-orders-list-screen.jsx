@@ -859,7 +859,9 @@ export default function SalesOrdersListScreen({
       disableWorkflowActions: routeOrdersOnly,
       onView: () => viewOrder(sale),
       onEdit: () => void openEditOrder(sale),
-      onCollectPayment: canCollectPaymentOnQueue(sale, queueSlug) ? () => openCollectPayment(sale) : null,
+      onCollectPayment: canCollectPaymentOnQueue(sale, queueSlug, null, capabilities)
+        ? () => openCollectPayment(sale)
+        : null,
       onPrintThermal: () => void printOrder(sale, "receipt"),
       onPrintA4: () => void printOrder(sale, "invoice"),
       onAdvance: routeOrdersOnly ? null : (status) => void handleAdvance(sale, status),

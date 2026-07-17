@@ -4,6 +4,11 @@ import {
   canApproveDiscountRequests,
   isDiscountApprovalEnabled,
   isDiscountApprovalEnabledForChannel,
+  resolveCancelOrderStatuses,
+  resolveCollectPaymentStatuses,
+  resolveCustomerReturnStatuses,
+  resolveEditOrderStatuses,
+  resolvePrintInvoiceStatuses,
   showBackofficeLineDiscountEdit,
   showPosLineDiscountField,
 } from "@/lib/sales-settings";
@@ -110,5 +115,56 @@ describe("sales-settings discount approvals", () => {
         hasPermission: (code) => code === "admin.discount_approvals.approve",
       }),
     ).toBe(true);
+  });
+});
+
+describe("sales-settings order action stages", () => {
+  it("defaults edit / print / collect status lists", () => {
+    expect(resolveEditOrderStatuses(null)).toEqual(["booked", "pending", "editable"]);
+    expect(resolvePrintInvoiceStatuses(null)).toBeNull();
+    expect(resolveCollectPaymentStatuses(null)).toEqual(["unpaid", "pending_payment"]);
+    expect(resolveCancelOrderStatuses(null)).toEqual([
+      "booked",
+      "pending",
+      "unpaid",
+      "processed",
+      "pending_approval",
+      "editable",
+    ]);
+    expect(resolveCustomerReturnStatuses(null)).toEqual([
+      "paid",
+      "processed",
+      "delivered",
+      "completed",
+    ]);
+  });
+
+  it("uses configured lists and treats empty print as all stages", () => {
+    expect(
+      resolveEditOrderStatuses({
+        edit_order_statuses: ["unpaid", "bogus", "unpaid"],
+      }),
+    ).toEqual(["unpaid"]);
+    expect(
+      resolvePrintInvoiceStatuses({
+        print_invoice_statuses: ["paid", "completed"],
+      }),
+    ).toEqual(["paid", "completed"]);
+    expect(resolvePrintInvoiceStatuses({ print_invoice_statuses: [] })).toBeNull();
+    expect(
+      resolveCollectPaymentStatuses({
+        collect_payment_statuses: ["delivered"],
+      }),
+    ).toEqual(["delivered"]);
+    expect(
+      resolveCancelOrderStatuses({
+        cancel_order_statuses: ["paid"],
+      }),
+    ).toEqual(["paid"]);
+    expect(
+      resolveCustomerReturnStatuses({
+        customer_return_statuses: ["delivered"],
+      }),
+    ).toEqual(["delivered"]);
   });
 });

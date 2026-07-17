@@ -15,6 +15,7 @@ import {
 } from "@/components/catalog/catalog-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { ProfileTwoFactorSection } from "@/components/layout/profile-two-factor-section";
+import { ProfilePasskeysSection } from "@/components/layout/profile-passkeys-section";
 
 function accessLabel(user, capabilities) {
   if (user?.is_super_admin || capabilities?.is_super_admin) {
@@ -367,6 +368,7 @@ export function ProfilePanel({ compact = false, onPasswordChangeComplete }) {
         </form>
       </section>
       </div>
+      {!requiredPasswordChange ? <ProfilePasskeysSection /> : null}
       {!requiredPasswordChange ? <ProfileTwoFactorSection /> : null}
     </div>
   );

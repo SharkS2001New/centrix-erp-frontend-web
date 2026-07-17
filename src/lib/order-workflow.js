@@ -1,10 +1,14 @@
 /** Default workflow mirrors config/erp.php default_order_workflow. */
 import {
   isOrderCancellationEnabled,
-  ORDER_CANCELLABLE_STATUSES,
-  ORDER_NON_CANCELLABLE_STATUSES,
   orgDefersPaymentToFulfillment,
 } from "@/lib/platform-org-features";
+import {
+  resolveCancelOrderStatuses,
+  resolveCollectPaymentStatuses,
+  resolvePrintInvoiceStatuses,
+  salesSettingsFromCapabilities,
+} from "@/lib/sales-settings";
 
 export const DEFAULT_ORDER_WORKFLOW = {
   steps: [
@@ -381,20 +385,16 @@ export function alignStatusToWorkflow(status, workflow) {
   return pickEnabledStatus(key, workflow);
 }
 
-/** Whether this pipeline status may be cancelled (booked, pending, unpaid, processed). */
-export function canCancelOrderStatus(status, workflow) {
+/** Whether this pipeline status may be cancelled (configured cancel_order_statuses). */
+export function canCancelOrderStatus(status, workflow, capabilities = null) {
   const key = String(status ?? "").toLowerCase();
   if (!key || key === "cancelled" || key === "expired" || key === "held" || key === "draft") {
     return false;
   }
-  if (ORDER_NON_CANCELLABLE_STATUSES.has(key)) {
-    return false;
-  }
+  const allowed = new Set(resolveCancelOrderStatuses(salesSettingsFromCapabilities(capabilities)));
+  if (allowed.has(key)) return true;
   const aligned = alignStatusToWorkflow(key, workflow);
-  if (ORDER_NON_CANCELLABLE_STATUSES.has(aligned)) {
-    return false;
-  }
-  return ORDER_CANCELLABLE_STATUSES.has(key) || ORDER_CANCELLABLE_STATUSES.has(aligned);
+  return allowed.has(aligned);
 }
 
 /** Whether staff should be offered cancel for this order (settings + status). */
@@ -403,7 +403,7 @@ export function canCancelOrder(saleOrStatus, workflow, capabilities) {
   if (typeof saleOrStatus === "object" && saleOrStatus?.can_cancel === false) return false;
   if (typeof saleOrStatus === "object" && saleOrStatus?.can_cancel === true) return true;
   const status = typeof saleOrStatus === "object" ? saleOrStatus?.status : saleOrStatus;
-  return canCancelOrderStatus(status, workflow);
+  return canCancelOrderStatus(status, workflow, capabilities);
 }
 
 export function workflowTransitions(workflow) {
@@ -422,11 +422,11 @@ export function pipelineStepIndex(status, workflow) {
 }
 
 /** Adjacent pipeline steps only — move one stage up or down. */
-export function pipelineAdjacentTransitions(status, workflow) {
+export function pipelineAdjacentTransitions(status, workflow, capabilities = null) {
   const explicit = workflow?.transitions?.[status];
   if (Array.isArray(explicit) && explicit.length > 0) {
     const options = [...explicit];
-    if (canCancelOrderStatus(status, workflow) && !options.includes("cancelled")) {
+    if (canCancelOrderStatus(status, workflow, capabilities) && !options.includes("cancelled")) {
       options.push("cancelled");
     }
     return [...new Set(options)];
@@ -449,7 +449,7 @@ export function pipelineAdjacentTransitions(status, workflow) {
     options.push("processed");
   }
 
-  if (canCancelOrderStatus(status, workflow)) {
+  if (canCancelOrderStatus(status, workflow, capabilities)) {
     options.push("cancelled");
   }
   return [...new Set(options)];
@@ -495,8 +495,8 @@ export function pickEnabledStatus(preferred, workflow) {
   return preferred;
 }
 
-export function nextTransitionOptions(status, workflow) {
-  return pipelineAdjacentTransitions(status, workflow).filter((s) => s !== status);
+export function nextTransitionOptions(status, workflow, capabilities = null) {
+  return pipelineAdjacentTransitions(status, workflow, capabilities).filter((s) => s !== status);
 }
 
 /** Next forward workflow step for list-row confirm actions. */
@@ -506,7 +506,9 @@ export function primaryWorkflowAdvanceStatus(status, workflow, sale = null, capa
   const steps = workflowPipelineSteps(workflow);
   const currentIdx = pipelineStatusIndex(status, workflow);
   const allowed = new Set(
-    pipelineAdjacentTransitions(status, workflow).filter((s) => s !== status && s !== "cancelled"),
+    pipelineAdjacentTransitions(status, workflow, capabilities).filter(
+      (s) => s !== status && s !== "cancelled",
+    ),
   );
   if (!allowed.size) return null;
 
@@ -902,11 +904,12 @@ export function workflowStatusFilterOptionsFromConfig(config) {
 
 const PAYMENT_STEP_KEYS = new Set(["unpaid", "pending_payment", "paid"]);
 
-/** Workflow steps where payment collection is the primary action (Unpaid / Partially paid). */
+/** Default workflow steps where payment collection is the primary action. */
 export const PAYMENT_COLLECT_WORKFLOW_STATUSES = new Set(["unpaid", "pending_payment"]);
 
-export function isPaymentCollectWorkflowStatus(status) {
-  return PAYMENT_COLLECT_WORKFLOW_STATUSES.has(String(status ?? "").toLowerCase());
+export function isPaymentCollectWorkflowStatus(status, capabilities = null) {
+  const allowed = resolveCollectPaymentStatuses(salesSettingsFromCapabilities(capabilities));
+  return allowed.includes(String(status ?? "").toLowerCase());
 }
 
 export function saleBalanceDue(sale, totalPaid = null) {
@@ -916,14 +919,13 @@ export function saleBalanceDue(sale, totalPaid = null) {
 
 /**
  * Whether staff should be offered "Collect payment" for this order.
- * Only when workflow status is Unpaid or Partially paid.
  */
-export function saleNeedsPaymentCollection(sale, totalPaid = null) {
-  return canRecordOrderPayment(sale, totalPaid);
+export function saleNeedsPaymentCollection(sale, totalPaid = null, capabilities = null) {
+  return canRecordOrderPayment(sale, totalPaid, capabilities);
 }
 
-/** Whether payment can be recorded (outstanding balance on an unpaid/partial sale). */
-export function canRecordOrderPayment(sale, totalPaid = null) {
+/** Whether payment can be recorded (outstanding balance on an allowed workflow stage). */
+export function canRecordOrderPayment(sale, totalPaid = null, capabilities = null) {
   if (!sale) return false;
 
   const workflowStatus = String(sale.status ?? "").toLowerCase();
@@ -935,13 +937,36 @@ export function canRecordOrderPayment(sale, totalPaid = null) {
   if (balance <= 0.01) return false;
 
   const paymentStatus = String(sale.payment_status ?? "unpaid").toLowerCase();
-  return paymentStatus === "unpaid" || paymentStatus === "partial";
+  if (paymentStatus !== "unpaid" && paymentStatus !== "partial") {
+    return false;
+  }
+
+  if (typeof sale.can_collect_payment === "boolean") {
+    return sale.can_collect_payment;
+  }
+
+  const allowed = resolveCollectPaymentStatuses(salesSettingsFromCapabilities(capabilities));
+  const aligned = String(sale.workflow_status ?? workflowStatus).toLowerCase();
+  return allowed.includes(workflowStatus) || allowed.includes(aligned);
 }
 
-/** Collect payment is offered on Unpaid / Partially paid queues only. */
-export function canCollectPaymentOnQueue(sale, queueSlug, totalPaid = null) {
+/** Collect payment is offered on Unpaid / Partially paid queues only (queue slug gate). */
+export function canCollectPaymentOnQueue(sale, queueSlug, totalPaid = null, capabilities = null) {
   if (!isPaymentCollectionQueueSlug(queueSlug)) return false;
-  return canRecordOrderPayment(sale, totalPaid);
+  return canRecordOrderPayment(sale, totalPaid, capabilities);
+}
+
+/** Whether Print invoice / receipt is allowed for this order stage. */
+export function isPrintInvoiceVisible(sale, capabilities = null) {
+  if (!sale) return false;
+  const status = String(sale.status ?? "").toLowerCase();
+  if (status === "cancelled" || status === "expired" || status === "draft") return false;
+  if (typeof sale.can_print_invoice === "boolean") return sale.can_print_invoice;
+
+  const allowed = resolvePrintInvoiceStatuses(salesSettingsFromCapabilities(capabilities));
+  if (allowed == null) return true;
+  const aligned = String(sale.workflow_status ?? status).toLowerCase();
+  return allowed.includes(status) || allowed.includes(aligned);
 }
 
 /** Block manual workflow moves that skip recording payment. */
@@ -957,9 +982,11 @@ export function isPaymentGatedWorkflowTransition(sale, targetStatus, totalPaid =
 }
 
 /** Next fulfillment step when payment can be collected later (e.g. unpaid → processed). */
-function primaryFulfillmentAdvanceStatus(status, workflow, sale, totalPaid) {
+function primaryFulfillmentAdvanceStatus(status, workflow, sale, totalPaid, capabilities = null) {
   const allowed = new Set(
-    pipelineAdjacentTransitions(status, workflow).filter((s) => s !== status && s !== "cancelled"),
+    pipelineAdjacentTransitions(status, workflow, capabilities).filter(
+      (s) => s !== status && s !== "cancelled",
+    ),
   );
   const steps = workflowPipelineSteps(workflow);
   const processedIdx = steps.findIndex((s) => s.key === "processed");
@@ -1085,11 +1112,17 @@ export function resolveOrderWorkflowActions(
   let advanceStatus = primaryWorkflowAdvanceStatus(status, workflow, sale, capabilities);
 
   if (advanceStatus && isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {
-    const fulfillmentAdvance = primaryFulfillmentAdvanceStatus(status, workflow, sale, totalPaid);
+    const fulfillmentAdvance = primaryFulfillmentAdvanceStatus(
+      status,
+      workflow,
+      sale,
+      totalPaid,
+      capabilities,
+    );
     advanceStatus = fulfillmentAdvance ?? null;
   }
 
-  const showCollectPayment = canRecordOrderPayment(sale, totalPaid);
+  const showCollectPayment = canRecordOrderPayment(sale, totalPaid, capabilities);
 
   let resolvedAdvance = null;
   if (advanceStatus && !isPaymentGatedWorkflowTransition(sale, advanceStatus, totalPaid)) {

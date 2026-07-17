@@ -25,6 +25,7 @@ import {
 } from "@/components/auth/auth-shell";
 import { PasswordInput } from "@/components/auth/password-input";
 import { ForgotPasswordHelpDialog } from "@/components/auth/forgot-password-help-dialog";
+import { getPasskeyAssertion, webAuthnSupported } from "@/lib/webauthn";
 
 export default function LoginPage() {
   return (
@@ -35,7 +36,7 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const { login, completeTwoFactorLogin } = useAuth();
+  const { login, loginWithPasskey, completeTwoFactorLogin, completeTwoFactorWithPasskey } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const reason = searchParams.get("reason");
@@ -50,6 +51,7 @@ function LoginForm() {
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [mfaChallenge, setMfaChallenge] = useState(null);
   const [mfaCode, setMfaCode] = useState("");
+  const passkeysOk = webAuthnSupported();
 
   useEffect(() => {
     const stored = getStoredCompanyCode();
@@ -175,6 +177,58 @@ function LoginForm() {
     }
   }
 
+  async function onPasskeyLogin() {
+    setError(null);
+    setSessionConflict(false);
+    setSubmitting(true);
+    try {
+      const begin = await apiRequest("/auth/passkeys/login/options", {
+        method: "POST",
+        body: {
+          company_code: companyCode.trim() ? companyCode.trim().toUpperCase() : "",
+          username: username.trim() || undefined,
+        },
+        token: null,
+      });
+      const credential = await getPasskeyAssertion(begin.options);
+      await loginWithPasskey(begin.challenge_token, credential);
+    } catch (err) {
+      if (err?.name === "NotAllowedError") {
+        setError("Passkey sign-in was cancelled.");
+      } else if (isSessionConflictError(err)) {
+        setSessionConflict(true);
+        setError(err instanceof ApiError ? err.message : "Already signed in elsewhere.");
+      } else {
+        setError(err instanceof ApiError ? err.message : err?.message || "Passkey sign-in failed.");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onPasskeyMfa() {
+    if (!mfaChallenge?.challenge_token) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      const begin = await apiRequest("/auth/2fa/passkey/options", {
+        method: "POST",
+        body: { challenge_token: mfaChallenge.challenge_token },
+        token: null,
+      });
+      const credential = await getPasskeyAssertion(begin.options);
+      await completeTwoFactorWithPasskey(begin.challenge_token, credential);
+    } catch (err) {
+      if (err?.name === "NotAllowedError") {
+        setError("Passkey verification was cancelled.");
+      } else {
+        setError(err instanceof ApiError ? err.message : err?.message || "Passkey verification failed.");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const sessionMessage =
     reason === "idle"
       ? "Your session expired due to inactivity. Please sign in again."
@@ -211,6 +265,16 @@ function LoginForm() {
           <AuthSubmitButton disabled={submitting || !mfaCode.trim()}>
             {submitting ? "Verifying…" : "Verify and continue"}
           </AuthSubmitButton>
+          {mfaChallenge.passkey_available && passkeysOk ? (
+            <button
+              type="button"
+              className="w-full rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-100 dark:hover:bg-slate-900"
+              disabled={submitting}
+              onClick={() => void onPasskeyMfa()}
+            >
+              Use a passkey instead
+            </button>
+          ) : null}
           {isEmail ? (
             <button
               type="button"
@@ -301,6 +365,22 @@ function LoginForm() {
         <AuthSubmitButton disabled={submitting}>
           {submitting ? "Signing in…" : "Sign in"}
         </AuthSubmitButton>
+        {passkeysOk ? (
+          <>
+            <div className="relative py-1 text-center text-xs text-slate-400">
+              <span className="relative z-10 bg-white px-2 dark:bg-slate-950">or</span>
+              <span className="absolute inset-x-0 top-1/2 border-t border-slate-200 dark:border-slate-800" />
+            </div>
+            <button
+              type="button"
+              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+              disabled={submitting}
+              onClick={() => void onPasskeyLogin()}
+            >
+              Sign in with a passkey
+            </button>
+          </>
+        ) : null}
         <button
           type="button"
           className="w-full text-sm text-slate-500 hover:underline"

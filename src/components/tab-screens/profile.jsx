@@ -68,7 +68,7 @@ export function ProfileScreen() {
       subtitle={
         passwordLocked
           ? "Update your password to unlock the rest of the application."
-          : "Account details and security. You can also enable two-factor authentication (email or Google Authenticator) below."
+          : "Account details and security. You can also enable passkeys and two-factor authentication (email or Google Authenticator) below."
       }
       action={
         canLeaveProfile ? (

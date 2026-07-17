@@ -28,6 +28,8 @@ import {
   saleBalanceDue,
   shouldShowPaymentStatusBadge,
   workflowPipelineSteps,
+  isPrintInvoiceVisible,
+} from "@/lib/order-workflow";
   workflowStatusLabel,
 } from "@/lib/order-workflow";
 import {
@@ -385,12 +387,13 @@ export function buildOrderContextMenuItems({
     });
   }
 
-  const canCollect = !disableWorkflowActions && sale && onCollectPayment;
   const workflowActions =
     sale && workflow
       ? resolveOrderWorkflowActions(sale, workflow, null, capabilities, { disableWorkflowActions })
       : { showCollectPayment: false, advanceStatus: null };
 
+  const canCollect =
+    !disableWorkflowActions && sale && onCollectPayment && workflowActions.showCollectPayment;
   if (canCollect) {
     items.push({
       key: "collect-payment",
@@ -400,7 +403,7 @@ export function buildOrderContextMenuItems({
       onClick: onCollectPayment,
     });
   }
-  if (includePrint) {
+  if (includePrint && isPrintInvoiceVisible(sale, capabilities)) {
     if (hasExternalPos) {
       items.push({
         key: "print-thermal",

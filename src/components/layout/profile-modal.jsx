@@ -32,7 +32,7 @@ export function ProfileModal({ open, onClose }) {
               My profile
             </h2>
             <p className="mt-0.5 text-sm text-slate-500">
-              Account details and security. You can also enable two-factor authentication (email or
+              Account details and security. You can also enable passkeys and two-factor authentication (email or
               Google Authenticator) below.
             </p>
           </div>

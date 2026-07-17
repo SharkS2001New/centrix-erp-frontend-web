@@ -30,6 +30,7 @@ import {
   orderPaymentStatusHint,
   saleBalanceDue,
   canRecordOrderPayment,
+  isPrintInvoiceVisible,
 } from "@/lib/order-workflow";
 import {
   PAYMENT_STATUS_LABELS,
@@ -652,7 +653,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const balanceDue = saleBalanceDue(sale, totalPaid);
   const paymentStatusKey = String(sale?.payment_status ?? "").toLowerCase();
   const showPaymentBreakdownCards = paymentStatusKey === "partial";
-  const canRecordPayment = !readOnlyWorkflow && canRecordOrderPayment(sale, totalPaid);
+  const canRecordPayment = !readOnlyWorkflow && canRecordOrderPayment(sale, totalPaid, capabilities);
   const paymentStatusHint = orderPaymentStatusHint(sale, totalPaid, capabilities);
   const cancellationAllowed = useMemo(
     () => canCancelOrder(sale, saleWorkflow, capabilities),
@@ -961,14 +962,16 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
                   Create return
                 </Link>
               ) : null}
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="theme-secondary-btn inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
-              >
-                <PrintIcon />
-                {printLabel}
-              </button>
+              {isPrintInvoiceVisible(sale, capabilities) ? (
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="theme-secondary-btn inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+                >
+                  <PrintIcon />
+                  {printLabel}
+                </button>
+              ) : null}
             </div>
           </div>
 
