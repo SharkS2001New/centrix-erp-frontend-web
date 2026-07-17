@@ -1,5 +1,6 @@
 import { DM_Sans } from "next/font/google";
 import Script from "next/script";
+import { ChunkLoadRecovery } from "@/components/chunk-load-recovery";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -31,6 +32,7 @@ export default function RootLayout({ children }) {
         <Script id="screen-lock-class" strategy="beforeInteractive">
           {`try{if(sessionStorage.getItem("pos_erp_screen_locked")==="1"){document.documentElement.classList.add("screen-locked");}}catch(e){}`}
         </Script>
+        <ChunkLoadRecovery />
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -31,6 +31,11 @@ const immutableAssetHeaders = [
   { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
 ];
 
+/** App HTML must not be cached long — stale documents point at deleted chunk hashes. */
+const htmlDocumentHeaders = [
+  { key: "Cache-Control", value: "private, no-cache, no-store, must-revalidate" },
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   async headers() {
@@ -45,6 +50,11 @@ const nextConfig = {
       rules.unshift(
         { source: "/_next/static/:path*", headers: immutableAssetHeaders },
         { source: "/branding/:path*", headers: immutableAssetHeaders },
+        // Prefer no-store for navigable routes; static assets above keep immutable.
+        {
+          source: "/((?!_next/static|_next/image|branding).*)",
+          headers: htmlDocumentHeaders,
+        },
       );
     }
 
