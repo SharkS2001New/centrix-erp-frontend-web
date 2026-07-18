@@ -60,6 +60,7 @@ const SALES_DEFAULTS = {
   mobile_enable_field_attendance: false,
   mobile_show_customer_phone: false,
   require_pos_till_float: false,
+  external_pos_layout: "modern",
   require_backoffice_till_float: false,
   blind_till_close: false,
   enable_pos_order_edit: false,
@@ -995,6 +996,10 @@ export function isPosOrderEditEnabled(moduleSettings, capabilities = null) {
 export function mergeSalesSettings(moduleSettings) {
   const sales = { ...SALES_DEFAULTS, ...(moduleSettings?.sales ?? {}) };
   sales.pos_order_type_mode = resolvePosOrderTypeMode(sales);
+  sales.external_pos_layout =
+    String(sales.external_pos_layout ?? "modern").toLowerCase() === "classic"
+      ? "classic"
+      : "modern";
   if (sales.enable_retail_pricing == null && sales.allow_wholesale != null) {
     sales.enable_retail_pricing = Boolean(sales.allow_wholesale);
   }

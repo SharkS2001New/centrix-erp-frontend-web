@@ -310,6 +310,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
       backend: "order_completed",
     },
     require_pos_till_float: false,
+    external_pos_layout: "modern",
     enable_pos_order_edit: false,
     enable_backoffice_order_edit: true,
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
@@ -349,6 +350,8 @@ export function salesPlatformFromApi(apiPayload) {
       showCheckoutOnCreate: apiPayload.show_checkout_on_create_order !== false,
     }),
     require_pos_till_float: Boolean(apiPayload.require_pos_till_float ?? false),
+    external_pos_layout:
+      apiPayload.external_pos_layout === "classic" ? "classic" : "modern",
     enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
     enable_backoffice_order_edit: apiPayload.enable_backoffice_order_edit !== false,
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
@@ -469,6 +472,19 @@ export function OrganizationPlatformSalesSettings({
             checked={Boolean(salesPlatform?.require_pos_till_float)}
             onChange={(v) => patch({ require_pos_till_float: v })}
           />
+          <OrgRegisterField label="External POS layout">
+            <select
+              className={inputClass}
+              value={salesPlatform?.external_pos_layout === "classic" ? "classic" : "modern"}
+              onChange={(e) => patch({ external_pos_layout: e.target.value })}
+            >
+              <option value="modern">Modern — current Centrix POS</option>
+              <option value="classic">Classic — cart on top, Find window, beige workspace</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Only affects the external POS workspace (/pos). Backoffice Create order keeps the modern layout.
+            </p>
+          </OrgRegisterField>
           <Toggle
             label="Allow editing completed POS orders"
             description="When on, cashiers on external POS can reload a completed order by number to correct mistakes. Stock is restored, a KRA credit note is issued when the original sale was fiscalized, and checkout creates a new sale."

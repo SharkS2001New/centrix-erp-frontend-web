@@ -51,6 +51,7 @@ function LoginForm() {
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [mfaChallenge, setMfaChallenge] = useState(null);
   const [mfaCode, setMfaCode] = useState("");
+  const [passkeyAvailable, setPasskeyAvailable] = useState(false);
   const passkeysOk = webAuthnSupported();
 
   useEffect(() => {
@@ -60,6 +61,40 @@ function LoginForm() {
       setShowOrgField(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!passkeysOk) {
+      setPasskeyAvailable(false);
+      return undefined;
+    }
+
+    const org = companyCode.trim().toUpperCase();
+    const user = username.trim();
+    if (!org || !user) {
+      setPasskeyAvailable(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void apiRequest("/auth/passkeys/login/availability", {
+        method: "POST",
+        body: { company_code: org, username: user },
+        token: null,
+      })
+        .then((res) => {
+          if (!cancelled) setPasskeyAvailable(Boolean(res?.available));
+        })
+        .catch(() => {
+          if (!cancelled) setPasskeyAvailable(false);
+        });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [companyCode, username, passkeysOk]);
 
   useEffect(() => {
     if (hasAuthSession()) {
@@ -86,6 +121,7 @@ function LoginForm() {
     clearStoredCompanyCode();
     setShowOrgField(true);
     setCompanyCode("");
+    setPasskeyAvailable(false);
   }
 
   async function attemptLogin(forceLogout = false) {
@@ -182,14 +218,25 @@ function LoginForm() {
     setSessionConflict(false);
     setSubmitting(true);
     try {
+      const org = companyCode.trim().toUpperCase();
+      const user = username.trim();
+      if (!org || !user) {
+        setError("Enter organization code and username to sign in with a passkey.");
+        return;
+      }
       const begin = await apiRequest("/auth/passkeys/login/options", {
         method: "POST",
         body: {
-          company_code: companyCode.trim() ? companyCode.trim().toUpperCase() : "",
-          username: username.trim() || undefined,
+          company_code: org,
+          username: user,
         },
         token: null,
       });
+      if (!begin?.has_credentials || !begin?.options || !begin?.challenge_token) {
+        setPasskeyAvailable(false);
+        setError("No passkey is registered for this organization account.");
+        return;
+      }
       const credential = await getPasskeyAssertion(begin.options);
       await loginWithPasskey(begin.challenge_token, credential);
     } catch (err) {
@@ -365,7 +412,7 @@ function LoginForm() {
         <AuthSubmitButton disabled={submitting}>
           {submitting ? "Signing in…" : "Sign in"}
         </AuthSubmitButton>
-        {passkeysOk ? (
+        {passkeysOk && passkeyAvailable ? (
           <>
             <div className="relative py-1 text-center text-xs text-slate-400">
               <span className="relative z-10 bg-white px-2 dark:bg-slate-950">or</span>

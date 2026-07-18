@@ -55,7 +55,7 @@ export function OrganizationSettingsContent({
     ? TENANT_ORG_SETTINGS_SUBTITLE
     : "Platform configuration for module provisioning, workflows, integration gates, and legacy archive. Tenants manage day-to-day module preferences under Administration → Organization settings.",
 }) {
-  const [tab, setTab] = useState(tenantSelfService ? "printouts" : "sales");
+  const [tab, setTab] = useState("general");
   const [saving, setSaving] = useState(false);
   const setMessage = toastMessageSetter;
   const setError = toastErrorSetter;

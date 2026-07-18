@@ -794,7 +794,7 @@ export function FulfillmentTripsIdScreen() {
                   financialSummary: freshTrip.financial_summary,
                   documentFooterText: resolvePrintFooter(
                     mergeGeneralSettings(capabilities?.module_settings),
-                    "loading_sheet",
+                    "trip_chart",
                   ),
                   printedBy: user?.full_name ?? user?.username ?? null,
                 });
@@ -827,7 +827,7 @@ export function FulfillmentTripsIdScreen() {
                   uomByProductCode,
                   documentFooterText: resolvePrintFooter(
                     mergeGeneralSettings(capabilities?.module_settings),
-                    "loading_sheet",
+                    "picking_list",
                   ),
                   printedBy: user?.full_name ?? user?.username ?? null,
                   includeShelfLocation,

@@ -121,13 +121,13 @@ export function buildTripChartCustomerRows({ sales, orders } = {}) {
 }
 
 function tripChartListPrintStyles(generalSettings) {
-  const printPx = createOrgPrintPx(generalSettings, "loading_sheet");
+  const printPx = createOrgPrintPx(generalSettings, "trip_chart");
   const px = printPx.body;
-  const fontFamily = orgPrintFontFamilyFromSettings(generalSettings, "loading_sheet");
+  const fontFamily = orgPrintFontFamilyFromSettings(generalSettings, "trip_chart");
 
   return `
-    ${orgPrintInkStyles(generalSettings, "loading_sheet")}
-    ${documentPrintEdgeFooterStyles(generalSettings, { variant: "loading_sheet" })}
+    ${orgPrintInkStyles(generalSettings, "trip_chart")}
+    ${documentPrintEdgeFooterStyles(generalSettings, { variant: "trip_chart" })}
     * { box-sizing: border-box; }
     body { margin: 0; font-family: ${fontFamily}; color: #0f172a; font-size: ${px(12)}; }
     .page { padding: ${px(24)}; }
@@ -286,4 +286,32 @@ export function buildTripChartListHtml({
 export function printTripChartList(options = {}) {
   const html = buildTripChartListHtml(options);
   openPrintWindow(html, "width=900,height=800");
+}
+
+/** Sample trip chart list for Admin → Printouts live preview. */
+export function sampleTripChartListPreviewData() {
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    trip: {
+      trip_code: "TC-42",
+      scheduled_date: today,
+      route_names: ["East Route"],
+      vehicle: { plate_number: "KDA 123A" },
+      driver: { full_name: "John Driver" },
+      sales: [
+        {
+          stop_no: 1,
+          customer_name: "ABC Supermarket",
+          order_total: 69000,
+          customer_num: 101,
+        },
+        {
+          stop_no: 2,
+          customer_name: "XYZ Wholesalers",
+          order_total: 231750,
+          customer_num: 204,
+        },
+      ],
+    },
+  };
 }

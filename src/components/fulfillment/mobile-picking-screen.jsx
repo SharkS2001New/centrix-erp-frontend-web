@@ -276,7 +276,7 @@ export function MobilePickingScreen() {
         uomByProductCode,
         documentFooterText: resolvePrintFooter(
           mergeGeneralSettings(capabilities?.module_settings),
-          "loading_sheet",
+          "picking_list",
         ),
         printedBy: user?.full_name ?? user?.username ?? null,
         includeShelfLocation,

@@ -11,6 +11,7 @@ import {
 import { SALES_FOOTER_PLACEHOLDER_HINT } from "@/lib/sales-document-footer";
 import {
   orderPrintFormatSections,
+  PRINTOUT_KIND_LABELS,
   printoutsDistributionPayloadFromForm,
   printoutsFormFromApis,
   printoutsGeneralPayloadFromForm,
@@ -39,7 +40,9 @@ const PRINTOUT_TABS = [
   { id: "receipt", label: "Thermal receipts", requiresSales: true },
   { id: "invoice", label: "A4 invoices", requiresSales: true },
   { id: "lpo", label: "LPO", requiresProcurement: true },
-  { id: "loading_sheet", label: "Loading sheets", requiresDistribution: true },
+  { id: "loading_sheet", label: "Loading sheets", requiresRoutePrintouts: true },
+  { id: "picking_list", label: "Picking lists", requiresRoutePrintouts: true },
+  { id: "trip_chart", label: "Trip chart lists", requiresRoutePrintouts: true },
 ];
 
 function Toggle({ checked, onChange, label, description, disabled = false }) {
@@ -149,13 +152,45 @@ function DocumentFooterField({ footerKey, form, setForm }) {
   );
 }
 
-function GeneralPrintoutsTab({ form, setForm, hasSales }) {
+function GeneralPrintoutsTab({ form, setForm, hasSales, sections }) {
   const orderFormat = form.order_document_type ?? "receipt";
   const { showThermal, showA4 } = orderPrintFormatSections(orderFormat);
   const showBranchSetting = showThermal || showA4;
+  const availableKinds = (sections?.availableKinds ?? []).filter((kind) => {
+    if (kind === "receipt") return showThermal;
+    if (kind === "invoice") return showA4;
+    return true;
+  });
+  const routeNote = sections?.hasRoutePrintouts
+    ? sections.hasDistribution && sections.hasMobileSales
+      ? "Distribution and mobile orders are on — loading sheets, picking lists, and trip chart lists are available."
+      : sections.hasDistribution
+        ? "Distribution is on — loading sheets, picking lists, and trip chart lists are available."
+        : "Mobile orders are on — loading sheets, picking lists, and trip chart lists are available for field sales."
+    : "Loading sheets, picking lists, and trip chart lists appear when Distribution is enabled or mobile orders are turned on.";
 
   return (
     <div className="space-y-6">
+      <div>
+        <SectionHeading
+          title="Printouts for this organization"
+          description="Tabs below match your org setup. Small shops usually only need A4 invoices; route documents unlock with Distribution or mobile orders."
+        />
+        <ul className="mt-3 space-y-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+          {availableKinds.length > 0 ? (
+            availableKinds.map((kind) => (
+              <li key={kind} className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#185FA5]" aria-hidden />
+                {PRINTOUT_KIND_LABELS[kind] ?? kind}
+              </li>
+            ))
+          ) : (
+            <li className="text-slate-500">Enable Sales or Procurement to configure printouts.</li>
+          )}
+        </ul>
+        <p className="mt-2 text-xs text-slate-500">{routeNote}</p>
+      </div>
+
       {hasSales ? (
         <div>
           <SectionHeading
@@ -432,7 +467,7 @@ function LoadingSheetsTab({ form, setForm }) {
     <div className="space-y-3">
       <SectionHeading
         title="Loading sheets"
-        description="Route pick lists. Column visibility can also be configured under Distribution → Trips & loading."
+        description="Route delivery loading lists for Distribution trips and mobile route orders. Column visibility can also be configured under Distribution → Trips & loading when Distribution is on."
       />
       <PrintFontSettingsFields
         form={form}
@@ -454,8 +489,67 @@ function LoadingSheetsTab({ form, setForm }) {
   );
 }
 
+function PickingListsTab({ form, setForm }) {
+  return (
+    <div className="space-y-3">
+      <SectionHeading
+        title="Picking lists"
+        description="Warehouse pick sheets for Distribution trip charts and mobile route orders."
+      />
+      <PrintFontSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="picking_list"
+        description="Font for picking list printouts. Falls back to loading sheet fonts until you set these."
+      />
+      <div className="border-t border-slate-200 pt-4">
+        <SectionHeading
+          title="Document footer"
+          description="Optional closing text on picking list printouts."
+        />
+        <div className="mt-3">
+          <DocumentFooterField footerKey="picking_list" form={form} setForm={setForm} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TripChartListsTab({ form, setForm }) {
+  return (
+    <div className="space-y-3">
+      <SectionHeading
+        title="Trip chart lists"
+        description="Customer stop lists printed from a trip chart (Distribution or mobile field sales)."
+      />
+      <PrintFontSettingsFields
+        form={form}
+        setForm={setForm}
+        variantKey="trip_chart"
+        description="Font for trip chart list printouts. Falls back to loading sheet fonts until you set these."
+      />
+      <div className="border-t border-slate-200 pt-4">
+        <SectionHeading
+          title="Document footer"
+          description="Optional closing text on trip chart list printouts."
+        />
+        <div className="mt-3">
+          <DocumentFooterField footerKey="trip_chart" form={form} setForm={setForm} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function previewTypeForTab(tabId, previewTypes = []) {
-  if (tabId === "receipt" || tabId === "invoice" || tabId === "lpo" || tabId === "loading_sheet") {
+  if (
+    tabId === "receipt" ||
+    tabId === "invoice" ||
+    tabId === "lpo" ||
+    tabId === "loading_sheet" ||
+    tabId === "picking_list" ||
+    tabId === "trip_chart"
+  ) {
     return tabId;
   }
   return previewTypes[0] ?? "receipt";
@@ -478,7 +572,7 @@ export function PrintoutsSettingsPanel({
   const [activeTab, setActiveTab] = useState("general");
 
   const sections = resolvePrintoutSections(capabilities);
-  const { hasSales, hasProcurement, hasDistribution, hasMobileSales } = sections;
+  const { hasSales, hasProcurement, hasMobileSales, hasRoutePrintouts } = sections;
   const orderFormat = form?.order_document_type ?? "receipt";
   const { showThermal, showA4 } = orderPrintFormatSections(orderFormat);
 
@@ -489,10 +583,10 @@ export function PrintoutsSettingsPanel({
         if (tab.id === "receipt" && (!hasSales || !showThermal)) return false;
         if (tab.id === "invoice" && (!hasSales || !showA4)) return false;
         if (tab.requiresProcurement && !hasProcurement) return false;
-        if (tab.requiresDistribution && !hasDistribution) return false;
+        if (tab.requiresRoutePrintouts && !hasRoutePrintouts) return false;
         return true;
       }),
-    [hasDistribution, hasProcurement, hasSales, showA4, showThermal],
+    [hasProcurement, hasRoutePrintouts, hasSales, showA4, showThermal],
   );
 
   useEffect(() => {
@@ -530,7 +624,9 @@ export function PrintoutsSettingsPanel({
           apiRequest(settingsPath("general")),
           hasSales ? apiRequest(settingsPath("sales")) : Promise.resolve(null),
           hasProcurement ? apiRequest(settingsPath("procurement")) : Promise.resolve(null),
-          hasDistribution ? apiRequest(settingsPath("distribution")) : Promise.resolve(null),
+          hasRoutePrintouts
+            ? apiRequest(settingsPath("distribution"))
+            : Promise.resolve(null),
         ]);
 
       const valueFrom = (result) => (result.status === "fulfilled" ? result.value : null);
@@ -583,7 +679,7 @@ export function PrintoutsSettingsPanel({
     } finally {
       setLoading(false);
     }
-  }, [hasDistribution, hasProcurement, hasSales, setError, settingsPath]);
+  }, [hasProcurement, hasRoutePrintouts, hasSales, setError, settingsPath]);
 
   useEffect(() => {
     load();
@@ -617,7 +713,7 @@ export function PrintoutsSettingsPanel({
           }),
         );
       }
-      if (hasDistribution) {
+      if (hasRoutePrintouts) {
         tasks.push(
           apiRequest(settingsPath("distribution"), {
             method: "PATCH",
@@ -650,6 +746,7 @@ export function PrintoutsSettingsPanel({
           form={form}
           setForm={setForm}
           hasSales={hasSales}
+          sections={sections}
         />
       );
     }
@@ -662,14 +759,20 @@ export function PrintoutsSettingsPanel({
     if (activeTab === "lpo" && hasProcurement) {
       return <LpoPrintoutsTab form={form} setForm={setForm} />;
     }
-    if (activeTab === "loading_sheet" && hasDistribution) {
+    if (activeTab === "loading_sheet" && hasRoutePrintouts) {
       return <LoadingSheetsTab form={form} setForm={setForm} />;
+    }
+    if (activeTab === "picking_list" && hasRoutePrintouts) {
+      return <PickingListsTab form={form} setForm={setForm} />;
+    }
+    if (activeTab === "trip_chart" && hasRoutePrintouts) {
+      return <TripChartListsTab form={form} setForm={setForm} />;
     }
 
     return (
       <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-        Sales, procurement, and distribution printout options appear here when those modules are enabled
-        for your organization.
+        Sales, procurement, and route printout options appear here when those features are enabled for
+        your organization.
       </p>
     );
   }

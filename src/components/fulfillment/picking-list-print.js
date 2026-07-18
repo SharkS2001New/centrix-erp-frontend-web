@@ -108,13 +108,13 @@ function buildPickingLineRows(lines, includeShelfLocation = true, uomByProductCo
 }
 
 function pickingListPrintStyles(generalSettings, includeShelfLocation = true) {
-  const printPx = createOrgPrintPx(generalSettings, "loading_sheet");
+  const printPx = createOrgPrintPx(generalSettings, "picking_list");
   const px = printPx.body;
-  const fontFamily = orgPrintFontFamilyFromSettings(generalSettings, "loading_sheet");
+  const fontFamily = orgPrintFontFamilyFromSettings(generalSettings, "picking_list");
 
   return `
-    ${orgPrintInkStyles(generalSettings, "loading_sheet")}
-    ${documentPrintEdgeFooterStyles(generalSettings, { variant: "loading_sheet" })}
+    ${orgPrintInkStyles(generalSettings, "picking_list")}
+    ${documentPrintEdgeFooterStyles(generalSettings, { variant: "picking_list" })}
     * { box-sizing: border-box; }
     body { margin: 0; font-family: ${fontFamily}; color: #0f172a; font-size: ${px(12)}; }
     .page { padding: ${px(24)}; }
@@ -267,4 +267,48 @@ export function printPickingList({
     uomByProductCode,
   });
   openPrintWindow(html, "width=900,height=800");
+}
+
+/** Sample picking list for Admin → Printouts live preview. */
+export function samplePickingListPreviewData() {
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    pickingList: {
+      list_number: "PL-1001",
+      list_date: today,
+      picker_name: "Warehouse",
+      route: { route_name: "East Route" },
+      trip: {
+        trip_code: "TC-42",
+        route_names: ["East Route"],
+        vehicle: { plate_number: "KDA 123A" },
+        driver: { full_name: "John Driver" },
+      },
+      lines: [
+        {
+          product_name: "THAI RICE BIRIYANI",
+          required_qty: 20,
+          picked_qty: 18,
+          shortage_qty: 2,
+          shelf_location: "A1",
+          pack_breakdown: "20 bag",
+        },
+        {
+          product_name: "SUGAR 50 KG",
+          required_qty: 4,
+          picked_qty: 4,
+          shortage_qty: 0,
+          shelf_location: "B3",
+          pack_breakdown: "4 bag",
+        },
+      ],
+    },
+    trip: {
+      trip_code: "TC-42",
+      scheduled_date: today,
+      route_names: ["East Route"],
+      vehicle: { plate_number: "KDA 123A" },
+      driver: { full_name: "John Driver" },
+    },
+  };
 }

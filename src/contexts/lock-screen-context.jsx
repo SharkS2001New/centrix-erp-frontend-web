@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { LockScreenOverlay } from "@/components/auth/lock-screen-overlay";
 import { apiRequest, ApiError, formatApiErrorMessage } from "@/lib/api";
 import { isScreenLocked, setScreenLocked, getStoredUser } from "@/lib/auth-storage";
+import { getPasskeyAssertion, webAuthnSupported } from "@/lib/webauthn";
 
 const LockScreenContext = createContext(null);
 
@@ -29,6 +30,7 @@ export function LockScreenProvider({ children }) {
   });
   const [unlocking, setUnlocking] = useState(false);
   const [error, setError] = useState(null);
+  const [passkeyAvailable, setPasskeyAvailable] = useState(false);
   const lockTimeoutRef = useRef(null);
   const logoutTimeoutRef = useRef(null);
   const lockedRef = useRef(false);
@@ -49,8 +51,31 @@ export function LockScreenProvider({ children }) {
     if (!user) {
       setLocked(false);
       setError(null);
+      setPasskeyAvailable(false);
     }
   }, [loading, user]);
+
+  useEffect(() => {
+    if (!locked || !user || !webAuthnSupported()) {
+      setPasskeyAvailable(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    void apiRequest("/auth/passkeys")
+      .then((res) => {
+        if (!cancelled) {
+          setPasskeyAvailable(Array.isArray(res?.passkeys) && res.passkeys.length > 0);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPasskeyAvailable(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [locked, user]);
 
   const lockScreen = useCallback(() => {
     setScreenLocked(true);
@@ -130,16 +155,51 @@ export function LockScreenProvider({ children }) {
     }
   }, []);
 
+  const unlockWithPasskey = useCallback(async () => {
+    setUnlocking(true);
+    setError(null);
+    try {
+      const begin = await apiRequest("/auth/passkeys/unlock/options", { method: "POST" });
+      const credential = await getPasskeyAssertion(begin.options);
+      await apiRequest("/auth/passkeys/unlock", {
+        method: "POST",
+        body: {
+          challenge_token: begin.challenge_token,
+          credential,
+        },
+      });
+      setScreenLocked(false);
+      setLocked(false);
+      setError(null);
+    } catch (e) {
+      if (e?.name === "NotAllowedError") {
+        setError("Passkey unlock was cancelled.");
+      } else if (e instanceof ApiError && e.status === 401) {
+        setError("Your session ended. Use Sign out below, then sign in again.");
+      } else {
+        const body = e instanceof ApiError ? e.body : null;
+        setError(formatApiErrorMessage(body, e instanceof Error ? e.message : "Passkey unlock failed."));
+        if (e instanceof ApiError && /no passkeys/i.test(String(e.message ?? ""))) {
+          setPasskeyAvailable(false);
+        }
+      }
+    } finally {
+      setUnlocking(false);
+    }
+  }, []);
+
   const value = useMemo(
     () => ({
       locked,
       lockScreen,
       unlockScreen,
+      unlockWithPasskey,
       unlocking,
       error,
+      passkeyAvailable,
       clearError: () => setError(null),
     }),
-    [locked, lockScreen, unlockScreen, unlocking, error],
+    [locked, lockScreen, unlockScreen, unlockWithPasskey, unlocking, error, passkeyAvailable],
   );
 
   const lockUser = user ?? (locked ? getStoredUser() : null);
@@ -152,7 +212,9 @@ export function LockScreenProvider({ children }) {
           user={lockUser}
           unlocking={unlocking}
           error={error}
+          passkeyAvailable={passkeyAvailable}
           onUnlock={unlockScreen}
+          onUnlockWithPasskey={unlockWithPasskey}
         />
       ) : null}
     </LockScreenContext.Provider>

@@ -7,7 +7,7 @@ import { COMPANY_NAME } from "@/lib/branding";
 const inputClass =
   "theme-input mt-1 w-full rounded-lg border px-3 py-2 outline-none focus:border-emerald-500";
 
-export function AuthShell({ title, subtitle, children, maxWidthClass = "max-w-md", showLogo = true, headerActions = null }) {
+export function AuthShell({ title, subtitle, children, maxWidthClass = "max-w-lg", showLogo = true, headerActions = null }) {
   return (
     <div className="auth-page-bg relative flex min-h-screen items-center justify-center overflow-y-auto px-4 py-8">
       <div className="absolute right-4 top-4 z-10 flex items-center gap-2">

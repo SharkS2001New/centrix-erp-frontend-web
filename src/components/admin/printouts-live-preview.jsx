@@ -1,15 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { buildLoadingListHtml } from "@/components/fulfillment/loading-list-print";
-import { buildLpoPrintHtml } from "@/components/lpo/lpo-print-html";
+import { buildLoadingListHtml, sampleLoadingListPreviewData } from "@/components/fulfillment/loading-list-print";
+import {
+  buildPickingListHtml,
+  samplePickingListPreviewData,
+} from "@/components/fulfillment/picking-list-print";
+import {
+  buildTripChartListHtml,
+  sampleTripChartListPreviewData,
+} from "@/components/fulfillment/trip-chart-list-print";
+import { buildLpoPrintHtml, sampleLpoPreviewData } from "@/components/lpo/lpo-print-html";
 import { buildSaleInvoiceHtml } from "@/components/sales/sale-invoice-print";
 import { buildSaleReceiptHtml } from "@/components/sales/sale-receipt-print";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { lpoPrintPayloadFromForm } from "@/lib/lpo-print-settings";
 import { loadingSheetPrintPayloadFromForm } from "@/lib/loading-sheet-print-settings";
-import { sampleLoadingListPreviewData } from "@/components/fulfillment/loading-list-print";
-import { sampleLpoPreviewData } from "@/components/lpo/lpo-print-html";
 import {
   receiptPaymentDetailsToPayload,
   sampleReceiptPreviewSale,
@@ -32,6 +38,8 @@ const PREVIEW_OPTION_LABELS = {
   invoice: "Invoice receipt (A4)",
   lpo: "LPO",
   loading_sheet: "Loading sheet",
+  picking_list: "Picking list",
+  trip_chart: "Trip chart list",
 };
 
 const PREVIEW_TYPOGRAPHY_VARIANT = {
@@ -39,6 +47,8 @@ const PREVIEW_TYPOGRAPHY_VARIANT = {
   invoice: "sale_invoice",
   lpo: "lpo",
   loading_sheet: "loading_sheet",
+  picking_list: "picking_list",
+  trip_chart: "trip_chart",
 };
 
 function resolvePreviewSeller(organization) {
@@ -125,22 +135,50 @@ function buildPreviewHtml(previewType, { form, organization, moduleSettings, cap
     });
   }
 
-  const loadingSettings = loadingSheetPrintPayloadFromForm(form);
-  const sample = sampleLoadingListPreviewData();
-  return buildLoadingListHtml({
-    organization,
-    generalSettings: general,
-    loadingList: sample.loadingList,
-    financialSummary: sample.financialSummary,
-    printSettings: loadingSettings,
-    documentFooterText: resolvePrintFooter(general, "loading_sheet"),
-    footerLines: loadingSettings.loading_sheet_footer_lines
-      ? loadingSettings.loading_sheet_footer_lines.split(/\n+/).filter(Boolean)
-      : [],
-    printedBy: "Preview",
-    distributionEnabled: Boolean(capabilities?.modules?.distribution),
-    trip: sample.trip,
-  });
+  if (previewType === "picking_list") {
+    const sample = samplePickingListPreviewData();
+    return buildPickingListHtml({
+      organization,
+      generalSettings: general,
+      pickingList: sample.pickingList,
+      trip: sample.trip,
+      documentFooterText: resolvePrintFooter(general, "picking_list"),
+      printedBy: "Preview",
+      includeShelfLocation: true,
+    });
+  }
+
+  if (previewType === "trip_chart") {
+    const sample = sampleTripChartListPreviewData();
+    return buildTripChartListHtml({
+      organization,
+      generalSettings: general,
+      trip: sample.trip,
+      documentFooterText: resolvePrintFooter(general, "trip_chart"),
+      printedBy: "Preview",
+    });
+  }
+
+  if (previewType === "loading_sheet") {
+    const loadingSettings = loadingSheetPrintPayloadFromForm(form);
+    const sample = sampleLoadingListPreviewData();
+    return buildLoadingListHtml({
+      organization,
+      generalSettings: general,
+      loadingList: sample.loadingList,
+      financialSummary: sample.financialSummary,
+      printSettings: loadingSettings,
+      documentFooterText: resolvePrintFooter(general, "loading_sheet"),
+      footerLines: loadingSettings.loading_sheet_footer_lines
+        ? loadingSettings.loading_sheet_footer_lines.split(/\n+/).filter(Boolean)
+        : [],
+      printedBy: "Preview",
+      distributionEnabled: Boolean(capabilities?.modules?.distribution),
+      trip: sample.trip,
+    });
+  }
+
+  return "";
 }
 
 export function PrintoutsLivePreview({

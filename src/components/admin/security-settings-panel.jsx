@@ -107,7 +107,7 @@ export function SecuritySettingsPanel({ saving, setSaving, setError, setMessage,
                 onChange={(e) => setForm((f) => ({ ...f, screen_lock_minutes: e.target.value }))}
               />
               <p className="mt-1 text-xs text-slate-500">
-                Shows the lock screen; users unlock with their password without signing in again.
+                Shows the lock screen; users unlock with their password or a registered passkey without signing in again.
               </p>
             </Field>
             <Field label="Sign out after inactivity (minutes)">

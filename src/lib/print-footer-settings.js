@@ -11,6 +11,8 @@ export const PRINT_FOOTER_TYPES = {
   invoice: "print_footer_a4_invoice",
   lpo: "print_footer_lpo",
   loading_sheet: "print_footer_loading_sheet",
+  picking_list: "print_footer_picking_list",
+  trip_chart: "print_footer_trip_chart",
 };
 
 export const PRINT_FOOTER_FORM_KEYS = {
@@ -18,6 +20,8 @@ export const PRINT_FOOTER_FORM_KEYS = {
   invoice: "print_footer_a4_invoice",
   lpo: "print_footer_lpo",
   loading_sheet: "print_footer_loading_sheet",
+  picking_list: "print_footer_picking_list",
+  trip_chart: "print_footer_trip_chart",
 };
 
 export const PRINT_FOOTER_LABELS = {
@@ -25,6 +29,8 @@ export const PRINT_FOOTER_LABELS = {
   invoice: "A4 sales invoice footer",
   lpo: "LPO footer",
   loading_sheet: "Loading sheet footer",
+  picking_list: "Picking list footer",
+  trip_chart: "Trip chart list footer",
 };
 
 export const RECEIPT_POWERED_BY_LINE = `Powered By: ${PRINT_POWERED_BY}`;
@@ -128,6 +134,12 @@ export function resolvePrintFooter(settings = {}, documentType = "receipt") {
     return specific;
   }
 
+  // Route docs share loading-sheet footer until a dedicated one is saved.
+  if (documentType === "picking_list" || documentType === "trip_chart") {
+    const shared = String(settings?.[PRINT_FOOTER_TYPES.loading_sheet] ?? "").trim();
+    if (shared) return shared;
+  }
+
   const legacy = String(settings?.document_footer_text ?? "").trim();
   if (legacy) {
     if (documentType === "receipt") {
@@ -155,6 +167,8 @@ export function printFooterFormFromGeneral(general = {}) {
     print_footer_a4_invoice: footerEditorValueFromApi(general?.print_footer_a4_invoice),
     print_footer_lpo: footerEditorValueFromApi(general?.print_footer_lpo),
     print_footer_loading_sheet: footerEditorValueFromApi(general?.print_footer_loading_sheet),
+    print_footer_picking_list: footerEditorValueFromApi(general?.print_footer_picking_list),
+    print_footer_trip_chart: footerEditorValueFromApi(general?.print_footer_trip_chart),
   };
 }
 
@@ -169,5 +183,7 @@ export function printFooterPayloadFromForm(form = {}) {
     print_footer_a4_invoice: footerStorageValueFromForm(form?.print_footer_a4_invoice ?? ""),
     print_footer_lpo: footerStorageValueFromForm(form?.print_footer_lpo ?? ""),
     print_footer_loading_sheet: footerStorageValueFromForm(form?.print_footer_loading_sheet ?? ""),
+    print_footer_picking_list: footerStorageValueFromForm(form?.print_footer_picking_list ?? ""),
+    print_footer_trip_chart: footerStorageValueFromForm(form?.print_footer_trip_chart ?? ""),
   };
 }

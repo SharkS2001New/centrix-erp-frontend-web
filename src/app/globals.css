@@ -2241,3 +2241,266 @@ html[data-theme="dark"] [data-sonner-toast][data-type="error"] [data-title] {
 .app-toast-description {
   color: var(--theme-text-muted) !important;
 }
+
+/* —— Classic External POS (/pos) — beige workspace + red accents (from reference) —— */
+.pos-workspace-classic {
+  --classic-bg: #cdb48b;
+  --classic-panel: #f7f1e4;
+  --classic-table: #ffffff;
+  --classic-border: #8a7a55;
+  --classic-text: #1a1a1a;
+  --classic-muted: #5c5340;
+  --classic-accent: #fe0300;
+  --classic-header: #b8a574;
+  --classic-footer: #fafafa;
+  --classic-totals-bar: #ffffff;
+  --classic-status-bar: #f5f5f5;
+  background: var(--classic-bg) !important;
+  color: var(--classic-text);
+}
+
+.pos-workspace-classic .pos-header,
+.pos-workspace-classic .pos-header-bar {
+  background: var(--classic-header) !important;
+  border-color: var(--classic-border) !important;
+  color: var(--classic-text) !important;
+}
+
+.pos-workspace-classic .pos-standalone-frame {
+  flex-direction: column !important;
+  background: var(--classic-bg) !important;
+}
+
+.pos-workspace-classic .pos-cart-panel {
+  order: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--classic-table) !important;
+  border: 1px solid var(--classic-border);
+}
+
+.pos-workspace-classic .pos-left-panel {
+  order: 2;
+  width: 100% !important;
+  max-height: min(42vh, 22rem);
+  border: 1px solid var(--classic-border) !important;
+  border-top: none !important;
+  background: var(--classic-panel) !important;
+}
+
+.pos-workspace-classic .pos-search-panel,
+.pos-workspace-classic .pos-line-entry,
+.pos-workspace-classic .pos-cart-summary,
+.pos-workspace-classic .pos-cart-toolbar {
+  background: var(--classic-panel) !important;
+  border-color: var(--classic-border) !important;
+}
+
+.pos-workspace-classic .pos-cart-table-wrap {
+  background: var(--classic-table) !important;
+}
+
+.pos-workspace-classic .theme-table-head-row,
+.pos-workspace-classic thead {
+  background: #e8dfc8 !important;
+  color: var(--classic-text) !important;
+}
+
+.pos-workspace-classic .pos-cart-summary .text-\[var\(--theme-accent-text\)\],
+.pos-workspace-classic .classic-pos-accent {
+  color: var(--classic-accent) !important;
+}
+
+.pos-workspace-classic .classic-pos-find-open-btn {
+  border: 1px solid var(--classic-border);
+  background: #efe6d2;
+  color: var(--classic-text);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.25rem;
+  min-height: 2.5rem;
+}
+
+.pos-workspace-classic .classic-pos-find-open-btn:hover:not(:disabled) {
+  background: #e4d7b8;
+}
+
+.pos-workspace-classic .classic-pos-find-open-btn:disabled {
+  opacity: 0.5;
+}
+
+.classic-pos-find-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(40, 30, 10, 0.45);
+  padding: 1rem;
+}
+
+.classic-pos-find-modal {
+  width: min(52rem, 100%);
+  max-height: min(80vh, 36rem);
+  display: flex;
+  flex-direction: column;
+  background: #f7f1e4;
+  border: 2px solid #8a7a55;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.classic-pos-find-title {
+  background: #b8a574;
+  border-bottom: 1px solid #8a7a55;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #1a1a1a;
+}
+
+.classic-pos-find-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid #8a7a55;
+  background: #efe6d2;
+}
+
+.classic-pos-find-input {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+  border: 1px solid #8a7a55;
+  background: #fff;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.9rem;
+  color: #1a1a1a;
+}
+
+.classic-pos-find-btn {
+  border: 1px solid #8a7a55;
+  background: #fff;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #1a1a1a;
+}
+
+.classic-pos-find-btn:hover {
+  background: #f3ead6;
+}
+
+.classic-pos-find-btn--muted {
+  background: #e4d7b8;
+}
+
+.classic-pos-find-table-wrap {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  background: #fff;
+}
+
+.classic-pos-find-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  color: #1a1a1a;
+}
+
+.classic-pos-find-table th {
+  position: sticky;
+  top: 0;
+  background: #e8dfc8;
+  border-bottom: 1px solid #8a7a55;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.classic-pos-find-table td {
+  border-bottom: 1px solid #d9ceb0;
+  padding: 0.4rem 0.6rem;
+  vertical-align: top;
+}
+
+.classic-pos-find-table tbody tr {
+  cursor: pointer;
+}
+
+.classic-pos-find-table tbody tr:hover,
+.classic-pos-find-row--active {
+  background: #fff4c8;
+}
+
+.classic-pos-find-row--negative,
+.classic-pos-find-row--negative td {
+  background: #fe0300 !important;
+  color: #fff !important;
+}
+
+.classic-pos-find-row--negative:hover td,
+.classic-pos-find-row--negative.classic-pos-find-row--active td {
+  background: #d90200 !important;
+}
+
+.classic-pos-neg {
+  font-weight: 700;
+}
+
+.classic-pos-find-empty {
+  text-align: center;
+  padding: 1.5rem 0.75rem !important;
+  color: #5c5340;
+}
+
+.classic-pos-footer {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #c0c0c0;
+  color: #1a1a1a;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.classic-pos-footer-totals {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  background: var(--classic-totals-bar, #ffffff);
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid #c0c0c0;
+}
+
+.classic-pos-footer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.15rem;
+  background: var(--classic-status-bar, #f5f5f5);
+  padding: 0.45rem 0.85rem;
+}
+
+.classic-pos-footer-meta strong {
+  font-weight: 800;
+}
+
+.classic-pos-footer-total {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--classic-accent, #fe0300);
+}
+
+.classic-pos-footer-total strong {
+  font-size: 1.35rem;
+}

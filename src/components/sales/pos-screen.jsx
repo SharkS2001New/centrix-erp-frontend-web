@@ -112,6 +112,8 @@ import {
 } from "@/lib/pos-cart-merge";
 import { PosPaymentPanel } from "./pos-payment-panel";
 import { PosProductSearch } from "./pos-product-search";
+import { ClassicPosFindModal } from "./classic-pos-find-modal";
+import { ClassicPosStatusFooter } from "./classic-pos-status-footer";
 import { PosCartPaymentOptions, posCartPaymentPromptsEnabled } from "./pos-cart-payment-options";
 import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
 import { PosOrderEditBar } from "./pos-order-edit-bar";
@@ -127,6 +129,8 @@ import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { PosStatusFooter } from "./pos-status-footer";
+import { isClassicExternalPosLayout } from "@/lib/external-pos-layout";
+import { mergeGeneralSettings } from "@/lib/general-settings";
 import {
   PosPriceCheckerModal,
 } from "./pos-utility-modals";
@@ -211,6 +215,12 @@ export function PosScreen({ standalone = false }) {
   const router = useRouter();
   const confirm = useConfirm();
   const { user, capabilities, refreshCapabilities, organization, hasPermission } = useAuth();
+  const classicLayout = standalone && isClassicExternalPosLayout(capabilities);
+  const classicCurrencySettings = useMemo(
+    () => mergeGeneralSettings(capabilities?.module_settings),
+    [capabilities?.module_settings],
+  );
+  const [classicFindOpen, setClassicFindOpen] = useState(false);
   const {
     activeSession,
     tillId,
@@ -2987,6 +2997,7 @@ export function PosScreen({ standalone = false }) {
         || heldOrdersOpen
         || leaveGuardOpen
         || priceCheckerOpen
+        || classicFindOpen
         || floatModalOpen
         || floatDetailsOpen
         || xReportOpen
@@ -3012,12 +3023,21 @@ export function PosScreen({ standalone = false }) {
 
       if (e.key === "Escape") {
         e.preventDefault();
+        if (classicFindOpen) {
+          setClassicFindOpen(false);
+          return;
+        }
         focusProductSearch();
         return;
       }
 
       if (isTypingTarget(e.target)) return;
 
+      if (e.key === "F2" && classicLayout) {
+        e.preventDefault();
+        setClassicFindOpen(true);
+        return;
+      }
       if (e.key === "F8") {
         e.preventDefault();
         void handleNewOrder();
@@ -3067,6 +3087,8 @@ export function PosScreen({ standalone = false }) {
     heldOrdersOpen,
     leaveGuardOpen,
     priceCheckerOpen,
+    classicFindOpen,
+    classicLayout,
     floatModalOpen,
     floatDetailsOpen,
     xReportOpen,
@@ -3093,7 +3115,8 @@ export function PosScreen({ standalone = false }) {
     <div
       className={`pos-workspace relative flex min-h-0 flex-1 flex-col${
         standalone ? " h-full pos-workspace-standalone" : " h-full pos-workspace-backoffice p-4 md:p-6 lg:p-8"
-      }`}
+      }${classicLayout ? " pos-workspace-classic" : ""}`}
+      data-pos-layout={classicLayout ? "classic" : "modern"}
     >
       {standalone ? (
         <>
@@ -3507,22 +3530,46 @@ export function PosScreen({ standalone = false }) {
               </div>
             ) : null}
             <div className="col-span-2 space-y-4">
-              <PosProductSearch
-                inputRef={searchInputRef}
-                query={searchQuery}
-                onQueryChange={setSearchQuery}
-                results={searchResults}
-                searching={searching}
-                selectedCode={selectedProductCode}
-                sellWholesale={sellWholesale}
-                retailByCode={retailByCode}
-                onSelect={pickProduct}
-                onBarcodeEnter={handleBarcodeEnter}
-                barcodeEnabled={enableBarcodeScanner}
-                stockDisplayMode={stockDisplayMode}
-                posSalesConfig={posSalesConfig}
-                disabled={busy}
-              />
+              {classicLayout ? (
+                <div className="classic-pos-find-trigger flex flex-wrap items-end gap-2">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <PosLabel>Selected product</PosLabel>
+                    <input
+                      ref={searchInputRef}
+                      className={fieldInput}
+                      value={searchQuery}
+                      readOnly
+                      placeholder="Press Find (F2) to look up a product"
+                      onFocus={() => setClassicFindOpen(true)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="classic-pos-find-open-btn"
+                    disabled={busy}
+                    onClick={() => setClassicFindOpen(true)}
+                  >
+                    Find (F2)
+                  </button>
+                </div>
+              ) : (
+                <PosProductSearch
+                  inputRef={searchInputRef}
+                  query={searchQuery}
+                  onQueryChange={setSearchQuery}
+                  results={searchResults}
+                  searching={searching}
+                  selectedCode={selectedProductCode}
+                  sellWholesale={sellWholesale}
+                  retailByCode={retailByCode}
+                  onSelect={pickProduct}
+                  onBarcodeEnter={handleBarcodeEnter}
+                  barcodeEnabled={enableBarcodeScanner}
+                  stockDisplayMode={stockDisplayMode}
+                  posSalesConfig={posSalesConfig}
+                  disabled={busy}
+                />
+              )}
               <div className="space-y-1">
                 <PosLabel>Description</PosLabel>
                 <input
@@ -4250,11 +4297,40 @@ export function PosScreen({ standalone = false }) {
         embedded={!standalone}
       />
 
-      {standalone ? (
-        <PosStatusFooter
-          user={user}
-          organization={organization ?? capabilities?.organization}
+      {classicLayout ? (
+        <ClassicPosFindModal
+          open={classicFindOpen}
+          onClose={() => setClassicFindOpen(false)}
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
+          results={searchResults}
+          searching={searching}
+          sellWholesale={sellWholesale}
+          retailByCode={retailByCode}
+          sellFromShop={sellFromShop}
+          posSalesConfig={posSalesConfig}
+          onSelect={pickProduct}
+          onBarcodeEnter={handleBarcodeEnter}
+          barcodeEnabled={enableBarcodeScanner}
+          currencySettings={classicCurrencySettings}
         />
+      ) : null}
+
+      {standalone ? (
+        classicLayout ? (
+          <ClassicPosStatusFooter
+            user={user}
+            totals={cartSummary?.total ?? 0}
+            heldCount={heldOrdersCount}
+            version="1.0.0"
+            currencySettings={classicCurrencySettings}
+          />
+        ) : (
+          <PosStatusFooter
+            user={user}
+            organization={organization ?? capabilities?.organization}
+          />
+        )
       ) : null}
 
       {checkoutWaitOverlay}

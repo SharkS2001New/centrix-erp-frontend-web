@@ -19,7 +19,14 @@ function LockIcon({ className = "h-8 w-8" }) {
   );
 }
 
-export function LockScreenOverlay({ user, unlocking, error, onUnlock }) {
+export function LockScreenOverlay({
+  user,
+  unlocking,
+  error,
+  passkeyAvailable = false,
+  onUnlock,
+  onUnlockWithPasskey,
+}) {
   const { logout } = useAuth();
   const [password, setPassword] = useState("");
   const [mounted, setMounted] = useState(false);
@@ -71,7 +78,9 @@ export function LockScreenOverlay({ user, unlocking, error, onUnlock }) {
             {displayName}
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Enter your password to unlock the screen!
+            {passkeyAvailable
+              ? "Enter your password or unlock with a passkey."
+              : "Enter your password to unlock the screen!"}
           </p>
         </div>
 
@@ -102,6 +111,23 @@ export function LockScreenOverlay({ user, unlocking, error, onUnlock }) {
             {unlocking ? "Unlocking…" : "Unlock"}
           </PrimaryButton>
         </form>
+
+        {passkeyAvailable && onUnlockWithPasskey ? (
+          <>
+            <div className="relative my-4 text-center text-xs text-slate-400">
+              <span className="relative z-10 bg-white px-2 dark:bg-slate-900">or</span>
+              <span className="absolute inset-x-0 top-1/2 border-t border-slate-200 dark:border-slate-700" />
+            </div>
+            <button
+              type="button"
+              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
+              disabled={unlocking}
+              onClick={() => void onUnlockWithPasskey()}
+            >
+              {unlocking ? "Unlocking…" : "Unlock with a passkey"}
+            </button>
+          </>
+        ) : null}
 
         <div className="mt-4 text-center">
           <button

@@ -17,6 +17,7 @@ import {
   receiptPaymentDetailsToPayload,
   DEFAULT_POS_RECEIPT_PAYMENT_LINES,
 } from "@/lib/receipt-payment-details";
+import { isPlatformMobileOrdersEnabled } from "@/lib/platform-org-features";
 import { salesOrganizationFormFromApi } from "@/lib/sales-settings";
 
 export const EMPTY_PRINTOUTS_FORM = {
@@ -28,6 +29,8 @@ export const EMPTY_PRINTOUTS_FORM = {
   print_footer_a4_invoice: "",
   print_footer_lpo: "",
   print_footer_loading_sheet: "",
+  print_footer_picking_list: "",
+  print_footer_trip_chart: "",
   order_document_type: "receipt",
   receipt_copies: "1",
   show_branch_on_receipt: true,
@@ -64,6 +67,16 @@ export const EMPTY_PRINTOUTS_FORM = {
   loading_sheet_default_checked_by: "",
 };
 
+/** Human labels for printout kinds shown in Admin → Printouts. */
+export const PRINTOUT_KIND_LABELS = {
+  receipt: "Thermal receipts",
+  invoice: "A4 invoices",
+  lpo: "Local purchase orders (LPO)",
+  loading_sheet: "Loading sheets",
+  picking_list: "Picking lists",
+  trip_chart: "Trip chart lists",
+};
+
 /** Which document footer keys apply for the configured order print format. */
 export function footerKeysForOrderPrintFormat(footerKeys, orderDocumentType) {
   const type = ["receipt", "invoice", "both"].includes(orderDocumentType)
@@ -89,18 +102,26 @@ export function orderPrintFormatSections(orderDocumentType) {
   };
 }
 
-/** Which printout sections apply for this organization's enabled modules. */
+/**
+ * Which printout sections apply for this organization.
+ * Small shop (sales only): receipts / A4 invoices (+ LPO if procurement).
+ * Route docs (loading, picking, trip chart): when Distribution is on, or mobile orders are enabled
+ * (wholesale / retail with field sales).
+ */
 export function resolvePrintoutSections(capabilities) {
   const modules = capabilities?.modules ?? {};
   const hasSales = Boolean(modules.sales);
   const hasProcurement = Boolean(modules.customers_suppliers);
   const hasDistribution = Boolean(modules.distribution);
-  const hasMobileSales = Boolean(modules["sales.mobile"]);
+  const hasMobileSales = isPlatformMobileOrdersEnabled(capabilities);
+  const hasRoutePrintouts = hasDistribution || hasMobileSales;
 
   const footerKeys = Object.keys(PRINT_FOOTER_LABELS).filter((key) => {
     if (key === "receipt" || key === "invoice") return hasSales;
     if (key === "lpo") return hasProcurement;
-    if (key === "loading_sheet") return hasDistribution;
+    if (key === "loading_sheet" || key === "picking_list" || key === "trip_chart") {
+      return hasRoutePrintouts;
+    }
     return false;
   });
 
@@ -108,7 +129,18 @@ export function resolvePrintoutSections(capabilities) {
     hasSales ? "receipt" : null,
     hasSales ? "invoice" : null,
     hasProcurement ? "lpo" : null,
-    hasDistribution ? "loading_sheet" : null,
+    hasRoutePrintouts ? "loading_sheet" : null,
+    hasRoutePrintouts ? "picking_list" : null,
+    hasRoutePrintouts ? "trip_chart" : null,
+  ].filter(Boolean);
+
+  const availableKinds = [
+    hasSales ? "receipt" : null,
+    hasSales ? "invoice" : null,
+    hasProcurement ? "lpo" : null,
+    hasRoutePrintouts ? "loading_sheet" : null,
+    hasRoutePrintouts ? "picking_list" : null,
+    hasRoutePrintouts ? "trip_chart" : null,
   ].filter(Boolean);
 
   return {
@@ -116,9 +148,11 @@ export function resolvePrintoutSections(capabilities) {
     hasProcurement,
     hasDistribution,
     hasMobileSales,
+    hasRoutePrintouts,
     footerKeys,
     previewTypes,
-    hasModuleSections: hasSales || hasProcurement || hasDistribution,
+    availableKinds,
+    hasModuleSections: hasSales || hasProcurement || hasRoutePrintouts,
   };
 }
 

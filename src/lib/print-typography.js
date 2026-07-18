@@ -51,6 +51,8 @@ const VARIANT_BODY_BASE = {
   sale_invoice: { screen: 12, print: 15 },
   lpo: { screen: 12, print: 15 },
   loading_sheet: { screen: 12, print: 16 },
+  picking_list: { screen: 12, print: 16 },
+  trip_chart: { screen: 12, print: 16 },
   thermal: { screen: 10, print: 11 },
   report: { screen: 12, print: 15 },
 };
@@ -60,6 +62,8 @@ const VARIANT_STANDARD_BODY_PX = {
   sale_invoice: 14,
   lpo: 14,
   loading_sheet: 16,
+  picking_list: 16,
+  trip_chart: 16,
   thermal: 11,
   report: 14,
 };
