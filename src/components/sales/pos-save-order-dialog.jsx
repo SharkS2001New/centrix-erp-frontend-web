@@ -13,6 +13,11 @@ import { INPUT_CLASS } from "@/components/catalog/catalog-shared";
 
 const inputCls = INPUT_CLASS;
 
+/**
+ * Hold / save order customer picker.
+ * Default: walk-in. Toggle "Existing customer" to search registered customers
+ * (links customer_num + KRA PIN onto the sale for receipt / eTIMS).
+ */
 export function PosSaveOrderDialog({
   open,
   onClose,
@@ -28,7 +33,8 @@ export function PosSaveOrderDialog({
 }) {
   const isHold = mode === "hold";
   const [mounted, setMounted] = useState(false);
-  const [isWalkIn, setIsWalkIn] = useState(false);
+  /** "walkin" | "existing" */
+  const [customerMode, setCustomerMode] = useState("walkin");
   const [walkInName, setWalkInName] = useState("");
   const [customerNum, setCustomerNum] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -42,7 +48,8 @@ export function PosSaveOrderDialog({
     if (!open) return;
     const prefillName = String(prefillWalkInName ?? "").trim();
     const prefillNum = String(prefillCustomerNum ?? "").trim();
-    setIsWalkIn(Boolean(prefillName) && !prefillNum);
+    const startExisting = Boolean(prefillNum);
+    setCustomerMode(startExisting ? "existing" : "walkin");
     setWalkInName(prefillName);
     setCustomerNum(prefillNum);
     setSelectedCustomer(null);
@@ -60,6 +67,7 @@ export function PosSaveOrderDialog({
         setCustomerNum(option.value);
         setSelectedCustomer(customer);
         setCustomerOptions([option]);
+        setCustomerMode("existing");
       })
       .catch(() => {
         if (!cancelled) setLocalError("Could not load the selected customer.");
@@ -84,6 +92,9 @@ export function PosSaveOrderDialog({
     return customerOptions.find((row) => String(row.value) === String(customerNum)) ?? null;
   }, [customerNum, customerOptions]);
 
+  const linkedCustomer = selectedCustomer ?? selectedOption?.customer ?? null;
+  const linkedKraPin = String(linkedCustomer?.kra_pin ?? "").trim();
+
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e) {
@@ -93,32 +104,50 @@ export function PosSaveOrderDialog({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, saving, onClose]);
 
+  function switchToWalkIn() {
+    setCustomerMode("walkin");
+    setCustomerNum("");
+    setSelectedCustomer(null);
+    setCustomerOptions([]);
+    setLocalError(null);
+  }
+
+  function switchToExisting() {
+    setCustomerMode("existing");
+    setWalkInName("");
+    setLocalError(null);
+  }
+
   function handleCustomerChange(nextValue, option) {
     setCustomerNum(nextValue);
     setSelectedCustomer(option?.customer ?? null);
     setLocalError(null);
   }
 
-  function handleSave(mode = "save") {
-    if (isWalkIn) {
+  function handleSave(submitMode = "save") {
+    if (customerMode === "walkin") {
       const name = walkInName.trim();
       if (!name) {
         setLocalError("Enter the walk-in customer's name.");
         return;
       }
-      onSave?.({ walkIn: true, walkInName: name, hold: mode === "hold" });
+      onSave?.({ walkIn: true, walkInName: name, hold: submitMode === "hold" });
       return;
     }
     if (!customerNum) {
-      setLocalError(isHold ? "Select a customer to hold this order." : "Select a customer to save this order.");
+      setLocalError(
+        isHold
+          ? "Search and select an existing customer to hold this order."
+          : "Search and select an existing customer to save this order.",
+      );
       return;
     }
-    const customer = selectedCustomer ?? selectedOption?.customer;
+    const customer = linkedCustomer;
     if (!customer) {
       setLocalError("Search and select a valid customer.");
       return;
     }
-    onSave?.({ walkIn: false, customer, hold: mode === "hold" });
+    onSave?.({ walkIn: false, customer, hold: submitMode === "hold" });
   }
 
   if (!open || !mounted) return null;
@@ -156,27 +185,35 @@ export function PosSaveOrderDialog({
               {workflowPipeline.map((s) => s.label).join(" → ")}
             </p>
           ) : null}
-          {!isWalkIn ? (
-            <label className="block">
-              <span className="theme-accent-label mb-0.5 block text-[11px] font-bold uppercase tracking-wide">
-                Customer
-              </span>
-              <PosSearchableSelect
-                value={customerNum}
-                onChange={handleCustomerChange}
-                options={customerOptions}
-                loadOptions={searchCustomersForSelect}
-                minSearchLength={1}
-                loading={prefillLoading}
-                disabled={saving}
-                placeholder="Search customer by name, phone, or #"
-                searchPlaceholder="Search by name, phone, or customer #…"
-                idleSearchLabel="Type a name, phone number, or customer #"
-                emptyLabel="No matching customers"
-                inputClassName={inputCls}
-              />
-            </label>
-          ) : (
+
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={switchToWalkIn}
+              className={`rounded-lg border px-3 py-2 text-xs font-bold uppercase ${
+                customerMode === "walkin"
+                  ? "border-[var(--theme-primary)] bg-[var(--theme-primary)]/10 text-[var(--theme-primary)]"
+                  : "theme-secondary-btn"
+              }`}
+            >
+              Walk-in
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={switchToExisting}
+              className={`rounded-lg border px-3 py-2 text-xs font-bold uppercase ${
+                customerMode === "existing"
+                  ? "border-[var(--theme-primary)] bg-[var(--theme-primary)]/10 text-[var(--theme-primary)]"
+                  : "theme-secondary-btn"
+              }`}
+            >
+              Existing customer
+            </button>
+          </div>
+
+          {customerMode === "walkin" ? (
             <label className="block">
               <span className="theme-accent-label mb-0.5 block text-[11px] font-bold uppercase tracking-wide">
                 Walk-in customer name
@@ -194,27 +231,54 @@ export function PosSaveOrderDialog({
                 autoFocus
               />
             </label>
+          ) : (
+            <div className="space-y-2">
+              <label className="block">
+                <span className="theme-accent-label mb-0.5 block text-[11px] font-bold uppercase tracking-wide">
+                  Search existing customer
+                </span>
+                <PosSearchableSelect
+                  value={customerNum}
+                  onChange={handleCustomerChange}
+                  options={customerOptions}
+                  loadOptions={searchCustomersForSelect}
+                  minSearchLength={1}
+                  loading={prefillLoading}
+                  disabled={saving}
+                  placeholder="Search by name, phone, PIN, or #"
+                  searchPlaceholder="Search by name, phone, KRA PIN, or customer #…"
+                  idleSearchLabel="Type a name, phone, KRA PIN, or customer #"
+                  emptyLabel="No matching customers"
+                  inputClassName={inputCls}
+                />
+              </label>
+              {linkedCustomer ? (
+                <div className="theme-panel rounded border px-2.5 py-2 text-[11px]">
+                  <p className="font-semibold text-[var(--theme-text)]">
+                    {linkedCustomer.customer_name}
+                    <span className="theme-text-muted font-normal">
+                      {" "}
+                      #{linkedCustomer.customer_num}
+                    </span>
+                  </p>
+                  <p className="theme-text-muted mt-0.5">
+                    KRA PIN:{" "}
+                    <strong className="text-[var(--theme-text)]">
+                      {linkedKraPin || "— not on file"}
+                    </strong>
+                  </p>
+                  <p className="theme-text-muted mt-1 text-[10px] leading-relaxed">
+                    Selecting this customer links their record (and KRA PIN) to the sale for
+                    receipt and tax documents.
+                  </p>
+                </div>
+              ) : (
+                <p className="theme-text-muted text-[11px] leading-relaxed">
+                  Use for registered customers when the receipt or KRA eTIMS must carry their PIN.
+                </p>
+              )}
+            </div>
           )}
-
-          <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={isWalkIn}
-              onChange={(e) => {
-                setIsWalkIn(e.target.checked);
-                if (e.target.checked) {
-                  setCustomerNum("");
-                  setSelectedCustomer(null);
-                  setCustomerOptions([]);
-                } else {
-                  setWalkInName("");
-                }
-                setLocalError(null);
-              }}
-              disabled={saving}
-            />
-            Walk-in customer
-          </label>
 
           {error || localError ? (
             <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">

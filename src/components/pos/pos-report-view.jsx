@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { formatTillKes, formatTillKesExact, formatSessionDateTime, formatSessionTime, normalizeFloatEntries, formatFloatEntryDate, resolveNetSalesMinusFloat } from "@/lib/pos-till";
+import { formatTillKes, formatTillKesExact, formatSessionDateTime, formatSessionTime, normalizeFloatEntries, formatFloatEntryDate, resolveNetSalesMinusFloat, cashMovementLabel } from "@/lib/pos-till";
 import { buildExpensesHref } from "@/lib/expenses-link";
 import { ReportStatGrid } from "@/components/pos/pos-shared";
 
@@ -83,7 +83,7 @@ function CashMovementsSection({ report }) {
         <tbody>
           {movements.map((row, index) => (
             <tr key={`${row.recorded_at}-${index}`} className="border-b border-slate-100 last:border-b-0">
-              <td className="px-3 py-2.5 capitalize text-slate-800">{String(row.type ?? "").replace("_", " ")}</td>
+              <td className="px-3 py-2.5 text-slate-800">{cashMovementLabel(row.type)}</td>
               <td className="px-3 py-2.5 text-slate-600">{row.reason ?? "—"}</td>
               <td className="px-3 py-2.5 text-right font-medium text-slate-900">{formatTillKes(row.amount)}</td>
             </tr>

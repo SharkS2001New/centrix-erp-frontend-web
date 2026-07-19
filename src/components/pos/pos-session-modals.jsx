@@ -387,7 +387,7 @@ export function ZReportModal({
           .catch(() => setTill(null));
       }
       if (session?.cashier_id && !fallbackCashierName) {
-        apiRequest(`/users/${session.cashier_id}`)
+        apiRequest(`/users/${session.cashier_id}`, { loading: false, reportIssues: false })
           .then((u) => setCashierName(u.full_name ?? u.username ?? null))
           .catch(() => setCashierName(fallbackCashierName));
       }
@@ -407,7 +407,10 @@ export function ZReportModal({
           setTill(t);
         }
         if (session?.cashier_id) {
-          const u = await apiRequest(`/users/${session.cashier_id}`).catch(() => null);
+          const u = await apiRequest(`/users/${session.cashier_id}`, {
+            loading: false,
+            reportIssues: false,
+          }).catch(() => null);
           setCashierName(u?.full_name ?? u?.username ?? fallbackCashierName);
         } else {
           setCashierName(fallbackCashierName);

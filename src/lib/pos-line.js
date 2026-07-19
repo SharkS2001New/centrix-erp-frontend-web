@@ -26,6 +26,7 @@ import {
   uomIsFullPackageOnly,
   uomSmallUnitIsWholeNumber,
 } from "@/lib/uom-packaging";
+import { finalizePosLineAmount } from "@/lib/pos-cash-round";
 
 /** POS session is selling at retail when the cashier toggles it on. */
 export function isPosRetailSession(sellWholesale) {
@@ -69,6 +70,7 @@ export function posQuantityFieldMeta(
   if (isPosRetailSession(sellWholesale) && !product) {
     return {
       label: "Quantity",
+      unit: "",
       hint: "Select a product — retail tier sets the selling unit and price",
       step: "any",
     };
@@ -78,6 +80,7 @@ export function posQuantityFieldMeta(
     const small = smallPackagingLabel(uom);
     return {
       label: `Quantity (${small})`,
+      unit: small,
       hint: "No retail tiers for this product — wholesale pricing applies",
       step: uomSmallUnitIsWholeNumber(uom) ? "1" : "any",
     };
@@ -89,6 +92,7 @@ export function posQuantityFieldMeta(
     const small = smallPackagingLabel(uom);
     return {
       label: `Quantity (${unit})`,
+      unit,
       hint: fullOnly
         ? `Wholesale — count in ${unit} only`
         : factor > 1
@@ -108,6 +112,7 @@ export function posQuantityFieldMeta(
 
   return {
     label: `Quantity (${small})`,
+    unit: small,
     hint: tier
       ? `Retail tier ${formatTierRange(tier, small)} → sold as ${sellUnit}`
       : `Retail — enter ${small}; stock is recorded in ${small}`,
@@ -337,6 +342,7 @@ export function computePosLine({
   unitPriceOverride = null,
   routeMarkupPerUnit = 0,
   retailLine = null,
+  cashRound = false,
 }) {
   const uom = product?.uom ?? null;
   const factor = uomConversionFactor(uom);
@@ -390,13 +396,14 @@ export function computePosLine({
     packQty,
     measureLevel: resolved.measureLevel,
   });
-  const unitPricePerBase = baseQty > 0 ? lineAmount / baseQty : 0;
+  const roundedLineAmount = finalizePosLineAmount(lineAmount, { cashRound });
+  const unitPricePerBase = baseQty > 0 ? roundedLineAmount / baseQty : 0;
 
   return {
     ...resolved,
     lineAmountBeforeDiscount: Math.round(lineAmountBeforeDiscount * 100) / 100,
     discountApplied: Math.round(discountNum * 100) / 100,
-    lineAmount: Math.round(lineAmount * 100) / 100,
+    lineAmount: roundedLineAmount,
     displayUnitPrice: Math.round(displayUnitPrice * 100) / 100,
     unitPricePerBase: Math.round(unitPricePerBase * 10000) / 10000,
     qtyLabel: formatPosCartQty(baseQty, uom),
@@ -459,6 +466,26 @@ export function posEntryQtyFromCartLine(line, product, retailPackage) {
     return String(baseToDisplayQty(baseQty, factor));
   }
   return String(baseQty);
+}
+
+/** Unit label for the editable cart-line qty (matches `posEntryQtyFromCartLine` unit). */
+export function posCartLineEntryUnitLabel(line, product, retailPackage) {
+  const uom = product?.uom ?? null;
+  if (uom) {
+    const factor = uomConversionFactor(uom);
+    const isRetailLine = Number(line?.on_wholesale_retail) === 1;
+    if (factor > 1 && !isRetailLine) {
+      return fullPackageLabel(uom);
+    }
+    return smallPackagingLabel(uom);
+  }
+  const fallback =
+    line?.package_label ||
+    line?.uom_name ||
+    (typeof line?.uom === "string" ? line.uom : "") ||
+    product?.packaging_label ||
+    "";
+  return String(fallback).trim();
 }
 
 /** Rebuild POS entry quantity from a base (stock) quantity. */

@@ -1,6 +1,10 @@
 /** Platform-controlled sales behaviour flags exposed on erp/capabilities. */
 
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
+import {
+  resolveShowBackofficeCheckoutOnCreate,
+  resolveShowPosCheckoutOnCreate,
+} from "@/lib/sales-settings";
 
 export const ORDER_CANCELLABLE_STATUSES = new Set([
   "booked",
@@ -18,8 +22,14 @@ export const ORDER_NON_CANCELLABLE_STATUSES = new Set([
   "pending_payment",
 ]);
 
+/** Backoffice Create order — checkout on create (not external POS). */
 export function isPlatformCheckoutOnCreateEnabled(capabilities) {
-  return capabilities?.module_settings?.sales?.show_checkout_on_create_order !== false;
+  return resolveShowBackofficeCheckoutOnCreate(capabilities?.module_settings);
+}
+
+/** External POS (/pos) — checkout on create / complete sale. */
+export function isPlatformPosCheckoutOnCreateEnabled(capabilities) {
+  return resolveShowPosCheckoutOnCreate(capabilities?.module_settings);
 }
 
 /**
@@ -27,7 +37,7 @@ export function isPlatformCheckoutOnCreateEnabled(capabilities) {
  * Orders may advance through processing while still unpaid on payment_status.
  * Queue screens still list by workflow status (Booked, Unpaid, Processed, …) so each
  * category only shows orders in that step — collect payment where the workflow allows it.
- * Does not apply when checkout on create is enabled (typical retail / wholesale POS).
+ * Does not apply when backoffice checkout on create is enabled (typical retail / wholesale).
  */
 export function orgDefersPaymentToFulfillment(capabilities) {
   if (!capabilities?.modules?.distribution) return false;

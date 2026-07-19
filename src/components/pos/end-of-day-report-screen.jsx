@@ -191,6 +191,9 @@ ${meta.showDiscounts ? `<div class="row"><span>Discounts</span><span>${kesNum(s.
 <div class="row"><span>Net sales (ex VAT)</span><span>${kesNum(s.net_sales_ex_vat ?? Math.max(0, Number(s.net_sales ?? 0) - Number(s.total_vat ?? 0)))}</span></div>
 ${meta.showFloat ? `<div class="row"><span>Opening float</span><span>${kesNum(s.opening_float)}</span></div>` : ""}
 ${meta.showFloat ? `<div class="row"><span>Net sales minus float</span><span>${kesNum(resolveNetSalesMinusFloat({ netSales: s.net_sales, openingFloat: s.opening_float, netSalesMinusFloat: s.net_sales_minus_float }))}</span></div>` : ""}
+${Number(s.cash_movements_out) > 0 ? `<div class="row"><span>Safe drops</span><span>-${kesNum(s.cash_movements_out)}</span></div>` : ""}
+${Number(s.cash_movements_in) > 0 ? `<div class="row"><span>Cash in</span><span>${kesNum(s.cash_movements_in)}</span></div>` : ""}
+${Number(s.session_expenses) > 0 ? `<div class="row"><span>Session expenses</span><span>-${kesNum(s.session_expenses)}</span></div>` : ""}
 <div class="row"><span>Net cash expected</span><span>${kesNum(s.net_cash_expected)}</span></div>
 </div>
 <div class="box"><strong>Payments</strong>
@@ -232,8 +235,10 @@ function buildEodExportRows(report, { requireTillFloat, discountsEnabled }) {
       ),
     );
   }
+  if (Number(s.cash_movements_out) > 0) push("Sales", "Safe drops", `-${kesNum(s.cash_movements_out)}`);
+  if (Number(s.cash_movements_in) > 0) push("Sales", "Cash in", kesNum(s.cash_movements_in));
+  if (Number(s.session_expenses) > 0) push("Sales", "Session expenses", `-${kesNum(s.session_expenses)}`);
   if (requireTillFloat) push("Sales", "Net cash expected", kesNum(s.net_cash_expected));
-  if (Number(s.session_expenses) > 0) push("Sales", "Session expenses", kesNum(s.session_expenses));
 
   push("Payments", "Cash", kesNum(p.cash));
   push("Payments", "M-Pesa", kesNum(p.mpesa));
@@ -597,6 +602,12 @@ export function EndOfDayReportScreen() {
               ) : null}
               {requireTillFloat ? (
                 <SummaryRow label="Net sales minus float" value={formatTillKes(netSalesMinusFloat)} tone="primary" bold />
+              ) : null}
+              {Number(summary.cash_movements_out) > 0 ? (
+                <SummaryRow label="Safe drops" value={`-${formatTillKes(summary.cash_movements_out)}`} tone="danger" />
+              ) : null}
+              {Number(summary.cash_movements_in) > 0 ? (
+                <SummaryRow label="Cash in" value={formatTillKes(summary.cash_movements_in)} tone="success" />
               ) : null}
               {Number(summary.session_expenses) > 0 ? (
                 <SummaryRow label="Session expenses" value={`-${formatTillKes(summary.session_expenses)}`} tone="danger" />

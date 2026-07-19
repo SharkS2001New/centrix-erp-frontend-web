@@ -3,10 +3,14 @@ import { apiRequest } from "@/lib/api";
 export function creditCustomerToOption(customer) {
   const name = customer.customer_name?.trim() || `Customer #${customer.customer_num}`;
   const phone = customer.phone_number?.trim();
+  const kra = customer.kra_pin?.trim();
+  const kraBit = kra ? ` · KRA ${kra}` : "";
   return {
     value: String(customer.customer_num),
-    label: phone ? `${name} · ${phone}` : `${name} (#${customer.customer_num})`,
-    searchText: `${name} ${customer.customer_num} ${phone ?? ""} ${customer.additional_phone ?? ""}`,
+    label: phone
+      ? `${name} · ${phone}${kraBit}`
+      : `${name} (#${customer.customer_num})${kraBit}`,
+    searchText: `${name} ${customer.customer_num} ${phone ?? ""} ${customer.additional_phone ?? ""} ${kra ?? ""}`,
     customer,
   };
 }

@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { posModalOverlayClass, posModalPanelClass, renderPosModalPortal } from "@/lib/pos-modal-shell";
 import {
+  CASH_MOVEMENT_OPTIONS,
   FLOAT_PAYMENT_TYPES,
+  cashMovementHint,
+  cashMovementLabel,
   formatFloatEntryDate,
   formatSessionDateTime,
   formatTillKes,
@@ -760,7 +763,7 @@ export function FloatBreakdownModal({
                 <tbody>
                   {movements.map((row, index) => (
                     <tr key={`${row.recorded_at}-${index}`} className="border-b border-slate-100 last:border-b-0">
-                      <td className="px-3 py-2.5 capitalize text-slate-800">{String(row.type ?? "").replace("_", " ")}</td>
+                      <td className="px-3 py-2.5 text-slate-800">{cashMovementLabel(row.type)}</td>
                       <td className="px-3 py-2.5 text-slate-600">{row.reason ?? "—"}</td>
                       <td className="px-3 py-2.5 text-right font-medium text-slate-900">{formatTillKes(row.amount)}</td>
                     </tr>
@@ -844,10 +847,13 @@ export function FloatBreakdownModal({
                   onChange={(e) => setMovementType(e.target.value)}
                   disabled={cashMovementBusy}
                 >
-                  <option value="drop">Safe drop</option>
-                  <option value="pay_out">Pay out</option>
-                  <option value="pay_in">Pay in</option>
+                  {CASH_MOVEMENT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
                 </select>
+                {cashMovementHint(movementType) ? (
+                  <p className="mt-1.5 text-xs text-slate-500">{cashMovementHint(movementType)}</p>
+                ) : null}
               </Field>
               <Field label="Amount (KES)">
                 <input

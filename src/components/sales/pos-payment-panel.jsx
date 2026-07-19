@@ -165,6 +165,11 @@ export function PosPaymentPanel({
   const [chequeAmount, setChequeAmount] = useState("0");
   const [chequeNo, setChequeNo] = useState("");
   const [walkInCustomerName, setWalkInCustomerName] = useState("");
+  /** Customer-name step: walk-in name vs registered customer (KRA / receipt link). */
+  const [customerNameMode, setCustomerNameMode] = useState("walkin");
+  const [receiptCustomerNum, setReceiptCustomerNum] = useState("");
+  const [selectedReceiptCustomer, setSelectedReceiptCustomer] = useState(null);
+  const [receiptCustomerOptions, setReceiptCustomerOptions] = useState([]);
   const [sessionBillTotal, setSessionBillTotal] = useState(0);
   const [confirmSummary, setConfirmSummary] = useState(null);
   const [localError, setLocalError] = useState(null);
@@ -217,6 +222,10 @@ export function PosPaymentPanel({
     setChequeAmount("0");
     setChequeNo("");
     setWalkInCustomerName(String(prefillWalkInCustomerName ?? "").trim());
+    setCustomerNameMode("walkin");
+    setReceiptCustomerNum("");
+    setSelectedReceiptCustomer(null);
+    setReceiptCustomerOptions([]);
   }, [open, billTotal, prefillMpesaAmount, prefillMpesaCode, prefillWalkInCustomerName]);
 
   useEffect(() => {
@@ -228,6 +237,12 @@ export function PosPaymentPanel({
   const searchCreditCustomersForSelect = useCallback(async (query) => {
     const rows = await searchCreditCustomers(query);
     setCreditSearchOptions(rows);
+    return rows;
+  }, []);
+
+  const searchReceiptCustomersForSelect = useCallback(async (query) => {
+    const rows = await searchCreditCustomers(query);
+    setReceiptCustomerOptions(rows);
     return rows;
   }, []);
 
@@ -266,8 +281,22 @@ export function PosPaymentPanel({
   const changeDue = Math.max(0, amountPaid - checkoutTotal);
   const hasCreditCustomer = Boolean(customerNum);
 
+  const linkedReceiptCustomer =
+    customerNameMode === "existing" && selectedReceiptCustomer
+      ? selectedReceiptCustomer
+      : null;
+
+  function needsCustomerNameStep() {
+    return (
+      cfg.enableCheckoutCustomerName &&
+      !hasCreditCustomer &&
+      !linkedReceiptCustomer
+    );
+  }
+
+  /** @deprecated use needsCustomerNameStep — kept for walk-in-only name body path */
   function needsWalkInCustomerName() {
-    return cfg.enableCheckoutCustomerName && !hasCreditCustomer;
+    return needsCustomerNameStep() && customerNameMode === "walkin";
   }
 
   const creditCustomer = hasCreditCustomer ? selectedCreditCustomer : null;
@@ -378,7 +407,11 @@ export function PosPaymentPanel({
     if (creditCustomer) {
       body.customer_num = creditCustomer.customer_num;
       body.customer_name_override = creditCustomer.customer_name;
-    } else if (needsWalkInCustomerName() && walkInCustomerName.trim()) {
+    } else if (linkedReceiptCustomer) {
+      // Paid sale linked to a registered customer (receipt / KRA PIN) — not credit A/R.
+      body.customer_num = linkedReceiptCustomer.customer_num;
+      body.customer_name_override = linkedReceiptCustomer.customer_name;
+    } else if (cfg.enableCheckoutCustomerName && walkInCustomerName.trim()) {
       body.customer_name_override = walkInCustomerName.trim();
     }
 
@@ -613,8 +646,8 @@ export function PosPaymentPanel({
 
   function handleConfirmYes() {
     setLocalError(null);
-    if (needsWalkInCustomerName()) {
-      if (!walkInCustomerName.trim()) {
+    if (cfg.enableCheckoutCustomerName && !hasCreditCustomer && !linkedReceiptCustomer) {
+      if (customerNameMode === "walkin" && !walkInCustomerName.trim()) {
         const prefill = String(prefillWalkInCustomerName ?? "").trim();
         if (prefill) setWalkInCustomerName(prefill);
       }
@@ -625,6 +658,15 @@ export function PosPaymentPanel({
   }
 
   function handleCustomerNameContinue() {
+    if (customerNameMode === "existing") {
+      if (!selectedReceiptCustomer) {
+        setLocalError("Search and select an existing customer.");
+        return;
+      }
+      setLocalError(null);
+      void submitCheckout();
+      return;
+    }
     if (!walkInCustomerName.trim()) {
       setLocalError("Enter the walk-in customer name.");
       return;
@@ -810,7 +852,7 @@ export function PosPaymentPanel({
   const customerNameOverlay =
     step === "customerName" ? (
       <PosNestedDialog
-        title="CUSTOMER NAME"
+        title="CUSTOMER"
         titleId="customer-name-title"
         footer={
           <div className={POS_DIALOG_FOOTER}>
@@ -830,26 +872,96 @@ export function PosPaymentPanel({
           </div>
         }
       >
-        <p className="mb-3 text-sm">Enter the walk-in customer name for this order.</p>
-        <PosField label="Customer name">
-          <input
-            ref={walkInNameRef}
-            type="text"
-            className={inputCls}
-            value={walkInCustomerName}
-            onChange={(e) => {
-              setWalkInCustomerName(e.target.value);
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setCustomerNameMode("walkin");
+              setReceiptCustomerNum("");
+              setSelectedReceiptCustomer(null);
+              setReceiptCustomerOptions([]);
               setLocalError(null);
             }}
-            placeholder="Walk-in customer name"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleCustomerNameContinue();
-              }
+            className={`rounded-lg border px-3 py-2 text-xs font-bold uppercase ${
+              customerNameMode === "walkin"
+                ? "border-[var(--theme-primary)] bg-[var(--theme-primary)]/10 text-[var(--theme-primary)]"
+                : "theme-secondary-btn"
+            }`}
+          >
+            Walk-in
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setCustomerNameMode("existing");
+              setLocalError(null);
             }}
-          />
-        </PosField>
+            className={`rounded-lg border px-3 py-2 text-xs font-bold uppercase ${
+              customerNameMode === "existing"
+                ? "border-[var(--theme-primary)] bg-[var(--theme-primary)]/10 text-[var(--theme-primary)]"
+                : "theme-secondary-btn"
+            }`}
+          >
+            Existing customer
+          </button>
+        </div>
+
+        {customerNameMode === "walkin" ? (
+          <>
+            <p className="mb-3 text-sm">Enter the walk-in customer name for this order.</p>
+            <PosField label="Customer name">
+              <input
+                ref={walkInNameRef}
+                type="text"
+                className={inputCls}
+                value={walkInCustomerName}
+                onChange={(e) => {
+                  setWalkInCustomerName(e.target.value);
+                  setLocalError(null);
+                }}
+                placeholder="Walk-in customer name"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleCustomerNameContinue();
+                  }
+                }}
+              />
+            </PosField>
+          </>
+        ) : (
+          <>
+            <p className="mb-3 text-sm">
+              Search a registered customer so the receipt and KRA documents use their PIN.
+            </p>
+            <PosField label="Existing customer">
+              <PosSearchableSelect
+                value={receiptCustomerNum}
+                onChange={(nextValue, option) => {
+                  setReceiptCustomerNum(nextValue);
+                  setSelectedReceiptCustomer(option?.customer ?? null);
+                  setLocalError(null);
+                }}
+                options={receiptCustomerOptions}
+                loadOptions={searchReceiptCustomersForSelect}
+                minSearchLength={1}
+                placeholder="Search by name, phone, PIN, or #"
+                searchPlaceholder="Search by name, phone, KRA PIN, or customer #…"
+                idleSearchLabel="Type a name, phone, KRA PIN, or customer #"
+                emptyLabel="No matching customers"
+                inputClassName={inputCls}
+              />
+            </PosField>
+            {selectedReceiptCustomer ? (
+              <p className="theme-text-muted mt-2 text-[11px]">
+                KRA PIN:{" "}
+                <strong className="text-[var(--theme-text)]">
+                  {String(selectedReceiptCustomer.kra_pin ?? "").trim() || "— not on file"}
+                </strong>
+              </p>
+            ) : null}
+          </>
+        )}
         {(error || localError) ? (
           <p className="theme-alert-error mt-3 rounded px-3 py-2 text-sm">{error || localError}</p>
         ) : null}

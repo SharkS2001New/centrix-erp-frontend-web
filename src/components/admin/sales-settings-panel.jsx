@@ -13,7 +13,7 @@ import { PlatformConfiguredSalesSummary } from "@/components/admin/platform-conf
 import { OrdersListDefaultsFields } from "@/components/admin/orders-list-defaults-fields";
 import { SettingsSubTabBar, useSettingsSubTab } from "@/components/admin/settings-sub-tabs";
 import {
-  isPlatformCheckoutOnCreateEnabled,
+  isPlatformPosCheckoutOnCreateEnabled,
   isPlatformMpesaStkEnabled,
 } from "@/lib/platform-org-features";
 import { useSettingsApi, useSettingsAfterSave } from "@/contexts/settings-api-context";
@@ -539,7 +539,7 @@ function TillsCheckoutSettingsTab({
               />
               <Toggle
                 label="Request customer name on checkout"
-                description="When enabled, POS prompts for a customer on save order, hold order, and checkout (skipped for credit sales with a selected customer). When off, orders save immediately with no name prompt."
+                description="When enabled, POS prompts for a customer on save order, hold order, and checkout. Default is walk-in name; staff can switch to Existing customer to link a registered record (and KRA PIN) to the sale. When off, orders save immediately as Walk-in with no prompt."
                 checked={salesForm.enable_checkout_customer_name}
                 onChange={(v) => setSalesForm((f) => ({ ...f, enable_checkout_customer_name: v }))}
               />
@@ -593,7 +593,7 @@ export function SalesSettingsPanel({
   const modules = capabilities?.modules ?? {};
   const hasPosSales = Boolean(modules["sales.pos"]);
   const hasCustomers = Boolean(modules.customers_suppliers);
-  const posCheckoutEnabled = isPlatformCheckoutOnCreateEnabled(capabilities);
+  const posCheckoutEnabled = isPlatformPosCheckoutOnCreateEnabled(capabilities);
   const mpesaPlatformEnabled = isPlatformMpesaStkEnabled(capabilities);
 
   const visibleTabs = useMemo(

@@ -105,6 +105,7 @@ export function OrderWorkflowSettingsEditor({
   workflow,
   onChange,
   showCheckoutOnCreate = true,
+  showPosCheckoutOnCreate = null,
   stockDeductOn,
   onStockDeductOnChange,
   distributionOpsEnabled = false,
@@ -113,12 +114,14 @@ export function OrderWorkflowSettingsEditor({
 }) {
   const confirm = useConfirm();
   const wf = workflow ?? DEFAULT_ORDER_WORKFLOW;
-  const saveOrderMode = !showCheckoutOnCreate;
-  const posCheckoutMode = hasPosSales && showCheckoutOnCreate;
+  const posCheckout =
+    showPosCheckoutOnCreate == null ? showCheckoutOnCreate : Boolean(showPosCheckoutOnCreate);
+  const saveOrderMode = !showCheckoutOnCreate || (hasPosSales && !posCheckout);
+  const posCheckoutMode = hasPosSales && posCheckout;
   const channels = stockChannels(hasPosSales);
   const stockTiming = normalizeStockDeductOn(stockDeductOn, {
     hasPosSales,
-    showCheckoutOnCreate,
+    showCheckoutOnCreate: posCheckout,
   });
   const reserveStockOn = normalizeChannelStatusMap(
     wf.reserve_stock_on,
@@ -207,8 +210,12 @@ export function OrderWorkflowSettingsEditor({
         deleted. Status moves follow this pipeline — one step up or down only. Enabled stages
         appear as sidebar order pages in this order (View All, then each stage).
         {saveOrderMode
-          ? " POS uses Save order (no checkout) — configure the initial save status below. Payment rules apply to all orders."
-          : " POS opens checkout on create order. Payment rules below apply to all orders."}
+          ? hasPosSales && !posCheckout && showCheckoutOnCreate
+            ? " External POS uses Save order — configure the initial save status below. Backoffice Create order still opens checkout."
+            : !showCheckoutOnCreate && hasPosSales && posCheckout
+              ? " Backoffice Create order uses Save order — configure the initial save status below. External POS still opens checkout."
+              : " Save order mode is on for one or more surfaces — configure the initial save status below. Payment rules apply to all orders."
+          : " Checkout on create is enabled for configured surfaces. Payment rules below apply to all orders."}
       </p>
       {pipelinePreview.length > 0 ? (
         <p className={`theme-accent-label ${embedded ? "mt-2" : "mt-2"} text-xs`}>
@@ -316,9 +323,9 @@ export function OrderWorkflowSettingsEditor({
             Save order (no checkout)
           </p>
           <p className="theme-subtext mt-1 text-xs">
-            <strong className="theme-heading font-semibold">Show checkout on create order</strong> is off, so the POS shows{" "}
-            <strong className="theme-heading font-semibold">Save order</strong> instead of checkout. New orders are created at this status.
-            Stock reservation and deduction follow the settings below for each channel.
+            One or more surfaces use <strong className="theme-heading font-semibold">Save order</strong>{" "}
+            instead of checkout. New orders are created at the status below for each channel.
+            Stock reservation and deduction follow the settings further down.
           </p>
           <div className={`mt-3 grid gap-3 ${channels.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
             {channels.map((ch) => (

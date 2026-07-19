@@ -18,6 +18,32 @@ export function formatTillKesExact(value) {
   })}`;
 }
 
+/** Cash movement options for float details (expenses cover petty cash outflows). */
+export const CASH_MOVEMENT_OPTIONS = [
+  {
+    value: "drop",
+    label: "Safe drop",
+    hint: "Move till cash into the safe so the drawer does not hold too much.",
+  },
+  {
+    value: "pay_in",
+    label: "Cash in",
+    hint: "Put extra cash into the till (for example change top-up from the safe).",
+  },
+];
+
+export function cashMovementLabel(type) {
+  const key = String(type ?? "").toLowerCase();
+  if (key === "drop") return "Safe drop";
+  if (key === "pay_in") return "Cash in";
+  if (key === "pay_out") return "Pay out";
+  return key.replace(/_/g, " ") || "—";
+}
+
+export function cashMovementHint(type) {
+  return CASH_MOVEMENT_OPTIONS.find((opt) => opt.value === type)?.hint ?? "";
+}
+
 /** Net sales after deducting operating float (always >= 0). */
 export function resolveNetSalesMinusFloat({
   netSales,

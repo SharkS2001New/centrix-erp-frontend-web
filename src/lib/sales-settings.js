@@ -46,6 +46,8 @@ const SALES_DEFAULTS = {
   enable_credit_payment: true,
   allow_credit_pay_now: false,
   show_checkout_on_create_order: true,
+  /** External POS (/pos) — complete sale with checkout. Independent of backoffice Create order. */
+  show_pos_checkout_on_create: true,
   enable_checkout_customer_name: false,
   retail_shop_wholesale_store_stock: false,
   add_route_markup_prices: false,
@@ -61,6 +63,8 @@ const SALES_DEFAULTS = {
   mobile_show_customer_phone: false,
   require_pos_till_float: false,
   external_pos_layout: "modern",
+  /** Light Stores–style last-digit cash rounding on external POS (/pos). */
+  enable_pos_cash_rounding: false,
   require_backoffice_till_float: false,
   blind_till_close: false,
   enable_pos_order_edit: false,
@@ -733,15 +737,14 @@ export function shouldShowSalesDiscountColumn(moduleSettings) {
   return areSalesDiscountFeaturesEnabled(moduleSettings);
 }
 
-/** POS / create-order line discount field — backoffice channel only (not mobile approval). */
+/** POS / create-order line discount field — only when discounts are allowed. */
 export function showPosLineDiscountField(moduleSettings, { standalone = false } = {}) {
   if (!areSalesDiscountFeaturesEnabled(moduleSettings)) return false;
   const sales = mergeSalesSettings(moduleSettings);
-  return Boolean(
-    sales.allow_discounts ||
-      isDiscountApprovalEnabledForChannel(moduleSettings, "backoffice") ||
-      resolveAllowEditLineDiscount(sales, { standalone }),
-  );
+  // Hide the Discount column completely when org discounts are off.
+  if (!sales.allow_discounts) return false;
+  void standalone;
+  return true;
 }
 
 /** POS full order discount input. */
@@ -1186,6 +1189,45 @@ export function resolveStockDeductTiming(moduleSettings, channel = "backend") {
   return legacy || "order_created";
 }
 
+/**
+ * Backoffice Create order checkout-on-create. Distribution profiles default to Save order.
+ */
+export function defaultBackofficeCheckoutOnCreate(deploymentProfile = "wholesale_retail") {
+  return String(deploymentProfile ?? "").toLowerCase() !== "distribution";
+}
+
+/**
+ * External POS (/pos) checkout-on-create.
+ * Explicit flag wins; if unset, falls back to the legacy shared `show_checkout_on_create_order`.
+ */
+export function resolveShowPosCheckoutOnCreate(moduleSettings) {
+  const raw = moduleSettings?.sales ?? {};
+  if (Object.prototype.hasOwnProperty.call(raw, "show_pos_checkout_on_create")) {
+    return Boolean(raw.show_pos_checkout_on_create);
+  }
+  return raw.show_checkout_on_create_order !== false;
+}
+
+export function resolveShowBackofficeCheckoutOnCreate(moduleSettings) {
+  const raw = moduleSettings?.sales ?? {};
+  if (Object.prototype.hasOwnProperty.call(raw, "show_checkout_on_create_order")) {
+    return Boolean(raw.show_checkout_on_create_order);
+  }
+  return true;
+}
+
+/**
+ * External POS cash rounding (Light Stores last-digit rule).
+ * Explicit platform flag wins; if unset, classic layout keeps the former always-on behaviour.
+ */
+export function resolveEnablePosCashRounding(moduleSettings) {
+  const raw = moduleSettings?.sales ?? {};
+  if (Object.prototype.hasOwnProperty.call(raw, "enable_pos_cash_rounding")) {
+    return Boolean(raw.enable_pos_cash_rounding);
+  }
+  return String(raw.external_pos_layout ?? "modern").toLowerCase() === "classic";
+}
+
 export function getPosSalesConfig(moduleSettings, options = {}) {
   const sales = mergeSalesSettings(moduleSettings);
   const allowShop = Boolean(sales.allow_sell_from_shop);
@@ -1193,6 +1235,7 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
   const retailShopWholesaleStoreStock =
     Boolean(sales.enable_retail_pricing) && Boolean(sales.retail_shop_wholesale_store_stock);
   const enableRetailPricing = Boolean(sales.enable_retail_pricing);
+  const standalone = Boolean(options.standalone);
 
   return {
     sales,
@@ -1212,13 +1255,15 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
           ? "Store stock"
           : null,
     perLineStockRouting: retailShopWholesaleStoreStock,
-    showCheckoutOnCreate: Boolean(sales.show_checkout_on_create_order),
+    showCheckoutOnCreate: standalone
+      ? resolveShowPosCheckoutOnCreate(moduleSettings)
+      : resolveShowBackofficeCheckoutOnCreate(moduleSettings),
     enableCheckoutCustomerName: Boolean(sales.enable_checkout_customer_name),
     retailShopWholesaleStoreStock,
     enableRetailPricing,
     allowDiscounts: Boolean(sales.allow_discounts),
     allowEditLineDiscount:
-      resolveAllowEditLineDiscount(sales, { standalone: Boolean(options.standalone) }) ||
+      resolveAllowEditLineDiscount(sales, { standalone }) ||
       isDiscountApprovalEnabledForChannel(moduleSettings, "backoffice"),
     enableOrderDiscount:
       Boolean(sales.effective_enable_order_discount) ||
@@ -1232,18 +1277,20 @@ export function getPosSalesConfig(moduleSettings, options = {}) {
     pointCashValue: Number(sales.point_cash_value ?? 1),
     pointsEarnPerKes: Number(sales.points_earn_per_kes ?? 1000),
     allowEditUnitPrice: resolveAllowEditUnitPrice(sales, {
-      standalone: Boolean(options.standalone),
+      standalone,
     }),
     enableBarcodeScanner: Boolean(sales.enable_barcode_scanner),
     addRouteMarkupPrices: Boolean(sales.add_route_markup_prices),
     posOrderTypeMode: resolveRouteOrderTypeMode(sales, {
-      standalone: Boolean(options.standalone),
+      standalone,
     }),
     requirePosTillFloat: Boolean(sales.require_pos_till_float),
     requireBackofficeTillFloat: Boolean(sales.require_backoffice_till_float),
     /** @deprecated Use requirePosTillFloat or requireBackofficeTillFloat for the active workspace. */
     requireTillFloat: Boolean(sales.require_pos_till_float),
     enablePosOrderEdit: isPosOrderEditEnabled(moduleSettings, options.capabilities ?? null),
+    /** External POS (/pos) only — use with `standalone`. Classic + modern share this flag. */
+    enablePosCashRounding: resolveEnablePosCashRounding(moduleSettings),
     blindTillClose: Boolean(sales.blind_till_close),
     receiptCopies: Number(sales.receipt_copies ?? 1),
     showBranchOnReceipt: Boolean(sales.show_branch_on_receipt),

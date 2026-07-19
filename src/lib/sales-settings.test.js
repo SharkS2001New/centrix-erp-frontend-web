@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   applyDiscountApprovalFormUpdates,
   canApproveDiscountRequests,
+  defaultBackofficeCheckoutOnCreate,
+  getPosSalesConfig,
   isDiscountApprovalEnabled,
   isDiscountApprovalEnabledForChannel,
   resolveCancelOrderStatuses,
   resolveCollectPaymentStatuses,
   resolveCustomerReturnStatuses,
   resolveEditOrderStatuses,
+  resolveEnablePosCashRounding,
+  resolveShowPosCheckoutOnCreate,
   resolvePrintInvoiceStatuses,
   showBackofficeLineDiscountEdit,
   showPosLineDiscountField,
@@ -41,7 +45,7 @@ describe("sales-settings discount approvals", () => {
     });
   });
 
-  it("shows POS line discount for ERP manual line without mobile approval", () => {
+  it("hides POS line discount when org discounts are disallowed", () => {
     const moduleSettings = {
       sales: {
         allow_discounts: false,
@@ -51,8 +55,21 @@ describe("sales-settings discount approvals", () => {
         discount_approval_enabled_backoffice: false,
       },
     };
-    expect(showPosLineDiscountField(moduleSettings)).toBe(true);
+    expect(showPosLineDiscountField(moduleSettings)).toBe(false);
     expect(isDiscountApprovalEnabledForChannel(moduleSettings, "mobile")).toBe(false);
+  });
+
+  it("shows POS line discount when org discounts are allowed", () => {
+    const moduleSettings = {
+      sales: {
+        allow_discounts: true,
+        allow_edit_line_discount: false,
+        allow_pos_edit_line_discount: false,
+        discount_approval_enabled_mobile: false,
+        discount_approval_enabled_backoffice: false,
+      },
+    };
+    expect(showPosLineDiscountField(moduleSettings)).toBe(true);
   });
 
   it("unlocks POS line discounts when backoffice approval is enabled", () => {
@@ -171,5 +188,70 @@ describe("sales-settings order action stages", () => {
         edit_order_statuses: ["mobile", "bogus"],
       }),
     ).toEqual(["mobile"]);
+  });
+});
+
+describe("sales-settings POS cash rounding", () => {
+  it("defaults off for modern layout when the flag is unset", () => {
+    expect(resolveEnablePosCashRounding({ sales: { external_pos_layout: "modern" } })).toBe(
+      false,
+    );
+    expect(getPosSalesConfig({ sales: {} }).enablePosCashRounding).toBe(false);
+  });
+
+  it("keeps classic layout rounding on when the flag is unset (legacy)", () => {
+    expect(
+      resolveEnablePosCashRounding({ sales: { external_pos_layout: "classic" } }),
+    ).toBe(true);
+  });
+
+  it("honours an explicit platform flag for both layouts", () => {
+    expect(
+      resolveEnablePosCashRounding({
+        sales: { external_pos_layout: "modern", enable_pos_cash_rounding: true },
+      }),
+    ).toBe(true);
+    expect(
+      resolveEnablePosCashRounding({
+        sales: { external_pos_layout: "classic", enable_pos_cash_rounding: false },
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("sales-settings checkout on create (POS vs backoffice)", () => {
+  it("defaults distribution backoffice to save order", () => {
+    expect(defaultBackofficeCheckoutOnCreate("distribution")).toBe(false);
+    expect(defaultBackofficeCheckoutOnCreate("wholesale_retail")).toBe(true);
+    expect(defaultBackofficeCheckoutOnCreate("supermarket")).toBe(true);
+    expect(defaultBackofficeCheckoutOnCreate("small_shop")).toBe(true);
+  });
+
+  it("splits standalone external POS from backoffice Create order", () => {
+    const moduleSettings = {
+      sales: {
+        show_checkout_on_create_order: false,
+        show_pos_checkout_on_create: true,
+      },
+    };
+    expect(getPosSalesConfig(moduleSettings, { standalone: true }).showCheckoutOnCreate).toBe(
+      true,
+    );
+    expect(getPosSalesConfig(moduleSettings, { standalone: false }).showCheckoutOnCreate).toBe(
+      false,
+    );
+  });
+
+  it("falls back to legacy shared flag for external POS when unset", () => {
+    expect(
+      resolveShowPosCheckoutOnCreate({
+        sales: { show_checkout_on_create_order: false },
+      }),
+    ).toBe(false);
+    expect(
+      resolveShowPosCheckoutOnCreate({
+        sales: { show_checkout_on_create_order: true },
+      }),
+    ).toBe(true);
   });
 });

@@ -17,6 +17,7 @@ import {
   normalizeOrdersListSort,
   normalizeOrderActionStatuses,
   ORDER_ACTION_MOBILE_OPTION,
+  defaultBackofficeCheckoutOnCreate,
 } from "@/lib/sales-settings";
 import { OrdersListDefaultsFields } from "@/components/admin/orders-list-defaults-fields";
 import {
@@ -293,7 +294,8 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
   const driverProfiles = new Set(["distribution", "wholesale_retail"]);
 
   return {
-    show_checkout_on_create_order: true,
+    show_checkout_on_create_order: defaultBackofficeCheckoutOnCreate(deploymentProfile),
+    show_pos_checkout_on_create: true,
     enable_mobile_orders: mobileProfiles.has(deploymentProfile),
     mobile_enable_field_attendance: false,
     mobile_enable_driver_app: driverProfiles.has(deploymentProfile),
@@ -311,6 +313,7 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
     },
     require_pos_till_float: false,
     external_pos_layout: "modern",
+    enable_pos_cash_rounding: false,
     enable_pos_order_edit: false,
     enable_backoffice_order_edit: true,
     order_workflow: structuredClone(DEFAULT_ORDER_WORKFLOW),
@@ -333,8 +336,16 @@ export function defaultSalesPlatformState(deploymentProfile = "wholesale_retail"
 
 export function salesPlatformFromApi(apiPayload) {
   if (!apiPayload) return defaultSalesPlatformState();
+  const legacyCheckout = apiPayload.show_checkout_on_create_order !== false;
+  const posCheckout = Object.prototype.hasOwnProperty.call(
+    apiPayload,
+    "show_pos_checkout_on_create",
+  )
+    ? Boolean(apiPayload.show_pos_checkout_on_create)
+    : legacyCheckout;
   return {
     show_checkout_on_create_order: Boolean(apiPayload.show_checkout_on_create_order ?? true),
+    show_pos_checkout_on_create: posCheckout,
     enable_mobile_orders: apiPayload.enable_mobile_orders !== false,
     mobile_enable_field_attendance: Boolean(apiPayload.mobile_enable_field_attendance),
     mobile_enable_driver_app: apiPayload.mobile_enable_driver_app !== false,
@@ -347,11 +358,17 @@ export function salesPlatformFromApi(apiPayload) {
     advanced_data_import_pages: advancedDataImportPagesFromApi(apiPayload.advanced_data_import_pages),
     stock_deduct_on: normalizeStockDeductOn(apiPayload.stock_deduct_on, {
       hasPosSales: Boolean(apiPayload?.enabled_modules?.["sales.pos"]),
-      showCheckoutOnCreate: apiPayload.show_checkout_on_create_order !== false,
+      showCheckoutOnCreate: posCheckout,
     }),
     require_pos_till_float: Boolean(apiPayload.require_pos_till_float ?? false),
     external_pos_layout:
       apiPayload.external_pos_layout === "classic" ? "classic" : "modern",
+    enable_pos_cash_rounding: Object.prototype.hasOwnProperty.call(
+      apiPayload,
+      "enable_pos_cash_rounding",
+    )
+      ? Boolean(apiPayload.enable_pos_cash_rounding)
+      : apiPayload.external_pos_layout === "classic",
     enable_pos_order_edit: Boolean(apiPayload.enable_pos_order_edit ?? false),
     enable_backoffice_order_edit: apiPayload.enable_backoffice_order_edit !== false,
     order_workflow: orderWorkflowFromApi({ order_workflow: apiPayload.order_workflow }),
@@ -400,8 +417,10 @@ export function OrganizationPlatformSalesSettings({
   salesPlatform,
   onChange,
   enabledModules = {},
+  deploymentProfile = "wholesale_retail",
 }) {
   const salesEnabled = Boolean(enabledModules.sales);
+  const hasPosSales = Boolean(enabledModules["sales.pos"]);
   const mobileOrdersEnabled = salesPlatform?.enable_mobile_orders !== false;
   const description =
     "Platform-only checkout mode, mobile application access, and payment integrations.";
@@ -410,7 +429,8 @@ export function OrganizationPlatformSalesSettings({
     onChange?.({ ...salesPlatform, ...partial });
   }
 
-  const showCheckout = salesPlatform?.show_checkout_on_create_order !== false;
+  const showBackofficeCheckout = salesPlatform?.show_checkout_on_create_order !== false;
+  const showPosCheckout = salesPlatform?.show_pos_checkout_on_create !== false;
 
   return (
     <>
@@ -421,10 +441,27 @@ export function OrganizationPlatformSalesSettings({
         </p>
       ) : (
         <div className="space-y-3">
+          {hasPosSales ? (
+            <Toggle
+              label="External POS uses checkout"
+              description="When on, the external POS workspace (/pos) completes the sale with payment immediately. When off, cashiers use Save order instead. Checked by default whenever External POS is enabled."
+              checked={showPosCheckout}
+              onChange={(v) => patch({ show_pos_checkout_on_create: v })}
+            />
+          ) : (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              Enable <strong>External POS</strong> under Applications to configure checkout vs save for{" "}
+              <code className="text-xs">/pos</code>.
+            </p>
+          )}
           <Toggle
-            label="Show checkout on create order (POS)"
-            description="When off, cashiers use Save order instead of opening the payment screen immediately."
-            checked={showCheckout}
+            label="Backoffice Create order uses checkout"
+            description={
+              String(deploymentProfile) === "distribution"
+                ? "When on, Sales → Create order opens payment immediately. Distribution profiles default to Save order (pay later during fulfillment)."
+                : "When on, Sales → Create order opens payment immediately. Wholesale/retail, supermarket, and small shop typically leave this on; you can still choose Save order."
+            }
+            checked={showBackofficeCheckout}
             onChange={(v) => patch({ show_checkout_on_create_order: v })}
           />
           <Toggle
@@ -471,6 +508,12 @@ export function OrganizationPlatformSalesSettings({
             description="When on, cashiers on the external POS workspace (/pos) must open a till session and declare operating float before sales. Backoffice create order uses a separate setting below. X/Z reports and end-of-day include float breakdown."
             checked={Boolean(salesPlatform?.require_pos_till_float)}
             onChange={(v) => patch({ require_pos_till_float: v })}
+          />
+          <Toggle
+            label="Cash rounding on external POS"
+            description="When on, external POS (/pos) rounds line and order amounts with last-digit rules (0–1→0, 2–6→5, 7–9→10). Applies to both Modern and Classic layouts. Backoffice Create order is unchanged."
+            checked={Boolean(salesPlatform?.enable_pos_cash_rounding)}
+            onChange={(v) => patch({ enable_pos_cash_rounding: v })}
           />
           <Toggle
             label="Allow editing completed POS orders"
@@ -573,10 +616,11 @@ export function OrganizationOrderWorkflowSettings({
   const distributionEnabled = Boolean(enabledModules.distribution);
   const hasPosSales = Boolean(enabledModules["sales.pos"]);
   const mobileOrdersEnabled = salesPlatform?.enable_mobile_orders !== false;
-  const showCheckout = salesPlatform?.show_checkout_on_create_order !== false;
+  const showBackofficeCheckout = salesPlatform?.show_checkout_on_create_order !== false;
+  const showPosCheckout = salesPlatform?.show_pos_checkout_on_create !== false;
   const stockDeductOn = normalizeStockDeductOn(salesPlatform?.stock_deduct_on, {
     hasPosSales,
-    showCheckoutOnCreate: showCheckout,
+    showCheckoutOnCreate: showPosCheckout,
   });
   const reserveStockOnCart = salesPlatform?.reserve_stock_on_cart !== false;
   const expiryPipelineSteps = useMemo(
@@ -716,7 +760,8 @@ export function OrganizationOrderWorkflowSettings({
             embedded
             workflow={wf}
             onChange={(next) => patch({ order_workflow: next })}
-            showCheckoutOnCreate={showCheckout}
+            showCheckoutOnCreate={showBackofficeCheckout}
+            showPosCheckoutOnCreate={showPosCheckout}
             stockDeductOn={stockDeductOn}
             onStockDeductOnChange={(value) => patch({ stock_deduct_on: value })}
             distributionOpsEnabled={distributionEnabled}
@@ -972,6 +1017,7 @@ export function OrganizationConfigTabs({
           salesPlatform={salesPlatform}
           onChange={onSalesChange}
           enabledModules={enabledModules}
+          deploymentProfile={deploymentProfile}
         />
       ) : null}
 
@@ -1075,6 +1121,12 @@ export function OrganizationModuleToggles({
       domainChildrenMap,
       mobileOrdersEnabled,
     );
+    if (workspaceId === "pos" && enable && typeof onSalesChange === "function") {
+      onSalesChange({
+        ...(salesPlatform ?? {}),
+        show_pos_checkout_on_create: true,
+      });
+    }
     if (onSetModules) {
       onSetModules(next);
       return;

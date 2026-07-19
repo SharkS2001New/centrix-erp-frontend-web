@@ -10,6 +10,7 @@ import {
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import {
+  extractKraReceiptData,
   kraReceiptQrDataUrl,
   resolveKraReceiptDataForSale,
 } from "@/lib/kra-receipt-qr";
@@ -139,6 +140,11 @@ async function resolveSaleOrderCreatorNameForPrint(sale, options = {}) {
   const fromSale = resolveSaleOrderCreatorName(sale, options.preparedBy);
   if (fromSale !== "—") return fromSale;
 
+  const sessionName =
+    options.user?.full_name ?? options.user?.name ?? options.user?.username ?? null;
+  if (sessionName) return String(sessionName);
+
+  // POS channel may block user lookups for some ID shapes — never fail the print.
   const createdByName = await fetchUserDisplayName(sale?.created_by);
   if (createdByName) return createdByName;
 
@@ -257,13 +263,20 @@ export async function printSaleOrder(sale, options = {}) {
       branding = { ...branding, logoUrl: logoDataUrl };
     }
 
-    const kraData = await resolveKraReceiptDataForSale(saleForPrint, options.kraReceipt);
-    const kraQrDataUrl =
-      kraData?.signatureLink != null
-        ? await kraReceiptQrDataUrl(kraData.signatureLink, {
-            size: documentType === "invoice" ? 140 : 100,
-          })
-        : null;
+    let kraData = null;
+    let kraQrDataUrl = null;
+    try {
+      kraData = await resolveKraReceiptDataForSale(saleForPrint, options.kraReceipt);
+      kraQrDataUrl =
+        kraData?.signatureLink != null
+          ? await kraReceiptQrDataUrl(kraData.signatureLink, {
+              size: documentType === "invoice" ? 140 : 100,
+            })
+          : null;
+    } catch {
+      kraData = extractKraReceiptData(saleForPrint, options.kraReceipt);
+      kraQrDataUrl = null;
+    }
 
     const paymentInstructions = resolveReceiptPaymentDetails({
       moduleSettings,

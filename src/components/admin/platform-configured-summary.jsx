@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { workflowPipelineSteps } from "@/lib/order-workflow";
 import {
   isPlatformCheckoutOnCreateEnabled,
+  isPlatformPosCheckoutOnCreateEnabled,
   isPlatformMobileOrdersEnabled,
   isOrderCancellationEnabled,
 } from "@/lib/platform-org-features";
@@ -13,6 +14,7 @@ import {
   normalizeOrdersListDefaultDays,
   normalizeOrdersListSearchDays,
   ORDERS_LIST_SORT_OPTIONS,
+  resolveEnablePosCashRounding,
 } from "@/lib/sales-settings";
 
 export function PlatformConfiguredSalesSummary({ capabilities: capabilitiesProp }) {
@@ -47,13 +49,22 @@ export function PlatformConfiguredSalesSummary({ capabilities: capabilitiesProp 
         your organization was registered. Contact your platform administrator to change them.
       </p>
       <ul className="mt-3 space-y-1 text-xs">
-        {isPlatformCheckoutOnCreateEnabled(capabilities) ? (
+        {isPlatformPosCheckoutOnCreateEnabled(capabilities) ? (
           <li>
-            <span className="font-medium">POS checkout on create:</span> Checkout
+            <span className="font-medium">External POS:</span> Checkout on create
           </li>
         ) : (
           <li>
-            <span className="font-medium">POS order flow:</span> Save order (no checkout)
+            <span className="font-medium">External POS:</span> Save order (no checkout)
+          </li>
+        )}
+        {isPlatformCheckoutOnCreateEnabled(capabilities) ? (
+          <li>
+            <span className="font-medium">Backoffice Create order:</span> Checkout
+          </li>
+        ) : (
+          <li>
+            <span className="font-medium">Backoffice Create order:</span> Save order (no checkout)
           </li>
         )}
         {isPlatformMobileOrdersEnabled(capabilities) ? (
@@ -64,6 +75,11 @@ export function PlatformConfiguredSalesSummary({ capabilities: capabilitiesProp 
         {capabilities?.module_settings?.sales?.require_pos_till_float ? (
           <li>
             <span className="font-medium">POS till float:</span> Required
+          </li>
+        ) : null}
+        {resolveEnablePosCashRounding(capabilities?.module_settings) ? (
+          <li>
+            <span className="font-medium">External POS cash rounding:</span> Enabled
           </li>
         ) : null}
         {pipeline.length > 0 ? (
