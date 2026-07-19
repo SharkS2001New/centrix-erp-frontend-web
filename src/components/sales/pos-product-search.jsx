@@ -32,6 +32,17 @@ function availableQty(product, sellFromShop, posSalesConfig, sellWholesale) {
   return sellFromShop ? shop : store;
 }
 
+/** Assign a value to a React ref object or callback without touching component props. */
+function assignRef(ref, value) {
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+  if (ref != null && typeof ref === "object") {
+    ref.current = value;
+  }
+}
+
 export function PosProductSearch({
   query,
   onQueryChange,
@@ -48,7 +59,7 @@ export function PosProductSearch({
   sellFromShop = true,
   disabled = false,
   placeholder = "Search by product name or code…",
-  inputRef,
+  inputRef = null,
   /** "classic" = embedded column dropdown (no label, Light Stores columns). */
   variant = "modern",
 }) {
@@ -62,11 +73,11 @@ export function PosProductSearch({
   const [menuBox, setMenuBox] = useState(null);
   const classic = variant === "classic";
 
-  function setInputNode(node) {
-    localInputRef.current = node;
-    if (typeof inputRef === "function") inputRef(node);
-    else if (inputRef) inputRef.current = node;
-  }
+  // Keep parent searchInputRef in sync without mutating props during render.
+  useLayoutEffect(() => {
+    assignRef(inputRef, localInputRef.current);
+    return () => assignRef(inputRef, null);
+  }, [inputRef]);
 
   const exactBarcodeMatch =
     barcodeEnabled &&
@@ -306,7 +317,7 @@ export function PosProductSearch({
         </label>
       )}
       <input
-        ref={setInputNode}
+        ref={localInputRef}
         type="text"
         role="combobox"
         aria-expanded={showDropdown}

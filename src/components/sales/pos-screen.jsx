@@ -4988,7 +4988,6 @@ export function PosScreen({ standalone = false }) {
                     : 0
                 }
                 entryReady={Boolean(selectedProduct && lineForm.product_code)}
-                busy={busy || lineBusy}
                 onEntryQtyChange={(value) =>
                   setLineForm((p) => ({ ...p, quantity: value }))
                 }
