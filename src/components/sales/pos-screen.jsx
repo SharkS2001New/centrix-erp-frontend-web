@@ -112,8 +112,8 @@ import {
 } from "@/lib/pos-cart-merge";
 import { PosPaymentPanel } from "./pos-payment-panel";
 import { PosProductSearch } from "./pos-product-search";
-import { ClassicPosFindModal } from "./classic-pos-find-modal";
 import { ClassicPosStatusFooter } from "./classic-pos-status-footer";
+import { ClassicPosCartTable } from "./classic-pos-cart-table";
 import { PosCartPaymentOptions, posCartPaymentPromptsEnabled } from "./pos-cart-payment-options";
 import { PosHeldOrdersOverlay } from "./pos-held-orders-overlay";
 import { PosOrderEditBar } from "./pos-order-edit-bar";
@@ -220,7 +220,6 @@ export function PosScreen({ standalone = false }) {
     () => mergeGeneralSettings(capabilities?.module_settings),
     [capabilities?.module_settings],
   );
-  const [classicFindOpen, setClassicFindOpen] = useState(false);
   const {
     activeSession,
     tillId,
@@ -2039,6 +2038,10 @@ export function PosScreen({ standalone = false }) {
 
   function handleQuantityEnter() {
     if (!selectedProduct || busy || lineBusy || addLineBlocked) return;
+    if (classicLayout) {
+      void handleAddLine();
+      return;
+    }
     if (canEditManualLineDiscount()) {
       focusLineField(discountInputRef);
       return;
@@ -2997,7 +3000,6 @@ export function PosScreen({ standalone = false }) {
         || heldOrdersOpen
         || leaveGuardOpen
         || priceCheckerOpen
-        || classicFindOpen
         || floatModalOpen
         || floatDetailsOpen
         || xReportOpen
@@ -3023,10 +3025,6 @@ export function PosScreen({ standalone = false }) {
 
       if (e.key === "Escape") {
         e.preventDefault();
-        if (classicFindOpen) {
-          setClassicFindOpen(false);
-          return;
-        }
         focusProductSearch();
         return;
       }
@@ -3035,7 +3033,7 @@ export function PosScreen({ standalone = false }) {
 
       if (e.key === "F2" && classicLayout) {
         e.preventDefault();
-        setClassicFindOpen(true);
+        focusProductSearch();
         return;
       }
       if (e.key === "F8") {
@@ -3087,7 +3085,6 @@ export function PosScreen({ standalone = false }) {
     heldOrdersOpen,
     leaveGuardOpen,
     priceCheckerOpen,
-    classicFindOpen,
     classicLayout,
     floatModalOpen,
     floatDetailsOpen,
@@ -3388,9 +3385,9 @@ export function PosScreen({ standalone = false }) {
       />
 
       <div
-        className={`flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row${
-          standalone ? " pos-standalone-frame" : " pos-backoffice-frame"
-        }`}
+        className={`flex min-h-0 flex-1 flex-col lg:flex-row${
+          classicLayout ? " overflow-visible" : " overflow-hidden"
+        }${standalone ? " pos-standalone-frame" : " pos-backoffice-frame"}`}
       >
         {/* Left — line entry + payment options */}
         <div className="pos-left-panel flex min-h-0 w-full flex-col self-stretch border-b border-[var(--theme-border)] bg-[var(--theme-page-bg)] lg:w-[min(100%,28rem)] lg:shrink-0 lg:border-b-0 lg:border-r xl:w-[32rem]">
@@ -3530,29 +3527,7 @@ export function PosScreen({ standalone = false }) {
               </div>
             ) : null}
             <div className="col-span-2 space-y-4">
-              {classicLayout ? (
-                <div className="classic-pos-find-trigger flex flex-wrap items-end gap-2">
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <PosLabel>Selected product</PosLabel>
-                    <input
-                      ref={searchInputRef}
-                      className={fieldInput}
-                      value={searchQuery}
-                      readOnly
-                      placeholder="Press Find (F2) to look up a product"
-                      onFocus={() => setClassicFindOpen(true)}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="classic-pos-find-open-btn"
-                    disabled={busy}
-                    onClick={() => setClassicFindOpen(true)}
-                  >
-                    Find (F2)
-                  </button>
-                </div>
-              ) : (
+              {classicLayout ? null : (
                 <PosProductSearch
                   inputRef={searchInputRef}
                   query={searchQuery}
@@ -3851,10 +3826,119 @@ export function PosScreen({ standalone = false }) {
             </div>
           ) : null}
           <div
-            className={`pos-cart-table-wrap min-h-0 flex-1 overflow-auto${
+            className={`pos-cart-table-wrap min-h-0 flex-1${
+              classicLayout
+                ? " overflow-visible"
+                : " overflow-auto"
+            }${
               showCartToolbar ? " p-3" : " pos-cart-table-wrap--flush"
             }`}
           >
+            {classicLayout ? (
+              <ClassicPosCartTable
+                lines={cart?.lines ?? []}
+                selectedLineId={selectedLineId}
+                onSelectLine={setSelectedLineId}
+                orderCaption={
+                  cart?.held_order_num
+                    ? `Order #${cart.held_order_num}`
+                    : "New Order"
+                }
+                showLineDiscount={showLineDiscountField}
+                formatQty={(line) => {
+                  const productMeta = productByCode[line.product_code];
+                  const uom = productMeta?.uom;
+                  return uom
+                    ? formatPosCartQty(line.quantity, uom)
+                    : formatMixedStockDisplay(line.quantity, 1).text;
+                }}
+                linePackage={(line) => {
+                  const productMeta = productByCode[line.product_code];
+                  const uom = productMeta?.uom;
+                  return uom
+                    ? uomWholesaleConversionExample(uom)
+                    : (line.uom ?? productMeta?.packaging_label ?? "—");
+                }}
+                formatMoney={(value) =>
+                  Number(value || 0).toLocaleString(undefined, {
+                    maximumFractionDigits: 2,
+                  })
+                }
+                lineUnitPrice={(line) => {
+                  const productMeta = productByCode[line.product_code];
+                  const uom = productMeta?.uom;
+                  const isRetailLine = Number(line.on_wholesale_retail) === 1;
+                  return Number(
+                    cartLineDisplayUnitPrice(line, uom, isRetailLine),
+                  ).toLocaleString();
+                }}
+                lineDiscount={(line) => {
+                  const productMeta = productByCode[line.product_code];
+                  return (
+                    productMeta
+                      ? cartLineEnteredDiscountPerUnit(
+                          line,
+                          productMeta,
+                          retailByCode[line.product_code] ?? null,
+                        )
+                      : lineDiscountPerUnit(line.discount_given, line.quantity)
+                  ).toLocaleString();
+                }}
+                lineAmount={(line) => Number(line.amount).toLocaleString()}
+                scanSearch={
+                  <PosProductSearch
+                    variant="classic"
+                    inputRef={searchInputRef}
+                    query={searchQuery}
+                    onQueryChange={(value) => {
+                      if (selectedProduct) {
+                        setSelectedProduct(null);
+                        setSelectedProductCode(null);
+                        setLineForm((p) => ({
+                          ...p,
+                          product_code: "",
+                          description: "",
+                          package: "",
+                          unit_price: "",
+                        }));
+                      }
+                      setSearchQuery(value);
+                    }}
+                    results={searchResults}
+                    searching={searching}
+                    selectedCode={selectedProductCode}
+                    sellWholesale={sellWholesale}
+                    retailByCode={retailByCode}
+                    sellFromShop={sellFromShop}
+                    onSelect={pickProduct}
+                    onBarcodeEnter={handleBarcodeEnter}
+                    barcodeEnabled={enableBarcodeScanner}
+                    stockDisplayMode={stockDisplayMode}
+                    posSalesConfig={posSalesConfig}
+                    disabled={busy || lineBusy}
+                  />
+                }
+                qtyRef={qtyInputRef}
+                entryDescription={lineForm.description}
+                entryPackage={lineForm.package}
+                entryQty={lineForm.quantity}
+                entryUnitPrice={lineForm.unit_price}
+                entryAmount={
+                  Number(lineForm.quantity || 0) * Number(lineForm.unit_price || 0)
+                }
+                entryReady={Boolean(selectedProduct && lineForm.product_code)}
+                busy={busy || lineBusy}
+                onEntryQtyChange={(value) =>
+                  setLineForm((p) => ({ ...p, quantity: value }))
+                }
+                onEntryQtyKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleQuantityEnter();
+                  }
+                }}
+              />
+            ) : (
             <table className="w-full border-collapse text-sm">
               <thead className="sticky top-0 z-10 bg-[var(--theme-page-bg)]">
                 <tr className="theme-table-head-row border-b border-[var(--theme-border)] text-left text-xs font-bold uppercase tracking-wide">
@@ -3989,8 +4073,10 @@ export function PosScreen({ standalone = false }) {
                 )}
               </tbody>
             </table>
+            )}
           </div>
 
+          {classicLayout ? null : (
           <div className="pos-cart-footer mt-auto shrink-0">
           <div className="pos-cart-summary shrink-0 border-t border-[var(--theme-border)] px-4 py-4">
             {discountFeaturesEnabled && cart?.discount_approval_pending ? (
@@ -4199,6 +4285,7 @@ export function PosScreen({ standalone = false }) {
             ) : null}
           </div>
           </div>
+          )}
         </div>
       </div>
 
@@ -4297,25 +4384,6 @@ export function PosScreen({ standalone = false }) {
         embedded={!standalone}
       />
 
-      {classicLayout ? (
-        <ClassicPosFindModal
-          open={classicFindOpen}
-          onClose={() => setClassicFindOpen(false)}
-          query={searchQuery}
-          onQueryChange={setSearchQuery}
-          results={searchResults}
-          searching={searching}
-          sellWholesale={sellWholesale}
-          retailByCode={retailByCode}
-          sellFromShop={sellFromShop}
-          posSalesConfig={posSalesConfig}
-          onSelect={pickProduct}
-          onBarcodeEnter={handleBarcodeEnter}
-          barcodeEnabled={enableBarcodeScanner}
-          currencySettings={classicCurrencySettings}
-        />
-      ) : null}
-
       {standalone ? (
         classicLayout ? (
           <ClassicPosStatusFooter
@@ -4324,6 +4392,61 @@ export function PosScreen({ standalone = false }) {
             heldCount={heldOrdersCount}
             version="1.0.0"
             currencySettings={classicCurrencySettings}
+            actions={
+              <>
+                <button
+                  type="button"
+                  className="classic-pos-footer-action"
+                  disabled={busy || !selectedLineId}
+                  onClick={() => handleEditSelectedLine()}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="classic-pos-footer-action"
+                  disabled={busy || !selectedLineId}
+                  onClick={removeSelectedLine}
+                >
+                  Remove
+                </button>
+                <button
+                  type="button"
+                  className="classic-pos-footer-action"
+                  disabled={busy || !cart?.lines?.length}
+                  onClick={clearAllLines}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className="classic-pos-footer-action"
+                  disabled={busy || !cart?.lines?.length || cartStockBlocked}
+                  onClick={() => openSaveOrderDialog("hold")}
+                >
+                  Hold
+                </button>
+                {posSalesConfig.showCheckoutOnCreate ? (
+                  <button
+                    type="button"
+                    className="classic-pos-footer-action classic-pos-footer-action--primary"
+                    disabled={busy || lineBusy || !cart?.lines?.length || cartStockBlocked || checkoutBlocked}
+                    onClick={() => openCompletePayment()}
+                  >
+                    Complete
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="classic-pos-footer-action classic-pos-footer-action--primary"
+                    disabled={busy || !cart?.lines?.length || cartStockBlocked}
+                    onClick={() => openSaveOrderDialog("save")}
+                  >
+                    Save
+                  </button>
+                )}
+              </>
+            }
           />
         ) : (
           <PosStatusFooter

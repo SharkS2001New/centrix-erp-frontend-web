@@ -472,19 +472,6 @@ export function OrganizationPlatformSalesSettings({
             checked={Boolean(salesPlatform?.require_pos_till_float)}
             onChange={(v) => patch({ require_pos_till_float: v })}
           />
-          <OrgRegisterField label="External POS layout">
-            <select
-              className={inputClass}
-              value={salesPlatform?.external_pos_layout === "classic" ? "classic" : "modern"}
-              onChange={(e) => patch({ external_pos_layout: e.target.value })}
-            >
-              <option value="modern">Modern — current Centrix POS</option>
-              <option value="classic">Classic — cart on top, Find window, beige workspace</option>
-            </select>
-            <p className="mt-1 text-xs text-slate-500">
-              Only affects the external POS workspace (/pos). Backoffice Create order keeps the modern layout.
-            </p>
-          </OrgRegisterField>
           <Toggle
             label="Allow editing completed POS orders"
             description="When on, cashiers on external POS can reload a completed order by number to correct mistakes. Stock is restored, a KRA credit note is issued when the original sale was fiscalized, and checkout creates a new sale."
@@ -1013,6 +1000,8 @@ export function OrganizationConfigTabs({
           mobileOrdersEnabled={mobileOrdersEnabled}
           deploymentProfile={deploymentProfile}
           profilePresets={profilePresets}
+          salesPlatform={salesPlatform}
+          onSalesChange={onSalesChange}
         />
       ) : null}
 
@@ -1069,6 +1058,8 @@ export function OrganizationModuleToggles({
   mobileOrdersEnabled = true,
   deploymentProfile = null,
   profilePresets = [],
+  salesPlatform = null,
+  onSalesChange = null,
 }) {
   const domainChildrenMap = useMemo(() => buildDomainChildrenMap(moduleOptions), [moduleOptions]);
   const workspaces = useMemo(
@@ -1114,44 +1105,69 @@ export function OrganizationModuleToggles({
           const enabled = isProvisionableWorkspaceEnabled(workspace, enabledModules);
           const isDistribution = workspace.id === "distribution";
           const distributionBlocked = isDistribution && !mobileOrdersEnabled;
+          const showExternalPosLayout = workspace.id === "pos" && enabled && typeof onSalesChange === "function";
 
           return (
-            <label
+            <div
               key={workspace.id}
-              className={`flex items-start gap-4 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] p-4 ${
+              className={`rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-subtle)] p-4 ${
                 distributionBlocked ? "opacity-60" : ""
               }`}
             >
-              <input
-                type="checkbox"
-                className="mt-1 rounded border-[var(--theme-border)]"
-                checked={enabled}
-                disabled={distributionBlocked}
-                onChange={(e) => setWorkspaceEnabled(workspace.id, e.target.checked)}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2">
-                  <span className="text-lg" aria-hidden>
-                    {workspaceToggleIcon(workspace.icon)}
+              <label className="flex items-start gap-4">
+                <input
+                  type="checkbox"
+                  className="mt-1 rounded border-[var(--theme-border)]"
+                  checked={enabled}
+                  disabled={distributionBlocked}
+                  onChange={(e) => setWorkspaceEnabled(workspace.id, e.target.checked)}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="text-lg" aria-hidden>
+                      {workspaceToggleIcon(workspace.icon)}
+                    </span>
+                    <span className="theme-heading block text-sm font-semibold">{workspace.label}</span>
                   </span>
-                  <span className="theme-heading block text-sm font-semibold">{workspace.label}</span>
+                  <span className="theme-subtext mt-1 block text-xs">{workspace.description}</span>
+                  {isDistribution ? (
+                    <span className="theme-subtext mt-1 block text-xs">
+                      {mobileOrdersEnabled
+                        ? "Requires mobile orders to be enabled."
+                        : "Enable mobile orders on the Sales behaviour tab before turning on Distribution."}
+                    </span>
+                  ) : null}
+                  {workspace.id === "admin" && !enabled ? (
+                    <span className="mt-1 block text-xs text-amber-800 dark:text-amber-300">
+                      Organization settings, security, notifications, and AI preferences move to Platform → Organization
+                      settings for this tenant.
+                    </span>
+                  ) : null}
                 </span>
-                <span className="theme-subtext mt-1 block text-xs">{workspace.description}</span>
-                {isDistribution ? (
-                  <span className="theme-subtext mt-1 block text-xs">
-                    {mobileOrdersEnabled
-                      ? "Requires mobile orders to be enabled."
-                      : "Enable mobile orders on the Sales behaviour tab before turning on Distribution."}
-                  </span>
-                ) : null}
-                {workspace.id === "admin" && !enabled ? (
-                  <span className="mt-1 block text-xs text-amber-800 dark:text-amber-300">
-                    Organization settings, security, notifications, and AI preferences move to Platform → Organization
-                    settings for this tenant.
-                  </span>
-                ) : null}
-              </span>
-            </label>
+              </label>
+              {showExternalPosLayout ? (
+                <div className="mt-3 border-t border-[var(--theme-border)] pt-3 pl-8">
+                  <OrgRegisterField label="External POS layout">
+                    <select
+                      className={inputClass}
+                      value={salesPlatform?.external_pos_layout === "classic" ? "classic" : "modern"}
+                      onChange={(e) =>
+                        onSalesChange({
+                          ...(salesPlatform ?? {}),
+                          external_pos_layout: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="modern">Modern — current Centrix POS</option>
+                      <option value="classic">Classic — cart on top, Find window, beige workspace</option>
+                    </select>
+                    <p className="theme-subtext mt-1 text-xs">
+                      Only affects the external POS workspace (/pos). Backoffice Create order keeps the modern layout.
+                    </p>
+                  </OrgRegisterField>
+                </div>
+              ) : null}
+            </div>
           );
         })}
       </div>

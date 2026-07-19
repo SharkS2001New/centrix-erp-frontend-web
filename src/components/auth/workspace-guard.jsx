@@ -5,9 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { workspaceLandingPath } from "@/lib/workspace-navigation";
 import { getStoredWorkspace } from "@/lib/auth-storage";
+import { POS_LOGIN_CHANNEL } from "@/lib/login-channels";
 import { buildAccessContext, isPlatformShellUser, resolveTillFloatNavFlag } from "@/lib/access-control";
 import {
   defaultWorkspaceId,
+  isPosWorkspace,
   isTerminalWorkspace,
   needsWorkspaceSelection,
   pathBelongsToWorkspace,
@@ -18,7 +20,8 @@ import {
 export function WorkspaceGuard({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, organization, capabilities, loading, isSuperAdmin } = useAuth();
+  const { user, organization, capabilities, loading, isSuperAdmin, loginChannel, switchWorkspace } =
+    useAuth();
 
   const ctx = buildAccessContext({
     user,
@@ -62,6 +65,18 @@ export function WorkspaceGuard({ children }) {
       }
     }
   }, [capabilities, ctx, loading, organization?.id, pathname, platformUser, router, storedWorkspace, user?.id]);
+
+  // Visiting /pos switches the Sanctum token to the POS channel. Switch back when
+  // returning to backoffice/platform so Applications and other admin APIs work.
+  useEffect(() => {
+    if (loading || platformUser) return;
+    if (loginChannel !== POS_LOGIN_CHANNEL) return;
+    const workspaceId = storedWorkspace ?? defaultWorkspaceId(capabilities, ctx);
+    if (!workspaceId || isPosWorkspace(workspaceId)) return;
+    switchWorkspace(workspaceId).catch((err) => {
+      console.error("Failed to restore backoffice session channel", err);
+    });
+  }, [capabilities, ctx, loading, loginChannel, platformUser, storedWorkspace, switchWorkspace]);
 
   return <>{children}</>;
 }

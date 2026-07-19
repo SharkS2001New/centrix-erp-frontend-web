@@ -3,9 +3,10 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { POS_LOGIN_CHANNEL } from "@/lib/login-channels";
 
 export function SuperAdminGuard({ children }) {
-  const { user, capabilities, loading, isSuperAdmin } = useAuth();
+  const { loading, isSuperAdmin, loginChannel, switchWorkspace } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -13,6 +14,16 @@ export function SuperAdminGuard({ children }) {
       router.replace("/dashboard");
     }
   }, [isSuperAdmin, loading, router]);
+
+  // Platform APIs reject POS-channel tokens. Restore backoffice if this session
+  // was switched to POS while testing the cashier terminal.
+  useEffect(() => {
+    if (loading || !isSuperAdmin()) return;
+    if (loginChannel !== POS_LOGIN_CHANNEL) return;
+    switchWorkspace("backoffice").catch((err) => {
+      console.error("Failed to restore platform session channel", err);
+    });
+  }, [isSuperAdmin, loading, loginChannel, switchWorkspace]);
 
   if (loading) {
     return (

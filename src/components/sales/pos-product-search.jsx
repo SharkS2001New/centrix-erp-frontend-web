@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { formatMixedStockDisplay } from "@/lib/stock-uom";
 import { posListUnitPrice } from "@/lib/pos-line";
 import {
@@ -22,6 +23,15 @@ function formatStockQty(baseQty, product) {
   return text;
 }
 
+function availableQty(product, sellFromShop, posSalesConfig, sellWholesale) {
+  const mode = productCartStockDisplayMode(product, posSalesConfig, sellWholesale);
+  const shop = productStockAtLocation(product, "shop");
+  const store = productStockAtLocation(product, "store");
+  if (mode === "shop") return shop;
+  if (mode === "store") return store;
+  return sellFromShop ? shop : store;
+}
+
 export function PosProductSearch({
   query,
   onQueryChange,
@@ -35,16 +45,28 @@ export function PosProductSearch({
   barcodeEnabled = false,
   stockDisplayMode = "both",
   posSalesConfig = null,
+  sellFromShop = true,
   disabled = false,
   placeholder = "Search by product name or code…",
   inputRef,
+  /** "classic" = embedded column dropdown (no label, Light Stores columns). */
+  variant = "modern",
 }) {
   const listId = useId();
   const rootRef = useRef(null);
   const listRef = useRef(null);
+  const localInputRef = useRef(null);
   const optionRefs = useRef(new Map());
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);
+  const [menuBox, setMenuBox] = useState(null);
+  const classic = variant === "classic";
+
+  function setInputNode(node) {
+    localInputRef.current = node;
+    if (typeof inputRef === "function") inputRef(node);
+    else if (inputRef) inputRef.current = node;
+  }
 
   const exactBarcodeMatch =
     barcodeEnabled &&
@@ -63,11 +85,46 @@ export function PosProductSearch({
     optionRefs.current.get(highlight)?.scrollIntoView({ block: "nearest" });
   }, [highlight, open, results.length]);
 
+  useLayoutEffect(() => {
+    if (!classic || !open || disabled) {
+      setMenuBox(null);
+      return undefined;
+    }
+    function updateBox() {
+      const el = localInputRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const width = Math.max(rect.width, Math.min(560, window.innerWidth - 24));
+      const spaceBelow = window.innerHeight - rect.bottom - 16;
+      const spaceAbove = rect.top - 16;
+      const openUp = spaceBelow < 160 && spaceAbove > spaceBelow;
+      const maxHeight = Math.max(
+        160,
+        Math.min(360, openUp ? spaceAbove : spaceBelow),
+      );
+      setMenuBox({
+        top: openUp ? Math.max(8, rect.top - maxHeight) : rect.bottom + 4,
+        left: Math.min(Math.max(8, rect.left), window.innerWidth - width - 8),
+        width,
+        maxHeight,
+      });
+    }
+    updateBox();
+    const raf = requestAnimationFrame(updateBox);
+    window.addEventListener("resize", updateBox);
+    window.addEventListener("scroll", updateBox, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", updateBox);
+      window.removeEventListener("scroll", updateBox, true);
+    };
+  }, [classic, open, disabled, query, results.length, searching]);
+
   useEffect(() => {
     function onDocClick(e) {
-      if (rootRef.current && !rootRef.current.contains(e.target)) {
-        setOpen(false);
-      }
+      const inRoot = rootRef.current?.contains(e.target);
+      const inList = listRef.current?.contains(e.target);
+      if (!inRoot && !inList) setOpen(false);
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
@@ -77,7 +134,7 @@ export function PosProductSearch({
 
   function pick(product) {
     onSelect?.(product);
-    onQueryChange(product.product_name ?? "");
+    onQueryChange(classic ? (product.product_code ?? "") : (product.product_name ?? ""));
     setOpen(false);
   }
 
@@ -111,6 +168,12 @@ export function PosProductSearch({
       moveHighlight(-1);
       return;
     }
+    if (e.key === "F2" && classic) {
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(true);
+      return;
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
@@ -137,26 +200,119 @@ export function PosProductSearch({
   const searchLabel = barcodeEnabled ? "Search / scan product" : "Search product";
   const searchPlaceholder = barcodeEnabled
     ? "Scan barcode or search by name…"
-    : placeholder;
+    : classic
+      ? "Scan / type code…"
+      : placeholder;
 
   const showShopStock = stockDisplayMode === "both" || stockDisplayMode === "shop";
   const showStoreStock = stockDisplayMode === "both" || stockDisplayMode === "store";
   const stockColCount = (showShopStock ? 1 : 0) + (showStoreStock ? 1 : 0);
-  const tableColSpan = 2 + stockColCount;
+  const modernColSpan = 2 + stockColCount;
+
+  const classicDropdown =
+    classic && showDropdown && menuBox && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            id={listId}
+            ref={listRef}
+            role="listbox"
+            className="classic-pos-scan-dropdown"
+            style={{
+              position: "fixed",
+              top: menuBox.top,
+              left: menuBox.left,
+              width: menuBox.width,
+              maxHeight: menuBox.maxHeight,
+              zIndex: 10000,
+            }}
+          >
+            <table className="classic-pos-find-table w-full">
+              <thead>
+                <tr>
+                  <th>Product code</th>
+                  <th>Product name</th>
+                  <th className="text-right">Unit price</th>
+                  <th className="text-right">Available</th>
+                </tr>
+              </thead>
+              <tbody>
+                {searching ? (
+                  <tr>
+                    <td colSpan={4} className="classic-pos-find-empty">
+                      Searching…
+                    </td>
+                  </tr>
+                ) : !query.trim() ? (
+                  <tr>
+                    <td colSpan={4} className="classic-pos-find-empty">
+                      Type a code or name
+                    </td>
+                  </tr>
+                ) : results.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="classic-pos-find-empty">
+                      No products found
+                    </td>
+                  </tr>
+                ) : (
+                  results.map((product, index) => {
+                    const keyboardActive = highlight === index;
+                    const price = posListUnitPrice(
+                      product,
+                      sellWholesale,
+                      retailByCode[product.product_code],
+                    );
+                    const qty = availableQty(product, sellFromShop, posSalesConfig, sellWholesale);
+                    const negative = Number(qty) < 0;
+                    return (
+                      <tr
+                        key={product.product_code}
+                        ref={(el) => {
+                          if (el) optionRefs.current.set(index, el);
+                          else optionRefs.current.delete(index);
+                        }}
+                        role="option"
+                        aria-selected={keyboardActive}
+                        onMouseEnter={() => setHighlight(index)}
+                        onClick={() => pick(product)}
+                        className={`${negative ? "classic-pos-find-row--negative" : ""} ${
+                          keyboardActive ? "classic-pos-find-row--active" : ""
+                        }`}
+                      >
+                        <td>{product.product_code}</td>
+                        <td>{product.product_name}</td>
+                        <td className="text-right tabular-nums">
+                          {Number(price).toLocaleString()}
+                        </td>
+                        <td className={`text-right tabular-nums ${negative ? "classic-pos-neg" : ""}`}>
+                          {formatStockQty(qty, product)}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
-    <div ref={rootRef} className="relative space-y-1">
-      <label className="block text-[10px] font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
-        {searchLabel}
-      </label>
+    <div ref={rootRef} className={classic ? "classic-pos-scan-lookup relative" : "relative space-y-1"}>
+      {classic ? null : (
+        <label className="block text-[10px] font-bold uppercase tracking-wide text-[var(--theme-accent-text)]">
+          {searchLabel}
+        </label>
+      )}
       <input
-        ref={inputRef}
+        ref={setInputNode}
         type="text"
         role="combobox"
         aria-expanded={showDropdown}
         aria-controls={listId}
         aria-autocomplete="list"
-        className={fieldInput}
+        className={classic ? "classic-pos-cart-scan-input" : fieldInput}
         value={query}
         disabled={disabled}
         placeholder={searchPlaceholder}
@@ -170,7 +326,9 @@ export function PosProductSearch({
         onKeyDown={handleInputKeyDown}
       />
 
-      {showDropdown ? (
+      {classic ? classicDropdown : null}
+
+      {!classic && showDropdown ? (
         <div
           id={listId}
           ref={listRef}
@@ -193,19 +351,19 @@ export function PosProductSearch({
             <tbody>
               {searching ? (
                 <tr>
-                  <td colSpan={tableColSpan} className="theme-subtext px-2 py-4 text-center">
+                  <td colSpan={modernColSpan} className="theme-subtext px-2 py-4 text-center">
                     Searching…
                   </td>
                 </tr>
               ) : !query.trim() ? (
                 <tr>
-                  <td colSpan={tableColSpan} className="theme-subtext px-2 py-4 text-center">
+                  <td colSpan={modernColSpan} className="theme-subtext px-2 py-4 text-center">
                     {barcodeEnabled ? "Scan a barcode or type a product name" : "Type a product name or code"}
                   </td>
                 </tr>
               ) : results.length === 0 ? (
                 <tr>
-                  <td colSpan={tableColSpan} className="theme-subtext px-2 py-4 text-center">
+                  <td colSpan={modernColSpan} className="theme-subtext px-2 py-4 text-center">
                     No products found
                   </td>
                 </tr>
