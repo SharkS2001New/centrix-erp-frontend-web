@@ -171,20 +171,25 @@ describe("resolveSalesOrderQueue", () => {
     module_settings: { sales: { show_checkout_on_create_order: false } },
   };
 
-  it("distribution unpaid queue lists by payment status across workflow steps", () => {
+  it("distribution unpaid queue includes unpaid + fulfillment stages, not booked/pending", () => {
     const config = resolveSalesOrderQueue("unpaid", pipeline, { capabilities: distributionCaps });
 
     expect(config?.fixedPaymentStatusFilter).toBe("unpaid");
     expect(config?.fixedStatusFilter).toBeNull();
+    expect(config?.includeStatuses).toEqual(["unpaid", "processed"]);
+    expect(config?.excludeStatuses).toEqual(
+      expect.arrayContaining(["booked", "pending", "cancelled", "expired", "completed"]),
+    );
     expect(config?.requireOutstandingBalance).toBe(true);
   });
 
-  it("distribution pending_payment queue lists by partial payment status", () => {
+  it("distribution pending_payment queue includes partial + fulfillment stages", () => {
     const config = resolveSalesOrderQueue("pending_payment", pipeline, {
       capabilities: distributionCaps,
     });
 
     expect(config?.fixedPaymentStatusFilter).toBe("partial");
+    expect(config?.includeStatuses).toEqual(["pending_payment", "processed"]);
     expect(config?.fixedStatusFilter).toBeNull();
   });
 

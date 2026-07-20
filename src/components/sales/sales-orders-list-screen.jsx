@@ -382,6 +382,9 @@ export default function SalesOrdersListScreen({
         with_items: 0,
         sort: ordersListSort,
       };
+      if (queueConfig?.includeStatuses?.length) {
+        extra.status_in = queueConfig.includeStatuses.join(",");
+      }
       if (queueConfig?.excludeStatuses?.length) {
         extra.exclude_statuses = queueConfig.excludeStatuses.join(",");
       } else if (queueConfig?.excludeTerminalStatuses) {

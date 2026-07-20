@@ -693,6 +693,9 @@ export const ORDER_METRICS_EXCLUDED_STATUSES = new Set(["cancelled", "expired"])
 
 const QUEUE_EXCLUDED_STATUSES = new Set(["draft", "held", "cancelled", "expired"]);
 
+/** Fulfillment steps that may show a payment badge when balance remains. */
+const FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE = new Set(["processed", "delivered"]);
+
 export function salesOrderQueueTitle(pageName) {
   const trimmed = String(pageName ?? "").trim();
   if (!trimmed) return "Orders";
@@ -889,26 +892,34 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
   const step = workflowPipelineSteps(workflow).find((s) => s.key === slug);
   if (!step) return null;
 
-  // Distribution / save-order: Unpaid and Partially paid queues list by payment balance
-  // across workflow steps (e.g. Processed + Unpaid badge). Retail keeps workflow-stage lists.
+  // Distribution / save-order: Unpaid / Partially paid queues also include fulfillment
+  // steps that can show a payment badge (Processed/Delivered + Unpaid). Booked and
+  // Pending stay on their own pages — they do not use a double status.
   const deferPayment = orgDefersPaymentToFulfillment(capabilities);
   const paymentStatusFilter = deferPayment ? paymentStatusForCollectionQueue(step.key) : null;
   if (paymentStatusFilter) {
+    const pipelineKeys = new Set(workflowPipelineSteps(workflow).map((s) => s.key));
+    const includeStatuses = [
+      step.key,
+      ...[...FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE].filter((key) => pipelineKeys.has(key)),
+    ];
+
     return {
       slug: step.key,
       title: salesOrderQueueTitle(step.label),
       subtitle:
         step.key === "unpaid"
-          ? "Orders with an outstanding balance (any workflow step)"
-          : "Orders with a partial payment recorded (any workflow step)",
+          ? "Unpaid orders, including processed or delivered with outstanding payment"
+          : "Partially paid orders, including processed or delivered with a partial payment",
       fixedStatusFilter: null,
       fixedPaymentStatusFilter: paymentStatusFilter,
+      includeStatuses,
       fixedSourceFilter: null,
       showRouteColumn: true,
       showDeliveryDateColumn: true,
       lockStatusFilter: true,
       lockSourceFilter: false,
-      excludeStatuses: ["cancelled", "expired", "completed"],
+      excludeStatuses: ["cancelled", "expired", "completed", "booked", "pending"],
       requireOutstandingBalance: true,
     };
   }
@@ -1081,9 +1092,6 @@ const WORKFLOW_ONLY_BADGE_STATUSES = new Set(["cancelled", "expired", "draft", "
 
 /** Workflow statuses where payment is the primary meaning — no second payment badge. */
 const PAYMENT_WORKFLOW_STATUSES = new Set(["unpaid", "pending_payment", "paid"]);
-
-/** Fulfillment steps that may show a payment badge when balance remains. */
-const FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE = new Set(["processed", "delivered"]);
 
 /** Route / field-sales orders stop at delivered; completed follows payment in backoffice. */
 export function isFieldFulfillmentOrder(sale, capabilities = null) {
