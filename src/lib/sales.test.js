@@ -5,7 +5,7 @@ import {
   shouldOpenBackofficeOrderEdit,
   shouldRestoreOrderToCart,
 } from "@/lib/sales";
-import { canRecordOrderPayment, canCancelOrder, isPrintInvoiceVisible } from "@/lib/order-workflow";
+import { canRecordOrderPayment, canCancelOrder, isPrintInvoiceVisible, orderActionStageOptionsFromWorkflow, workflowPipelineSteps } from "@/lib/order-workflow";
 
 describe("resolvePaymentMethodByCode", () => {
   const methods = [
@@ -145,5 +145,33 @@ describe("order action stage gates", () => {
     expect(isPrintInvoiceVisible(mobileSale, caps)).toBe(true);
     expect(canRecordOrderPayment(mobileSale, null, caps)).toBe(true);
     expect(canCancelOrder(mobileSale, null, caps)).toBe(true);
+  });
+});
+
+describe("orderActionStageOptionsFromWorkflow", () => {
+  it("lists only enabled pipeline stages for the org", () => {
+    const options = orderActionStageOptionsFromWorkflow({
+      steps: [
+        { status: "booked", label: "Booked", enabled: true },
+        { status: "unpaid", label: "Unpaid", enabled: true },
+        { status: "paid", label: "Paid", enabled: true },
+        { status: "delivered", label: "Delivered", enabled: false },
+      ],
+    });
+
+    expect(options.map((o) => o.value)).toEqual(["booked", "unpaid", "paid", "mobile"]);
+  });
+
+  it("reads enabled steps from saved order_workflow config", () => {
+    const steps = workflowPipelineSteps({
+      steps: [
+        { status: "booked", label: "Reserved", enabled: true },
+        { status: "paid", label: "Paid", enabled: true },
+        { status: "delivered", label: "Delivered", enabled: false },
+      ],
+    });
+
+    expect(steps.map((s) => s.key)).toEqual(["booked", "paid"]);
+    expect(steps[0].label).toBe("Reserved");
   });
 });

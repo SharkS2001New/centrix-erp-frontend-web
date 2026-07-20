@@ -313,9 +313,37 @@ export function workflowStatusLabel(workflow, status) {
 
 export function workflowPipelineSteps(workflow) {
   if (workflow?.pipeline?.length) return dedupePipelineSteps(workflow.pipeline);
+  if (workflow?.steps?.length) {
+    return dedupePipelineSteps(
+      workflow.steps
+        .filter((s) => s.enabled !== false)
+        .map((s) => ({
+          key: s.status,
+          label: s.label || ORDER_STATUS_OPTIONS.find((o) => o.value === s.status)?.label || s.status,
+        })),
+    );
+  }
   return dedupePipelineSteps(
     DEFAULT_ORDER_WORKFLOW.steps.map((s) => ({ key: s.status, label: s.label })),
   );
+}
+
+const ORDER_ACTION_EXCLUDED_STATUSES = new Set(["cancelled", "expired", "draft"]);
+
+/** Checkbox options for platform Order actions by stage — follows this org's enabled workflow steps. */
+export function orderActionStageOptionsFromWorkflow(orderWorkflow, { mobileOrdersEnabled = true } = {}) {
+  const options = workflowPipelineSteps(orderWorkflow)
+    .filter((step) => step.key && !ORDER_ACTION_EXCLUDED_STATUSES.has(step.key))
+    .map((step) => ({
+      value: step.key,
+      label: step.label || ORDER_STATUS_OPTIONS.find((o) => o.value === step.key)?.label || step.key,
+    }));
+
+  if (mobileOrdersEnabled) {
+    options.push({ value: "mobile", label: "Mobile" });
+  }
+
+  return options;
 }
 
 /** Last enabled pipeline step for this org/channel — orders here are "finished". */

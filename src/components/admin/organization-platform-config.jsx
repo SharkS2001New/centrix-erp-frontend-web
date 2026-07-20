@@ -9,14 +9,17 @@ import {
   OrderWorkflowSettingsEditor,
   orderWorkflowFromApi,
 } from "@/components/admin/order-workflow-settings";
-import { DEFAULT_ORDER_WORKFLOW, ORDER_STATUS_OPTIONS, workflowPipelineSteps } from "@/lib/order-workflow";
+import {
+  DEFAULT_ORDER_WORKFLOW,
+  orderActionStageOptionsFromWorkflow,
+  workflowPipelineSteps,
+} from "@/lib/order-workflow";
 import {
   normalizeStockDeductOn,
   normalizeOrdersListDefaultDays,
   normalizeOrdersListSearchDays,
   normalizeOrdersListSort,
   normalizeOrderActionStatuses,
-  ORDER_ACTION_MOBILE_OPTION,
   defaultBackofficeCheckoutOnCreate,
 } from "@/lib/sales-settings";
 import { OrdersListDefaultsFields } from "@/components/admin/orders-list-defaults-fields";
@@ -784,6 +787,14 @@ function toggleStatusInList(list, status, checked, { allowEmpty = false } = {}) 
 }
 
 function OrderActionStagesFields({ salesPlatform, onPatch, mobileOrdersEnabled = true }) {
+  const actionStatusOptions = useMemo(
+    () =>
+      orderActionStageOptionsFromWorkflow(salesPlatform?.order_workflow ?? DEFAULT_ORDER_WORKFLOW, {
+        mobileOrdersEnabled,
+      }),
+    [mobileOrdersEnabled, salesPlatform?.order_workflow],
+  );
+
   const editStatuses = Array.isArray(salesPlatform?.edit_order_statuses)
     ? salesPlatform.edit_order_statuses
     : ["booked", "pending", "editable"];
@@ -800,20 +811,16 @@ function OrderActionStagesFields({ salesPlatform, onPatch, mobileOrdersEnabled =
     ? salesPlatform.customer_return_statuses
     : ["paid", "processed", "delivered", "completed"];
 
-  const actionStatusOptions = [
-    ...ORDER_STATUS_OPTIONS.filter((opt) => !["cancelled", "expired", "draft"].includes(opt.value)),
-    ...(mobileOrdersEnabled ? [ORDER_ACTION_MOBILE_OPTION] : []),
-  ];
-
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order actions by stage</p>
       <p className="mt-1 text-xs text-slate-500">
         Choose which workflow stages allow Edit, Print, Collect payment, Cancel, and Customer returns on
-        every web Sales order list. Check <span className="font-medium text-slate-600">Mobile</span> to
-        enable those actions on the Mobile Orders page (when mobile orders are on). Leave Print empty to
-        allow all stages. Collect still needs an outstanding balance. Cancel still respects the master
-        cancellation toggle. Settings load with org capabilities and refresh when you save.
+        every web Sales order list. Only enabled stages from this organization&apos;s order pipeline are
+        listed. Check <span className="font-medium text-slate-600">Mobile</span> to enable those actions on
+        the Mobile Orders page (when mobile orders are on). Leave Print empty to allow all stages. Collect
+        still needs an outstanding balance. Cancel still respects the master cancellation toggle. Settings
+        load with org capabilities and refresh when you save.
       </p>
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <ActionStageChecklist
