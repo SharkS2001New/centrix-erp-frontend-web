@@ -43,6 +43,7 @@ export function AccountingDashboardContent() {
   const [profitLoss, setProfitLoss] = useState(null);
   const [balanceSheet, setBalanceSheet] = useState(null);
   const [receivables, setReceivables] = useState([]);
+  const [receivablesTotal, setReceivablesTotal] = useState(0);
   const [payables, setPayables] = useState([]);
   const [recentInvoices, setRecentInvoices] = useState([]);
 
@@ -63,6 +64,7 @@ export function AccountingDashboardContent() {
       setProfitLoss(pl.summary ?? null);
       setBalanceSheet(bs.summary ?? null);
       setReceivables(ar.data ?? []);
+      setReceivablesTotal(Number(ar.summary?.total_outstanding ?? 0));
       setPayables(ap.data ?? []);
       setRecentInvoices(invoicesRes.data ?? []);
     } catch (e) {
@@ -100,13 +102,11 @@ export function AccountingDashboardContent() {
       {
         id: "ar",
         label: "Receivables",
-        value: formatAccountingAmount(
-          receivables.reduce((sum, row) => sum + Number(row.total_outstanding ?? 0), 0),
-        ),
+        value: formatAccountingAmount(receivablesTotal),
         hint: `${receivables.length} top accounts shown`,
       },
     ],
-    [profitLoss, balanceSheet, receivables, range.from, range.to],
+    [profitLoss, balanceSheet, receivables, receivablesTotal, range.from, range.to],
   );
 
   const plSegments = useMemo(() => {

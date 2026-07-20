@@ -130,7 +130,7 @@ export function InventoryTransfersScreen() {
             ...(appliedSearch.trim() ? { q: appliedSearch.trim() } : {}),
           },
         }),
-        fetchUomsCached(user?.organization_id),
+        fetchUomsCached(user?.organization_id).catch(() => []),
       ]);
       const parsed = parsePaginator(res);
       const items = parsed.items;
@@ -142,7 +142,7 @@ export function InventoryTransfersScreen() {
       const codes = items.map((row) => row.product_code).filter(Boolean);
       const catalogProducts = await fetchProductsByCodesCached(user?.organization_id, codes, {
         status: "all",
-      });
+      }).catch(() => []);
       setProducts(catalogProducts ?? []);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load transfers");

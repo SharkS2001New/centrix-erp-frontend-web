@@ -88,7 +88,7 @@ export function InventoryStockTakeIdScreen() {
         fetchAllPaginatedRowsSmart("/stock-take-lines", {
           "filter[session_id]": sessionId,
         }),
-        fetchUomsCached(organization?.id),
+        fetchUomsCached(organization?.id).catch(() => []),
         fetchCategoriesCached(organization?.id).catch(() => []),
         fetchSubCategoriesCached(organization?.id).catch(() => []),
         fetchSuppliersCached(organization?.id).catch(() => []),
@@ -112,7 +112,7 @@ export function InventoryStockTakeIdScreen() {
       const codes = filteredLines.map((line) => line.product_code).filter(Boolean);
       const productRows = await fetchProductsByCodesCached(organization?.id, codes, {
         status: "all",
-      });
+      }).catch(() => []);
       setProducts(productRows);
 
       const prodMap = new Map(productRows.map((p) => [p.product_code, p]));
