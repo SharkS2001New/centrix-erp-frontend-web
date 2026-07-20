@@ -691,42 +691,61 @@ export function PrintoutsSettingsPanel({
     setError(null);
     setMessage(null);
     try {
-      const tasks = [
-        apiRequest(settingsPath("general"), {
-          method: "PATCH",
-          body: printoutsGeneralPayloadFromForm(form),
-        }),
+      const steps = [
+        {
+          label: "general",
+          run: () =>
+            apiRequest(settingsPath("general"), {
+              method: "PATCH",
+              body: printoutsGeneralPayloadFromForm(form),
+            }),
+        },
       ];
       if (hasSales) {
-        tasks.push(
-          apiRequest(settingsPath("sales"), {
-            method: "PATCH",
-            body: printoutsSalesPayloadFromForm(form),
-          }),
-        );
+        steps.push({
+          label: "sales",
+          run: () =>
+            apiRequest(settingsPath("sales"), {
+              method: "PATCH",
+              body: printoutsSalesPayloadFromForm(form),
+            }),
+        });
       }
       if (hasProcurement) {
-        tasks.push(
-          apiRequest(settingsPath("procurement"), {
-            method: "PATCH",
-            body: printoutsProcurementPayloadFromForm(form),
-          }),
-        );
+        steps.push({
+          label: "procurement",
+          run: () =>
+            apiRequest(settingsPath("procurement"), {
+              method: "PATCH",
+              body: printoutsProcurementPayloadFromForm(form),
+            }),
+        });
       }
       if (hasRoutePrintouts) {
-        tasks.push(
-          apiRequest(settingsPath("distribution"), {
-            method: "PATCH",
-            body: printoutsDistributionPayloadFromForm(form),
-          }),
-        );
+        steps.push({
+          label: "distribution",
+          run: () =>
+            apiRequest(settingsPath("distribution"), {
+              method: "PATCH",
+              body: printoutsDistributionPayloadFromForm(form),
+            }),
+        });
       }
-      const results = await Promise.allSettled(tasks);
-      const failed = results.find((result) => result.status === "rejected");
-      if (failed) {
-        const e = failed.reason;
-        throw e instanceof ApiError ? e : new Error("Failed to save printout settings");
+
+      for (const step of steps) {
+        try {
+          await step.run();
+        } catch (stepError) {
+          throw stepError instanceof ApiError
+            ? new ApiError(
+                `Failed to save ${step.label} printout settings: ${stepError.message}`,
+                stepError.status,
+                stepError.body,
+              )
+            : stepError;
+        }
       }
+
       await load();
       if (afterSave) await afterSave();
       setMessage("Printout settings saved.");

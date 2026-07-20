@@ -142,6 +142,7 @@ export function OrderWorkflowPipeline({
   const displayIdx = currentIdx >= 0 ? currentIdx : pipelineStepIndex(status, workflow);
   const isCancelled = status === "cancelled";
   const isExpired = status === "expired";
+  const isEditable = status === "editable";
   const prevStep = currentIdx > 0 ? steps[currentIdx - 1] : null;
   const firstStep = steps[0] ?? null;
   const paidTotal =
@@ -159,7 +160,10 @@ export function OrderWorkflowPipeline({
         label: workflowStatusLabel(workflow, advanceTarget),
       }
     : null;
-  const showWorkflowActions = Boolean(onAdvance) && !readOnlyWorkflow;
+  const showWorkflowAdvance = Boolean(onAdvance) && !readOnlyWorkflow;
+  const hasWorkflowAdvanceActions =
+    showWorkflowAdvance
+    && (prevStep || advanceStep || canCancel || status === "held" || status === "draft");
 
   return (
     <div className="theme-panel rounded-xl border p-5 shadow-sm">
@@ -172,12 +176,17 @@ export function OrderWorkflowPipeline({
       </div>
       {isCancelled ? (
         <p className="mt-3 text-sm text-red-600">This order was cancelled.</p>
+      ) : isEditable ? (
+        <p className="mt-3 text-sm text-amber-800">
+          This order was returned for revision after a rejected discount. Edit pricing, then save to
+          book or resubmit for approval.
+        </p>
       ) : isExpired ? (
         <>
           <p className="mt-3 text-sm text-amber-800">
             This order expired while waiting. Restore it to continue processing.
           </p>
-          {showWorkflowActions && advanceStep ? (
+          {showWorkflowAdvance && advanceStep ? (
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -224,9 +233,9 @@ export function OrderWorkflowPipeline({
               );
             })}
           </div>
-          {showWorkflowActions ? (
+          {hasWorkflowAdvanceActions || showCollectPayment ? (
             <div className="mt-4 flex flex-wrap gap-2">
-              {prevStep ? (
+              {showWorkflowAdvance && prevStep ? (
                 <button
                   type="button"
                   disabled={!!busyStatus}
@@ -236,7 +245,7 @@ export function OrderWorkflowPipeline({
                   {busyStatus ? "Updating…" : `← ${prevStep.label}`}
                 </button>
               ) : null}
-              {advanceStep ? (
+              {showWorkflowAdvance && advanceStep ? (
                 <button
                   type="button"
                   disabled={!!busyStatus}
@@ -256,7 +265,7 @@ export function OrderWorkflowPipeline({
                   {busyStatus ? "Updating…" : "Collect payment"}
                 </button>
               ) : null}
-              {(status === "held" || status === "draft") && firstStep ? (
+              {showWorkflowAdvance && (status === "held" || status === "draft") && firstStep ? (
                 <button
                   type="button"
                   disabled={!!busyStatus}
@@ -266,7 +275,7 @@ export function OrderWorkflowPipeline({
                   {busyStatus ? "Updating…" : `${firstStep.label} →`}
                 </button>
               ) : null}
-              {canCancel ? (
+              {showWorkflowAdvance && canCancel ? (
                 <button
                   type="button"
                   disabled={!!busyStatus}

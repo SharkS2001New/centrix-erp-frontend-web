@@ -31,7 +31,7 @@ import {
 import { clearStoredActiveSession } from "@/lib/pos-till";
 import { setStoredCompanyCode } from "@/lib/tenant-config";
 import { resolveGeneralSettings } from "@/lib/format";
-import { buildAccessContext, resolveHasPermission, resolveTillFloatNavFlag } from "@/lib/access-control";
+import { buildAccessContext, resolveHasPermission, resolveHasNavPermission, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { resolvePostLoginPath, workspaceLoginChannel, workspacesFromCapabilities } from "@/lib/workspaces";
 import { applyWorkspaceSession } from "@/lib/workspace-session";
 import { POS_LOGIN_CHANNEL, WEB_LOGIN_CHANNEL } from "@/lib/login-channels";
@@ -531,6 +531,14 @@ export function AuthProvider({ children }) {
       isSuperAdmin: () => Boolean(user?.is_super_admin || capabilities?.is_super_admin),
       hasPermission: (code) =>
         resolveHasPermission({
+          user,
+          organization,
+          capabilities,
+          code,
+          isSuperAdmin: () => Boolean(user?.is_super_admin || capabilities?.is_super_admin),
+        }),
+      hasNavPermission: (code) =>
+        resolveHasNavPermission({
           user,
           organization,
           capabilities,

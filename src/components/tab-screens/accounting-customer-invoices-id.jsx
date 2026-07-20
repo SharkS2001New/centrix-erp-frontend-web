@@ -10,6 +10,7 @@ import { P } from "@/lib/permission-codes";
 import { useOrgFormat } from "@/lib/org-format";
 import { normalizeCustomerInvoice } from "@/lib/customer-invoices";
 import { isNumericRouteId, routeParamValue } from "@/lib/route-params";
+import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 import {
   CatalogPageShell,
   Field,
@@ -23,10 +24,12 @@ export function AccountingCustomerInvoicesIdScreen() {
   const invoiceId = routeParamValue(params?.id);
   const invoiceIdValid = isNumericRouteId(invoiceId);
   const { hasPermission, user } = useAuth();
+  const confirm = useConfirm();
   const { currency, date } = useOrgFormat();
   const canPay =
     canManagePayments({ hasPermission })
     || hasPermission(P.accounting.accounts_receivable.view);
+  const canDeletePayment = canManagePayments({ hasPermission });
 
   const [invoice, setInvoice] = useState(null);
   const [payments, setPayments] = useState([]);
@@ -42,6 +45,7 @@ export function AccountingCustomerInvoicesIdScreen() {
   });
   const [paySaving, setPaySaving] = useState(false);
   const [payError, setPayError] = useState(null);
+  const [deletingPaymentId, setDeletingPaymentId] = useState(null);
 
   const receivedByLabel = useMemo(() => {
     if (!user) return "";
@@ -116,6 +120,26 @@ export function AccountingCustomerInvoicesIdScreen() {
       setPayError(e instanceof ApiError ? e.message : "Payment failed");
     } finally {
       setPaySaving(false);
+    }
+  }
+
+  async function deletePayment(payment) {
+    const ok = await confirm(
+      confirmDeleteOptions(
+        "this payment",
+        `Delete the ${currency(payment.amount_paid)} payment from ${date(payment.date_paid)}? This cannot be undone.`,
+      ),
+    );
+    if (!ok) return;
+
+    setDeletingPaymentId(payment.id);
+    try {
+      await apiRequest(`/customer-invoice-payments/${payment.id}`, { method: "DELETE" });
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Failed to delete payment");
+    } finally {
+      setDeletingPaymentId(null);
     }
   }
 
@@ -194,7 +218,19 @@ export function AccountingCustomerInvoicesIdScreen() {
                     <div className="text-xs text-slate-500">{p.notes}</div>
                   ) : null}
                 </div>
-                <span className="font-medium">{currency(p.amount_paid)}</span>
+                <div className="flex items-center gap-3">
+                  <span className="font-medium">{currency(p.amount_paid)}</span>
+                  {canDeletePayment ? (
+                    <button
+                      type="button"
+                      onClick={() => deletePayment(p)}
+                      disabled={deletingPaymentId === p.id}
+                      className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                    >
+                      {deletingPaymentId === p.id ? "Deleting…" : "Delete"}
+                    </button>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>

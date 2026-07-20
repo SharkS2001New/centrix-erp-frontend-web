@@ -127,6 +127,31 @@ describe("order action stage gates", () => {
     ).toBe(false);
   });
 
+  it("allows collect payment on booked orders when payment is unpaid and Unpaid stage is enabled", () => {
+    const caps = {
+      module_settings: {
+        sales: { collect_payment_statuses: ["unpaid", "pending_payment"] },
+      },
+    };
+    const bookedUnpaid = {
+      status: "booked",
+      payment_status: "unpaid",
+      order_total: 500,
+      amount_paid: 0,
+      can_collect_payment: false,
+    };
+    expect(canRecordOrderPayment(bookedUnpaid, null, caps)).toBe(true);
+
+    const bookedPartial = {
+      status: "pending",
+      payment_status: "partial",
+      order_total: 500,
+      amount_paid: 200,
+      can_collect_payment: false,
+    };
+    expect(canRecordOrderPayment(bookedPartial, null, caps)).toBe(true);
+  });
+
   it("allows mobile channel when Mobile pseudo-stage is configured", () => {
     const caps = {
       module_settings: {

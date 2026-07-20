@@ -758,6 +758,7 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
 
   async function transitionOrder(targetStatus, fulfillmentMeta) {
     if (!sale?.id) return;
+    if (transitionBusy) return;
     if (targetStatus === "cancelled") {
       const ok = await confirm({
         title: "Cancel order",
@@ -796,12 +797,17 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   });
 
   function handleAdvance(targetStatus) {
+    if (transitionBusy || fulfillment.busy) return;
     if (targetStatus === "cancelled") {
       if (!cancellationAllowed) return;
       if (canRequestCancellation) {
         void requestOrderCancellation();
         return;
       }
+      void transitionOrder(targetStatus);
+      return;
+    }
+    if (String(sale?.status ?? "").toLowerCase() === "expired") {
       void transitionOrder(targetStatus);
       return;
     }
@@ -945,6 +951,15 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {canRecordPayment ? (
+                <button
+                  type="button"
+                  onClick={() => setPaymentModalOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                >
+                  Collect payment
+                </button>
+              ) : null}
               {isOrderEditActionVisible(sale, saleWorkflow, capabilities) ? (
                 <button
                   type="button"

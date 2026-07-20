@@ -318,7 +318,7 @@ function CollapsibleNavSection({
 export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, organization, capabilities, isModuleEnabled, hasPermission, isSuperAdmin } = useAuth();
+  const { user, organization, capabilities, isModuleEnabled, hasPermission, hasNavPermission, isSuperAdmin } = useAuth();
   const [activeFlyoutId, setActiveFlyoutId] = useState(null);
   const [customReportTemplates, setCustomReportTemplates] = useState([]);
   const [mailboxUnread, setMailboxUnread] = useState(0);
@@ -327,13 +327,14 @@ export function Sidebar({ collapsed = false, mobileOpen = false, onMobileClose }
     () => ({
       isModuleEnabled,
       hasPermission,
+      hasNavPermission,
       isSuperAdmin,
       requireTillFloat: isTillFloatWorkflowEnabled(capabilities?.module_settings),
       user,
       organization,
       capabilities,
     }),
-    [capabilities, hasPermission, isModuleEnabled, isSuperAdmin, organization, user],
+    [capabilities, hasNavPermission, hasPermission, isModuleEnabled, isSuperAdmin, organization, user],
   );
 
   const workspaceId =

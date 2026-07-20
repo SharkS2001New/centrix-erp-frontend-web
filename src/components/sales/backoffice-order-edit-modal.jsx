@@ -548,9 +548,11 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     isEditableResubmit && hasPerLineAdvisedDiscounts(sale?.discount_rejection) && discountEditEnabled;
   const matchesAdvisedDiscounts =
     isEditableResubmit &&
-    draftLinesMatchAdvisedDiscounts(lines, advisedDiscountLines, {
+    (draftLinesMatchAdvisedDiscounts(lines, advisedDiscountLines, {
       getDraftDiscount: (line) => line.draftDiscount,
-    });
+    }) ||
+      (sale?.discount_rejection?.rejection_guidance_type === "remove_discount" &&
+        !lines.some((line) => Number(line.draftDiscount ?? 0) > 0.01)));
 
   function applyAdvisedDiscounts() {
     setLines((prev) => applyAdvisedDiscountsToDraftLines(prev, advisedDiscountLines));
@@ -567,6 +569,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
 
   async function handleSave() {
     if (!sale?.id) return false;
+    if (saving) return false;
     if (lines.length === 0) {
       setError("An order must keep at least one line item.");
       return false;
@@ -648,7 +651,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
       <div
         className={posModalPanelClass(
           false,
-          "theme-panel flex w-[min(96vw,840px)] flex-col overflow-hidden rounded-xl border shadow-2xl",
+          "theme-panel relative flex w-[min(96vw,840px)] flex-col overflow-hidden rounded-xl border shadow-2xl",
         )}
         role="dialog"
         aria-modal="true"
@@ -676,6 +679,26 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
             Cancel
           </button>
         </div>
+
+        {saving ? (
+          <div
+            className="absolute inset-0 z-[55] flex items-center justify-center bg-white/55 backdrop-blur-[1px]"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
+              <span
+                className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
+                aria-hidden
+              />
+              {isEditableResubmit && matchesAdvisedDiscounts
+                ? "Booking order…"
+                : isEditableResubmit
+                  ? "Resubmitting for approval…"
+                  : "Saving changes…"}
+            </div>
+          </div>
+        ) : null}
 
         <div className="max-h-[min(60vh,520px)] overflow-auto px-5 py-4">
           <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-3 dark:border-slate-700 dark:bg-slate-900/40">

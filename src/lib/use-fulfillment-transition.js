@@ -79,6 +79,7 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
   const runTransition = useCallback(
     async (sale, targetStatus, fulfillmentMeta) => {
       if (!sale?.id) return null;
+      if (busy) return null;
       setBusy(true);
       try {
         const meta = { ...(fulfillmentMeta ?? {}) };
@@ -126,7 +127,7 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
         setBusy(false);
       }
     },
-    [distributionSettings, onSuccess, onError, openWeightDialog],
+    [busy, distributionSettings, onSuccess, onError, openWeightDialog],
   );
 
   const continueAfterWeights = useCallback(
@@ -147,6 +148,7 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
 
   const requestTransition = useCallback(
     async (sale, targetStatus) => {
+      if (busy) return;
       if (targetStatus === "cancelled") {
         void runTransition(sale, targetStatus);
         return;
@@ -177,7 +179,7 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
       }
       void runTransition(sale, targetStatus);
     },
-    [distributionSettings, ensureProductWeights, runTransition, onSuccess],
+    [busy, distributionSettings, ensureProductWeights, runTransition, onSuccess],
   );
 
   const requestAssignment = useCallback(

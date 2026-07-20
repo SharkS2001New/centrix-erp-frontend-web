@@ -732,6 +732,7 @@ export default function SalesOrdersListScreen({
 
   async function transitionOrder(sale, targetStatus, fulfillmentMeta) {
     if (!sale?.id) return;
+    if (transitionBusyId === sale.id) return;
     if (targetStatus === "cancelled") {
       const ok = await confirm({
         title: "Cancel order",
@@ -787,7 +788,12 @@ export default function SalesOrdersListScreen({
   });
 
   function handleAdvance(sale, targetStatus) {
+    if (transitionBusyId === sale.id || fulfillment.busy) return;
     if (targetStatus === "cancelled") {
+      void transitionOrder(sale, targetStatus);
+      return;
+    }
+    if (String(sale?.status ?? "").toLowerCase() === "expired") {
       void transitionOrder(sale, targetStatus);
       return;
     }
@@ -842,6 +848,8 @@ export default function SalesOrdersListScreen({
 
   const hasExternalPos = useMemo(() => isExternalPosEnabled(capabilities), [capabilities]);
   const orderPrintAriaLabel = useMemo(() => orderListPrintAriaLabel(capabilities), [capabilities]);
+
+  const showTransitionOverlay = Boolean(transitionBusyId) || fulfillment.busy;
 
   const contextMenuItems = useMemo(() => {
     if (!contextMenu?.sale) return [];
@@ -1086,6 +1094,21 @@ export default function SalesOrdersListScreen({
         ) : null}
 
         <div className="theme-panel theme-table-shell relative overflow-hidden rounded-xl shadow-sm">
+          {showTransitionOverlay ? (
+            <div
+              className="absolute inset-0 z-20 flex min-h-[120px] items-center justify-center bg-white/60 backdrop-blur-[1px]"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
+                <span
+                  className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--theme-primary)] border-t-transparent"
+                  aria-hidden
+                />
+                Updating order…
+              </div>
+            </div>
+          ) : null}
           {showArchiveLoading ? (
             <div className="absolute inset-0 z-10 flex min-h-[280px] items-center justify-center bg-white/70 backdrop-blur-[1px]">
               <div className="flex flex-col items-center gap-3 px-6 text-center">

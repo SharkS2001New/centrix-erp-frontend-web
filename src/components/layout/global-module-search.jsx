@@ -38,7 +38,7 @@ function SearchIcon({ className }) {
 export function GlobalModuleSearch() {
   const router = useAppRouter();
   const { adminPath } = useAdminApi();
-  const { user, organization, capabilities, isModuleEnabled, hasPermission, isSuperAdmin } = useAuth();
+  const { user, organization, capabilities, isModuleEnabled, hasPermission, hasNavPermission, isSuperAdmin } = useAuth();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -51,13 +51,14 @@ export function GlobalModuleSearch() {
     () => ({
       isModuleEnabled,
       hasPermission,
+      hasNavPermission,
       isSuperAdmin,
       requireTillFloat: isTillFloatWorkflowEnabled(capabilities?.module_settings),
       user,
       organization,
       capabilities,
     }),
-    [capabilities, hasPermission, isModuleEnabled, isSuperAdmin, organization, user],
+    [capabilities, hasNavPermission, hasPermission, isModuleEnabled, isSuperAdmin, organization, user],
   );
 
   const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(capabilities, navContext);

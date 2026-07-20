@@ -1032,7 +1032,8 @@ export function isNavSectionVisible(section, navContext) {
   return true;
 }
 
-export function isNavItemVisible(item, { isModuleEnabled, hasPermission, requireTillFloat, user, capabilities, isSuperAdmin, organization }) {
+export function isNavItemVisible(item, { isModuleEnabled, hasPermission, hasNavPermission, requireTillFloat, user, capabilities, isSuperAdmin, organization }) {
+  const checkPermission = hasNavPermission ?? hasPermission;
   if (item.superAdminOnly && !isSuperAdmin?.()) return false;
   if (
     shouldHideOrgAdminFromPlatformSuperAdmin({ organization, isSuperAdmin }) &&
@@ -1068,9 +1069,9 @@ export function isNavItemVisible(item, { isModuleEnabled, hasPermission, require
   if (item.moduleAny?.length) {
     if (!item.moduleAny.some((key) => isModuleEnabledForNav(key, isModuleEnabled))) return false;
   } else if (item.module && !isModuleEnabledForNav(item.module, isModuleEnabled)) return false;
-  if (item.reportKey && !canViewReport(item.reportKey, hasPermission)) return false;
+  if (item.reportKey && !canViewReport(item.reportKey, checkPermission)) return false;
   if (item.permissionAny?.length) {
-    if (!item.permissionAny.some((code) => hasPermission(code))) return false;
-  } else if (item.permission && !hasPermission(item.permission)) return false;
+    if (!item.permissionAny.some((code) => checkPermission(code))) return false;
+  } else if (item.permission && !checkPermission(item.permission)) return false;
   return true;
 }

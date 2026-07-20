@@ -31,6 +31,7 @@ import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { STOCK_TAKE_SESSION_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { P } from "@/lib/permission-codes";
 
 const EMPTY_FORM = {
   session_code: "",
@@ -47,8 +48,9 @@ function optionalFilterId(value) {
 export function InventoryStockTakeScreen() {
   const confirm = useConfirm();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const branchId = user?.branch_id ?? 1;
+  const canCreateSession = hasPermission(P.inventory.stock_take.create);
 
   const [sessions, setSessions] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -223,7 +225,12 @@ export function InventoryStockTakeScreen() {
             getSearchParams={() => ({ per_page: 200 })}
             disabled={loading}
           />
-          <PrimaryButton type="button" onClick={() => setModalOpen(true)}>
+          <PrimaryButton
+            type="button"
+            onClick={() => setModalOpen(true)}
+            disabled={!canCreateSession}
+            title={canCreateSession ? undefined : "You do not have permission to start a stock take."}
+          >
             New session
           </PrimaryButton>
         </div>

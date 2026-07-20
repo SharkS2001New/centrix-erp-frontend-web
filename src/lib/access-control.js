@@ -57,6 +57,44 @@ export function resolveHasPermission({ user, organization, capabilities, code, i
   return capabilities?.permissions?.[code] ?? false;
 }
 
+/** Nav/sidebar checks — uses role-assigned map when available (no inflated sibling aliases). */
+export function resolveHasNavPermission({ user, organization, capabilities, code, isSuperAdmin }) {
+  if (!code) return true;
+
+  const superAdminFn =
+    typeof isSuperAdmin === "function"
+      ? isSuperAdmin
+      : () => Boolean(user?.is_super_admin || capabilities?.is_super_admin);
+
+  if (
+    superAdminFn() &&
+    !isPlatformShellUser({
+      user,
+      organization,
+      capabilities,
+      isSuperAdmin: superAdminFn,
+    })
+  ) {
+    return true;
+  }
+
+  if (
+    isPlatformShellUser({
+      user,
+      organization,
+      capabilities,
+      isSuperAdmin: superAdminFn,
+    })
+  ) {
+    return false;
+  }
+
+  const assigned = capabilities?.assigned_permissions?.[code];
+  if (typeof assigned === "boolean") return assigned;
+
+  return resolveHasPermission({ user, organization, capabilities, code, isSuperAdmin });
+}
+
 /** Whether the user may create or edit payment records (invoices, customer payments, sale payments). */
 export function canManagePayments({ hasPermission = () => false } = {}) {
   return (
@@ -91,6 +129,15 @@ export function buildAccessContext({
       isSuperAdmin: superAdminFn,
     });
 
+  const hasNavPermission = (code) =>
+    resolveHasNavPermission({
+      user,
+      organization,
+      capabilities,
+      code,
+      isSuperAdmin: superAdminFn,
+    });
+
   const isModuleEnabled = (key) => capabilities?.modules?.[key] ?? false;
 
   return {
@@ -100,6 +147,7 @@ export function buildAccessContext({
     requireTillFloat: Boolean(requireTillFloat),
     isSuperAdmin: superAdminFn,
     hasPermission,
+    hasNavPermission,
     isModuleEnabled,
     platformShell: isPlatformShellUser({
       user,

@@ -988,6 +988,30 @@ export function saleNeedsPaymentCollection(sale, totalPaid = null, capabilities 
   return canRecordOrderPayment(sale, totalPaid, capabilities);
 }
 
+/** Map sales.payment_status to the collect-payment workflow stage key. */
+export function paymentStatusToCollectStage(paymentStatus) {
+  const key = String(paymentStatus ?? "").toLowerCase();
+  if (key === "unpaid") return "unpaid";
+  if (key === "partial") return "pending_payment";
+  return null;
+}
+
+/** Whether this order matches configured collect-payment stages (workflow + payment state). */
+export function isCollectPaymentStageAllowed(sale, capabilities = null) {
+  const allowed = resolveCollectPaymentStatuses(salesSettingsFromCapabilities(capabilities));
+  const workflowStatus = String(sale?.status ?? "").toLowerCase();
+  const aligned = String(sale?.workflow_status ?? workflowStatus).toLowerCase();
+  const paymentStage = paymentStatusToCollectStage(sale?.payment_status);
+
+  const stages = new Set([workflowStatus, aligned]);
+  if (paymentStage) stages.add(paymentStage);
+
+  for (const stage of stages) {
+    if (allowed.includes(stage)) return true;
+  }
+  return allowedActionStagesInclude(allowed, "mobile") && saleIsMobileActionTarget(sale);
+}
+
 /** Whether payment can be recorded (outstanding balance on an allowed workflow stage). */
 export function canRecordOrderPayment(sale, totalPaid = null, capabilities = null) {
   if (!sale) return false;
@@ -1005,14 +1029,11 @@ export function canRecordOrderPayment(sale, totalPaid = null, capabilities = nul
     return false;
   }
 
-  if (typeof sale.can_collect_payment === "boolean") {
-    return sale.can_collect_payment;
+  if (typeof sale.can_collect_payment === "boolean" && sale.can_collect_payment) {
+    return true;
   }
 
-  const allowed = resolveCollectPaymentStatuses(salesSettingsFromCapabilities(capabilities));
-  const aligned = String(sale.workflow_status ?? workflowStatus).toLowerCase();
-  if (allowed.includes(workflowStatus) || allowed.includes(aligned)) return true;
-  return allowedActionStagesInclude(allowed, "mobile") && saleIsMobileActionTarget(sale);
+  return isCollectPaymentStageAllowed(sale, capabilities);
 }
 
 /** Whether payment can be collected on this order list (stage config + outstanding balance). */
@@ -1172,6 +1193,11 @@ export function resolveOrderWorkflowActions(
       advanceStatus: expiredOrderRestoreTarget(sale, workflow, capabilities),
       balanceDue,
     };
+  }
+
+  // Editable / pending approval orders must be revised and saved — not workflow-transitioned.
+  if (status === "editable" || status === "pending_approval") {
+    return { showCollectPayment: false, advanceStatus: null, balanceDue };
   }
 
   let advanceStatus = primaryWorkflowAdvanceStatus(status, workflow, sale, capabilities);
