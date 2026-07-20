@@ -889,6 +889,30 @@ export function resolveSalesOrderQueue(slug, workflow, { includeMobile = true, i
   const step = workflowPipelineSteps(workflow).find((s) => s.key === slug);
   if (!step) return null;
 
+  // Distribution / save-order: Unpaid and Partially paid queues list by payment balance
+  // across workflow steps (e.g. Processed + Unpaid badge). Retail keeps workflow-stage lists.
+  const deferPayment = orgDefersPaymentToFulfillment(capabilities);
+  const paymentStatusFilter = deferPayment ? paymentStatusForCollectionQueue(step.key) : null;
+  if (paymentStatusFilter) {
+    return {
+      slug: step.key,
+      title: salesOrderQueueTitle(step.label),
+      subtitle:
+        step.key === "unpaid"
+          ? "Orders with an outstanding balance (any workflow step)"
+          : "Orders with a partial payment recorded (any workflow step)",
+      fixedStatusFilter: null,
+      fixedPaymentStatusFilter: paymentStatusFilter,
+      fixedSourceFilter: null,
+      showRouteColumn: true,
+      showDeliveryDateColumn: true,
+      lockStatusFilter: true,
+      lockSourceFilter: false,
+      excludeStatuses: ["cancelled", "expired", "completed"],
+      requireOutstandingBalance: true,
+    };
+  }
+
   return {
     slug: step.key,
     title: salesOrderQueueTitle(step.label),

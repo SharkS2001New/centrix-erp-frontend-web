@@ -5,7 +5,14 @@ import {
   shouldOpenBackofficeOrderEdit,
   shouldRestoreOrderToCart,
 } from "@/lib/sales";
-import { canRecordOrderPayment, canCancelOrder, isPrintInvoiceVisible, orderActionStageOptionsFromWorkflow, workflowPipelineSteps } from "@/lib/order-workflow";
+import {
+  canRecordOrderPayment,
+  canCancelOrder,
+  isPrintInvoiceVisible,
+  orderActionStageOptionsFromWorkflow,
+  resolveSalesOrderQueue,
+  workflowPipelineSteps,
+} from "@/lib/order-workflow";
 
 describe("resolvePaymentMethodByCode", () => {
   const methods = [
@@ -145,6 +152,49 @@ describe("order action stage gates", () => {
     expect(isPrintInvoiceVisible(mobileSale, caps)).toBe(true);
     expect(canRecordOrderPayment(mobileSale, null, caps)).toBe(true);
     expect(canCancelOrder(mobileSale, null, caps)).toBe(true);
+  });
+});
+
+describe("resolveSalesOrderQueue", () => {
+  const pipeline = {
+    pipeline: [
+      { key: "booked", label: "Booked" },
+      { key: "unpaid", label: "Unpaid" },
+      { key: "pending_payment", label: "Partially paid" },
+      { key: "processed", label: "Processed" },
+    ],
+  };
+
+  const distributionCaps = {
+    modules: { distribution: true },
+    distribution_ops_enabled: true,
+    module_settings: { sales: { show_checkout_on_create_order: false } },
+  };
+
+  it("distribution unpaid queue lists by payment status across workflow steps", () => {
+    const config = resolveSalesOrderQueue("unpaid", pipeline, { capabilities: distributionCaps });
+
+    expect(config?.fixedPaymentStatusFilter).toBe("unpaid");
+    expect(config?.fixedStatusFilter).toBeNull();
+    expect(config?.requireOutstandingBalance).toBe(true);
+  });
+
+  it("distribution pending_payment queue lists by partial payment status", () => {
+    const config = resolveSalesOrderQueue("pending_payment", pipeline, {
+      capabilities: distributionCaps,
+    });
+
+    expect(config?.fixedPaymentStatusFilter).toBe("partial");
+    expect(config?.fixedStatusFilter).toBeNull();
+  });
+
+  it("retail unpaid queue filters by workflow stage only", () => {
+    const config = resolveSalesOrderQueue("unpaid", pipeline, {
+      capabilities: { modules: { sales: true } },
+    });
+
+    expect(config?.fixedStatusFilter).toBe("unpaid");
+    expect(config?.fixedPaymentStatusFilter).toBeUndefined();
   });
 });
 
