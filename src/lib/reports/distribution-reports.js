@@ -13,6 +13,18 @@ export const DISTRIBUTION_REPORT_DEFS = [
     icon: "truck",
   },
   {
+    key: "vehicle-trip-loads",
+    label: "Vehicle trip loads",
+    subtitle: "Orders, weight, COGS, expenses, and profit by vehicle trip",
+    icon: "truck",
+  },
+  {
+    key: "driver-trip-loads",
+    label: "Driver trip loads",
+    subtitle: "Orders, weight, COGS, expenses, and profit by driver trip",
+    icon: "users",
+  },
+  {
     key: "trip-cash-settlement",
     label: "Trip cash settlement",
     subtitle: "Expected vs collected cash and variance by trip",

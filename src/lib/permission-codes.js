@@ -367,6 +367,8 @@ export function reportPermissionCode(reportKey) {
     "kra-receipts": P.reports.kra_receipts.view,
     "mobile-route-sales": P.reports.mobile_route_sales.view,
     "dispatch-trips": P.reports.dispatch_trips.view,
+    "vehicle-trip-loads": P.reports.dispatch_trips.view,
+    "driver-trip-loads": P.reports.dispatch_trips.view,
     "trip-cash-settlement": P.reports.trip_cash_settlement.view,
     "pod-compliance": P.reports.pod_compliance.view,
     "driver-deliveries": P.reports.driver_deliveries.view,

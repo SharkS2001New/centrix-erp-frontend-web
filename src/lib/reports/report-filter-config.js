@@ -102,6 +102,8 @@ export const REPORT_DATE_COLUMNS = {
   "daily-sales": "sale_day",
   "mobile-route-sales": "loading_date",
   "dispatch-trips": "scheduled_date",
+  "vehicle-trip-loads": "scheduled_date",
+  "driver-trip-loads": "scheduled_date",
   "trip-cash-settlement": "scheduled_date",
   "pod-compliance": "capture_date",
   "driver-deliveries": "delivery_date",

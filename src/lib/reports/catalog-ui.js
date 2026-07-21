@@ -72,6 +72,8 @@ export const REPORT_CATEGORY_DEFS = [
     keys: [
       "mobile-route-sales",
       "dispatch-trips",
+      "vehicle-trip-loads",
+      "driver-trip-loads",
       "trip-cash-settlement",
       "pod-compliance",
       "driver-deliveries",
