@@ -22,6 +22,8 @@ export function ProtectedFilePreviewModal({
   title = "Attachment",
   filePath,
   onClose,
+  panelClassName = "",
+  viewportClassName = "",
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -80,7 +82,7 @@ export function ProtectedFilePreviewModal({
       onClick={onClose}
     >
       <div
-        className="theme-panel relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border shadow-2xl"
+        className={`theme-panel relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border shadow-2xl ${panelClassName}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="protected-file-preview-title"
@@ -98,7 +100,9 @@ export function ProtectedFilePreviewModal({
             Close
           </button>
         </div>
-        <div className="flex min-h-[240px] flex-1 items-center justify-center bg-slate-50 p-4 dark:bg-slate-900/40">
+        <div
+          className={`flex min-h-[240px] flex-1 items-center justify-center bg-slate-50 p-4 dark:bg-slate-900/40 ${viewportClassName}`}
+        >
           {loading ? (
             <div className="flex flex-col items-center gap-3 text-sm text-slate-500">
               <span
@@ -199,6 +203,8 @@ export function ProtectedFileLink({
   disabled = false,
   mode = "auto",
   onBusyChange,
+  panelClassName = "",
+  viewportClassName = "",
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -254,6 +260,8 @@ export function ProtectedFileLink({
           title={title ?? label}
           filePath={filePath}
           onClose={() => setOpen(false)}
+          panelClassName={panelClassName}
+          viewportClassName={viewportClassName}
         />
       ) : null}
     </>

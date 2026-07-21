@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  lpoLineDisplayAmount,
   lpoReceiveSessionTotal,
   lpoSessionLineAmount,
   lpoSessionReceivedPackQty,
@@ -27,6 +28,30 @@ describe("offerAdjustedUnitCost", () => {
         receivedPackQty: 10,
       }),
     ).toBeNull();
+  });
+});
+
+describe("lpoLineDisplayAmount", () => {
+  const uom = {
+    conversion_factor: 1,
+    middle_factor: 1,
+    small_packaging_label: "pcs",
+  };
+
+  it("shows session qty × cost while receiving", () => {
+    const line = { id: 1, ordered_qty: 50, received_qty: 31, cost_price: 391 };
+    const counts = { "1:small": "20" };
+    expect(lpoLineDisplayAmount(line, uom, counts, 391)).toBe(7820);
+  });
+
+  it("shows received × cost when the line is fully received and nothing is entering now", () => {
+    const line = { id: 2, ordered_qty: 200, received_qty: 204, offer_qty: 4, cost_price: 490 };
+    expect(lpoLineDisplayAmount(line, uom, {}, 490)).toBe(99960);
+  });
+
+  it("shows zero for partial lines with nothing receiving now", () => {
+    const line = { id: 3, ordered_qty: 120, received_qty: 80, cost_price: 843 };
+    expect(lpoLineDisplayAmount(line, uom, {}, 843)).toBe(0);
   });
 });
 

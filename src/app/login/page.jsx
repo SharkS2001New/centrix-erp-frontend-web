@@ -52,6 +52,7 @@ function LoginForm() {
   const [mfaChallenge, setMfaChallenge] = useState(null);
   const [mfaCode, setMfaCode] = useState("");
   const [passkeyAvailable, setPasskeyAvailable] = useState(false);
+  const [authFlow, setAuthFlow] = useState(null);
   const passkeysOk = webAuthnSupported();
 
   useEffect(() => {
@@ -167,6 +168,16 @@ function LoginForm() {
     }
   }
 
+  function beginAuthFlow(flow) {
+    setAuthFlow(flow);
+    setSubmitting(true);
+  }
+
+  function finishAuthFlow() {
+    setSubmitting(false);
+    setAuthFlow(null);
+  }
+
   async function onSubmit(e) {
     e.preventDefault();
     setError(null);
@@ -185,19 +196,19 @@ function LoginForm() {
     e.preventDefault();
     if (!mfaChallenge?.challenge_token) return;
     setError(null);
-    setSubmitting(true);
+    beginAuthFlow("mfa");
     try {
       await completeTwoFactorLogin(mfaChallenge.challenge_token, mfaCode);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Invalid verification code.");
     } finally {
-      setSubmitting(false);
+      finishAuthFlow();
     }
   }
 
   async function onResendMfa() {
     if (!mfaChallenge?.challenge_token) return;
-    setSubmitting(true);
+    beginAuthFlow("mfa-resend");
     setError(null);
     try {
       const res = await apiRequest("/auth/2fa/resend", {
@@ -209,14 +220,14 @@ function LoginForm() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not resend code.");
     } finally {
-      setSubmitting(false);
+      finishAuthFlow();
     }
   }
 
   async function onPasskeyLogin() {
     setError(null);
     setSessionConflict(false);
-    setSubmitting(true);
+    beginAuthFlow("passkey-login");
     try {
       const org = companyCode.trim().toUpperCase();
       const user = username.trim();
@@ -249,14 +260,14 @@ function LoginForm() {
         setError(err instanceof ApiError ? err.message : err?.message || "Passkey sign-in failed.");
       }
     } finally {
-      setSubmitting(false);
+      finishAuthFlow();
     }
   }
 
   async function onPasskeyMfa() {
     if (!mfaChallenge?.challenge_token) return;
     setError(null);
-    setSubmitting(true);
+    beginAuthFlow("passkey-mfa");
     try {
       const begin = await apiRequest("/auth/2fa/passkey/options", {
         method: "POST",
@@ -272,7 +283,7 @@ function LoginForm() {
         setError(err instanceof ApiError ? err.message : err?.message || "Passkey verification failed.");
       }
     } finally {
-      setSubmitting(false);
+      finishAuthFlow();
     }
   }
 
@@ -284,6 +295,7 @@ function LoginForm() {
         : reason === "license"
           ? "Your organization’s Centrix licence has expired. All users have been signed out. Contact your Centrix administrator to renew or extend the licence."
           : null;
+  const passkeyBusy = authFlow === "passkey-login" || authFlow === "passkey-mfa";
 
   if (mfaChallenge?.mfa_required) {
     const isEmail = mfaChallenge.method === "email";
@@ -351,7 +363,24 @@ function LoginForm() {
 
   return (
     <AuthShell title="Sign in" subtitle="Sign in with your email or username and password.">
-      <form onSubmit={onSubmit} className="mt-6 space-y-4">
+      <div className="relative">
+        {passkeyBusy ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/85 dark:bg-slate-950/85">
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 text-center shadow-lg dark:border-slate-700 dark:bg-slate-900">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-emerald-600 dark:border-slate-700 dark:border-t-emerald-400" />
+              <div>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Waiting for passkey</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Complete passkey sign-in on your device. Password sign-in is temporarily paused.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        <form
+          onSubmit={onSubmit}
+          className={`mt-6 space-y-4 ${passkeyBusy ? "pointer-events-none select-none" : ""}`}
+        >
         {showOrgField ? (
           <AuthField label="Organization code">
             <input
@@ -360,6 +389,7 @@ function LoginForm() {
               onChange={(e) => setCompanyCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ""))}
               placeholder="e.g. DEMO (optional for platform admin)"
               autoComplete="organization"
+              disabled={submitting}
             />
           </AuthField>
         ) : (
@@ -374,6 +404,7 @@ function LoginForm() {
               type="button"
               onClick={useDifferentOrganization}
               className="mt-1 text-xs font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+              disabled={submitting}
             >
               Use a different organization
             </button>
@@ -386,6 +417,7 @@ function LoginForm() {
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
             required
+            disabled={submitting}
           />
         </AuthField>
         <AuthField label="Password">
@@ -395,6 +427,7 @@ function LoginForm() {
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
             required
+            disabled={submitting}
           />
         </AuthField>
         {sessionMessage ? <AuthNotice>{sessionMessage}</AuthNotice> : null}
@@ -431,11 +464,13 @@ function LoginForm() {
         <button
           type="button"
           className="w-full text-sm text-slate-500 hover:underline"
+          disabled={submitting}
           onClick={() => setForgotPasswordOpen(true)}
         >
           Forgot password?
         </button>
-      </form>
+        </form>
+      </div>
       <ForgotPasswordHelpDialog open={forgotPasswordOpen} onClose={() => setForgotPasswordOpen(false)} />
     </AuthShell>
   );

@@ -29,6 +29,8 @@ export function LpoSupplierInvoicePicker({
             label="View invoice"
             title={`Supplier invoice ${selected.supplier_invoice_number ?? ""}`}
             className="rounded-lg border border-[var(--theme-primary)] bg-white px-3 py-1.5 text-sm font-medium hover:bg-[var(--theme-primary-muted)]"
+            panelClassName="max-w-6xl"
+            viewportClassName="p-2"
           />
         </div>
       ) : null}
@@ -72,6 +74,8 @@ export function LpoSupplierInvoicePicker({
                   label="Open attachment"
                   title={`Supplier invoice ${inv.supplier_invoice_number ?? ""}`}
                   className="mt-1 inline-block text-xs"
+                  panelClassName="max-w-6xl"
+                  viewportClassName="p-2"
                 />
               ) : (
                 <span className="mt-1 block text-xs text-amber-700">

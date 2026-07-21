@@ -23,7 +23,7 @@ import {
   lpoLineCanReceive,
   lpoLineOpenRemainingBase,
   lpoReceiveSessionTotal,
-  lpoSessionLineAmount,
+  lpoLineDisplayAmount,
   lpoSessionOfferBase,
   packQtyFromReceiveBase,
   receiveBaseForLine,
@@ -453,7 +453,7 @@ export function LpoLpoNoReceiveScreen() {
                       receiveCounts,
                     );
                     const unitCost = resolveLineUnitCost(line, lineUnitCosts);
-                    const lineAmount = lpoSessionLineAmount(
+                    const lineAmount = lpoLineDisplayAmount(
                       line,
                       lineUom,
                       receiveCounts,

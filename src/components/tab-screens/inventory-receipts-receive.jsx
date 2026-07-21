@@ -33,7 +33,7 @@ import {
   lpoLineCanReceive,
   lpoLineOpenRemainingBase,
   lpoReceiveSessionTotal,
-  lpoSessionLineAmount,
+  lpoLineDisplayAmount,
   lpoSessionOfferBase,
   packQtyFromReceiveBase,
   receiveBaseForLine,
@@ -592,7 +592,7 @@ export function InventoryReceiptsReceiveScreen() {
                           lineUom?.package_name ||
                           "pack";
                         const unitCost = resolveLineUnitCost(line, lineUnitCosts);
-                        const lineAmount = lpoSessionLineAmount(
+                        const lineAmount = lpoLineDisplayAmount(
                           line,
                           lineUom,
                           receiveCounts,

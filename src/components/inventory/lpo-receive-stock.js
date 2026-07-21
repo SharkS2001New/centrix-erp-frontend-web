@@ -166,6 +166,22 @@ export function lpoSessionLineAmount(
   return Math.round(qty * cost * 100) / 100;
 }
 
+/**
+ * Row total for the receive table: this session's qty × cost when receiving now,
+ * otherwise received-to-date × cost when the PO line is fully received.
+ */
+export function lpoLineDisplayAmount(line, uom, receiveCounts, unitCost) {
+  const sessionAmount = lpoSessionLineAmount(line, uom, receiveCounts, unitCost);
+  if (sessionAmount > 0) return sessionAmount;
+
+  const openRemainingBase = lpoLineOpenRemainingBase(line, uom);
+  if (openRemainingBase > 0.0001) return 0;
+
+  const receivedPack = Number(line.received_qty ?? 0);
+  const cost = Number(unitCost ?? line.cost_price ?? 0);
+  return Math.round(receivedPack * cost * 100) / 100;
+}
+
 export function lpoSessionReceiveAmount(
   line,
   uom,
