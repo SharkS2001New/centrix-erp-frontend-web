@@ -29,6 +29,7 @@ export function ProtectedFilePreviewModal({
   const [error, setError] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [blobType, setBlobType] = useState(null);
+  const [expanded, setExpanded] = useState(false);
   const activeFetch = useRef(null);
 
   useEffect(() => {
@@ -37,6 +38,7 @@ export function ProtectedFilePreviewModal({
       setError(null);
       setPreviewUrl(null);
       setBlobType(null);
+      setExpanded(false);
       return undefined;
     }
 
@@ -82,7 +84,9 @@ export function ProtectedFilePreviewModal({
       onClick={onClose}
     >
       <div
-        className={`theme-panel relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border shadow-2xl ${panelClassName}`}
+        className={`theme-panel relative flex w-full flex-col overflow-hidden rounded-xl border shadow-2xl ${
+          expanded ? "max-h-[96vh] max-w-[96vw]" : "max-h-[90vh] max-w-3xl"
+        } ${panelClassName}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="protected-file-preview-title"
@@ -92,13 +96,22 @@ export function ProtectedFilePreviewModal({
           <h2 id="protected-file-preview-title" className="theme-heading text-sm font-semibold">
             {title}
           </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            Close
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setExpanded((prev) => !prev)}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              {expanded ? "Exit full width" : "View full width"}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              Close
+            </button>
+          </div>
         </div>
         <div
           className={`flex min-h-[240px] flex-1 items-center justify-center bg-slate-50 p-4 dark:bg-slate-900/40 ${viewportClassName}`}
@@ -118,13 +131,15 @@ export function ProtectedFilePreviewModal({
             <img
               src={previewUrl}
               alt={title}
-              className="max-h-[min(70vh,640px)] max-w-full rounded-lg bg-white object-contain p-2"
+              className={`max-w-full rounded-lg bg-white object-contain p-2 ${
+                expanded ? "max-h-[88vh]" : "max-h-[min(70vh,640px)]"
+              }`}
             />
           ) : previewUrl && showPdf ? (
             <iframe
               title={title}
               src={previewUrl}
-              className="h-[min(70vh,640px)] w-full rounded-lg bg-white"
+              className={`w-full rounded-lg bg-white ${expanded ? "h-[88vh]" : "h-[min(70vh,640px)]"}`}
             />
           ) : previewUrl ? (
             <div className="flex flex-col items-center gap-3 text-center text-sm">

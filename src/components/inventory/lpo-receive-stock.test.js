@@ -38,10 +38,10 @@ describe("lpoLineDisplayAmount", () => {
     small_packaging_label: "pcs",
   };
 
-  it("shows session qty × cost while receiving", () => {
+  it("shows cumulative received + receiving qty × cost while receiving", () => {
     const line = { id: 1, ordered_qty: 50, received_qty: 31, cost_price: 391 };
     const counts = { "1:small": "20" };
-    expect(lpoLineDisplayAmount(line, uom, counts, 391)).toBe(7820);
+    expect(lpoLineDisplayAmount(line, uom, counts, 391)).toBe(19941);
   });
 
   it("shows received × cost when the line is fully received and nothing is entering now", () => {
@@ -49,9 +49,9 @@ describe("lpoLineDisplayAmount", () => {
     expect(lpoLineDisplayAmount(line, uom, {}, 490)).toBe(99960);
   });
 
-  it("shows zero for partial lines with nothing receiving now", () => {
+  it("shows received × cost for partial lines with nothing receiving now", () => {
     const line = { id: 3, ordered_qty: 120, received_qty: 80, cost_price: 843 };
-    expect(lpoLineDisplayAmount(line, uom, {}, 843)).toBe(0);
+    expect(lpoLineDisplayAmount(line, uom, {}, 843)).toBe(67440);
   });
 });
 
