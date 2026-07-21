@@ -36,6 +36,7 @@ export const REPORT_MODULE_BY_SLUG = {
   "price-list": "inventory.reports",
 
   "profit-loss": "accounting.reports",
+  "profit-loss-by-product": "accounting.reports",
   "top-debtors": "accounting.reports",
   expenses: "accounting.reports",
   "ar-aging": "accounting.reports",

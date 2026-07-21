@@ -25,6 +25,7 @@ export const REPORTS_DATE_WITHOUT_COLUMN = new Set([
   "stock-chain",
   "top-debtors",
   "accounts-receivable",
+  "profit-loss-by-product",
 ]);
 
 /** AR / payment reports are org-scoped; branch filter applies via invoice branch. */
@@ -143,6 +144,10 @@ export const REPORT_EXTRA_FILTERS = {
   "sales-by-product": [
     { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },
     { id: "sub_category_id", label: "Subcategory", type: "select", optionsKey: "subcategories" },
+    { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
+  ],
+  "profit-loss-by-product": [
+    { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },
     { id: "q", label: "Search", type: "text", placeholder: "Product name or code…" },
   ],
   "sales-by-supplier": [

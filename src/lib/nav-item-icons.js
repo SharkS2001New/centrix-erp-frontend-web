@@ -155,6 +155,7 @@ export const NAV_HREF_ICONS = {
   "/reports/stock-movement": "swap",
   "/reports/purchases-by-supplier": "file",
   "/reports/profit-loss": "trend",
+  "/reports/profit-loss-by-product": "trend",
   "/reports/top-debtors": "alert",
   "/reports/expenses": "receipt",
   "/reports/vat-collected": "percent",

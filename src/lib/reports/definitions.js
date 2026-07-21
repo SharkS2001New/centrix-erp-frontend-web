@@ -469,6 +469,66 @@ export const REPORT_DEFINITIONS = {
     footerTotals: ["cost_value"],
   },
 
+  "profit-loss-by-product": {
+    title: "Profit & Loss by Product",
+    subtitle: "Net revenue, COGS, and gross profit per product",
+    section: "Finance",
+    apiPath: "/reports/profit-loss-by-product",
+    showDateRange: true,
+    columns: [
+      { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
+      {
+        key: "qty_sold",
+        label: "Qty Sold",
+        accessor: (r) => formatReportQuantity(r.qty_sold, r, "qty_sold"),
+        align: "right",
+        total: true,
+      },
+      {
+        key: "net_revenue",
+        label: "Net (ex VAT)",
+        accessor: (r) => r.net_revenue,
+        align: "right",
+        total: true,
+      },
+      { key: "total_vat", label: "VAT", accessor: (r) => r.total_vat, align: "right", total: true },
+      { key: "gross_revenue", label: "Gross (incl VAT)", accessor: (r) => r.gross_revenue, align: "right", total: true },
+      { key: "cogs", label: "COGS", accessor: (r) => r.cogs, align: "right", total: true },
+      { key: "gross_profit", label: "Gross profit", accessor: (r) => r.gross_profit, align: "right", total: true },
+      {
+        key: "gross_margin_percent",
+        label: "Margin %",
+        accessor: (r) =>
+          r.gross_margin_percent == null ? "—" : `${Number(r.gross_margin_percent).toFixed(1)}%`,
+        align: "right",
+      },
+    ],
+    kpis: [
+      {
+        id: "products",
+        label: "Products",
+        compute: (rows) => ({ value: String(rows.length) }),
+      },
+      {
+        id: "net_revenue",
+        label: "Net revenue",
+        compute: (rows) => ({ value: kes(sum(rows, "net_revenue")) }),
+      },
+      {
+        id: "cogs",
+        label: "COGS",
+        compute: (rows) => ({ value: kes(sum(rows, "cogs")) }),
+      },
+      {
+        id: "gross_profit",
+        label: "Gross profit",
+        compute: (rows) => ({ value: kes(sum(rows, "gross_profit")) }),
+      },
+    ],
+    footerTotals: ["qty_sold", "net_revenue", "total_vat", "gross_revenue", "cogs", "gross_profit"],
+    charts: [{ type: "bar", title: "Top products by gross profit", labelKey: "product_name", valueKey: "gross_profit" }],
+  },
+
   "profit-loss": {
     title: "Profit & Loss Report",
     subtitle: "Operational revenue, COGS, and expenses",

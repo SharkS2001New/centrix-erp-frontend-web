@@ -142,6 +142,7 @@ export const REPORT_CATEGORY_DEFS = [
     icon: "finance",
     keys: [
       "profit-loss",
+      "profit-loss-by-product",
       "profit-loss-gl",
       "trial-balance",
       "balance-sheet",

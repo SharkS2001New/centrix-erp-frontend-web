@@ -321,6 +321,7 @@ export function reportPermissionCode(reportKey) {
     "items-currently-in-stock": P.inventory.stock.view,
     "stock-on-hand": P.reports.stock_on_hand.view,
     "profit-loss": P.reports.profit_loss.view,
+    "profit-loss-by-product": P.reports.profit_loss.view,
     "top-debtors": P.reports.top_debtors.view,
     "credit-outstanding": P.reports.credit_outstanding.view,
     "invoice-payments": P.reports.invoice_payments.view,

@@ -6,6 +6,7 @@ import { reportModuleForSlug, isModuleEnabledForNav } from "@/lib/module-registr
  */
 export const BACKOFFICE_FINANCE_REPORT_SLUGS = [
   "profit-loss",
+  "profit-loss-by-product",
   "top-debtors",
   "ar-aging",
   "invoice-payments",
