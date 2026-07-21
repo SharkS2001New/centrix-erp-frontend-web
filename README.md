@@ -43,6 +43,7 @@ Login: **admin** / **password** (demo seeder).
 | `NEXT_PUBLIC_REVERB_HOST` | WebSocket host (e.g. `localhost` or your API host) |
 | `NEXT_PUBLIC_REVERB_PORT` | WebSocket port (default `8080` local, `443` HTTPS) |
 | `NEXT_PUBLIC_REVERB_SCHEME` | `http` or `https` |
+| `NEXT_PUBLIC_APP_URL` | Public ERP URL (e.g. `https://erp.example.com`) — used by print-agent installers when the server sees `localhost` behind a proxy |
 
 ### Real-time notifications (optional)
 
@@ -115,6 +116,7 @@ Build and run locally (set your API URL at build time — Next.js bakes `NEXT_PU
 ```bash
 docker build \
   --build-arg NEXT_PUBLIC_API_URL=https://your-api.example.com/api/v1 \
+  --build-arg NEXT_PUBLIC_APP_URL=https://your-erp.example.com \
   --build-arg NEXT_PUBLIC_COMPANY_CODE=DEMO \
   -t centrix-erp-frontend-web .
 docker run --rm -p 3000:3000 centrix-erp-frontend-web

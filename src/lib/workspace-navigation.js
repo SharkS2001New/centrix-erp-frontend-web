@@ -14,6 +14,9 @@ const STORAGE_PREFIX = "pos_erp_workspace_routes";
 
 const SKIP_PATHS = new Set(["/choose-workspace", "/login", "/change-password"]);
 
+/** Backoffice opens on Business summary when the user can view it. */
+export const BACKOFFICE_DEFAULT_LANDING_PATH = "/dashboard";
+
 function storageKey(userId, organizationId) {
   return `${STORAGE_PREFIX}:${String(organizationId ?? "0")}:${String(userId ?? "0")}`;
 }
@@ -99,7 +102,24 @@ export function firstAccessibleRouteInWorkspace(workspaceId, capabilities, ctx) 
   return null;
 }
 
+function resolveBackofficeLandingPath(capabilities, ctx) {
+  if (ctx && canAccessRoute(BACKOFFICE_DEFAULT_LANDING_PATH, ctx)) {
+    return BACKOFFICE_DEFAULT_LANDING_PATH;
+  }
+
+  const firstAccessible = firstAccessibleRouteInWorkspace("backoffice", capabilities, ctx);
+  if (firstAccessible) {
+    return firstAccessible;
+  }
+
+  return workspaceHomePath("backoffice", capabilities);
+}
+
 function resolveWorkspaceFallbackPath(workspaceId, capabilities, ctx) {
+  if (workspaceId === "backoffice") {
+    return resolveBackofficeLandingPath(capabilities, ctx);
+  }
+
   const home = workspaceHomePath(workspaceId, capabilities);
   if (ctx && canAccessRoute(home, ctx)) {
     return home;
@@ -123,6 +143,10 @@ export function recallWorkspaceLandingPath(
   capabilities,
   ctx = null,
 ) {
+  if (workspaceId === "backoffice") {
+    return resolveBackofficeLandingPath(capabilities, ctx);
+  }
+
   if (isTabWorkspaceEnabled(capabilities)) {
     const tabPath = recallWorkspaceTabLandingPath(organizationId, workspaceId);
     if (tabPath && pathBelongsToWorkspace(tabPath, workspaceId)) {

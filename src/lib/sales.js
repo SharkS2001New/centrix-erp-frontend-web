@@ -6,6 +6,7 @@ import { isExternalPosEnabled } from "@/lib/nav-feature-gates";
 import {
   DEFAULT_ORDER_WORKFLOW,
   alignStatusToWorkflow,
+  saleMatchesConfiguredActionStages,
   nextTransitionOptions as workflowNextTransitions,
   pipelineStepIndex as workflowPipelineIndex,
   workflowPipelineSteps,
@@ -81,15 +82,8 @@ export function isMobileChannelSale(sale, capabilities = null) {
  * and the order is from the mobile channel (Mobile Orders page).
  */
 export function orderMatchesActionStages(sale, allowedList, workflow = null, capabilities = null) {
-  if (!sale) return false;
-  const allowed = new Set(allowedList ?? []);
-  const raw = String(sale.status ?? "").toLowerCase();
-  if (allowed.has(raw)) return true;
-  const aligned = String(
-    sale.workflow_status ?? (workflow ? alignStatusToWorkflow(raw, workflow) : raw),
-  ).toLowerCase();
-  if (allowed.has(aligned)) return true;
-  return allowed.has("mobile") && isMobileChannelSale(sale, capabilities);
+  void capabilities;
+  return saleMatchesConfiguredActionStages(sale, allowedList, workflow);
 }
 
 /** Show Edit Order when workflow status is in the tenant's configured edit stages. */

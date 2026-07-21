@@ -127,7 +127,7 @@ describe("order action stage gates", () => {
     ).toBe(false);
   });
 
-  it("allows collect payment on booked orders when payment is unpaid and Unpaid stage is enabled", () => {
+  it("does not allow collect payment on booked orders when only unpaid stages are enabled", () => {
     const caps = {
       module_settings: {
         sales: { collect_payment_statuses: ["unpaid", "pending_payment"] },
@@ -140,16 +140,25 @@ describe("order action stage gates", () => {
       amount_paid: 0,
       can_collect_payment: false,
     };
-    expect(canRecordOrderPayment(bookedUnpaid, null, caps)).toBe(true);
+    expect(canRecordOrderPayment(bookedUnpaid, null, caps)).toBe(false);
 
-    const bookedPartial = {
-      status: "pending",
+    const unpaidStage = {
+      status: "unpaid",
+      payment_status: "unpaid",
+      order_total: 500,
+      amount_paid: 0,
+      can_collect_payment: true,
+    };
+    expect(canRecordOrderPayment(unpaidStage, null, caps)).toBe(true);
+
+    const partialStage = {
+      status: "pending_payment",
       payment_status: "partial",
       order_total: 500,
       amount_paid: 200,
-      can_collect_payment: false,
+      can_collect_payment: true,
     };
-    expect(canRecordOrderPayment(bookedPartial, null, caps)).toBe(true);
+    expect(canRecordOrderPayment(partialStage, null, caps)).toBe(true);
   });
 
   it("allows mobile channel when Mobile pseudo-stage is configured", () => {

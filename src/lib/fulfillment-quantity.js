@@ -1,6 +1,7 @@
 import { fullPackageLabel, smallPackagingLabel } from "@/lib/uom-packaging";
 import {
   baseToDisplayQty,
+  baseToHierarchyCounts,
   displayToBaseQty,
   formatDisplayQty,
   formatMixedStockDisplay,
@@ -55,28 +56,56 @@ export function fulfillmentBaseItemCount(baseQty, line, uomByProductCode) {
   return `${formatDisplayQty(base)} ${smallPackagingLabel(uom)}`;
 }
 
-/** Primary package label for picked-qty input (e.g. "Carton", "jerican"). */
+/**
+ * Whether picked-qty input should use small/base units (pieces) instead of full packages.
+ * Matches the Requested column: loose pieces or mixed packaging use base units so the
+ * picker enters the same numbers they see (e.g. 5 piece, not 0.416 carton).
+ */
+export function fulfillmentPickedUsesSmallUnit(line, uomByProductCode) {
+  const uom = uomForFulfillmentLine(line, uomByProductCode);
+  const base = Number(line?.required_qty ?? 0);
+  if (!uom) return true;
+
+  const factor = uomConversionFactor(uom);
+  if (factor <= 1) return true;
+
+  const counts = baseToHierarchyCounts(base, uom);
+  const hasFull = Number(counts.full ?? 0) > 0.0001;
+  const hasSmall = Number(counts.small ?? 0) > 0.0001;
+
+  if (hasSmall) return true;
+  return !hasFull;
+}
+
+/** Primary package label for picked-qty input (e.g. "Carton", "piece"). */
 export function fulfillmentPickedInputUnit(line, uomByProductCode) {
   const uom = uomForFulfillmentLine(line, uomByProductCode);
   if (!uom) return "units";
-  const factor = Number(uom.conversion_factor ?? 1);
-  if (factor > 1) return fullPackageLabel(uom);
-  return smallPackagingLabel(uom);
+  if (fulfillmentPickedUsesSmallUnit(line, uomByProductCode)) {
+    return smallPackagingLabel(uom);
+  }
+  return fullPackageLabel(uom);
 }
 
-/** Convert stored base qty to the package count shown in the picked input. */
+/** Convert stored base qty to the unit count shown in the picked input. */
 export function fulfillmentPickedDisplayQty(baseQty, line, uomByProductCode) {
   const uom = uomForFulfillmentLine(line, uomByProductCode);
   const base = Number(baseQty ?? 0);
   if (!uom) return base;
+  if (fulfillmentPickedUsesSmallUnit(line, uomByProductCode)) {
+    return base;
+  }
   return baseToDisplayQty(base, uom);
 }
 
-/** Convert picked input (package units) back to stored base qty. */
+/** Convert picked input back to stored base qty. */
 export function fulfillmentPickedBaseQty(displayQty, line, uomByProductCode) {
   const uom = uomForFulfillmentLine(line, uomByProductCode);
   const display = Number(displayQty ?? 0);
   if (!uom) return display;
+  if (fulfillmentPickedUsesSmallUnit(line, uomByProductCode)) {
+    return display;
+  }
   return displayToBaseQty(display, uom);
 }
 

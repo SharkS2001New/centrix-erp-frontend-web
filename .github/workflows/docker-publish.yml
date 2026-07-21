@@ -71,6 +71,7 @@ jobs:
             NEXT_PUBLIC_REVERB_HOST=${{ vars.NEXT_PUBLIC_REVERB_HOST || 'centrixapi.betsassured.com' }}
             NEXT_PUBLIC_REVERB_PORT=${{ vars.NEXT_PUBLIC_REVERB_PORT || '443' }}
             NEXT_PUBLIC_REVERB_SCHEME=${{ vars.NEXT_PUBLIC_REVERB_SCHEME || 'https' }}
+            NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL || '' }}
 
       - name: Check out pitchpredk3ssetup
         if: github.event_name != 'pull_request'

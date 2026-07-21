@@ -1,3 +1,5 @@
+import { resolvePrintAgentPublicOrigin } from "@/lib/print-agent-public-origin";
+
 export const runtime = "nodejs";
 
 function windowsBootstrap(origin) {
@@ -84,7 +86,7 @@ echo "Enable the print agent and click Test print receipt."
 export async function GET(request) {
   const url = new URL(request.url);
   const platform = url.searchParams.get("platform") ?? "windows";
-  const origin = url.origin;
+  const origin = resolvePrintAgentPublicOrigin(request);
 
   if (platform === "mac" || platform === "linux") {
     const body = macBootstrap(origin);

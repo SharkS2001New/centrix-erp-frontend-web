@@ -51,7 +51,15 @@ export async function downloadPrintAgentMsi() {
  */
 export async function downloadPrintAgentInstaller(opts = {}) {
   const platform = opts.platform ?? detectInstallerPlatform();
-  const res = await fetch(`/api/print-agent/bootstrap?platform=${platform}`, {
+  const origin =
+    typeof window !== "undefined" && window.location?.origin
+      ? window.location.origin
+      : "";
+  const searchParams = new URLSearchParams({ platform });
+  if (origin) {
+    searchParams.set("origin", origin);
+  }
+  const res = await fetch(`/api/print-agent/bootstrap?${searchParams.toString()}`, {
     cache: "no-store",
   });
 
