@@ -168,7 +168,7 @@ function StandardReportScreen({ definition }) {
   }
 
   function resetFilters() {
-    const range = defaultReportDateRange();
+    const range = defaultReportDateRange(definition.defaultDateRangeDays ?? 29);
     const nextBranchId = defaultReportBranchId(user, isOrgWide);
     setFromDate(range.from);
     setToDate(range.to);

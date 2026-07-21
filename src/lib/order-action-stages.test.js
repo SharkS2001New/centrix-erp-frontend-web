@@ -53,7 +53,19 @@ describe("order actions by stage (platform config)", () => {
     expect(
       canRecordOrderPayment(sale("pending_payment", "partial", 400), null, PLATFORM_CAPS),
     ).toBe(true);
+    expect(canRecordOrderPayment(sale("processed", "unpaid", 0), null, PLATFORM_CAPS)).toBe(true);
+    expect(canRecordOrderPayment(sale("processed", "partial", 400), null, PLATFORM_CAPS)).toBe(true);
     expect(canRecordOrderPayment(sale("paid", "paid", 1000), null, PLATFORM_CAPS)).toBe(false);
+  });
+
+  it("ignores API can_collect_payment on booked when stages are unpaid/partial only", () => {
+    expect(
+      canRecordOrderPayment(
+        { ...sale("booked", "unpaid", 0), can_collect_payment: true },
+        null,
+        PLATFORM_CAPS,
+      ),
+    ).toBe(false);
   });
 
   it("cancel only on Booked and Pending", () => {

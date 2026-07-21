@@ -1,6 +1,6 @@
 import { defaultDashboardDateRange } from "@/lib/dashboard-dates";
 
-/** Default date window for tabular reports — matches the sales dashboard. */
+/** Default date window for tabular reports — last 30 days ending today. */
 export function defaultReportDateRange(days = 29) {
   return defaultDashboardDateRange(days);
 }

@@ -7,7 +7,14 @@ export function toLocalDateInputValue(date = new Date()) {
   return `${y}-${m}-${day}`;
 }
 
-export function defaultDashboardDateRange(days = 29) {
+/** Business summary / sales analytics default: today only. */
+export function todayDashboardDateRange() {
+  const today = toLocalDateInputValue();
+  return { from: today, to: today };
+}
+
+/** Inclusive window ending today. Pass 0 for today-only. */
+export function defaultDashboardDateRange(days = 0) {
   const to = new Date();
   const from = new Date();
   from.setDate(to.getDate() - days);

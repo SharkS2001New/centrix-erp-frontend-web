@@ -5,7 +5,7 @@ import { apiRequest } from "@/lib/api";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
-import { defaultAccountingDateRange } from "@/lib/accounting-shared";
+import { todayDashboardDateRange } from "@/lib/dashboard-dates";
 import { formatReportKes } from "@/lib/reports/format";
 import {
   ReportFilterBar,
@@ -26,7 +26,7 @@ function initialBranchId(user, isOrgWide) {
 export function ProfitLossReportScreen({ definition }) {
   const { user, capabilities, isOrgWide } = useAuth();
   const multiBranch = isMultiBranchCatalog(capabilities);
-  const defaultRange = useMemo(() => defaultAccountingDateRange(), []);
+  const defaultRange = useMemo(() => todayDashboardDateRange(), []);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -194,7 +194,7 @@ export function ProfitLossReportScreen({ definition }) {
         onFilter={() => setApplied({ fromDate, toDate, branchId })}
         onRefresh={() => void loadReport()}
         onReset={() => {
-          const range = defaultAccountingDateRange();
+          const range = todayDashboardDateRange();
           const bid = initialBranchId(user, isOrgWide);
           setFromDate(range.from);
           setToDate(range.to);

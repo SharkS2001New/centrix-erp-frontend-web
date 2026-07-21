@@ -851,7 +851,7 @@ function OrderActionStagesFields({ salesPlatform, onPatch, mobileOrdersEnabled =
         />
         <ActionStageChecklist
           title="Collect payment"
-          hint="Web. At least one stage; balance must be outstanding."
+          hint="Web. At least one stage; balance must be outstanding. Checking Unpaid / Partially paid also covers double-status orders on those pages (e.g. Processed + Unpaid) and when the order is opened."
           options={actionStatusOptions}
           selected={collectStatuses}
           onToggle={(status, checked) =>

@@ -345,7 +345,9 @@ export function workflowPipelineSteps(workflow) {
     );
   }
   return dedupePipelineSteps(
-    DEFAULT_ORDER_WORKFLOW.steps.map((s) => ({ key: s.status, label: s.label })),
+    DEFAULT_ORDER_WORKFLOW.steps
+      .filter((s) => s.enabled !== false)
+      .map((s) => ({ key: s.status, label: s.label })),
   );
 }
 
@@ -1029,12 +1031,26 @@ export function isCustomerReturnAllowedForOrder(sale, capabilities = null) {
   return saleMatchesConfiguredActionStages(sale, allowed);
 }
 
+/** Early workflow stages — Collect payment is never offered here via payment_status alone. */
+const COLLECT_PAYMENT_EARLY_STATUSES = new Set([
+  "booked",
+  "pending",
+  "pending_approval",
+  "editable",
+]);
+
 /** Whether payment can be recorded (outstanding balance on an allowed workflow stage). */
 export function canRecordOrderPayment(sale, totalPaid = null, capabilities = null) {
   if (!sale) return false;
 
   const workflowStatus = String(sale.status ?? "").toLowerCase();
-  if (workflowStatus === "cancelled" || workflowStatus === "expired" || workflowStatus === "completed") {
+  if (
+    workflowStatus === "cancelled"
+    || workflowStatus === "expired"
+    || workflowStatus === "completed"
+    || workflowStatus === "draft"
+    || workflowStatus === "held"
+  ) {
     return false;
   }
 
@@ -1046,18 +1062,35 @@ export function canRecordOrderPayment(sale, totalPaid = null, capabilities = nul
     return false;
   }
 
+  // Direct match on configured collect stages (typically unpaid / pending_payment).
+  if (isCollectPaymentStageAllowed(sale, capabilities)) {
+    return true;
+  }
+
+  // Booked / Pending / approval queues do not collect via payment_status alone.
+  if (COLLECT_PAYMENT_EARLY_STATUSES.has(workflowStatus)) {
+    return false;
+  }
+
+  // Processed / Delivered with outstanding unpaid or partial payment.
+  if (FULFILLMENT_STATUSES_WITH_PAYMENT_BADGE.has(workflowStatus)) {
+    const mappedStage = paymentStatus === "partial" ? "pending_payment" : "unpaid";
+    const allowed = resolveCollectPaymentStatuses(salesSettingsFromCapabilities(capabilities));
+    if (allowed.includes(mappedStage) || allowed.includes(workflowStatus)) {
+      return true;
+    }
+  }
+
   if (typeof sale.can_collect_payment === "boolean") {
     return sale.can_collect_payment;
   }
 
-  return isCollectPaymentStageAllowed(sale, capabilities);
+  return false;
 }
 
-/** Whether payment can be collected on this order list (stage config + outstanding balance). */
+/** Whether payment can be collected on this order list — Unpaid / Partially paid pages only. */
 export function canCollectPaymentOnQueue(sale, queueSlug, totalPaid = null, capabilities = null) {
-  // queueSlug kept for callers; actions follow Order actions by stage on every list
-  // (Booked, Mobile, Editable, Unpaid, View all, …), not a specific queue only.
-  void queueSlug;
+  if (!isPaymentCollectionQueueSlug(queueSlug)) return false;
   return canRecordOrderPayment(sale, totalPaid, capabilities);
 }
 

@@ -12,11 +12,13 @@ export const REPORTS_WITHOUT_DATE_FILTER = new Set([
   "hr-dashboard-kpi",
 ]);
 
-/** Default inclusive window length (days ending today) per report. */
+/** Default inclusive window length (days ending today) per report. Use 0 for today only. */
 export const REPORT_DEFAULT_DATE_RANGE_DAYS = {
   "ar-aging": 6,
   "top-debtors": 6,
   "accounts-receivable": 6,
+  "profit-loss": 0,
+  "profit-loss-by-product": 0,
 };
 
 /** Send from_date/to_date but omit date_column (backend applies custom date logic). */

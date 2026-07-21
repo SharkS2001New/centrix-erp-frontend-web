@@ -475,12 +475,13 @@ export const REPORT_DEFINITIONS = {
     section: "Finance",
     apiPath: "/reports/profit-loss-by-product",
     showDateRange: true,
+    defaultDateRangeDays: 0,
     columns: [
       { key: "product_name", label: "Product", accessor: (r) => r.product_name, link: "product" },
       {
         key: "qty_sold",
         label: "Qty Sold",
-        accessor: (r) => formatReportQuantity(r.qty_sold, r, "qty_sold"),
+        accessor: (r) => r.qty_sold_label || formatReportQuantity(r.qty_sold, r, "qty_sold"),
         align: "right",
         total: true,
       },
@@ -536,6 +537,7 @@ export const REPORT_DEFINITIONS = {
     apiPath: "/reports/profit-loss",
     dateColumn: "period",
     showDateRange: true,
+    defaultDateRangeDays: 0,
     variant: "profit-loss",
   },
 

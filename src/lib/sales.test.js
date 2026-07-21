@@ -7,6 +7,7 @@ import {
 } from "@/lib/sales";
 import {
   canRecordOrderPayment,
+  canCollectPaymentOnQueue,
   canCancelOrder,
   isPrintInvoiceVisible,
   orderActionStageOptionsFromWorkflow,
@@ -138,7 +139,7 @@ describe("order action stage gates", () => {
       payment_status: "unpaid",
       order_total: 500,
       amount_paid: 0,
-      can_collect_payment: false,
+      can_collect_payment: true,
     };
     expect(canRecordOrderPayment(bookedUnpaid, null, caps)).toBe(false);
 
@@ -159,6 +160,40 @@ describe("order action stage gates", () => {
       can_collect_payment: true,
     };
     expect(canRecordOrderPayment(partialStage, null, caps)).toBe(true);
+
+    const processedUnpaid = {
+      status: "processed",
+      payment_status: "unpaid",
+      order_total: 500,
+      amount_paid: 0,
+    };
+    expect(canRecordOrderPayment(processedUnpaid, null, caps)).toBe(true);
+  });
+
+  it("shows collect payment only on unpaid and partially paid queue pages", () => {
+    const caps = {
+      module_settings: {
+        sales: { collect_payment_statuses: ["unpaid", "pending_payment"] },
+      },
+    };
+    const unpaidSale = {
+      status: "unpaid",
+      payment_status: "unpaid",
+      order_total: 500,
+      amount_paid: 0,
+    };
+    const processedUnpaid = {
+      status: "processed",
+      payment_status: "unpaid",
+      order_total: 500,
+      amount_paid: 0,
+    };
+
+    expect(canCollectPaymentOnQueue(unpaidSale, "booked", null, caps)).toBe(false);
+    expect(canCollectPaymentOnQueue(unpaidSale, "all", null, caps)).toBe(false);
+    expect(canCollectPaymentOnQueue(unpaidSale, "unpaid", null, caps)).toBe(true);
+    expect(canCollectPaymentOnQueue(processedUnpaid, "unpaid", null, caps)).toBe(true);
+    expect(canCollectPaymentOnQueue(processedUnpaid, "pending_payment", null, caps)).toBe(true);
   });
 
   it("allows mobile channel when Mobile pseudo-stage is configured", () => {
