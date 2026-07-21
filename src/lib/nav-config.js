@@ -580,13 +580,6 @@ const NAV_SECTION_DEFINITIONS = [
         permission: P.accounting.export_queue.view,
         group: "Setup",
       },
-      {
-        href: "/accounting/settings",
-        label: "Accounting settings",
-        module: "accounting",
-        permission: P.accounting.settings.view,
-        group: "Setup",
-      },
     ],
   },
   {

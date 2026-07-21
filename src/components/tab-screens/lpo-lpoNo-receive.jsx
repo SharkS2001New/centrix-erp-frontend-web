@@ -9,23 +9,28 @@ import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
-import { formatShortDate } from "@/components/catalog/catalog-shared";
+import { formatShortDate, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   ReadonlyHierarchyQty,
   StockTakeCountInputs,
 } from "@/components/inventory/stock-take-count-inputs";
 import {
   applyLpoReceiveCountUpdate,
+  buildInitialLineUnitCosts,
   buildInitialReceiveCounts,
   fillReceiveCountsForLines,
   formatLinePackQty,
   lpoLineCanReceive,
   lpoLineOpenRemainingBase,
+  lpoReceiveSessionTotal,
+  lpoSessionLineAmount,
   lpoSessionOfferBase,
-  lpoSessionReceiveMoney,
   packQtyFromReceiveBase,
   receiveBaseForLine,
+  resolveLineUnitCost,
 } from "@/components/inventory/lpo-receive-stock";
+import { LpoReceiveSessionFooter } from "@/components/inventory/lpo-receive-session-footer";
+import { LpoSupplierInvoicePicker } from "@/components/inventory/lpo-supplier-invoice-picker";
 import { useInventoryCatalogMaps } from "@/components/inventory/inventory-product-lines";
 import { formatQty } from "@/components/inventory/inventory-shared";
 import {
@@ -38,8 +43,6 @@ import {
   lpoOrderDate,
 } from "@/components/lpo/lpo-shared";
 import { SupplierInvoiceModal } from "@/components/lpo/supplier-invoice-modal";
-import { lpoSupplierInvoiceFilePath } from "@/components/lpo/lpo-supplier-invoice-doc";
-import { ProtectedFileLink } from "@/components/media/protected-file-preview";
 import { baseToDisplayQty } from "@/lib/stock-uom";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { LpoReceivedQtyCell } from "@/components/lpo/lpo-received-qty";
@@ -62,6 +65,7 @@ export function LpoLpoNoReceiveScreen() {
   const [data, setData] = useState(null);
   const [uoms, setUoms] = useState([]);
   const [receiveCounts, setReceiveCounts] = useState({});
+  const [lineUnitCosts, setLineUnitCosts] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [postedGrn, setPostedGrn] = useState(null);
@@ -71,8 +75,8 @@ export function LpoLpoNoReceiveScreen() {
   const { uomById } = useInventoryCatalogMaps(uoms);
 
   const draftValue = useMemo(
-    () => ({ receiveCounts, selectedInvoiceId }),
-    [receiveCounts, selectedInvoiceId],
+    () => ({ receiveCounts, lineUnitCosts, selectedInvoiceId }),
+    [receiveCounts, lineUnitCosts, selectedInvoiceId],
   );
   const draftValueRef = useRef(draftValue);
   useEffect(() => {
@@ -84,6 +88,9 @@ export function LpoLpoNoReceiveScreen() {
     if (!value || typeof value !== "object") return;
     if (value.receiveCounts && typeof value.receiveCounts === "object") {
       setReceiveCounts(value.receiveCounts);
+    }
+    if (value.lineUnitCosts && typeof value.lineUnitCosts === "object") {
+      setLineUnitCosts(value.lineUnitCosts);
     }
     if (value.selectedInvoiceId != null) {
       setSelectedInvoiceId(String(value.selectedInvoiceId));
@@ -152,6 +159,7 @@ export function LpoLpoNoReceiveScreen() {
       const uomList = uomsData ?? [];
       setUoms(uomList);
       setData(res);
+      setLineUnitCosts(buildInitialLineUnitCosts(res.lines));
       const uomMap = new Map(uomList.map((u) => [u.id, u]));
       setReceiveCounts((prev) => {
         const initial = buildInitialReceiveCounts(res.lines, uomMap, 0);
@@ -218,6 +226,7 @@ export function LpoLpoNoReceiveScreen() {
         const uom = line.unit_id ? uomById.get(line.unit_id) : null;
         const lineKey = String(line.id);
         const receiveBase = receiveBaseForLine(lineKey, uom, receiveCounts);
+        const unitCost = resolveLineUnitCost(line, lineUnitCosts);
         await apiRequest("/inventory/receive", {
           method: "POST",
           body: {
@@ -226,7 +235,7 @@ export function LpoLpoNoReceiveScreen() {
             units_received: receiveBase,
             pack_qty: packQtyFromReceiveBase(receiveBase, uom),
             stock_location: "store",
-            cost_price: line.cost_price,
+            cost_price: unitCost,
             invoice_number: supplierInvoiceNumber,
             lpo_no: Number(lpoNo),
             lpo_txn_id: line.id,
@@ -239,6 +248,7 @@ export function LpoLpoNoReceiveScreen() {
         stockLocation: "store",
         receivedBy: user?.full_name ?? user?.username ?? null,
         priorReceivedByLineId,
+        unitCostByLineId: lineUnitCosts,
       });
       setPostedGrn(grn);
       notifySuccess("Stock receipt posted. Print the goods received note for your records.");
@@ -246,6 +256,7 @@ export function LpoLpoNoReceiveScreen() {
       await load();
       if (!partial) {
         setReceiveCounts(buildInitialReceiveCounts(data?.lines, uomById, 0));
+        setLineUnitCosts(buildInitialLineUnitCosts(data?.lines));
       }
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : err.message ?? "Receipt failed");
@@ -273,6 +284,17 @@ export function LpoLpoNoReceiveScreen() {
   const lpo = data?.lpo;
   const lines = data?.lines ?? [];
   const orderDate = lpo ? lpoOrderDate(lpo) : null;
+  const selectedSupplierInvoice = supplierInvoices.find(
+    (inv) => String(inv.id) === String(selectedInvoiceId),
+  );
+  const sessionTotal = useMemo(
+    () => lpoReceiveSessionTotal(lines, uomById, receiveCounts, lineUnitCosts),
+    [lines, uomById, receiveCounts, lineUnitCosts],
+  );
+
+  function setLineUnitCost(lineId, value) {
+    setLineUnitCosts((prev) => ({ ...prev, [String(lineId)]: value }));
+  }
 
   return (
     <div className="theme-workspace min-h-full">
@@ -363,49 +385,11 @@ export function LpoLpoNoReceiveScreen() {
                 receipt.
               </p>
             ) : (
-              <div className="space-y-2">
-                {supplierInvoices.map((inv) => {
-                  const selected = String(selectedInvoiceId) === String(inv.id);
-                  return (
-                    <label
-                      key={inv.id}
-                      className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 ${
-                        selected
-                          ? "border-[var(--theme-primary)] bg-[var(--theme-primary-muted)]"
-                          : "border-slate-200 bg-slate-50"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="lpo_supplier_invoice"
-                        className="mt-1"
-                        checked={selected}
-                        onChange={() => setSelectedInvoiceId(String(inv.id))}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-medium text-slate-900">
-                          {inv.supplier_invoice_number}
-                        </span>
-                        <span className="block text-xs text-slate-500">
-                          {inv.invoice_date ? `Dated ${inv.invoice_date}` : "No invoice date"}
-                        </span>
-                        {inv.has_document ? (
-                          <ProtectedFileLink
-                            filePath={lpoSupplierInvoiceFilePath(inv.id)}
-                            className="mt-1 inline-block text-xs font-medium text-[var(--theme-primary)] hover:underline"
-                          >
-                            View document
-                          </ProtectedFileLink>
-                        ) : (
-                          <span className="mt-1 block text-xs text-amber-700">
-                            Document missing — re-attach recommended
-                          </span>
-                        )}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
+              <LpoSupplierInvoicePicker
+                invoices={supplierInvoices}
+                selectedInvoiceId={selectedInvoiceId}
+                onSelect={(id) => setSelectedInvoiceId(String(id))}
+              />
             )}
           </section>
 
@@ -444,8 +428,8 @@ export function LpoLpoNoReceiveScreen() {
                     <th className="py-2.5 pr-1 text-right">Already received</th>
                     <th className="py-2.5 pr-3 text-right">Remaining</th>
                     <th className="py-2.5 pr-3 text-right">Receiving now</th>
-                    <th className="py-2.5 pr-3 text-right">Total amount</th>
                     <th className="py-2.5 pr-3 text-right">Cost per unit</th>
+                    <th className="py-2.5 pr-3 text-right">Total amount</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -468,11 +452,14 @@ export function LpoLpoNoReceiveScreen() {
                       lineUom,
                       receiveCounts,
                     );
-                    const money = lpoSessionReceiveMoney(
+                    const unitCost = resolveLineUnitCost(line, lineUnitCosts);
+                    const lineAmount = lpoSessionLineAmount(
                       line,
                       lineUom,
                       receiveCounts,
+                      unitCost,
                     );
+                    const poUnitCost = Number(line.cost_price ?? 0);
                     const packLabel =
                       line.package_name ||
                       line.packaging_label ||
@@ -537,21 +524,27 @@ export function LpoLpoNoReceiveScreen() {
                             <span className="block text-right text-slate-400">—</span>
                           )}
                         </td>
-                        <td className="py-3 pr-3 text-right align-top tabular-nums font-medium text-slate-900">
-                          {formatLpoKes(money.amount)}
-                        </td>
                         <td className="py-3 pr-3 text-right align-top tabular-nums">
-                          <div>
-                            <p className="font-medium text-slate-900">
-                              {formatLpoKes(money.unitCost)}
-                            </p>
+                          <div className="inline-flex flex-col items-end gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              className={`${inputClassName()} w-32 text-right`}
+                              value={lineUnitCosts[lineKey] ?? ""}
+                              onChange={(e) => setLineUnitCost(lineKey, e.target.value)}
+                              disabled={!canReceive}
+                            />
                             <p className="text-xs text-slate-500">per {packLabel}</p>
-                            {money.showOriginal ? (
-                              <p className="mt-1 text-xs font-medium text-amber-700">
-                                Original {formatLpoKes(money.originalCost)}
+                            {poUnitCost > 0 && Math.abs(unitCost - poUnitCost) > 0.00005 ? (
+                              <p className="text-xs font-medium text-slate-500">
+                                PO {formatLpoKes(poUnitCost)}
                               </p>
                             ) : null}
                           </div>
+                        </td>
+                        <td className="py-3 pr-3 text-right align-top tabular-nums font-medium text-slate-900">
+                          {formatLpoKes(lineAmount)}
                         </td>
                       </tr>
                     );
@@ -559,6 +552,10 @@ export function LpoLpoNoReceiveScreen() {
                 </tbody>
               </table>
             </div>
+            <LpoReceiveSessionFooter
+              sessionTotal={sessionTotal}
+              supplierInvoice={selectedSupplierInvoice}
+            />
           </section>
 
           {postedGrn ? (

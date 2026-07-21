@@ -176,8 +176,8 @@ export const ACCOUNTING_WORKFLOW_SCREENS = [
   {
     id: "settings",
     screen: "Accounting settings",
-    path: "/accounting/settings",
-    description: "Auto-post toggles and default account codes.",
+    path: "/platform",
+    description: "Auto-post toggles and default account codes — platform administrators configure these per organization.",
     step: 3,
     part: "setup",
   },

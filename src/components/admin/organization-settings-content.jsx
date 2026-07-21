@@ -17,6 +17,7 @@ import { SecuritySettingsPanel } from "@/components/admin/security-settings-pane
 import { LegacyArchiveSettingsPanel } from "@/components/admin/legacy-archive-settings-panel";
 import { SalesSettingsPanel } from "@/components/admin/sales-settings-panel";
 import { ManagerApprovalsSettingsPanel } from "@/components/admin/manager-approvals-settings-panel";
+import { PlatformAccountingSettingsPanel } from "@/components/admin/platform-accounting-settings-panel";
 import { RbacHelpDialog } from "@/components/admin/rbac-help";
 import { visibleOrgSettingsTabs } from "@/lib/org-settings-tabs";
 import { ORG_SETTINGS_PLATFORM_MESSAGE, TENANT_ORG_SETTINGS_SUBTITLE } from "@/lib/org-settings-access";
@@ -35,6 +36,7 @@ const TABS = [
   { id: "inventory", label: "Inventory" },
   { id: "procurement", label: "Procurement" },
   { id: "finance", label: "Finance" },
+  { id: "accounting", label: "Accounting" },
   { id: "ai", label: "AI" },
   { id: "whatsapp", label: "WhatsApp" },
   { id: "hr", label: "HR & Payroll" },
@@ -53,7 +55,7 @@ export function OrganizationSettingsContent({
   title = "Organization settings",
   subtitle = tenantSelfService
     ? TENANT_ORG_SETTINGS_SUBTITLE
-    : "Platform configuration for module provisioning, workflows, integration gates, and legacy archive. Tenants manage day-to-day module preferences under Administration → Organization settings.",
+    : "Platform configuration for module provisioning, workflows, accounting books setup, integration gates, and legacy archive. Tenants manage day-to-day module preferences under Administration → Organization settings.",
 }) {
   const [tab, setTab] = useState("general");
   const [saving, setSaving] = useState(false);
@@ -134,6 +136,7 @@ export function OrganizationSettingsContent({
           {tab === "inventory" ? <InventorySettingsPanel {...panelProps} /> : null}
           {tab === "procurement" ? <ProcurementSettingsPanel {...panelProps} /> : null}
           {tab === "finance" ? <FinanceSettingsPanel {...panelProps} /> : null}
+          {tab === "accounting" ? <PlatformAccountingSettingsPanel {...panelProps} /> : null}
           {tab === "ai" ? <AiSettingsPanel {...panelProps} /> : null}
           {tab === "whatsapp" ? <WhatsappSettingsPanel {...panelProps} /> : null}
           {tab === "hr" ? <HrSettingsPanel {...panelProps} /> : null}

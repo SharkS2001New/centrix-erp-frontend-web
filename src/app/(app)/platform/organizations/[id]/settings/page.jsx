@@ -67,8 +67,8 @@ export default function PlatformOrganizationSettingsPage() {
           <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-800">
             <p className="font-medium">Platform-managed organization settings</p>
             <p className="mt-1 text-xs text-slate-600">
-              Module provisioning, checkout flow, mobile orders, order pipeline, M-Pesa/KRA/AI feature toggles,
-              and legacy archive are maintained here. Tab workspace is configured on Tenant profile. Tenants manage
+              Module provisioning, checkout flow, mobile orders, order pipeline, accounting books setup,
+              M-Pesa/KRA/AI feature toggles, and legacy archive are maintained here. Tab workspace is configured on Tenant profile. Tenants manage
               day-to-day module preferences under Administration → Organization settings.
             </p>
             <Link

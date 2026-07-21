@@ -236,6 +236,7 @@ export function kraDeviceHealthPayloadFromForm(form) {
 
 export function financePayloadFromForm(form, options = {}) {
   const includeMpesa = options.includeMpesa !== false;
+  const includeAccounting = options.includeAccounting !== false;
   const mpesa = { ...form.mpesa };
   if (mpesa.consumer_secret === "********") delete mpesa.consumer_secret;
   if (mpesa.passkey === "********") delete mpesa.passkey;
@@ -269,6 +270,13 @@ export function financePayloadFromForm(form, options = {}) {
       ...(quickbooks.client_secret ? { client_secret: quickbooks.client_secret.trim() } : {}),
     },
   };
+
+  if (!includeAccounting) {
+    delete payload.accounting_mode;
+    delete payload.accounting_provider;
+    delete payload.accounting_sync_direction;
+    delete payload.quickbooks;
+  }
 
   if (kraPin && kraPin !== "********") {
     payload.kra_pin_number = kraPin;

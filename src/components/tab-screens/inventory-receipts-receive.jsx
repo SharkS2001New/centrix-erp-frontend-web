@@ -15,8 +15,6 @@ import {
   lpoRowDisplayNumber,
 } from "@/components/lpo/lpo-shared";
 import { SupplierInvoiceModal } from "@/components/lpo/supplier-invoice-modal";
-import { lpoSupplierInvoiceFilePath } from "@/components/lpo/lpo-supplier-invoice-doc";
-import { ProtectedFileLink } from "@/components/media/protected-file-preview";
 import {
   InventoryProductLines,
   useInventoryCatalogMaps,
@@ -28,17 +26,22 @@ import {
 } from "@/components/inventory/stock-take-count-inputs";
 import {
   applyLpoReceiveCountUpdate,
+  buildInitialLineUnitCosts,
   buildInitialReceiveCounts,
   fillReceiveCountsForLines,
   formatLinePackQty,
   lpoLineCanReceive,
   lpoLineOpenRemainingBase,
+  lpoReceiveSessionTotal,
+  lpoSessionLineAmount,
   lpoSessionOfferBase,
-  lpoSessionReceiveMoney,
   packQtyFromReceiveBase,
   receiveBaseForLine,
+  resolveLineUnitCost,
   uomForManualReceiveLine,
 } from "@/components/inventory/lpo-receive-stock";
+import { LpoReceiveSessionFooter } from "@/components/inventory/lpo-receive-session-footer";
+import { LpoSupplierInvoicePicker } from "@/components/inventory/lpo-supplier-invoice-picker";
 import { formatQty, InventoryPageShell } from "@/components/inventory/inventory-shared";
 import { LpoReceivedQtyCell } from "@/components/lpo/lpo-received-qty";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
@@ -75,6 +78,7 @@ export function InventoryReceiptsReceiveScreen() {
   const [lpoOptions, setLpoOptions] = useState([]);
   const [lpoData, setLpoData] = useState(null);
   const [receiveCounts, setReceiveCounts] = useState({});
+  const [lineUnitCosts, setLineUnitCosts] = useState({});
   const [manualLines, setManualLines] = useState([]);
   const [form, setForm] = useState({ ...EMPTY_RECEIVE_FORM });
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
@@ -84,8 +88,8 @@ export function InventoryReceiptsReceiveScreen() {
   const [prefillDone, setPrefillDone] = useState(false);
 
   const draftValue = useMemo(
-    () => ({ mode, form, receiveCounts, manualLines, selectedInvoiceId }),
-    [mode, form, receiveCounts, manualLines, selectedInvoiceId],
+    () => ({ mode, form, receiveCounts, lineUnitCosts, manualLines, selectedInvoiceId }),
+    [mode, form, receiveCounts, lineUnitCosts, manualLines, selectedInvoiceId],
   );
   const draftValueRef = useRef(draftValue);
   useEffect(() => {
@@ -100,6 +104,9 @@ export function InventoryReceiptsReceiveScreen() {
     if (value.receiveCounts && typeof value.receiveCounts === "object") {
       setReceiveCounts(value.receiveCounts);
     }
+    if (value.lineUnitCosts && typeof value.lineUnitCosts === "object") {
+      setLineUnitCosts(value.lineUnitCosts);
+    }
     if (Array.isArray(value.manualLines)) setManualLines(value.manualLines);
     if (value.selectedInvoiceId != null) setSelectedInvoiceId(String(value.selectedInvoiceId));
   }, []);
@@ -110,8 +117,9 @@ export function InventoryReceiptsReceiveScreen() {
       (key) => String(value.form?.[key] ?? "") === String(EMPTY_RECEIVE_FORM[key]),
     );
     const emptyCounts = !value.receiveCounts || Object.keys(value.receiveCounts).length === 0;
+    const emptyCosts = !value.lineUnitCosts || Object.keys(value.lineUnitCosts).length === 0;
     const emptyManual = !value.manualLines?.length;
-    return (value.mode ?? "lpo") === "lpo" && emptyForm && emptyCounts && emptyManual;
+    return (value.mode ?? "lpo") === "lpo" && emptyForm && emptyCounts && emptyCosts && emptyManual;
   }, []);
 
   const { clearDraft } = useFormDraft({
@@ -228,6 +236,7 @@ export function InventoryReceiptsReceiveScreen() {
       if (!lpoNo) {
         setLpoData(null);
         setReceiveCounts({});
+        setLineUnitCosts({});
         setSelectedInvoiceId("");
         return;
       }
@@ -235,6 +244,7 @@ export function InventoryReceiptsReceiveScreen() {
       try {
         const res = await apiRequest(`/lpo-mst/${lpoNo}/summary`);
         setLpoData(res);
+        setLineUnitCosts(buildInitialLineUnitCosts(res.lines));
         setReceiveCounts((prev) => {
           const initial = buildInitialReceiveCounts(res.lines, uomById, 0);
           const hasDrafted = Object.keys(prev || {}).some((key) => {
@@ -323,6 +333,7 @@ export function InventoryReceiptsReceiveScreen() {
       for (const line of toPost) {
         const uom = line.unit_id ? uomById.get(line.unit_id) : null;
         const receiveBase = receiveBaseForLine(String(line.id), uom, receiveCounts);
+        const unitCost = resolveLineUnitCost(line, lineUnitCosts);
         await apiRequest("/inventory/receive", {
           method: "POST",
           body: {
@@ -331,7 +342,7 @@ export function InventoryReceiptsReceiveScreen() {
             units_received: receiveBase,
             pack_qty: packQtyFromReceiveBase(receiveBase, uom),
             stock_location: form.stock_location,
-            cost_price: line.cost_price,
+            cost_price: unitCost,
             invoice_number: receiptRef,
             lpo_no: Number(form.lpo_no),
             lpo_txn_id: line.id,
@@ -390,6 +401,17 @@ export function InventoryReceiptsReceiveScreen() {
   }
 
   const lpoLines = lpoData?.lines ?? [];
+  const selectedSupplierInvoice = supplierInvoices.find(
+    (inv) => String(inv.id) === String(selectedInvoiceId),
+  );
+  const sessionTotal = useMemo(
+    () => lpoReceiveSessionTotal(lpoLines, uomById, receiveCounts, lineUnitCosts),
+    [lpoLines, uomById, receiveCounts, lineUnitCosts],
+  );
+
+  function setLineUnitCost(lineId, value) {
+    setLineUnitCosts((prev) => ({ ...prev, [String(lineId)]: value }));
+  }
 
   return (
     <InventoryPageShell
@@ -505,49 +527,11 @@ export function InventoryReceiptsReceiveScreen() {
                     completing the receipt.
                   </p>
                 ) : (
-                  <div className="space-y-2">
-                    {supplierInvoices.map((inv) => {
-                      const selected = String(selectedInvoiceId) === String(inv.id);
-                      return (
-                        <label
-                          key={inv.id}
-                          className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 ${
-                            selected
-                              ? "border-[var(--theme-primary)] bg-white"
-                              : "border-slate-200 bg-white"
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="supplier_invoice"
-                            className="mt-1"
-                            checked={selected}
-                            onChange={() => applyInvoiceSelection(inv.id, supplierInvoices)}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block font-medium text-slate-900">
-                              {inv.supplier_invoice_number}
-                            </span>
-                            <span className="block text-xs text-slate-500">
-                              {inv.invoice_date ? `Dated ${inv.invoice_date}` : "No invoice date"}
-                            </span>
-                            {inv.has_document ? (
-                              <ProtectedFileLink
-                                filePath={lpoSupplierInvoiceFilePath(inv.id)}
-                                className="mt-1 inline-block text-xs font-medium text-[var(--theme-primary)] hover:underline"
-                              >
-                                View document
-                              </ProtectedFileLink>
-                            ) : (
-                              <span className="mt-1 block text-xs text-amber-700">
-                                Document missing — re-attach recommended
-                              </span>
-                            )}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  <LpoSupplierInvoicePicker
+                    invoices={supplierInvoices}
+                    selectedInvoiceId={selectedInvoiceId}
+                    onSelect={(id) => applyInvoiceSelection(id, supplierInvoices)}
+                  />
                 )}
               </section>
             ) : null}
@@ -574,8 +558,8 @@ export function InventoryReceiptsReceiveScreen() {
                         <th className="px-3 py-2 font-medium text-right">Received</th>
                         <th className="px-3 py-2 font-medium text-right">Remaining</th>
                         <th className="px-3 py-2 font-medium text-right">Receiving now</th>
-                        <th className="px-3 py-2 font-medium text-right">Total amount</th>
                         <th className="px-3 py-2 font-medium text-right">Cost per unit</th>
+                        <th className="px-3 py-2 font-medium text-right">Total amount</th>
                         <th className="px-3 py-2 font-medium">Status</th>
                       </tr>
                     </thead>
@@ -607,11 +591,14 @@ export function InventoryReceiptsReceiveScreen() {
                           line.packaging_label ||
                           lineUom?.package_name ||
                           "pack";
-                        const money = lpoSessionReceiveMoney(
+                        const unitCost = resolveLineUnitCost(line, lineUnitCosts);
+                        const lineAmount = lpoSessionLineAmount(
                           line,
                           lineUom,
                           receiveCounts,
+                          unitCost,
                         );
+                        const poUnitCost = Number(line.cost_price ?? 0);
                         return (
                           <tr key={line.id} className="border-b border-slate-100">
                             <td className="px-3 py-2.5">
@@ -664,21 +651,28 @@ export function InventoryReceiptsReceiveScreen() {
                                 <span className="block text-right text-slate-400">—</span>
                               )}
                             </td>
-                            <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-900">
-                              {formatLpoKes(money.amount)}
-                            </td>
-                            <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">
-                              <div>
-                                <p className="font-medium text-slate-900">
-                                  {formatLpoKes(money.unitCost)}
-                                </p>
+                            <td className="px-3 py-2.5 text-right align-top tabular-nums">
+                              <div className="inline-flex flex-col items-end gap-1">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  className={`${inputClassName()} w-28 text-right`}
+                                  value={lineUnitCosts[lineKey] ?? ""}
+                                  onChange={(e) => setLineUnitCost(lineKey, e.target.value)}
+                                  disabled={!canReceive}
+                                />
                                 <p className="text-[11px] text-slate-500">per {packLabel}</p>
-                                {money.showOriginal ? (
-                                  <p className="mt-1 text-[11px] font-medium text-amber-700">
-                                    Original price {formatLpoKes(money.originalCost)}
+                                {poUnitCost > 0 &&
+                                Math.abs(unitCost - poUnitCost) > 0.00005 ? (
+                                  <p className="text-[11px] font-medium text-slate-500">
+                                    PO {formatLpoKes(poUnitCost)}
                                   </p>
                                 ) : null}
                               </div>
+                            </td>
+                            <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-900">
+                              {formatLpoKes(lineAmount)}
                             </td>
                             <td className="px-3 py-2.5">
                               <span
@@ -699,6 +693,10 @@ export function InventoryReceiptsReceiveScreen() {
                     </tbody>
                   </table>
                 </div>
+                <LpoReceiveSessionFooter
+                  sessionTotal={sessionTotal}
+                  supplierInvoice={selectedSupplierInvoice}
+                />
               </div>
             ) : form.lpo_no ? (
               <p className="text-sm text-slate-500">No open lines on this purchase order.</p>

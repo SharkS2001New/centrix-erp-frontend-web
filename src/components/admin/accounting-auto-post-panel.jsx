@@ -10,6 +10,7 @@ import {
 } from "@/lib/accounting-settings";
 import { isProductionApp } from "@/lib/app-environment";
 import { PrimaryButton } from "@/components/catalog/catalog-shared";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 
 function Toggle({ checked, onChange, label, description }) {
   return (
@@ -32,6 +33,7 @@ export function AccountingAutoPostPanel({
   hideSaveButton = false,
   onFormChange,
 }) {
+  const { organizationApiPath } = useSettingsApi();
   const [form, setForm] = useState(accountingSettingsFromApi({}));
   const [loading, setLoading] = useState(true);
   const [canManage, setCanManage] = useState(true);
@@ -51,7 +53,7 @@ export function AccountingAutoPostPanel({
     setLoading(true);
     setError(null);
     try {
-      const res = await apiRequest("/accounting/settings");
+      const res = await apiRequest(organizationApiPath("/accounting/settings"));
       const next = accountingSettingsFromApi(res);
       setForm(next);
       onFormChange?.(next);
@@ -64,7 +66,7 @@ export function AccountingAutoPostPanel({
     } finally {
       setLoading(false);
     }
-  }, [setError, onFormChange]);
+  }, [organizationApiPath, setError, onFormChange]);
 
   useEffect(() => {
     load();
@@ -75,7 +77,7 @@ export function AccountingAutoPostPanel({
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest("/accounting/settings", {
+      const res = await apiRequest(organizationApiPath("/accounting/settings"), {
         method: "PATCH",
         body: accountingSettingsPayload(form),
       });
@@ -94,7 +96,7 @@ export function AccountingAutoPostPanel({
     setError(null);
     setMessage(null);
     try {
-      await apiRequest("/accounting/seed-chart-of-accounts", { method: "POST" });
+      await apiRequest(organizationApiPath("/accounting/seed-chart-of-accounts"), { method: "POST" });
       setForm((f) => {
         const next = { ...f, chart_seeded: true };
         onFormChange?.(next);

@@ -9,25 +9,58 @@ import {
   accountingSettingsPayload,
 } from "@/lib/accounting-settings";
 import { Field, PrimaryButton, inputClassName } from "@/components/catalog/catalog-shared";
+import { useSettingsApi } from "@/contexts/settings-api-context";
 
-export function AccountCodesPanel({ saving, setSaving, setError, setMessage }) {
-  const [form, setForm] = useState(accountingSettingsFromApi({}));
-  const [loading, setLoading] = useState(true);
+export function AccountCodesPanel({
+  saving,
+  setSaving,
+  setError,
+  setMessage,
+  form: controlledForm,
+  onFormChange,
+  hideSaveButton = false,
+  compact = false,
+}) {
+  const { organizationApiPath } = useSettingsApi();
+  const isControlled = controlledForm !== undefined;
+  const [internalForm, setInternalForm] = useState(accountingSettingsFromApi({}));
+  const [loading, setLoading] = useState(!isControlled);
+
+  const form = isControlled ? controlledForm : internalForm;
+
+  const updateForm = useCallback(
+    (updater) => {
+      const apply = (current) => {
+        const next = typeof updater === "function" ? updater(current) : updater;
+        onFormChange?.(next);
+        return next;
+      };
+      if (controlledForm) {
+        onFormChange?.(apply(controlledForm));
+      } else {
+        setInternalForm(apply);
+      }
+    },
+    [controlledForm, onFormChange],
+  );
 
   const load = useCallback(async () => {
+    if (isControlled) return;
     setLoading(true);
     try {
-      const res = await apiRequest("/accounting/settings");
-      setForm(accountingSettingsFromApi(res));
+      const res = await apiRequest(organizationApiPath("/accounting/settings"));
+      const next = accountingSettingsFromApi(res);
+      setInternalForm(next);
+      onFormChange?.(next);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load GL account codes");
     } finally {
       setLoading(false);
     }
-  }, [setError]);
+  }, [isControlled, onFormChange, organizationApiPath, setError]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   async function save() {
@@ -35,11 +68,12 @@ export function AccountCodesPanel({ saving, setSaving, setError, setMessage }) {
     setError(null);
     setMessage(null);
     try {
-      const res = await apiRequest("/accounting/settings", {
+      const res = await apiRequest(organizationApiPath("/accounting/settings"), {
         method: "PATCH",
         body: accountingSettingsPayload(form),
       });
-      setForm(accountingSettingsFromApi(res));
+      const next = accountingSettingsFromApi(res);
+      updateForm(next);
       setMessage("GL account codes saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to save account codes");
@@ -48,13 +82,17 @@ export function AccountCodesPanel({ saving, setSaving, setError, setMessage }) {
     }
   }
 
-  if (loading) return <p className="text-sm text-slate-500">Loading account codes…</p>;
+  if (loading || (isControlled && !form)) {
+    return <p className="text-sm text-slate-500">Loading account codes…</p>;
+  }
 
   return (
-    <div className="space-y-6">
-      <p className="text-sm text-slate-600">
-        Map operational events to chart of account codes used by auto-journal posting.
-      </p>
+    <div className={compact ? "space-y-4" : "space-y-6"}>
+      {!compact ? (
+        <p className="text-sm text-slate-600">
+          Map operational events to chart of account codes used by auto-journal posting.
+        </p>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {ACCOUNT_CODE_FIELDS.map(({ key, label }) => (
           <Field key={key} label={label}>
@@ -62,7 +100,7 @@ export function AccountCodesPanel({ saving, setSaving, setError, setMessage }) {
               className={inputClassName()}
               value={form.account_codes?.[key] ?? ""}
               onChange={(e) =>
-                setForm((f) => ({
+                updateForm((f) => ({
                   ...f,
                   account_codes: { ...f.account_codes, [key]: e.target.value },
                 }))
@@ -80,7 +118,7 @@ export function AccountCodesPanel({ saving, setSaving, setError, setMessage }) {
                 className={inputClassName()}
                 value={form.payment_method_accounts?.[key] ?? ""}
                 onChange={(e) =>
-                  setForm((f) => ({
+                  updateForm((f) => ({
                     ...f,
                     payment_method_accounts: { ...f.payment_method_accounts, [key]: e.target.value },
                   }))
@@ -90,9 +128,11 @@ export function AccountCodesPanel({ saving, setSaving, setError, setMessage }) {
           ))}
         </div>
       </div>
-      <PrimaryButton type="button" onClick={save} disabled={saving} showIcon={false}>
-        {saving ? "Saving…" : "Save account codes"}
-      </PrimaryButton>
+      {!hideSaveButton ? (
+        <PrimaryButton type="button" onClick={save} disabled={saving} showIcon={false}>
+          {saving ? "Saving…" : "Save account codes"}
+        </PrimaryButton>
+      ) : null}
     </div>
   );
 }

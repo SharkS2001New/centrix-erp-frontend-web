@@ -1,7 +1,6 @@
 import {
   formatLinePackQty,
   lpoLineOfferQty,
-  lpoSessionOfferBase,
   offerAdjustedUnitCost,
   packQtyFromReceiveBase,
   receiveBaseForLine,
@@ -57,12 +56,9 @@ function mapGrnLine({
   stockUnitCost = null,
   payablePackQty = null,
 }) {
-  const paidPack =
-    payablePackQty != null
-      ? Number(payablePackQty)
-      : grnPackQtyFromBase(receivedBase, uom);
-  const recordCost = Number(originalCostPerPack ?? costPerPack ?? 0);
-  const lineTotal = Math.round(paidPack * recordCost * 100) / 100;
+  const totalPack = grnPackQtyFromBase(receivedBase, uom);
+  const recordCost = Number(costPerPack ?? originalCostPerPack ?? 0);
+  const lineTotal = Math.round(totalPack * recordCost * 100) / 100;
   return {
     product_code: line.product_code,
     product_name: line.product_name ?? line.product_code,
@@ -102,27 +98,12 @@ export function buildGrnFromReceiveSession(lpoSummary, receiveCounts, uomById, o
     const receiveBase = receiveBaseForLine(lineKey, uom, receiveCounts);
     if (receiveBase <= 0) continue;
 
-    const priorReceived = priorReceivedByLineId[lineKey] ?? Number(line.received_qty ?? 0);
-    const priorOffer = lpoLineOfferQty({
-      ...line,
-      received_qty: priorReceived,
-    });
-    const priorPaid = Math.max(0, priorReceived - priorOffer);
-    const sessionOfferBase = lpoSessionOfferBase(line, uom, receiveCounts, priorReceived);
-    const sessionOfferPack = packQtyFromReceiveBase(sessionOfferBase, uom);
-    const receivedPack = packQtyFromReceiveBase(receiveBase, uom);
-    const paidPack = Math.max(0, receivedPack - sessionOfferPack);
-    const originalCost = Number(line.cost_price ?? 0);
-    const stockUnitCost = offerAdjustedUnitCost({
-      originalCost,
-      paidPackQty: priorPaid + paidPack,
-      receivedPackQty: priorReceived + receivedPack,
-    });
-    const { receivedLabel, offerLabel } = formatGrnReceivedLabel(
-      receiveBase,
-      uom,
-      sessionOfferPack,
-    );
+    const enteredCost = options.unitCostByLineId?.[lineKey];
+    const unitCost =
+      enteredCost != null && enteredCost !== ""
+        ? Number(enteredCost)
+        : Number(line.cost_price ?? 0);
+    const receivedLabel = formatStockQty(receiveBase, uom);
 
     lines.push(
       mapGrnLine({
@@ -130,12 +111,10 @@ export function buildGrnFromReceiveSession(lpoSummary, receiveCounts, uomById, o
         uom,
         orderedLabel: formatLinePackQty(line.ordered_qty, uom),
         receivedLabel,
-        offerLabel,
         receivedBase: receiveBase,
-        costPerPack: originalCost,
-        originalCostPerPack: originalCost,
-        stockUnitCost,
-        payablePackQty: paidPack,
+        costPerPack: unitCost,
+        originalCostPerPack: Number(line.cost_price ?? 0),
+        stockUnitCost: unitCost,
       }),
     );
   }

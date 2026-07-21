@@ -29,6 +29,7 @@ export const ORG_SETTINGS_TAB_MODULES = {
   inventory: ["inventory"],
   procurement: ["customers_suppliers"],
   finance: ["accounting", "payments"],
+  accounting: ["accounting"],
   ai: ["admin"],
   whatsapp: ["sales", "admin"],
   hr: ["hr_payroll"],
@@ -86,13 +87,13 @@ export function isOrgSettingsTabVisible(tabId, capabilities, { platformManaged =
       return moduleEnabled(capabilities, "customers_suppliers");
 
     case "finance":
-      if (moduleEnabled(capabilities, "accounting")) {
-        return true;
-      }
       if (!moduleEnabled(capabilities, "payments")) {
         return false;
       }
       return isPlatformMpesaStkEnabled(capabilities) || isPlatformKraIntegrationEnabled(capabilities);
+
+    case "accounting":
+      return platformManaged && moduleEnabled(capabilities, "accounting");
 
     case "ai":
       if (!isPlatformAiEnabled(capabilities)) {

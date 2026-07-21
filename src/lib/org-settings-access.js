@@ -1,6 +1,6 @@
 /** Settings still owned by the platform operator (module provisioning, workflows, integration gates). */
 export const ORG_SETTINGS_PLATFORM_MESSAGE =
-  "Module access, checkout flow, mobile orders, order pipeline, M-Pesa/KRA/AI feature toggles, and legacy archive remain platform-managed.";
+  "Module access, checkout flow, mobile orders, order pipeline, accounting books setup, M-Pesa/KRA/AI feature toggles, and legacy archive remain platform-managed.";
 
 /** Hint for tenant-managed organization settings. */
 export const TENANT_ORG_SETTINGS_SUBTITLE =
