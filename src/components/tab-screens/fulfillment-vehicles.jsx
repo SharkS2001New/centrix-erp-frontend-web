@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
@@ -11,6 +12,7 @@ import {
   FilterSelect,
   FormDrawer,
   IconButton,
+  PaginationBar,
   PencilIcon,
   PrimaryButton,
   SECONDARY_BTN_CLASS,
@@ -32,6 +34,7 @@ import {
 } from "@/components/fulfillment/fulfillment-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import {
   BatchActionBar,
   BatchDeleteButton,
@@ -45,9 +48,14 @@ export function FulfillmentVehiclesScreen() {
   const { user } = useAuth();
 
   const [vehicles, setVehicles] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
-  const { search, setSearch } = useListUrlSearch();
+  const [listLoading, setListLoading] = useState(false);
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState("create");
@@ -67,53 +75,59 @@ export function FulfillmentVehiclesScreen() {
   } = usePageRowSelection();
 
   const loadData = useCallback(async () => {
+    setListLoading(true);
     try {
-      const [vehicleRes] = await Promise.all([
-        apiRequest("/vehicles", { searchParams: { per_page: 200 } }),
-      ]);
-      setVehicles(vehicleRes.data ?? []);
+      const filters = {};
+      if (statusFilter === "active") filters.is_active = 1;
+      if (statusFilter === "inactive") filters.is_active = 0;
+
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
+        filters,
+      });
+      const vehicleRes = await apiRequest("/vehicles", { searchParams: searchParamsApi });
+      const parsed = parsePaginator(vehicleRes);
+      setVehicles(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load vehicles");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, []);
+  }, [page, pageSize, debouncedSearch, statusFilter]);
 
   useTabAwareDataLoad(loadData);
 
-  const stats = useMemo(() => {
-    const active = vehicles.filter((v) => v.is_active !== false);
-    const inactive = vehicles.filter((v) => v.is_active === false);
-    return {
-      total: vehicles.length,
-      active: active.length,
-      inactive: inactive.length,
-      withPlate: vehicles.filter((v) => v.plate_number).length,
-    };
-  }, [vehicles]);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return vehicles.filter((v) => {
-      if (statusFilter === "active" && v.is_active === false) return false;
-      if (statusFilter === "inactive" && v.is_active !== false) return false;
-      if (!q) return true;
-      const hay = `${v.vehicle_name} ${v.plate_number} ${v.vehicle_code}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [vehicles, search, statusFilter]);
-
-  const pageRowIds = useMemo(() => filtered.map((v) => v.id), [filtered]);
+  const pageRowIds = useMemo(() => vehicles.map((v) => v.id), [vehicles]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
-  const vehicleById = useMemo(() => new Map(filtered.map((v) => [String(v.id), v])), [filtered]);
+  const vehicleById = useMemo(() => new Map(vehicles.map((v) => [String(v.id), v])), [vehicles]);
   const selectAllRef = useRef(null);
+  const safePage = Math.min(page, totalPages);
+  const tableLoading = loading || (listLoading && vehicles.length === 0);
 
   useEffect(() => {
     if (selectAllRef.current) {
       selectAllRef.current.indeterminate = someOnPageSelected;
     }
   }, [someOnPageSelected]);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   function openCreateDrawer() {
     setDrawerMode("create");
@@ -213,6 +227,18 @@ export function FulfillmentVehiclesScreen() {
     }
   }
 
+  const buildExportSearchParams = useCallback(() => {
+    const filters = {};
+    if (statusFilter === "active") filters.is_active = 1;
+    if (statusFilter === "inactive") filters.is_active = 0;
+    return buildPageParams({
+      page: 1,
+      perPage: 200,
+      q: debouncedSearch,
+      filters,
+    });
+  }, [debouncedSearch, statusFilter]);
+
   return (
     <CatalogPageShell
       title="Vehicles"
@@ -222,29 +248,26 @@ export function FulfillmentVehiclesScreen() {
           <button
             type="button"
             onClick={() => void loadData()}
-            disabled={loading}
+            disabled={loading || listLoading}
             className={SECONDARY_BTN_CLASS}
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
           </button>
           <CatalogListExport
             title="Vehicles"
             apiPath="/vehicles"
             columns={VEHICLE_EXPORT_COLUMNS}
-            totalCount={filtered.length}
-            getSearchParams={() => ({ per_page: 200 })}
-            disabled={loading}
+            totalCount={total}
+            getSearchParams={buildExportSearchParams}
+            disabled={loading || listLoading}
           />
           <PrimaryButton onClick={openCreateDrawer}>Add vehicle</PrimaryButton>
         </div>
       }
       banner={
         !loading ? (
-          <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Active vehicles" value={stats.active.toLocaleString()} />
-            <StatCard label="Total fleet" value={stats.total.toLocaleString()} />
-            <StatCard label="Inactive" value={stats.inactive.toLocaleString()} />
-            <StatCard label="Registered plates" value={stats.withPlate.toLocaleString()} />
+          <div className="mb-6 grid gap-4 sm:grid-cols-1 sm:max-w-xs">
+            <StatCard label="Vehicles matching filters" value={total.toLocaleString()} />
           </div>
         ) : null
       }
@@ -267,9 +290,9 @@ export function FulfillmentVehiclesScreen() {
         </div>
       }
     >
-      {loading ? (
+      {tableLoading ? (
         <p className="text-sm text-slate-500">Loading vehicles…</p>
-      ) : filtered.length === 0 ? (
+      ) : vehicles.length === 0 ? (
         <p className="theme-panel rounded-xl border p-12 text-center text-sm text-slate-500">
           No vehicles found.
         </p>
@@ -287,44 +310,52 @@ export function FulfillmentVehiclesScreen() {
             <span className="text-sm text-slate-600">Select all on this page</span>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((vehicle) => (
-            <article
-              key={vehicle.id}
-              className={`group relative theme-panel rounded-xl border p-5 shadow-sm transition hover:border-[#B5D4F4] hover:shadow-md ${
-                selectedIds.has(String(vehicle.id)) ? "border-[#185FA5] ring-1 ring-[#185FA5]/30" : ""
-              }`}
-            >
-              <div className="absolute left-3 top-3 z-10">
-                <input
-                  type="checkbox"
-                  className={TABLE_ROW_CHECKBOX_CLASS}
-                  checked={selectedIds.has(String(vehicle.id))}
-                  onChange={() => toggleOne(vehicle.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  aria-label={`Select ${vehicle.vehicle_name}`}
-                />
-              </div>
-              <Link href={`/fulfillment/vehicles/${vehicle.id}`} className="block pl-6">
-                <div className="text-3xl">{vehicleEmoji(vehicle.vehicle_name)}</div>
-                <p className="mt-3 font-mono text-base font-semibold text-slate-900">
-                  {vehicle.plate_number || vehicle.vehicle_code}
-                </p>
-                <p className="mt-0.5 text-sm text-slate-600">{vehicle.vehicle_name}</p>
-                <div className="mt-3">
-                  <VehicleStatusBadge active={vehicle.is_active !== false} />
+            {vehicles.map((vehicle) => (
+              <article
+                key={vehicle.id}
+                className={`group relative theme-panel rounded-xl border p-5 shadow-sm transition hover:border-[#B5D4F4] hover:shadow-md ${
+                  selectedIds.has(String(vehicle.id)) ? "border-[#185FA5] ring-1 ring-[#185FA5]/30" : ""
+                }`}
+              >
+                <div className="absolute left-3 top-3 z-10">
+                  <input
+                    type="checkbox"
+                    className={TABLE_ROW_CHECKBOX_CLASS}
+                    checked={selectedIds.has(String(vehicle.id))}
+                    onChange={() => toggleOne(vehicle.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Select ${vehicle.vehicle_name}`}
+                  />
                 </div>
-              </Link>
-              <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition group-hover:opacity-100">
-                <IconButton label="Edit" onClick={() => openEditDrawer(vehicle)}>
-                  <PencilIcon />
-                </IconButton>
-                <IconButton label="Delete" danger onClick={() => deleteVehicle(vehicle)}>
-                  <TrashIcon />
-                </IconButton>
-              </div>
-            </article>
-          ))}
+                <Link href={`/fulfillment/vehicles/${vehicle.id}`} className="block pl-6">
+                  <div className="text-3xl">{vehicleEmoji(vehicle.vehicle_name)}</div>
+                  <p className="mt-3 font-mono text-base font-semibold text-slate-900">
+                    {vehicle.plate_number || vehicle.vehicle_code}
+                  </p>
+                  <p className="mt-0.5 text-sm text-slate-600">{vehicle.vehicle_name}</p>
+                  <div className="mt-3">
+                    <VehicleStatusBadge active={vehicle.is_active !== false} />
+                  </div>
+                </Link>
+                <div className="absolute right-3 top-3 flex gap-1 opacity-0 transition group-hover:opacity-100">
+                  <IconButton label="Edit" onClick={() => openEditDrawer(vehicle)}>
+                    <PencilIcon />
+                  </IconButton>
+                  <IconButton label="Delete" danger onClick={() => deleteVehicle(vehicle)}>
+                    <TrashIcon />
+                  </IconButton>
+                </div>
+              </article>
+            ))}
           </div>
+          <PaginationBar
+            page={safePage}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            onChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+          />
         </>
       )}
 

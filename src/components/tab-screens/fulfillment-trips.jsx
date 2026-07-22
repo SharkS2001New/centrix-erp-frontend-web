@@ -4,6 +4,7 @@ import Link from "next/link";
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { fetchRoutesCached } from "@/lib/reference-data-cache";
@@ -12,6 +13,7 @@ import {
   CatalogPageShell,
   Field,
   FilterSelect,
+  PaginationBar,
   PrimaryButton,
   PrimaryLink,
   SearchInput,
@@ -33,6 +35,9 @@ import {
   TableSelectAllHeader,
   usePageRowSelection,
 } from "@/components/catalog/table-row-selection";
+import { useListPageSize } from "@/lib/use-list-page-controls";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
+
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
   { value: "draft", label: "Draft" },
@@ -76,13 +81,18 @@ export function FulfillmentTripsScreen() {
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
 
   const [trips, setTrips] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [search, setSearch] = useState("");
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [statusFilter, setStatusFilter] = useState("all");
   const [fromDate, setFromDate] = useState(() => defaultTripsDateRange().from);
   const [toDate, setToDate] = useState(() => defaultTripsDateRange().to);
+  const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
   const [createTripOpen, setCreateTripOpen] = useState(false);
   const [mergeTripOpen, setMergeTripOpen] = useState(false);
   const {
@@ -95,64 +105,85 @@ export function FulfillmentTripsScreen() {
     isSomeOnPageSelected,
   } = usePageRowSelection();
 
+  const loadRoutes = useCallback(async () => {
+    try {
+      const routesData = await fetchRoutesCached(user?.organization_id);
+      setRoutes(routesData ?? []);
+    } catch {
+      /* non-blocking */
+    }
+  }, [user?.organization_id]);
+
   const loadData = useCallback(async () => {
     setError(null);
-    setLoading(true);
+    setListLoading(true);
     try {
-      const [tripRes, routes] = await Promise.all([
-        apiRequest("/dispatch-trips", {
-          searchParams: {
-            per_page: 200,
-            from_date: fromDate,
-            to_date: toDate,
-            ...(statusFilter !== "all" ? { "filter[status]": statusFilter } : {}),
-          },
-        }),
-        fetchRoutesCached(user?.organization_id),
-      ]);
-      setTrips(tripRes.data ?? []);
-      setRoutes(routes ?? []);
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
+        filters: statusFilter !== "all" ? { status: statusFilter } : {},
+        extra: {
+          from_date: fromDate,
+          to_date: toDate,
+        },
+      });
+      const tripRes = await apiRequest("/dispatch-trips", { searchParams: searchParamsApi });
+      const parsed = parsePaginator(tripRes);
+      setTrips(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load trips");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [fromDate, toDate, statusFilter, user?.organization_id]);
+  }, [page, pageSize, debouncedSearch, fromDate, toDate, statusFilter]);
 
+  useTabAwareDataLoad(loadRoutes);
   useTabAwareDataLoad(loadData);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, fromDate, toDate, statusFilter]);
 
   const routeById = useMemo(() => new Map(routes.map((r) => [r.id, r])), [routes]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return trips;
-    return trips.filter((t) => {
-      const routeName = formatTripRoutesLabel(t, routeById);
-      return (
-        String(t.trip_code).toLowerCase().includes(q) ||
-        routeName.toLowerCase().includes(q) ||
-        String(t.driver?.full_name ?? "").toLowerCase().includes(q)
-      );
-    });
-  }, [trips, routeById, search]);
-
   const selectedTrips = useMemo(
-    () => filtered.filter((trip) => selectedIds.has(String(trip.id))),
-    [filtered, selectedIds],
+    () => trips.filter((trip) => selectedIds.has(String(trip.id))),
+    [trips, selectedIds],
   );
   const mergeableTrips = selectedTrips.filter((trip) => trip.status === "draft");
-  const pageRowIds = useMemo(() => filtered.map((trip) => trip.id), [filtered]);
+  const pageRowIds = useMemo(() => trips.map((trip) => trip.id), [trips]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const safePage = Math.min(page, totalPages);
+  const tableLoading = loading || (listLoading && trips.length === 0);
 
-  const stats = useMemo(() => {
-    const active = trips.filter((t) => ["draft", "loading", "in_transit"].includes(t.status));
-    return {
-      total: trips.length,
-      active: active.length,
-      completed: trips.filter((t) => t.status === "completed").length,
-    };
-  }, [trips]);
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
+
+  const buildExportSearchParams = useCallback(
+    () =>
+      buildPageParams({
+        page: 1,
+        perPage: 200,
+        q: debouncedSearch,
+        filters: statusFilter !== "all" ? { status: statusFilter } : {},
+        extra: {
+          from_date: fromDate,
+          to_date: toDate,
+        },
+      }),
+    [debouncedSearch, statusFilter, fromDate, toDate],
+  );
 
   if (!distributionEnabled) {
     return (
@@ -176,14 +207,9 @@ export function FulfillmentTripsScreen() {
             filename="dispatch-trips"
             apiPath="/dispatch-trips"
             columns={DISPATCH_TRIP_EXPORT_COLUMNS}
-            totalCount={filtered.length}
-            getSearchParams={() => ({
-              per_page: 200,
-              from_date: fromDate,
-              to_date: toDate,
-              ...(statusFilter !== "all" ? { "filter[status]": statusFilter } : {}),
-            })}
-            disabled={loading}
+            totalCount={total}
+            getSearchParams={buildExportSearchParams}
+            disabled={loading || listLoading}
           />
           <PrimaryLink href="/fulfillment/dispatch">Dispatch board</PrimaryLink>
           <PrimaryButton type="button" showIcon={false} onClick={() => setCreateTripOpen(true)}>
@@ -209,10 +235,8 @@ export function FulfillmentTripsScreen() {
       />
       <DashboardErrorBanner message={error} />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <StatCard label="Trips in range" value={stats.total} />
-        <StatCard label="Active" value={stats.active} />
-        <StatCard label="Completed" value={stats.completed} />
+      <div className="mb-6 grid gap-4 sm:grid-cols-1 sm:max-w-xs">
+        <StatCard label="Trips matching filters" value={total.toLocaleString()} />
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -235,107 +259,117 @@ export function FulfillmentTripsScreen() {
         </PrimaryButton>
       </div>
 
-      {loading ? (
+      {tableLoading ? (
         <p className="text-sm text-slate-500">Loading trips…</p>
-      ) : filtered.length === 0 ? (
+      ) : trips.length === 0 ? (
         <p className="text-sm text-slate-500">No trips in this date range. Create one manually or from the dispatch board.</p>
       ) : (
-        <div className="theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <TableSelectAllHeader
-                  checked={allOnPageSelected}
-                  indeterminate={someOnPageSelected}
-                  onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
-                />
-                <th className="px-4 py-3">Trip</th>
-                <th className="px-4 py-3">Routes</th>
-                <th className="px-4 py-3">Driver</th>
-                <th className="px-4 py-3">Turn boys</th>
-                <th className="px-4 py-3">Vehicle</th>
-                <th className="px-4 py-3">Orders</th>
-                <th className="px-4 py-3 text-right">Planned / actual</th>
-                <th className="px-4 py-3 text-right">Profit</th>
-                <th className="px-4 py-3 text-right">Net profit</th>
-                <th className="px-4 py-3 text-right">Margin</th>
-                <th className="px-4 py-3">Cash</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((trip) => (
-                <tr key={trip.id} className="border-t border-slate-100">
-                  <TableRowSelectCell
-                    checked={selectedIds.has(String(trip.id))}
-                    onChange={() => toggleOne(trip.id)}
-                    label={`Select ${trip.trip_code}`}
+        <>
+          <div className="theme-panel theme-table-shell overflow-x-auto rounded-xl shadow-sm">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <TableSelectAllHeader
+                    checked={allOnPageSelected}
+                    indeterminate={someOnPageSelected}
+                    onChange={(checked) => toggleAllOnPage(checked, pageRowIds)}
                   />
-                  <td className="px-4 py-3 font-mono">{trip.trip_code}</td>
-                  <td className="px-4 py-3">{formatTripRoutesLabel(trip, routeById)}</td>
-                  <td className="px-4 py-3">{trip.driver?.full_name ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    {trip.turn_boys?.length
-                      ? trip.turn_boys.map((employee) => employee.full_name).join(", ")
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-3">{trip.vehicle?.plate_number ?? trip.vehicle?.vehicle_name ?? "—"}</td>
-                  <td className="px-4 py-3">{trip.financial_summary?.order_count ?? trip.sales_count ?? 0}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="font-medium text-slate-800">
-                      {formatSaleKes(trip.financial_summary?.total_amount ?? 0)}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      Actual {formatSaleKes(trip.financial_summary?.actual_amount ?? trip.financial_summary?.total_amount ?? 0)}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right text-slate-700">
-                    {trip.financial_summary?.total_profit == null
-                      ? "—"
-                      : formatSaleKes(trip.financial_summary.total_profit)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium text-emerald-800">
-                    {trip.financial_summary?.net_profit == null
-                      ? "—"
-                      : formatSaleKes(trip.financial_summary.net_profit)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-slate-700">
-                    {formatTripProfitMargin(trip.financial_summary?.profit_margin_percent)}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {trip.settled_at
-                      ? "Settled"
-                      : trip.expected_cash != null && Number(trip.expected_cash) > 0
-                        ? formatTripCash(trip)
-                        : "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-1">
-                      <span>{statusLabel(trip.status)}</span>
-                      <TripDispatchStatusBadge status={trip.status} className="w-fit" />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-3">
-                      {trip.status === "in_transit" ? (
-                        <Link
-                          href={`/fulfillment/trips/${trip.id}/close`}
-                          className="font-medium text-emerald-700 hover:underline"
-                        >
-                          Close
-                        </Link>
-                      ) : null}
-                      <Link href={`/fulfillment/trips/${trip.id}`} className="text-[#185FA5] hover:underline">
-                        Open
-                      </Link>
-                    </div>
-                  </td>
+                  <th className="px-4 py-3">Trip</th>
+                  <th className="px-4 py-3">Routes</th>
+                  <th className="px-4 py-3">Driver</th>
+                  <th className="px-4 py-3">Turn boys</th>
+                  <th className="px-4 py-3">Vehicle</th>
+                  <th className="px-4 py-3">Orders</th>
+                  <th className="px-4 py-3 text-right">Planned / actual</th>
+                  <th className="px-4 py-3 text-right">Profit</th>
+                  <th className="px-4 py-3 text-right">Net profit</th>
+                  <th className="px-4 py-3 text-right">Margin</th>
+                  <th className="px-4 py-3">Cash</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {trips.map((trip) => (
+                  <tr key={trip.id} className="border-t border-slate-100">
+                    <TableRowSelectCell
+                      checked={selectedIds.has(String(trip.id))}
+                      onChange={() => toggleOne(trip.id)}
+                      label={`Select ${trip.trip_code}`}
+                    />
+                    <td className="px-4 py-3 font-mono">{trip.trip_code}</td>
+                    <td className="px-4 py-3">{formatTripRoutesLabel(trip, routeById)}</td>
+                    <td className="px-4 py-3">{trip.driver?.full_name ?? "—"}</td>
+                    <td className="px-4 py-3">
+                      {trip.turn_boys?.length
+                        ? trip.turn_boys.map((employee) => employee.full_name).join(", ")
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-3">{trip.vehicle?.plate_number ?? trip.vehicle?.vehicle_name ?? "—"}</td>
+                    <td className="px-4 py-3">{trip.financial_summary?.order_count ?? trip.sales_count ?? 0}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="font-medium text-slate-800">
+                        {formatSaleKes(trip.financial_summary?.total_amount ?? 0)}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        Actual {formatSaleKes(trip.financial_summary?.actual_amount ?? trip.financial_summary?.total_amount ?? 0)}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-700">
+                      {trip.financial_summary?.total_profit == null
+                        ? "—"
+                        : formatSaleKes(trip.financial_summary.total_profit)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium text-emerald-800">
+                      {trip.financial_summary?.net_profit == null
+                        ? "—"
+                        : formatSaleKes(trip.financial_summary.net_profit)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-700">
+                      {formatTripProfitMargin(trip.financial_summary?.profit_margin_percent)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {trip.settled_at
+                        ? "Settled"
+                        : trip.expected_cash != null && Number(trip.expected_cash) > 0
+                          ? formatTripCash(trip)
+                          : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-1">
+                        <span>{statusLabel(trip.status)}</span>
+                        <TripDispatchStatusBadge status={trip.status} className="w-fit" />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-3">
+                        {trip.status === "in_transit" ? (
+                          <Link
+                            href={`/fulfillment/trips/${trip.id}/close`}
+                            className="font-medium text-emerald-700 hover:underline"
+                          >
+                            Close
+                          </Link>
+                        ) : null}
+                        <Link href={`/fulfillment/trips/${trip.id}`} className="text-[#185FA5] hover:underline">
+                          Open
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <PaginationBar
+            page={safePage}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            onChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+          />
+        </>
       )}
 
       <BatchActionBar count={selectedCount} onClear={clearSelection}>

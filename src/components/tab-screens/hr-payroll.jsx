@@ -26,7 +26,6 @@ import {
   formatHrKesFull,
   formatPeriodRange,
   isAdminUser,
-  isPayrollEligible,
   payPeriodRunnableToday,
   payrollRunCanDelete,
   payrollRunDeleteLockHint,
@@ -54,7 +53,7 @@ export function HrPayrollScreen() {
   const [tab, setTab] = useState("runs");
   const [runs, setRuns] = useState([]);
   const [periods, setPeriods] = useState([]);
-  const [employees, setEmployees] = useState([]);
+  const [payrollEligibleCount, setPayrollEligibleCount] = useState(0);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [runDrawerOpen, setRunDrawerOpen] = useState(false);
@@ -81,17 +80,17 @@ export function HrPayrollScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const [runsRes, periodsRes, empRes, deptRes, scheduleRes] = await Promise.all([
-        apiRequest("/payroll-runs", { searchParams: { per_page: 200 } }),
-        apiRequest("/pay-periods", { searchParams: { per_page: 200 } }),
-        apiRequest("/employees", { searchParams: { per_page: 200 } }),
-        apiRequest("/departments", { searchParams: { per_page: 200 } }),
+      const [runsRes, periodsRes, summaryRes, deptRes, scheduleRes] = await Promise.all([
+        apiRequest("/payroll-runs", { searchParams: { per_page: 25 } }),
+        apiRequest("/pay-periods", { searchParams: { per_page: 50 } }),
+        apiRequest("/employees/summary").catch(() => null),
+        apiRequest("/departments", { searchParams: { per_page: 100 } }),
         apiRequest("/payroll/run-schedule").catch(() => null),
       ]);
       setRuns(runsRes.data ?? []);
       setPeriods(periodsRes.data ?? []);
       if (scheduleRes) setRunSchedule(scheduleRes);
-      setEmployees(empRes.data ?? []);
+      setPayrollEligibleCount(Number(summaryRes?.payroll_eligible ?? summaryRes?.active ?? 0));
       setDepartments(deptRes.data ?? []);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load payroll");
@@ -125,12 +124,12 @@ export function HrPayrollScreen() {
     const paid = runs.filter((r) => payrollRunIsCompleted(r.status)).length;
     return {
       monthTotal,
-      employees: employees.filter(isPayrollEligible).length,
+      employees: payrollEligibleCount,
       pendingApproval,
       awaitingPayment,
       paid,
     };
-  }, [runs, employees, periodById]);
+  }, [runs, payrollEligibleCount, periodById]);
 
   const sortedRuns = useMemo(
     () =>

@@ -1,29 +1,33 @@
 "use client";
 
-import Link from "next/link";
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import { formatSaleKes } from "@/lib/sales";
-import { formatShortDate } from "@/components/catalog/catalog-shared";
 import {
   CatalogPageShell,
   Field,
   FormDrawer,
   IconButton,
   inputClassName,
+  PaginationBar,
   PencilIcon,
   PrimaryButton,
   SearchInput,
   SECONDARY_BTN_CLASS,
   TrashIcon,
+  formatShortDate,
 } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { VOUCHER_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { useListPageSize } from "@/lib/use-list-page-controls";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 
 const EMPTY_FORM = {
   voucher_code: "",
@@ -89,8 +93,13 @@ export function SalesVouchersScreen() {
   );
 
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [listLoading, setListLoading] = useState(false);
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
+  const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -99,28 +108,45 @@ export function SalesVouchersScreen() {
   const [form, setForm] = useState(EMPTY_FORM);
 
   const loadData = useCallback(async () => {
+    setListLoading(true);
     try {
-      const res = await apiRequest("/vouchers", {
-        searchParams: { per_page: 200, ...(search.trim() ? { q: search.trim() } : {}) },
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
       });
-      setRows(res.data ?? []);
+      const res = await apiRequest("/vouchers", { searchParams: searchParamsApi });
+      const parsed = parsePaginator(res);
+      setRows(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load vouchers");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [search]);
+  }, [page, pageSize, debouncedSearch]);
+
+  useTabAwareDataLoad(loadData);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(true);
-      loadData();
-    }, search ? 250 : 0);
-    return () => clearTimeout(timer);
-  }, [loadData, search]);
+    setPage(1);
+  }, [debouncedSearch]);
+
+  const safePage = Math.min(page, totalPages);
+  const tableLoading = loading || (listLoading && rows.length === 0);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   const drawerTitle = drawerMode === "create" ? "Add voucher" : "Edit voucher";
-
   const canManage = vouchersEnabled;
 
   function openCreateDrawer() {
@@ -228,9 +254,14 @@ export function SalesVouchersScreen() {
     }
   }
 
-  const activeCount = useMemo(
-    () => rows.filter((row) => row.is_active !== false).length,
-    [rows],
+  const buildExportSearchParams = useCallback(
+    () =>
+      buildPageParams({
+        page: 1,
+        perPage: 200,
+        q: debouncedSearch,
+      }),
+    [debouncedSearch],
   );
 
   return (
@@ -242,21 +273,18 @@ export function SalesVouchersScreen() {
           <button
             type="button"
             onClick={() => void loadData()}
-            disabled={loading}
+            disabled={loading || listLoading}
             className={SECONDARY_BTN_CLASS}
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
           </button>
           <CatalogListExport
             title="Vouchers"
             apiPath="/vouchers"
             columns={VOUCHER_EXPORT_COLUMNS}
-            totalCount={rows.length}
-            getSearchParams={() => ({
-              per_page: 200,
-              ...(search.trim() ? { q: search.trim() } : {}),
-            })}
-            disabled={loading}
+            totalCount={total}
+            getSearchParams={buildExportSearchParams}
+            disabled={loading || listLoading}
           />
           {canManage ? (
             <PrimaryButton onClick={openCreateDrawer}>Add voucher</PrimaryButton>
@@ -272,7 +300,7 @@ export function SalesVouchersScreen() {
         </div>
       ) : (
         <p className="mb-4 text-sm text-slate-600">
-          {activeCount} active voucher{activeCount === 1 ? "" : "s"} · codes are case-insensitive
+          {total.toLocaleString()} voucher{total === 1 ? "" : "s"} matching filters · codes are case-insensitive
         </p>
       )}
 
@@ -285,7 +313,7 @@ export function SalesVouchersScreen() {
       </div>
 
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        {loading ? (
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading vouchers…</p>
         ) : (
           <div className="overflow-x-auto">
@@ -361,6 +389,14 @@ export function SalesVouchersScreen() {
             </table>
           </div>
         )}
+        <PaginationBar
+          page={safePage}
+          totalPages={totalPages}
+          total={total}
+          pageSize={pageSize}
+          onChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+        />
       </div>
 
       <FormDrawer

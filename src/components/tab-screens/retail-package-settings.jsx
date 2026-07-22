@@ -2,10 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
 import {
   fetchCategoriesCached,
-  fetchRetailPackagesCached,
   fetchSubCategoriesCached,
   fetchUomsCached,
   invalidateReferenceResource,
@@ -13,6 +11,7 @@ import {
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { RetailPricingTiersEditor } from "@/components/catalog/retail-pricing-tiers";
 import {
   CatalogPageShell,
@@ -78,12 +77,14 @@ export function RetailPackageSettingsScreen() {
   const { user } = useAuth();
   const confirm = useConfirm();
   const [settings, setSettings] = useState([]);
-  const [products, setProducts] = useState([]);
   const [uoms, setUoms] = useState([]);
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { search, setSearch } = useListUrlSearch();
+  const [listLoading, setListLoading] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subCategoryFilter, setSubCategoryFilter] = useState("all");
   const [page, setPage] = useState(1);
@@ -106,35 +107,56 @@ export function RetailPackageSettingsScreen() {
     isSomeOnPageSelected,
   } = usePageRowSelection();
 
-  const loadData = useCallback(async () => {
-    try {
-      const [settingsData, uomsData, categoriesData, subCategoriesData] = await Promise.all([
-        fetchRetailPackagesCached(user?.organization_id),
-        fetchUomsCached(user?.organization_id),
-        fetchCategoriesCached(user?.organization_id),
-        fetchSubCategoriesCached(user?.organization_id),
-      ]);
-      setSettings(settingsData ?? []);
-      setUoms(uomsData ?? []);
-      setCategories(categoriesData ?? []);
-      setSubCategories(subCategoriesData ?? []);
+  const loadReference = useCallback(async () => {
+    const [uomsData, categoriesData, subCategoriesData] = await Promise.all([
+      fetchUomsCached(user?.organization_id),
+      fetchCategoriesCached(user?.organization_id),
+      fetchSubCategoriesCached(user?.organization_id),
+    ]);
+    setUoms(uomsData ?? []);
+    setCategories(categoriesData ?? []);
+    setSubCategories(subCategoriesData ?? []);
+  }, [user?.organization_id]);
 
-      const codes = (settingsData ?? []).map((row) => row.product_code).filter(Boolean);
-      const catalogProducts = await fetchProductsByCodesCached(user?.organization_id, codes, {
-        status: "all",
+  const loadSettings = useCallback(async () => {
+    setListLoading(true);
+    try {
+      const searchParams = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
+        extra: {
+          subcategory_id: subCategoryFilter !== "all" ? subCategoryFilter : undefined,
+          category_id:
+            subCategoryFilter === "all" && categoryFilter !== "all" ? categoryFilter : undefined,
+        },
       });
-      setProducts(catalogProducts ?? []);
+      const res = await apiRequest("/retail-package-settings", { searchParams });
+      const parsed = parsePaginator(res);
+      setSettings(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load package settings");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [user?.organization_id]);
+  }, [page, pageSize, debouncedSearch, categoryFilter, subCategoryFilter]);
+
+  const loadData = useCallback(async () => {
+    try {
+      await loadReference();
+      await loadSettings();
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : "Failed to load package settings");
+      setLoading(false);
+    }
+  }, [loadReference, loadSettings]);
 
   const refreshData = useCallback(async () => {
     setLoading(true);
     const orgId = user?.organization_id;
-    // Permanent caches — Refresh must bust matching keys (same rule as Categories / UOMs).
     invalidateReferenceResource("retail-package-settings", orgId);
     invalidateReferenceResource("categories", orgId);
     invalidateReferenceResource("sub-categories", orgId);
@@ -142,14 +164,16 @@ export function RetailPackageSettingsScreen() {
     await loadData();
   }, [loadData, user?.organization_id]);
 
-  useTabAwareDataLoad(loadData);
+  useTabAwareDataLoad(loadSettings);
+  useEffect(() => {
+    loadReference().catch(() => {});
+  }, [loadReference]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, categoryFilter, subCategoryFilter]);
 
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
-
-  const productByCode = useMemo(
-    () => new Map(products.map((p) => [p.product_code, p])),
-    [products],
-  );
   const subById = useMemo(
     () => new Map(subCategories.map((s) => [s.id, s])),
     [subCategories],
@@ -158,20 +182,19 @@ export function RetailPackageSettingsScreen() {
   const enriched = useMemo(
     () =>
       settings.map((row) => {
-        const product = productByCode.get(row.product_code);
-        const unitId = product?.unit_id ?? row.product_unit_id;
-        const subcategoryId = product?.subcategory_id ?? row.product_subcategory_id;
+        const unitId = row.product_unit_id;
+        const subcategoryId = row.product_subcategory_id;
         const uom = unitId ? uomById.get(unitId) : null;
         const sub = subcategoryId ? subById.get(subcategoryId) : null;
         return {
           ...row,
-          product_name: row.product_name ?? product?.product_name ?? "—",
+          product_name: row.product_name ?? "—",
           category_id: sub?.category_id ?? null,
           subcategory_id: subcategoryId ?? null,
           product_uom: uom,
         };
       }),
-    [settings, productByCode, subById, uomById],
+    [settings, subById, uomById],
   );
 
   const subCategoryOptions = useMemo(() => {
@@ -179,50 +202,24 @@ export function RetailPackageSettingsScreen() {
     return subCategories.filter((s) => String(s.category_id) === categoryFilter);
   }, [subCategories, categoryFilter]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return enriched.filter((row) => {
-      if (
-        q &&
-        !row.product_name?.toLowerCase().includes(q) &&
-        !row.product_code?.toLowerCase().includes(q)
-      ) {
-        return false;
-      }
-      if (categoryFilter !== "all" && String(row.category_id) !== categoryFilter) return false;
-      if (subCategoryFilter !== "all" && String(row.subcategory_id) !== subCategoryFilter) {
-        return false;
-      }
-      return true;
-    });
-  }, [enriched, search, categoryFilter, subCategoryFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-  const pageRowIds = useMemo(() => pageSlice.map((r) => r.id), [pageSlice]);
+  const pageRowIds = useMemo(() => enriched.map((r) => r.id), [enriched]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
-  const rowById = useMemo(() => new Map(pageSlice.map((r) => [String(r.id), r])), [pageSlice]);
+  const rowById = useMemo(() => new Map(enriched.map((r) => [String(r.id), r])), [enriched]);
+  const tableLoading = loading || (listLoading && settings.length === 0);
 
   useEffect(() => {
-    setPage(1);
-  }, [search, categoryFilter, subCategoryFilter]);
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
     setPage(1);
   }
 
-  const usedProductCodes = useMemo(
-    () => settings.map((s) => s.product_code),
-    [settings],
-  );
-
   const lockedEditProduct = useMemo(() => {
     if (!editingId || !form.product_code) return null;
-    const fromCatalog = productByCode.get(form.product_code);
-    if (fromCatalog) return fromCatalog;
     if (pickedProduct && String(pickedProduct.product_code) === String(form.product_code)) {
       return pickedProduct;
     }
@@ -235,16 +232,16 @@ export function RetailPackageSettingsScreen() {
       };
     }
     return { product_code: form.product_code, product_name: form.product_code };
-  }, [editingId, enriched, form.product_code, pickedProduct, productByCode]);
+  }, [editingId, enriched, form.product_code, pickedProduct]);
 
   const selectedProductUom = useMemo(() => {
-    const product = pickedProduct ?? productByCode.get(form.product_code);
+    const product = pickedProduct;
     let unitId = product?.unit_id;
     if (!unitId && form.product_code) {
       unitId = enriched.find((row) => String(row.product_code) === String(form.product_code))?.product_unit_id;
     }
     return unitId ? uomById.get(unitId) : null;
-  }, [enriched, form.product_code, pickedProduct, productByCode, uomById]);
+  }, [enriched, form.product_code, pickedProduct, uomById]);
 
   function openCreate() {
     setEditingId(null);
@@ -256,14 +253,11 @@ export function RetailPackageSettingsScreen() {
 
   function openEdit(row) {
     setEditingId(row.id);
-    const fromCatalog = productByCode.get(row.product_code);
-    setPickedProduct(
-      fromCatalog ?? {
-        product_code: row.product_code,
-        product_name: row.product_name && row.product_name !== "—" ? row.product_name : row.product_code,
-        unit_id: row.product_unit_id,
-      },
-    );
+    setPickedProduct({
+      product_code: row.product_code,
+      product_name: row.product_name && row.product_name !== "—" ? row.product_name : row.product_code,
+      unit_id: row.product_unit_id,
+    });
     const tiers = coercePricingTiersInput(row.pricing_tiers).length
       ? normalizePricingTiers(row.pricing_tiers)
       : normalizePricingTiers([
@@ -310,7 +304,8 @@ export function RetailPackageSettingsScreen() {
       } else {
         await apiRequest("/retail-package-settings", { method: "POST", body });
       }
-      await loadData();
+      invalidateReferenceResource("retail-package-settings", user?.organization_id);
+      await loadSettings();
       closeDrawer();
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
@@ -329,7 +324,8 @@ export function RetailPackageSettingsScreen() {
     if (!ok) return;
     try {
       await apiRequest(`/retail-package-settings/${row.id}`, { method: "DELETE" });
-      await loadData();
+      invalidateReferenceResource("retail-package-settings", user?.organization_id);
+      await loadSettings();
       notifySuccess(`Setting for ${row.product_code} deleted`);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Delete failed");
@@ -347,7 +343,10 @@ export function RetailPackageSettingsScreen() {
           await apiRequest(`/retail-package-settings/${id}`, { method: "DELETE" });
         },
         clearSelection,
-        reload: loadData,
+        reload: async () => {
+          invalidateReferenceResource("retail-package-settings", user?.organization_id);
+          await loadSettings();
+        },
         notifySuccess,
         notifyError,
         labelForId: (id) => rowById.get(String(id))?.product_code ?? id,
@@ -366,10 +365,10 @@ export function RetailPackageSettingsScreen() {
           <button
             type="button"
             onClick={() => void refreshData()}
-            disabled={loading}
+            disabled={loading || listLoading}
             className={SECONDARY_BTN_CLASS}
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
           </button>
           <CatalogDataImportButton
             title="Import retail packages"
@@ -394,13 +393,16 @@ export function RetailPackageSettingsScreen() {
             filename="retail-package-settings"
             apiPath="/retail-package-settings"
             columns={RETAIL_PACKAGE_EXPORT_COLUMNS}
-            totalCount={filtered.length}
+            totalCount={total}
             getSearchParams={() => ({
               per_page: 200,
-              ...(categoryFilter !== "all" ? { category_id: categoryFilter } : {}),
-              ...(search.trim() ? { q: search.trim() } : {}),
+              ...(categoryFilter !== "all" && subCategoryFilter === "all"
+                ? { category_id: categoryFilter }
+                : {}),
+              ...(subCategoryFilter !== "all" ? { subcategory_id: subCategoryFilter } : {}),
+              ...(debouncedSearch.trim() ? { q: debouncedSearch.trim() } : {}),
             })}
-            disabled={loading}
+            disabled={loading || listLoading}
           />
           <PrimaryButton onClick={openCreate}>Add package setting</PrimaryButton>
         </div>
@@ -453,7 +455,7 @@ export function RetailPackageSettingsScreen() {
       }
     >
       <div className={TABLE_SHELL_CLASS}>
-        {loading ? (
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading package settings…</p>
         ) : (
           <>
@@ -473,20 +475,17 @@ export function RetailPackageSettingsScreen() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageSlice.length === 0 ? (
+                  {enriched.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
-                        {settings.length === 0
+                        {total === 0 && !debouncedSearch && categoryFilter === "all"
                           ? "No retail package settings yet. Click Add package setting to configure a product."
                           : "No package settings match your filters."}
                       </td>
                     </tr>
                   ) : (
-                    pageSlice.map((row) => (
-                      <tr
-                        key={row.id}
-                        className={TABLE_BODY_ROW_CLASS}
-                      >
+                    enriched.map((row) => (
+                      <tr key={row.id} className={TABLE_BODY_ROW_CLASS}>
                         <TableRowSelectCell
                           checked={selectedIds.has(String(row.id))}
                           onChange={() => toggleOne(row.id)}
@@ -530,7 +529,7 @@ export function RetailPackageSettingsScreen() {
             <PaginationBar
               page={safePage}
               totalPages={totalPages}
-              total={filtered.length}
+              total={total}
               pageSize={pageSize}
               onChange={setPage}
               onPageSizeChange={handlePageSizeChange}
@@ -554,7 +553,7 @@ export function RetailPackageSettingsScreen() {
             value={form.product_code}
             onChange={(code) => setForm((p) => ({ ...p, product_code: code }))}
             onProductSelect={setPickedProduct}
-            excludeCodes={editingId ? [] : usedProductCodes}
+            excludeCodes={[]}
             lockedProduct={lockedEditProduct}
             disabled={!!editingId}
             required
@@ -563,7 +562,7 @@ export function RetailPackageSettingsScreen() {
           {!editingId ? (
             <p className="mt-1 text-xs text-slate-500">
               Search finds any active product — not limited to the first 200 in the catalogue.
-              Products that already have a setting are hidden.
+              Duplicate settings for the same product are rejected by the server.
             </p>
           ) : null}
         </Field>
@@ -609,10 +608,10 @@ function InfoIcon() {
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
+      aria-hidden
     >
       <circle cx="12" cy="12" r="10" />
-      <line x1="12" y1="16" x2="12" y2="12" />
-      <line x1="12" y1="8" x2="12.01" y2="8" />
+      <path d="M12 16v-4M12 8h.01" />
     </svg>
   );
 }

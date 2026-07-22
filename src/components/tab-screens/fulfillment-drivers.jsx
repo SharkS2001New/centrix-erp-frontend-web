@@ -12,6 +12,7 @@ import {
 } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import {
   CatalogPageShell,
   Field,
@@ -35,10 +36,8 @@ import {
   DriverStatusBadge,
   EMPTY_DRIVER_FORM,
   buildDriverBody,
-  countDeliveriesByDriver,
   driverToForm,
   suggestDriverCode,
-  todayDeliveryStats,
 } from "@/components/fulfillment/fulfillment-shared";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
@@ -61,13 +60,15 @@ export function FulfillmentDriversScreen() {
   const { user } = useAuth();
 
   const [drivers, setDrivers] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [routes, setRoutes] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [users, setUsers] = useState([]);
   const [employees, setEmployees] = useState([]);
-  const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { search, setSearch } = useListUrlSearch();
+  const [listLoading, setListLoading] = useState(false);
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [statusFilter, setStatusFilter] = useState("all");
   const [routeFilter, setRouteFilter] = useState("all");
   const [page, setPage] = useState(1);
@@ -90,33 +91,46 @@ export function FulfillmentDriversScreen() {
     isSomeOnPageSelected,
   } = usePageRowSelection();
 
-  const loadData = useCallback(async () => {
+  const loadReferenceData = useCallback(async () => {
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const [driverRes, routes, vehicles, salesRes] = await Promise.all([
-        apiRequest("/drivers", { searchParams: { per_page: 200 } }),
-        fetchRoutesCached(user?.organization_id),
-        fetchVehiclesCached(user?.organization_id),
-        apiRequest("/sales", {
-          searchParams: {
-            per_page: 200,
-            with_items: 0,
-            from_date: today,
-            to_date: today,
-            date_field: "placed",
-          },
-        }),
+      const orgId = user?.organization_id;
+      const [routesData, vehiclesData] = await Promise.all([
+        fetchRoutesCached(orgId),
+        fetchVehiclesCached(orgId),
       ]);
-      setDrivers(driverRes.data ?? []);
-      setRoutes(routes ?? []);
-      setVehicles(vehicles ?? []);
-      setSales(salesRes.data ?? []);
+      setRoutes(routesData ?? []);
+      setVehicles(vehiclesData ?? []);
+    } catch {
+      /* non-blocking — filter/form selects degrade gracefully */
+    }
+  }, [user?.organization_id]);
+
+  const loadDrivers = useCallback(async () => {
+    setListLoading(true);
+    try {
+      const extra = {};
+      if (statusFilter === "active") extra.is_active = 1;
+      if (statusFilter === "inactive") extra.is_active = 0;
+      if (routeFilter !== "all") extra.default_route_id = routeFilter;
+
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
+        extra,
+      });
+      const driverRes = await apiRequest("/drivers", { searchParams: searchParamsApi });
+      const parsed = parsePaginator(driverRes);
+      setDrivers(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load drivers");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [user?.organization_id]);
+  }, [page, pageSize, debouncedSearch, statusFilter, routeFilter]);
 
   const loadDrawerOptions = useCallback(async () => {
     if (drawerOptionsLoadedRef.current) return;
@@ -134,50 +148,19 @@ export function FulfillmentDriversScreen() {
     }
   }, [user?.organization_id]);
 
-  useTabAwareDataLoad(loadData);
-
-  const stats = useMemo(() => {
-    const active = drivers.filter((d) => d.is_active !== false);
-    const linkedUsers = drivers.filter((d) => d.user_id != null);
-    const deliveriesToday = countDeliveriesByDriver(sales, "day");
-    let deliveriesCount = 0;
-    for (const count of deliveriesToday.values()) deliveriesCount += count;
-    const { completed, pending } = todayDeliveryStats(sales);
-    return {
-      total: drivers.length,
-      active: active.length,
-      linkedUsers: linkedUsers.length,
-      deliveriesToday: deliveriesCount,
-      completedToday: completed,
-      pendingToday: pending,
-    };
-  }, [drivers, sales]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return drivers.filter((d) => {
-      if (statusFilter === "active" && d.is_active === false) return false;
-      if (statusFilter === "inactive" && d.is_active !== false) return false;
-      if (routeFilter !== "all" && String(d.default_route_id ?? "") !== routeFilter) return false;
-      if (q) {
-        const hay = `${d.full_name} ${d.phone} ${d.driver_code}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [drivers, search, statusFilter, routeFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-  const pageRowIds = useMemo(() => pageSlice.map((d) => d.id), [pageSlice]);
-  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
-  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
-  const driverById = useMemo(() => new Map(pageSlice.map((d) => [String(d.id), d])), [pageSlice]);
+  useTabAwareDataLoad(loadReferenceData);
+  useTabAwareDataLoad(loadDrivers);
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, routeFilter]);
+  }, [debouncedSearch, statusFilter, routeFilter]);
+
+  const safePage = Math.min(page, totalPages);
+  const pageRowIds = useMemo(() => drivers.map((d) => d.id), [drivers]);
+  const allOnPageSelected = isAllOnPageSelected(pageRowIds);
+  const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const driverById = useMemo(() => new Map(drivers.map((d) => [String(d.id), d])), [drivers]);
+  const tableLoading = loading || (listLoading && drivers.length === 0);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -253,7 +236,7 @@ export function FulfillmentDriversScreen() {
       } else {
         await apiRequest("/drivers", { method: "POST", body });
       }
-      await loadData();
+      await loadDrivers();
       closeDrawer();
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Save failed");
@@ -263,7 +246,7 @@ export function FulfillmentDriversScreen() {
   }
 
   useEffect(() => {
-    if (loading) return;
+    if (tableLoading) return;
     const editId = searchParams.get("edit");
     if (!editId || handledParams.current === editId) return;
     handledParams.current = editId;
@@ -276,7 +259,7 @@ export function FulfillmentDriversScreen() {
         .catch(() => notifyError("Driver not found"));
     }
     router.replace("/fulfillment/drivers", { scroll: false });
-  }, [loading, searchParams, drivers, router]);
+  }, [tableLoading, searchParams, drivers, router]);
 
   async function deleteDriver(driver) {
     const ok = await confirm({
@@ -289,7 +272,7 @@ export function FulfillmentDriversScreen() {
     try {
       await apiRequest(`/drivers/${driver.id}`, { method: "DELETE" });
       if (editingId === driver.id) closeDrawer();
-      await loadData();
+      await loadDrivers();
       notifySuccess(`"${driver.full_name}" deleted`);
     } catch (err) {
       notifyError(err instanceof ApiError ? err.message : "Delete failed");
@@ -307,7 +290,7 @@ export function FulfillmentDriversScreen() {
           await apiRequest(`/drivers/${id}`, { method: "DELETE" });
         },
         clearSelection,
-        reload: loadData,
+        reload: loadDrivers,
         notifySuccess,
         notifyError,
         labelForId: (id) => driverById.get(String(id))?.full_name ?? id,
@@ -317,6 +300,19 @@ export function FulfillmentDriversScreen() {
     }
   }
 
+  const buildExportSearchParams = useCallback(() => {
+    const extra = {};
+    if (statusFilter === "active") extra.is_active = 1;
+    if (statusFilter === "inactive") extra.is_active = 0;
+    if (routeFilter !== "all") extra.default_route_id = routeFilter;
+    return buildPageParams({
+      page: 1,
+      perPage: 200,
+      q: debouncedSearch,
+      extra,
+    });
+  }, [debouncedSearch, statusFilter, routeFilter]);
+
   return (
     <CatalogPageShell
       title="Drivers"
@@ -325,33 +321,27 @@ export function FulfillmentDriversScreen() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => void loadData()}
-            disabled={loading}
+            onClick={() => void loadDrivers()}
+            disabled={loading || listLoading}
             className={SECONDARY_BTN_CLASS}
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
           </button>
           <CatalogListExport
             title="Drivers"
             apiPath="/drivers"
             columns={DRIVER_EXPORT_COLUMNS}
-            totalCount={filtered.length}
-            getSearchParams={() => ({ per_page: 200 })}
-            disabled={loading}
+            totalCount={total}
+            getSearchParams={buildExportSearchParams}
+            disabled={loading || listLoading}
           />
           <PrimaryButton onClick={openCreateDrawer}>Add driver</PrimaryButton>
         </div>
       }
       banner={
-        !loading ? (
+        !tableLoading ? (
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Active drivers" value={stats.active.toLocaleString()} />
-            <StatCard label="Total drivers" value={stats.total.toLocaleString()} />
-            <StatCard label="Linked users" value={stats.linkedUsers.toLocaleString()} />
-            <StatCard
-              label="Deliveries today"
-              value={`${stats.completedToday} done · ${stats.pendingToday} pending`}
-            />
+            <StatCard label="Total drivers" value={total.toLocaleString()} />
           </div>
         ) : null
       }
@@ -383,7 +373,7 @@ export function FulfillmentDriversScreen() {
       }
     >
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        {loading ? (
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading drivers…</p>
         ) : (
           <>
@@ -407,14 +397,14 @@ export function FulfillmentDriversScreen() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageSlice.length === 0 ? (
+                  {drivers.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
                         No drivers found.
                       </td>
                     </tr>
                   ) : (
-                    pageSlice.map((driver) => (
+                    drivers.map((driver) => (
                       <tr
                         key={driver.id}
                         className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
@@ -475,7 +465,7 @@ export function FulfillmentDriversScreen() {
             <PaginationBar
               page={safePage}
               totalPages={totalPages}
-              total={filtered.length}
+              total={total}
               pageSize={pageSize}
               onChange={setPage}
               onPageSizeChange={handlePageSizeChange}

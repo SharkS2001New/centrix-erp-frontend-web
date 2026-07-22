@@ -154,6 +154,24 @@ export function fetchRetailPackagesCached(organizationId) {
   });
 }
 
+/**
+ * Lean fetch for visible catalogue/stock rows — avoids warming the full org map.
+ * @param {string[]} productCodes
+ * @returns {Promise<any[]>}
+ */
+export async function fetchRetailPackagesForProductCodes(productCodes) {
+  const codes = [...new Set((productCodes ?? []).map((c) => String(c ?? "").trim()).filter(Boolean))];
+  if (!codes.length) return [];
+  const res = await apiRequest("/retail-package-settings", {
+    searchParams: {
+      per_page: Math.min(Math.max(codes.length, 25), 200),
+      product_codes: codes.join(","),
+    },
+    loading: false,
+  });
+  return res.data ?? [];
+}
+
 export function fetchUsersCached(organizationId, { path = "/users" } = {}) {
   const orgId = resolveOrgId(organizationId);
   const key = orgCacheKey(orgId, "users", path === "/users" ? "" : path);

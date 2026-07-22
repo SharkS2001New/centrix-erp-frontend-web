@@ -13,13 +13,12 @@ export function HrDepartmentsScreen() {
       addButtonLabel="Add department"
       apiPath="/departments"
       loadExtra={async () => {
-        const res = await apiRequest("/employees", { searchParams: { per_page: 500 } });
-        const employees = res.data ?? [];
+        const summary = await apiRequest("/employees/summary").catch(() => null);
+        const raw = summary?.by_department_id ?? {};
         const headcount = {};
-        for (const emp of employees) {
-          if (emp.is_active === false) continue;
-          const deptId = emp.department_id ?? 0;
-          headcount[deptId] = (headcount[deptId] ?? 0) + 1;
+        for (const [id, count] of Object.entries(raw)) {
+          if (id === "null" || id === "") continue;
+          headcount[Number(id)] = Number(count) || 0;
         }
         return { headcount };
       }}

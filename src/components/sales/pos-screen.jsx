@@ -83,7 +83,7 @@ import {
 import { useBlockingWait } from "@/lib/use-blocking-wait";
 import { usePageNavigationReady } from "@/lib/use-page-navigation-ready";
 import {
-  fetchRetailPackagesCached,
+  fetchRetailPackagesForProductCodes,
   fetchUomsCached,
   fetchVatsCached,
 } from "@/lib/reference-data-cache";
@@ -135,6 +135,7 @@ import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { PosStatusFooter } from "./pos-status-footer";
 import { isClassicExternalPosLayout } from "@/lib/external-pos-layout";
 import { mergeGeneralSettings } from "@/lib/general-settings";
+import { applyTheme, getTheme } from "@/lib/theme";
 import {
   PosPriceCheckerModal,
 } from "./pos-utility-modals";
@@ -746,6 +747,14 @@ export function PosScreen({ standalone = false }) {
   const floatModalDismissedRef = useRef(false);
   const cartRef = useRef(null);
   const cartSummaryRef = useRef(null);
+  const productByCodeRef = useRef({});
+  const retailByCodeRef = useRef({});
+  function getRetailPackage(code) {
+    if (!code) return null;
+    const cached = retailByCodeRef.current[code];
+    return cached !== undefined ? cached : null;
+  }
+  const cartCommitChainRef = useRef(Promise.resolve());
   const editAutosaveTimerRef = useRef(null);
   const editAutosaveInFlightRef = useRef(false);
   const skipEditAutosaveRef = useRef(false);
@@ -854,7 +863,7 @@ export function PosScreen({ standalone = false }) {
         getProductCode: (line) => line?.product_code,
         getDraftDiscount: (line) => {
           const product = productByCode[line?.product_code];
-          const retailPackage = retailByCode[line?.product_code] ?? null;
+          const retailPackage = getRetailPackage(line?.product_code);
           if (product) {
             return cartLineEnteredDiscountPerUnit(line, product, retailPackage);
           }
@@ -892,7 +901,15 @@ export function PosScreen({ standalone = false }) {
     if (!isCheckoutCompleteStatus(sale.status, channelWorkflow, "pos")) return;
     const entry = { id: sale.id, order_num: sale.order_num };
     setSessionPosOrders((prev) => {
-      const next = [entry, ...prev.filter((row) => String(row.id) !== String(entry.id))];
+      // Same order # after edit replaces the previous sale id so ← opens the live receipt.
+      const next = [
+        entry,
+        ...prev.filter(
+          (row) =>
+            String(row.id) !== String(entry.id) &&
+            String(row.order_num) !== String(entry.order_num),
+        ),
+      ];
       return next.slice(0, 40);
     });
     setEditBrowseIndex(0);
@@ -1041,7 +1058,17 @@ export function PosScreen({ standalone = false }) {
 
   cartRef.current = cart;
   cartSummaryRef.current = cartSummary;
+  productByCodeRef.current = productByCode;
 
+  // Classic External POS stays light — no dark theme toggle on this layout.
+  useEffect(() => {
+    if (!classicLayout) return undefined;
+    const previous = getTheme();
+    applyTheme("light");
+    return () => {
+      applyTheme(previous);
+    };
+  }, [classicLayout]);
 
   useEffect(() => {
     if (cart?.discount_approval_pending && cart?.discount_approval_request?.discount_amount != null) {
@@ -1111,23 +1138,43 @@ export function PosScreen({ standalone = false }) {
   usePageNavigationReady(posShellReady);
 
   const loadPosReferenceData = useCallback(async () => {
-    const [uoms, vats, retailRows] = await Promise.all([
+    // Do not warm the full retail-package catalog — hydrate packages for cart/search codes only.
+    const [uoms, vats] = await Promise.all([
       fetchUomsCached(),
       fetchVatsCached().catch(() => []),
-      fetchRetailPackagesCached().catch(() => []),
     ]);
     const uomMap = new Map();
     for (const u of uoms) uomMap.set(String(u.id), u);
     const vatMap = new Map();
     for (const v of vats) vatMap.set(String(v.id), v);
-    const retailMap = {};
-    for (const row of retailRows ?? []) {
-      if (row.product_code) retailMap[row.product_code] = row;
-    }
     setUomById(uomMap);
     setVatById(vatMap);
-    setRetailByCode(retailMap);
-    return { uomMap, vatMap, retailMap };
+    return { uomMap, vatMap };
+  }, []);
+
+  const ensureRetailPackages = useCallback(async (productCodes) => {
+    const codes = [
+      ...new Set(
+        (productCodes ?? [])
+          .map((c) => String(c ?? "").trim())
+          .filter((code) => code && retailByCodeRef.current[code] === undefined),
+      ),
+    ];
+    if (!codes.length) return;
+    // Sync ref first so add-to-cart right after await sees placeholders / results.
+    for (const code of codes) {
+      retailByCodeRef.current[code] = null;
+    }
+    setRetailByCode({ ...retailByCodeRef.current });
+    try {
+      const rows = await fetchRetailPackagesForProductCodes(codes);
+      for (const row of rows ?? []) {
+        if (row?.product_code) retailByCodeRef.current[row.product_code] = row;
+      }
+      setRetailByCode({ ...retailByCodeRef.current });
+    } catch {
+      // Leave null placeholders — wholesale pricing still works without packages.
+    }
   }, []);
 
   useEffect(() => {
@@ -1138,9 +1185,13 @@ export function PosScreen({ standalone = false }) {
     if (!cart?.lines?.length || uomById.size === 0) return;
     const missing = [
       ...new Set(
-        cart.lines.map((l) => l.product_code).filter((code) => code && !productByCode[code]),
+        cart.lines
+          .map((l) => l.product_code)
+          .filter((code) => code && !productByCodeRef.current[code]),
       ),
     ];
+    const cartCodes = cart.lines.map((l) => l.product_code).filter(Boolean);
+    void ensureRetailPackages(cartCodes);
     if (!missing.length) return;
     let cancelled = false;
     mapWithConcurrency(
@@ -1165,7 +1216,7 @@ export function PosScreen({ standalone = false }) {
     return () => {
       cancelled = true;
     };
-  }, [cart?.lines, uomById, vatById, productByCode, productBranchParams]);
+  }, [cart?.lines, uomById, vatById, productBranchParams, ensureRetailPackages]);
 
   const loadCashierCart = useCallback(async () => {
     if (!user?.branch_id) return null;
@@ -1221,7 +1272,7 @@ export function PosScreen({ standalone = false }) {
         const lineRef = cartLineRef(line);
         const advisedPerUnit = advisedByCode.get(code);
         const product = productByCode?.[code] ?? null;
-        const retailPackage = retailByCode?.[code] ?? null;
+        const retailPackage = getRetailPackage(code);
         const packQty = Number(
           cartLinePackQtyForDiscount(line, product, retailPackage),
         );
@@ -1249,14 +1300,39 @@ export function PosScreen({ standalone = false }) {
   }, [advisedDiscountLines, applyingAdvisedDiscounts, cart, productByCode, refreshCart, retailByCode]);
 
   const ensureCart = useCallback(async () => {
-    if (cart?.id && cart.channel === channel && Array.isArray(cart.lines)) {
-      return cart;
+    const current = cartRef.current;
+    if (current?.id && current.channel === channel && Array.isArray(current.lines)) {
+      return current;
     }
-    if (cart?.id && cart.channel === channel) {
-      return refreshCart(cart.id);
+    if (current?.id && current.channel === channel) {
+      return refreshCart(current.id);
     }
     return loadCashierCart();
-  }, [cart, channel, loadCashierCart, refreshCart]);
+  }, [channel, loadCashierCart, refreshCart]);
+
+  function enqueueCartCommit(task) {
+    const run = cartCommitChainRef.current.then(task, task);
+    cartCommitChainRef.current = run.catch(() => {});
+    return run;
+  }
+
+  function clearClassicEntryFields() {
+    setLineForm(EMPTY_LINE);
+    setSelectedProductCode(null);
+    setSelectedProduct(null);
+    setSearchQuery("");
+    setSearchResults([]);
+    setUnitPriceTouched(false);
+    setEditingLineId(null);
+    setEditingLineRef(null);
+    setSelectedLineId(null);
+    focusSearchAfterAdd.current = true;
+    window.requestAnimationFrame(() => {
+      if (!focusSearchAfterAdd.current) return;
+      focusSearchAfterAdd.current = false;
+      searchInputRef.current?.focus({ preventScroll: true });
+    });
+  }
 
   useEffect(() => {
     if (!user?.branch_id) return;
@@ -1302,6 +1378,7 @@ export function PosScreen({ standalone = false }) {
           for (const p of list) next[p.product_code] = p;
           return next;
         });
+        void ensureRetailPackages(list.map((p) => p.product_code));
       } catch (err) {
         if (seq !== searchSeq.current) return;
         setSearchResults([]);
@@ -1312,7 +1389,7 @@ export function PosScreen({ standalone = false }) {
         if (seq === searchSeq.current) setSearching(false);
       }
     },
-    [uomById, vatById, productBranchParams],
+    [uomById, vatById, productBranchParams, ensureRetailPackages],
   );
 
   useEffect(() => {
@@ -1324,7 +1401,7 @@ export function PosScreen({ standalone = false }) {
   function retailLineFlagFor(product, entryQty, retailLine = null, sellWholesaleOverride = null) {
     if (retailLine != null) return retailLine;
     const sellMode = sellWholesaleOverride ?? sellWholesale;
-    const retailPackage = retailByCode[product.product_code] ?? null;
+    const retailPackage = getRetailPackage(product.product_code);
     const resolved = resolvePosQuantity(entryQty, product, retailPackage, sellMode);
     return posLineRetailStockFlag(posSalesConfig, sellMode, resolved.isRetail, product);
   }
@@ -1338,7 +1415,7 @@ export function PosScreen({ standalone = false }) {
     sellWholesaleOverride = null,
   ) {
     const sellMode = sellWholesaleOverride ?? sellWholesale;
-    const retailPackage = retailByCode[product.product_code] ?? null;
+    const retailPackage = getRetailPackage(product.product_code);
     const lineRetailFlag = retailLineFlagFor(product, entryQty, retailLine, sellMode);
     const autoProductDiscount =
       allowDiscounts && productHasConfiguredDiscount(product);
@@ -1414,7 +1491,8 @@ export function PosScreen({ standalone = false }) {
   async function resolveProductByCode(code) {
     const trimmed = String(code ?? "").trim();
     if (!trimmed) return null;
-    if (productByCode[trimmed]) return productByCode[trimmed];
+    await ensureRetailPackages([trimmed]);
+    if (productByCodeRef.current[trimmed]) return productByCodeRef.current[trimmed];
     const fromResults = searchResults.find(
       (p) => p.product_code.toLowerCase() === trimmed.toLowerCase(),
     );
@@ -1454,9 +1532,11 @@ export function PosScreen({ standalone = false }) {
     override = null,
     successMessage,
     clearEntry = true,
+    unlockUiEarly = false,
     lineRetailStockFlagOverride = null,
   }) {
-    const retailPackage = retailByCode[product.product_code] ?? null;
+    const liveCart = cartRef.current ?? cart;
+    const retailPackage = getRetailPackage(product.product_code);
     let finalComputed = computed;
     let targetLineRef = editingRef ?? cartLineRef(mergeTarget);
 
@@ -1490,12 +1570,12 @@ export function PosScreen({ standalone = false }) {
     const stockCheck = posStockAvailability({
       product,
       baseQty: stockBaseQty,
-      cartLines: cart?.lines,
+      cartLines: liveCart?.lines,
       sellFromShop,
       posSalesConfig,
       allowNegativeStock,
       stockAsRetail,
-      productByCode,
+      productByCode: productByCodeRef.current,
       excludeLineId: editingId ?? mergeTarget?.id ?? mergeTarget?.update_code,
     });
     if (!stockCheck.ok) {
@@ -1587,16 +1667,7 @@ export function PosScreen({ standalone = false }) {
           "Discount saved on this line. Manager approval is requested when you save the order.",
         );
         if (clearEntry) {
-          setLineForm(EMPTY_LINE);
-          setSelectedProductCode(null);
-          setSelectedProduct(null);
-          setSearchQuery("");
-          setSearchResults([]);
-          setUnitPriceTouched(false);
-          setEditingLineId(null);
-          setEditingLineRef(null);
-          setSelectedLineId(null);
-          focusSearchAfterAdd.current = true;
+          clearClassicEntryFields();
         }
         return true;
       } catch (error) {
@@ -1617,12 +1688,16 @@ export function PosScreen({ standalone = false }) {
         : null;
 
     const optimisticLine = buildOptimisticCartLine(product, lineBody, finalComputed);
-    setCart(
-      applyOptimisticCartMutation(activeCart, optimisticLine, {
-        mergeTarget,
-        editingRef: targetLineRef,
-      }),
-    );
+    const optimisticCart = applyOptimisticCartMutation(activeCart, optimisticLine, {
+      mergeTarget,
+      editingRef: targetLineRef,
+    });
+    cartRef.current = optimisticCart;
+    setCart(optimisticCart);
+
+    if (unlockUiEarly && clearEntry) {
+      clearClassicEntryFields();
+    }
 
     try {
       if (targetLineRef) {
@@ -1649,30 +1724,23 @@ export function PosScreen({ standalone = false }) {
       }
       setCartLineSaveFailed(false);
     } catch (error) {
-      setCart((current) =>
-        revertOptimisticCartMutation(current, {
+      setCart((current) => {
+        const reverted = revertOptimisticCartMutation(current, {
           previousLineSnapshot:
             previousLineSnapshot?.product_code != null ? previousLineSnapshot : null,
           optimisticLine,
-        }),
-      );
+        });
+        cartRef.current = reverted;
+        return reverted;
+      });
       setCartLineSaveFailed(true);
       throw error;
     }
 
     if (successMessage) setStatusMessage(successMessage);
 
-    if (clearEntry) {
-      setLineForm(EMPTY_LINE);
-      setSelectedProductCode(null);
-      setSelectedProduct(null);
-      setSearchQuery("");
-      setSearchResults([]);
-      setUnitPriceTouched(false);
-      setEditingLineId(null);
-      setEditingLineRef(null);
-      setSelectedLineId(null);
-      focusSearchAfterAdd.current = true;
+    if (clearEntry && !unlockUiEarly) {
+      clearClassicEntryFields();
     }
 
     if (activeCart?.held_order_num || cartRef.current?.held_order_num) {
@@ -1683,11 +1751,41 @@ export function PosScreen({ standalone = false }) {
   }
 
   async function quickAddOrIncrementProduct(product) {
-    if (busy || lineBusy || !product) return;
+    if (busy || !product) return;
+    if (!classicLayout && lineBusy) return;
     if (!assertRouteReadyForAdd()) return;
+
+    setProductByCode((prev) =>
+      prev[product.product_code] ? prev : { ...prev, [product.product_code]: product },
+    );
 
     const computed = applyComputedPrice(product, "1", 0);
     if (computed.baseQty <= 0) return;
+
+    if (classicLayout) {
+      void enqueueCartCommit(async () => {
+        const mergeTarget = findMergeableCartLine(
+          cartRef.current?.lines,
+          product.product_code,
+          computed,
+          posSalesConfig,
+          sellWholesale,
+        );
+        try {
+          await commitCartLine({
+            product,
+            computed,
+            incrementBaseQty: computed.baseQty,
+            mergeTarget,
+            successMessage: null,
+            unlockUiEarly: true,
+          });
+        } catch (e) {
+          setStatusMessage(e instanceof ApiError ? e.message : "Failed to add line");
+        }
+      });
+      return;
+    }
 
     const mergeTarget = findMergeableCartLine(
       cart?.lines,
@@ -1730,10 +1828,20 @@ export function PosScreen({ standalone = false }) {
 
   function pickProduct(product) {
     if (!product) return;
+    setProductByCode((prev) =>
+      prev[product.product_code] ? prev : { ...prev, [product.product_code]: product },
+    );
+
+    // Classic: add qty 1 immediately — do not park the product in the entry "next row".
+    if (classicLayout && !replacingLineId) {
+      void quickAddOrIncrementProduct(product);
+      return;
+    }
+
     setSelectedProductCode(product.product_code);
     setSelectedProduct(product);
     setUnitPriceTouched(false);
-    const retailPackage = retailByCode[product.product_code] ?? null;
+    const retailPackage = getRetailPackage(product.product_code);
     const replaceLine = replacingLineId
       ? (cart?.lines ?? []).find((line) => sameLineId(line.id, replacingLineId))
       : null;
@@ -1810,7 +1918,7 @@ export function PosScreen({ standalone = false }) {
       quantity: posEntryQtyFromCartLine(
         line,
         productByCode[line.product_code] ?? null,
-        retailByCode[line.product_code] ?? null,
+        getRetailPackage(line.product_code),
       ),
       discount: "0",
       unit_price: "",
@@ -1889,7 +1997,7 @@ export function PosScreen({ standalone = false }) {
 
   useEffect(() => {
     if (!selectedProduct || editingLineId) return;
-    const retailPackage = retailByCode[selectedProduct.product_code] ?? null;
+    const retailPackage = getRetailPackage(selectedProduct.product_code);
     const autoRetailPrice = usesPosRetailPricing(
       sellWholesale,
       selectedProduct,
@@ -1940,7 +2048,7 @@ export function PosScreen({ standalone = false }) {
 
   const unitPriceLabel = useMemo(() => {
     if (!selectedProduct) return "Unit price";
-    const retailPackage = retailByCode[selectedProduct.product_code] ?? null;
+    const retailPackage = getRetailPackage(selectedProduct.product_code);
     return posUnitPriceFieldLabel(
       selectedProduct,
       sellWholesale,
@@ -1957,7 +2065,7 @@ export function PosScreen({ standalone = false }) {
         ? posQuantityFieldMeta(null, sellWholesale, null, lineForm.quantity)
         : null;
     }
-    const retailPackage = retailByCode[selectedProduct.product_code] ?? null;
+    const retailPackage = getRetailPackage(selectedProduct.product_code);
     return posQuantityFieldMeta(
       selectedProduct,
       sellWholesale,
@@ -1968,7 +2076,7 @@ export function PosScreen({ standalone = false }) {
 
   const stockDeductionHint = useMemo(() => {
     if (!selectedProduct) return null;
-    const retailPackage = retailByCode[selectedProduct.product_code] ?? null;
+    const retailPackage = getRetailPackage(selectedProduct.product_code);
     const computed = computePosLine({
       product: selectedProduct,
       entryQty: lineForm.quantity || "1",
@@ -2009,7 +2117,7 @@ export function PosScreen({ standalone = false }) {
       return { ok: true };
     }
     const product = productByCode[selectedProduct.product_code] ?? selectedProduct;
-    const retailPackage = retailByCode[product.product_code] ?? null;
+    const retailPackage = getRetailPackage(product.product_code);
     const computed = computePosLine({
       product,
       entryQty: lineForm.quantity,
@@ -2064,7 +2172,7 @@ export function PosScreen({ standalone = false }) {
   const lineStockMessage = useMemo(() => {
     if (!selectedProduct) return null;
     const product = productByCode[selectedProduct.product_code] ?? selectedProduct;
-    const retailPackage = retailByCode[product.product_code] ?? null;
+    const retailPackage = getRetailPackage(product.product_code);
     return posStockInsufficientMessage(lineStockCheck, {
       product,
       sellWholesale,
@@ -2164,7 +2272,7 @@ export function PosScreen({ standalone = false }) {
         repriced.push(row);
         continue;
       }
-      const retailPackage = retailByCode[row.product_code] ?? null;
+      const retailPackage = getRetailPackage(row.product_code);
       const isRetailLine = cartLineRetailStockFlag(row);
       const entryQty = posEntryQtyFromCartLine(row, product, retailPackage);
       const computed = computePosLine({
@@ -2332,6 +2440,7 @@ export function PosScreen({ standalone = false }) {
         discount,
         override,
         successMessage: null,
+        unlockUiEarly: classicLayout,
       });
       if (!ok) return;
     } catch (e) {
@@ -2366,7 +2475,11 @@ export function PosScreen({ standalone = false }) {
   }
 
   function handleQuantityEnter() {
-    if (!selectedProduct || busy || lineBusy || addLineBlocked) return;
+    if (!selectedProduct || busy || lineBusy) return;
+    if (addLineBlocked) {
+      if (classicLayout && lineStockMessage) setStatusMessage(lineStockMessage);
+      return;
+    }
     if (classicLayout) {
       void handleAddLine();
       return;
@@ -2422,7 +2535,7 @@ export function PosScreen({ standalone = false }) {
     if (!line || !product) {
       return { canDecrease: false, canIncrease: false };
     }
-    const retailPackage = retailByCode[line.product_code] ?? null;
+    const retailPackage = getRetailPackage(line.product_code);
     const currentBase = Number(line.quantity ?? 0);
     const decreaseCheck = canAdjustCartLineQuantity({
       line,
@@ -2464,7 +2577,7 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      const retailPackage = retailByCode[line.product_code] ?? null;
+      const retailPackage = getRetailPackage(line.product_code);
       // Keep each line's original wholesale/retail flag — F2 only affects new lines.
       const isRetailLine = cartLineRetailStockFlag(line);
       const adjustCheck = canAdjustCartLineQuantity({
@@ -2563,7 +2676,7 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      const retailPackage = retailByCode[line.product_code] ?? null;
+      const retailPackage = getRetailPackage(line.product_code);
       const isRetailLine = cartLineRetailStockFlag(line);
       const computedPreview = applyComputedPrice(
         product,
@@ -2893,7 +3006,7 @@ export function PosScreen({ standalone = false }) {
         return;
       }
 
-      const retailPackage = retailByCode[line.product_code] ?? null;
+      const retailPackage = getRetailPackage(line.product_code);
       const isRetailLine = Number(line.on_wholesale_retail) === 1;
       setEditingLineId(line.id);
       setEditingLineRef(cartLineRef(line));
@@ -3012,6 +3125,10 @@ export function PosScreen({ standalone = false }) {
         user,
         preparedBy: user?.full_name ?? user?.username ?? null,
         documentType,
+        // Checkout already returned the sale — skip redundant print setup round-trips.
+        skipSaleRefresh: true,
+        skipSettingsRefresh: true,
+        skipOrganizationRefresh: Boolean(organization?.name || capabilities?.profile_label),
       })
         .then((result) => {
           if (!result) {
@@ -3443,12 +3560,16 @@ export function PosScreen({ standalone = false }) {
 
     const hasLines = (cartRef.current?.lines?.length ?? cart?.lines?.length ?? 0) > 0;
     const activeCart = cartRef.current ?? cart;
-    if (hasLines) {
+    const editingPrevious = Boolean(activeCart?.held_order_num);
+
+    if (hasLines || editingPrevious) {
       const ok = await confirm({
         title: "New order",
-        message: "Clear this workspace and start a new order?",
-        confirmLabel: "Start new order",
-        destructive: true,
+        message: editingPrevious
+          ? "Save changes to this order and start a new order?"
+          : "Clear this workspace and start a new order?",
+        confirmLabel: editingPrevious ? "Save & new order" : "Start new order",
+        destructive: !editingPrevious,
       });
       if (!ok) {
         skipEditAutosaveRef.current = false;
@@ -3465,13 +3586,37 @@ export function PosScreen({ standalone = false }) {
     setEditingLineId(null);
     setEditingLineRef(null);
     orderNoUserEditedRef.current = false;
-    setEditOrderNo("");
     setOrderEditError(null);
     setEditBrowseIndex(0);
     clearLineEntry();
-    setBusy(true);
     setStatusMessage(null);
     try {
+      // Mid-edit: checkout under the same order # so ← can open it again, then start fresh.
+      // Do this before setBusy — finalizeEditedOrder bails when busy is already true.
+      if (editingPrevious && (activeCart?.lines?.length ?? 0) > 0) {
+        const saved = await finalizeEditedOrder({
+          quiet: false,
+          submitKra: false,
+          skipPrint: true,
+        });
+        if (saved?.id) {
+          const next = cartRef.current ?? (await loadCashierCart());
+          cartRef.current = next;
+          orderNoUserEditedRef.current = false;
+          if (next?.next_order_num != null) {
+            setEditOrderNo(String(next.next_order_num));
+          } else {
+            setEditOrderNo("");
+          }
+          setStatusMessage("New order — scan or search a product.");
+          if (standalone) notifySuccess("Order saved — ready for a new order.");
+          focusProductSearch();
+          return;
+        }
+        // Fall through to clear/reinstate if save failed.
+      }
+
+      setBusy(true);
       if (activeCart?.id && (hasLines || activeCart.held_order_num)) {
         await apiRequest(`/sales/carts/${activeCart.id}/lines`, { method: "DELETE" });
       }
@@ -3480,6 +3625,12 @@ export function PosScreen({ standalone = false }) {
       orderNoUserEditedRef.current = false;
       if (next?.next_order_num != null) {
         setEditOrderNo(String(next.next_order_num));
+      } else {
+        setEditOrderNo("");
+      }
+      // Refresh ← list so reinstated receipts are openable again.
+      if (enablePosOrderEdit && standalone) {
+        void loadCompletedPosOrders();
       }
       setStatusMessage("New order — scan or search a product.");
       if (standalone) notifySuccess("Workspace cleared — ready for a new order.");
@@ -3577,10 +3728,10 @@ export function PosScreen({ standalone = false }) {
       const orderNum = restoredCart?.held_order_num ?? restoredCart?.next_order_num;
       if (orderNum != null) {
         setEditOrderNo(String(orderNum));
-        setSessionPosOrders((prev) => {
-          if (prev.some((row) => String(row.id) === String(saleId))) return prev;
-          return [...prev, { id: saleId, order_num: orderNum }].slice(0, 40);
-        });
+        // Sale is tombstoned while editing — drop it from ← list until checkout recreates it.
+        setSessionPosOrders((prev) =>
+          prev.filter((row) => String(row.id) !== String(saleId)),
+        );
 
         let customerMemory = extractSaleCustomerMemory(saleSnapshot);
         if (!customerMemory.name && customerMemory.customerNum == null) {
@@ -3709,11 +3860,8 @@ export function PosScreen({ standalone = false }) {
     if (!enablePosOrderEdit || busy) return;
     if (isCartEditSession) return;
 
-    let orders = sessionPosOrders;
-    if (!orders.length) {
-      setStatusMessage("Loading completed POS orders…");
-      orders = await loadCompletedPosOrders();
-    }
+    setStatusMessage("Loading completed POS orders…");
+    const orders = await loadCompletedPosOrders();
     if (!orders.length) {
       const message =
         "No completed POS order to open yet. Complete a sale first, then click the order # to reopen it.";
@@ -3763,30 +3911,28 @@ export function PosScreen({ standalone = false }) {
       return;
     }
 
-    let orders = sessionPosOrders;
-    if (!orders.length) {
-      setStatusMessage("Loading completed POS orders…");
-      orders = await loadCompletedPosOrders();
+    setStatusMessage("Loading completed POS orders…");
+    let orders = await loadCompletedPosOrders();
+    const heldNum = cartRef.current?.held_order_num ?? cart?.held_order_num;
+    if (heldNum != null) {
+      orders = orders.filter((row) => String(row.order_num) !== String(heldNum));
+      setSessionPosOrders(orders);
     }
     if (!orders.length) {
       const message =
-        "No active completed POS orders found for this cashier. Orders already loaded for edit (numbers 9000000+) are archived and cannot be opened again — complete a new sale, then use ←.";
+        "No other completed POS orders found for this cashier. Save or finish this edit, then use ←.";
       setOrderEditError(message);
       setStatusMessage(message);
       return;
     }
 
-    const nextIndex = editBrowseIndex + 1;
-    if (nextIndex >= orders.length) {
-      setStatusMessage("Already at the oldest completed order.");
-      return;
-    }
-    const row = orders[nextIndex];
+    // Oldest direction: first entry in the refreshed list (newest completed besides current edit).
+    const row = orders[0];
     if (!row) return;
     orderNoUserEditedRef.current = false;
-    setEditBrowseIndex(nextIndex);
+    setEditBrowseIndex(0);
     setEditOrderNo(String(row.order_num));
-    await restoreOrderForEdit(row.id);
+    await restoreOrderForEdit(row.id, { replace: true });
   }
 
   async function classicGoNextOrder() {
@@ -3812,14 +3958,15 @@ export function PosScreen({ standalone = false }) {
         ? `Previous Order, ${orderLabel} - ${customer}`
         : `Previous Order, ${orderLabel}`;
     }
-    const orderLabel =
-      activeOrderNum != null ? formatOrderNumber(activeOrderNum) : "—";
+    const rawNum = activeOrderNum ?? (editOrderNo.trim() ? editOrderNo.trim() : null);
+    const orderLabel = rawNum != null ? formatOrderNumber(rawNum) : "—";
     return `New Order - ${orderLabel}`;
   }, [
     isCartEditSession,
     cart?.held_order_num,
     prefilledEditCustomerName,
     activeOrderNum,
+    editOrderNo,
   ]);
 
   function flashPosShortcutMessage(message, { error = true } = {}) {
@@ -4185,7 +4332,9 @@ export function PosScreen({ standalone = false }) {
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <NotificationBell />
                 <WorkspaceSwitcher />
-                <ThemeToggle showLabel className="pos-header-theme-btn hidden sm:inline-flex" />
+                {classicLayout ? null : (
+                  <ThemeToggle showLabel className="pos-header-theme-btn hidden sm:inline-flex" />
+                )}
                 <UserAccountMenu
                   showName={false}
                   triggerClassName="pos-header-action-btn inline-flex items-center rounded-md p-1"
@@ -4858,7 +5007,7 @@ export function PosScreen({ standalone = false }) {
                   return posEntryQtyFromCartLine(
                     line,
                     productMeta,
-                    retailByCode[line.product_code] ?? null,
+                    getRetailPackage(line.product_code),
                   );
                 }}
                 lineQtyUnit={(line) => {
@@ -4867,7 +5016,7 @@ export function PosScreen({ standalone = false }) {
                     posCartLineEntryUnitLabel(
                       line,
                       productMeta ?? null,
-                      retailByCode[line.product_code] ?? null,
+                      getRetailPackage(line.product_code),
                     ) || "pcs"
                   );
                 }}
@@ -4906,7 +5055,7 @@ export function PosScreen({ standalone = false }) {
                       ? cartLineEnteredDiscountPerUnit(
                           line,
                           productMeta,
-                          retailByCode[line.product_code] ?? null,
+                          getRetailPackage(line.product_code),
                         )
                       : lineDiscountPerUnit(line.discount_given, line.quantity)
                   ).toLocaleString();
@@ -4952,7 +5101,7 @@ export function PosScreen({ standalone = false }) {
                     barcodeEnabled={enableBarcodeScanner}
                     stockDisplayMode={stockDisplayMode}
                     posSalesConfig={posSalesConfig}
-                    disabled={busy || lineBusy}
+                    disabled={busy}
                   />
                 }
                 qtyRef={qtyInputRef}
@@ -5131,7 +5280,7 @@ export function PosScreen({ standalone = false }) {
                                 ? cartLineEnteredDiscountPerUnit(
                                     line,
                                     productMeta,
-                                    retailByCode[line.product_code] ?? null,
+                                    getRetailPackage(line.product_code),
                                   )
                                 : lineDiscountPerUnit(line.discount_given, line.quantity)
                             ).toLocaleString()}

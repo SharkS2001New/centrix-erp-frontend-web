@@ -51,7 +51,7 @@ import {
   fetchUomsCached,
   fetchUsersCached,
   fetchVatsCached,
-  fetchRetailPackagesCached,
+  fetchRetailPackagesForProductCodes,
 } from "@/lib/reference-data-cache";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import {
@@ -428,17 +428,13 @@ export function ProductsScreen() {
           () => fetchVatsCached(user?.organization_id).then((data) => ({ data })).catch(() => ({ data: [] })),
           () => fetchUomsCached(user?.organization_id).then((data) => ({ data })),
           () => fetchSuppliersCached(user?.organization_id).then((data) => ({ data })),
-          () =>
-            fetchRetailPackagesCached(user?.organization_id)
-              .then((data) => ({ data }))
-              .catch(() => ({ data: [] })),
           () => apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
         ],
         concurrency: 3,
       });
 
       const [catRes, subRes, branchRes] = criticalResults;
-      const [userRes, vatRes, uomRes, supRes, retailRes, settingsRes] = deferredResults;
+      const [userRes, vatRes, uomRes, supRes, settingsRes] = deferredResults;
 
       setUsers(userRes.data ?? []);
       setCategories(catRes.data ?? []);
@@ -446,7 +442,6 @@ export function ProductsScreen() {
       setVats(vatRes.data ?? []);
       setUoms(uomRes.data ?? []);
       setSuppliers(supRes.data ?? []);
-      setRetailPackages(retailRes.data ?? []);
       setBranches(branchRes.data ?? []);
       const settingsRows = settingsRes?.data ?? settingsRes ?? [];
       const settings = Array.isArray(settingsRows) ? settingsRows[0] : settingsRows;
@@ -505,6 +500,19 @@ export function ProductsScreen() {
       setProducts(parsed.items);
       setTotalProducts(parsed.total);
       setTotalPages(parsed.totalPages);
+
+      const codes = parsed.items.map((p) => p.product_code).filter(Boolean);
+      if (codes.length) {
+        void fetchRetailPackagesForProductCodes(codes)
+          .then((rows) => {
+            setRetailPackages((prev) => {
+              const map = new Map(prev.map((r) => [r.product_code, r]));
+              for (const row of rows) map.set(row.product_code, row);
+              return [...map.values()];
+            });
+          })
+          .catch(() => {});
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load products");
     } finally {

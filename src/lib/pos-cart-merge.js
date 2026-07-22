@@ -11,16 +11,14 @@ export function findMergeableCartLine(
   const nextOnWholesaleRetail = posSalesConfig?.perLineStockRouting
     ? sellWholesale === false
     : Boolean(computed.isRetail);
-  const nextUom = String(computed.uomLabel ?? "").trim();
-
+  // Merge by SKU + retail/wholesale flag only. Packaging label mismatches
+  // (e.g. "PCS" vs "Piece") used to spawn duplicate rows and a second "entry" feel.
   return (
     cartLines.find((line) => {
       if (excludedId != null && String(line.id) === excludedId) return false;
       if (line.product_code !== productCode) return false;
       const lineOnWholesaleRetail = Number(line.on_wholesale_retail) === 1;
       if (lineOnWholesaleRetail !== nextOnWholesaleRetail) return false;
-      const lineUom = String(line.uom ?? "").trim();
-      if (lineUom && nextUom && lineUom !== nextUom) return false;
       return true;
     }) ?? null
   );
@@ -57,7 +55,14 @@ export function normalizeCartResponse(res) {
 /** Merge a single-line API payload into the current cart (legacy fallback). */
 export function applyCartMutationResponse(prevCart, res, { targetLineRef = null } = {}) {
   const normalized = normalizeCartResponse(res);
-  if (normalized) return normalized;
+  if (normalized) {
+    return {
+      ...prevCart,
+      ...normalized,
+      // Line mutations used to omit next_order_num → caption became "New Order - —".
+      next_order_num: normalized.next_order_num ?? prevCart?.next_order_num ?? null,
+    };
+  }
   if (!prevCart?.id || !res?.product_code) return prevCart;
 
   const lines = [...(prevCart.lines ?? [])];

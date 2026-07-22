@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import {
@@ -42,9 +44,13 @@ export function SalesReturnsScreen() {
   const kraDeviceEnabled = isKraDeviceEnabled(capabilities?.module_settings, capabilities);
   const canManageReturns = canManageSalesReturns({ hasPermission, capabilities });
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
   const defaultRange = useMemo(() => defaultDateRange(30), []);
   const [fromDate, setFromDate] = useState(defaultRange.from);
@@ -60,50 +66,49 @@ export function SalesReturnsScreen() {
   const [actionError, setActionError] = useState(null);
 
   const loadData = useCallback(async () => {
+    setListLoading(true);
     setError(null);
     try {
-      const params = { per_page: 200 };
-      if (statusFilter !== "all") params.status = statusFilter;
-      if (fromDate) params.from_date = fromDate;
-      if (toDate) params.to_date = toDate;
-
-      const res = await apiRequest("/customer-returns", { searchParams: params });
-      setRows(res.data ?? []);
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
+        extra: {
+          status: statusFilter !== "all" ? statusFilter : undefined,
+          from_date: fromDate || undefined,
+          to_date: toDate || undefined,
+        },
+      });
+      const res = await apiRequest("/customer-returns", { searchParams: searchParamsApi });
+      const parsed = parsePaginator(res);
+      setRows(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load returns");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [statusFilter, fromDate, toDate]);
+  }, [page, pageSize, debouncedSearch, statusFilter, fromDate, toDate]);
 
   useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, fromDate, toDate]);
+  }, [debouncedSearch, statusFilter, fromDate, toDate]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
     setPage(1);
   }
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((row) => {
-      const invoice = row.sale ? formatReceiptNumber(row.sale).toLowerCase() : "";
-      const customer = (row.customer?.customer_name ?? "").toLowerCase();
-      return (
-        String(row.return_no ?? "").toLowerCase().includes(q) ||
-        invoice.includes(q) ||
-        customer.includes(q)
-      );
-    });
-  }, [rows, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const tableLoading = loading || (listLoading && rows.length === 0);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
 
   const openDetail = useCallback(async (row) => {
     setActionError(null);
@@ -240,10 +245,10 @@ export function SalesReturnsScreen() {
           <button
             type="button"
             onClick={() => void loadData()}
-            disabled={loading}
+            disabled={listLoading}
             className={SECONDARY_BTN_CLASS}
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {listLoading ? "Refreshing…" : "Refresh"}
           </button>
           <PrimaryLink href="/sales/returns/new">Create return</PrimaryLink>
         </div>
@@ -299,20 +304,20 @@ export function SalesReturnsScreen() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {tableLoading ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
                     Loading returns…
                   </td>
                 </tr>
-              ) : pageSlice.length === 0 ? (
+              ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
                     No returns match your filters.
                   </td>
                 </tr>
               ) : (
-                pageSlice.map((row) => {
+                rows.map((row) => {
                   const customerName =
                     row.customer?.customer_name ??
                     row.sale?.customer_name_override ??
@@ -368,11 +373,11 @@ export function SalesReturnsScreen() {
         <PaginationBar
           page={safePage}
           totalPages={totalPages}
-          total={filtered.length}
+          total={total}
           pageSize={pageSize}
           onChange={setPage}
-              onPageSizeChange={handlePageSizeChange}
-            />
+          onPageSizeChange={handlePageSizeChange}
+        />
       </section>
 
       <CustomerReturnActionDialog

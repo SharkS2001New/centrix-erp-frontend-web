@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import {
   EMPTY_ROUTE_FORM,
   RouteFormFields,
@@ -12,7 +13,6 @@ import {
   normalizeRouteId,
   resolveRouteFormBranchId,
   routeToForm,
-  sumRouteSales,
   updateRouteFormField,
   useRouteFormResources,
 } from "@/components/routes/route-form";
@@ -40,6 +40,7 @@ import { defaultDateRange, formatCompactDateRange } from "@/lib/datetime";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   BatchActionBar,
   BatchDeleteButton,
@@ -61,8 +62,11 @@ export function FulfillmentRoutesScreen() {
     useRouteFormResources();
 
   const [routes, setRoutes] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
-  const { search, setSearch } = useListUrlSearch();
+  const [listLoading, setListLoading] = useState(false);
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const defaultRange = useMemo(() => defaultDateRange(7), []);
   const [fromDate, setFromDate] = useState(defaultRange.from);
   const [toDate, setToDate] = useState(defaultRange.to);
@@ -89,27 +93,36 @@ export function FulfillmentRoutesScreen() {
   } = usePageRowSelection();
 
   const loadData = useCallback(async () => {
+    setListLoading(true);
     try {
-      const routeRes = await apiRequest("/routes", {
-        searchParams: {
-          per_page: 200,
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
+        extra: {
           include_stats: 1,
           stats_from_date: fromDate,
           stats_to_date: toDate,
         },
       });
-      setRoutes(routeRes.data ?? []);
+      const routeRes = await apiRequest("/routes", { searchParams: searchParamsApi });
+      const parsed = parsePaginator(routeRes);
+      setRoutes(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load routes");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [fromDate, toDate]);
+  }, [page, pageSize, debouncedSearch, fromDate, toDate]);
+
+  useTabAwareDataLoad(loadData);
 
   useEffect(() => {
-    setLoading(true);
-    loadData();
-  }, [loadData]);
+    setPage(1);
+  }, [debouncedSearch, fromDate, toDate]);
 
   const routeStatsById = useMemo(() => {
     const map = new Map();
@@ -125,52 +138,14 @@ export function FulfillmentRoutesScreen() {
     return map;
   }, [routes]);
 
-  const periodSales = useMemo(() => sumRouteSales(routeStatsById), [routeStatsById]);
-
-  const stats = useMemo(() => {
-    const activeRoutes = routes.filter((r) => r.is_active !== false);
-    let routeCustomers = 0;
-    for (const route of routes) {
-      routeCustomers += Number(route.customer_count ?? 0);
-    }
-    return {
-      activeRoutes: activeRoutes.length,
-      routeCustomers,
-      salesTotal: periodSales.total,
-      ordersCount: periodSales.count,
-    };
-  }, [routes, periodSales]);
-
   const periodLabel = formatCompactDateRange(fromDate, toDate);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    let list = routes;
-    if (q) {
-      list = list.filter(
-        (r) =>
-          r.route_name?.toLowerCase().includes(q) ||
-          r.direction?.toLowerCase().includes(q),
-      );
-    }
-    return [...list].sort((a, b) => {
-      const salesA = routeStatsById.get(normalizeRouteId(a.id))?.total ?? 0;
-      const salesB = routeStatsById.get(normalizeRouteId(b.id))?.total ?? 0;
-      return salesB - salesA;
-    });
-  }, [routes, search, routeStatsById]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-  const pageRowIds = useMemo(() => pageSlice.map((r) => r.id), [pageSlice]);
+  const pageRowIds = useMemo(() => routes.map((r) => r.id), [routes]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
-  const routeById = useMemo(() => new Map(pageSlice.map((r) => [String(r.id), r])), [pageSlice]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, fromDate, toDate]);
+  const routeById = useMemo(() => new Map(routes.map((r) => [String(r.id), r])), [routes]);
+  const tableLoading = loading || (listLoading && routes.length === 0);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
@@ -254,7 +229,7 @@ export function FulfillmentRoutesScreen() {
   }
 
   useEffect(() => {
-    if (loading) return;
+    if (tableLoading) return;
     const paramKey = `${searchParams.get("create") ?? ""}:${searchParams.get("edit") ?? ""}`;
     if (paramKey === ":" || handledParams.current === paramKey) return;
     handledParams.current = paramKey;
@@ -276,10 +251,10 @@ export function FulfillmentRoutesScreen() {
     }
 
     router.replace("/fulfillment/routes", { scroll: false });
-  }, [loading, searchParams, routes, router]);
+  }, [tableLoading, searchParams, routes, router]);
 
   async function deleteRoute(route) {
-    const count = customerCountByRoute.get(route.id) ?? 0;
+    const count = Number(route.customer_count ?? 0);
     const msg =
       count > 0
         ? `"${route.route_name}" has ${count} customer(s). Delete anyway?`
@@ -321,6 +296,19 @@ export function FulfillmentRoutesScreen() {
     }
   }
 
+  const buildExportSearchParams = useCallback(() => {
+    return buildPageParams({
+      page: 1,
+      perPage: 200,
+      q: debouncedSearch,
+      extra: {
+        include_stats: 1,
+        stats_from_date: fromDate,
+        stats_to_date: toDate,
+      },
+    });
+  }, [debouncedSearch, fromDate, toDate]);
+
   return (
     <CatalogPageShell
       title="Routes"
@@ -330,10 +318,10 @@ export function FulfillmentRoutesScreen() {
           <button
             type="button"
             onClick={() => void loadData()}
-            disabled={loading}
+            disabled={loading || listLoading}
             className={SECONDARY_BTN_CLASS}
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
           </button>
           <CatalogDataImportButton
             title="Import routes"
@@ -357,9 +345,9 @@ export function FulfillmentRoutesScreen() {
             filename="routes"
             apiPath="/routes"
             columns={ROUTE_EXPORT_COLUMNS}
-            totalCount={filtered.length}
-            getSearchParams={() => ({ per_page: 200 })}
-            disabled={loading}
+            totalCount={total}
+            getSearchParams={buildExportSearchParams}
+            disabled={loading || listLoading}
           />
           <button
             type="button"
@@ -372,18 +360,9 @@ export function FulfillmentRoutesScreen() {
         </div>
       }
       banner={
-        !loading ? (
+        !tableLoading ? (
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Active routes" value={stats.activeRoutes.toLocaleString()} />
-            <StatCard label="Customers on routes" value={stats.routeCustomers.toLocaleString()} />
-            <StatCard
-              label={`Sales · ${periodLabel}`}
-              value={formatRouteKes(stats.salesTotal)}
-            />
-            <StatCard
-              label={`Orders · ${periodLabel}`}
-              value={stats.ordersCount.toLocaleString()}
-            />
+            <StatCard label="Total routes" value={total.toLocaleString()} />
           </div>
         ) : null
       }
@@ -414,7 +393,7 @@ export function FulfillmentRoutesScreen() {
       }
     >
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        {loading ? (
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading routes…</p>
         ) : (
           <>
@@ -440,14 +419,14 @@ export function FulfillmentRoutesScreen() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageSlice.length === 0 ? (
+                  {routes.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
                         No routes found.
                       </td>
                     </tr>
                   ) : (
-                    pageSlice.map((route) => {
+                    routes.map((route) => {
                       const routeId = normalizeRouteId(route.id);
                       const routeSales = routeStatsById.get(routeId);
                       return (
@@ -511,7 +490,7 @@ export function FulfillmentRoutesScreen() {
             <PaginationBar
               page={safePage}
               totalPages={totalPages}
-              total={filtered.length}
+              total={total}
               pageSize={pageSize}
               onChange={setPage}
               onPageSizeChange={handlePageSizeChange}

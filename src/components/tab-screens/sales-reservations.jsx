@@ -1,10 +1,12 @@
 "use client";
 
 import { notifyError } from "@/lib/notify";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import {
   CatalogPageShell,
   FilterToolbar,
@@ -21,45 +23,49 @@ import { formatReceiptNumber } from "@/components/sales/sales-shared";
 
 export function SalesReservationsScreen() {
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(25);
 
   const loadData = useCallback(async () => {
+    setListLoading(true);
     try {
-      const res = await apiRequest("/stock-reservations", {
-        searchParams: { per_page: 200 },
+      const searchParams = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
+        extra: { active: 1 },
       });
-      const active = (res.data ?? []).filter((r) => !r.released_at);
-      setRows(active);
+      const res = await apiRequest("/stock-reservations", { searchParams });
+      const parsed = parsePaginator(res);
+      setRows(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load reservations");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, []);
+  }, [page, pageSize, debouncedSearch]);
 
   useTabAwareDataLoad(loadData);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => {
-      const sale = r.sale;
-      const receipt = sale ? formatReceiptNumber(sale).toLowerCase() : "";
-      return (
-        String(r.product_name ?? "").toLowerCase().includes(q) ||
-        String(r.product_code).toLowerCase().includes(q) ||
-        receipt.includes(q) ||
-        String(r.sale_id ?? "").includes(q)
-      );
-    });
-  }, [rows, search]);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const tableLoading = loading || (listLoading && rows.length === 0);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
 
   const handlePageSizeChange = useCallback(
     (size) => {
@@ -69,9 +75,16 @@ export function SalesReservationsScreen() {
     [setPageSize],
   );
 
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
+  const buildExportSearchParams = useCallback(
+    () =>
+      buildPageParams({
+        page: 1,
+        perPage: 100,
+        q: debouncedSearch,
+        extra: { active: 1 },
+      }),
+    [debouncedSearch],
+  );
 
   return (
     <CatalogPageShell
@@ -82,19 +95,19 @@ export function SalesReservationsScreen() {
           <button
             type="button"
             onClick={() => void loadData()}
-            disabled={loading}
+            disabled={listLoading}
             className={SECONDARY_BTN_CLASS}
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {listLoading ? "Refreshing…" : "Refresh"}
           </button>
           <CatalogListExport
             title="Stock reservations"
             filename="stock-reservations"
             apiPath="/stock-reservations"
             columns={STOCK_RESERVATION_EXPORT_COLUMNS}
-            totalCount={filtered.length}
-            getSearchParams={() => ({ per_page: 200 })}
-            disabled={loading}
+            totalCount={total}
+            getSearchParams={buildExportSearchParams}
+            disabled={listLoading}
           />
         </div>
       }
@@ -109,7 +122,7 @@ export function SalesReservationsScreen() {
       }
     >
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        {loading ? (
+        {tableLoading ? (
           <p className="px-5 py-8 text-center text-sm text-slate-500">Loading reservations…</p>
         ) : (
           <table className="w-full border-collapse text-sm">
@@ -123,14 +136,14 @@ export function SalesReservationsScreen() {
               </tr>
             </thead>
             <tbody>
-              {pageSlice.length === 0 ? (
+              {rows.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-5 py-10 text-center text-sm text-slate-500">
                     No active reservations.
                   </td>
                 </tr>
               ) : (
-                pageSlice.map((row) => {
+                rows.map((row) => {
                   const sale = row.sale;
                   const orderLabel = sale
                     ? formatReceiptNumber(sale)
@@ -177,7 +190,7 @@ export function SalesReservationsScreen() {
         <PaginationBar
           page={safePage}
           totalPages={totalPages}
-          total={filtered.length}
+          total={total}
           pageSize={pageSize}
           onChange={setPage}
           onPageSizeChange={handlePageSizeChange}

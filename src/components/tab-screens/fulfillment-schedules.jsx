@@ -3,6 +3,7 @@
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { fetchFulfillmentRefsCached } from "@/lib/reference-data-cache";
@@ -12,8 +13,10 @@ import {
   Field,
   FormDrawer,
   IconButton,
+  PaginationBar,
   PencilIcon,
   PrimaryButton,
+  SearchInput,
   TrashIcon,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
@@ -22,6 +25,8 @@ import { ROUTE_SCHEDULE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
 import { DashboardErrorBanner } from "@/components/dashboard/dashboard-shared";
 import { useConfirm } from "@/lib/use-confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { useListPageSize } from "@/lib/use-list-page-controls";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 
 const DAY_OPTIONS = [
   { value: 0, label: "Sunday" },
@@ -63,11 +68,17 @@ export function FulfillmentSchedulesScreen() {
   const distributionEnabled = isDistributionOpsEnabled(capabilities);
 
   const [schedules, setSchedules] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [routes, setRoutes] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
+  const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState("create");
   const [editingId, setEditingId] = useState(null);
@@ -75,26 +86,45 @@ export function FulfillmentSchedulesScreen() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
-  const loadData = useCallback(async () => {
-    setError(null);
-    setLoading(true);
+  const loadRefs = useCallback(async () => {
     try {
-      const [scheduleRes, refs] = await Promise.all([
-        apiRequest("/route-schedules", { searchParams: { per_page: 200 } }),
-        fetchFulfillmentRefsCached(user?.organization_id),
-      ]);
-      setSchedules(scheduleRes.data ?? []);
+      const refs = await fetchFulfillmentRefsCached(user?.organization_id);
       setRoutes(refs.routes ?? []);
       setDrivers(refs.drivers ?? []);
       setVehicles(refs.vehicles ?? []);
+    } catch {
+      /* non-blocking for form selects */
+    }
+  }, [user?.organization_id]);
+
+  const loadData = useCallback(async () => {
+    setError(null);
+    setListLoading(true);
+    try {
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
+      });
+      const scheduleRes = await apiRequest("/route-schedules", { searchParams: searchParamsApi });
+      const parsed = parsePaginator(scheduleRes);
+      setSchedules(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load schedules");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [user?.organization_id]);
+  }, [page, pageSize, debouncedSearch]);
 
+  useTabAwareDataLoad(loadRefs);
   useTabAwareDataLoad(loadData);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   const grouped = useMemo(() => {
     const map = new Map();
@@ -108,6 +138,18 @@ export function FulfillmentSchedulesScreen() {
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [schedules, routes]);
+
+  const safePage = Math.min(page, totalPages);
+  const tableLoading = loading || (listLoading && schedules.length === 0);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   function openCreateDrawer() {
     setDrawerMode("create");
@@ -199,6 +241,16 @@ export function FulfillmentSchedulesScreen() {
     }
   }
 
+  const buildExportSearchParams = useCallback(
+    () =>
+      buildPageParams({
+        page: 1,
+        perPage: 200,
+        q: debouncedSearch,
+      }),
+    [debouncedSearch],
+  );
+
   if (!distributionEnabled) {
     return (
       <CatalogPageShell title="Route schedules" subtitle="Recurring driver and vehicle assignments">
@@ -220,9 +272,9 @@ export function FulfillmentSchedulesScreen() {
             filename="route-schedules"
             apiPath="/route-schedules"
             columns={ROUTE_SCHEDULE_EXPORT_COLUMNS}
-            totalCount={schedules.length}
-            getSearchParams={() => ({ per_page: 200 })}
-            disabled={loading}
+            totalCount={total}
+            getSearchParams={buildExportSearchParams}
+            disabled={loading || listLoading}
           />
           <PrimaryButton type="button" showIcon={false} onClick={openCreateDrawer}>
             Add schedule
@@ -232,65 +284,83 @@ export function FulfillmentSchedulesScreen() {
     >
       <DashboardErrorBanner message={error} />
 
-      {loading ? (
+      <div className="mb-4 max-w-md">
+        <SearchInput
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search route, driver, or vehicle…"
+        />
+      </div>
+
+      {tableLoading ? (
         <p className="text-sm text-slate-500">Loading schedules…</p>
       ) : grouped.length === 0 ? (
         <p className="text-sm text-slate-500">No schedules yet. Add one to auto-suggest drivers when creating trips.</p>
       ) : (
-        <div className="space-y-6">
-          {grouped.map(([routeName, items]) => (
-            <section key={routeName} className="theme-panel rounded-xl border p-5 shadow-sm">
-              <h2 className="text-base font-medium text-slate-900">{routeName}</h2>
-              <div className="mt-3 overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="py-2 pr-4">Day</th>
-                      <th className="py-2 pr-4">Driver</th>
-                      <th className="py-2 pr-4">Vehicle</th>
-                      <th className="py-2 pr-4">Departure</th>
-                      <th className="py-2 pr-4">Active</th>
-                      <th className="py-2 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items
-                      .sort((a, b) => a.day_of_week - b.day_of_week)
-                      .map((schedule) => (
-                        <tr key={schedule.id} className="border-t border-slate-100">
-                          <td className="py-2 pr-4">{dayLabel(schedule.day_of_week)}</td>
-                          <td className="py-2 pr-4">{schedule.default_driver?.full_name ?? "—"}</td>
-                          <td className="py-2 pr-4">
-                            {schedule.default_vehicle?.plate_number ?? schedule.default_vehicle?.vehicle_name ?? "—"}
-                          </td>
-                          <td className="py-2 pr-4">{schedule.departure_time?.slice(0, 5) ?? "—"}</td>
-                          <td className="py-2 pr-4">
-                            <button
-                              type="button"
-                              className={`rounded-full px-2 py-0.5 text-xs ${schedule.is_active ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}
-                              onClick={() => toggleActive(schedule)}
-                            >
-                              {schedule.is_active ? "Active" : "Inactive"}
-                            </button>
-                          </td>
-                          <td className="py-2">
-                            <div className="flex justify-end gap-1">
-                              <IconButton label="Edit schedule" onClick={() => openEditDrawer(schedule)}>
-                                <PencilIcon />
-                              </IconButton>
-                              <IconButton label="Delete schedule" onClick={() => deleteSchedule(schedule)}>
-                                <TrashIcon />
-                              </IconButton>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          ))}
-        </div>
+        <>
+          <div className="space-y-6">
+            {grouped.map(([routeName, items]) => (
+              <section key={routeName} className="theme-panel rounded-xl border p-5 shadow-sm">
+                <h2 className="text-base font-medium text-slate-900">{routeName}</h2>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="py-2 pr-4">Day</th>
+                        <th className="py-2 pr-4">Driver</th>
+                        <th className="py-2 pr-4">Vehicle</th>
+                        <th className="py-2 pr-4">Departure</th>
+                        <th className="py-2 pr-4">Active</th>
+                        <th className="py-2 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items
+                        .sort((a, b) => a.day_of_week - b.day_of_week)
+                        .map((schedule) => (
+                          <tr key={schedule.id} className="border-t border-slate-100">
+                            <td className="py-2 pr-4">{dayLabel(schedule.day_of_week)}</td>
+                            <td className="py-2 pr-4">{schedule.default_driver?.full_name ?? "—"}</td>
+                            <td className="py-2 pr-4">
+                              {schedule.default_vehicle?.plate_number ?? schedule.default_vehicle?.vehicle_name ?? "—"}
+                            </td>
+                            <td className="py-2 pr-4">{schedule.departure_time?.slice(0, 5) ?? "—"}</td>
+                            <td className="py-2 pr-4">
+                              <button
+                                type="button"
+                                className={`rounded-full px-2 py-0.5 text-xs ${schedule.is_active ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}
+                                onClick={() => toggleActive(schedule)}
+                              >
+                                {schedule.is_active ? "Active" : "Inactive"}
+                              </button>
+                            </td>
+                            <td className="py-2">
+                              <div className="flex justify-end gap-1">
+                                <IconButton label="Edit schedule" onClick={() => openEditDrawer(schedule)}>
+                                  <PencilIcon />
+                                </IconButton>
+                                <IconButton label="Delete schedule" onClick={() => deleteSchedule(schedule)}>
+                                  <TrashIcon />
+                                </IconButton>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ))}
+          </div>
+          <PaginationBar
+            page={safePage}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            onChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+          />
+        </>
       )}
 
       <FormDrawer

@@ -7,6 +7,7 @@ import {
   ensureSaleForPrint,
   fetchPrintModuleSettings,
 } from "@/lib/print-module-settings";
+import { saleLineProductName } from "@/lib/sale-line-items";
 import { resolvePrintedByUser } from "@/lib/printed-by-user";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import {
@@ -223,8 +224,18 @@ export async function printSaleOrder(sale, options = {}) {
   }
 
   try {
-    const saleForPrint = await ensureSaleForPrint(sale);
-    const moduleSettings = await fetchPrintModuleSettings(fallbackModuleSettings);
+    const hasCompleteItems =
+      Array.isArray(sale.items) &&
+      sale.items.length > 0 &&
+      !sale.items.some((line) => line?.product_code && !saleLineProductName(line));
+    const saleForPrint =
+      options.skipSaleRefresh && hasCompleteItems
+        ? sale
+        : await ensureSaleForPrint(sale);
+    const moduleSettings =
+      options.skipSettingsRefresh && fallbackModuleSettings
+        ? fallbackModuleSettings
+        : await fetchPrintModuleSettings(fallbackModuleSettings);
     const sales = mergeSalesSettings(moduleSettings);
     const general = mergeGeneralSettings(moduleSettings);
     const organizationId =
@@ -234,9 +245,14 @@ export async function printSaleOrder(sale, options = {}) {
 
     const copies = Math.max(1, Number(options.copies ?? sales.receipt_copies ?? 1) || 1);
 
-    const fetchedOrganization = organizationId
-      ? await fetchOrganizationForPrint(organizationId)
-      : null;
+    const organizationAlreadyUsable =
+      Boolean(options.organization?.name) || Boolean(options.organizationName);
+    const fetchedOrganization =
+      options.skipOrganizationRefresh && organizationAlreadyUsable
+        ? null
+        : organizationId
+          ? await fetchOrganizationForPrint(organizationId)
+          : null;
     const organization = fetchedOrganization
       ? { ...(options.organization ?? {}), ...fetchedOrganization }
       : options.organization ?? null;
@@ -258,7 +274,9 @@ export async function printSaleOrder(sale, options = {}) {
       generalSettings: general,
       organizationNameFallback: seller.name ?? options.organizationName ?? "",
     });
-    const logoDataUrl = await fetchOrganizationLogoDataUrl(organization);
+    const logoDataUrl = options.skipLogoFetch
+      ? null
+      : await fetchOrganizationLogoDataUrl(organization);
     if (logoDataUrl) {
       branding = { ...branding, logoUrl: logoDataUrl };
     }

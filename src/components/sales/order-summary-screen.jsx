@@ -7,11 +7,8 @@ import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   fetchCategoriesCached,
-  fetchDriversCached,
-  fetchRoutesCached,
   fetchSubCategoriesCached,
   fetchUomsCached,
-  fetchVehiclesCached,
 } from "@/lib/reference-data-cache";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
@@ -582,44 +579,28 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
   const [transitionBusy, setTransitionBusy] = useState(false);
   const [orderReturns, setOrderReturns] = useState([]);
   const [uoms, setUoms] = useState([]);
-  const [routes, setRoutes] = useState([]);
-  const [drivers, setDrivers] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
   const [editOrderOpen, setEditOrderOpen] = useState(false);
   const [editError, setEditError] = useState(null);
+  const [taxonomyLoaded, setTaxonomyLoaded] = useState(false);
 
   const loadSale = useCallback(async () => {
     setLoading(true);
     try {
-      const orgId = user?.organization_id;
-      const [saleData, payRes, methodsRes, subs, cats, returnsRes, uoms, routes, driversData, vehiclesData] =
-        await Promise.all([
-          apiRequest(`/sales/${saleId}`),
-          apiRequest("/sale-payments", {
-            searchParams: { per_page: 50, "filter[sale_id]": saleId },
-          }).catch(() => ({ data: [] })),
-          apiRequest("/payment-methods", { searchParams: { per_page: 50 } }).catch(() => ({ data: [] })),
-          fetchSubCategoriesCached(orgId).catch(() => []),
-          fetchCategoriesCached(orgId).catch(() => []),
-          apiRequest("/customer-returns", {
-            searchParams: { sale_id: saleId, per_page: 50 },
-          }).catch(() => ({ data: [] })),
-          fetchUomsCached(orgId).catch(() => []),
-          fetchRoutesCached(orgId).catch(() => []),
-          fetchDriversCached(orgId).catch(() => []),
-          fetchVehiclesCached(orgId).catch(() => []),
-        ]);
+      const [saleData, payRes, methodsRes, returnsRes] = await Promise.all([
+        apiRequest(`/sales/${saleId}`),
+        apiRequest("/sale-payments", {
+          searchParams: { per_page: 50, "filter[sale_id]": saleId },
+        }).catch(() => ({ data: [] })),
+        apiRequest("/payment-methods", { searchParams: { per_page: 50 } }).catch(() => ({ data: [] })),
+        apiRequest("/customer-returns", {
+          searchParams: { sale_id: saleId, per_page: 50 },
+        }).catch(() => ({ data: [] })),
+      ]);
 
       setSale(saleData);
       setPayments(payRes.data ?? []);
       setPaymentMethods(methodsRes.data ?? []);
-      setSubCategories(subs ?? []);
-      setCategories(cats ?? []);
       setOrderReturns(returnsRes.data ?? []);
-      setUoms(uoms ?? []);
-      setRoutes(routes ?? []);
-      setDrivers(driversData ?? []);
-      setVehicles(vehiclesData ?? []);
 
       const { branchName, cashierName, customer } = await loadOrderRelatedDetails(saleData);
       setBranchName(branchName);
@@ -630,13 +611,48 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
     } finally {
       setLoading(false);
     }
-  }, [saleId, user?.organization_id]);
+  }, [saleId]);
 
   useEffect(() => {
     loadSale();
+    setTaxonomyLoaded(false);
+    setSubCategories([]);
+    setCategories([]);
+    setUoms([]);
   }, [loadSale]);
 
-  const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
+  // Taxonomy (categories / UOMs) only when summary or items UI needs labels — after TTFD.
+  useEffect(() => {
+    if (loading || !sale || taxonomyLoaded) return;
+    if (activeTab !== "summary" && activeTab !== "items" && !editOrderOpen) return;
+
+    let cancelled = false;
+    const orgId = user?.organization_id;
+    Promise.all([
+      fetchSubCategoriesCached(orgId).catch(() => []),
+      fetchCategoriesCached(orgId).catch(() => []),
+      fetchUomsCached(orgId).catch(() => []),
+    ]).then(([subs, cats, uomRows]) => {
+      if (cancelled) return;
+      setSubCategories(subs ?? []);
+      setCategories(cats ?? []);
+      setUoms(uomRows ?? []);
+      setTaxonomyLoaded(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, editOrderOpen, loading, sale, taxonomyLoaded, user?.organization_id]);
+
+  const uomById = useMemo(() => {
+    const map = new Map(uoms.map((u) => [u.id, u]));
+    for (const line of sale?.items ?? []) {
+      const unit = line?.product?.unit;
+      if (unit?.id != null && !map.has(unit.id)) map.set(unit.id, unit);
+    }
+    return map;
+  }, [uoms, sale?.items]);
 
   const saleWorkflow = useMemo(
     () => getOrderWorkflow(capabilities, sale),
@@ -835,17 +851,32 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
 
   const fulfillmentLabels = useMemo(() => {
     if (!sale) return {};
-    const routeName = routes.find((r) => r.id === sale.route_id)?.route_name;
+    const routes = fulfillment.routes;
+    const drivers = fulfillment.drivers;
+    const vehicles = fulfillment.vehicles;
+    const routeName =
+      routes.find((r) => r.id === sale.route_id)?.route_name ??
+      sale.route?.route_name ??
+      null;
     const driverId = getSaleDriverId(sale);
     const vehicleId = getSaleVehicleId(sale);
     const driver = drivers.find((d) => d.id === driverId);
     const vehicle = vehicles.find((v) => v.id === vehicleId);
     return {
-      routeName: routeName ?? null,
-      driverName: driver?.full_name ?? driver?.driver_code ?? null,
-      vehicleLabel: vehicle?.plate_number ?? vehicle?.vehicle_name ?? null,
+      routeName,
+      driverName:
+        driver?.full_name ??
+        driver?.driver_code ??
+        sale.fulfillment_meta?.driver_name ??
+        null,
+      vehicleLabel:
+        vehicle?.plate_number ??
+        vehicle?.vehicle_name ??
+        sale.fulfillment_meta?.vehicle_label ??
+        sale.fulfillment_meta?.plate_number ??
+        null,
     };
-  }, [sale, routes, drivers, vehicles]);
+  }, [sale, fulfillment.routes, fulfillment.drivers, fulfillment.vehicles]);
 
   const customerProfileHref = sale?.customer_num ? `/customers/${sale.customer_num}` : null;
   const customerCardName = customer?.customer_name ?? saleCustomerLabel(sale);
@@ -1214,9 +1245,9 @@ export function OrderSummaryScreen({ saleId, backHref = "/sales/orders" }) {
         open={Boolean(fulfillment.assignDialog)}
         sale={fulfillment.assignDialog?.sale}
         targetStatus={fulfillment.assignDialog?.targetStatus}
-        drivers={fulfillment.drivers.length ? fulfillment.drivers : drivers}
-        vehicles={fulfillment.vehicles.length ? fulfillment.vehicles : vehicles}
-        routes={fulfillment.routes.length ? fulfillment.routes : routes}
+        drivers={fulfillment.drivers}
+        vehicles={fulfillment.vehicles}
+        routes={fulfillment.routes}
         busy={fulfillment.busy}
         onClose={() => fulfillment.setAssignDialog(null)}
         onConfirm={(meta) => {

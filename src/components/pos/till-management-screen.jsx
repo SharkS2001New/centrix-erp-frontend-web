@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
-import { mapWithConcurrency } from "@/lib/api-concurrency";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
 import { usePosSession } from "@/contexts/pos-session-context";
@@ -244,7 +243,10 @@ export function TillManagementScreen() {
   const [branches, setBranches] = useState([]);
   const [users, setUsers] = useState([]);
   const [openSessions, setOpenSessions] = useState([]);
-  const [sessionReports, setSessionReports] = useState(new Map());
+  const [sessionReports, setSessionReports] = useState(() => new Map());
+  const sessionReportsRef = useRef(sessionReports);
+  sessionReportsRef.current = sessionReports;
+  const xReportInflightRef = useRef(new Map());
   const [metaLoading, setMetaLoading] = useState(true);
 
   const [breakdownSession, setBreakdownSession] = useState(null);
@@ -300,25 +302,52 @@ export function TillManagementScreen() {
       setUsers(filterByOrganization(usersData, organizationId));
       const sessions = sessionRes.data ?? [];
       setOpenSessions(sessions);
-      const reportEntries = await mapWithConcurrency(
-        sessions,
-        async (session) => {
-          try {
-            const report = await apiRequest(`/pos/sessions/${session.id}/x-report`);
-            return [session.id, report];
-          } catch {
-            return [session.id, null];
-          }
-        },
-        3,
-      );
-      setSessionReports(new Map(reportEntries));
+      // X-reports load lazily on float expand/select — avoid N+1 on list load.
+      setSessionReports(new Map());
+      xReportInflightRef.current = new Map();
     } catch (e) {
       setPageError(e instanceof ApiError ? e.message : "Failed to load till data");
     } finally {
       setMetaLoading(false);
     }
   }, [organizationId]);
+
+  const ensureSessionXReport = useCallback(async (sessionId) => {
+    if (sessionId == null) return null;
+    const id = Number(sessionId);
+    if (!Number.isFinite(id)) return null;
+
+    if (sessionReportsRef.current.has(id)) {
+      return sessionReportsRef.current.get(id);
+    }
+
+    const inflight = xReportInflightRef.current.get(id);
+    if (inflight) return inflight;
+
+    const request = apiRequest(`/pos/sessions/${id}/x-report`, { loading: false })
+      .then((report) => {
+        setSessionReports((prev) => {
+          const next = new Map(prev);
+          next.set(id, report);
+          return next;
+        });
+        return report;
+      })
+      .catch(() => {
+        setSessionReports((prev) => {
+          const next = new Map(prev);
+          next.set(id, null);
+          return next;
+        });
+        return null;
+      })
+      .finally(() => {
+        xReportInflightRef.current.delete(id);
+      });
+
+    xReportInflightRef.current.set(id, request);
+    return request;
+  }, []);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -475,6 +504,9 @@ export function TillManagementScreen() {
       tillName: tillDisplayName(till),
       cashierName: cashier?.full_name ?? cashier?.username ?? null,
     });
+    if (session?.id != null && String(session.status).toLowerCase() === "open") {
+      void ensureSessionXReport(session.id);
+    }
   }
 
   function openFloatCorrection(session, till, cashier) {

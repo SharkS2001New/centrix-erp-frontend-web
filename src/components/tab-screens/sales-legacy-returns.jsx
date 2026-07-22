@@ -1,9 +1,11 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
@@ -26,64 +28,67 @@ function LegacyReturnsContent() {
   const searchParams = useSearchParams();
   const { organization, generalSettings, user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [statusFilter, setStatusFilter] = useState("all");
   const [fromDate, setFromDate] = useState(defaultMonthRange.from);
   const [toDate, setToDate] = useState(defaultMonthRange.to);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(10);
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   const loadData = useCallback(async () => {
+    setListLoading(true);
     setError(null);
     try {
-      const params = { per_page: 200 };
-      if (statusFilter !== "all") params.status = statusFilter;
-      if (fromDate) params.from_date = fromDate;
-      if (toDate) params.to_date = toDate;
-
-      const res = await apiRequest("/legacy-returns", { searchParams: params });
-      setRows(res.data ?? []);
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
+        extra: {
+          status: statusFilter !== "all" ? statusFilter : undefined,
+          from_date: fromDate || undefined,
+          to_date: toDate || undefined,
+        },
+      });
+      const res = await apiRequest("/legacy-returns", { searchParams: searchParamsApi });
+      const parsed = parsePaginator(res);
+      setRows(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Failed to load legacy returns");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [statusFilter, fromDate, toDate]);
+  }, [page, pageSize, debouncedSearch, statusFilter, fromDate, toDate]);
 
   useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, fromDate, toDate]);
+  }, [debouncedSearch, statusFilter, fromDate, toDate]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
     setPage(1);
   }
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((row) => {
-      const invoice = row.sale ? formatReceiptNumber(row.sale).toLowerCase() : "";
-      const customer = (row.customer?.customer_name ?? "").toLowerCase();
-      return (
-        String(row.return_no ?? "").toLowerCase().includes(q) ||
-        invoice.includes(q) ||
-        customer.includes(q)
-      );
-    });
-  }, [rows, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const tableLoading = loading || (listLoading && rows.length === 0);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
 
   const openDetail = useCallback(async (row) => {
     setActionError(null);
@@ -196,20 +201,20 @@ function LegacyReturnsContent() {
             </tr>
           </thead>
           <tbody>
-            {loading ? (
+            {tableLoading ? (
               <tr>
                 <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
                   Loading…
                 </td>
               </tr>
-            ) : pageSlice.length === 0 ? (
+            ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
                   No legacy returns yet.
                 </td>
               </tr>
             ) : (
-              pageSlice.map((row) => {
+              rows.map((row) => {
                 const creditNote = row.credit_note ?? row.creditNote;
                 return (
                   <tr key={row.id} className="border-t">
@@ -261,11 +266,11 @@ function LegacyReturnsContent() {
       <PaginationBar
         page={safePage}
         totalPages={totalPages}
-        total={filtered.length}
+        total={total}
         pageSize={pageSize}
         onChange={setPage}
-              onPageSizeChange={handlePageSizeChange}
-            />
+        onPageSizeChange={handlePageSizeChange}
+      />
 
       <LegacyReturnDetailModal
         open={detailOpen}

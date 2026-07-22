@@ -33,18 +33,24 @@ export function useFulfillmentTransition({ capabilities, onSuccess, onError }) {
 
   useEffect(() => {
     if (!distributionSettings.enabled) return;
+    if (!assignDialog) return;
+    let cancelled = false;
     Promise.all([
       fetchDriversCached(user?.organization_id),
       fetchVehiclesCached(user?.organization_id),
       fetchRoutesCached(user?.organization_id),
     ])
       .then(([driversData, vehiclesData, routesData]) => {
+        if (cancelled) return;
         setDrivers(driversData ?? []);
         setVehicles(vehiclesData ?? []);
         setRoutes(routesData ?? []);
       })
       .catch(() => {});
-  }, [distributionSettings.enabled, user?.organization_id]);
+    return () => {
+      cancelled = true;
+    };
+  }, [assignDialog, distributionSettings.enabled, user?.organization_id]);
 
   const openWeightDialog = useCallback((sale, targetStatus, products, fulfillmentMeta = null) => {
     setWeightDialog({

@@ -205,6 +205,73 @@ export const REPORT_DEFINITIONS = {
     footerTotals: ["order_count", "net_ex_vat", "total_vat", "gross_sales", "amount_collected"],
   },
 
+  "sales-by-customer": {
+    title: "Sales by Customer",
+    subtitle: "Customer purchase totals and outstanding balances",
+    section: "Sales",
+    apiPath: "/reports/sales-by-customer",
+    dateColumn: null,
+    showDateRange: true,
+    columns: [
+      { key: "customer_name", label: "Customer", accessor: (r) => r.customer_name, link: "customer" },
+      { key: "customer_num", label: "Customer #", accessor: (r) => r.customer_num, link: "customer" },
+      { key: "route_name", label: "Route", accessor: (r) => r.route_name ?? "—" },
+      { key: "total_orders", label: "Orders", accessor: (r) => r.total_orders, align: "right", total: true },
+      {
+        key: "total_purchased",
+        label: "Purchased",
+        accessor: (r) => r.total_purchased,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "total_outstanding",
+        label: "Outstanding",
+        accessor: (r) => r.total_outstanding,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "ar_balance",
+        label: "AR balance",
+        accessor: (r) => r.ar_balance,
+        align: "right",
+        total: true,
+      },
+    ],
+    kpis: [
+      {
+        id: "customers",
+        label: "Customers",
+        compute: (rows, summary) => ({
+          value: String(summary?.customer_count ?? summary?.row_count ?? rows.length),
+        }),
+      },
+      {
+        id: "orders",
+        label: "Orders",
+        compute: (rows, summary) => ({
+          value: String(Math.round(summary?.total_orders ?? sum(rows, "total_orders"))),
+        }),
+      },
+      {
+        id: "purchased",
+        label: "Purchased",
+        compute: (rows, summary) => ({
+          value: kes(summary?.total_purchased ?? sum(rows, "total_purchased")),
+        }),
+      },
+      {
+        id: "outstanding",
+        label: "Outstanding",
+        compute: (rows, summary) => ({
+          value: kes(summary?.total_outstanding ?? sum(rows, "total_outstanding")),
+        }),
+      },
+    ],
+    footerTotals: ["total_orders", "total_purchased", "total_outstanding", "ar_balance"],
+  },
+
   "category-sales": {
     title: "Sales by Category",
     subtitle: "Category revenue with VAT across booked → completed orders",
@@ -306,25 +373,26 @@ export const REPORT_DEFINITIONS = {
       {
         id: "low",
         label: "Below reorder",
-        compute: (rows) => ({
+        compute: (rows, summary) => ({
           value: String(
-            rows.filter((r) => {
-              const qty = Number(r.available_total_units ?? r.total_base_units ?? r.total_quantity) || 0;
-              if (qty <= 0) return false;
-              const mode = r.stock_alert_mode ?? "per_product";
-              const globalThreshold = Number(r.global_low_stock_threshold) || 0;
-              const productPoint = Number(r.reorder_point) || 0;
-              const threshold =
-                mode === "global"
-                  ? globalThreshold
-                  : mode === "both"
-                    ? Math.max(productPoint, globalThreshold)
-                    : productPoint;
-              return threshold > 0 && qty <= threshold;
-            }).length,
+            summary?.below_reorder_count ??
+              rows.filter((r) => {
+                const qty = Number(r.available_total_units ?? r.total_base_units ?? r.total_quantity) || 0;
+                if (qty <= 0) return false;
+                const mode = r.stock_alert_mode ?? "per_product";
+                const globalThreshold = Number(r.global_low_stock_threshold) || 0;
+                const productPoint = Number(r.reorder_point) || 0;
+                const threshold =
+                  mode === "global"
+                    ? globalThreshold
+                    : mode === "both"
+                      ? Math.max(productPoint, globalThreshold)
+                      : productPoint;
+                return threshold > 0 && qty <= threshold;
+              }).length,
           ),
           tone: "warning",
-          hint: rows.length ? "On this page" : undefined,
+          hint: summary?.below_reorder_count == null && rows.length ? "On this page" : undefined,
         }),
       },
     ],
@@ -730,18 +798,19 @@ export const REPORT_DEFINITIONS = {
       {
         id: "total",
         label: "LPO total",
-        compute: (rows) => ({
-          // total_amount repeats on each line — do not use SUM(summary.total_amount).
+        compute: (rows, summary) => ({
+          // total_amount repeats on each line — prefer API lpo_total (distinct headers).
           value: kes(
-            rows.reduce((acc, row) => {
-              const key = row.lpo_no;
-              if (key == null || acc.seen.has(key)) return acc;
-              acc.seen.add(key);
-              acc.sum += Number(row.total_amount) || 0;
-              return acc;
-            }, { seen: new Set(), sum: 0 }).sum,
+            summary?.lpo_total ??
+              rows.reduce((acc, row) => {
+                const key = row.lpo_no;
+                if (key == null || acc.seen.has(key)) return acc;
+                acc.seen.add(key);
+                acc.sum += Number(row.total_amount) || 0;
+                return acc;
+              }, { seen: new Set(), sum: 0 }).sum,
           ),
-          hint: rows.length ? "On this page" : undefined,
+          hint: summary?.lpo_total == null && rows.length ? "On this page" : undefined,
         }),
       },
       {
@@ -1020,6 +1089,78 @@ export const REPORT_DEFINITIONS = {
     ],
   },
 
+  "accounts-payable": {
+    title: "Accounts Payable",
+    subtitle: "Supplier balances from received stock less returns",
+    section: "Finance",
+    apiPath: "/reports/accounts-payable",
+    dateColumn: null,
+    showDateRange: false,
+    columns: [
+      { key: "supplier_name", label: "Supplier", accessor: (r) => r.supplier_name, link: "supplier" },
+      { key: "supplier_code", label: "Code", accessor: (r) => r.supplier_code || "—", link: "supplier" },
+      {
+        key: "received_value",
+        label: "Received",
+        accessor: (r) => r.received_value,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "return_value",
+        label: "Returns",
+        accessor: (r) => r.return_value,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "balance_due",
+        label: "Balance due",
+        accessor: (r) => r.balance_due,
+        align: "right",
+        total: true,
+      },
+      {
+        key: "open_lpo_count",
+        label: "Open LPOs",
+        accessor: (r) => r.open_lpo_count,
+        align: "right",
+        total: true,
+      },
+    ],
+    kpis: [
+      {
+        id: "suppliers",
+        label: "Suppliers",
+        compute: (rows, summary) => ({
+          value: String(summary?.supplier_count ?? summary?.row_count ?? rows.length),
+        }),
+      },
+      {
+        id: "balance",
+        label: "Balance due",
+        compute: (rows, summary) => ({
+          value: kes(summary?.balance_due ?? sum(rows, "balance_due")),
+        }),
+      },
+      {
+        id: "received",
+        label: "Received value",
+        compute: (rows, summary) => ({
+          value: kes(summary?.received_value ?? sum(rows, "received_value")),
+        }),
+      },
+      {
+        id: "open_lpos",
+        label: "Open LPOs",
+        compute: (rows, summary) => ({
+          value: String(Math.round(summary?.open_lpo_count ?? sum(rows, "open_lpo_count"))),
+        }),
+      },
+    ],
+    footerTotals: ["received_value", "return_value", "balance_due", "open_lpo_count"],
+  },
+
   expenses: {
     title: "Expenses Report",
     subtitle: "Expenses by group and date",
@@ -1046,9 +1187,11 @@ export const REPORT_DEFINITIONS = {
       {
         id: "groups",
         label: "Categories",
-        compute: (rows) => ({
-          value: String(new Set(rows.map((r) => r.group_name)).size),
-          hint: rows.length ? "On this page" : undefined,
+        compute: (rows, summary) => ({
+          value: String(
+            summary?.group_count ?? new Set(rows.map((r) => r.group_name)).size,
+          ),
+          hint: summary?.group_count == null && rows.length ? "On this page" : undefined,
         }),
       },
     ],

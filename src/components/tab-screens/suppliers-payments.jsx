@@ -1,11 +1,15 @@
 "use client";
 
 import { notifyError } from "@/lib/notify";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { fetchSuppliersCached } from "@/lib/reference-data-cache";
+import { useAuth } from "@/contexts/auth-context";
 import {
   CatalogPageShell,
   Field,
@@ -25,86 +29,99 @@ import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 
 
 export function SuppliersPaymentsScreen() {
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const presetSupplier = searchParams.get("supplier_id") ?? searchParams.get("supplier");
 
   const [payments, setPayments] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [supplierFilter, setSupplierFilter] = useState(presetSupplier ?? "all");
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(15);
   const initialRange = defaultDateRange(7);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadSuppliers = useCallback(async () => {
     try {
-      const params = {
-        per_page: 200,
-        date_from: fromDate,
-        date_to: toDate,
-      };
-      if (supplierFilter !== "all") {
-        params.supplier_id = supplierFilter;
-      }
-      const [payRes, supRes] = await Promise.all([
-        apiRequest("/supplier-payments", { searchParams: params }),
-        apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
-      ]);
-      setPayments(payRes.data ?? []);
-      setSuppliers(supRes.data ?? []);
+      const data = await fetchSuppliersCached(user?.organization_id);
+      setSuppliers(data ?? []);
+    } catch {
+      /* non-blocking — supplier filter degrades gracefully */
+    }
+  }, [user?.organization_id]);
+
+  const loadData = useCallback(async () => {
+    setListLoading(true);
+    try {
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
+        extra: {
+          date_from: fromDate || undefined,
+          date_to: toDate || undefined,
+          supplier_id: supplierFilter !== "all" ? supplierFilter : undefined,
+        },
+      });
+      const payRes = await apiRequest("/supplier-payments", { searchParams: searchParamsApi });
+      const parsed = parsePaginator(payRes);
+      setPayments(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load payments");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [supplierFilter, fromDate, toDate]);
+  }, [page, pageSize, debouncedSearch, supplierFilter, fromDate, toDate]);
 
+  useTabAwareDataLoad(loadSuppliers);
   useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     if (presetSupplier) setSupplierFilter(presetSupplier);
   }, [presetSupplier]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return payments;
-    return payments.filter((p) => {
-      const hay = [
-        p.supplier_name,
-        p.reference_number,
-        p.payment_method,
-        p.paid_by_name,
-        p.po_number,
-        p.lpo_no != null ? `lpo ${p.lpo_no}` : "",
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
-    });
-  }, [payments, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-
   useEffect(() => {
     setPage(1);
-  }, [search, supplierFilter, fromDate, toDate]);
+  }, [debouncedSearch, supplierFilter, fromDate, toDate]);
+
+  const safePage = Math.min(page, totalPages);
+  const tableLoading = loading || (listLoading && payments.length === 0);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
     setPage(1);
   }
 
-  const totalPaid = useMemo(
-    () => filtered.reduce((sum, p) => sum + Number(p.amount_paid ?? 0), 0),
-    [filtered],
+  const buildExportSearchParams = useCallback(
+    () =>
+      buildPageParams({
+        page: 1,
+        perPage: 100,
+        q: debouncedSearch,
+        extra: {
+          date_from: fromDate || undefined,
+          date_to: toDate || undefined,
+          supplier_id: supplierFilter !== "all" ? supplierFilter : undefined,
+        },
+      }),
+    [debouncedSearch, fromDate, toDate, supplierFilter],
   );
+
+  const pageTotalPaid = payments.reduce((sum, p) => sum + Number(p.amount_paid ?? 0), 0);
 
   return (
     <CatalogPageShell
@@ -115,23 +132,19 @@ export function SuppliersPaymentsScreen() {
           <button
             type="button"
             onClick={() => void loadData()}
-            disabled={loading}
+            disabled={listLoading}
             className={SECONDARY_BTN_CLASS}
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {listLoading ? "Refreshing…" : "Refresh"}
           </button>
           <CatalogListExport
             title="Supplier payments"
             filename="supplier-payments"
             apiPath="/supplier-payments"
             columns={SUPPLIER_PAYMENT_EXPORT_COLUMNS}
-            totalCount={filtered.length}
-            getSearchParams={() => {
-              const params = { per_page: 200 };
-              if (supplierFilter !== "all") params["filter[supplier_id]"] = supplierFilter;
-              return params;
-            }}
-            disabled={loading}
+            totalCount={total}
+            getSearchParams={buildExportSearchParams}
+            disabled={listLoading}
           />
           <Link
           href={
@@ -182,15 +195,21 @@ export function SuppliersPaymentsScreen() {
         </div>
       }
     >
-      {!loading && (
+      {!tableLoading && (
         <p className="mb-4 text-sm text-slate-600">
-          Showing {filtered.length} payment{filtered.length === 1 ? "" : "s"} totalling{" "}
-          <span className="font-medium text-slate-900">{formatSupplierKes(totalPaid)}</span>
+          Showing {total} payment{total === 1 ? "" : "s"}
+          {payments.length > 0 ? (
+            <>
+              {" "}
+              · this page{" "}
+              <span className="font-medium text-slate-900">{formatSupplierKes(pageTotalPaid)}</span>
+            </>
+          ) : null}
         </p>
       )}
 
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        {loading ? (
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading payments…</p>
         ) : (
           <>
@@ -209,14 +228,14 @@ export function SuppliersPaymentsScreen() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageSlice.length === 0 ? (
+                  {payments.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
                         No payments found.
                       </td>
                     </tr>
                   ) : (
-                    pageSlice.map((row) => (
+                    payments.map((row) => (
                       <tr
                         key={row.id}
                         className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
@@ -266,7 +285,7 @@ export function SuppliersPaymentsScreen() {
             <PaginationBar
               page={safePage}
               totalPages={totalPages}
-              total={filtered.length}
+              total={total}
               pageSize={pageSize}
               onChange={setPage}
               onPageSizeChange={handlePageSizeChange}

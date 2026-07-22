@@ -22,7 +22,7 @@ import { defaultProductBranchId, isMultiBranchCatalog } from "@/lib/catalog-scop
 import {
   fetchBranchesCached,
   fetchCategoriesCached,
-  fetchRetailPackagesCached,
+  fetchRetailPackagesForProductCodes,
   fetchSubCategoriesCached,
 } from "@/lib/reference-data-cache";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
@@ -213,10 +213,9 @@ export function InventoryStockScreen() {
       fetchSubCategoriesCached(user?.organization_id),
       fetchCategoriesCached(user?.organization_id),
       fetchBranchesCached(user?.organization_id),
-      fetchRetailPackagesCached(user?.organization_id),
     ]);
 
-    const [subsResult, catsResult, branchResult, retailResult] = settled;
+    const [subsResult, catsResult, branchResult] = settled;
     const failed = settled.find((r) => r.status === "rejected");
     if (failed?.status === "rejected") {
       notifyError(failed.reason instanceof Error ? failed.reason.message : "Failed to load stock filters");
@@ -225,12 +224,10 @@ export function InventoryStockScreen() {
     const subsData = subsResult.status === "fulfilled" ? subsResult.value : [];
     const catsData = catsResult.status === "fulfilled" ? catsResult.value : [];
     const branchRows = branchResult.status === "fulfilled" ? (branchResult.value ?? []) : [];
-    const retailData = retailResult.status === "fulfilled" ? retailResult.value : [];
 
     setSubcategories(subsData ?? []);
     setCategories(catsData ?? []);
     setBranches(branchRows ?? []);
-    setRetailPackages(retailData ?? []);
 
     setBranchId((current) => {
       if (current) return current;
@@ -264,6 +261,19 @@ export function InventoryStockScreen() {
       setStockRows(parsed.items);
       setTotalStockRows(parsed.total);
       setTotalPages(parsed.totalPages);
+
+      const codes = parsed.items.map((row) => row.product_code).filter(Boolean);
+      if (codes.length) {
+        void fetchRetailPackagesForProductCodes(codes)
+          .then((rows) => {
+            setRetailPackages((prev) => {
+              const map = new Map(prev.map((r) => [r.product_code, r]));
+              for (const row of rows) map.set(row.product_code, row);
+              return [...map.values()];
+            });
+          })
+          .catch(() => {});
+      }
 
       // Cost totals are expensive — load after first paint, same filters.
       void apiRequest("/reports/stock-on-hand", {

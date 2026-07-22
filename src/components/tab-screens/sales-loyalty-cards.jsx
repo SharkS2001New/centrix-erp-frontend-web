@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { printLoyaltyCard } from "@/components/sales/loyalty-card-print";
@@ -14,6 +15,7 @@ import {
   FormDrawer,
   IconButton,
   inputClassName,
+  PaginationBar,
   PencilIcon,
   PrimaryButton,
   SearchInput,
@@ -29,6 +31,8 @@ import {
   creditCustomerToOption,
   searchCreditCustomers,
 } from "@/lib/credit-customer-search";
+import { useListPageSize } from "@/lib/use-list-page-controls";
+import { useListUrlSearch } from "@/lib/use-list-url-search";
 
 const EMPTY_FORM = {
   customer_num: "",
@@ -47,9 +51,14 @@ export function SalesLoyaltyCardsScreen() {
   );
 
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [customerOptions, setCustomerOptions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [listLoading, setListLoading] = useState(false);
+  const { search, setSearch, debouncedSearch } = useListUrlSearch();
+  const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -58,17 +67,43 @@ export function SalesLoyaltyCardsScreen() {
   const [form, setForm] = useState(EMPTY_FORM);
 
   const loadData = useCallback(async () => {
+    setListLoading(true);
     try {
-      const cardRes = await apiRequest("/loyalty-cards", {
-        searchParams: { per_page: 200, ...(search.trim() ? { q: search.trim() } : {}) },
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
       });
-      setRows(cardRes.data ?? []);
+      const cardRes = await apiRequest("/loyalty-cards", { searchParams: searchParamsApi });
+      const parsed = parsePaginator(cardRes);
+      setRows(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load loyalty cards");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [search]);
+  }, [page, pageSize, debouncedSearch]);
+
+  useTabAwareDataLoad(loadData);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
+
+  const safePage = Math.min(page, totalPages);
+  const tableLoading = loading || (listLoading && rows.length === 0);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   const searchCustomersForSelect = useCallback(async (query) => {
     const rowsForSelect = await searchCreditCustomers(query, { perPage: 30 });
@@ -82,14 +117,6 @@ export function SalesLoyaltyCardsScreen() {
       customerOptions.find((row) => String(row.value) === String(form.customer_num)) ?? null
     );
   }, [customerOptions, form.customer_num]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(true);
-      loadData();
-    }, search ? 250 : 0);
-    return () => clearTimeout(timer);
-  }, [loadData, search]);
 
   const canManage = pointsEnabled;
 
@@ -205,6 +232,16 @@ export function SalesLoyaltyCardsScreen() {
     printLoyaltyCard(card, capabilities?.profile_label ?? DEFAULT_PRINT_ORG_NAME);
   }
 
+  const buildExportSearchParams = useCallback(
+    () =>
+      buildPageParams({
+        page: 1,
+        perPage: 200,
+        q: debouncedSearch,
+      }),
+    [debouncedSearch],
+  );
+
   return (
     <CatalogPageShell
       title="Loyalty cards"
@@ -214,22 +251,19 @@ export function SalesLoyaltyCardsScreen() {
           <button
             type="button"
             onClick={() => void loadData()}
-            disabled={loading}
+            disabled={loading || listLoading}
             className={SECONDARY_BTN_CLASS}
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {loading || listLoading ? "Refreshing…" : "Refresh"}
           </button>
           <CatalogListExport
             title="Loyalty cards"
             filename="loyalty-cards"
             apiPath="/loyalty-cards"
             columns={LOYALTY_CARD_EXPORT_COLUMNS}
-            totalCount={rows.length}
-            getSearchParams={() => ({
-              per_page: 200,
-              ...(search.trim() ? { q: search.trim() } : {}),
-            })}
-            disabled={loading}
+            totalCount={total}
+            getSearchParams={buildExportSearchParams}
+            disabled={loading || listLoading}
           />
           {canManage ? (
             <PrimaryButton onClick={openCreateDrawer}>Add loyalty card</PrimaryButton>
@@ -250,7 +284,7 @@ export function SalesLoyaltyCardsScreen() {
       </div>
 
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        {loading ? (
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading loyalty cards…</p>
         ) : (
           <div className="overflow-x-auto">
@@ -328,6 +362,14 @@ export function SalesLoyaltyCardsScreen() {
             </table>
           </div>
         )}
+        <PaginationBar
+          page={safePage}
+          totalPages={totalPages}
+          total={total}
+          pageSize={pageSize}
+          onChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+        />
       </div>
 
       <FormDrawer

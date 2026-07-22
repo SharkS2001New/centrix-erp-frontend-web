@@ -59,28 +59,6 @@ function attendanceCountsInPayroll(status) {
   return ["present", "late", "half_day"].includes(status);
 }
 
-function attendanceRecordMatchesSearch(record, query) {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-
-  const employee = record.employee;
-  const haystack = [
-    composeEmployeeDisplayName(employee),
-    employee?.employee_code,
-    employee?.employee_num != null ? String(employee.employee_num) : "",
-    record.employee_id != null ? String(record.employee_id) : "",
-    record.status,
-    record.notes,
-    formatAttendanceSource(record.source, record.source_label),
-    formatAttendanceLoginChannel(record.source, record.login_channel_label),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return haystack.includes(q);
-}
-
 export function HrAttendanceScreen() {
   const { capabilities, hasPermission } = useAuth();
   const confirm = useConfirm();
@@ -91,18 +69,25 @@ export function HrAttendanceScreen() {
   const [employees, setEmployees] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [records, setRecords] = useState([]);
+  const [recordsTotal, setRecordsTotal] = useState(0);
   const [fieldRepLinkage, setFieldRepLinkage] = useState(null);
   const [activeLoading, setActiveLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyFromDate, setHistoryFromDate] = useState(() => daysAgoCalendarDate(7));
   const [historyToDate, setHistoryToDate] = useState(() => todayCalendarDate());
   const [recordSearch, setRecordSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [manualOpen, setManualOpen] = useState(false);
   const [manualForm, setManualForm] = useState(EMPTY_MANUAL);
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState(null);
   const [editingRecord, setEditingRecord] = useState(null);
   const [dayHint, setDayHint] = useState(null);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedSearch(recordSearch.trim()), 300);
+    return () => window.clearTimeout(handle);
+  }, [recordSearch]);
 
   const loadActive = useCallback(async () => {
     setActiveLoading(true);
@@ -168,20 +153,37 @@ export function HrAttendanceScreen() {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const [employeesRes, attendanceRes] = await Promise.all([
-        apiRequest("/employees", { searchParams: { per_page: 200 } }),
-        apiRequest("/employee-attendance", { searchParams: { per_page: 200 } }),
-      ]);
-      setEmployees(employeesRes.data ?? []);
+      const attendanceRes = await apiRequest("/employee-attendance", {
+        searchParams: {
+          per_page: 100,
+          page: 1,
+          from_date: historyFromDate,
+          to_date: historyToDate,
+          ...(debouncedSearch ? { q: debouncedSearch } : {}),
+        },
+      });
       setRecords(attendanceRes.data ?? []);
+      setRecordsTotal(Number(attendanceRes.meta?.total ?? attendanceRes.total ?? attendanceRes.data?.length ?? 0));
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load attendance records");
-      setEmployees([]);
       setRecords([]);
+      setRecordsTotal(0);
     } finally {
       setHistoryLoading(false);
     }
-  }, []);
+  }, [debouncedSearch, historyFromDate, historyToDate]);
+
+  const loadEmployeesForManual = useCallback(async () => {
+    if (employees.length) return;
+    try {
+      const employeesRes = await apiRequest("/employees", {
+        searchParams: { per_page: 200, fields: "lean", is_active: 1 },
+      });
+      setEmployees(employeesRes.data ?? []);
+    } catch {
+      setEmployees([]);
+    }
+  }, [employees.length]);
 
   useTabAwareDataLoad(loadActive);
 
@@ -199,15 +201,6 @@ export function HrAttendanceScreen() {
       (s) => !s.clock_out_at && (!s.source || s.source === "clock_device"),
     );
   }, [companyMobileEnabled, sessions]);
-
-  const filteredRecords = useMemo(() => {
-    return records.filter((record) => {
-      const date = record.attendance_date?.slice?.(0, 10) ?? "";
-      if (!date) return false;
-      if (date < historyFromDate || date > historyToDate) return false;
-      return attendanceRecordMatchesSearch(record, recordSearch);
-    });
-  }, [historyFromDate, historyToDate, recordSearch, records]);
 
   const timesRequired = !NON_WORK_STATUSES.includes(manualForm.status);
 
@@ -256,6 +249,7 @@ export function HrAttendanceScreen() {
     setManualError(null);
     setDayHint(null);
     setManualOpen(true);
+    void loadEmployeesForManual();
   }
 
   function openEditManual(record) {
@@ -272,6 +266,7 @@ export function HrAttendanceScreen() {
     setManualError(null);
     setDayHint(null);
     setManualOpen(true);
+    void loadEmployeesForManual();
   }
 
   async function deleteRecord(record) {
@@ -357,8 +352,13 @@ export function HrAttendanceScreen() {
               title="Attendance"
               apiPath="/employee-attendance"
               columns={ATTENDANCE_EXPORT_COLUMNS}
-              totalCount={filteredRecords.length}
-              getSearchParams={() => ({ per_page: 200 })}
+              totalCount={recordsTotal || records.length}
+              getSearchParams={() => ({
+                per_page: 200,
+                from_date: historyFromDate,
+                to_date: historyToDate,
+                ...(debouncedSearch ? { q: debouncedSearch } : {}),
+              })}
               disabled={historyLoading}
             />
             <PrimaryButton type="button" onClick={openCreateManual}>
@@ -513,7 +513,7 @@ export function HrAttendanceScreen() {
                         Loading…
                       </td>
                     </tr>
-                  ) : filteredRecords.length === 0 ? (
+                  ) : records.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                         {recordSearch.trim()
@@ -522,7 +522,7 @@ export function HrAttendanceScreen() {
                       </td>
                     </tr>
                   ) : (
-                    filteredRecords.map((r) => (
+                    records.map((r) => (
                       <tr key={r.id} className="theme-table-body-row">
                         <td className="px-4 py-3">
                           {composeEmployeeDisplayName(r.employee) || r.employee_id}
@@ -600,7 +600,12 @@ export function HrAttendanceScreen() {
           value={manualForm.employee_id}
           onChange={(v) => setManualForm((p) => ({ ...p, employee_id: v }))}
           required
-          options={employees.map((e) => ({
+          options={(
+            editingRecord?.employee &&
+            !employees.some((e) => Number(e.id) === Number(editingRecord.employee_id))
+              ? [editingRecord.employee, ...employees]
+              : employees
+          ).map((e) => ({
             value: String(e.id),
             label: composeEmployeeDisplayName(e),
           }))}

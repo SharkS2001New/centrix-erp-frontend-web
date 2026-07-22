@@ -1,9 +1,13 @@
 "use client";
 
-import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { apiRequest } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { useListPageSize } from "@/lib/use-list-page-controls";
 import {
   fetchCategoriesCached,
   fetchSubCategoriesCached,
@@ -23,6 +27,7 @@ import {
   Field,
   FILTER_CONTROL_CLASS,
   FilterSelect,
+  PaginationBar,
   PrimaryButton,
   SearchInput,
   SECONDARY_BTN_CLASS,
@@ -165,6 +170,18 @@ const PRINT_COLUMN_OPTIONS = [
   { key: "wholesale", label: "Full price (wholesale)" },
 ];
 
+function enrichPriceSheetRows(builtRows) {
+  return (builtRows ?? []).map((row) => {
+    const qty = Number(row.stock_qty ?? 0);
+    const reorder = Number(row.reorder_point ?? 0);
+    return {
+      ...row,
+      stock_status:
+        qty <= 0 ? "out_of_stock" : reorder > 0 && qty <= reorder ? "low_stock" : "in_stock",
+    };
+  });
+}
+
 export function ProductPriceSheetScreen() {
   const { capabilities, organization, user } = useAuth();
   const retailPricingEnabled = Boolean(
@@ -172,46 +189,42 @@ export function ProductPriceSheetScreen() {
   );
 
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search);
+  const debouncedSearch = useDebouncedValue(search);
   const [subcategoryFilter, setSubcategoryFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
   const [rows, setRows] = useState([]);
+  const [totalRows, setTotalRows] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(50);
   const [subcategories, setSubcategories] = useState([]);
   const [categories, setCategories] = useState([]);
   const [printColumns, setPrintColumns] = useState(DEFAULT_PRINT_COLUMNS);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const columnsButtonRef = useRef(null);
   const [columnsMenuStyle, setColumnsMenuStyle] = useState(null);
+  const [metaReady, setMetaReady] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const sheetExtra = useCallback(() => {
+    const extra = {
+      wholesale_only: retailPricingEnabled ? 0 : 1,
+    };
+    if (user?.branch_id) extra.branch_id = user.branch_id;
+    if (subcategoryFilter !== "all") extra.subcategory_id = subcategoryFilter;
+    if (stockFilter !== "all") extra.stock_status = stockFilter;
+    return extra;
+  }, [retailPricingEnabled, user?.branch_id, subcategoryFilter, stockFilter]);
+
+  const loadMeta = useCallback(async () => {
     try {
-      const sheetParams = {
-        per_page: 200,
-        wholesale_only: retailPricingEnabled ? 0 : 1,
-      };
-      if (user?.branch_id) sheetParams.branch_id = user.branch_id;
-
-      const [builtRows, cats, subs] = await Promise.all([
-        fetchAllPaginatedRowsSmart("/reports/product-price-sheet", sheetParams, { perPage: 200 }),
+      const [cats, subs] = await Promise.all([
         fetchCategoriesCached(organization?.id),
         fetchSubCategoriesCached(organization?.id),
       ]);
-
-      const rowsWithStatus = (builtRows ?? []).map((row) => {
-        const qty = Number(row.stock_qty ?? 0);
-        const reorder = Number(row.reorder_point ?? 0);
-        return {
-          ...row,
-          stock_status:
-            qty <= 0 ? "out_of_stock" : reorder > 0 && qty <= reorder ? "low_stock" : "in_stock",
-        };
-      });
-
-      setRows(rowsWithStatus);
       setCategories(cats ?? []);
       setSubcategories(
         [...(subs ?? [])].sort((a, b) =>
@@ -219,13 +232,50 @@ export function ProductPriceSheetScreen() {
         ),
       );
     } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load price sheet filters");
+    } finally {
+      setMetaReady(true);
+    }
+  }, [organization?.id]);
+
+  const loadPage = useCallback(async () => {
+    setListLoading(true);
+    setError(null);
+    try {
+      const searchParams = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
+        extra: sheetExtra(),
+      });
+      const res = await apiRequest("/reports/product-price-sheet", { searchParams });
+      const parsed = parsePaginator(res);
+      setRows(enrichPriceSheetRows(parsed.items));
+      setTotalRows(parsed.total);
+      setTotalPages(parsed.totalPages);
+    } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load price sheet data");
+      setRows([]);
+      setTotalRows(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [retailPricingEnabled, organization?.id, user?.branch_id]);
+  }, [page, pageSize, debouncedSearch, sheetExtra]);
 
-  useTabAwareDataLoad(load);
+  useTabAwareDataLoad(loadMeta);
+
+  useTabAwareDataLoad(
+    useCallback(() => {
+      if (!metaReady) return;
+      return loadPage();
+    }, [metaReady, loadPage]),
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, subcategoryFilter, stockFilter, pageSize]);
 
   useEffect(() => {
     if (!columnsOpen || !columnsButtonRef.current) {
@@ -258,7 +308,7 @@ export function ProductPriceSheetScreen() {
         String(a.subcategory_name).localeCompare(String(b.subcategory_name)),
       )) {
         options.push({
-          value: subcategory.subcategory_name,
+          value: String(subcategory.id),
           label: subcategory.subcategory_name,
         });
       }
@@ -266,29 +316,11 @@ export function ProductPriceSheetScreen() {
     return options;
   }, [subcategories, categories]);
 
-  const filteredRows = useMemo(() => {
-    const q = String(deferredSearch ?? "").trim().toLowerCase();
-    return rows.filter((row) => {
-      if (subcategoryFilter !== "all" && row.subcategory_name !== subcategoryFilter) return false;
-      if (stockFilter === "in_stock" && row.stock_status !== "in_stock") return false;
-      if (stockFilter === "low_stock" && row.stock_status !== "low_stock") return false;
-      if (stockFilter === "out_of_stock" && row.stock_status !== "out_of_stock") return false;
-      if (!q) return true;
-      return (
-        String(row.product_name).toLowerCase().includes(q) ||
-        String(row.product_code).toLowerCase().includes(q)
-      );
-    });
-  }, [rows, deferredSearch, subcategoryFilter, stockFilter]);
-
-  const groups = useMemo(
-    () => groupPriceSheetBySubcategory(filteredRows),
-    [filteredRows],
-  );
+  const groups = useMemo(() => groupPriceSheetBySubcategory(rows), [rows]);
 
   const availableColumns = useMemo(
-    () => priceSheetColumnVisibility(filteredRows, { retailPricingEnabled }),
-    [filteredRows, retailPricingEnabled],
+    () => priceSheetColumnVisibility(rows, { retailPricingEnabled }),
+    [rows, retailPricingEnabled],
   );
 
   const columns = useMemo(
@@ -303,11 +335,10 @@ export function ProductPriceSheetScreen() {
   );
 
   const hasCostRows = useMemo(
-    () => filteredRows.some((row) => row.last_cost_price != null && Number(row.last_cost_price) > 0),
-    [filteredRows],
+    () => rows.some((row) => row.last_cost_price != null && Number(row.last_cost_price) > 0),
+    [rows],
   );
   const showCost = hasCostRows && printColumns.unitCost;
-
   const showMargins = hasCostRows && columns.wholesale;
 
   const visibleColumnCount =
@@ -319,16 +350,56 @@ export function ProductPriceSheetScreen() {
     (columns.aboveDozens ? 1 : 0) +
     (columns.wholesale ? 1 : 0);
 
-  function handlePrint() {
-    const html = buildPriceSheetPrintHtml({
-      groups,
-      columns,
-      organizationName: organization?.org_name ?? capabilities?.profile_label ?? "",
-      showCost,
-      showMargins,
-    });
-    openPrintWindow(html, "width=1100,height=800");
+  const safePage = Math.min(page, totalPages);
+
+  async function handlePrint() {
+    setPrinting(true);
+    setError(null);
+    try {
+      const sheetParams = buildPageParams({
+        page: 1,
+        perPage: 200,
+        q: debouncedSearch,
+        extra: sheetExtra(),
+      });
+      const builtRows = await fetchAllPaginatedRowsSmart("/reports/product-price-sheet", sheetParams, {
+        perPage: 200,
+        message: "Preparing full price sheet for print…",
+      });
+      const printRows = enrichPriceSheetRows(builtRows);
+      const printGroups = groupPriceSheetBySubcategory(printRows);
+      const printAvailable = priceSheetColumnVisibility(printRows, { retailPricingEnabled });
+      const printCols = {
+        packaging: printColumns.packaging,
+        retail: printAvailable.retail && printColumns.retail,
+        dozens: printAvailable.dozens && printColumns.dozens,
+        aboveDozens: printAvailable.aboveDozens && printColumns.aboveDozens,
+        wholesale: printAvailable.wholesale && printColumns.wholesale,
+      };
+      const printHasCost = printRows.some(
+        (row) => row.last_cost_price != null && Number(row.last_cost_price) > 0,
+      );
+      const html = buildPriceSheetPrintHtml({
+        groups: printGroups,
+        columns: printCols,
+        organizationName: organization?.org_name ?? capabilities?.profile_label ?? "",
+        showCost: printHasCost && printColumns.unitCost,
+        showMargins: printHasCost && printCols.wholesale,
+      });
+      openPrintWindow(html, "width=1100,height=800");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to prepare price sheet for print");
+    } finally {
+      setPrinting(false);
+    }
   }
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
+
+  const tableBusy = loading || (listLoading && rows.length === 0);
 
   return (
     <CatalogPageShell
@@ -342,8 +413,13 @@ export function ProductPriceSheetScreen() {
           >
             ← Reports
           </Link>
-          <PrimaryButton type="button" showIcon={false} onClick={handlePrint} disabled={!groups.length}>
-            Print / PDF
+          <PrimaryButton
+            type="button"
+            showIcon={false}
+            onClick={() => void handlePrint()}
+            disabled={printing || (!rows.length && !totalRows)}
+          >
+            {printing ? "Preparing…" : "Print / PDF"}
           </PrimaryButton>
         </div>
       }
@@ -482,13 +558,13 @@ export function ProductPriceSheetScreen() {
 
       {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
 
-      {loading ? (
+      {tableBusy ? (
         <p className="text-sm text-slate-500">Loading products and pricing tiers…</p>
       ) : !groups.length ? (
         <p className="text-sm text-slate-500">No products with a unit price to display.</p>
       ) : (
         <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-          <div className="overflow-x-auto">
+          <div className={`overflow-x-auto ${listLoading ? "opacity-60" : ""}`}>
             <table className="theme-table min-w-full text-sm">
               <thead>
                 <tr className="theme-table-head-row text-left text-xs font-semibold uppercase tracking-wide">
@@ -564,19 +640,14 @@ export function ProductPriceSheetScreen() {
             </table>
           </div>
 
-          <div className="theme-table-footer flex items-center justify-between px-4 py-2 text-xs">
-            <span className="theme-subtext">{filteredRows.length} product(s)</span>
-            <span className="theme-subtext">
-              Printed:{" "}
-              {new Date().toLocaleString("en-GB", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </span>
-          </div>
+          <PaginationBar
+            page={safePage}
+            totalPages={totalPages}
+            total={totalRows}
+            pageSize={pageSize}
+            onChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+          />
         </div>
       )}
     </CatalogPageShell>

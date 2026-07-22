@@ -1,11 +1,14 @@
 "use client";
 
 import { notifyError } from "@/lib/notify";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { fetchSuppliersCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { canApproveSupplierReturns } from "@/lib/approval-permissions";
@@ -24,7 +27,7 @@ import {
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { SUPPLIER_RETURN_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
-import { formatPoNumber, lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
+import { lpoRowDisplayNumber } from "@/components/lpo/lpo-shared";
 import { printSupplierReturn } from "@/components/suppliers/supplier-return-print";
 import { formatReturnQty, formatStockLocationLabel, statusBadgeClass } from "@/components/suppliers/supplier-return-shared";
 import { ApprovalReminderButton } from "@/components/approval-reminder-button";
@@ -349,9 +352,11 @@ export function SuppliersReturnsScreen() {
   const presetSupplier = searchParams.get("supplier_id") ?? searchParams.get("supplier");
 
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [listLoading, setListLoading] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -362,87 +367,90 @@ export function SuppliersReturnsScreen() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = useListPageSize(15);
   const [collapsedIds, setCollapsedIds] = useState(() => new Set());
   const [highlightedReturnId, setHighlightedReturnId] = useState(null);
   const returnRowRefs = useRef(new Map());
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadSuppliers = useCallback(async () => {
     try {
-      const listParams = { per_page: 200 };
-      if (supplierFilter !== "all") listParams.supplier_id = supplierFilter;
-      if (statusFilter !== "all") listParams.status = statusFilter;
-      if (dateFrom) listParams.date_from = dateFrom;
-      if (dateTo) listParams.date_to = dateTo;
+      const data = await fetchSuppliersCached(user?.organization_id);
+      setSuppliers(data ?? []);
+    } catch {
+      /* non-blocking — supplier filter degrades gracefully */
+    }
+  }, [user?.organization_id]);
 
-      const [retRes, supRes] = await Promise.all([
-        apiRequest("/supplier-return-documents", { searchParams: listParams }),
-        apiRequest("/suppliers", { searchParams: { per_page: 200 } }),
-      ]);
-      setRows(retRes.data ?? []);
-      setSuppliers(supRes.data ?? []);
+  const loadData = useCallback(async () => {
+    setListLoading(true);
+    try {
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
+        extra: {
+          supplier_id: supplierFilter !== "all" ? supplierFilter : undefined,
+          status: statusFilter !== "all" ? statusFilter : undefined,
+          source_type: typeFilter !== "all" ? typeFilter : undefined,
+          date_from: dateFrom || undefined,
+          date_to: dateTo || undefined,
+        },
+      });
+      const retRes = await apiRequest("/supplier-return-documents", {
+        searchParams: searchParamsApi,
+      });
+      const parsed = parsePaginator(retRes);
+      setRows(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
       setCollapsedIds(new Set());
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load returns");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [supplierFilter, statusFilter, dateFrom, dateTo]);
+  }, [
+    page,
+    pageSize,
+    debouncedSearch,
+    supplierFilter,
+    typeFilter,
+    statusFilter,
+    dateFrom,
+    dateTo,
+  ]);
 
+  useTabAwareDataLoad(loadSuppliers);
   useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     if (presetSupplier) setSupplierFilter(presetSupplier);
   }, [presetSupplier]);
 
-  const filtered = useMemo(() => {
-    let list = rows;
-    if (typeFilter === "manual") list = list.filter((r) => r.source_type === "manual");
-    else if (typeFilter === "lpo") list = list.filter((r) => r.source_type === "lpo");
-
-    const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((r) => {
-      const hay = [
-        r.supplier_name,
-        r.return_reason,
-        r.notes,
-        r.supplier_invoice_no,
-        r.reference,
-        r.returned_by_name,
-        String(r.id),
-        returnReferenceLabel(r),
-        r.lpo_no != null ? `lpo ${r.lpo_no}` : "",
-        ...(r.lines ?? []).flatMap((l) => [l.product_name, l.product_code, l.reason]),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
-    });
-  }, [rows, typeFilter, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const pageSlice = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-
   useEffect(() => {
     setPage(1);
-  }, [search, supplierFilter, typeFilter, statusFilter, dateFrom, dateTo]);
+  }, [debouncedSearch, supplierFilter, typeFilter, statusFilter, dateFrom, dateTo]);
+
+  const safePage = Math.min(page, totalPages);
+  const tableLoading = loading || (listLoading && rows.length === 0);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
 
   useEffect(() => {
     const returnId = searchParams.get("return_id");
-    if (!returnId || loading) return;
+    if (!returnId || tableLoading) return;
 
     const targetId = Number(returnId);
     if (!Number.isFinite(targetId) || targetId <= 0) return;
 
-    const index = filtered.findIndex((row) => Number(row.id) === targetId);
-    if (index < 0) return;
+    const found = rows.some((row) => Number(row.id) === targetId);
+    if (!found) return;
 
-    setPage(Math.floor(index / pageSize) + 1);
     setCollapsedIds((prev) => {
       const next = new Set(prev);
       next.delete(targetId);
@@ -459,12 +467,29 @@ export function SuppliersReturnsScreen() {
       window.clearTimeout(scrollTimer);
       window.clearTimeout(clearTimer);
     };
-  }, [filtered, loading, pageSize, searchParams]);
+  }, [rows, tableLoading, searchParams]);
 
   function handlePageSizeChange(size) {
     setPageSize(size);
     setPage(1);
   }
+
+  const buildExportSearchParams = useCallback(
+    () =>
+      buildPageParams({
+        page: 1,
+        perPage: 100,
+        q: debouncedSearch,
+        extra: {
+          supplier_id: supplierFilter !== "all" ? supplierFilter : undefined,
+          status: statusFilter !== "all" ? statusFilter : undefined,
+          source_type: typeFilter !== "all" ? typeFilter : undefined,
+          date_from: dateFrom || undefined,
+          date_to: dateTo || undefined,
+        },
+      }),
+    [debouncedSearch, supplierFilter, typeFilter, statusFilter, dateFrom, dateTo],
+  );
 
   function toggleCollapsed(id) {
     setCollapsedIds((prev) => {
@@ -535,7 +560,7 @@ export function SuppliersReturnsScreen() {
     [generalSettings, organization, user],
   );
 
-  const pendingCount = filtered.filter((r) => r.status === "pending_approval").length;
+  const pendingCount = rows.filter((r) => r.status === "pending_approval").length;
   const canApproveReturns = canApproveSupplierReturns({ hasPermission, capabilities });
   const approvalHint = canApproveReturns
     ? null
@@ -550,24 +575,19 @@ export function SuppliersReturnsScreen() {
           <button
             type="button"
             onClick={() => void loadData()}
-            disabled={loading}
+            disabled={listLoading}
             className={SECONDARY_BTN_CLASS}
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {listLoading ? "Refreshing…" : "Refresh"}
           </button>
           <CatalogListExport
             title="Supplier returns"
             filename="supplier-returns"
             apiPath="/supplier-return-documents"
             columns={SUPPLIER_RETURN_EXPORT_COLUMNS}
-            totalCount={filtered.length}
-            getSearchParams={() => {
-              const params = { per_page: 200 };
-              if (supplierFilter !== "all") params["filter[supplier_id]"] = supplierFilter;
-              if (statusFilter !== "all") params["filter[status]"] = statusFilter;
-              return params;
-            }}
-            disabled={loading}
+            totalCount={total}
+            getSearchParams={buildExportSearchParams}
+            disabled={listLoading}
           />
           <Link
           href={
@@ -651,10 +671,10 @@ export function SuppliersReturnsScreen() {
         </div>
       }
     >
-      {!loading && (
+      {!tableLoading && (
         <p className="mb-4 text-sm text-slate-600">
-          Showing {filtered.length} return{filtered.length === 1 ? "" : "s"}
-          {pendingCount > 0 ? ` · ${pendingCount} awaiting approval` : ""}
+          Showing {total} return{total === 1 ? "" : "s"}
+          {pendingCount > 0 ? ` · ${pendingCount} awaiting approval on this page` : ""}
           {approvalHint ?? ""}
           {" · "}
           Products expanded by default — use − to collapse
@@ -674,9 +694,9 @@ export function SuppliersReturnsScreen() {
       />
 
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        {loading ? (
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading returns…</p>
-        ) : filtered.length === 0 ? (
+        ) : rows.length === 0 ? (
           <p className="px-4 py-12 text-center text-sm text-slate-500">
             No supplier returns found.{" "}
             <Link href="/suppliers/returns/new" className="text-[#185FA5] hover:underline">
@@ -702,7 +722,7 @@ export function SuppliersReturnsScreen() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageSlice.map((row) => {
+                  {rows.map((row) => {
                     const collapsed = collapsedIds.has(row.id);
                     const orderReason = isOrderLevelReason(row);
 
@@ -820,7 +840,7 @@ export function SuppliersReturnsScreen() {
             <PaginationBar
               page={safePage}
               totalPages={totalPages}
-              total={filtered.length}
+              total={total}
               pageSize={pageSize}
               onChange={setPage}
               onPageSizeChange={handlePageSizeChange}

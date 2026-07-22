@@ -3,16 +3,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
+import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import {
   buildUomByProductCode,
   collectFulfillmentProductCodes,
   fetchCatalogForProductCodes,
 } from "@/lib/fulfillment-quantity";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   CatalogPageShell,
   Field,
   FilterToolbar,
+  PaginationBar,
   PrimaryButton,
   SearchInput,
 } from "@/components/catalog/catalog-shared";
@@ -27,6 +30,8 @@ import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { resolvePrintFooter } from "@/lib/print-footer-settings";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import { resolveLoadingSheetPrintSettings } from "@/lib/loading-sheet-print-settings";
+import { useListPageSize } from "@/lib/use-list-page-controls";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -66,8 +71,14 @@ export function DistributionLoadingListsScreen() {
   const [fromDate, setFromDate] = useState(daysAgoIso(5));
   const [toDate, setToDate] = useState(todayIso());
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
+  const [page, setPage] = useState(1);
+  const { pageSize, setPageSize } = useListPageSize(10);
   const [trips, setTrips] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedTripId, setSelectedTripId] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -82,43 +93,53 @@ export function DistributionLoadingListsScreen() {
   );
 
   const loadTrips = useCallback(async () => {
-    setLoading(true);
+    if (!allowed) return;
+    setListLoading(true);
     setError(null);
     try {
-      const res = await apiRequest("/dispatch-trips", {
-        searchParams: {
-          per_page: 200,
+      const searchParamsApi = buildPageParams({
+        page,
+        perPage: pageSize,
+        q: debouncedSearch,
+        extra: {
           from_date: fromDate,
           to_date: toDate,
+          has_orders: 1,
         },
       });
-      const rows = (res.data ?? []).filter((trip) => (trip.sales_count ?? trip.sales?.length ?? 0) > 0);
-      setTrips(rows);
+      const res = await apiRequest("/dispatch-trips", { searchParams: searchParamsApi });
+      const parsed = parsePaginator(res);
+      setTrips(parsed.items);
+      setTotal(parsed.total);
+      setTotalPages(parsed.totalPages);
     } catch (e) {
       setTrips([]);
+      setTotal(0);
+      setTotalPages(1);
       setError(e instanceof ApiError ? e.message : "Failed to load trips");
     } finally {
       setLoading(false);
+      setListLoading(false);
     }
-  }, [fromDate, toDate]);
+  }, [allowed, page, pageSize, debouncedSearch, fromDate, toDate]);
+
+  useTabAwareDataLoad(loadTrips);
 
   useEffect(() => {
-    if (!allowed) return;
-    void loadTrips();
-  }, [allowed, loadTrips]);
+    setPage(1);
+  }, [debouncedSearch, fromDate, toDate]);
 
-  const filteredTrips = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return trips;
-    return trips.filter((trip) => {
-      const routeName = trip.route?.route_name ?? "";
-      return (
-        String(trip.trip_code ?? "").toLowerCase().includes(q) ||
-        routeName.toLowerCase().includes(q) ||
-        String(trip.scheduled_date ?? "").includes(q)
-      );
-    });
-  }, [trips, search]);
+  const safePage = Math.min(page, totalPages);
+  const tableLoading = loading || (listLoading && trips.length === 0);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
+
+  function handlePageSizeChange(size) {
+    setPageSize(size);
+    setPage(1);
+  }
 
   const selectedTrip = useMemo(
     () => trips.find((trip) => trip.id === selectedTripId) ?? detail?.trip ?? null,
@@ -320,52 +341,62 @@ export function DistributionLoadingListsScreen() {
       </FilterToolbar>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-        <div className="theme-table-shell overflow-x-auto">
-          <table className="theme-table w-full min-w-[36rem] text-sm">
-            <thead>
-              <tr className="theme-table-head-row">
-                <th className="px-4 py-2.5 text-left">Date</th>
-                <th className="px-4 py-2.5 text-left">Trip</th>
-                <th className="px-4 py-2.5 text-left">Route</th>
-                <th className="px-4 py-2.5 text-right">Orders</th>
-                <th className="px-4 py-2.5 text-left">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={5} className="theme-subtext px-4 py-8 text-center">
-                    Loading…
-                  </td>
+        <div>
+          <div className="theme-table-shell overflow-x-auto">
+            <table className="theme-table w-full min-w-[36rem] text-sm">
+              <thead>
+                <tr className="theme-table-head-row">
+                  <th className="px-4 py-2.5 text-left">Date</th>
+                  <th className="px-4 py-2.5 text-left">Trip</th>
+                  <th className="px-4 py-2.5 text-left">Route</th>
+                  <th className="px-4 py-2.5 text-right">Orders</th>
+                  <th className="px-4 py-2.5 text-left">Status</th>
                 </tr>
-              ) : filteredTrips.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="theme-subtext px-4 py-8 text-center">
-                    No trips with orders for this period. Create a trip from Dispatch or Trips first.
-                  </td>
-                </tr>
-              ) : (
-                filteredTrips.map((trip) => {
-                  const active = selectedTripId === trip.id;
-                  return (
-                    <tr
-                      key={trip.id}
-                      className={`theme-table-body-row cursor-pointer ${active ? "bg-[var(--theme-primary-subtle)]" : ""}`}
-                      onClick={() => void openTrip(trip)}
-                    >
-                      <td className="px-4 py-2.5">{formatDisplayDate(trip.scheduled_date)}</td>
-                      <td className="px-4 py-2.5 font-medium">{trip.trip_code}</td>
-                      <td className="px-4 py-2.5">{trip.route?.route_name ?? "—"}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">
-                        {trip.sales_count ?? trip.sales?.length ?? 0}
-                      </td>
-                      <td className="px-4 py-2.5 capitalize">{statusLabel(trip.status)}</td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {tableLoading ? (
+                  <tr>
+                    <td colSpan={5} className="theme-subtext px-4 py-8 text-center">
+                      Loading…
+                    </td>
+                  </tr>
+                ) : trips.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="theme-subtext px-4 py-8 text-center">
+                      No trips with orders for this period. Create a trip from Dispatch or Trips first.
+                    </td>
+                  </tr>
+                ) : (
+                  trips.map((trip) => {
+                    const active = selectedTripId === trip.id;
+                    return (
+                      <tr
+                        key={trip.id}
+                        className={`theme-table-body-row cursor-pointer ${active ? "bg-[var(--theme-primary-subtle)]" : ""}`}
+                        onClick={() => void openTrip(trip)}
+                      >
+                        <td className="px-4 py-2.5">{formatDisplayDate(trip.scheduled_date)}</td>
+                        <td className="px-4 py-2.5 font-medium">{trip.trip_code}</td>
+                        <td className="px-4 py-2.5">{trip.route?.route_name ?? "—"}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">
+                          {trip.sales_count ?? trip.sales?.length ?? 0}
+                        </td>
+                        <td className="px-4 py-2.5 capitalize">{statusLabel(trip.status)}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+          <PaginationBar
+            page={safePage}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            onChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+          />
         </div>
 
         <div className="theme-panel rounded-xl border p-4">
