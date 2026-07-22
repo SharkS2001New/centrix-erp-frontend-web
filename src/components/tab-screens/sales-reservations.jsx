@@ -112,8 +112,6 @@ export function SalesReservationsScreen() {
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {loading ? (
           <p className="px-5 py-8 text-center text-sm text-slate-500">Loading reservations…</p>
-        ) : pageSlice.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-slate-500">No active reservations.</p>
         ) : (
           <table className="w-full border-collapse text-sm">
             <thead>
@@ -126,46 +124,54 @@ export function SalesReservationsScreen() {
               </tr>
             </thead>
             <tbody>
-              {pageSlice.map((row) => {
-                const sale = row.sale;
-                const orderLabel = sale
-                  ? formatReceiptNumber(sale)
-                  : row.cart_id
-                    ? `Cart #${row.cart_id}`
-                    : "—";
-                return (
-                  <tr key={row.id} className="border-b border-slate-100 last:border-b-0">
-                    <td className="px-4 py-3">
-                      {sale ? (
-                        <Link
-                          href={`/sales/orders/${sale.id}`}
-                          className="font-medium text-[#185FA5] hover:underline"
-                        >
-                          {orderLabel}
-                        </Link>
-                      ) : (
-                        <span className="text-slate-700">{orderLabel}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-900">
-                        {row.product_name || row.product_code}
-                      </div>
-                      {row.product_name &&
-                      row.product_name !== row.product_code ? (
-                        <div className="mt-0.5 text-xs text-slate-500">
-                          {row.product_code}
+              {pageSlice.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-10 text-center text-sm text-slate-500">
+                    No active reservations.
+                  </td>
+                </tr>
+              ) : (
+                pageSlice.map((row) => {
+                  const sale = row.sale;
+                  const orderLabel = sale
+                    ? formatReceiptNumber(sale)
+                    : row.cart_id
+                      ? `Cart #${row.cart_id}`
+                      : "—";
+                  return (
+                    <tr key={row.id} className="border-b border-slate-100 last:border-b-0">
+                      <td className="px-4 py-3">
+                        {sale ? (
+                          <Link
+                            href={`/sales/orders/${sale.id}`}
+                            className="font-medium text-[#185FA5] hover:underline"
+                          >
+                            {orderLabel}
+                          </Link>
+                        ) : (
+                          <span className="text-slate-700">{orderLabel}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-900">
+                          {row.product_name || row.product_code}
                         </div>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 text-right text-slate-700">{row.quantity}</td>
-                    <td className="px-4 py-3 text-slate-600">{row.stock_location ?? "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {formatShortDate(row.created_at)}
-                    </td>
-                  </tr>
-                );
-              })}
+                        {row.product_name &&
+                        row.product_name !== row.product_code ? (
+                          <div className="mt-0.5 text-xs text-slate-500">
+                            {row.product_code}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-right text-slate-700">{row.quantity}</td>
+                      <td className="px-4 py-3 text-slate-600">{row.stock_location ?? "—"}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {formatShortDate(row.created_at)}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         )}

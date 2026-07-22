@@ -1148,13 +1148,13 @@ export default function SalesOrdersListScreen({
               <p className="text-sm font-medium text-slate-800">Loading orders…</p>
               <p className="text-xs text-slate-500">Fetching the latest sales and orders for this view.</p>
             </div>
-          ) : pageSlice.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-slate-500">No orders match your filters.</p>
           ) : (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2 theme-table-head-row border-b px-4 py-2">
                 <p className="text-xs text-slate-500">
-                  {pageSlice.length} order{pageSlice.length === 1 ? "" : "s"} on this page · Right-click for actions
+                  {pageSlice.length === 0
+                    ? "No orders on this page · Adjust filters above or in the header row"
+                    : `${pageSlice.length} order${pageSlice.length === 1 ? "" : "s"} on this page · Right-click for actions`}
                 </p>
                 <button
                   type="button"
@@ -1219,50 +1219,61 @@ export default function SalesOrdersListScreen({
                     />
                   </thead>
                   <tbody>
-                    {pageSlice.map((sale) => {
-                      const key = String(sale.id);
-                      return (
+                    {pageSlice.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={columnCount}
+                          className="px-5 py-10 text-center text-sm text-slate-500"
+                        >
+                          No orders match your filters.
+                        </td>
+                      </tr>
+                    ) : (
+                      pageSlice.map((sale) => {
+                        const key = String(sale.id);
+                        return (
                           <OrderListTableRow
-                          key={sale.id}
-                          sale={sale}
-                          workflow={workflowBySaleId.get(sale.id)}
-                          detail={detailsById[key]}
-                          itemsLoading={detailLoadingId === key}
-                          uomById={uomById}
-                          expanded={expandedIds.has(key)}
-                          onToggleExpand={() => toggleExpand(sale.id)}
-                          onContextMenu={(event) => openOrderContextMenu(event, sale)}
-                          onView={() => viewOrder(sale)}
-                          onPrint={() => void printOrder(sale)}
-                          printAriaLabel={orderPrintAriaLabel}
-                          onOpenActionsMenu={(event) => openActionsMenuFromButton(event, sale)}
-                          onCollectPayment={
-                            canCollectPaymentOnQueue(sale, queueSlug, null, capabilities)
-                              ? () => openCollectPayment(sale)
-                              : null
-                          }
-                          actionBusy={transitionBusyId === sale.id}
-                          showBranchColumn={showBranchColumn}
-                          branchName={saleBranchLabel(sale, branchById)}
-                          showRouteColumn={showRouteColumn}
-                          showDeliveryDateColumn={showDeliveryDateColumn}
-                          showConnectivityColumn={showConnectivityColumn}
-                          showSourceColumn={showSourceColumn}
-                          routeById={routeById}
-                          paymentRefsBySaleId={paymentRefsBySaleId}
-                          columnCount={columnCount}
-                          showDiscountColumn={showDiscountColumn}
-                          showPaymentBreakdownColumns={showPaymentBreakdownColumns}
-                          showApprovalColumn={showApprovalColumn}
-                          showRejectionStrip={showRejectionStrip}
-                          queueSlug={queueSlug}
-                          onApproveActionRequest={approveActionRequest}
-                          onRejectActionRequest={rejectActionRequest}
-                          canApproveDiscounts={canApproveDiscounts}
-                          capabilities={capabilities}
-                        />
-                      );
-                    })}
+                            key={sale.id}
+                            sale={sale}
+                            workflow={workflowBySaleId.get(sale.id)}
+                            detail={detailsById[key]}
+                            itemsLoading={detailLoadingId === key}
+                            uomById={uomById}
+                            expanded={expandedIds.has(key)}
+                            onToggleExpand={() => toggleExpand(sale.id)}
+                            onContextMenu={(event) => openOrderContextMenu(event, sale)}
+                            onView={() => viewOrder(sale)}
+                            onPrint={() => void printOrder(sale)}
+                            printAriaLabel={orderPrintAriaLabel}
+                            onOpenActionsMenu={(event) => openActionsMenuFromButton(event, sale)}
+                            onCollectPayment={
+                              canCollectPaymentOnQueue(sale, queueSlug, null, capabilities)
+                                ? () => openCollectPayment(sale)
+                                : null
+                            }
+                            actionBusy={transitionBusyId === sale.id}
+                            showBranchColumn={showBranchColumn}
+                            branchName={saleBranchLabel(sale, branchById)}
+                            showRouteColumn={showRouteColumn}
+                            showDeliveryDateColumn={showDeliveryDateColumn}
+                            showConnectivityColumn={showConnectivityColumn}
+                            showSourceColumn={showSourceColumn}
+                            routeById={routeById}
+                            paymentRefsBySaleId={paymentRefsBySaleId}
+                            columnCount={columnCount}
+                            showDiscountColumn={showDiscountColumn}
+                            showPaymentBreakdownColumns={showPaymentBreakdownColumns}
+                            showApprovalColumn={showApprovalColumn}
+                            showRejectionStrip={showRejectionStrip}
+                            queueSlug={queueSlug}
+                            onApproveActionRequest={approveActionRequest}
+                            onRejectActionRequest={rejectActionRequest}
+                            canApproveDiscounts={canApproveDiscounts}
+                            capabilities={capabilities}
+                          />
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>

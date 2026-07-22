@@ -175,7 +175,7 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-user": {
     title: "Sales by User",
-    subtitle: "Orders by user across booked → completed (incl. unpaid / partial), with VAT breakdown",
+    subtitle: "Orders by user on the day they were placed (booked → completed, incl. unpaid / partial), with VAT breakdown",
     section: "Sales",
     apiPath: "/reports/sales-by-user",
     dateColumn: "sale_date",
@@ -471,7 +471,7 @@ export const REPORT_DEFINITIONS = {
 
   "profit-loss-by-product": {
     title: "Profit & Loss by Product",
-    subtitle: "Net revenue, COGS, and gross profit per product",
+    subtitle: "Gross profit = (qty × unit price) − (qty × cost price), with VAT shown separately",
     section: "Finance",
     apiPath: "/reports/profit-loss-by-product",
     showDateRange: true,
