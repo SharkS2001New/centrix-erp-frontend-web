@@ -92,7 +92,7 @@ export const REPORT_DEFINITIONS = {
 
   "sales-by-product": {
     title: "Sales by Product",
-    subtitle: "Revenue and VAT by product across booked → completed orders",
+    subtitle: "Revenue and VAT by product (aligned to order totals after discounts)",
     section: "Sales",
     apiPath: "/reports/sales-by-product",
     dateColumn: "sale_date",
