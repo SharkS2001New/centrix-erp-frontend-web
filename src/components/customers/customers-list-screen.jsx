@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
@@ -724,65 +725,89 @@ export function CustomersListScreen() {
 }
 
 function ColumnPicker({ open, onToggle, onClose, visibleColumnIds, onToggleColumn, onReset }) {
+  const buttonRef = useRef(null);
+  const [menuStyle, setMenuStyle] = useState(null);
+
+  useEffect(() => {
+    if (!open || !buttonRef.current) {
+      setMenuStyle(null);
+      return;
+    }
+    const rect = buttonRef.current.getBoundingClientRect();
+    setMenuStyle({
+      position: "fixed",
+      top: rect.bottom + 8,
+      right: Math.max(8, window.innerWidth - rect.right),
+      zIndex: 80,
+    });
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       <button
+        ref={buttonRef}
         type="button"
         onClick={onToggle}
-        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        className={`${SECONDARY_BTN_CLASS} gap-2 px-3 py-2.5`}
       >
         <ColumnsIcon />
         Columns
       </button>
-      {open && (
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 z-10 cursor-default"
-            aria-label="Close column picker"
-            onClick={onClose}
-          />
-          <div className="absolute right-0 z-20 mt-2 w-56 theme-panel rounded-xl border p-3 shadow-lg">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Show columns
-              </p>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <>
               <button
                 type="button"
-                onClick={onReset}
-                className="text-xs font-medium text-[#185FA5] hover:text-[#144f8a]"
+                className="fixed inset-0 z-[70] cursor-default"
+                aria-label="Close column picker"
+                onClick={onClose}
+              />
+              <div
+                style={menuStyle ?? undefined}
+                className="theme-panel fixed z-[80] w-56 rounded-xl border p-3 shadow-lg"
               >
-                Reset
-              </button>
-            </div>
-            <ul className="max-h-72 space-y-1 overflow-y-auto">
-              {CUSTOMER_COLUMNS.map((col) => {
-                const checked = visibleColumnIds.includes(col.id);
-                return (
-                  <li key={col.id}>
-                    <label
-                      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
-                        col.required
-                          ? "cursor-not-allowed text-slate-400"
-                          : "cursor-pointer hover:bg-slate-50"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={col.required}
-                        onChange={() => onToggleColumn(col.id)}
-                        className="rounded border-slate-300"
-                      />
-                      {col.label}
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        </>
-      )}
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="theme-subtext text-xs font-semibold uppercase tracking-wide">
+                    Show columns
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onReset}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-500"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <ul className="max-h-72 space-y-1 overflow-y-auto">
+                  {CUSTOMER_COLUMNS.map((col) => {
+                    const checked = visibleColumnIds.includes(col.id);
+                    return (
+                      <li key={col.id}>
+                        <label
+                          className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
+                            col.required
+                              ? "theme-subtext cursor-not-allowed opacity-60"
+                              : "cursor-pointer text-[var(--theme-text-muted)] hover:bg-[var(--theme-hover)]"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={col.required}
+                            onChange={() => onToggleColumn(col.id)}
+                            className="rounded border-slate-300"
+                          />
+                          {col.label}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
