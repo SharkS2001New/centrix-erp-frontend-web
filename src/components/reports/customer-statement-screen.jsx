@@ -15,6 +15,7 @@ import {
   reportPrintedAt,
 } from "@/lib/reports/export";
 import { resolveReportBranding } from "@/lib/reports/report-branding";
+import { defaultDateRange } from "@/lib/datetime";
 import { Field, inputClassName } from "@/components/catalog/catalog-shared";
 import { PosSearchableSelect } from "@/components/sales/pos-searchable-select";
 import {
@@ -36,9 +37,14 @@ export function CustomerStatementScreen() {
   const searchParams = useSearchParams();
   const { organization, generalSettings } = useAuth();
   const initialCustomer = searchParams.get("customer") ?? "";
+  const defaultRange = useMemo(() => defaultDateRange(365), []);
 
   const [customerNum, setCustomerNum] = useState(initialCustomer);
   const [appliedCustomer, setAppliedCustomer] = useState(initialCustomer);
+  const [fromDate, setFromDate] = useState(defaultRange.from);
+  const [toDate, setToDate] = useState(defaultRange.to);
+  const [appliedFrom, setAppliedFrom] = useState(defaultRange.from);
+  const [appliedTo, setAppliedTo] = useState(defaultRange.to);
   const [customerOptions, setCustomerOptions] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -67,7 +73,12 @@ export function CustomerStatementScreen() {
     if (!appliedCustomer || String(appliedCustomer) === "undefined") return;
     setLoading(true);
     try {
-      const res = await apiRequest(`/reports/customers/${appliedCustomer}/statement`);
+      const res = await apiRequest(`/reports/customers/${appliedCustomer}/statement`, {
+        searchParams: {
+          from_date: appliedFrom,
+          to_date: appliedTo,
+        },
+      });
       setData(res);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load statement");
@@ -75,7 +86,7 @@ export function CustomerStatementScreen() {
     } finally {
       setLoading(false);
     }
-  }, [appliedCustomer]);
+  }, [appliedCustomer, appliedFrom, appliedTo]);
 
   useTabAwareDataLoad(loadStatement);
 
@@ -232,9 +243,29 @@ export function CustomerStatementScreen() {
               />
             </div>
           </Field>
+          <Field label="From">
+            <input
+              type="date"
+              className={inputClassName()}
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+            />
+          </Field>
+          <Field label="To">
+            <input
+              type="date"
+              className={inputClassName()}
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+            />
+          </Field>
           <button
             type="button"
-            onClick={() => setAppliedCustomer(customerNum)}
+            onClick={() => {
+              setAppliedCustomer(customerNum);
+              setAppliedFrom(fromDate);
+              setAppliedTo(toDate);
+            }}
             disabled={!customerNum || loading}
             className="rounded-lg bg-[#185FA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#134d88] disabled:opacity-50"
           >

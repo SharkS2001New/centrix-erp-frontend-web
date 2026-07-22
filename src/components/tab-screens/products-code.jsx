@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import {
   fetchCategoriesCached,
-  fetchRetailPackagesCached,
+  fetchRetailPackagesForProductCodes,
   fetchSubCategoriesCached,
   fetchSuppliersCached,
   fetchUomsCached,
@@ -584,7 +584,9 @@ export function ProductsCodeScreen() {
       fetchSuppliersCached(orgId),
       fetchUomsCached(orgId),
       fetchVatsCached(orgId),
-      fetchRetailPackagesCached(orgId).catch(() => []),
+      productCode
+        ? fetchRetailPackagesForProductCodes([productCode]).catch(() => [])
+        : Promise.resolve([]),
       apiRequest("/system-settings", { searchParams: { per_page: 1 } }).catch(() => null),
       fetchUsersCached(orgId).catch(() => []),
     ]);

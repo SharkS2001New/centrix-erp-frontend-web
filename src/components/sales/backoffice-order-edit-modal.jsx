@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchRetailPackagesCached } from "@/lib/reference-data-cache";
+import { fetchRetailPackagesForProductCodes } from "@/lib/reference-data-cache";
 import { formatOrderNumber, formatSaleKes } from "@/lib/sales";
 import {
   saleLineSoldUnitPrice,
@@ -336,10 +336,9 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     setBaselineCustomerNum(originalCustomer);
     setCustomerOptions([]);
     try {
-      const [detail, retailRows] = await Promise.all([
+      const [detail] = await Promise.all([
         // Always load full sale so route_id / fulfillment_meta are present for markup rules.
         apiRequest(`/sales/${sale.id}`),
-        fetchRetailPackagesCached().catch(() => []),
       ]);
       const saleForPricing = { ...sale, ...detail };
       const applyMarkup = saleAppliesRouteMarkupPricing(saleForPricing, capabilities?.module_settings, {
@@ -351,6 +350,10 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
           ? await apiRequest(`/routes/${routeId}`).catch(() => saleForPricing.route ?? null)
           : null;
 
+      const lineCodes = (detail.items ?? sale.items ?? [])
+        .map((line) => line.product_code)
+        .filter(Boolean);
+      const retailRows = await fetchRetailPackagesForProductCodes(lineCodes).catch(() => []);
       const retailMap = indexRetailPackages(retailRows);
       setRetailByCode(retailMap);
       const markup = applyMarkup
@@ -517,10 +520,18 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     setLines((prev) => prev.filter((row) => lineKey(row) !== lineKey(line)));
   }
 
-  function handleAddProduct(product) {
+  async function handleAddProduct(product) {
     if (!product?.product_code) return;
     setError(null);
-    const allowsRetail = productAllowsRetail(product.product_code, retailByCode);
+    const code = String(product.product_code);
+    let packages = retailByCode;
+    if (retailByCode[code] === undefined) {
+      const rows = await fetchRetailPackagesForProductCodes([code]).catch(() => []);
+      packages = { ...retailByCode, ...indexRetailPackages(rows) };
+      if (packages[code] === undefined) packages[code] = null;
+      setRetailByCode(packages);
+    }
+    const allowsRetail = productAllowsRetail(code, packages);
     const asRetail = retailPricingEnabled && addAsRetail && allowsRetail;
     if (addAsRetail && !allowsRetail) {
       setError("This product has wholesale pricing only — added as wholesale.");
@@ -528,7 +539,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
     setLines((prev) => {
       const existing = prev.find(
         (line) =>
-          String(line.product_code) === String(product.product_code) &&
+          String(line.product_code) === code &&
           isRetailLine(line) === asRetail,
       );
       if (existing) {
@@ -537,7 +548,7 @@ export function BackofficeOrderEditModal({ open, sale, uomById, onClose, onSaved
           lineKey(line) === lineKey(existing) ? { ...line, draftQty: String(nextQty) } : line,
         );
       }
-      return [...prev, buildNewDraftLine(product, uomById, retailByCode, { asRetail, routeMarkupPerUnit })];
+      return [...prev, buildNewDraftLine(product, uomById, packages, { asRetail, routeMarkupPerUnit })];
     });
     setAddProductCode("");
   }

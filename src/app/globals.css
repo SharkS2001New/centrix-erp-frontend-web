@@ -2532,7 +2532,7 @@ html[data-theme="dark"] .pos-workspace-classic {
   align-items: flex-start;
   justify-content: center;
   flex: 0 0 auto;
-  gap: 0.1rem;
+  gap: 0.35rem;
   text-align: left;
   box-sizing: border-box;
   margin-left: 0;
