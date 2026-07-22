@@ -3,13 +3,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api"
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
-import { loadFullReportDataset } from "@/lib/paginated-fetch";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  invalidateTabAwareDataLoad,
+  markTabAwareDataLoaded,
+  useTabAwareDataLoad,
+  useTabPaneActive,
+} from "@/contexts/tab-pane-activity-context";
 import { getStoredWorkspace } from "@/lib/auth-storage";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { defaultWorkspaceId } from "@/lib/workspaces";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { formatReportCell, formatReportKes, sumField } from "@/lib/reports/format";
+import { normalizeReportMeta, normalizeReportRows, normalizeReportSummary } from "@/lib/reports/api-response";
 import {
   ReportFilterBar,
   ReportKpiGrid,
@@ -24,10 +30,13 @@ const PAGE_SIZE = 25;
 
 export function CustomReportScreen({ templateId }) {
   const { user, capabilities } = useAuth();
+  const { paneHref } = useTabPaneActive();
   const workspaceId = getStoredWorkspace() ?? defaultWorkspaceId(capabilities, {});
   const multiBranch = isMultiBranchCatalog(capabilities);
   const [definition, setDefinition] = useState(null);
-  const [allRows, setAllRows] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [reportMeta, setReportMeta] = useState(null);
+  const [reportSummary, setReportSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
@@ -40,6 +49,7 @@ export function CustomReportScreen({ templateId }) {
   useEffect(() => {
     apiRequest(`/reports/builder/templates/${templateId}`, {
       searchParams: { workspace_id: workspaceId },
+      loading: false,
     })
       .then((res) => setDefinition(res.definition))
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load report"));
@@ -47,7 +57,7 @@ export function CustomReportScreen({ templateId }) {
 
   useEffect(() => {
     fetchBranchesCached()
-      .then((rows) => setBranches(rows ?? []))
+      .then((list) => setBranches(list ?? []))
       .catch(() => setBranches([]));
   }, []);
 
@@ -55,33 +65,49 @@ export function CustomReportScreen({ templateId }) {
     if (user?.branch_id && !branchId) setBranchId(String(user.branch_id));
   }, [user?.branch_id, branchId]);
 
+  const appliedKey = useMemo(
+    () => JSON.stringify({ fromDate: applied.fromDate, toDate: applied.toDate, branchId: applied.branchId }),
+    [applied],
+  );
+  const depsKey = `${templateId}|${definition?.apiPath ?? ""}|${page}|${appliedKey}|${workspaceId}`;
+
   const loadReport = useCallback(async () => {
     if (!definition) return;
     setLoading(true);
     setError(null);
     try {
-      const searchParams = { per_page: 200, page: 1, workspace_id: workspaceId };
+      const searchParams = {
+        per_page: PAGE_SIZE,
+        page,
+        workspace_id: workspaceId,
+      };
       if (definition.showDateRange) {
         if (applied.fromDate) searchParams.from_date = applied.fromDate;
         if (applied.toDate) searchParams.to_date = applied.toDate;
       }
       if (applied.branchId) searchParams.branch_id = applied.branchId;
-      const rows = await loadFullReportDataset(definition.apiPath, searchParams, {
-        message: `Loading ${definition.title}…`,
-      });
-      setAllRows(rows);
-      setPage(1);
+      const res = await apiRequest(definition.apiPath, { searchParams, loading: false });
+      setRows(normalizeReportRows(res));
+      setReportMeta(normalizeReportMeta(res, page, PAGE_SIZE));
+      setReportSummary(normalizeReportSummary(res));
+      markTabAwareDataLoaded(paneHref, depsKey);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
-      setAllRows([]);
+      setRows([]);
+      setReportMeta(null);
+      setReportSummary(null);
     } finally {
       setLoading(false);
     }
-  }, [definition, applied, workspaceId]);
+  }, [definition, applied, workspaceId, page, paneHref, depsKey]);
 
-  useEffect(() => {
-    loadReport();
-  }, [loadReport]);
+  const hasData = rows.length > 0 || reportMeta != null;
+  useTabAwareDataLoad(loadReport, { depsKey, hasData });
+
+  function refreshReport() {
+    invalidateTabAwareDataLoad(paneHref);
+    void loadReport();
+  }
 
   const columns = useMemo(
     () =>
@@ -92,18 +118,14 @@ export function CustomReportScreen({ templateId }) {
     [definition],
   );
 
-  const pageRows = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return allRows.slice(start, start + PAGE_SIZE);
-  }, [allRows, page]);
-
-  const totalPages = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE));
+  const totalPages = reportMeta?.last_page ?? 1;
 
   const kpis = useMemo(() => {
     if (!definition?.kpis?.length) return [];
     return definition.kpis.map((kpi) => {
       const key = kpi.alias ?? kpi.field;
-      const total = sumField(allRows, key);
+      const total =
+        reportSummary?.[key] != null ? Number(reportSummary[key]) || 0 : sumField(rows, key);
       const isMoney = /amount|total|sales|revenue|profit|balance|value|kes|cost|price/i.test(kpi.label);
       return {
         id: kpi.id,
@@ -111,19 +133,24 @@ export function CustomReportScreen({ templateId }) {
         value: isMoney ? formatReportKes(total) : String(Math.round(total)),
       };
     });
-  }, [allRows, definition]);
+  }, [rows, reportSummary, definition]);
 
   const footerTotals = useMemo(() => {
     if (!definition?.footerTotals?.length || !columns.length) return {};
     const totals = { [columns[0]?.key]: "Totals" };
     for (const col of columns) {
       if (!definition.footerTotals.includes(col.key)) continue;
-      totals[col.key] = formatReportCell(col.key, sumField(allRows, col.key));
+      const value =
+        reportSummary?.[col.key] != null
+          ? Number(reportSummary[col.key]) || 0
+          : sumField(rows, col.key);
+      totals[col.key] = formatReportCell(col.key, value);
     }
     return totals;
-  }, [allRows, columns, definition]);
+  }, [rows, columns, definition, reportSummary]);
 
   function applyFilters() {
+    setPage(1);
     setApplied({ fromDate, toDate, branchId });
   }
 
@@ -132,6 +159,7 @@ export function CustomReportScreen({ templateId }) {
     setFromDate("");
     setToDate("");
     setBranchId(empty.branchId);
+    setPage(1);
     setApplied(empty);
   }
 
@@ -147,6 +175,8 @@ export function CustomReportScreen({ templateId }) {
     if (applied.branchId) searchParams.branch_id = applied.branchId;
     return searchParams;
   }, [applied, definition?.showDateRange, workspaceId]);
+
+  const chartRows = rows;
 
   if (!definition && !error) {
     return <div className="p-6 text-sm text-slate-500">Loading report…</div>;
@@ -201,8 +231,9 @@ export function CustomReportScreen({ templateId }) {
         onFromDateChange={setFromDate}
         onToDateChange={setToDate}
         onBranchChange={setBranchId}
+        onExtraChange={() => {}}
         onFilter={applyFilters}
-        onRefresh={() => void loadReport()}
+        onRefresh={() => void refreshReport()}
         onReset={resetFilters}
         loading={loading}
         showBranchFilter={multiBranch}
@@ -213,34 +244,28 @@ export function CustomReportScreen({ templateId }) {
       {!loading && definition.charts?.length ? (
         <div className="mb-6 grid gap-4 lg:grid-cols-2">
           {definition.charts.map((chart) => {
-            if (chart.type === "bar") {
+            if (chart.type === "donut") {
               return (
-                <ReportBarChart
-                  key={chart.title ?? chart.valueKey}
-                  rows={allRows}
+                <DonutChart
+                  key={chart.title}
+                  title={chart.title}
+                  rows={chartRows}
                   labelKey={chart.labelKey}
                   valueKey={chart.valueKey}
-                  title={chart.title}
+                  colors={CHART_COLORS}
                 />
               );
             }
-            if (chart.type === "donut") {
-              const grouped = aggregateRows(allRows, chart.labelKey, chart.valueKey);
-              const total = grouped.reduce((s, g) => s + g.value, 0);
-              const segments = grouped.slice(0, chart.limit ?? 5).map((g, i) => ({
-                label: g.label,
-                value: g.value,
-                sharePct: total > 0 ? Math.round((g.value / total) * 1000) / 10 : 0,
-                color: CHART_COLORS[i % CHART_COLORS.length],
-              }));
-              return (
-                <div key={chart.title ?? chart.valueKey} className="theme-panel rounded-xl border p-4 shadow-sm">
-                  {chart.title ? <h3 className="mb-3 text-sm font-medium text-slate-900">{chart.title}</h3> : null}
-                  <DonutChart segments={segments} />
-                </div>
-              );
-            }
-            return null;
+            return (
+              <ReportBarChart
+                key={chart.title}
+                title={chart.title}
+                rows={chartRows}
+                labelKey={chart.labelKey}
+                valueKey={chart.valueKey}
+                colors={CHART_COLORS}
+              />
+            );
           })}
         </div>
       ) : null}
@@ -249,11 +274,11 @@ export function CustomReportScreen({ templateId }) {
         <p className="text-sm text-slate-500">Loading report…</p>
       ) : (
         <>
-          <ReportTable columns={columns} rows={pageRows} footerTotals={footerTotals} />
+          <ReportTable columns={columns} rows={rows} footerTotals={footerTotals} />
           <PaginationBar
             page={page}
             totalPages={totalPages}
-            total={allRows.length}
+            total={reportMeta?.total ?? rows.length}
             pageSize={PAGE_SIZE}
             onChange={setPage}
           />
@@ -262,16 +287,4 @@ export function CustomReportScreen({ templateId }) {
     </ReportPageShell>
     </>
   );
-}
-
-function aggregateRows(rows, labelKey, valueKey) {
-  const map = new Map();
-  for (const row of rows) {
-    const label = String(row[labelKey] ?? "—");
-    const val = Number(row[valueKey]) || 0;
-    map.set(label, (map.get(label) ?? 0) + val);
-  }
-  return [...map.entries()]
-    .map(([label, value]) => ({ label, value }))
-    .sort((a, b) => b.value - a.value);
 }

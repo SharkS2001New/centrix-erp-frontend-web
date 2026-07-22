@@ -1,9 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api"
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  invalidateTabAwareDataLoad,
+  markTabAwareDataLoaded,
+  useTabAwareDataLoad,
+  useTabPaneActive,
+} from "@/contexts/tab-pane-activity-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { formatReportCell } from "@/lib/reports/format";
@@ -15,7 +21,7 @@ import {
   ReportPageShell,
   ReportTable,
 } from "@/components/reports/report-screen-shared";
-import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
+import { normalizeReportMeta, normalizeReportRows, normalizeReportSummary } from "@/lib/reports/api-response";
 import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
 import { buildReportQueryParams, reportHidesBranchFilter, reportShowsDateRange } from "@/lib/reports/report-filter-config";
 import { useReportFilterOptions } from "@/lib/reports/use-report-filter-options";
@@ -24,8 +30,10 @@ import { ExpensesReportScreen } from "@/components/reports/expenses-report-scree
 import { DonutChart, ReportBarChart, CHART_COLORS } from "@/components/reports/report-charts";
 import { filterStructuredReportColumns } from "@/lib/reports/report-column-visibility";
 import { filterStockMovementRows } from "@/lib/reports/report-row-filters";
+import { clearTabPaneCache, readTabPaneCache, writeTabPaneCache } from "@/lib/tab-pane-session-cache";
 
 const PAGE_SIZE = 20;
+const CACHE_SLOT = "structured-report";
 
 export function StructuredReportScreen({ definition }) {
   if (definition.variant === "profit-loss") {
@@ -40,6 +48,11 @@ export function StructuredReportScreen({ definition }) {
 
 function StandardReportScreen({ definition }) {
   const { user, isOrgWide, capabilities } = useAuth();
+  const { paneHref } = useTabPaneActive();
+  const capabilitiesRef = useRef(capabilities);
+  useEffect(() => {
+    capabilitiesRef.current = capabilities;
+  }, [capabilities]);
   const multiBranch = isMultiBranchCatalog(capabilities);
   const defaultRange = useMemo(() => {
     if (definition.emptyDateRange) {
@@ -48,79 +61,166 @@ function StandardReportScreen({ definition }) {
     return defaultReportDateRange(definition.defaultDateRangeDays ?? 29);
   }, [definition.defaultDateRangeDays, definition.emptyDateRange]);
   const branchInitialized = useRef(false);
-  const [rows, setRows] = useState([]);
-  const [reportMeta, setReportMeta] = useState(null);
-  const [loading, setLoading] = useState(true);
+
+  const cachedBundle = paneHref ? readTabPaneCache(paneHref, CACHE_SLOT) : null;
+  const cacheMatchesDefinition =
+    cachedBundle &&
+    cachedBundle.reportKey === definition.key &&
+    cachedBundle.apiPath === definition.apiPath;
+
+  const [rows, setRows] = useState(() => (cacheMatchesDefinition ? cachedBundle.rows ?? [] : []));
+  const [reportMeta, setReportMeta] = useState(() =>
+    cacheMatchesDefinition ? cachedBundle.reportMeta ?? null : null,
+  );
+  const [reportSummary, setReportSummary] = useState(() =>
+    cacheMatchesDefinition ? cachedBundle.reportSummary ?? null : null,
+  );
+  const [loading, setLoading] = useState(
+    () => !(cacheMatchesDefinition && (cachedBundle.rows?.length || cachedBundle.reportMeta)),
+  );
   const [error, setError] = useState(null);
-  const [page, setPage] = useState(1);
-  const [fromDate, setFromDate] = useState(defaultRange.from);
-  const [toDate, setToDate] = useState(defaultRange.to);
-  const [branchId, setBranchId] = useState("");
+  const [page, setPage] = useState(() => (cacheMatchesDefinition ? cachedBundle.page ?? 1 : 1));
+  const [fromDate, setFromDate] = useState(() =>
+    cacheMatchesDefinition ? cachedBundle.fromDate ?? defaultRange.from : defaultRange.from,
+  );
+  const [toDate, setToDate] = useState(() =>
+    cacheMatchesDefinition ? cachedBundle.toDate ?? defaultRange.to : defaultRange.to,
+  );
+  const [branchId, setBranchId] = useState(() =>
+    cacheMatchesDefinition ? cachedBundle.branchId ?? "" : "",
+  );
   const [branches, setBranches] = useState([]);
-  const [extraFilters, setExtraFilters] = useState({});
-  const [queryFilters, setQueryFilters] = useState({});
-  const [applied, setApplied] = useState({
-    fromDate: defaultRange.from,
-    toDate: defaultRange.to,
-    branchId: "",
-    extraFilters: {},
-    queryFilters: {},
-  });
+  const [extraFilters, setExtraFilters] = useState(() =>
+    cacheMatchesDefinition ? cachedBundle.extraFilters ?? {} : {},
+  );
+  const [queryFilters, setQueryFilters] = useState(() =>
+    cacheMatchesDefinition ? cachedBundle.queryFilters ?? {} : {},
+  );
+  const [applied, setApplied] = useState(() =>
+    cacheMatchesDefinition && cachedBundle.applied
+      ? cachedBundle.applied
+      : {
+          fromDate: defaultRange.from,
+          toDate: defaultRange.to,
+          branchId: cacheMatchesDefinition ? cachedBundle.branchId ?? "" : "",
+          extraFilters: {},
+          queryFilters: {},
+        },
+  );
   const filterOptions = useReportFilterOptions(definition.key);
 
   useEffect(() => {
     fetchBranchesCached()
-      .then((rows) => setBranches(rows ?? []))
+      .then((list) => setBranches(list ?? []))
       .catch(() => setBranches([]));
   }, []);
 
   useEffect(() => {
     if (!user || branchInitialized.current) return;
     branchInitialized.current = true;
+    if (cacheMatchesDefinition && (cachedBundle?.applied?.branchId != null || cachedBundle?.branchId != null)) {
+      return;
+    }
     const nextBranchId = defaultReportBranchId(user, isOrgWide);
     setBranchId(nextBranchId);
-    setApplied((prev) => ({ ...prev, branchId: nextBranchId }));
-  }, [user, isOrgWide]);
+    setApplied((prev) => (prev.branchId === nextBranchId ? prev : { ...prev, branchId: nextBranchId }));
+  }, [user, isOrgWide, cacheMatchesDefinition, cachedBundle]);
+
+  const appliedKey = useMemo(
+    () =>
+      JSON.stringify({
+        fromDate: applied.fromDate,
+        toDate: applied.toDate,
+        branchId: applied.branchId,
+        extraFilters: applied.extraFilters,
+        queryFilters: applied.queryFilters,
+      }),
+    [applied],
+  );
+  const appliedRef = useRef(applied);
+  const filterRowsRef = useRef(definition.filterRows);
+  useEffect(() => {
+    appliedRef.current = applied;
+    filterRowsRef.current = definition.filterRows;
+  }, [applied, definition.filterRows]);
+
+  const depsKey = `${definition.key}|${definition.apiPath}|${page}|${appliedKey}`;
+
+  useLayoutEffect(() => {
+    if (cacheMatchesDefinition && cachedBundle?.depsKey === depsKey) {
+      markTabAwareDataLoaded(paneHref, depsKey);
+    }
+  }, [cacheMatchesDefinition, cachedBundle?.depsKey, depsKey, paneHref]);
 
   const loadReport = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const currentApplied = appliedRef.current;
     try {
       const searchParams = {
         per_page: PAGE_SIZE,
         page,
         ...buildReportQueryParams(definition.key, {
-          fromDate: applied.fromDate,
-          toDate: applied.toDate,
-          branchId: applied.branchId,
-          extraValues: applied.queryFilters,
+          fromDate: currentApplied.fromDate,
+          toDate: currentApplied.toDate,
+          branchId: currentApplied.branchId,
+          extraValues: currentApplied.queryFilters,
         }),
       };
       if (definition.dateColumn && !searchParams.date_column && reportShowsDateRange(definition.key)) {
         searchParams.date_column = definition.dateColumn;
       }
-      const res = await apiRequest(definition.apiPath, { searchParams });
+      const res = await apiRequest(definition.apiPath, { searchParams, loading: false });
       let centrixRows = normalizeReportRows(res);
-      if (definition.filterRows) {
-        centrixRows = definition.filterRows(centrixRows, applied.extraFilters);
+      if (filterRowsRef.current) {
+        centrixRows = filterRowsRef.current(centrixRows, currentApplied.extraFilters);
       }
       if (definition.key === "stock-movement") {
-        centrixRows = filterStockMovementRows(centrixRows, capabilities);
+        centrixRows = filterStockMovementRows(centrixRows, capabilitiesRef.current);
       }
+      const meta = normalizeReportMeta(res, page, PAGE_SIZE);
+      const summary = normalizeReportSummary(res);
       setRows(centrixRows);
-      setReportMeta(normalizeReportMeta(res, page, PAGE_SIZE));
+      setReportMeta(meta);
+      setReportSummary(summary);
+      writeTabPaneCache(paneHref, CACHE_SLOT, {
+        reportKey: definition.key,
+        apiPath: definition.apiPath,
+        rows: centrixRows,
+        reportMeta: meta,
+        reportSummary: summary,
+        page,
+        fromDate: currentApplied.fromDate,
+        toDate: currentApplied.toDate,
+        branchId: currentApplied.branchId,
+        extraFilters: currentApplied.extraFilters,
+        queryFilters: currentApplied.queryFilters,
+        applied: currentApplied,
+        depsKey,
+      });
+      markTabAwareDataLoaded(paneHref, depsKey);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
       setRows([]);
       setReportMeta(null);
+      setReportSummary(null);
     } finally {
       setLoading(false);
     }
-  }, [definition, applied, page, capabilities]);
+  }, [definition.key, definition.apiPath, definition.dateColumn, page, paneHref, depsKey]);
 
-  useEffect(() => {
-    loadReport();
-  }, [loadReport]);
+  const hasData =
+    rows.length > 0 ||
+    reportMeta != null ||
+    Boolean(cacheMatchesDefinition && cachedBundle?.depsKey === depsKey);
+
+  useTabAwareDataLoad(loadReport, { depsKey, hasData });
+
+  function refreshReport() {
+    clearTabPaneCache(paneHref, CACHE_SLOT);
+    invalidateTabAwareDataLoad(paneHref);
+    void loadReport();
+  }
 
   const totalPages = reportMeta?.last_page ?? 1;
   const displayRows = useMemo(() => rows, [rows]);
@@ -129,7 +229,7 @@ function StandardReportScreen({ definition }) {
   const kpis = useMemo(() => {
     if (!definition.kpis) return [];
     return definition.kpis.map((kpi) => {
-      const result = kpi.compute(rows);
+      const result = kpi.compute(rows, reportSummary);
       return {
         id: kpi.id,
         label: kpi.label,
@@ -137,7 +237,7 @@ function StandardReportScreen({ definition }) {
         hint: result.hint,
       };
     });
-  }, [rows, definition.kpis]);
+  }, [rows, reportSummary, definition.kpis]);
 
   const columns = useMemo(
     () => filterStructuredReportColumns(definition.columns ?? [], { multiBranch }),
@@ -149,18 +249,26 @@ function StandardReportScreen({ definition }) {
     const totals = {};
     for (const col of columns) {
       if (!col.total) continue;
-      const sum = col.footerCompute
-        ? col.footerCompute(rows)
-        : col.sumFromRow
-          ? rows.reduce((acc, row) => acc + (Number(col.sumFromRow(row)) || 0), 0)
-          : rows.reduce((acc, row) => acc + (Number(row[col.key]) || 0), 0);
+      let sumValue;
+      // Custom footer logic (e.g. dedupe LPO headers) wins over raw SUM summary.
+      if (col.footerCompute) {
+        sumValue = col.footerCompute(rows);
+      } else if (reportSummary && reportSummary[col.key] != null && reportSummary[col.key] !== "") {
+        sumValue = Number(reportSummary[col.key]) || 0;
+      } else if (col.key === "net_ex_vat" && reportSummary?.net_ex_vat != null) {
+        sumValue = Number(reportSummary.net_ex_vat) || 0;
+      } else if (col.sumFromRow) {
+        sumValue = rows.reduce((acc, row) => acc + (Number(col.sumFromRow(row)) || 0), 0);
+      } else {
+        sumValue = rows.reduce((acc, row) => acc + (Number(row[col.key]) || 0), 0);
+      }
       totals[col.key] =
         isInventoryQtyField(col.key) || isLpoPackQtyField(col.key)
           ? "—"
-          : formatReportCell(col.key, sum);
+          : formatReportCell(col.key, sumValue);
     }
     return totals;
-  }, [rows, columns, definition.footerTotals]);
+  }, [rows, columns, definition.footerTotals, reportSummary]);
 
   function applyFilters() {
     setPage(1);
@@ -272,7 +380,7 @@ function StandardReportScreen({ definition }) {
         onBranchChange={setBranchId}
         onExtraChange={(id, value) => setExtraFilters((f) => ({ ...f, [id]: value }))}
         onFilter={applyFilters}
-        onRefresh={() => void loadReport()}
+        onRefresh={refreshReport}
         onReset={resetFilters}
         loading={loading}
         showBranchFilter={multiBranch && !reportHidesBranchFilter(definition.key)}

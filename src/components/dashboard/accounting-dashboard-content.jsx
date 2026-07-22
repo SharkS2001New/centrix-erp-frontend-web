@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { apiRequest } from "@/lib/api";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import { formatAccountingAmount } from "@/lib/accounting-shared";
@@ -75,9 +76,7 @@ export function AccountingDashboardContent() {
     }
   }, [range.from, range.to]);
 
-  useEffect(() => {
-    void loadDashboard();
-  }, [loadDashboard]);
+  useTabAwareDataLoad(loadDashboard);
 
   const kpiItems = useMemo(
     () => [

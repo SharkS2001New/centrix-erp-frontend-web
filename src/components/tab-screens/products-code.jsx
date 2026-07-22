@@ -14,6 +14,7 @@ import {
   fetchVatsCached,
 } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { productsCatalogHref } from "@/lib/products-list-state";
 import { isProductShelfLocationEnabled } from "@/lib/distribution-settings";
 import { ProductStockHistoryPanel } from "@/components/products/product-stock-history-panel";
@@ -668,9 +669,7 @@ export function ProductsCodeScreen() {
     }
   }, [loadMeta, loadProduct, productCode]);
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+  useTabAwareDataLoad(loadAll);
 
   useEffect(() => {
     if (!product) return;

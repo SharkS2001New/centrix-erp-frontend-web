@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useOrgFormat } from "@/lib/org-format";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import { isKraDeviceConfigured, isKraFiscalizationActive } from "@/lib/finance-settings";
 import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platform-hint";
@@ -102,9 +103,7 @@ export function AdminKraResponsesScreen() {
     }
   }, [adminPath, page, search, fromDate, toDate, statusFilter]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   useEffect(() => {
     setPage(1);

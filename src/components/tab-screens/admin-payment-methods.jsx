@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import { P } from "@/lib/permission-codes";
 import {
@@ -52,9 +53,7 @@ export function AdminPaymentMethodsScreen() {
     }
   }, [adminPath]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   function openCreate() {
     setEditing(null);

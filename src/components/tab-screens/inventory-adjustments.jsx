@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import {
   Field,
@@ -85,13 +86,9 @@ export function InventoryAdjustmentsScreen() {
     }
   }, [branchId, fromDate, toDate, page, pageSize]);
 
-  useEffect(() => {
-    loadReferenceData();
-  }, [loadReferenceData]);
+  useTabAwareDataLoad(loadReferenceData);
 
-  useEffect(() => {
-    loadRows();
-  }, [loadRows]);
+  useTabAwareDataLoad(loadRows);
 
   useEffect(() => {
     setPage(1);

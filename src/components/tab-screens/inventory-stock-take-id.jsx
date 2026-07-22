@@ -5,16 +5,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
-import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
 import {
   fetchCategoriesCached,
   fetchSubCategoriesCached,
   fetchSuppliersCached,
   fetchUomsCached,
 } from "@/lib/reference-data-cache";
-import { fetchAllPaginatedRowsSmart } from "@/lib/paginated-fetch";
 import { useQueuedTask } from "@/lib/use-queued-task";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   FormModal,
   PrimaryButton,
@@ -77,67 +76,130 @@ export function InventoryStockTakeIdScreen() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [subcategoryFilter, setSubcategoryFilter] = useState("all");
+  const [loadProgress, setLoadProgress] = useState(null);
   const { runQueuedTask, overlayNode } = useQueuedTask("Saving stock take counts…");
+
+  /** Larger pages + UOM fields on lines remove the per-chunk product waterfall. */
+  const LINE_CHUNK = 100;
+
+  function uomFromLine(line, uomMap) {
+    if (line?.unit_id != null && uomMap.has(line.unit_id)) {
+      return uomMap.get(line.unit_id);
+    }
+    if (line?.conversion_factor != null || line?.uom_name || line?.uom_type) {
+      return {
+        id: line.unit_id,
+        full_name: line.uom_name,
+        conversion_factor: line.conversion_factor,
+        small_packaging_label: line.small_packaging_label,
+        middle_packaging_label: line.middle_packaging_label,
+        middle_factor: line.middle_factor,
+        uom_type: line.uom_type,
+      };
+    }
+    return null;
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadProgress({ loaded: 0, total: 0, percent: 0 });
+    setLines([]);
+    setProducts([]);
+    setCounts({});
     try {
-      const [sess, loadedLines, uomRows, categoryRows, subCategoryRows, supplierRows] =
-        await Promise.all([
+      const [sess, uomRows, categoryRows, subCategoryRows, supplierRows] = await Promise.all([
         apiRequest(`/stock-take-sessions/${sessionId}`),
-        fetchAllPaginatedRowsSmart("/stock-take-lines", {
-          "filter[session_id]": sessionId,
-        }),
         fetchUomsCached(organization?.id).catch(() => []),
         fetchCategoriesCached(organization?.id).catch(() => []),
         fetchSubCategoriesCached(organization?.id).catch(() => []),
         fetchSuppliersCached(organization?.id).catch(() => []),
       ]);
       setSession(sess);
+      setUoms(uomRows ?? []);
+      setCategories(categoryRows ?? []);
+      setSubCategories(subCategoryRows ?? []);
+      setSuppliers(supplierRows ?? []);
+
       const allowedLocations =
         sess?.stock_location === "shop"
           ? ["shop"]
           : sess?.stock_location === "store"
             ? ["store"]
             : ["shop", "store"];
-      const filteredLines = loadedLines.filter((line) =>
-        allowedLocations.includes(line.stock_location),
-      );
-      setLines(filteredLines);
-      setUoms(uomRows ?? []);
-      setCategories(categoryRows ?? []);
-      setSubCategories(subCategoryRows ?? []);
-      setSuppliers(supplierRows ?? []);
 
-      const codes = filteredLines.map((line) => line.product_code).filter(Boolean);
-      const productRows = await fetchProductsByCodesCached(organization?.id, codes, {
-        status: "all",
-      }).catch(() => []);
-      setProducts(productRows);
-
-      const prodMap = new Map(productRows.map((p) => [p.product_code, p]));
       const uomMap = new Map((uomRows ?? []).map((u) => [u.id, u]));
-      const initial = {};
-      for (const line of filteredLines) {
-        const product = prodMap.get(line.product_code);
-        const uom = product ? uomMap.get(product.unit_id) : null;
-        const levels = uomStockTakeLevels(uom);
-        Object.assign(
-          initial,
-          initStockTakeCounts(line.id, line.counted_quantity, uom, levels),
+      const productMap = new Map();
+      const accumulatedLines = [];
+      const accumulatedCounts = {};
+
+      let page = 1;
+      let lastPage = 1;
+      let total = 0;
+
+      do {
+        const res = await apiRequest("/stock-take-lines", {
+          searchParams: {
+            "filter[session_id]": sessionId,
+            page,
+            per_page: LINE_CHUNK,
+          },
+          loading: false,
+        });
+        const pageRows = res.data ?? [];
+        lastPage = Number(res.last_page ?? 1) || 1;
+        total = Number(res.total ?? pageRows.length) || 0;
+
+        const filtered = pageRows.filter((line) =>
+          allowedLocations.includes(line.stock_location),
         );
-      }
-      setCounts(initial);
+        accumulatedLines.push(...filtered);
+
+        for (const line of filtered) {
+          if (line.product_code && !productMap.has(line.product_code)) {
+            productMap.set(line.product_code, {
+              product_code: line.product_code,
+              product_name: line.product_name,
+              unit_id: line.unit_id,
+              subcategory_id: line.subcategory_id,
+            });
+          }
+          const uom = uomFromLine(line, uomMap);
+          const levels = uomStockTakeLevels(uom);
+          Object.assign(
+            accumulatedCounts,
+            initStockTakeCounts(line.id, line.counted_quantity, uom, levels),
+          );
+        }
+
+        setLines([...accumulatedLines]);
+        setProducts([...productMap.values()]);
+        setCounts({ ...accumulatedCounts });
+
+        const loadedRaw = Math.min(page * LINE_CHUNK, total || page * LINE_CHUNK);
+        const percent = total > 0 ? Math.min(100, Math.round((loadedRaw / total) * 100)) : 100;
+        setLoadProgress({
+          loaded: loadedRaw,
+          total: total || loadedRaw,
+          remaining: Math.max(0, (total || loadedRaw) - loadedRaw),
+          percent,
+        });
+
+        if (page === 1) {
+          setLoading(false);
+        }
+        page += 1;
+      } while (page <= lastPage);
+
+      setLoadProgress(null);
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load stock take session");
+      setLoadProgress(null);
     } finally {
       setLoading(false);
     }
   }, [sessionId, organization?.id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
   const productByCode = useMemo(
@@ -170,7 +232,20 @@ export function InventoryStockTakeIdScreen() {
 
   function productMeta(productCode) {
     const product = productByCode.get(productCode);
-    const uom = product ? uomById.get(product.unit_id) : null;
+    const line = lines.find((entry) => entry.product_code === productCode);
+    const uom =
+      (product?.unit_id != null ? uomById.get(product.unit_id) : null) ??
+      (line
+        ? {
+            id: line.unit_id,
+            full_name: line.uom_name,
+            conversion_factor: line.conversion_factor,
+            small_packaging_label: line.small_packaging_label,
+            middle_packaging_label: line.middle_packaging_label,
+            middle_factor: line.middle_factor,
+            uom_type: line.uom_type,
+          }
+        : null);
     const levels = uomStockTakeLevels(uom);
     return {
       uom,
@@ -316,7 +391,16 @@ export function InventoryStockTakeIdScreen() {
     }
     setCompleting(true);
     try {
-      await apiRequest(`/inventory/stock-take/${sessionId}/complete`, { method: "POST" });
+      const completeRequest = () =>
+        apiRequest(`/inventory/stock-take/${sessionId}/complete`, { method: "POST" });
+
+      if (lines.length > 50) {
+        await runQueuedTask(completeRequest, {
+          message: `Completing stock take (${lines.length} lines)…`,
+        });
+      } else {
+        await completeRequest();
+      }
       setCompleteOpen(false);
       router.push("/inventory/stock-take");
     } catch (err) {
@@ -443,6 +527,24 @@ export function InventoryStockTakeIdScreen() {
             {dirty ? <span className="ml-2 text-amber-700">Unsaved changes.</span> : null}
           </p>
         ) : null}
+        {loadProgress ? (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/50">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm">
+              <p className="font-medium text-slate-800 dark:text-slate-100">Loading products…</p>
+              <p className="tabular-nums text-slate-600 dark:text-slate-300">
+                {loadProgress.loaded} of {loadProgress.total} loaded
+                {loadProgress.remaining > 0 ? ` · ${loadProgress.remaining} remaining` : ""} ·{" "}
+                {loadProgress.percent}%
+              </p>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+              <div
+                className="h-full rounded-full bg-emerald-600 transition-[width] duration-200"
+                style={{ width: `${loadProgress.percent}%` }}
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {!loading && groupedProducts.length > 0 ? (
@@ -497,7 +599,7 @@ export function InventoryStockTakeIdScreen() {
       ) : null}
 
       <InventoryTableShell>
-        {loading ? (
+        {loading && !lines.length ? (
           <p className="p-8 text-sm text-slate-500">Loading count sheet…</p>
         ) : (
           <div className="overflow-x-auto">

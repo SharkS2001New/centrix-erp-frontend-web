@@ -2,6 +2,7 @@
 
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
@@ -44,9 +45,7 @@ export function FulfillmentDriversIdScreen() {
     }
   }, [driverId]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   const deliveryStats = useMemo(() => deliveryStatsFromSales(deliveries), [deliveries]);
 

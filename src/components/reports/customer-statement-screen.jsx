@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { formatReportKes, formatReportCell } from "@/lib/reports/format";
 import {
   buildReportMeta,
@@ -76,10 +77,7 @@ export function CustomerStatementScreen() {
     }
   }, [appliedCustomer]);
 
-  useEffect(() => {
-    if (!appliedCustomer || String(appliedCustomer) === "undefined") return;
-    loadStatement();
-  }, [appliedCustomer, loadStatement]);
+  useTabAwareDataLoad(loadStatement);
 
   const customer = data?.customer ?? null;
   const summary = data?.summary ?? null;

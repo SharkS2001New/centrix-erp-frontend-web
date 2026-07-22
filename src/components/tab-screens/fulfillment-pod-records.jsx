@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { PodAttachmentLink } from "@/components/fulfillment/pod-attachment-preview";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import {
   CatalogPageShell,
@@ -61,9 +62,7 @@ export function FulfillmentPodRecordsScreen() {
     }
   }, [fromDate, toDate, statusFilter]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

@@ -11,6 +11,7 @@ import {
   invalidateReferenceResource,
 } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { RetailPricingTiersEditor } from "@/components/catalog/retail-pricing-tiers";
 import {
@@ -141,9 +142,7 @@ export function RetailPackageSettingsScreen() {
     await loadData();
   }, [loadData, user?.organization_id]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   const uomById = useMemo(() => new Map(uoms.map((u) => [u.id, u])), [uoms]);
 

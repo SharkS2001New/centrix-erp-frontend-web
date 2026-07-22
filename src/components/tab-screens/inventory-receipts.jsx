@@ -6,6 +6,7 @@ import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { Field, PaginationBar, PrimaryLink, SECONDARY_BTN_CLASS, inputClassName } from "@/components/catalog/catalog-shared";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { P } from "@/lib/permission-codes";
@@ -58,9 +59,7 @@ export function InventoryReceiptsScreen() {
     }
   }, [branchId, fromDate, toDate, page, pageSize]);
 
-  useEffect(() => {
-    loadRows();
-  }, [loadRows]);
+  useTabAwareDataLoad(loadRows);
 
   useEffect(() => {
     setPage(1);

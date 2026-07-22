@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { formatShortDate, inputClassName } from "@/components/catalog/catalog-shared";
 import {
@@ -181,9 +182,7 @@ export function LpoLpoNoReceiveScreen() {
     }
   }, [lpoNo, user?.organization_id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   function setLpoReceiveCount(key, value) {
     setReceiveCounts((prev) =>

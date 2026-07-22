@@ -119,14 +119,20 @@ export function TabPaneRouterFreeze({ href, children }) {
 
   // Href is authoritative for this pane — never let live list-route params
   // wipe trip/product ids during navigation races.
-  const params = {
-    ...(routeMatches ? (liveParams ?? {}) : (frozenParams ?? {})),
-    ...hrefParams,
-  };
+  const params = useMemo(
+    () => ({
+      ...(routeMatches ? (liveParams ?? {}) : (frozenParams ?? {})),
+      ...hrefParams,
+    }),
+    [routeMatches, liveParams, frozenParams, hrefParams],
+  );
+
+  const searchParamsKey = String(searchParams ?? "");
+  const searchParamsValue = useMemo(() => searchParams, [searchParamsKey, searchParams]);
 
   return (
     <PathnameContext.Provider value={pathname}>
-      <SearchParamsContext.Provider value={searchParams}>
+      <SearchParamsContext.Provider value={searchParamsValue}>
         <PathParamsContext.Provider value={params}>{children}</PathParamsContext.Provider>
       </SearchParamsContext.Provider>
     </PathnameContext.Provider>

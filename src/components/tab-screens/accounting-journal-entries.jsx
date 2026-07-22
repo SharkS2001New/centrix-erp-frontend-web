@@ -2,6 +2,7 @@
 
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useState } from "react";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
@@ -52,9 +53,7 @@ export function AccountingJournalEntriesScreen() {
     }
   }, [page, pageSize, debouncedSearch]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   useEffect(() => {
     setPage(1);

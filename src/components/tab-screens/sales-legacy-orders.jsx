@@ -7,6 +7,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   FilterSelect,
   PaginationBar,
@@ -139,9 +140,7 @@ function LegacyOrdersContent() {
     }
   }, [page, debouncedSearch, fromDate, toDate, returnsFilter, debouncedMinTotal, debouncedMaxTotal]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     setPage(1);

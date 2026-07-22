@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { formatShortDate } from "@/components/catalog/catalog-shared";
 import { CustomerLocationSection } from "@/components/customers/customer-location-section";
 import {
@@ -87,9 +88,7 @@ export function CustomersIdScreen() {
     setLoading(false);
   }, [customerNum]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   const isActive = useMemo(() => customer && !customer.deleted_at, [customer]);
 

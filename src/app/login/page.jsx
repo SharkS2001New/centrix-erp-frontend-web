@@ -180,6 +180,7 @@ function LoginForm() {
 
   async function onSubmit(e) {
     e.preventDefault();
+    if (submitting) return;
     setError(null);
     if (!companyCode.trim() && !username.includes("@")) {
       setError("Organization code is required unless signing in with a platform admin email.");
@@ -189,6 +190,7 @@ function LoginForm() {
   }
 
   async function onForceLogout() {
+    if (submitting) return;
     await attemptLogin(true);
   }
 
@@ -377,9 +379,24 @@ function LoginForm() {
             </div>
           </div>
         ) : null}
+        {submitting && !passkeyBusy ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/85 dark:bg-slate-950/85">
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 text-center shadow-lg dark:border-slate-700 dark:bg-slate-900">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-emerald-600 dark:border-slate-700 dark:border-t-emerald-400" />
+              <div>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                  {authFlow === "mfa" || authFlow === "mfa-resend" ? "Verifying…" : "Signing in…"}
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Please wait — do not click again.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <form
           onSubmit={onSubmit}
-          className={`mt-6 space-y-4 ${passkeyBusy ? "pointer-events-none select-none" : ""}`}
+          className={`mt-6 space-y-4 ${submitting ? "pointer-events-none select-none" : ""}`}
         >
         {showOrgField ? (
           <AuthField label="Organization code">

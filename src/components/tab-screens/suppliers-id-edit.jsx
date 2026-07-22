@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -59,9 +60,7 @@ export function SuppliersIdEditScreen() {
     }
   }, [supplierId]);
 
-  useEffect(() => {
-    loadSupplier();
-  }, [loadSupplier]);
+  useTabAwareDataLoad(loadSupplier);
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));

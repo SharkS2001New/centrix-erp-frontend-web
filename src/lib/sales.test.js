@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isOrderEditActionVisible,
   isOrderEditVisible,
   resolvePaymentMethodByCode,
   shouldOpenBackofficeOrderEdit,
@@ -88,6 +89,41 @@ describe("order action stage gates", () => {
     };
     expect(isOrderEditVisible({ status: "unpaid" }, null, caps)).toBe(true);
     expect(isOrderEditVisible({ status: "booked" }, null, caps)).toBe(false);
+  });
+
+  it("does not show Edit Order on completed/processed even when API can_edit is true", () => {
+    const caps = {
+      module_settings: {
+        sales: { edit_order_statuses: ["booked", "pending", "editable"] },
+      },
+    };
+    const completedBackoffice = {
+      status: "completed",
+      channel: "backend",
+      order_source: "backoffice",
+      can_edit: true,
+      can_edit_lines: true,
+    };
+    const processedMobile = {
+      status: "processed",
+      channel: "mobile",
+      order_source: "mobile",
+      can_edit: true,
+      can_edit_lines: false,
+    };
+    expect(isOrderEditVisible(completedBackoffice, null, caps)).toBe(false);
+    expect(shouldOpenBackofficeOrderEdit(completedBackoffice, null, caps)).toBe(false);
+    expect(isOrderEditActionVisible(completedBackoffice, null, caps)).toBe(false);
+    expect(isOrderEditActionVisible(processedMobile, null, caps)).toBe(false);
+
+    const bookedBackoffice = {
+      status: "booked",
+      channel: "backend",
+      order_source: "backoffice",
+      can_edit: true,
+      can_edit_lines: true,
+    };
+    expect(isOrderEditActionVisible(bookedBackoffice, null, caps)).toBe(true);
   });
 
   it("allows print on all stages when print list is empty/null", () => {

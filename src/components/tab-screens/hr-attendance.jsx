@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { P } from "@/lib/permission-codes";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
 import { ATTENDANCE_EXPORT_COLUMNS } from "@/lib/catalog-list-exports";
@@ -182,9 +183,7 @@ export function HrAttendanceScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    loadActive();
-  }, [loadActive]);
+  useTabAwareDataLoad(loadActive);
 
   useEffect(() => {
     if (tab === "records") {

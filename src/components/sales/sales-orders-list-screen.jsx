@@ -12,6 +12,7 @@ import { useListPageSize, useTableSort } from "@/lib/use-list-page-controls";
 import { fetchBranchesCached, fetchRoutesAndUomsCached } from "@/lib/reference-data-cache";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   getOrderWorkflow,
   getSalesOrderQueueWorkflow,
@@ -487,9 +488,7 @@ export default function SalesOrdersListScreen({
     debouncedColumnFilters,
   ]);
 
-  useEffect(() => {
-    loadOrders();
-  }, [loadOrders]);
+  useTabAwareDataLoad(loadOrders);
 
   useEffect(() => {
     setPage(1);

@@ -16,6 +16,7 @@ import {
   inputClassName,
 } from "@/components/catalog/catalog-shared";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import {
   buildUomByProductCode,
@@ -157,9 +158,7 @@ export function InventoryTransfersScreen() {
 
   const uomByProduct = useMemo(() => buildUomByProductCode(products, uoms), [products, uoms]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   useEffect(() => {
     setPage(1);

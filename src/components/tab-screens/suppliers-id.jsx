@@ -2,6 +2,7 @@
 
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useState } from "react";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
@@ -52,9 +53,7 @@ export function SuppliersIdScreen() {
     }
   }, [supplierId]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     const fromUrl = searchParams.get("tab");

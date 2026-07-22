@@ -8,6 +8,7 @@ import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   Field,
   FilterSelect,
@@ -174,6 +175,7 @@ export function InventoryStockScreen() {
   const [retailPackages, setRetailPackages] = useState([]);
   const [totalStockRows, setTotalStockRows] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [costTotals, setCostTotals] = useState({ shop: 0, store: 0, all: 0 });
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [buildingAllPriceList, setBuildingAllPriceList] = useState(false);
@@ -244,37 +246,72 @@ export function InventoryStockScreen() {
     if (!branchId) return;
     setListLoading(true);
     try {
+      const listExtra = {
+        branch_id: branchId,
+        in_stock_only: 1,
+        subcategory_id: subcategoryFilter !== "all" ? subcategoryFilter : undefined,
+        location: locationFilter !== "all" ? locationFilter : undefined,
+        include_summary: 0,
+      };
       const searchParams = buildPageParams({
         page,
         perPage: pageSize,
         q: debouncedSearch,
-        extra: {
-          branch_id: branchId,
-          in_stock_only: 1,
-          subcategory_id: subcategoryFilter !== "all" ? subcategoryFilter : undefined,
-          location: locationFilter !== "all" ? locationFilter : undefined,
-        },
+        extra: listExtra,
       });
       const stockRes = await apiRequest("/reports/stock-on-hand", { searchParams });
       const parsed = parsePaginator(stockRes);
       setStockRows(parsed.items);
       setTotalStockRows(parsed.total);
       setTotalPages(parsed.totalPages);
+
+      // Cost totals are expensive — load after first paint, same filters.
+      void apiRequest("/reports/stock-on-hand", {
+        searchParams: buildPageParams({
+          page: 1,
+          perPage: 1,
+          q: debouncedSearch,
+          extra: {
+            ...listExtra,
+            include_summary: 0,
+            summary_only: 1,
+          },
+        }),
+        loading: false,
+      })
+        .then((summaryRes) => {
+          const summary = summaryRes?.summary;
+          if (!summary) {
+            setCostTotals({ shop: 0, store: 0, all: 0 });
+            return;
+          }
+          const shop = Number(summary.shop_cost_value) || 0;
+          const store = Number(summary.store_cost_value) || 0;
+          setCostTotals({
+            shop,
+            store,
+            all: Number(summary.total_cost_value ?? summary.cost_value) || shop + store,
+          });
+        })
+        .catch(() => {
+          /* keep last known totals */
+        });
     } catch (e) {
       notifyError(e instanceof Error ? e.message : "Failed to load current stock");
+      setCostTotals({ shop: 0, store: 0, all: 0 });
     } finally {
       setListLoading(false);
     }
   }, [branchId, page, pageSize, debouncedSearch, subcategoryFilter, locationFilter]);
 
-  useEffect(() => {
-    loadReferenceData();
-  }, [loadReferenceData]);
+  useTabAwareDataLoad(loadReferenceData);
 
-  useEffect(() => {
-    if (loading || !branchId) return;
-    loadStock();
-  }, [loading, branchId, loadStock]);
+  useTabAwareDataLoad(
+    useCallback(() => {
+      if (loading || !branchId) return;
+      return loadStock();
+    }, [loading, branchId, loadStock]),
+  );
 
   useEffect(() => {
     setPage(1);
@@ -496,15 +533,7 @@ export function InventoryStockScreen() {
     return options;
   }, [subcategories, categories]);
 
-  const totals = useMemo(() => {
-    let shop = 0;
-    let store = 0;
-    for (const row of pageSlice) {
-      shop += row.shopValue ?? 0;
-      store += row.storeValue ?? 0;
-    }
-    return { shop, store, all: shop + store };
-  }, [pageSlice]);
+  const totals = costTotals;
 
   return (
     <InventoryPageShell
@@ -617,7 +646,7 @@ export function InventoryStockScreen() {
 
       {!loading && pageSlice.length > 0 ? (
         <p className="mb-3 text-xs text-slate-500">
-          Stock cost totals (this page){listLoading ? " · updating…" : ""} — Shop: {formatInventoryKes(totals.shop)} · Store:{" "}
+          Stock cost totals{listLoading ? " · updating…" : ""} — Shop: {formatInventoryKes(totals.shop)} · Store:{" "}
           {formatInventoryKes(totals.store)} · Combined: {formatInventoryKes(totals.all)}
         </p>
       ) : null}

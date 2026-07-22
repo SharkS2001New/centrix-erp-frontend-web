@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { filterByOrganization, orgListParams, slugCode } from "@/lib/admin";
@@ -105,9 +106,7 @@ export function AdminBranchesScreen() {
     }
   }, [adminPath, organizationId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   const userCountByBranch = useMemo(() => {
     const map = new Map();

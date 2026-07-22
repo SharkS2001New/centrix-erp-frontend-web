@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { isProductionApp } from "@/lib/app-environment";
 import { CatalogPageShell, formatShortDate } from "@/components/catalog/catalog-shared";
@@ -28,9 +29,7 @@ export function AccountingFiscalPeriodsScreen() {
     }
   }, [year]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   const showSeedActions = !isProductionApp();
 

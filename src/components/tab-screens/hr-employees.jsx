@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -110,13 +111,9 @@ export function HrEmployeesScreen() {
     }
   }, [page, pageSize, debouncedSearch, deptFilter, statusFilter]);
 
-  useEffect(() => {
-    loadReferenceData();
-  }, [loadReferenceData]);
+  useTabAwareDataLoad(loadReferenceData);
 
-  useEffect(() => {
-    loadEmployees();
-  }, [loadEmployees]);
+  useTabAwareDataLoad(loadEmployees);
 
   async function reloadAll() {
     await Promise.all([loadReferenceData(), loadEmployees()]);

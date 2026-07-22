@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { formatReportKes } from "@/lib/reports/format";
 import {
   buildReportMeta,
@@ -57,9 +58,7 @@ export function SupplierStatementScreen() {
     }
   }, [appliedSupplierId]);
 
-  useEffect(() => {
-    loadStatement();
-  }, [loadStatement]);
+  useTabAwareDataLoad(loadStatement);
 
   const supplier = data?.supplier ?? null;
   const stats = data?.stats ?? null;

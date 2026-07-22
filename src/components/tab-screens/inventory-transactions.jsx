@@ -7,6 +7,7 @@ import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   Field,
   FilterSelect,
@@ -148,13 +149,9 @@ export function InventoryTransactionsScreen() {
     }
   }, [branchId, fromDate, toDate, typeFilter, referenceIdFilter, page, debouncedSearch]);
 
-  useEffect(() => {
-    loadReferenceData();
-  }, [loadReferenceData]);
+  useTabAwareDataLoad(loadReferenceData);
 
-  useEffect(() => {
-    loadMovements();
-  }, [loadMovements]);
+  useTabAwareDataLoad(loadMovements);
 
   useEffect(() => {
     setPage(1);

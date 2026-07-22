@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { formatShortDate, IconButton, TrashIcon } from "@/components/catalog/catalog-shared";
 import { lpoSupplierInvoiceFilePath } from "@/components/lpo/lpo-supplier-invoice-doc";
@@ -68,9 +69,7 @@ export function LpoLpoNoScreen() {
     }
   }, [lpoNo, user?.organization_id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   async function deleteLpo() {
     const ok = await confirm(

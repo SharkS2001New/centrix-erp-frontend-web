@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useConfirm } from "@/lib/use-confirm";
 import { P } from "@/lib/permission-codes";
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
@@ -174,9 +175,7 @@ export function FulfillmentTripsIdScreen() {
     };
   }, [user?.organization_id]);
 
-  useEffect(() => {
-    loadTrip();
-  }, [loadTrip]);
+  useTabAwareDataLoad(loadTrip);
 
   const pickingEditable = pickingList?.status === "open" || pickingList?.status === "completed";
   const pickingTableColumns = useMemo(

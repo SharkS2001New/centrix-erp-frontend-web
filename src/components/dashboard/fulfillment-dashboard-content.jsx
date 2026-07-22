@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { fetchFulfillmentRefsCached } from "@/lib/reference-data-cache";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import {
@@ -71,9 +72,7 @@ export function FulfillmentDashboardContent() {
     }
   }, [user?.organization_id]);
 
-  useEffect(() => {
-    void loadDashboard();
-  }, [loadDashboard]);
+  useTabAwareDataLoad(loadDashboard);
 
   const stats = useMemo(() => {
     const activeDrivers = drivers.filter((d) => d.is_active !== false);

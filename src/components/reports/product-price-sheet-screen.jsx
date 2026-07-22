@@ -9,6 +9,7 @@ import {
   fetchSubCategoriesCached,
 } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { mergeSalesSettings } from "@/lib/sales-settings";
 import {
   groupPriceSheetBySubcategory,
@@ -224,9 +225,7 @@ export function ProductPriceSheetScreen() {
     }
   }, [retailPricingEnabled, organization?.id, user?.branch_id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   useEffect(() => {
     if (!columnsOpen || !columnsButtonRef.current) {

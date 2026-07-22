@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  invalidateTabAwareDataLoad,
+  markTabAwareDataLoaded,
+  useTabAwareDataLoad,
+  useTabPaneActive,
+} from "@/contexts/tab-pane-activity-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { todayDashboardDateRange } from "@/lib/dashboard-dates";
 import { formatReportKes } from "@/lib/reports/format";
@@ -25,6 +31,7 @@ function initialBranchId(user, isOrgWide) {
 
 export function ProfitLossReportScreen({ definition }) {
   const { user, capabilities, isOrgWide } = useAuth();
+  const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
   const defaultRange = useMemo(() => todayDashboardDateRange(), []);
   const [rows, setRows] = useState([]);
@@ -50,12 +57,18 @@ export function ProfitLossReportScreen({ definition }) {
 
   // Resolve branch scope once auth is available, then load (avoids all-branch scan then re-fetch).
   useEffect(() => {
-    if (!user) return;
+    if (!user || filtersReady) return;
     const bid = orgWide ? "" : user.branch_id ? String(user.branch_id) : "";
     setBranchId(bid);
     setApplied((prev) => (prev.branchId === bid ? prev : { ...prev, branchId: bid }));
     setFiltersReady(true);
-  }, [user, orgWide]);
+  }, [user, orgWide, filtersReady]);
+
+  const appliedKey = useMemo(
+    () => JSON.stringify({ fromDate: applied.fromDate, toDate: applied.toDate, branchId: applied.branchId }),
+    [applied],
+  );
+  const depsKey = `${definition.apiPath}|${appliedKey}|${filtersReady ? 1 : 0}`;
 
   const loadReport = useCallback(async () => {
     if (!filtersReady) return;
@@ -69,17 +82,22 @@ export function ProfitLossReportScreen({ definition }) {
       // Page-local spinner only — do not hold the global shell overlay on this report.
       const res = await apiRequest(definition.apiPath, { searchParams, loading: false });
       setRows(res.data ?? []);
+      markTabAwareDataLoaded(paneHref, depsKey);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [applied, definition.apiPath, filtersReady]);
+  }, [applied, definition.apiPath, filtersReady, paneHref, depsKey]);
 
-  useEffect(() => {
-    loadReport();
-  }, [loadReport]);
+  const hasData = rows.length > 0 || (!loading && filtersReady);
+  useTabAwareDataLoad(loadReport, { depsKey, hasData });
+
+  function refreshReport() {
+    invalidateTabAwareDataLoad(paneHref);
+    void loadReport();
+  }
 
   const totals = useMemo(() => {
     return rows.reduce(
@@ -192,7 +210,7 @@ export function ProfitLossReportScreen({ definition }) {
         onBranchChange={setBranchId}
         onExtraChange={() => {}}
         onFilter={() => setApplied({ fromDate, toDate, branchId })}
-        onRefresh={() => void loadReport()}
+        onRefresh={() => void refreshReport()}
         onReset={() => {
           const range = todayDashboardDateRange();
           const bid = initialBranchId(user, isOrgWide);

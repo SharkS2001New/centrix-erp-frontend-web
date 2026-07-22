@@ -2,6 +2,7 @@
 
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
@@ -62,9 +63,7 @@ export function SuppliersPaymentsScreen() {
     }
   }, [supplierFilter, fromDate, toDate]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     if (presetSupplier) setSupplierFilter(presetSupplier);

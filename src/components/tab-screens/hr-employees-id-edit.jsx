@@ -2,6 +2,7 @@
 
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useState } from "react";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError, uploadEmployeePhoto } from "@/lib/api";
 import {
@@ -63,9 +64,7 @@ export function HrEmployeesIdEditScreen() {
     }
   }, [employeeId]);
 
-  useEffect(() => {
-    loadEmployee();
-  }, [loadEmployee]);
+  useTabAwareDataLoad(loadEmployee);
 
   useEffect(() => {
     return () => {

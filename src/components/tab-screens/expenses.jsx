@@ -6,6 +6,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   CatalogPageShell,
   ActiveSortChip,
@@ -181,13 +182,9 @@ export function ExpensesScreen() {
     }
   }, [page, pageSize, debouncedSearch, groupFilter, fromDate, toDate, statusFilter, hasUrlDateRange, urlFromDate, urlToDate, sort, sortDir]);
 
-  useEffect(() => {
-    loadReferenceData();
-  }, [loadReferenceData]);
+  useTabAwareDataLoad(loadReferenceData);
 
-  useEffect(() => {
-    loadExpenses();
-  }, [loadExpenses]);
+  useTabAwareDataLoad(loadExpenses);
 
   async function reloadAll() {
     const [statsRes] = await Promise.all([

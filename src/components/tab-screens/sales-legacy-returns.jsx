@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   FilterSelect,
   PaginationBar,
@@ -55,9 +56,7 @@ function LegacyReturnsContent() {
     }
   }, [statusFilter, fromDate, toDate]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     setPage(1);

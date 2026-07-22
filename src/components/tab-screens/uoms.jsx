@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchProductGroupCountsCached, fetchUomsCached, invalidateReferenceResource } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   defaultSmallLabelForType,
   uomCategory,
@@ -191,9 +192,7 @@ export function UomsScreen() {
     }
   }, [user?.organization_id]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   const refreshData = useCallback(async () => {
     setLoading(true);

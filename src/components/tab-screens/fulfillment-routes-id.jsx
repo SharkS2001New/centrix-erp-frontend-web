@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { routeOrderSourcesText } from "@/lib/distribution-settings";
 import { formatOrderNumber } from "@/lib/sales";
 import { defaultDateRange, formatCompactDateRange } from "@/lib/datetime";
@@ -84,9 +85,7 @@ export function FulfillmentRoutesIdScreen() {
     }
   }, [routeId, fromDate, toDate]);
 
-  useEffect(() => {
-    void loadSales();
-  }, [loadSales]);
+  useTabAwareDataLoad(loadSales);
 
   const salesStats = useMemo(() => {
     let total = 0;

@@ -2,6 +2,7 @@
 
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import {
@@ -65,9 +66,7 @@ export function SalesScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   const orderSummary = useMemo(() => summarizeOrders(sales), [sales]);
   const hourly = useMemo(() => buildHourlySalesChart(sales), [sales]);

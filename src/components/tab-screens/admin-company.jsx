@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest, ApiError, uploadOrganizationLogo, apiBaseOrigin } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import {
@@ -103,9 +104,7 @@ export function AdminCompanyScreen() {
     }
   }, [authLoading, authOrganization, organizationPath, organizationProfile, platformOrgId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   async function handleSave(e) {
     e.preventDefault();

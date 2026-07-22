@@ -5,6 +5,12 @@ import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  invalidateTabAwareDataLoad,
+  markTabAwareDataLoaded,
+  useTabAwareDataLoad,
+  useTabPaneActive,
+} from "@/contexts/tab-pane-activity-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-column-visibility";
 import { normalizeReportRows } from "@/lib/reports/api-response";
@@ -75,6 +81,7 @@ export function AccountingReportScreen({
   defaultDateRangeDays = null,
 }) {
   const { user, capabilities, isOrgWide } = useAuth();
+  const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
   const monthRange = useMemo(
     () => (defaultDateRangeDays != null ? defaultReportDateRange(defaultDateRangeDays) : defaultAccountingDateRange()),
@@ -115,6 +122,8 @@ export function AccountingReportScreen({
     setBranchId(String(user.branch_id));
   }, [user?.branch_id, branchId, multiBranch, isOrgWide]);
 
+  const depsKey = `${apiPath}|${page}|${fromDate}|${toDate}|${branchId}|${accountId}|${enableSearch ? debouncedSearch : ""}`;
+
   const loadReport = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -126,7 +135,7 @@ export function AccountingReportScreen({
       if (accountId) searchParams.account_id = accountId;
       if (enableSearch && debouncedSearch.trim()) searchParams.q = debouncedSearch.trim();
 
-      const res = await apiRequest(apiPath, { searchParams });
+      const res = await apiRequest(apiPath, { searchParams, loading: false });
       if (res?.current_page != null || res?.last_page != null || res?.total != null) {
         const parsed = parsePaginator(res);
         setRows(parsed.items);
@@ -141,6 +150,7 @@ export function AccountingReportScreen({
         setMeta(res.meta ?? null);
       }
       setSummary(res.summary ?? null);
+      markTabAwareDataLoaded(paneHref, depsKey);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
       setRows([]);
@@ -149,15 +159,19 @@ export function AccountingReportScreen({
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, fromDate, toDate, branchId, accountId, enableSearch, debouncedSearch]);
+  }, [apiPath, page, fromDate, toDate, branchId, accountId, enableSearch, debouncedSearch, paneHref, depsKey]);
 
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch]);
 
-  useEffect(() => {
-    loadReport();
-  }, [loadReport]);
+  const hasData = rows.length > 0 || meta != null || summary != null;
+  useTabAwareDataLoad(loadReport, { depsKey, hasData });
+
+  function refreshReport() {
+    invalidateTabAwareDataLoad(paneHref);
+    void loadReport();
+  }
 
   const columns = useMemo(() => {
     if (!rows[0]) return [];
@@ -296,7 +310,7 @@ export function AccountingReportScreen({
               </select>
             </Field>
           ) : null}
-          <PrimaryButton type="button" showIcon={false} onClick={() => void loadReport()}>
+          <PrimaryButton type="button" showIcon={false} onClick={() => void refreshReport()}>
             Refresh
           </PrimaryButton>
         </div>

@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   CatalogPageShell,
   formatShortDate,
@@ -41,9 +42,7 @@ export function AccountingJournalEntriesIdScreen() {
     }
   }, [params.id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   async function handlePost() {
     const ok = await confirm({

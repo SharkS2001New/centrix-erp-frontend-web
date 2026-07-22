@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { canApproveSupplierReturns } from "@/lib/approval-permissions";
 import {
   CatalogPageShell,
@@ -390,9 +391,7 @@ export function SuppliersReturnsScreen() {
     }
   }, [supplierFilter, statusFilter, dateFrom, dateTo]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     if (presetSupplier) setSupplierFilter(presetSupplier);

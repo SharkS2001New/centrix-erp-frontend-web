@@ -8,6 +8,7 @@ import { useListUrlSearch } from "@/lib/use-list-url-search";
 import { useListPageSize } from "@/lib/use-list-page-controls";
 import { useAppRouter } from "@/lib/use-app-router";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   CatalogPageShell,
   FilterSelect,
@@ -119,13 +120,9 @@ export function LpoScreen() {
     }
   }, [page, pageSize, debouncedSearch, supplierFilter, statusFilter]);
 
-  useEffect(() => {
-    loadReferenceData();
-  }, [loadReferenceData]);
+  useTabAwareDataLoad(loadReferenceData);
 
-  useEffect(() => {
-    loadRows();
-  }, [loadRows]);
+  useTabAwareDataLoad(loadRows);
 
   useEffect(() => {
     setPage(1);

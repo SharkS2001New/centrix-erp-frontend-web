@@ -46,6 +46,7 @@ import {
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { fetchUsersCached } from "@/lib/reference-data-cache";
 
 function PlusIcon() {
@@ -156,13 +157,9 @@ export function SuppliersScreen() {
     }
   }, [page, pageSize, debouncedSearch, statusFilter]);
 
-  useEffect(() => {
-    loadReferenceData();
-  }, [loadReferenceData]);
+  useTabAwareDataLoad(loadReferenceData);
 
-  useEffect(() => {
-    loadSuppliers();
-  }, [loadSuppliers]);
+  useTabAwareDataLoad(loadSuppliers);
 
   async function reloadAll() {
     await Promise.all([loadReferenceData(), loadSuppliers()]);

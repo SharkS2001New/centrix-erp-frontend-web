@@ -17,18 +17,38 @@ function firstPresentKey(rows, keys) {
   return keys.find((key) => key in sample && sample[key] != null) ?? null;
 }
 
-/** Summarize VAT totals when a report row set includes VAT and gross amount fields. */
-export function summarizeReportVat(rows) {
-  if (!rows?.length) return null;
+function firstPresentSummaryKey(summary, keys) {
+  if (!summary || typeof summary !== "object") return null;
+  return keys.find((key) => summary[key] != null && summary[key] !== "") ?? null;
+}
 
-  const vatKey = firstPresentKey(rows, VAT_KEYS);
+/** Summarize VAT totals when a report row set includes VAT and gross amount fields. */
+export function summarizeReportVat(rows, apiSummary = null) {
+  const vatKey =
+    firstPresentSummaryKey(apiSummary, VAT_KEYS) ?? firstPresentKey(rows, VAT_KEYS);
   if (!vatKey) return null;
 
-  const grossKey = firstPresentKey(rows, GROSS_KEYS);
-  const vatTotal = sumField(rows, vatKey);
-  const grossTotal = grossKey ? sumField(rows, grossKey) : null;
+  const grossKey =
+    firstPresentSummaryKey(apiSummary, GROSS_KEYS) ?? firstPresentKey(rows, GROSS_KEYS);
+
+  const vatTotal =
+    apiSummary?.[vatKey] != null ? Number(apiSummary[vatKey]) || 0 : sumField(rows, vatKey);
+  const grossTotal =
+    grossKey == null
+      ? null
+      : apiSummary?.[grossKey] != null
+        ? Number(apiSummary[grossKey]) || 0
+        : sumField(rows, grossKey);
   const netExVat =
-    grossTotal != null ? Math.max(0, grossTotal - vatTotal) : null;
+    apiSummary?.net_ex_vat != null
+      ? Number(apiSummary.net_ex_vat) || 0
+      : apiSummary?.net_sales != null
+        ? Number(apiSummary.net_sales) || 0
+        : apiSummary?.net != null
+          ? Number(apiSummary.net) || 0
+          : grossTotal != null
+            ? Math.max(0, grossTotal - vatTotal)
+            : null;
 
   return {
     vatKey,
@@ -39,8 +59,8 @@ export function summarizeReportVat(rows) {
   };
 }
 
-export function reportVatKpis(rows, formatKes) {
-  const summary = summarizeReportVat(rows);
+export function reportVatKpis(rows, formatKes, apiSummary = null) {
+  const summary = summarizeReportVat(rows, apiSummary);
   if (!summary) return [];
 
   const items = [];
@@ -49,7 +69,7 @@ export function reportVatKpis(rows, formatKes) {
       id: "gross-ex-vat",
       label: "Sales (ex VAT)",
       value: formatKes(summary.netExVat),
-      hint: "Gross minus VAT on this page",
+      hint: "Gross minus VAT",
     });
     items.push({
       id: "vat",
@@ -68,7 +88,7 @@ export function reportVatKpis(rows, formatKes) {
       id: "vat",
       label: "VAT",
       value: formatKes(summary.vatTotal),
-      hint: "Tax collected on this page",
+      hint: "Tax collected",
     });
   }
 

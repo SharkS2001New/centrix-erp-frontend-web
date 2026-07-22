@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { isRouteOnlyCustomers } from "@/lib/distribution-settings";
 import { apiRequest, ApiError, resolveCustomerMediaUrl, uploadCustomerShopImage } from "@/lib/api";
 import { customerLocationPayload } from "@/lib/customer-location";
@@ -77,9 +78,7 @@ export function CustomersIdEditScreen() {
     }
   }, [customerNum]);
 
-  useEffect(() => {
-    loadCustomer();
-  }, [loadCustomer]);
+  useTabAwareDataLoad(loadCustomer);
 
   useEffect(() => {
     return () => {

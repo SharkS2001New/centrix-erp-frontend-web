@@ -4,6 +4,7 @@ import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { filterByOrganization, formatAuditValues, orgListParams } from "@/lib/admin";
@@ -118,13 +119,9 @@ export function AdminAuditScreen() {
     }
   }, [adminPath, page, fromDate, toDate, userFilter, branchFilter, actionFilter, moduleFilter, search]);
 
-  useEffect(() => {
-    loadReferenceData();
-  }, [loadReferenceData]);
+  useTabAwareDataLoad(loadReferenceData);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   useEffect(() => {
     setPage(1);

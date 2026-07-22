@@ -8,6 +8,7 @@ import { printLegacyArchiveSale } from "@/components/sales/sale-order-print";
 import { ReportBadge } from "@/components/reports/report-screen-shared";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { DEFAULT_PRINT_ORG_NAME } from "@/lib/branding";
 import { defaultDashboardDateRange } from "@/lib/dashboard-dates";
 import {
@@ -443,9 +444,7 @@ export function LegacyArchiveReportScreen() {
     }
   }, [applied]);
 
-  useEffect(() => {
-    loadSales();
-  }, [loadSales]);
+  useTabAwareDataLoad(loadSales);
 
   const openSale = async (row) => {
     const saleDate = legacySaleDate(row);

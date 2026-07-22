@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { REPORT_DEFINITIONS } from "@/lib/reports/definitions";
@@ -24,14 +24,20 @@ function ReportViewerPageContent() {
   const params = useParams();
   const router = useRouter();
   const reportKeyRaw = params?.key;
-  const reportKey =
+  const reportKeyFromParams =
     reportKeyRaw != null && String(reportKeyRaw) !== "" && String(reportKeyRaw) !== "undefined"
       ? String(reportKeyRaw)
       : null;
+  // Keep last valid key so brief param flicker during tab switches does not unmount the report.
+  const [stableReportKey, setStableReportKey] = useState(reportKeyFromParams);
+  useEffect(() => {
+    if (reportKeyFromParams) setStableReportKey(reportKeyFromParams);
+  }, [reportKeyFromParams]);
+  const reportKey = reportKeyFromParams ?? stableReportKey;
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState(null);
 
-  const externalRoute = REPORT_UI_ROUTES[reportKey];
+  const externalRoute = reportKey ? REPORT_UI_ROUTES[reportKey] : undefined;
   const redirectsOutsideReports =
     externalRoute && !String(externalRoute).startsWith("/reports");
 
@@ -41,10 +47,15 @@ function ReportViewerPageContent() {
     }
   }, [redirectsOutsideReports, externalRoute, router]);
 
-  const structured = reportKey ? REPORT_DEFINITIONS[reportKey] : null;
+  const structuredBase = reportKey ? REPORT_DEFINITIONS[reportKey] : null;
+  // Keep a stable definition identity so keep-alive report tabs do not refetch on every parent render.
+  const structuredDefinition = useMemo(
+    () => (structuredBase && reportKey ? { ...structuredBase, key: reportKey } : null),
+    [structuredBase, reportKey],
+  );
 
   useEffect(() => {
-    if (!reportKey || structured || redirectsOutsideReports) return;
+    if (!reportKey || structuredDefinition || redirectsOutsideReports) return;
     apiRequest("/reports/")
       .then((catalog) => {
         for (const section of Object.values(catalog ?? {})) {
@@ -58,7 +69,7 @@ function ReportViewerPageContent() {
         setError("Report not found in catalog.");
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load catalog"));
-  }, [reportKey, structured, redirectsOutsideReports]);
+  }, [reportKey, structuredDefinition, redirectsOutsideReports]);
 
   if (!reportKey) {
     return (
@@ -72,8 +83,8 @@ function ReportViewerPageContent() {
     return <AppRouteLoading pathname={externalRoute} />;
   }
 
-  if (structured) {
-    return <StructuredReportScreen definition={{ ...structured, key: reportKey }} />;
+  if (structuredDefinition) {
+    return <StructuredReportScreen definition={structuredDefinition} />;
   }
 
   if (error) {

@@ -28,6 +28,7 @@ import { ReturnStatusBadge } from "@/components/sales/customer-returns-shared";
 import { formatReceiptNumber, formatSaleKes } from "@/lib/sales";
 import { defaultDateRange } from "@/lib/datetime";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
 
@@ -75,9 +76,7 @@ export function SalesReturnsScreen() {
     }
   }, [statusFilter, fromDate, toDate]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   useEffect(() => {
     setPage(1);

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { apiRequest, ApiError } from "@/lib/api";
 import { buildAccessContext, resolveTillFloatNavFlag } from "@/lib/access-control";
 import { getStoredWorkspace } from "@/lib/auth-storage";
@@ -165,9 +166,7 @@ export function NotificationsScreen() {
     }
   }, [bucket, workspaceId, workspaceParams]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   const markRead = useCallback(async (item) => {
     if (item.is_read) return;

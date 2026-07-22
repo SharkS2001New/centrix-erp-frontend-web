@@ -2,6 +2,7 @@
 
 import { notifyError } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
@@ -40,9 +41,7 @@ export function FulfillmentVehiclesIdScreen() {
     }
   }, [vehicleId]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   const routeById = useMemo(() => new Map(routes.map((r) => [r.id, r])), [routes]);
 

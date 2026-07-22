@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import { formatInventoryKes } from "@/components/inventory/inventory-shared";
 import { formatInventoryQtyWithUom, formatReorderPointDisplay } from "@/lib/inventory-qty-display";
@@ -105,9 +106,7 @@ export function InventoryDashboardContent() {
     }
   }, [user?.branch_id, user?.access_scope, user?.is_admin, isOrgWide]);
 
-  useEffect(() => {
-    void loadDashboard();
-  }, [loadDashboard]);
+  useTabAwareDataLoad(loadDashboard);
 
   const inStockItems = useMemo(
     () =>

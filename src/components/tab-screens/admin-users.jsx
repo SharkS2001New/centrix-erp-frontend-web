@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { AdminBreadcrumb } from "@/components/admin/admin-breadcrumb";
 import { AdminGuard } from "@/components/admin/admin-guard";
 import { PasswordInput } from "@/components/auth/password-input";
@@ -235,13 +236,9 @@ export function AdminUsersScreen() {
     }
   }, [adminPath]);
 
-  useEffect(() => {
-    loadReferenceData();
-  }, [loadReferenceData]);
+  useTabAwareDataLoad(loadReferenceData);
 
-  useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
+  useTabAwareDataLoad(loadUsers);
 
   useEffect(() => {
     setPage(1);

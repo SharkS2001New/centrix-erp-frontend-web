@@ -9,6 +9,7 @@ import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { buildGrnFromStockReceiptGroup } from "@/lib/grn-document";
 import { printGoodsReceivedNote } from "@/components/lpo/grn-print";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { mergeGeneralSettings } from "@/lib/general-settings";
 import {
   formatReceiptDate,
@@ -68,9 +69,7 @@ export function InventoryReceiptsRefScreen() {
     }
   }, [branchId, ref, user?.organization_id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   const uomById = useMemo(() => buildUomById(uoms), [uoms]);
   const uomByProduct = useMemo(() => buildUomByProductCode(products, uoms), [products, uoms]);

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { apiRequest } from "@/lib/api";
 import { CatalogPageShell, PrimaryLink } from "@/components/catalog/catalog-shared";
 import { composeEmployeeDisplayName, formatHrKesFull } from "@/components/hr/hr-shared";
@@ -74,9 +75,7 @@ export function HrDashboardContent() {
     }
   }, []);
 
-  useEffect(() => {
-    void loadDashboard();
-  }, [loadDashboard]);
+  useTabAwareDataLoad(loadDashboard);
 
   const deptById = useMemo(() => new Map(departments.map((d) => [d.id, d])), [departments]);
 

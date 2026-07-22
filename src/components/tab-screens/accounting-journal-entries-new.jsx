@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { CatalogPageShell } from "@/components/catalog/catalog-shared";
 import { JournalEntryForm } from "@/components/accounting/journal-entry-form";
 import { nextJournalEntryNumber } from "@/lib/accounting-shared";
@@ -38,9 +39,7 @@ export function AccountingJournalEntriesNewScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useTabAwareDataLoad(load);
 
   async function createEntry(payload) {
     const res = await apiRequest("/accounting/journal-entries", {

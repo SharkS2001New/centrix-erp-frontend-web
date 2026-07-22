@@ -503,6 +503,11 @@ export function AuthProvider({ children }) {
     router.replace(reason ? `/login?reason=${encodeURIComponent(reason)}` : "/login");
   }, [router]);
 
+  const isOrgWide = useCallback(
+    () => (capabilities?.access_scope ?? user?.access_scope) === "org" || Boolean(user?.is_admin),
+    [capabilities?.access_scope, user?.access_scope, user?.is_admin],
+  );
+
   const value = useMemo(
     () => ({
       user,
@@ -545,7 +550,7 @@ export function AuthProvider({ children }) {
           code,
           isSuperAdmin: () => Boolean(user?.is_super_admin || capabilities?.is_super_admin),
         }),
-      isOrgWide: () => (capabilities?.access_scope ?? user?.access_scope) === "org" || user?.is_admin,
+      isOrgWide,
       generalSettings: () => resolveGeneralSettings(capabilities),
       sessionIdleMinutes: () => capabilities?.session_idle_minutes ?? 60,
       screenLockMinutes: () => capabilities?.screen_lock_minutes ?? 5,
@@ -573,6 +578,7 @@ export function AuthProvider({ children }) {
       skipPasswordExpiry,
       passwordExpiry,
       organizationLicense,
+      isOrgWide,
     ],
   );
 

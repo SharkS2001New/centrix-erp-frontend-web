@@ -16,6 +16,18 @@ export function normalizeReportRows(response) {
 }
 
 /** @param {unknown} response */
+export function normalizeReportSummary(response) {
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    return null;
+  }
+  const summary = response.summary;
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    return null;
+  }
+  return summary;
+}
+
+/** @param {unknown} response */
 export function normalizeReportMeta(response, fallbackPage = 1, fallbackPageSize = 20) {
   if (Array.isArray(response)) {
     return {

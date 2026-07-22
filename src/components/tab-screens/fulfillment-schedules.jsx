@@ -4,6 +4,7 @@ import { OrgSettingsPlatformHint } from "@/components/admin/org-settings-platfor
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { fetchFulfillmentRefsCached } from "@/lib/reference-data-cache";
 import { isDistributionOpsEnabled } from "@/lib/distribution-settings";
 import {
@@ -93,9 +94,7 @@ export function FulfillmentSchedulesScreen() {
     }
   }, [user?.organization_id]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   const grouped = useMemo(() => {
     const map = new Map();

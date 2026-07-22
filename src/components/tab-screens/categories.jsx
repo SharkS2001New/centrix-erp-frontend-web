@@ -11,6 +11,7 @@ import {
   invalidateReferenceResource,
 } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   ActiveBadge,
   CatalogPageShell,
@@ -164,9 +165,7 @@ export function CategoriesScreen() {
       });
   }, [user?.organization_id]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   const refreshData = useCallback(async () => {
     setLoading(true);

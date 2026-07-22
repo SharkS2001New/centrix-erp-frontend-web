@@ -11,6 +11,7 @@ import {
   fetchVehiclesCached,
 } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   CatalogPageShell,
   Field,
@@ -133,9 +134,7 @@ export function FulfillmentDriversScreen() {
     }
   }, [user?.organization_id]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   const stats = useMemo(() => {
     const active = drivers.filter((d) => d.is_active !== false);

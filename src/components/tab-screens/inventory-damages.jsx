@@ -6,6 +6,7 @@ import { fetchProductsByCodesCached } from "@/lib/catalog-cache";
 import { fetchUomsCached } from "@/lib/reference-data-cache";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import {
   Field,
   IconButton,
@@ -92,13 +93,9 @@ export function InventoryDamagesScreen() {
     }
   }, [branchId, fromDate, toDate, page, pageSize, user?.organization_id]);
 
-  useEffect(() => {
-    loadReferenceData();
-  }, [loadReferenceData]);
+  useTabAwareDataLoad(loadReferenceData);
 
-  useEffect(() => {
-    loadRows();
-  }, [loadRows]);
+  useTabAwareDataLoad(loadRows);
 
   const uomById = useMemo(() => buildUomById(uoms), [uoms]);
 

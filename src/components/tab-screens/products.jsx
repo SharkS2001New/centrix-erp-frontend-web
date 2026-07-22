@@ -41,6 +41,7 @@ import { P } from "@/lib/permission-codes";
 import { isKraDeviceEnabled } from "@/lib/finance-settings";
 import { productScopeLabel, isMultiBranchCatalog, defaultProductBranchId } from "@/lib/catalog-scope";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { loadReferenceDataPhased } from "@/lib/paginated-fetch";
 import {
   fetchBranchesCached,
@@ -532,9 +533,7 @@ export function ProductsScreen() {
     ]);
   }, [loadReferenceData, loadProducts, loadCatalogStats]);
 
-  useEffect(() => {
-    loadReferenceData();
-  }, [loadReferenceData]);
+  useTabAwareDataLoad(loadReferenceData);
 
   useEffect(() => {
     loadProducts();

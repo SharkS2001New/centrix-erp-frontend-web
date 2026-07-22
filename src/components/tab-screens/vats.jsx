@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import { fetchProductGroupCountsCached, fetchVatsCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useAdminApi } from "@/contexts/admin-api-context";
 import { P } from "@/lib/permission-codes";
 import {
@@ -89,9 +90,7 @@ export function VatsScreen() {
     }
   }, [adminPath, isPlatformManaged, user?.organization_id]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
 

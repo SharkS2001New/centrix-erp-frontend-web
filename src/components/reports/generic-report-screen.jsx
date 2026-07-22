@@ -6,10 +6,16 @@ import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api"
 import { fetchBranchesCached } from "@/lib/reference-data-cache";
 import { useAuth } from "@/contexts/auth-context";
+import {
+  invalidateTabAwareDataLoad,
+  markTabAwareDataLoaded,
+  useTabAwareDataLoad,
+  useTabPaneActive,
+} from "@/contexts/tab-pane-activity-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
 import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-column-visibility";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
-import { normalizeReportMeta, normalizeReportRows } from "@/lib/reports/api-response";
+import { normalizeReportMeta, normalizeReportRows, normalizeReportSummary } from "@/lib/reports/api-response";
 import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
 import { REPORT_EXTRA_FILTERS } from "@/lib/reports/report-filter-config";
 import {
@@ -49,12 +55,14 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const urlParams = useSearchParams();
   const payrollRunId = urlParams.get("payroll_run_id") ?? "";
   const { user, isOrgWide, capabilities } = useAuth();
+  const { paneHref } = useTabPaneActive();
   const multiBranch = isMultiBranchCatalog(capabilities);
   const defaultRange = useMemo(() => defaultReportDateRange(reportDefaultDateRangeDays(reportKey)), [reportKey]);
   const branchInitialized = useRef(false);
   const filterOptions = useReportFilterOptions(reportKey);
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState(null);
+  const [reportSummary, setReportSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
@@ -80,6 +88,9 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     setBranchId(defaultReportBranchId(user, isOrgWide));
   }, [user, isOrgWide]);
 
+  const queryFiltersKey = useMemo(() => JSON.stringify(queryFilters), [queryFilters]);
+  const depsKey = `${reportKey}|${apiPath}|${page}|${fromDate}|${toDate}|${branchId}|${queryFiltersKey}|${payrollRunId}`;
+
   const loadReport = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -96,22 +107,29 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
       };
       if (payrollRunId) searchParams.payroll_run_id = payrollRunId;
 
-      const res = await apiRequest(apiPath, { searchParams });
+      const res = await apiRequest(apiPath, { searchParams, loading: false });
       const centrixRows = normalizeReportRows(res);
       setRows(centrixRows);
       setMeta(normalizeReportMeta(res, page, PAGE_SIZE));
+      setReportSummary(normalizeReportSummary(res));
+      markTabAwareDataLoaded(paneHref, depsKey);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load report");
       setRows([]);
       setMeta(null);
+      setReportSummary(null);
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, fromDate, toDate, branchId, queryFilters, payrollRunId, reportKey]);
+  }, [apiPath, page, fromDate, toDate, branchId, queryFilters, payrollRunId, reportKey, paneHref, depsKey]);
 
-  useEffect(() => {
-    loadReport();
-  }, [loadReport]);
+  const hasData = rows.length > 0 || meta != null;
+  useTabAwareDataLoad(loadReport, { depsKey, hasData });
+
+  function refreshReport() {
+    invalidateTabAwareDataLoad(paneHref);
+    void loadReport();
+  }
 
   const columns = useMemo(() => {
     if (!rows[0]) return [];
@@ -119,7 +137,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   }, [rows, multiBranch]);
 
   const footerTotals = useMemo(() => {
-    if (!reportShowsTableFooter(reportKey) || !rows.length || !columns.length) return {};
+    if (!reportShowsTableFooter(reportKey) || (!rows.length && !reportSummary) || !columns.length) return {};
     const totals = {};
     for (const col of columns) {
       if (
@@ -133,11 +151,14 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
         totals[col] = "—";
         continue;
       }
-      const sum = rows.reduce((acc, row) => acc + (Number(row[col]) || 0), 0);
+      const sum =
+        reportSummary && reportSummary[col] != null && reportSummary[col] !== ""
+          ? Number(reportSummary[col]) || 0
+          : rows.reduce((acc, row) => acc + (Number(row[col]) || 0), 0);
       totals[col] = formatCell(col, sum);
     }
     return totals;
-  }, [rows, columns, reportKey]);
+  }, [rows, columns, reportKey, reportSummary]);
 
   const branchLabel = branches.find((b) => String(b.id) === branchId)?.branch_name
     ?? (branchId ? "" : "All branches");
@@ -168,8 +189,8 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const total = meta?.total ?? rows.length;
 
   const vatKpis = useMemo(
-    () => reportVatKpis(rows, (value) => formatReportKes(value)),
-    [rows],
+    () => reportVatKpis(rows, (value) => formatReportKes(value), reportSummary),
+    [rows, reportSummary],
   );
 
   return (
@@ -253,7 +274,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
             }}
             optionsByKey={filterOptions}
           />
-          <PrimaryButton type="button" showIcon={false} onClick={() => void loadReport()}>
+          <PrimaryButton type="button" showIcon={false} onClick={() => void refreshReport()}>
             Refresh
           </PrimaryButton>
         </FilterToolbar>
@@ -307,7 +328,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
                   <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-900">
                     {columns.map((col, idx) => (
                       <td key={col} className="whitespace-nowrap px-4 py-2.5">
-                        {idx === 0 ? "Totals (this page)" : footerTotals[col] ?? ""}
+                        {idx === 0 ? "Totals" : footerTotals[col] ?? ""}
                       </td>
                     ))}
                   </tr>

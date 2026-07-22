@@ -11,7 +11,7 @@ import { lpoRowDisplayNumber } from "@/lib/lpo-display";
 
 /** @typedef {{ key: string, label: string, accessor: (row: object) => unknown, align?: 'left'|'right', badge?: (row: object) => { label: string, tone: string } | null, total?: boolean, sumFromRow?: (row: object) => number, footerCompute?: (rows: object[]) => number }} ReportColumn */
 
-/** @typedef {{ id: string, label: string, compute: (rows: object[]) => { value: string, hint?: string, tone?: string } }} ReportKpi */
+/** @typedef {{ id: string, label: string, compute: (rows: object[], summary?: object|null) => { value: string, hint?: string, tone?: string } }} ReportKpi */
 
 /**
  * @param {object} def
@@ -55,29 +55,33 @@ export const REPORT_DEFINITIONS = {
       {
         id: "transactions",
         label: "Transactions",
-        compute: (rows) => ({ value: String(Math.round(sum(rows, "orders"))) }),
+        compute: (rows, summary) => ({
+          value: String(Math.round(summary?.orders ?? sum(rows, "orders"))),
+        }),
       },
       {
         id: "gross",
         label: "Total Sales",
-        compute: (rows) => ({ value: kes(sum(rows, "gross")) }),
+        compute: (rows, summary) => ({ value: kes(summary?.gross ?? sum(rows, "gross")) }),
       },
       {
         id: "vat",
         label: "Total VAT",
-        compute: (rows) => ({ value: kes(sum(rows, "vat")) }),
+        compute: (rows, summary) => ({ value: kes(summary?.vat ?? sum(rows, "vat")) }),
       },
       {
         id: "net",
         label: "Net Sales",
-        compute: (rows) => ({ value: kes(sum(rows, "net")) }),
+        compute: (rows, summary) => ({
+          value: kes(summary?.net ?? summary?.net_ex_vat ?? sum(rows, "net")),
+        }),
       },
       {
         id: "avg",
         label: "Average Order",
-        compute: (rows) => {
-          const orders = sum(rows, "orders");
-          const gross = sum(rows, "gross");
+        compute: (rows, summary) => {
+          const orders = Number(summary?.orders ?? sum(rows, "orders"));
+          const gross = Number(summary?.gross ?? sum(rows, "gross"));
           return { value: orders > 0 ? kes(gross / orders) : "—" };
         },
       },
@@ -282,14 +286,21 @@ export const REPORT_DEFINITIONS = {
       {
         id: "items",
         label: "Alert items",
-        compute: (rows) => ({ value: String(rows.length), tone: "warning" }),
+        compute: (rows, summary) => ({
+          value: String(summary?.row_count ?? rows.length),
+          tone: "warning",
+        }),
       },
       {
         id: "out",
         label: "Out of stock",
-        compute: (rows) => ({
-          value: String(rows.filter((r) => Number(r.total_base_units ?? r.total_quantity) <= 0).length),
+        compute: (rows, summary) => ({
+          value: String(
+            summary?.out_of_stock_count ??
+              rows.filter((r) => Number(r.total_base_units ?? r.total_quantity) <= 0).length,
+          ),
           tone: "danger",
+          hint: summary?.out_of_stock_count == null && rows.length ? "On this page" : undefined,
         }),
       },
       {
@@ -313,6 +324,7 @@ export const REPORT_DEFINITIONS = {
             }).length,
           ),
           tone: "warning",
+          hint: rows.length ? "On this page" : undefined,
         }),
       },
     ],
@@ -386,22 +398,30 @@ export const REPORT_DEFINITIONS = {
       {
         id: "skus",
         label: "Products",
-        compute: (rows) => ({ value: String(rows.length) }),
+        compute: (rows, summary) => ({
+          value: String(summary?.row_count ?? rows.length),
+        }),
       },
       {
         id: "received",
         label: "Received value",
-        compute: (rows) => ({ value: kes(sum(rows, "total_received")) }),
+        compute: (rows, summary) => ({
+          value: kes(summary?.total_received ?? sum(rows, "total_received")),
+        }),
       },
       {
         id: "sold",
         label: "Sold value",
-        compute: (rows) => ({ value: kes(sum(rows, "total_sold")) }),
+        compute: (rows, summary) => ({
+          value: kes(summary?.total_sold ?? sum(rows, "total_sold")),
+        }),
       },
       {
         id: "stock_value",
         label: "Stock value",
-        compute: (rows) => ({ value: kes(sum(rows, "total_cost_value")) }),
+        compute: (rows, summary) => ({
+          value: kes(summary?.total_cost_value ?? sum(rows, "total_cost_value")),
+        }),
       },
     ],
     footerTotals: ["total_received", "total_sold", "total_cost_value"],
@@ -451,17 +471,18 @@ export const REPORT_DEFINITIONS = {
       {
         id: "skus",
         label: "Products",
-        compute: (rows) => ({ value: String(rows.length) }),
+        compute: (rows, summary) => ({
+          value: String(summary?.row_count ?? rows.length),
+        }),
       },
       {
         id: "stock_value",
         label: "Total stock value",
-        compute: (rows) => ({
+        compute: (rows, summary) => ({
           value: kes(
-            rows.reduce(
-              (s, r) => s + (Number(r.cost_value ?? r.stock_value) || 0),
-              0,
-            ),
+            summary?.cost_value ??
+              summary?.stock_value ??
+              rows.reduce((s, r) => s + (Number(r.cost_value ?? r.stock_value) || 0), 0),
           ),
         }),
       },
@@ -508,24 +529,37 @@ export const REPORT_DEFINITIONS = {
       {
         id: "products",
         label: "Products",
-        compute: (rows) => ({ value: String(rows.length) }),
+        compute: (rows, summary) => ({
+          value: String(summary?.product_count ?? rows.length),
+        }),
       },
       {
-        id: "net_revenue",
-        label: "Net revenue",
-        compute: (rows) => ({ value: kes(sum(rows, "net_revenue")) }),
+        id: "gross_revenue",
+        label: "Gross sales",
+        compute: (rows, summary) => ({
+          value: kes(summary?.gross_revenue ?? sum(rows, "gross_revenue")),
+        }),
       },
       {
         id: "cogs",
         label: "COGS",
-        compute: (rows) => ({ value: kes(sum(rows, "cogs")) }),
+        compute: (rows, summary) => ({
+          value: kes(summary?.cogs ?? sum(rows, "cogs")),
+        }),
       },
       {
         id: "gross_profit",
         label: "Gross profit",
-        compute: (rows) => ({ value: kes(sum(rows, "gross_profit")) }),
+        compute: (rows, summary) => ({
+          value: kes(summary?.gross_profit ?? sum(rows, "gross_profit")),
+          hint:
+            summary?.gross_margin_percent != null
+              ? `${Number(summary.gross_margin_percent).toFixed(1)}% margin`
+              : undefined,
+        }),
       },
     ],
+    useApiSummary: true,
     footerTotals: ["qty_sold", "net_revenue", "total_vat", "gross_revenue", "cogs", "gross_profit"],
     charts: [{ type: "bar", title: "Top products by gross profit", labelKey: "product_name", valueKey: "gross_profit" }],
   },
@@ -594,19 +628,24 @@ export const REPORT_DEFINITIONS = {
       {
         id: "lpos",
         label: "Open LPOs",
-        compute: (rows) => ({
-          value: String(new Set(rows.map((r) => r.lpo_no)).size),
+        compute: (rows, summary) => ({
+          value: String(summary?.lpo_count ?? new Set(rows.map((r) => r.lpo_no)).size),
+          hint: summary?.lpo_count == null && rows.length ? "On this page" : undefined,
         }),
       },
       {
         id: "lines",
         label: "Open lines",
-        compute: (rows) => ({ value: String(rows.length) }),
+        compute: (rows, summary) => ({
+          value: String(summary?.row_count ?? rows.length),
+        }),
       },
       {
         id: "pending_value",
         label: "Pending value",
-        compute: (rows) => ({ value: kes(sum(rows, "pending_value")) }),
+        compute: (rows, summary) => ({
+          value: kes(summary?.pending_value ?? sum(rows, "pending_value")),
+        }),
       },
     ],
     footerTotals: ["pending_value"],
@@ -673,19 +712,26 @@ export const REPORT_DEFINITIONS = {
       {
         id: "suppliers",
         label: "Suppliers",
-        compute: (rows) => ({
-          value: String(new Set(rows.map((r) => r.supplier_id ?? r.supplier_name)).size),
+        compute: (rows, summary) => ({
+          value: String(
+            summary?.supplier_count ??
+              new Set(rows.map((r) => r.supplier_id ?? r.supplier_name)).size,
+          ),
+          hint: summary?.supplier_count == null && rows.length ? "On this page" : undefined,
         }),
       },
       {
         id: "lpos",
         label: "LPO lines",
-        compute: (rows) => ({ value: String(rows.length) }),
+        compute: (rows, summary) => ({
+          value: String(summary?.row_count ?? rows.length),
+        }),
       },
       {
         id: "total",
         label: "LPO total",
         compute: (rows) => ({
+          // total_amount repeats on each line — do not use SUM(summary.total_amount).
           value: kes(
             rows.reduce((acc, row) => {
               const key = row.lpo_no;
@@ -695,12 +741,15 @@ export const REPORT_DEFINITIONS = {
               return acc;
             }, { seen: new Set(), sum: 0 }).sum,
           ),
+          hint: rows.length ? "On this page" : undefined,
         }),
       },
       {
         id: "pending",
         label: "Pending value",
-        compute: (rows) => ({ value: kes(sum(rows, "pending_value")) }),
+        compute: (rows, summary) => ({
+          value: kes(summary?.pending_value ?? sum(rows, "pending_value")),
+        }),
       },
     ],
     footerTotals: ["pending_value", "total_amount"],
@@ -732,22 +781,26 @@ export const REPORT_DEFINITIONS = {
       {
         id: "debtors",
         label: "Debtors",
-        compute: (rows) => ({ value: String(rows.length) }),
+        compute: (rows, summary) => ({
+          value: String(summary?.row_count ?? rows.length),
+        }),
       },
       {
         id: "outstanding",
         label: "Total Outstanding",
-        compute: (rows) => ({
+        compute: (rows, summary) => ({
           value: kes(
-            rows.reduce(
-              (acc, r) =>
-                acc +
-                Number(
-                  r.outstanding_balance ??
-                    Math.max(Number(r.current_balance) || 0, Number(r.invoice_balance) || 0),
-                ),
-              0,
-            ),
+            summary?.outstanding_balance ??
+              summary?.invoice_balance ??
+              rows.reduce(
+                (acc, r) =>
+                  acc +
+                  Number(
+                    r.outstanding_balance ??
+                      Math.max(Number(r.current_balance) || 0, Number(r.invoice_balance) || 0),
+                  ),
+                0,
+              ),
           ),
         }),
       },
@@ -776,12 +829,16 @@ export const REPORT_DEFINITIONS = {
       {
         id: "payments",
         label: "Payments",
-        compute: (rows) => ({ value: String(rows.length) }),
+        compute: (rows, summary) => ({
+          value: String(summary?.row_count ?? rows.length),
+        }),
       },
       {
         id: "total",
         label: "Total collected",
-        compute: (rows) => ({ value: kes(sum(rows, "amount_paid")) }),
+        compute: (rows, summary) => ({
+          value: kes(summary?.amount_paid ?? sum(rows, "amount_paid")),
+        }),
       },
     ],
     footerTotals: ["amount_paid"],
@@ -865,13 +922,19 @@ export const REPORT_DEFINITIONS = {
       {
         id: "movements",
         label: "Movements",
-        compute: (rows) => ({ value: String(rows.length) }),
+        compute: (rows, summary) => ({
+          value: String(summary?.row_count ?? rows.length),
+        }),
       },
       {
         id: "products",
         label: "Products",
-        compute: (rows) => ({
-          value: String(new Set(rows.map((r) => r.product_code).filter(Boolean)).size),
+        compute: (rows, summary) => ({
+          value: String(
+            summary?.product_count ??
+              new Set(rows.map((r) => r.product_code).filter(Boolean)).size,
+          ),
+          hint: summary?.product_count == null && rows.length ? "On this page" : undefined,
         }),
       },
     ],
@@ -896,12 +959,16 @@ export const REPORT_DEFINITIONS = {
       {
         id: "vat",
         label: "Total VAT Collected",
-        compute: (rows) => ({ value: kes(sum(rows, "vat_collected")) }),
+        compute: (rows, summary) => ({
+          value: kes(summary?.vat_collected ?? sum(rows, "vat_collected")),
+        }),
       },
       {
         id: "taxable",
         label: "Taxable Sales",
-        compute: (rows) => ({ value: kes(sum(rows, "gross_sales")) }),
+        compute: (rows, summary) => ({
+          value: kes(summary?.gross_sales ?? sum(rows, "gross_sales")),
+        }),
       },
     ],
     footerTotals: ["orders", "gross_sales", "vat_collected"],
@@ -939,12 +1006,16 @@ export const REPORT_DEFINITIONS = {
       {
         id: "sessions",
         label: "Sessions",
-        compute: (rows) => ({ value: String(rows.length) }),
+        compute: (rows, summary) => ({
+          value: String(summary?.row_count ?? rows.length),
+        }),
       },
       {
         id: "sales",
         label: "Total Sales",
-        compute: (rows) => ({ value: kes(sum(rows, "gross_sales")) }),
+        compute: (rows, summary) => ({
+          value: kes(summary?.gross_sales ?? sum(rows, "gross_sales")),
+        }),
       },
     ],
   },
@@ -968,12 +1039,17 @@ export const REPORT_DEFINITIONS = {
       {
         id: "total",
         label: "Total Expenses",
-        compute: (rows) => ({ value: kes(sum(rows, "total_amount")) }),
+        compute: (rows, summary) => ({
+          value: kes(summary?.total_amount ?? sum(rows, "total_amount")),
+        }),
       },
       {
         id: "groups",
         label: "Categories",
-        compute: (rows) => ({ value: String(new Set(rows.map((r) => r.group_name)).size) }),
+        compute: (rows) => ({
+          value: String(new Set(rows.map((r) => r.group_name)).size),
+          hint: rows.length ? "On this page" : undefined,
+        }),
       },
     ],
     footerTotals: ["expense_count", "total_amount"],
@@ -989,21 +1065,37 @@ function vatReportKpis(grossKey, vatKey) {
     {
       id: "gross-ex-vat",
       label: "Sales (ex VAT)",
-      compute: (rows) => ({
-        value: kes(Math.max(0, sum(rows, grossKey) - sum(rows, vatKey))),
-      }),
+      compute: (rows, summary) => {
+        const gross = Number(summary?.[grossKey] ?? sum(rows, grossKey));
+        const vat = Number(summary?.[vatKey] ?? sum(rows, vatKey));
+        const net = Number(
+          summary?.net_ex_vat ?? summary?.net_sales ?? summary?.net ?? Math.max(0, gross - vat),
+        );
+        return { value: kes(net) };
+      },
     },
     {
       id: "vat",
       label: "VAT",
-      compute: (rows) => ({ value: kes(sum(rows, vatKey)) }),
+      compute: (rows, summary) => ({ value: kes(summary?.[vatKey] ?? sum(rows, vatKey)) }),
     },
     {
       id: "gross-incl-vat",
       label: "Sales (incl VAT)",
-      compute: (rows) => ({ value: kes(sum(rows, grossKey)) }),
+      compute: (rows, summary) => ({ value: kes(summary?.[grossKey] ?? sum(rows, grossKey)) }),
     },
   ];
+}
+
+/** Prefer API full-filter summary value, else sum visible/page rows. */
+export function summaryOrSum(summary, rows, field, sumFromRow) {
+  if (summary && summary[field] != null && summary[field] !== "") {
+    return Number(summary[field]) || 0;
+  }
+  if (typeof sumFromRow === "function") {
+    return rows.reduce((acc, row) => acc + (Number(sumFromRow(row)) || 0), 0);
+  }
+  return sum(rows, field);
 }
 
 function sum(rows, field) {

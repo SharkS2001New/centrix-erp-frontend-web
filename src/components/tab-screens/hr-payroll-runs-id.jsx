@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { canApprovePayrollRuns } from "@/lib/approval-permissions";
 import { P } from "@/lib/permission-codes";
 import { Field, DetailDrawer, IconButton, PrimaryButton, StatCard, inputClassName } from "@/components/catalog/catalog-shared";
@@ -73,9 +74,7 @@ export function HrPayrollRunsIdScreen() {
     }
   }, [runId]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useTabAwareDataLoad(loadData);
 
   const period = run?.pay_period ?? run?.payPeriod ?? null;
 

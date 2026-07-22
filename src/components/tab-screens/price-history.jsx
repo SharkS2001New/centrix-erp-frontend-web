@@ -7,6 +7,7 @@ import { apiRequest } from "@/lib/api";
 import { buildPageParams, parsePaginator } from "@/lib/paginated-api";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useAuth } from "@/contexts/auth-context";
+import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { fetchCategoriesCached, fetchUsersCached } from "@/lib/reference-data-cache";
 import { PaginationBar } from "@/components/catalog/catalog-shared";
 import { CatalogListExport } from "@/components/catalog/catalog-list-export";
@@ -177,13 +178,9 @@ export function PriceHistoryScreen() {
     }
   }, [page, debouncedSearch, categoryFilter, userFilter]);
 
-  useEffect(() => {
-    loadReferenceData();
-  }, [loadReferenceData]);
+  useTabAwareDataLoad(loadReferenceData);
 
-  useEffect(() => {
-    loadRecords();
-  }, [loadRecords]);
+  useTabAwareDataLoad(loadRecords);
 
   useEffect(() => {
     setPage(1);

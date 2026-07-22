@@ -85,6 +85,8 @@ export function WorkspaceSwitcher() {
     const target = workspaces.find((w) => w.id === id);
     if (!target) return;
 
+    // Close the picker immediately so the opening splash is the only UI.
+    setOpen(false);
     setSwitching(true);
     setPendingTarget(target);
     setError(null);
@@ -106,7 +108,6 @@ export function WorkspaceSwitcher() {
         ctx,
       );
       await switchWorkspace(id);
-      setOpen(false);
       router.replace(resumePath);
       router.refresh();
     } catch (err) {
