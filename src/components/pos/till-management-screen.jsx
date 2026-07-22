@@ -245,7 +245,9 @@ export function TillManagementScreen() {
   const [openSessions, setOpenSessions] = useState([]);
   const [sessionReports, setSessionReports] = useState(() => new Map());
   const sessionReportsRef = useRef(sessionReports);
-  sessionReportsRef.current = sessionReports;
+  useEffect(() => {
+    sessionReportsRef.current = sessionReports;
+  }, [sessionReports]);
   const xReportInflightRef = useRef(new Map());
   const [metaLoading, setMetaLoading] = useState(true);
 
