@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { hasAuthSession, getStoredUser, readCachedAuthSnapshot } from "@/lib/auth-storage";
@@ -25,6 +25,7 @@ import {
 } from "@/components/auth/auth-shell";
 import { PasswordInput } from "@/components/auth/password-input";
 import { ForgotPasswordHelpDialog } from "@/components/auth/forgot-password-help-dialog";
+import { SignInProgressOverlay } from "@/components/auth/sign-in-progress-overlay";
 import { getPasskeyAssertion, webAuthnSupported } from "@/lib/webauthn";
 
 export default function LoginPage() {
@@ -48,11 +49,13 @@ function LoginForm() {
   const [error, setError] = useState(null);
   const [sessionConflict, setSessionConflict] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [signInProgress, setSignInProgress] = useState(0);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [mfaChallenge, setMfaChallenge] = useState(null);
   const [mfaCode, setMfaCode] = useState("");
   const [passkeyAvailable, setPasskeyAvailable] = useState(false);
   const [authFlow, setAuthFlow] = useState(null);
+  const progressTimerRef = useRef(null);
   const passkeysOk = webAuthnSupported();
 
   useEffect(() => {
@@ -118,6 +121,49 @@ function LoginForm() {
     }
   }, [router]);
 
+  useEffect(() => {
+    return () => {
+      if (progressTimerRef.current) {
+        window.clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  function clearProgressTimer() {
+    if (progressTimerRef.current) {
+      window.clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+  }
+
+  function startSignInProgress(flow = "login") {
+    clearProgressTimer();
+    setAuthFlow(flow);
+    setSubmitting(true);
+    setSignInProgress(5);
+    progressTimerRef.current = window.setInterval(() => {
+      setSignInProgress((prev) => {
+        if (prev >= 88) return prev;
+        const step = Math.max(1, Math.round((90 - prev) * 0.12));
+        return Math.min(88, prev + step);
+      });
+    }, 220);
+  }
+
+  function completeSignInProgress() {
+    clearProgressTimer();
+    setSignInProgress(100);
+    // Keep overlay up until the ERP route replaces this page.
+  }
+
+  function abortSignInProgress() {
+    clearProgressTimer();
+    setSubmitting(false);
+    setSignInProgress(0);
+    setAuthFlow(null);
+  }
+
   function useDifferentOrganization() {
     clearStoredCompanyCode();
     setShowOrgField(true);
@@ -130,14 +176,18 @@ function LoginForm() {
     if (!forceLogout) {
       setSessionConflict(false);
     }
-    setSubmitting(true);
+    startSignInProgress("login");
     try {
       const result = await login(companyCode, username, password, { forceLogout });
       if (result?.mfa_required) {
+        abortSignInProgress();
         setMfaChallenge(result);
         setMfaCode("");
+        return;
       }
+      completeSignInProgress();
     } catch (err) {
+      abortSignInProgress();
       if (isSessionConflictError(err)) {
         setSessionConflict(true);
         setError(
@@ -163,19 +213,7 @@ function LoginForm() {
           );
         }
       }
-    } finally {
-      setSubmitting(false);
     }
-  }
-
-  function beginAuthFlow(flow) {
-    setAuthFlow(flow);
-    setSubmitting(true);
-  }
-
-  function finishAuthFlow() {
-    setSubmitting(false);
-    setAuthFlow(null);
   }
 
   async function onSubmit(e) {
@@ -196,21 +234,21 @@ function LoginForm() {
 
   async function onVerifyMfa(e) {
     e.preventDefault();
-    if (!mfaChallenge?.challenge_token) return;
+    if (!mfaChallenge?.challenge_token || submitting) return;
     setError(null);
-    beginAuthFlow("mfa");
+    startSignInProgress("mfa");
     try {
       await completeTwoFactorLogin(mfaChallenge.challenge_token, mfaCode);
+      completeSignInProgress();
     } catch (err) {
+      abortSignInProgress();
       setError(err instanceof ApiError ? err.message : "Invalid verification code.");
-    } finally {
-      finishAuthFlow();
     }
   }
 
   async function onResendMfa() {
-    if (!mfaChallenge?.challenge_token) return;
-    beginAuthFlow("mfa-resend");
+    if (!mfaChallenge?.challenge_token || submitting) return;
+    startSignInProgress("mfa-resend");
     setError(null);
     try {
       const res = await apiRequest("/auth/2fa/resend", {
@@ -219,22 +257,25 @@ function LoginForm() {
         token: null,
       });
       setMfaChallenge((prev) => ({ ...prev, email_hint: res.email_hint ?? prev?.email_hint }));
+      abortSignInProgress();
     } catch (err) {
+      abortSignInProgress();
       setError(err instanceof ApiError ? err.message : "Could not resend code.");
-    } finally {
-      finishAuthFlow();
     }
   }
 
   async function onPasskeyLogin() {
+    if (submitting) return;
     setError(null);
     setSessionConflict(false);
-    beginAuthFlow("passkey-login");
+    setAuthFlow("passkey-login");
+    setSubmitting(true);
     try {
       const org = companyCode.trim().toUpperCase();
       const user = username.trim();
       if (!org || !user) {
         setError("Enter organization code and username to sign in with a passkey.");
+        abortSignInProgress();
         return;
       }
       const begin = await apiRequest("/auth/passkeys/login/options", {
@@ -248,11 +289,15 @@ function LoginForm() {
       if (!begin?.has_credentials || !begin?.options || !begin?.challenge_token) {
         setPasskeyAvailable(false);
         setError("No passkey is registered for this organization account.");
+        abortSignInProgress();
         return;
       }
       const credential = await getPasskeyAssertion(begin.options);
+      startSignInProgress("login");
       await loginWithPasskey(begin.challenge_token, credential);
+      completeSignInProgress();
     } catch (err) {
+      abortSignInProgress();
       if (err?.name === "NotAllowedError") {
         setError("Passkey sign-in was cancelled.");
       } else if (isSessionConflictError(err)) {
@@ -261,15 +306,14 @@ function LoginForm() {
       } else {
         setError(err instanceof ApiError ? err.message : err?.message || "Passkey sign-in failed.");
       }
-    } finally {
-      finishAuthFlow();
     }
   }
 
   async function onPasskeyMfa() {
-    if (!mfaChallenge?.challenge_token) return;
+    if (!mfaChallenge?.challenge_token || submitting) return;
     setError(null);
-    beginAuthFlow("passkey-mfa");
+    setAuthFlow("passkey-mfa");
+    setSubmitting(true);
     try {
       const begin = await apiRequest("/auth/2fa/passkey/options", {
         method: "POST",
@@ -277,15 +321,16 @@ function LoginForm() {
         token: null,
       });
       const credential = await getPasskeyAssertion(begin.options);
-      await completeTwoFactorWithPasskey(begin.challenge_token, credential);
+      startSignInProgress("mfa");
+      await completeTwoFactorWithPasskey(mfaChallenge.challenge_token, credential);
+      completeSignInProgress();
     } catch (err) {
+      abortSignInProgress();
       if (err?.name === "NotAllowedError") {
         setError("Passkey verification was cancelled.");
       } else {
         setError(err instanceof ApiError ? err.message : err?.message || "Passkey verification failed.");
       }
-    } finally {
-      finishAuthFlow();
     }
   }
 
@@ -298,197 +343,199 @@ function LoginForm() {
           ? "Your organization’s Centrix licence has expired. All users have been signed out. Contact your Centrix administrator to renew or extend the licence."
           : null;
   const passkeyBusy = authFlow === "passkey-login" || authFlow === "passkey-mfa";
+  const showSigningOverlay = submitting && !passkeyBusy;
+  const signingLabel =
+    authFlow === "mfa" || authFlow === "mfa-resend" ? "Verifying" : "Signing in";
 
   if (mfaChallenge?.mfa_required) {
     const isEmail = mfaChallenge.method === "email";
     return (
-      <AuthShell
-        title="Two-factor authentication"
-        subtitle={
-          isEmail
-            ? `Enter the code sent to ${mfaChallenge.email_hint || "your email"}.`
-            : "Enter the 6-digit code from Google Authenticator."
-        }
-      >
-        <form onSubmit={onVerifyMfa} className="mt-6 space-y-4">
-          {error ? <AuthError>{error}</AuthError> : null}
-          <AuthField label="Verification code">
+      <>
+        <SignInProgressOverlay
+          open={showSigningOverlay}
+          label={signingLabel}
+          progress={signInProgress}
+        />
+        <AuthShell
+          title="Two-factor authentication"
+          subtitle={
+            isEmail
+              ? `Enter the code sent to ${mfaChallenge.email_hint || "your email"}.`
+              : "Enter the 6-digit code from Google Authenticator."
+          }
+        >
+          <form onSubmit={onVerifyMfa} className="mt-6 space-y-4">
+            {error ? <AuthError>{error}</AuthError> : null}
+            <AuthField label="Verification code">
+              <input
+                className={authInputClass()}
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value)}
+                placeholder="6-digit code"
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                autoFocus
+              />
+            </AuthField>
+            <AuthSubmitButton disabled={submitting || !mfaCode.trim()}>
+              {submitting ? "Verifying…" : "Verify and continue"}
+            </AuthSubmitButton>
+            {mfaChallenge.passkey_available && passkeysOk ? (
+              <button
+                type="button"
+                className="w-full rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-100 dark:hover:bg-slate-900"
+                disabled={submitting}
+                onClick={() => void onPasskeyMfa()}
+              >
+                Use a passkey instead
+              </button>
+            ) : null}
+            {isEmail ? (
+              <button
+                type="button"
+                className="w-full text-sm font-medium text-emerald-700 hover:underline"
+                disabled={submitting}
+                onClick={() => void onResendMfa()}
+              >
+                Resend email code
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="w-full text-sm text-slate-500 hover:underline"
+              disabled={submitting}
+              onClick={() => {
+                setMfaChallenge(null);
+                setMfaCode("");
+                setError(null);
+              }}
+            >
+              Back to sign in
+            </button>
+          </form>
+        </AuthShell>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <SignInProgressOverlay
+        open={showSigningOverlay}
+        label={signingLabel}
+        progress={signInProgress}
+      />
+      <AuthShell title="Sign in" subtitle="Sign in with your email or username and password.">
+        <div className="relative">
+          {passkeyBusy ? (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/85 dark:bg-slate-950/85">
+              <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 text-center shadow-lg dark:border-slate-700 dark:bg-slate-900">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-emerald-600 dark:border-slate-700 dark:border-t-emerald-400" />
+                <div>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Waiting for passkey</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Complete passkey sign-in on your device.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <form
+            onSubmit={onSubmit}
+            className={`mt-6 space-y-4 ${submitting ? "pointer-events-none select-none" : ""}`}
+          >
+          {showOrgField ? (
+            <AuthField label="Organization code">
+              <input
+                className={authInputClass("uppercase")}
+                value={companyCode}
+                onChange={(e) => setCompanyCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ""))}
+                placeholder="e.g. DEMO (optional for platform admin)"
+                autoComplete="organization"
+                disabled={submitting}
+              />
+            </AuthField>
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950/60">
+              <p className="text-slate-600 dark:text-slate-400">
+                Organization{" "}
+                <span className="font-mono font-semibold text-slate-900 dark:text-white">
+                  {companyCode}
+                </span>
+              </p>
+              <button
+                type="button"
+                onClick={useDifferentOrganization}
+                className="mt-1 text-xs font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
+                disabled={submitting}
+              >
+                Use a different organization
+              </button>
+            </div>
+          )}
+          <AuthField label="Username or email">
             <input
               className={authInputClass()}
-              value={mfaCode}
-              onChange={(e) => setMfaCode(e.target.value)}
-              placeholder="6-digit code"
-              autoComplete="one-time-code"
-              inputMode="numeric"
-              autoFocus
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              required
+              disabled={submitting}
             />
           </AuthField>
-          <AuthSubmitButton disabled={submitting || !mfaCode.trim()}>
-            {submitting ? "Verifying…" : "Verify and continue"}
-          </AuthSubmitButton>
-          {mfaChallenge.passkey_available && passkeysOk ? (
+          <AuthField label="Password">
+            <PasswordInput
+              className={authInputClass()}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+              disabled={submitting}
+            />
+          </AuthField>
+          {sessionMessage ? <AuthNotice>{sessionMessage}</AuthNotice> : null}
+          {error ? <AuthError>{error}</AuthError> : null}
+          {sessionConflict ? (
             <button
               type="button"
-              className="w-full rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-100 dark:hover:bg-slate-900"
+              onClick={() => void onForceLogout()}
+              className="w-full rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900"
               disabled={submitting}
-              onClick={() => void onPasskeyMfa()}
             >
-              Use a passkey instead
+              Sign out other device and continue
             </button>
           ) : null}
-          {isEmail ? (
-            <button
-              type="button"
-              className="w-full text-sm font-medium text-emerald-700 hover:underline"
-              disabled={submitting}
-              onClick={() => void onResendMfa()}
-            >
-              Resend email code
-            </button>
+          <AuthSubmitButton disabled={submitting}>
+            {submitting ? "Signing in…" : "Sign in"}
+          </AuthSubmitButton>
+          {passkeysOk && passkeyAvailable ? (
+            <>
+              <div className="relative py-1 text-center text-xs text-slate-400">
+                <span className="relative z-10 bg-white px-2 dark:bg-slate-950">or</span>
+                <span className="absolute inset-x-0 top-1/2 border-t border-slate-200 dark:border-slate-800" />
+              </div>
+              <button
+                type="button"
+                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                disabled={submitting}
+                onClick={() => void onPasskeyLogin()}
+              >
+                Sign in with a passkey
+              </button>
+            </>
           ) : null}
           <button
             type="button"
             className="w-full text-sm text-slate-500 hover:underline"
             disabled={submitting}
-            onClick={() => {
-              setMfaChallenge(null);
-              setMfaCode("");
-              setError(null);
-            }}
+            onClick={() => setForgotPasswordOpen(true)}
           >
-            Back to sign in
+            Forgot password?
           </button>
-        </form>
+          </form>
+        </div>
+        <ForgotPasswordHelpDialog open={forgotPasswordOpen} onClose={() => setForgotPasswordOpen(false)} />
       </AuthShell>
-    );
-  }
-
-  return (
-    <AuthShell title="Sign in" subtitle="Sign in with your email or username and password.">
-      <div className="relative">
-        {passkeyBusy ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/85 dark:bg-slate-950/85">
-            <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 text-center shadow-lg dark:border-slate-700 dark:bg-slate-900">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-emerald-600 dark:border-slate-700 dark:border-t-emerald-400" />
-              <div>
-                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Waiting for passkey</p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Complete passkey sign-in on your device. Password sign-in is temporarily paused.
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : null}
-        {submitting && !passkeyBusy ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/85 dark:bg-slate-950/85">
-            <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 text-center shadow-lg dark:border-slate-700 dark:bg-slate-900">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-emerald-600 dark:border-slate-700 dark:border-t-emerald-400" />
-              <div>
-                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  {authFlow === "mfa" || authFlow === "mfa-resend" ? "Verifying…" : "Signing in…"}
-                </p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Please wait — do not click again.
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : null}
-        <form
-          onSubmit={onSubmit}
-          className={`mt-6 space-y-4 ${submitting ? "pointer-events-none select-none" : ""}`}
-        >
-        {showOrgField ? (
-          <AuthField label="Organization code">
-            <input
-              className={authInputClass("uppercase")}
-              value={companyCode}
-              onChange={(e) => setCompanyCode(e.target.value.replace(/[^a-zA-Z0-9]/g, ""))}
-              placeholder="e.g. DEMO (optional for platform admin)"
-              autoComplete="organization"
-              disabled={submitting}
-            />
-          </AuthField>
-        ) : (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950/60">
-            <p className="text-slate-600 dark:text-slate-400">
-              Organization{" "}
-              <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                {companyCode}
-              </span>
-            </p>
-            <button
-              type="button"
-              onClick={useDifferentOrganization}
-              className="mt-1 text-xs font-medium text-emerald-700 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-300"
-              disabled={submitting}
-            >
-              Use a different organization
-            </button>
-          </div>
-        )}
-        <AuthField label="Username or email">
-          <input
-            className={authInputClass()}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoComplete="username"
-            required
-            disabled={submitting}
-          />
-        </AuthField>
-        <AuthField label="Password">
-          <PasswordInput
-            className={authInputClass()}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-            disabled={submitting}
-          />
-        </AuthField>
-        {sessionMessage ? <AuthNotice>{sessionMessage}</AuthNotice> : null}
-        {error ? <AuthError>{error}</AuthError> : null}
-        {sessionConflict ? (
-          <button
-            type="button"
-            onClick={() => void onForceLogout()}
-            className="w-full rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900"
-            disabled={submitting}
-          >
-            Sign out other device and continue
-          </button>
-        ) : null}
-        <AuthSubmitButton disabled={submitting}>
-          {submitting ? "Signing in…" : "Sign in"}
-        </AuthSubmitButton>
-        {passkeysOk && passkeyAvailable ? (
-          <>
-            <div className="relative py-1 text-center text-xs text-slate-400">
-              <span className="relative z-10 bg-white px-2 dark:bg-slate-950">or</span>
-              <span className="absolute inset-x-0 top-1/2 border-t border-slate-200 dark:border-slate-800" />
-            </div>
-            <button
-              type="button"
-              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-              disabled={submitting}
-              onClick={() => void onPasskeyLogin()}
-            >
-              Sign in with a passkey
-            </button>
-          </>
-        ) : null}
-        <button
-          type="button"
-          className="w-full text-sm text-slate-500 hover:underline"
-          disabled={submitting}
-          onClick={() => setForgotPasswordOpen(true)}
-        >
-          Forgot password?
-        </button>
-        </form>
-      </div>
-      <ForgotPasswordHelpDialog open={forgotPasswordOpen} onClose={() => setForgotPasswordOpen(false)} />
-    </AuthShell>
+    </>
   );
 }
