@@ -309,7 +309,7 @@ export function CustomersListScreen() {
   const [routes, setRoutes] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
   const { search, setSearch, debouncedSearch } = useListUrlSearch();
   const [deletedFilter, setDeletedFilter] = useState("active");
   const [page, setPage] = useState(1);
@@ -415,9 +415,8 @@ export function CustomersListScreen() {
   }, [loadReferenceData]);
 
   useEffect(() => {
-    if (loading) return;
-    loadCustomers();
-  }, [loading, loadCustomers]);
+    void loadCustomers();
+  }, [loadCustomers]);
 
   const routeById = useMemo(() => new Map(routes.map((r) => [r.id, r])), [routes]);
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
@@ -442,6 +441,7 @@ export function CustomersListScreen() {
   const pageRowIds = useMemo(() => pageSlice.map((c) => c.customer_num), [pageSlice]);
   const allOnPageSelected = isAllOnPageSelected(pageRowIds);
   const someOnPageSelected = isSomeOnPageSelected(pageRowIds);
+  const tableLoading = loading || (listLoading && customers.length === 0);
 
   useEffect(() => {
     setPage(1);
@@ -587,7 +587,7 @@ export function CustomersListScreen() {
         </div>
       }
       banner={
-        !loading ? (
+        !tableLoading ? (
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Active customers" value={stats.active.toLocaleString()} />
             <StatCard label="New this month" value={stats.newThisMonth.toLocaleString()} />
@@ -627,7 +627,7 @@ export function CustomersListScreen() {
       }
     >
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
-        {loading ? (
+        {tableLoading ? (
           <p className="p-8 text-sm text-slate-500">Loading customers…</p>
         ) : (
           <>
