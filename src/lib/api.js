@@ -175,7 +175,19 @@ export function formatApiErrorMessage(data, fallback = "Request failed") {
       if (detail && detail !== message && !message.includes(detail) && !detail.includes(message)) {
         return `${message} ${detail}`;
       }
-      return dedupeRepeatedText(message);
+      const cleaned = dedupeRepeatedText(message);
+      // Org module gate (erp.module) — surface which module keys failed.
+      if (/not enabled for your organization/i.test(cleaned)) {
+        const moduleKey =
+          (typeof data.module === "string" && data.module.trim()) ||
+          (Array.isArray(data.modules) && data.modules.length
+            ? data.modules.filter(Boolean).join(", ")
+            : "");
+        if (moduleKey) {
+          return `${cleaned} Required module: ${moduleKey}.`;
+        }
+      }
+      return cleaned;
     }
     if (typeof data.detail === "string" && data.detail.trim()) {
       return data.detail.trim();
