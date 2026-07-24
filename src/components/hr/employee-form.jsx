@@ -65,14 +65,14 @@ export function useEmployeeFormResources() {
       const orgId = user?.organization_id;
       // Isolate failures: /users and /branches used to require admin and
       // Promise.all would leave departments/positions empty when either 403'd.
+      // Bypass permanent cache for manager picker so the roster is always current.
+      invalidateReferenceResource("employees-lean", orgId);
       const settled = await Promise.allSettled([
         apiRequest("/departments", { searchParams: { per_page: 200 } }),
         apiRequest("/positions", { searchParams: { per_page: 200 } }),
         apiRequest("/work-shifts", { searchParams: { per_page: 200 } }),
         fetchBranchesCached(orgId),
         fetchUsersCached(orgId),
-        // Bypass permanent cache for manager picker so the roster is always current.
-        invalidateReferenceResource("employees-lean", orgId);
         fetchEmployeesCached(orgId),
       ]);
       const value = (i, fallback = []) =>
