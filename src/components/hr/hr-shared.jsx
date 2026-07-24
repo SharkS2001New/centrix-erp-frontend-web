@@ -87,6 +87,8 @@ export const EMPTY_EMPLOYEE_FORM = {
   restrict_work_weekdays: false,
   /** Carbon dayOfWeek ints: 0=Sun … 6=Sat. Empty when unrestricted. */
   work_weekdays: [],
+  /** When true, skipped lunch counts as work; may leave early by lunch length. */
+  bank_lunch_as_work: false,
   user_id: "",
   reports_to_employee_id: "",
   job_title: "",
@@ -463,6 +465,7 @@ export function employeeToForm(employee) {
     work_weekdays: Array.isArray(employee.work_weekdays)
       ? employee.work_weekdays.map((d) => Number(d)).filter((d) => d >= 0 && d <= 6)
       : [],
+    bank_lunch_as_work: !!employee.bank_lunch_as_work,
     user_id: employee.user_id != null ? String(employee.user_id) : "",
     reports_to_employee_id:
       employee.reports_to_employee_id != null ? String(employee.reports_to_employee_id) : "",
@@ -591,6 +594,7 @@ export function buildEmployeeBody(form, organizationId, branchId, { isEdit = fal
       form.restrict_work_weekdays && Array.isArray(form.work_weekdays) && form.work_weekdays.length > 0
         ? form.work_weekdays.map((d) => Number(d))
         : null,
+    bank_lunch_as_work: !!form.bank_lunch_as_work,
     user_id: form.user_id ? Number(form.user_id) : null,
     reports_to_employee_id: form.reports_to_employee_id
       ? Number(form.reports_to_employee_id)

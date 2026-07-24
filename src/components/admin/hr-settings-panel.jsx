@@ -336,7 +336,31 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
                               }
                             />
                           </Field>
+                          <Field label="Default lunch minutes">
+                            <input
+                              type="number"
+                              min="0"
+                              max="240"
+                              className={inputClassName()}
+                              value={form.default_lunch_minutes}
+                              onChange={(e) =>
+                                setForm((f) => ({ ...f, default_lunch_minutes: e.target.value }))
+                              }
+                            />
+                          </Field>
                         </div>
+                        <Toggle
+                          label="Lunch break is paid"
+                          description="Lunch counts as paid time (expected hours = full shift span). Clock-out for lunch is not treated as lost time."
+                          checked={form.lunch_break_is_paid}
+                          onChange={(v) => setForm((f) => ({ ...f, lunch_break_is_paid: v }))}
+                        />
+                        <Toggle
+                          label="Default: lunch required on new shifts"
+                          description="New work shifts inherit this. Each shift can still override lunch length for weekdays and Sat/holiday hours."
+                          checked={form.default_lunch_required}
+                          onChange={(v) => setForm((f) => ({ ...f, default_lunch_required: v }))}
+                        />
                         <Toggle
                           label="Require attendance before payroll"
                           description="Block payroll processing for employees with missing attendance in the pay period."

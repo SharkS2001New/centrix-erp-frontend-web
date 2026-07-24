@@ -864,6 +864,21 @@ export function EmployeeFormWizard({
               ) : null}
               <FieldError message={tabErrors.work_weekdays} />
             </div>
+            <label className="flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={!!form.bank_lunch_as_work}
+                onChange={(e) => updateField("bank_lunch_as_work", e.target.checked)}
+              />
+              <span>
+                Bank lunch as work time
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  If they skip lunch (no lunch clock-out), they may leave early by the lunch length
+                  without losing paid hours. Working through lunch does not add extra pay.
+                </span>
+              </span>
+            </label>
             <Field label="Job title" required>
               <input
                 type="text"

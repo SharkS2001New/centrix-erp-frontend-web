@@ -495,8 +495,8 @@ export function HrAttendanceScreen() {
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-[15px] font-medium text-slate-900">Attendance records</h2>
               <p className="mt-1 text-sm text-slate-500">
-                One row per employee per day in the selected date range. Present, late, and half-day
-                rows count toward payroll when attendance proration is enabled.
+                One row per employee per day. Paid hours exclude lunch and time after shift end.
+                Overtime ≥ 1 hour creates a pending OT draft for HR approval.
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -507,7 +507,10 @@ export function HrAttendanceScreen() {
                     <th className="px-4 py-3">Date</th>
                     <th className="px-4 py-3">In</th>
                     <th className="px-4 py-3">Out</th>
-                    <th className="px-4 py-3">Hours</th>
+                    <th className="px-4 py-3">Paid / exp.</th>
+                    <th className="px-4 py-3">Late</th>
+                    <th className="px-4 py-3">Lunch</th>
+                    <th className="px-4 py-3">OT</th>
                     <th className="px-4 py-3">Login channel</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Payroll</th>
@@ -517,13 +520,13 @@ export function HrAttendanceScreen() {
                 <tbody className="divide-y divide-slate-100">
                   {historyLoading ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                      <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
                         Loading…
                       </td>
                     </tr>
                   ) : records.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                      <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
                         {recordSearch.trim()
                           ? "No attendance records match your search in this date range."
                           : "No attendance records in this date range."}
@@ -538,7 +541,31 @@ export function HrAttendanceScreen() {
                         <td className="px-4 py-3">{formatShortDate(r.attendance_date)}</td>
                         <td className="px-4 py-3">{r.check_in?.slice?.(0, 5) ?? "—"}</td>
                         <td className="px-4 py-3">{r.check_out?.slice?.(0, 5) ?? "—"}</td>
-                        <td className="px-4 py-3">{r.hours_worked ?? "—"}</td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          {r.hours_worked ?? "—"}
+                          {r.expected_hours != null ? (
+                            <span className="text-slate-400"> / {r.expected_hours}</span>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.late_minutes > 0 ? `${r.late_minutes}m` : "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.lunch_status === "taken"
+                            ? r.lunch_minutes != null
+                              ? `${r.lunch_minutes}m`
+                              : "Taken"
+                            : r.lunch_status === "skipped"
+                              ? "—"
+                              : (r.lunch_status ?? "—")}
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.overtime_minutes >= 60
+                            ? `${(r.overtime_minutes / 60).toFixed(2)}h`
+                            : r.overtime_minutes > 0
+                              ? `${r.overtime_minutes}m`
+                              : "—"}
+                        </td>
                         <td className="px-4 py-3">
                           <span
                             className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${attendanceLoginChannelBadgeClass(r.source)}`}

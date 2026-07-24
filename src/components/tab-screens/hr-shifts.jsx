@@ -2,6 +2,8 @@
 
 import { Field, formatShortDate, inputClassName } from "@/components/catalog/catalog-shared";
 import { HrCrudPage } from "@/components/hr/hr-crud-page";
+import { useAuth } from "@/contexts/auth-context";
+import { mergeHrPayrollSettings } from "@/lib/hr-settings";
 
 function formatTime(t) {
   if (!t) return "—";
@@ -14,11 +16,14 @@ function padTime(t) {
 }
 
 export function HrShiftsScreen() {
+  const { capabilities } = useAuth();
+  const hrDefaults = mergeHrPayrollSettings(capabilities?.module_settings);
+
   return (
     <>
     <HrCrudPage
       title="Work shifts"
-      subtitle="Shift times, weekends, and public holidays per schedule"
+      subtitle="Shift times, weekends, public holidays, and paid lunch break per schedule"
       addButtonLabel="Add shift"
       drawerWide
       apiPath="/work-shifts"
@@ -53,6 +58,14 @@ export function HrShiftsScreen() {
               ? `${formatTime(r.alternate_start_time)}–${formatTime(r.alternate_end_time)}`
               : "—",
         },
+        {
+          key: "lunch_minutes",
+          label: "Lunch",
+          render: (r) =>
+            r.lunch_required === false
+              ? "—"
+              : `${r.lunch_minutes ?? hrDefaults.default_lunch_minutes ?? 60}m`,
+        },
       ]}
       searchFilter={(r, q) =>
         `${r.shift_code} ${r.shift_name}`.toLowerCase().includes(q)
@@ -62,6 +75,12 @@ export function HrShiftsScreen() {
         shift_name: row?.shift_name ?? "",
         start_time: row?.start_time?.slice?.(0, 5) ?? "08:00",
         end_time: row?.end_time?.slice?.(0, 5) ?? "17:00",
+        lunch_minutes:
+          row?.lunch_minutes != null
+            ? String(row.lunch_minutes)
+            : String(hrDefaults.default_lunch_minutes ?? 60),
+        lunch_required:
+          row != null ? row.lunch_required !== false : hrDefaults.default_lunch_required !== false,
         crosses_midnight: !!row?.crosses_midnight,
         works_saturday: !!row?.works_saturday,
         works_sunday: !!row?.works_sunday,
@@ -69,6 +88,8 @@ export function HrShiftsScreen() {
         use_alternate_hours: !!row?.use_alternate_hours,
         alternate_start_time: row?.alternate_start_time?.slice?.(0, 5) ?? "08:00",
         alternate_end_time: row?.alternate_end_time?.slice?.(0, 5) ?? "12:00",
+        alternate_lunch_minutes:
+          row?.alternate_lunch_minutes != null ? String(row.alternate_lunch_minutes) : "",
         alternate_crosses_midnight: !!row?.alternate_crosses_midnight,
         is_active: row?.is_active !== false,
       })}
@@ -78,6 +99,8 @@ export function HrShiftsScreen() {
         shift_name: form.shift_name.trim(),
         start_time: padTime(form.start_time),
         end_time: padTime(form.end_time),
+        lunch_minutes: form.lunch_required ? Number(form.lunch_minutes) || 60 : 0,
+        lunch_required: form.lunch_required,
         crosses_midnight: form.crosses_midnight,
         works_saturday: form.works_saturday,
         works_sunday: form.works_sunday,
@@ -85,6 +108,10 @@ export function HrShiftsScreen() {
         use_alternate_hours: form.use_alternate_hours,
         alternate_start_time: form.use_alternate_hours ? padTime(form.alternate_start_time) : null,
         alternate_end_time: form.use_alternate_hours ? padTime(form.alternate_end_time) : null,
+        alternate_lunch_minutes:
+          form.use_alternate_hours && form.alternate_lunch_minutes !== ""
+            ? Number(form.alternate_lunch_minutes)
+            : null,
         alternate_crosses_midnight: form.use_alternate_hours
           ? form.alternate_crosses_midnight
           : false,
@@ -92,6 +119,12 @@ export function HrShiftsScreen() {
       })}
       validateForm={(form) => {
         if (!form.shift_name?.trim()) return "Shift name is required.";
+        if (
+          form.lunch_required &&
+          (form.lunch_minutes === "" || Number(form.lunch_minutes) < 0)
+        ) {
+          return "Set lunch break minutes (or turn off lunch required).";
+        }
         if (
           form.use_alternate_hours &&
           (!form.alternate_start_time || !form.alternate_end_time)
@@ -144,6 +177,30 @@ export function HrShiftsScreen() {
               />
             </Field>
           </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={form.lunch_required}
+              onChange={(e) => setForm((p) => ({ ...p, lunch_required: e.target.checked }))}
+            />
+            Lunch break required
+          </label>
+          {form.lunch_required ? (
+            <Field label="Lunch minutes (weekday)">
+              <input
+                type="number"
+                min={0}
+                max={240}
+                value={form.lunch_minutes}
+                onChange={(e) => setForm((p) => ({ ...p, lunch_minutes: e.target.value }))}
+                className={inputClassName()}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Paid break by default. Staff clock out for lunch and back in; that hour is credited,
+                not treated as lost time.
+              </p>
+            </Field>
+          ) : null}
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
@@ -221,6 +278,21 @@ export function HrShiftsScreen() {
                       />
                     </Field>
                   </div>
+                  {form.lunch_required ? (
+                    <Field label="Alternate lunch minutes (optional)">
+                      <input
+                        type="number"
+                        min={0}
+                        max={240}
+                        placeholder="Same as weekday"
+                        value={form.alternate_lunch_minutes}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, alternate_lunch_minutes: e.target.value }))
+                        }
+                        className={inputClassName()}
+                      />
+                    </Field>
+                  ) : null}
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input
                       type="checkbox"
