@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, ApiError, uploadEmployeePhoto } from "@/lib/api";
+import { invalidateReferenceResource } from "@/lib/reference-data-cache";
 import {
   EMPTY_EMPLOYEE_FORM,
   EmployeeFormPageShell,
@@ -70,6 +71,7 @@ export function HrEmployeesNewScreen() {
         method: "POST",
         body: buildEmployeeBody(form, user.organization_id, branchId),
       });
+      invalidateReferenceResource("employees-lean", user.organization_id);
       await syncEmployeePaymentAccounts(
         created.id,
         form.payment_accounts ?? [],

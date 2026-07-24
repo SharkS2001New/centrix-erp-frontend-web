@@ -566,7 +566,7 @@ export function validateEmployeeTab(tabId, form, { showBranchSelect = false } = 
   }
   if (tabId === "payroll") {
     if (form.base_salary === "" || Number(form.base_salary) < 0) {
-      errors.base_salary = "Enter a valid basic salary (KES).";
+      errors.base_salary = "Enter a valid gross pay (KES).";
     }
   }
   return errors;
@@ -758,7 +758,7 @@ export function payrollBreakdownSections(line, employee) {
   const other = Number(line?.other_deductions ?? meta.other_deductions ?? 0);
 
   const earnings = [
-    { label: "Contract monthly salary", value: contractBasic, muted: payroll.use_attendance_proration },
+    { label: "Contract gross pay", value: contractBasic, muted: payroll.use_attendance_proration },
     { label: "Basic pay (this period)", value: basic },
   ];
   if (allowanceLines.length > 0) {
@@ -1011,13 +1011,11 @@ export function isPayrollEligible(employee) {
   );
 }
 
-/** Monthly allowances for payroll preview (employee field, else 10% of basic). */
+/** Explicit monthly allowances only — never invent a default % of salary. */
 export function defaultPayrollAllowances(baseSalary, employee = null) {
   const fromEmployee = Number(employee?.monthly_allowance ?? 0);
   if (fromEmployee > 0) return fromEmployee;
-  const basic = Number(baseSalary);
-  if (!Number.isFinite(basic) || basic <= 0) return 0;
-  return Math.round(basic * 0.1 * 100) / 100;
+  return 0;
 }
 
 export function employeeInitials(name) {

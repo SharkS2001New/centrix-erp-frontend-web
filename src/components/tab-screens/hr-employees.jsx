@@ -38,11 +38,14 @@ import {
 } from "@/components/catalog/table-row-selection";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/use-confirm";
+import { invalidateReferenceResource } from "@/lib/reference-data-cache";
+import { useAuth } from "@/contexts/auth-context";
 
 
 export function HrEmployeesScreen() {
   const confirm = useConfirm();
   const router = useRouter();
+  const { user } = useAuth();
 
   const [employees, setEmployees] = useState([]);
   const [totalEmployees, setTotalEmployees] = useState(0);
@@ -178,6 +181,7 @@ export function HrEmployeesScreen() {
     if (!ok) return;
     try {
       await apiRequest(`/employees/${employee.id}`, { method: "DELETE" });
+      invalidateReferenceResource("employees-lean", user?.organization_id);
       await reloadAll();
       notifySuccess(`"${name}" deleted`);
     } catch (err) {
@@ -206,7 +210,9 @@ export function HrEmployeesScreen() {
           await apiRequest(`/employees/${id}`, { method: "DELETE" });
         },
       });
-
+      if (succeeded.length) {
+        invalidateReferenceResource("employees-lean", user?.organization_id);
+      }
       clearSelection();
       await reloadAll();
 

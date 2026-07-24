@@ -677,7 +677,7 @@ export function HrPayrollScreen() {
             }
             className="rounded border-slate-300"
           />
-          Include allowances (from HR → Allowances, or 10% of basic if none set)
+          Include allowances (from HR → Allowances when set)
         </label>
         <Field label="Deductions">
           <StatutoryDeductionsPanel />

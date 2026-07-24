@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { useParams, useRouter } from "next/navigation";
 import { apiRequest, ApiError, uploadEmployeePhoto } from "@/lib/api";
+import { invalidateReferenceResource } from "@/lib/reference-data-cache";
 import {
   EmployeeFormPageShell,
   EmployeeFormWizard,
@@ -109,6 +110,7 @@ export function HrEmployeesIdEditScreen() {
           employeeCode,
         }),
       });
+      invalidateReferenceResource("employees-lean", organizationId ?? user?.organization_id);
       await syncEmployeePaymentAccounts(
         employeeId,
         form.payment_accounts ?? [],

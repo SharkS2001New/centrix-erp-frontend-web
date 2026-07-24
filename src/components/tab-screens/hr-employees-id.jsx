@@ -215,7 +215,7 @@ export function HrEmployeesIdScreen() {
                   }
                 />
                 <DetailRow label="Hired" value={formatShortDate(employee.hire_date)} />
-                <DetailRow label="Basic salary" value={formatHrKesFull(employee.base_salary)} />
+                <DetailRow label="Gross pay" value={formatHrKesFull(employee.base_salary)} />
                 <DetailRow
                   label="Allowances"
                   value={
@@ -258,8 +258,8 @@ export function HrEmployeesIdScreen() {
                   Estimated monthly net (Kenya {salaryPreview.effective_label})
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Preview uses basic salary plus default 10% allowances (same as payroll generate).
-                  Statutory numbers on processed runs may differ if allowances are turned off.
+                  Preview uses monthly gross pay plus any active allowance lines from HR →
+                  Allowances. Nothing is auto-added when allowances are empty.
                 </p>
                 <dl className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {payrollBreakdownRows(salaryPreview, employee).map((row) => (

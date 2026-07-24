@@ -8,6 +8,7 @@ import {
   fetchBranchesCached,
   fetchEmployeesCached,
   fetchUsersCached,
+  invalidateReferenceResource,
 } from "@/lib/reference-data-cache";
 import { Field, FormModal, inputClassName } from "@/components/catalog/catalog-shared";
 import { HrSearchableSelect } from "@/components/hr/hr-searchable-select";
@@ -70,6 +71,8 @@ export function useEmployeeFormResources() {
         apiRequest("/work-shifts", { searchParams: { per_page: 200 } }),
         fetchBranchesCached(orgId),
         fetchUsersCached(orgId),
+        // Bypass permanent cache for manager picker so the roster is always current.
+        invalidateReferenceResource("employees-lean", orgId);
         fetchEmployeesCached(orgId),
       ]);
       const value = (i, fallback = []) =>
@@ -87,7 +90,11 @@ export function useEmployeeFormResources() {
         (branchesData ?? []).filter((b) => !orgId || b.organization_id === orgId),
       );
       setUsers(usersData ?? []);
-      setEmployees(employeesData ?? []);
+      setEmployees(
+        (employeesData ?? []).filter(
+          (e) => e && e.is_active !== false && e.employment_status !== "terminated",
+        ),
+      );
     } finally {
       setLoading(false);
     }
@@ -913,11 +920,22 @@ export function EmployeeFormWizard({
               <HrSearchableSelect
                 value={form.reports_to_employee_id}
                 onChange={(v) => updateField("reports_to_employee_id", v)}
-                options={employees.map((e) => ({
-                  value: String(e.id),
-                  label: e.full_name ?? composeEmployeeDisplayName(e),
-                }))}
+                options={employees
+                  .filter((e) => !employeeId || String(e.id) !== String(employeeId))
+                  .map((e) => ({
+                    value: String(e.id),
+                    label:
+                      composeEmployeeDisplayName(e) ||
+                      e.full_name ||
+                      e.employee_code ||
+                      `Employee #${e.id}`,
+                  }))}
                 placeholder="Search employee…"
+                emptyLabel={
+                  employees.length === 0
+                    ? "No employees loaded yet"
+                    : "No matching employees"
+                }
               />
             </Field>
             <Field label="Linked system user (optional)">
@@ -1081,7 +1099,7 @@ export function EmployeeFormWizard({
 
         {currentTab.id === "payroll" && (
           <>
-            <Field label="Basic salary (KES / month)" required>
+            <Field label="Gross pay (KES / month)" required>
               <input
                 type="number"
                 value={form.base_salary}
@@ -1095,8 +1113,10 @@ export function EmployeeFormWizard({
               <FieldError message={tabErrors.base_salary} />
             </Field>
             <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-              Add housing, transport, and other monthly allowances under{" "}
-              <strong>HR → Allowances</strong>. Payroll sums active allowance lines per employee.
+              This is the employee&apos;s monthly <strong>gross pay</strong> before statutory
+              deductions. Optional housing, transport, and other lines under{" "}
+              <strong>HR → Allowances</strong> are added on top only when you set them — nothing
+              is auto-added.
             </p>
             <Field label="Pay frequency">
               <select
