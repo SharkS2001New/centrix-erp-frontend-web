@@ -62,6 +62,8 @@ export const REPORT_MODULE_BY_SLUG = {
 
   "payroll-summary": "hr_payroll.reports",
   "leave-balance": "hr_payroll.reports",
+  "attendance-register": "hr_payroll.reports",
+  "lateness-list": "hr_payroll.reports",
   "statutory-deductions": "hr_payroll.reports",
   "bank-transfer": "hr_payroll.reports",
   "staff-turnover": "hr_payroll.reports",

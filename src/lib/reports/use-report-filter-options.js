@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import {
+  ATTENDANCE_STATUS_OPTIONS,
   INVENTORY_LOCATION_OPTIONS,
   inventoryTransactionTypeOptionsForCapabilities,
+  LATENESS_WAIVER_OPTIONS,
   ORDER_STATUS_OPTIONS,
   PAYMENT_STATUS_OPTIONS,
   salesChannelOptionsForCapabilities,
@@ -23,6 +25,8 @@ export function useReportFilterOptions(reportKey) {
       channels: salesChannelOptionsForCapabilities(capabilities),
       paymentStatuses: PAYMENT_STATUS_OPTIONS,
       orderStatuses: ORDER_STATUS_OPTIONS,
+      attendanceStatuses: ATTENDANCE_STATUS_OPTIONS,
+      latenessWaiverStatuses: LATENESS_WAIVER_OPTIONS,
       stockLocations: STOCK_LOCATION_FILTER_OPTIONS,
       inventoryLocations: INVENTORY_LOCATION_OPTIONS,
       transactionTypes: inventoryTransactionTypeOptionsForCapabilities(capabilities),

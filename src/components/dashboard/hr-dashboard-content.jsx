@@ -27,6 +27,8 @@ const HR_LINKS = [
   { href: "/hr/allowances", title: "Allowances", desc: "Recurring allowances" },
   { href: "/hr/deductions", title: "Deductions", desc: "Statutory and other deductions" },
   { href: "/reports/leave-balance", title: "Leave balance", desc: "Annual, sick, and off-day balances" },
+  { href: "/reports/attendance-register", title: "Attendance register", desc: "Daily check-in/out and paid hours" },
+  { href: "/reports/lateness-list", title: "Lateness list", desc: "Late arrivals and waivers" },
   { href: "/reports/payroll-summary", title: "Payroll summary", desc: "Payroll runs summary" },
   { href: "/reports/statutory-deductions", title: "Statutory deductions", desc: "NSSF, SHIF, PAYE, and levies" },
   { href: "/reports/bank-transfer", title: "Bank transfer", desc: "Net pay bank payment file" },

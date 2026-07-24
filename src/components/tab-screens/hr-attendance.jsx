@@ -51,6 +51,8 @@ const EMPTY_MANUAL = {
   status: "present",
   hours_worked: "",
   notes: "",
+  lateness_waived: false,
+  lateness_waiver_reason: "",
 };
 
 const NON_WORK_STATUSES = ["leave", "holiday", "absent"];
@@ -282,6 +284,9 @@ export function HrAttendanceScreen() {
       status: record.status ?? "present",
       hours_worked: record.hours_worked != null ? String(record.hours_worked) : "",
       notes: record.notes ?? "",
+      lateness_waived: !!record.lateness_waived,
+      lateness_waiver_reason: record.lateness_waiver_reason ?? "",
+      late_minutes: record.late_minutes ?? 0,
     });
     setManualError(null);
     setDayHint(null);
@@ -318,6 +323,37 @@ export function HrAttendanceScreen() {
       await loadHistory();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Delete failed");
+    }
+  }
+
+  async function waiveLateness(record, waived) {
+    let reason = record.lateness_waiver_reason ?? "";
+    if (waived) {
+      const entered = window.prompt(
+        `Waive ${record.late_minutes} minutes late for ${composeEmployeeDisplayName(record.employee) || "employee"}?\nOptional reason:`,
+        reason || "",
+      );
+      if (entered === null) return;
+      reason = entered.trim();
+    } else {
+      const ok = await confirm({
+        title: "Undo lateness waiver?",
+        message: "Paid hours will again deduct the late minutes for payroll.",
+        confirmLabel: "Undo waiver",
+      });
+      if (!ok) return;
+    }
+    try {
+      await apiRequest(`/employee-attendance/${record.id}/waive-lateness`, {
+        method: "POST",
+        body: {
+          lateness_waived: waived,
+          lateness_waiver_reason: waived ? reason || null : null,
+        },
+      });
+      await loadHistory();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not update lateness waiver");
     }
   }
 
@@ -371,6 +407,10 @@ export function HrAttendanceScreen() {
             hours_worked: timesRequired ? computedHours : 0,
             notes: manualForm.notes.trim() || null,
             source: editingRecord.source ?? "manual",
+            lateness_waived: !!manualForm.lateness_waived,
+            lateness_waiver_reason: manualForm.lateness_waived
+              ? manualForm.lateness_waiver_reason.trim() || null
+              : null,
           },
         });
         setManualOpen(false);
@@ -644,7 +684,18 @@ export function HrAttendanceScreen() {
                           ) : null}
                         </td>
                         <td className="px-4 py-3">
-                          {r.late_minutes > 0 ? `${r.late_minutes}m` : "—"}
+                          {r.late_minutes > 0 ? (
+                            <span>
+                              {r.late_minutes}m
+                              {r.lateness_waived ? (
+                                <span className="ml-1 text-[11px] font-medium text-emerald-700">
+                                  waived
+                                </span>
+                              ) : null}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {r.lunch_status === "taken"
@@ -688,6 +739,24 @@ export function HrAttendanceScreen() {
                           >
                             Edit
                           </button>
+                          {r.late_minutes > 0 && !r.lateness_waived ? (
+                            <button
+                              type="button"
+                              onClick={() => void waiveLateness(r, true)}
+                              className="ml-3 text-emerald-700 hover:underline"
+                            >
+                              Waive late
+                            </button>
+                          ) : null}
+                          {r.late_minutes > 0 && r.lateness_waived ? (
+                            <button
+                              type="button"
+                              onClick={() => void waiveLateness(r, false)}
+                              className="ml-3 text-amber-700 hover:underline"
+                            >
+                              Undo waive
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => deleteRecord(r)}
@@ -910,6 +979,39 @@ export function HrAttendanceScreen() {
               </p>
             </Field>
           </>
+        ) : null}
+        {editingRecord && (manualForm.late_minutes > 0 || editingRecord.late_minutes > 0) ? (
+          <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+            <label className="flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={!!manualForm.lateness_waived}
+                onChange={(e) =>
+                  setManualForm((p) => ({ ...p, lateness_waived: e.target.checked }))
+                }
+              />
+              <span>
+                Waive lateness ({manualForm.late_minutes || editingRecord.late_minutes}m)
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  When waived, late minutes are restored to paid hours so payroll is not reduced.
+                </span>
+              </span>
+            </label>
+            {manualForm.lateness_waived ? (
+              <Field label="Waiver reason">
+                <input
+                  type="text"
+                  value={manualForm.lateness_waiver_reason}
+                  onChange={(e) =>
+                    setManualForm((p) => ({ ...p, lateness_waiver_reason: e.target.value }))
+                  }
+                  placeholder="e.g. traffic, medical appointment"
+                  className={inputClassName()}
+                />
+              </Field>
+            ) : null}
+          </div>
         ) : null}
         <Field label="Notes">
           <input

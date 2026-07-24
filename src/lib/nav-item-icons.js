@@ -163,6 +163,8 @@ export const NAV_HREF_ICONS = {
   "/reports/ar-aging": "calendar",
   "/reports/kra-receipts": "book",
   "/reports/leave-balance": "clipboard",
+  "/reports/attendance-register": "clipboard",
+  "/reports/lateness-list": "alert",
   "/reports/payroll-summary": "receipt",
   "/reports/statutory-deductions": "percent",
   "/reports/bank-transfer": "wallet",

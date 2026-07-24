@@ -170,6 +170,8 @@ export const REPORT_CATEGORY_DEFS = [
     icon: "payroll",
     keys: [
       "leave-balance",
+      "attendance-register",
+      "lateness-list",
       "payroll-summary",
       "statutory-deductions",
       "bank-transfer",

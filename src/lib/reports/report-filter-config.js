@@ -68,6 +68,22 @@ export const ORDER_STATUS_OPTIONS = [
   { value: "cancelled", label: "Cancelled" },
 ];
 
+export const ATTENDANCE_STATUS_OPTIONS = [
+  { value: "", label: "All statuses" },
+  { value: "present", label: "Present" },
+  { value: "late", label: "Late" },
+  { value: "half_day", label: "Half day" },
+  { value: "absent", label: "Absent" },
+  { value: "leave", label: "Leave" },
+  { value: "holiday", label: "Holiday / off" },
+];
+
+export const LATENESS_WAIVER_OPTIONS = [
+  { value: "", label: "All (waived & open)" },
+  { value: "false", label: "Not waived" },
+  { value: "true", label: "Waived" },
+];
+
 export const STOCK_LOCATION_FILTER_OPTIONS = [
   { value: "", label: "All locations" },
   { value: "shop", label: "Shop" },
@@ -136,6 +152,8 @@ export const REPORT_DATE_COLUMNS = {
   "payroll-summary": "run_date",
   headcount: "hire_date",
   "contract-expiry": "contract_end_date",
+  "attendance-register": "attendance_date",
+  "lateness-list": "attendance_date",
   "stock-receipts": "receipt_date",
   damages: "damage_date",
 };
@@ -171,6 +189,17 @@ export const REPORT_EXTRA_FILTERS = {
     { id: "q", label: "Search", type: "text", placeholder: "Customer name or phone…" },
   ],
   "daily-sales": [{ id: "channel", label: "Channel", type: "select", optionsKey: "channels" }],
+  "attendance-register": [
+    { id: "status", label: "Status", type: "select", optionsKey: "attendanceStatuses" },
+  ],
+  "lateness-list": [
+    {
+      id: "lateness_waived",
+      label: "Waiver",
+      type: "select",
+      optionsKey: "latenessWaiverStatuses",
+    },
+  ],
   "category-sales": [
     { id: "channel", label: "Channel", type: "select", optionsKey: "channels" },
     { id: "sub_category_id", label: "Subcategory", type: "select", optionsKey: "subcategories" },

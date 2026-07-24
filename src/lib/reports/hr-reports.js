@@ -1,6 +1,18 @@
 /** HR report slugs registered in the API catalog under `hr`. */
 export const HR_REPORT_DEFS = [
   { key: "leave-balance", label: "Leave balance", subtitle: "Employee leave balances by type", icon: "clipboard" },
+  {
+    key: "attendance-register",
+    label: "Attendance register",
+    subtitle: "Daily check-in/out, paid hours, lunch, and status",
+    icon: "clipboard",
+  },
+  {
+    key: "lateness-list",
+    label: "Lateness list",
+    subtitle: "Late arrivals with waiver status and reasons",
+    icon: "alert",
+  },
   { key: "payroll-summary", label: "Payroll summary", subtitle: "Payroll run totals and breakdown", icon: "receipt" },
   { key: "statutory-deductions", label: "Statutory deductions", subtitle: "PAYE, NSSF, NHIF and other statutory lines", icon: "percent" },
   { key: "bank-transfer", label: "Bank transfer", subtitle: "Net pay due for bank disbursement", icon: "wallet" },

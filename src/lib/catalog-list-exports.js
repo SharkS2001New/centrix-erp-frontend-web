@@ -29,6 +29,8 @@ export const ATTENDANCE_EXPORT_COLUMNS = [
   { key: "hours_worked", label: "Paid hours", align: "right" },
   { key: "expected_hours", label: "Expected hours", align: "right" },
   { key: "late_minutes", label: "Late (min)", align: "right" },
+  { key: "lateness_waived", label: "Late waived" },
+  { key: "lateness_waiver_reason", label: "Waiver reason" },
   { key: "lunch_status", label: "Lunch" },
   { key: "lunch_minutes", label: "Lunch (min)", align: "right" },
   { key: "overtime_minutes", label: "OT (min)", align: "right" },

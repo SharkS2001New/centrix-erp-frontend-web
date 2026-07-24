@@ -348,6 +348,8 @@ export function reportPermissionCode(reportKey) {
     expenses: P.reports.expenses.view,
     "payroll-summary": P.hr.payroll.view,
     "leave-balance": P.hr.leave.view,
+    "attendance-register": P.hr.attendance.view,
+    "lateness-list": P.hr.attendance.view,
     "statutory-deductions": P.hr.payroll.view,
     "bank-transfer": P.hr.payroll.view,
     "staff-turnover": P.hr.employees.view,
