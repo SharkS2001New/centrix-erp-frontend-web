@@ -779,7 +779,16 @@ export function payrollBreakdownSections(line, employee) {
   const attendance = payroll.attendance;
   const attendanceNote =
     attendance && payroll.use_attendance_proration
-      ? `${attendance.paid_days ?? 0} paid days of ${attendance.expected_days ?? 0} scheduled · ${attendance.absent_days ?? 0} absent · ${attendance.unpaid_leave_days ?? 0} unpaid leave`
+      ? [
+          `${attendance.paid_days ?? 0} paid days of ${attendance.expected_days ?? 0} scheduled`,
+          `${attendance.absent_days ?? 0} absent`,
+          `${attendance.unpaid_leave_days ?? 0} unpaid / deductible off`,
+          Number(attendance.non_deductible_off_days ?? 0) > 0
+            ? `${attendance.non_deductible_off_days} non-deductible off`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
       : null;
 
   return {
