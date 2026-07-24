@@ -23,6 +23,7 @@ import {
   LOCKED_COUNTRY,
   LOCKED_NATIONALITY,
   PAYMENT_METHOD_OPTIONS,
+  WORK_WEEKDAY_OPTIONS,
   buildDepartmentBody,
   buildEmployeeBody,
   buildPaymentAccountApiBody,
@@ -61,7 +62,9 @@ export function useEmployeeFormResources() {
     setLoading(true);
     try {
       const orgId = user?.organization_id;
-      const [deptRes, posRes, shiftRes, branchesData, usersData, employeesData] = await Promise.all([
+      // Isolate failures: /users and /branches used to require admin and
+      // Promise.all would leave departments/positions empty when either 403'd.
+      const settled = await Promise.allSettled([
         apiRequest("/departments", { searchParams: { per_page: 200 } }),
         apiRequest("/positions", { searchParams: { per_page: 200 } }),
         apiRequest("/work-shifts", { searchParams: { per_page: 200 } }),
@@ -69,6 +72,14 @@ export function useEmployeeFormResources() {
         fetchUsersCached(orgId),
         fetchEmployeesCached(orgId),
       ]);
+      const value = (i, fallback = []) =>
+        settled[i].status === "fulfilled" ? settled[i].value : fallback;
+      const deptRes = value(0, { data: [] });
+      const posRes = value(1, { data: [] });
+      const shiftRes = value(2, { data: [] });
+      const branchesData = value(3, []);
+      const usersData = value(4, []);
+      const employeesData = value(5, []);
       setDepartments(deptRes.data ?? []);
       setPositions(posRes.data ?? []);
       setShifts(shiftRes.data ?? []);
@@ -779,6 +790,73 @@ export function EmployeeFormWizard({
               </p>
               <FieldError message={tabErrors.shift_id} />
             </Field>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+              <label className="flex items-start gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={!!form.restrict_work_weekdays}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setForm((prev) => ({
+                      ...prev,
+                      restrict_work_weekdays: on,
+                      work_weekdays: on
+                        ? prev.work_weekdays?.length
+                          ? prev.work_weekdays
+                          : [1, 2, 3, 4, 5]
+                        : [],
+                    }));
+                    setTabErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.work_weekdays;
+                      return next;
+                    });
+                  }}
+                />
+                <span>
+                  Works specific weekdays only
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    Off = Mon–Fri plus any weekend/holiday days on the shift. On = only the days
+                    below count as workdays (other days are not marked absent).
+                  </span>
+                </span>
+              </label>
+              {form.restrict_work_weekdays ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {WORK_WEEKDAY_OPTIONS.map((d) => {
+                    const checked = (form.work_weekdays ?? []).includes(d.value);
+                    return (
+                      <label
+                        key={d.value}
+                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium ${
+                          checked
+                            ? "border-[#185FA5] bg-sky-50 text-[#185FA5]"
+                            : "border-slate-200 bg-white text-slate-600"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={checked}
+                          onChange={() => {
+                            const current = form.work_weekdays ?? [];
+                            updateField(
+                              "work_weekdays",
+                              checked
+                                ? current.filter((x) => x !== d.value)
+                                : [...current, d.value].sort((a, b) => a - b),
+                            );
+                          }}
+                        />
+                        {d.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : null}
+              <FieldError message={tabErrors.work_weekdays} />
+            </div>
             <Field label="Job title" required>
               <input
                 type="text"

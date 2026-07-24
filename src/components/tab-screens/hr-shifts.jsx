@@ -8,6 +8,11 @@ function formatTime(t) {
   return String(t).slice(0, 5);
 }
 
+function padTime(t) {
+  if (!t) return t;
+  return t.length === 5 ? `${t}:00` : t;
+}
+
 export function HrShiftsScreen() {
   return (
     <>
@@ -40,6 +45,14 @@ export function HrShiftsScreen() {
           label: "Holidays",
           render: (r) => (r.works_public_holidays ? "Yes" : "—"),
         },
+        {
+          key: "use_alternate_hours",
+          label: "Alt hours",
+          render: (r) =>
+            r.use_alternate_hours
+              ? `${formatTime(r.alternate_start_time)}–${formatTime(r.alternate_end_time)}`
+              : "—",
+        },
       ]}
       searchFilter={(r, q) =>
         `${r.shift_code} ${r.shift_name}`.toLowerCase().includes(q)
@@ -53,21 +66,47 @@ export function HrShiftsScreen() {
         works_saturday: !!row?.works_saturday,
         works_sunday: !!row?.works_sunday,
         works_public_holidays: !!row?.works_public_holidays,
+        use_alternate_hours: !!row?.use_alternate_hours,
+        alternate_start_time: row?.alternate_start_time?.slice?.(0, 5) ?? "08:00",
+        alternate_end_time: row?.alternate_end_time?.slice?.(0, 5) ?? "12:00",
+        alternate_crosses_midnight: !!row?.alternate_crosses_midnight,
         is_active: row?.is_active !== false,
       })}
       buildBody={(form, orgId) => ({
         organization_id: orgId,
         shift_code: form.shift_code.trim(),
         shift_name: form.shift_name.trim(),
-        start_time: form.start_time.length === 5 ? `${form.start_time}:00` : form.start_time,
-        end_time: form.end_time.length === 5 ? `${form.end_time}:00` : form.end_time,
+        start_time: padTime(form.start_time),
+        end_time: padTime(form.end_time),
         crosses_midnight: form.crosses_midnight,
         works_saturday: form.works_saturday,
         works_sunday: form.works_sunday,
         works_public_holidays: form.works_public_holidays,
+        use_alternate_hours: form.use_alternate_hours,
+        alternate_start_time: form.use_alternate_hours ? padTime(form.alternate_start_time) : null,
+        alternate_end_time: form.use_alternate_hours ? padTime(form.alternate_end_time) : null,
+        alternate_crosses_midnight: form.use_alternate_hours
+          ? form.alternate_crosses_midnight
+          : false,
         is_active: form.is_active,
       })}
-      validateForm={(form) => (!form.shift_name?.trim() ? "Shift name is required." : null)}
+      validateForm={(form) => {
+        if (!form.shift_name?.trim()) return "Shift name is required.";
+        if (
+          form.use_alternate_hours &&
+          (!form.alternate_start_time || !form.alternate_end_time)
+        ) {
+          return "Set alternate start and end times for Saturday / public holidays.";
+        }
+        if (
+          form.use_alternate_hours &&
+          !form.works_saturday &&
+          !form.works_public_holidays
+        ) {
+          return "Enable Saturday and/or public holidays to use alternate hours.";
+        }
+        return null;
+      }}
       renderFormFields={(form, setForm) => (
         <>
           <Field label="Shift name">
@@ -140,6 +179,65 @@ export function HrShiftsScreen() {
             />
             Public holidays
           </label>
+          {(form.works_saturday || form.works_public_holidays) && (
+            <div className="mt-2 space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+              <label className="flex items-start gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={form.use_alternate_hours}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, use_alternate_hours: e.target.checked }))
+                  }
+                />
+                <span>
+                  Different hours on Saturday / public holidays
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    e.g. weekdays 08:00–17:00, Saturday and holidays 08:00–12:00
+                  </span>
+                </span>
+              </label>
+              {form.use_alternate_hours ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Alternate start">
+                      <input
+                        type="time"
+                        value={form.alternate_start_time}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, alternate_start_time: e.target.value }))
+                        }
+                        className={inputClassName()}
+                      />
+                    </Field>
+                    <Field label="Alternate end">
+                      <input
+                        type="time"
+                        value={form.alternate_end_time}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, alternate_end_time: e.target.value }))
+                        }
+                        className={inputClassName()}
+                      />
+                    </Field>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={form.alternate_crosses_midnight}
+                      onChange={(e) =>
+                        setForm((p) => ({
+                          ...p,
+                          alternate_crosses_midnight: e.target.checked,
+                        }))
+                      }
+                    />
+                    Alternate shift crosses midnight
+                  </label>
+                </>
+              ) : null}
+            </div>
+          )}
         </>
       )}
     />

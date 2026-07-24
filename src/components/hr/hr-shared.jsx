@@ -83,6 +83,10 @@ export const EMPTY_EMPLOYEE_FORM = {
   department_id: "",
   position_id: "",
   shift_id: "",
+  /** When true, only days in work_weekdays count as scheduled workdays. */
+  restrict_work_weekdays: false,
+  /** Carbon dayOfWeek ints: 0=Sun … 6=Sat. Empty when unrestricted. */
+  work_weekdays: [],
   user_id: "",
   reports_to_employee_id: "",
   job_title: "",
@@ -398,6 +402,17 @@ export const EMPLOYMENT_TYPE_OPTIONS = [
   { value: "intern", label: "Intern" },
 ];
 
+/** Carbon dayOfWeek: 0=Sunday … 6=Saturday */
+export const WORK_WEEKDAY_OPTIONS = [
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+  { value: 0, label: "Sun" },
+];
+
 export function formatHrKes(value, settings = GENERAL_DEFAULTS) {
   return formatOrgCurrencyCompact(value, settings);
 }
@@ -444,6 +459,10 @@ export function employeeToForm(employee) {
     department_id: employee.department_id != null ? String(employee.department_id) : "",
     position_id: employee.position_id != null ? String(employee.position_id) : "",
     shift_id: employee.shift_id != null ? String(employee.shift_id) : "",
+    restrict_work_weekdays: Array.isArray(employee.work_weekdays) && employee.work_weekdays.length > 0,
+    work_weekdays: Array.isArray(employee.work_weekdays)
+      ? employee.work_weekdays.map((d) => Number(d)).filter((d) => d >= 0 && d <= 6)
+      : [],
     user_id: employee.user_id != null ? String(employee.user_id) : "",
     reports_to_employee_id:
       employee.reports_to_employee_id != null ? String(employee.reports_to_employee_id) : "",
@@ -532,6 +551,9 @@ export function validateEmployeeTab(tabId, form, { showBranchSelect = false } = 
     if (!form.shift_id && status === "active" && salary > 0) {
       errors.shift_id = "Select a work shift (required for payroll and attendance).";
     }
+    if (form.restrict_work_weekdays && (!form.work_weekdays || form.work_weekdays.length === 0)) {
+      errors.work_weekdays = "Select at least one workday, or turn off the weekday restriction.";
+    }
     if (!form.hire_date) errors.hire_date = "Date hired is required.";
     if (!form.job_title?.trim()) errors.job_title = "Job title is required.";
   }
@@ -565,6 +587,10 @@ export function buildEmployeeBody(form, organizationId, branchId, { isEdit = fal
     department_id: form.department_id ? Number(form.department_id) : null,
     position_id: form.position_id ? Number(form.position_id) : null,
     shift_id: form.shift_id ? Number(form.shift_id) : null,
+    work_weekdays:
+      form.restrict_work_weekdays && Array.isArray(form.work_weekdays) && form.work_weekdays.length > 0
+        ? form.work_weekdays.map((d) => Number(d))
+        : null,
     user_id: form.user_id ? Number(form.user_id) : null,
     reports_to_employee_id: form.reports_to_employee_id
       ? Number(form.reports_to_employee_id)
