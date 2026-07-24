@@ -71,6 +71,7 @@ function buildReceiptHtml(line, employee, options) {
   const payRows = buildAmountRows(sections.earnings, generalSettings);
   const deductionRows = buildAmountRows(
     [
+      ...(sections.latenessDeduction ? [sections.latenessDeduction] : []),
       ...sections.statutory,
       ...sections.otherDeductions,
       sections.totalDeductions,

@@ -92,6 +92,13 @@ export function GovernmentDeductionsAside() {
           </p>
         </div>
       )}
+
+      <p className="mt-4 border-t border-slate-200 pt-3 text-xs text-slate-600">
+        <a href="/reports/nssf-remittance" className="font-medium text-slate-800 underline-offset-2 hover:underline">
+          NSSF remittance statement
+        </a>
+        {" — export for remittance (same as bank list)."}
+      </p>
     </div>
   );
 }

@@ -26,6 +26,15 @@ const BANK_TRANSFER_ALWAYS_HIDDEN = new Set([
   "payroll_status",
 ]);
 
+/** Same remittance-style layout as bank transfer (NSSF / other deductions by period). */
+const PAYROLL_REMITTANCE_ALWAYS_HIDDEN = BANK_TRANSFER_ALWAYS_HIDDEN;
+
+const PAYROLL_REMITTANCE_REPORT_KEYS = new Set([
+  "bank-transfer",
+  "nssf-remittance",
+  "other-deductions",
+]);
+
 /** @param {object[]} rows @param {string} key */
 export function isUniformReportColumn(rows, key) {
   if (!Array.isArray(rows) || rows.length === 0) return false;
@@ -34,13 +43,13 @@ export function isUniformReportColumn(rows, key) {
 }
 
 /**
- * Header lines for bank-transfer print/PDF when values are shared by every row.
+ * Header lines for remittance-style payroll reports when values are shared by every row.
  * @param {string} reportKey
  * @param {object[]} rows
  * @returns {string[]}
  */
 export function reportConstantHeaderLines(reportKey, rows = []) {
-  if (reportKey !== "bank-transfer" || !rows.length) return [];
+  if (!PAYROLL_REMITTANCE_REPORT_KEYS.has(reportKey) || !rows.length) return [];
 
   const lines = [];
   if (isUniformReportColumn(rows, "run_date") && rows[0].run_date) {
@@ -54,6 +63,9 @@ export function reportConstantHeaderLines(reportKey, rows = []) {
     const start = rows[0].period_start ? formatOrgDate(rows[0].period_start) : "—";
     const end = rows[0].period_end ? formatOrgDate(rows[0].period_end) : "—";
     lines.push(`Pay period: ${start} – ${end}`);
+  }
+  if (isUniformReportColumn(rows, "period_code") && rows[0].period_code) {
+    lines.push(`Period: ${rows[0].period_code}`);
   }
   return lines;
 }
@@ -117,6 +129,18 @@ const REPORT_COLUMN_LABELS = {
   store_cost_value: "Store stock value",
   total_cost_value: "Stock value",
   effective_unit_cost: "Unit cost",
+  surname: "Surname",
+  other_names: "Other names",
+  id_number: "ID number",
+  nssf_number: "NSSF number",
+  income: "Income",
+  member: "Member",
+  employer: "Employer",
+  total: "Total",
+  deduction_name: "Deduction",
+  calc_type: "Calc type",
+  frequency: "Frequency",
+  amount: "Amount",
 };
 
 /**
@@ -149,6 +173,11 @@ export function isRedundantReportColumn(
     if (key === "payment_method" && isUniformReportColumn(rows, "payment_method")) {
       return true;
     }
+  }
+  if (reportKey === "nssf-remittance" || reportKey === "other-deductions") {
+    if (PAYROLL_REMITTANCE_ALWAYS_HIDDEN.has(key)) return true;
+    if (key === "employee_code" && reportKey === "nssf-remittance") return true;
+    if (key === "source_type" || key === "deduction_scope") return true;
   }
   if (
     !showProductCode

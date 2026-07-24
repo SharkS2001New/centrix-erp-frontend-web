@@ -32,6 +32,8 @@ const HR_LINKS = [
   { href: "/reports/payroll-summary", title: "Payroll summary", desc: "Payroll runs summary" },
   { href: "/reports/statutory-deductions", title: "Statutory deductions", desc: "NSSF, SHIF, PAYE, and levies" },
   { href: "/reports/bank-transfer", title: "Bank transfer", desc: "Net pay bank payment file" },
+  { href: "/reports/nssf-remittance", title: "NSSF remittance", desc: "Member + employer NSSF statement" },
+  { href: "/reports/other-deductions", title: "Other deductions", desc: "Custom deductions by pay period" },
   { href: "/reports/headcount", title: "Headcount", desc: "Workforce by department and branch" },
   { href: "/reports/contract-expiry", title: "Contract expiry", desc: "Upcoming contract end dates" },
   { href: "/reports/staff-turnover", title: "Staff turnover", desc: "Turnover rate by department" },

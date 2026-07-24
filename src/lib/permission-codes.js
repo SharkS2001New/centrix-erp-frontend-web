@@ -352,6 +352,8 @@ export function reportPermissionCode(reportKey) {
     "lateness-list": P.hr.attendance.view,
     "statutory-deductions": P.hr.payroll.view,
     "bank-transfer": P.hr.payroll.view,
+    "nssf-remittance": P.hr.payroll.view,
+    "other-deductions": P.hr.payroll.view,
     "staff-turnover": P.hr.employees.view,
     headcount: P.hr.employees.view,
     "contract-expiry": P.hr.employees.view,

@@ -15,6 +15,7 @@ const EMPTY_TYPE_FORM = {
   default_amount: "",
   default_percentage: "",
   is_active: true,
+  frequency: "per_cycle", // per_cycle | one_time
   apply_scope: "template", // template | all | selected
   employee_ids: [],
 };
@@ -117,6 +118,40 @@ function DeductionTypeFormFields({ form, setForm, employees = [] }) {
           />
         </Field>
       )}
+
+      <fieldset className="space-y-2 rounded-lg border border-slate-200 p-3">
+        <legend className="px-1 text-xs font-medium text-slate-600">How often</legend>
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+          <input
+            type="radio"
+            name="deduction_frequency"
+            className="mt-0.5"
+            checked={(form.frequency || "per_cycle") === "per_cycle"}
+            onChange={() => setForm((p) => ({ ...p, frequency: "per_cycle" }))}
+          />
+          <span>
+            <span className="font-medium">Every payroll cycle</span>
+            <span className="mt-0.5 block text-slate-500">
+              Deducted on each pay run until you deactivate it (e.g. SACCO, loan installment).
+            </span>
+          </span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+          <input
+            type="radio"
+            name="deduction_frequency"
+            className="mt-0.5"
+            checked={form.frequency === "one_time"}
+            onChange={() => setForm((p) => ({ ...p, frequency: "one_time" }))}
+          />
+          <span>
+            <span className="font-medium">One-time</span>
+            <span className="mt-0.5 block text-slate-500">
+              Deducted on the next payroll only, then closed automatically (e.g. damages, advance recovery).
+            </span>
+          </span>
+        </label>
+      </fieldset>
 
       <fieldset className="space-y-2 rounded-lg border border-slate-200 p-3">
         <legend className="px-1 text-xs font-medium text-slate-600">Who this applies to</legend>
@@ -250,6 +285,7 @@ function buildTypeBody(form, organizationId) {
       form.calc_type === "percentage" ? parseFloat(form.default_percentage) || 0 : null,
     is_active: form.is_active !== false,
     applies_to_all: scope === "all",
+    frequency: form.frequency === "one_time" ? "one_time" : "per_cycle",
     employee_ids: employeeIds,
   };
 }
@@ -262,6 +298,7 @@ function typeFormFromRow(row) {
     default_amount: row?.default_amount != null ? String(row.default_amount) : "",
     default_percentage: row?.default_percentage != null ? String(row.default_percentage) : "",
     is_active: row?.is_active !== false,
+    frequency: row?.frequency === "one_time" ? "one_time" : "per_cycle",
     apply_scope: row?.applies_to_all ? "all" : "template",
     employee_ids: [],
   };
@@ -301,6 +338,7 @@ function AssignDeductionFormFields({ form, setForm, extra }) {
         deduction_type_id: String(created.id),
         name: created.name ?? p.name,
         calc_type: created.calc_type ?? p.calc_type,
+        frequency: created.frequency === "one_time" ? "one_time" : "per_cycle",
         amount: created.default_amount != null ? String(created.default_amount) : p.amount,
         percentage:
           created.default_percentage != null ? String(created.default_percentage) : p.percentage,
@@ -348,6 +386,7 @@ function AssignDeductionFormFields({ form, setForm, extra }) {
             deduction_type_id: v,
             name: t?.name ?? p.name,
             calc_type: t?.calc_type ?? p.calc_type,
+            frequency: t?.frequency === "one_time" ? "one_time" : "per_cycle",
             amount: t?.default_amount != null ? String(t.default_amount) : p.amount,
             percentage:
               t?.default_percentage != null ? String(t.default_percentage) : p.percentage,
@@ -355,7 +394,7 @@ function AssignDeductionFormFields({ form, setForm, extra }) {
         }}
         options={(extra.types ?? []).map((t) => ({
           value: String(t.id),
-          label: t.name,
+          label: `${t.name}${t.frequency === "one_time" ? " (one-time)" : ""}`,
         }))}
       />
       <Field label="Name on payslip">
@@ -395,6 +434,37 @@ function AssignDeductionFormFields({ form, setForm, extra }) {
           />
         </Field>
       )}
+      <fieldset className="space-y-2 rounded-lg border border-slate-200 p-3">
+        <legend className="px-1 text-xs font-medium text-slate-600">How often</legend>
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+          <input
+            type="radio"
+            name="assign_deduction_frequency"
+            className="mt-0.5"
+            checked={(form.frequency || "per_cycle") === "per_cycle"}
+            onChange={() => setForm((p) => ({ ...p, frequency: "per_cycle" }))}
+          />
+          <span>
+            <span className="font-medium">Every payroll cycle</span>
+            <span className="mt-0.5 block text-slate-500">Repeats each pay run until deactivated.</span>
+          </span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+          <input
+            type="radio"
+            name="assign_deduction_frequency"
+            className="mt-0.5"
+            checked={form.frequency === "one_time"}
+            onChange={() => setForm((p) => ({ ...p, frequency: "one_time" }))}
+          />
+          <span>
+            <span className="font-medium">One-time</span>
+            <span className="mt-0.5 block text-slate-500">
+              Taken on the next payroll only, then closed.
+            </span>
+          </span>
+        </label>
+      </fieldset>
 
       <FormDrawer
         title="Add deduction type"
@@ -447,7 +517,14 @@ export function HrDeductionsScreen() {
           <HrCrudPage
             embedded
             title="Other deductions"
-            subtitle="Create once: template only, all employees, or selected employees (assigns in one save)."
+            subtitle={
+              <>
+                Create once: template only, all employees, or selected employees (assigns in one save).{" "}
+                <a href="/reports/other-deductions" className="font-medium text-slate-800 underline-offset-2 hover:underline">
+                  View deductions by pay period
+                </a>
+              </>
+            }
             addButtonLabel="Add deduction"
             drawerCreateTitle="Add deduction"
             drawerWide
@@ -457,6 +534,11 @@ export function HrDeductionsScreen() {
             columns={[
               { key: "deduction_code", label: "Code" },
               { key: "name", label: "Type" },
+              {
+                key: "frequency",
+                label: "When",
+                render: (r) => (r.frequency === "one_time" ? "One-time" : "Every cycle"),
+              },
               {
                 key: "applies_to_all",
                 label: "Scope",
@@ -515,6 +597,16 @@ export function HrDeductionsScreen() {
               },
               { key: "name", label: "Type" },
               {
+                key: "frequency",
+                label: "When",
+                render: (r) =>
+                  r.payroll_run_id
+                    ? "One-time (applied)"
+                    : r.frequency === "one_time"
+                      ? "One-time"
+                      : "Every cycle",
+              },
+              {
                 key: "calc_type",
                 label: "Calculation",
                 render: (r) =>
@@ -538,6 +630,7 @@ export function HrDeductionsScreen() {
               amount: row?.amount != null ? String(row.amount) : "",
               percentage: row?.percentage != null ? String(row.percentage) : "",
               is_active: row?.is_active !== false,
+              frequency: row?.frequency === "one_time" ? "one_time" : "per_cycle",
             })}
             buildBody={(form) => ({
               employee_id: Number(form.employee_id),
@@ -548,6 +641,7 @@ export function HrDeductionsScreen() {
               percentage:
                 form.calc_type === "percentage" ? parseFloat(form.percentage) || 0 : null,
               is_active: form.is_active,
+              frequency: form.frequency === "one_time" ? "one_time" : "per_cycle",
             })}
             validateForm={(form) => {
               if (!form.employee_id) return "Select an employee.";

@@ -168,6 +168,8 @@ export const NAV_HREF_ICONS = {
   "/reports/payroll-summary": "receipt",
   "/reports/statutory-deductions": "percent",
   "/reports/bank-transfer": "wallet",
+  "/reports/nssf-remittance": "percent",
+  "/reports/other-deductions": "receipt",
   "/reports/staff-turnover": "swap",
   "/reports/headcount": "hr",
   "/reports/contract-expiry": "alert",

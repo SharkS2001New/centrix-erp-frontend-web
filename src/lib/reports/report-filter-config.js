@@ -149,6 +149,8 @@ export const REPORT_DATE_COLUMNS = {
   "audit-trail": "created_at",
   "statutory-deductions": "run_date",
   "bank-transfer": "run_date",
+  "nssf-remittance": "run_date",
+  "other-deductions": "run_date",
   "payroll-summary": "run_date",
   headcount: "hire_date",
   "contract-expiry": "contract_end_date",

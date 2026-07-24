@@ -397,6 +397,18 @@ export function HrPayrollRunsIdScreen() {
                   >
                     Bank transfer report
                   </Link>
+                  <Link
+                    href={`/reports/nssf-remittance?payroll_run_id=${run.id}`}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    NSSF remittance
+                  </Link>
+                  <Link
+                    href={`/reports/other-deductions?payroll_run_id=${run.id}`}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Other deductions
+                  </Link>
                 </>
               ) : null}
               {admin && payrollRunCanDelete(run) ? (

@@ -175,6 +175,8 @@ export const REPORT_CATEGORY_DEFS = [
       "payroll-summary",
       "statutory-deductions",
       "bank-transfer",
+      "nssf-remittance",
+      "other-deductions",
       "staff-turnover",
       "headcount",
       "contract-expiry",

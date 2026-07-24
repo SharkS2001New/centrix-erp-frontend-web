@@ -787,10 +787,21 @@ export function payrollBreakdownSections(line, employee) {
   const expectedDays = Number(
     payroll.expected_work_days ?? payroll.attendance?.expected_days ?? 0,
   );
+  const expectedHours = Number(payroll.expected_hours ?? payroll.attendance?.expected_hours ?? 0);
+  const lateMinutes = Number(payroll.attendance?.late_minutes_total ?? 0);
+  // Lateness reduces paid hours (and prorated allowances). Surface the KES impact on receipts.
+  const latenessAmount =
+    useProration && lateMinutes > 0 && expectedHours > 0
+      ? Math.round(((contractBasic + monthlyAllowance) * (lateMinutes / 60) / expectedHours) * 100)
+        / 100
+      : 0;
   const daysHint =
     useProration && expectedDays > 0
       ? `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} days`
       : null;
+  // When lateness is listed under deductions, show payable before that cut so the slip balances:
+  // (payable + lateness) − (statutory + other + lateness) = net.
+  const payableBeforeLateness = Math.round((payable + latenessAmount) * 100) / 100;
 
   const earnings = [
     {
@@ -801,17 +812,19 @@ export function payrollBreakdownSections(line, employee) {
     },
     {
       label: daysHint ? `Payable amount (${daysHint})` : "Payable amount",
-      value: payable,
+      value: latenessAmount > 0 ? payableBeforeLateness : payable,
       emphasis: true,
       hint: useProration
-        ? "Pay for days worked, before deductions"
+        ? latenessAmount > 0
+          ? "Pay for days worked before lateness deduction"
+          : "Pay for days worked, before deductions"
         : "Amount before deductions",
     },
   ];
 
   // Compact payable composition when useful (non-zero components differ from a single lump).
   const payableDetail = [];
-  if (useProration || periodAllowances > 0 || overtime > 0) {
+  if (useProration || periodAllowances > 0 || overtime > 0 || latenessAmount > 0) {
     payableDetail.push({ label: "Basic (period)", value: periodBasic });
     if (allowanceLines.length > 0) {
       for (const row of allowanceLines) {
@@ -826,6 +839,12 @@ export function payrollBreakdownSections(line, employee) {
     if (overtime > 0) {
       payableDetail.push({ label: "Overtime", value: overtime });
     }
+    if (latenessAmount > 0) {
+      payableDetail.push({
+        label: `Lateness held (${lateMinutes} min)`,
+        value: latenessAmount,
+      });
+    }
   }
 
   const attendance = payroll.attendance;
@@ -833,6 +852,9 @@ export function payrollBreakdownSections(line, employee) {
     attendance && useProration
       ? [
           `${formatPayrollDays(attendance.paid_days ?? paidDays)} paid days of ${formatPayrollDays(attendance.expected_days ?? expectedDays)} scheduled`,
+          Number(attendance.assumed_future_days ?? 0) > 0
+            ? `${attendance.assumed_future_days} remaining (credited)`
+            : null,
           Number(attendance.absent_days ?? 0) > 0 ? `${attendance.absent_days} absent` : null,
           Number(attendance.unpaid_leave_days ?? 0) > 0
             ? `${attendance.unpaid_leave_days} unpaid / deductible off`
@@ -840,6 +862,7 @@ export function payrollBreakdownSections(line, employee) {
           Number(attendance.non_deductible_off_days ?? 0) > 0
             ? `${attendance.non_deductible_off_days} non-deductible off`
             : null,
+          lateMinutes > 0 ? `${lateMinutes} min late` : null,
         ]
           .filter(Boolean)
           .join(" · ")
@@ -852,18 +875,27 @@ export function payrollBreakdownSections(line, employee) {
     value: statutoryAmount(line, meta, d.id),
     system: true,
   }));
+  const latenessDeduction =
+    latenessAmount > 0
+      ? {
+          label: `Lateness (${lateMinutes} min)`,
+          value: latenessAmount,
+        }
+      : null;
   const otherDeductions = payrollDeductionRows(payroll, other);
+  const totalDeductionsDisplay = Math.round((totalDeductions + latenessAmount) * 100) / 100;
 
   return {
     earnings,
     payableDetail,
     attendanceNote,
     deductionsNote: "All deductions are calculated on gross pay (contract), not payable days",
+    latenessDeduction,
     statutory,
     otherDeductions,
     totalDeductions: {
       label: "Total deductions",
-      value: totalDeductions,
+      value: totalDeductionsDisplay,
     },
     net: {
       label: "Net pay",
@@ -871,6 +903,8 @@ export function payrollBreakdownSections(line, employee) {
     },
     contractGross,
     payable,
+    latenessAmount,
+    lateMinutes,
     paidDays,
     expectedDays,
   };
@@ -914,10 +948,11 @@ function payrollBasicFromMeta(payroll, contractBasic) {
 
 /** Flat list (legacy / compact grids). */
 export function payrollBreakdownRows(line, employee) {
-  const { earnings, statutory, otherDeductions, totalDeductions, net } =
+  const { earnings, latenessDeduction, statutory, otherDeductions, totalDeductions, net } =
     payrollBreakdownSections(line, employee);
   return [
     ...earnings,
+    ...(latenessDeduction ? [latenessDeduction] : []),
     ...statutory.map((r) => ({ label: r.label, value: r.value, system: true })),
     ...otherDeductions,
     { label: totalDeductions.label, value: totalDeductions.value },
@@ -1347,6 +1382,12 @@ export function PayrollBreakdownPanel({ line, employee, loading = false }) {
         </h3>
         <p className="mt-0.5 text-xs text-slate-500">{sections.deductionsNote}</p>
         <dl className="mt-2 space-y-2">
+          {sections.latenessDeduction ? (
+            <BreakdownAmountRow
+              label={sections.latenessDeduction.label}
+              value={sections.latenessDeduction.value}
+            />
+          ) : null}
           {sections.statutory.map((row) => {
             const meta = line?.statutory_meta ?? {};
             let hint = null;
