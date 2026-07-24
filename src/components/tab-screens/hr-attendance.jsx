@@ -51,6 +51,7 @@ const EMPTY_MANUAL = {
   status: "present",
   hours_worked: "",
   notes: "",
+  lunch_taken: true,
   lateness_waived: false,
   lateness_waiver_reason: "",
 };
@@ -284,6 +285,7 @@ export function HrAttendanceScreen() {
       status: record.status ?? "present",
       hours_worked: record.hours_worked != null ? String(record.hours_worked) : "",
       notes: record.notes ?? "",
+      lunch_taken: record.lunch_status !== "skipped",
       lateness_waived: !!record.lateness_waived,
       lateness_waiver_reason: record.lateness_waiver_reason ?? "",
       late_minutes: record.late_minutes ?? 0,
@@ -410,6 +412,7 @@ export function HrAttendanceScreen() {
             hours_worked: timesRequired ? computedHours : 0,
             notes: manualForm.notes.trim() || null,
             source: editingRecord.source ?? "manual",
+            lunch_taken: timesRequired ? !!manualForm.lunch_taken : false,
             lateness_waived: !!manualForm.lateness_waived,
             lateness_waiver_reason: manualForm.lateness_waived
               ? manualForm.lateness_waiver_reason.trim() || null
@@ -448,6 +451,7 @@ export function HrAttendanceScreen() {
           check_out: checkOutApi,
           status: manualForm.status,
           notes: manualForm.notes.trim() || null,
+          lunch_taken: timesRequired ? !!manualForm.lunch_taken : false,
         },
       });
       setBulkResult(res);
@@ -977,6 +981,23 @@ export function HrAttendanceScreen() {
               defaultPeriod="PM"
               required
             />
+            <label className="flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={!!manualForm.lunch_taken}
+                onChange={(e) =>
+                  setManualForm((p) => ({ ...p, lunch_taken: e.target.checked }))
+                }
+              />
+              <span>
+                Lunch break taken
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  Checked by default — credits the shift lunch break in paid hours. Uncheck only if
+                  the employee skipped lunch (or banked it).
+                </span>
+              </span>
+            </label>
             <Field label="Hours worked">
               <input
                 type="text"
