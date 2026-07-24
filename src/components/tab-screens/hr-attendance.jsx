@@ -660,14 +660,6 @@ export function HrAttendanceScreen() {
         );
         return;
       }
-      if (dayHint?.blocks_attendance) {
-        const kind = dayHint.assignment_kind === "off_day" ? "off day" : "leave";
-        setManualError(
-          dayHint.reason ??
-            `This employee has an ${kind} assigned for this date. Attendance cannot be created.`,
-        );
-        return;
-      }
       setManualSaving(true);
       setManualError(null);
       try {
@@ -679,7 +671,6 @@ export function HrAttendanceScreen() {
             check_in: checkInApi,
             check_out: checkOutApi,
             status: manualForm.status,
-            hours_worked: timesRequired ? computedHours : 0,
             notes: manualForm.notes.trim() || null,
             source: editingRecord.source ?? "manual",
             lunch_taken:
@@ -1278,11 +1269,10 @@ export function HrAttendanceScreen() {
           </p>
         ) : null}
         {editingRecord && dayHint?.blocks_attendance ? (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-            {dayHint.reason ??
-              (dayHint.assignment_kind === "off_day"
-                ? "This employee has an off day assigned for this date. Attendance cannot be created."
-                : "This employee has leave assigned for this date. Attendance cannot be created.")}
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {dayHint.assignment_kind === "off_day"
+              ? "This date is marked as an off day. You can still update this attendance record."
+              : "This date has approved leave. You can still update this attendance record."}
           </p>
         ) : null}
         {editingRecord &&

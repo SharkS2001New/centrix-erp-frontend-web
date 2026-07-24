@@ -137,7 +137,7 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
                       <div className="mt-4 space-y-3">
                         <Toggle
                           label="Enforce month-end payroll schedule"
-                          description="Payroll can only run on the last day of the month, or in the grace window after month end for the prior period. Turn off to allow payroll for any past or current month anytime."
+                          description="Only applies when Platform → Settings → Payroll has month-end enforcement on. When both are on, payroll can only run on month-end or in the grace window. Turn off here to allow this organization to run payroll anytime."
                           checked={form.enforce_month_end_run_schedule !== false}
                           onChange={(v) =>
                             setForm((f) => ({ ...f, enforce_month_end_run_schedule: v }))

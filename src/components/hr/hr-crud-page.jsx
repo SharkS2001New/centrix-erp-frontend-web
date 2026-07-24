@@ -160,9 +160,9 @@ export function HrCrudPage({
 
   const content = (
     <>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         {embedded && title ? (
-          <div>
+          <div className="min-w-0 flex-1">
             <h2 className="text-[15px] font-medium text-slate-900">{title}</h2>
             {subtitle ? <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p> : null}
           </div>
@@ -171,25 +171,30 @@ export function HrCrudPage({
         ) : (
           <span />
         )}
-        {searchFilter ? (
-          <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" />
-        ) : embedded ? null : (
-          <span />
-        )}
-        <PrimaryButton type="button" onClick={openCreate}>
-          {addButtonLabel}
-        </PrimaryButton>
-        {embedded && exportEnabled && exportColumns.length > 0 ? (
-          <CatalogListExport
-            title={title ?? "Records"}
-            filename={exportFilename ?? title}
-            apiPath={apiPath}
-            columns={exportColumns}
-            totalCount={rows.length}
-            getSearchParams={() => ({ per_page: 200, ...(listSearchParams ?? {}) })}
-            disabled={loading}
-          />
-        ) : null}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {searchFilter ? (
+            <SearchInput
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search…"
+              className="w-full max-w-xs"
+            />
+          ) : null}
+          <PrimaryButton type="button" onClick={openCreate}>
+            {addButtonLabel}
+          </PrimaryButton>
+          {embedded && exportEnabled && exportColumns.length > 0 ? (
+            <CatalogListExport
+              title={title ?? "Records"}
+              filename={exportFilename ?? title}
+              apiPath={apiPath}
+              columns={exportColumns}
+              totalCount={rows.length}
+              getSearchParams={() => ({ per_page: 200, ...(listSearchParams ?? {}) })}
+              disabled={loading}
+            />
+          ) : null}
+        </div>
       </div>
 
       {error && (

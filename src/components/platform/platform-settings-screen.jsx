@@ -11,13 +11,14 @@ import { PlatformAlertNotificationsPanel } from "@/components/platform/platform-
 import { PlatformR2BackupSettingsPanel } from "@/components/platform/platform-r2-backup-settings-panel";
 import { PlatformAiCredentialsScreen } from "@/components/platform/platform-ai-credentials-screen";
 import { PlatformKenyaPayrollSettingsPanel } from "@/components/platform/platform-kenya-payroll-settings-panel";
+import { PlatformPayrollScheduleSettingsPanel } from "@/components/platform/platform-payroll-schedule-settings-panel";
 
 const TABS = [
   { id: "email", label: "Email delivery" },
   { id: "whatsapp", label: "WhatsApp" },
   { id: "ai", label: "AI credentials" },
   { id: "alerts", label: "Alert notifications" },
-  { id: "payroll", label: "Kenya payroll" },
+  { id: "payroll", label: "Payroll" },
   { id: "r2", label: "Cloudflare R2" },
 ];
 
@@ -73,7 +74,7 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
           : activeTab === "r2"
             ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
             : activeTab === "payroll"
-              ? "Kenya PAYE bands, personal relief, NSSF, SHIF, and housing levy — platform-wide defaults."
+              ? "When tenants may run payroll, plus Kenya PAYE / statutory rates."
               : "Email digest and instant WhatsApp/email alerts for system errors & reports.";
 
   return (
@@ -93,7 +94,12 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
       {activeTab === "whatsapp" ? <PlatformWhatsappScreen embedded /> : null}
       {activeTab === "ai" ? <PlatformAiCredentialsScreen embedded /> : null}
       {activeTab === "alerts" ? <PlatformAlertNotificationsPanel /> : null}
-      {activeTab === "payroll" ? <PlatformKenyaPayrollSettingsPanel /> : null}
+      {activeTab === "payroll" ? (
+        <div className="space-y-6">
+          <PlatformPayrollScheduleSettingsPanel />
+          <PlatformKenyaPayrollSettingsPanel />
+        </div>
+      ) : null}
       {activeTab === "r2" ? <PlatformR2BackupSettingsPanel /> : null}
     </CatalogPageShell>
   );

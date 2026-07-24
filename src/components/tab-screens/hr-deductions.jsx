@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { CatalogPageShell, Field, FormDrawer, inputClassName } from "@/components/catalog/catalog-shared";
 import { HrCrudPage, HrSelectField } from "@/components/hr/hr-crud-page";
 import { GovernmentDeductionsAside } from "@/components/hr/government-deductions-aside";
@@ -15,18 +15,64 @@ const EMPTY_TYPE_FORM = {
   default_amount: "",
   default_percentage: "",
   is_active: true,
-  applies_to_all: false,
+  apply_scope: "template", // template | all | selected
+  employee_ids: [],
 };
 
-function DeductionTypeFormFields({ form, setForm }) {
+function DeductionTypeFormFields({ form, setForm, employees = [] }) {
+  const [empSearch, setEmpSearch] = useState("");
+  const selected = useMemo(
+    () => new Set((form.employee_ids ?? []).map(String)),
+    [form.employee_ids],
+  );
+
+  const filteredEmployees = useMemo(() => {
+    const q = empSearch.trim().toLowerCase();
+    const list = employees ?? [];
+    if (!q) return list;
+    return list.filter((e) => composeEmployeeDisplayName(e).toLowerCase().includes(q));
+  }, [employees, empSearch]);
+
+  function setScope(scope) {
+    setForm((p) => ({
+      ...p,
+      apply_scope: scope,
+      applies_to_all: scope === "all",
+      employee_ids: scope === "selected" ? p.employee_ids ?? [] : [],
+    }));
+  }
+
+  function toggleEmployee(id) {
+    const key = String(id);
+    setForm((p) => {
+      const cur = new Set((p.employee_ids ?? []).map(String));
+      if (cur.has(key)) cur.delete(key);
+      else cur.add(key);
+      return { ...p, employee_ids: [...cur] };
+    });
+  }
+
+  function selectAllFiltered() {
+    setForm((p) => {
+      const cur = new Set((p.employee_ids ?? []).map(String));
+      for (const e of filteredEmployees) cur.add(String(e.id));
+      return { ...p, employee_ids: [...cur] };
+    });
+  }
+
+  function clearSelected() {
+    setForm((p) => ({ ...p, employee_ids: [] }));
+  }
+
   return (
     <>
-      <Field label="Name">
+      <Field label="Type name">
         <input
           type="text"
           value={form.name}
           onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
           required
+          placeholder="e.g. Goods Damages"
           className={inputClassName()}
         />
       </Field>
@@ -71,20 +117,110 @@ function DeductionTypeFormFields({ form, setForm }) {
           />
         </Field>
       )}
-      <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
-        <input
-          type="checkbox"
-          checked={form.applies_to_all}
-          onChange={(e) => setForm((p) => ({ ...p, applies_to_all: e.target.checked }))}
-          className="mt-0.5"
-        />
-        <span>
-          <span className="font-medium">Apply to all employees</span>
-          <span className="mt-0.5 block text-slate-500">
-            Required for org-wide deductions such as SACCO (full fixed amount every pay run).
+
+      <fieldset className="space-y-2 rounded-lg border border-slate-200 p-3">
+        <legend className="px-1 text-xs font-medium text-slate-600">Who this applies to</legend>
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+          <input
+            type="radio"
+            name="apply_scope"
+            className="mt-0.5"
+            checked={form.apply_scope === "template"}
+            onChange={() => setScope("template")}
+          />
+          <span>
+            <span className="font-medium">Template only</span>
+            <span className="mt-0.5 block text-slate-500">
+              Saved as a type — assign employees later (or use Assign below).
+            </span>
           </span>
-        </span>
-      </label>
+        </label>
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+          <input
+            type="radio"
+            name="apply_scope"
+            className="mt-0.5"
+            checked={form.apply_scope === "all"}
+            onChange={() => setScope("all")}
+          />
+          <span>
+            <span className="font-medium">Apply to all employees</span>
+            <span className="mt-0.5 block text-slate-500">
+              Org-wide every pay run (e.g. SACCO for everyone).
+            </span>
+          </span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+          <input
+            type="radio"
+            name="apply_scope"
+            className="mt-0.5"
+            checked={form.apply_scope === "selected"}
+            onChange={() => setScope("selected")}
+          />
+          <span>
+            <span className="font-medium">Apply to selected employees</span>
+            <span className="mt-0.5 block text-slate-500">
+              Create the type once and assign it to the people you pick below.
+            </span>
+          </span>
+        </label>
+
+        {form.apply_scope === "selected" ? (
+          <div className="mt-2 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="search"
+                value={empSearch}
+                onChange={(e) => setEmpSearch(e.target.value)}
+                placeholder="Search employees…"
+                className={`${inputClassName()} max-w-xs`}
+              />
+              <button
+                type="button"
+                onClick={selectAllFiltered}
+                className="text-xs font-medium text-[#185FA5] hover:underline"
+              >
+                Select shown
+              </button>
+              <button
+                type="button"
+                onClick={clearSelected}
+                className="text-xs font-medium text-slate-600 hover:underline"
+              >
+                Clear
+              </button>
+              <span className="text-xs text-slate-500">{selected.size} selected</span>
+            </div>
+            <div className="max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-white">
+              {filteredEmployees.length === 0 ? (
+                <p className="px-3 py-4 text-center text-xs text-slate-500">No employees found.</p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {filteredEmployees.map((e) => {
+                    const id = String(e.id);
+                    const checked = selected.has(id);
+                    return (
+                      <li key={id}>
+                        <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleEmployee(e.id)}
+                          />
+                          <span className="min-w-0 truncate text-slate-800">
+                            {composeEmployeeDisplayName(e)}
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </fieldset>
     </>
   );
 }
@@ -98,6 +234,12 @@ function buildTypeBody(form, organizationId) {
       .replace(/[^A-Z0-9]+/g, "-")
       .replace(/^-|-$/g, "")
       .slice(0, 45);
+  const scope = form.apply_scope || (form.applies_to_all ? "all" : "template");
+  const employeeIds =
+    scope === "selected"
+      ? (form.employee_ids ?? []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+      : [];
+
   return {
     organization_id: organizationId,
     deduction_code: code || `DED-${Date.now()}`,
@@ -107,7 +249,21 @@ function buildTypeBody(form, organizationId) {
     default_percentage:
       form.calc_type === "percentage" ? parseFloat(form.default_percentage) || 0 : null,
     is_active: form.is_active !== false,
-    applies_to_all: form.applies_to_all === true,
+    applies_to_all: scope === "all",
+    employee_ids: employeeIds,
+  };
+}
+
+function typeFormFromRow(row) {
+  return {
+    deduction_code: row?.deduction_code ?? "",
+    name: row?.name ?? "",
+    calc_type: row?.calc_type ?? "fixed",
+    default_amount: row?.default_amount != null ? String(row.default_amount) : "",
+    default_percentage: row?.default_percentage != null ? String(row.default_percentage) : "",
+    is_active: row?.is_active !== false,
+    apply_scope: row?.applies_to_all ? "all" : "template",
+    employee_ids: [],
   };
 }
 
@@ -120,7 +276,11 @@ function AssignDeductionFormFields({ form, setForm, extra }) {
   async function saveType(e) {
     e.preventDefault();
     if (!typeForm.name?.trim()) {
-      setTypeError("Name is required.");
+      setTypeError("Type name is required.");
+      return;
+    }
+    if (typeForm.apply_scope === "selected" && !(typeForm.employee_ids ?? []).length) {
+      setTypeError("Select at least one employee, or choose another scope.");
       return;
     }
     if (!extra.organizationId) {
@@ -147,7 +307,10 @@ function AssignDeductionFormFields({ form, setForm, extra }) {
       }));
       setTypeDrawerOpen(false);
       setTypeForm(EMPTY_TYPE_FORM);
-      notifySuccess("Deduction type created.");
+      const n = Number(created.assigned_employee_count ?? 0);
+      notifySuccess(
+        n > 0 ? `Deduction type created and assigned to ${n} employee(s).` : "Deduction type created.",
+      );
       void extra.reload?.();
     } catch (err) {
       setTypeError(err instanceof ApiError ? err.message : "Could not create type.");
@@ -241,8 +404,13 @@ function AssignDeductionFormFields({ form, setForm, extra }) {
         saving={typeSaving}
         error={typeError}
         submitLabel="Create type"
+        wide
       >
-        <DeductionTypeFormFields form={typeForm} setForm={setTypeForm} />
+        <DeductionTypeFormFields
+          form={typeForm}
+          setForm={setTypeForm}
+          employees={extra.employees ?? []}
+        />
       </FormDrawer>
     </>
   );
@@ -251,6 +419,11 @@ function AssignDeductionFormFields({ form, setForm, extra }) {
 export function HrDeductionsScreen() {
   const [typesVersion, setTypesVersion] = useState(0);
   const bumpTypes = useCallback(() => setTypesVersion((v) => v + 1), []);
+
+  const loadEmployeesExtra = useCallback(async () => {
+    const emps = await apiRequest("/employees", { searchParams: { per_page: 200 } });
+    return { employees: emps.data ?? [] };
+  }, []);
 
   const loadAssignExtra = useCallback(async () => {
     const [emps, types] = await Promise.all([
@@ -274,19 +447,27 @@ export function HrDeductionsScreen() {
           <HrCrudPage
             embedded
             title="Other deductions"
-            subtitle="Template only = not deducted on payroll until you assign an employee below or check Apply to all employees (e.g. SACCO KES 1,500 for everyone)."
-            addButtonLabel="Add type"
+            subtitle="Create once: template only, all employees, or selected employees (assigns in one save)."
+            addButtonLabel="Add deduction"
+            drawerCreateTitle="Add deduction"
+            drawerWide
             apiPath="/payroll-deduction-types"
             onSaved={bumpTypes}
+            loadExtra={loadEmployeesExtra}
             columns={[
               { key: "deduction_code", label: "Code" },
-              { key: "name", label: "Name" },
+              { key: "name", label: "Type" },
               {
                 key: "applies_to_all",
                 label: "Scope",
-                render: (r) => (r.applies_to_all ? "All employees" : "Template only"),
+                render: (r) => (r.applies_to_all ? "All employees" : "Template / assigned"),
               },
-              { key: "calc_type", label: "Type" },
+              {
+                key: "calc_type",
+                label: "Calculation",
+                render: (r) =>
+                  r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
+              },
               {
                 key: "default_amount",
                 label: "Default",
@@ -297,27 +478,28 @@ export function HrDeductionsScreen() {
               },
             ]}
             searchFilter={(r, q) => `${r.deduction_code} ${r.name}`.toLowerCase().includes(q)}
-            buildEmptyForm={(_, row) => ({
-              deduction_code: row?.deduction_code ?? "",
-              name: row?.name ?? "",
-              calc_type: row?.calc_type ?? "fixed",
-              default_amount: row?.default_amount != null ? String(row.default_amount) : "",
-              default_percentage:
-                row?.default_percentage != null ? String(row.default_percentage) : "",
-              is_active: row?.is_active !== false,
-              applies_to_all: row?.applies_to_all === true,
-            })}
+            buildEmptyForm={(_, row) => typeFormFromRow(row)}
             buildBody={(form, orgId) => buildTypeBody(form, orgId)}
-            validateForm={(form) => (!form.name?.trim() ? "Name is required." : null)}
-            renderFormFields={(form, setForm) => (
-              <DeductionTypeFormFields form={form} setForm={setForm} />
+            validateForm={(form) => {
+              if (!form.name?.trim()) return "Type name is required.";
+              if (form.apply_scope === "selected" && !(form.employee_ids ?? []).length) {
+                return "Select at least one employee, or choose another scope.";
+              }
+              return null;
+            }}
+            renderFormFields={(form, setForm, extra) => (
+              <DeductionTypeFormFields
+                form={form}
+                setForm={setForm}
+                employees={extra.employees ?? []}
+              />
             )}
           />
 
           <HrCrudPage
             embedded
             title="Assign to employees"
-            subtitle="Per-employee amounts on payroll. Org-wide types (checkbox above) apply automatically unless overridden here."
+            subtitle="Per-employee amounts on payroll. Org-wide types apply automatically unless overridden here."
             addButtonLabel="Assign deduction"
             drawerWide
             apiPath="/employee-deductions"
@@ -331,8 +513,13 @@ export function HrDeductionsScreen() {
                   return emp ? composeEmployeeDisplayName(emp) : r.employee_id;
                 },
               },
-              { key: "name", label: "Name" },
-              { key: "calc_type", label: "Type" },
+              { key: "name", label: "Type" },
+              {
+                key: "calc_type",
+                label: "Calculation",
+                render: (r) =>
+                  r.calc_type === "percentage" ? "Percentage" : "Fixed amount",
+              },
               {
                 key: "amount",
                 label: "Amount",
@@ -364,7 +551,7 @@ export function HrDeductionsScreen() {
             })}
             validateForm={(form) => {
               if (!form.employee_id) return "Select an employee.";
-              if (!form.name?.trim()) return "Deduction name is required.";
+              if (!form.name?.trim()) return "Type name is required.";
               if (form.calc_type === "fixed" && (!form.amount || Number(form.amount) <= 0)) {
                 return "Enter the fixed deduction amount.";
               }
