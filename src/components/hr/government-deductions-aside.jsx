@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { KENYA_STATUTORY_DEDUCTIONS } from "@/components/hr/hr-shared";
 
@@ -94,9 +95,9 @@ export function GovernmentDeductionsAside() {
       )}
 
       <p className="mt-4 border-t border-slate-200 pt-3 text-xs text-slate-600">
-        <a href="/reports/nssf-remittance" className="font-medium text-slate-800 underline-offset-2 hover:underline">
+        <Link href="/reports/nssf-remittance" className="font-medium text-slate-800 underline-offset-2 hover:underline">
           NSSF remittance statement
-        </a>
+        </Link>
         {" — export for remittance (same as bank list)."}
       </p>
     </div>

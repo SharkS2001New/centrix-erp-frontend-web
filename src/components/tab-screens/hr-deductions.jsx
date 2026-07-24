@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
 import { CatalogPageShell, Field, FormDrawer, inputClassName } from "@/components/catalog/catalog-shared";
 import { HrCrudPage, HrSelectField } from "@/components/hr/hr-crud-page";
 import { GovernmentDeductionsAside } from "@/components/hr/government-deductions-aside";
@@ -496,6 +497,7 @@ export function HrDeductionsScreen() {
   }, []);
 
   const loadAssignExtra = useCallback(async () => {
+    void typesVersion;
     const [emps, types] = await Promise.all([
       apiRequest("/employees", { searchParams: { per_page: 200 } }),
       apiRequest("/payroll-deduction-types", { searchParams: { per_page: 200 } }),
@@ -520,9 +522,9 @@ export function HrDeductionsScreen() {
             subtitle={
               <>
                 Create once: template only, all employees, or selected employees (assigns in one save).{" "}
-                <a href="/reports/other-deductions" className="font-medium text-slate-800 underline-offset-2 hover:underline">
+                <Link href="/reports/other-deductions" className="font-medium text-slate-800 underline-offset-2 hover:underline">
                   View deductions by pay period
-                </a>
+                </Link>
               </>
             }
             addButtonLabel="Add deduction"
