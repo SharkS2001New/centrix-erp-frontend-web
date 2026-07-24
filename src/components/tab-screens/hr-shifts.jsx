@@ -23,7 +23,7 @@ export function HrShiftsScreen() {
     <>
     <HrCrudPage
       title="Work shifts"
-      subtitle="Shift times, weekends, public holidays, and paid lunch break per schedule"
+      subtitle="Weekday and weekend/holiday hours, plus separate lunch settings when needed"
       addButtonLabel="Add shift"
       drawerWide
       apiPath="/work-shifts"
@@ -61,10 +61,20 @@ export function HrShiftsScreen() {
         {
           key: "lunch_minutes",
           label: "Lunch",
-          render: (r) =>
-            r.lunch_required === false
-              ? "—"
-              : `${r.lunch_minutes ?? hrDefaults.default_lunch_minutes ?? 60}m`,
+          render: (r) => {
+            const weekday =
+              r.lunch_required === false
+                ? "—"
+                : `${r.lunch_minutes ?? hrDefaults.default_lunch_minutes ?? 60}m`;
+            const hasAlt =
+              r.alternate_lunch_minutes != null || r.alternate_lunch_required != null;
+            if (!hasAlt) return weekday;
+            const alt =
+              r.alternate_lunch_required === false || Number(r.alternate_lunch_minutes) === 0
+                ? "—"
+                : `${r.alternate_lunch_minutes ?? r.lunch_minutes ?? 60}m`;
+            return `${weekday} / ${alt}`;
+          },
         },
       ]}
       searchFilter={(r, q) =>
@@ -90,6 +100,14 @@ export function HrShiftsScreen() {
         alternate_end_time: row?.alternate_end_time?.slice?.(0, 5) ?? "12:00",
         alternate_lunch_minutes:
           row?.alternate_lunch_minutes != null ? String(row.alternate_lunch_minutes) : "",
+        alternate_lunch_required:
+          row?.alternate_lunch_required != null
+            ? row.alternate_lunch_required !== false
+            : row != null
+              ? row.lunch_required !== false
+              : true,
+        use_alternate_lunch:
+          row?.alternate_lunch_minutes != null || row?.alternate_lunch_required != null,
         alternate_crosses_midnight: !!row?.alternate_crosses_midnight,
         is_active: row?.is_active !== false,
       })}
@@ -109,8 +127,16 @@ export function HrShiftsScreen() {
         alternate_start_time: form.use_alternate_hours ? padTime(form.alternate_start_time) : null,
         alternate_end_time: form.use_alternate_hours ? padTime(form.alternate_end_time) : null,
         alternate_lunch_minutes:
-          form.use_alternate_hours && form.alternate_lunch_minutes !== ""
-            ? Number(form.alternate_lunch_minutes)
+          (form.works_saturday || form.works_sunday || form.works_public_holidays) &&
+          form.use_alternate_lunch
+            ? form.alternate_lunch_required
+              ? Number(form.alternate_lunch_minutes) || 0
+              : 0
+            : null,
+        alternate_lunch_required:
+          (form.works_saturday || form.works_sunday || form.works_public_holidays) &&
+          form.use_alternate_lunch
+            ? !!form.alternate_lunch_required
             : null,
         alternate_crosses_midnight: form.use_alternate_hours
           ? form.alternate_crosses_midnight
@@ -123,20 +149,28 @@ export function HrShiftsScreen() {
           form.lunch_required &&
           (form.lunch_minutes === "" || Number(form.lunch_minutes) < 0)
         ) {
-          return "Set lunch break minutes (or turn off lunch required).";
+          return "Set weekday lunch break minutes (or turn off lunch required).";
+        }
+        if (
+          form.use_alternate_lunch &&
+          form.alternate_lunch_required &&
+          (form.alternate_lunch_minutes === "" || Number(form.alternate_lunch_minutes) < 0)
+        ) {
+          return "Set weekend / holiday lunch minutes (or turn off that lunch).";
         }
         if (
           form.use_alternate_hours &&
           (!form.alternate_start_time || !form.alternate_end_time)
         ) {
-          return "Set alternate start and end times for Saturday / public holidays.";
+          return "Set alternate start and end times for Saturday / Sunday / public holidays.";
         }
         if (
           form.use_alternate_hours &&
           !form.works_saturday &&
+          !form.works_sunday &&
           !form.works_public_holidays
         ) {
-          return "Enable Saturday and/or public holidays to use alternate hours.";
+          return "Enable Saturday, Sunday, and/or public holidays to use alternate hours.";
         }
         return null;
       }}
@@ -185,8 +219,12 @@ export function HrShiftsScreen() {
             />
             Lunch break required
           </label>
+          <p className="text-xs text-slate-500">
+            Uncheck for shifts with no lunch (e.g. half-day). Attendance and payroll will not expect
+            or credit a lunch break for this shift.
+          </p>
           {form.lunch_required ? (
-            <Field label="Lunch minutes (weekday)">
+            <Field label="Weekday lunch minutes">
               <input
                 type="number"
                 min={0}
@@ -196,8 +234,8 @@ export function HrShiftsScreen() {
                 className={inputClassName()}
               />
               <p className="mt-1 text-xs text-slate-500">
-                Paid break by default. Staff clock out for lunch and back in; that hour is credited,
-                not treated as lost time.
+                Paid break by default on Mon–Fri. Staff clock out for lunch and back in; that time is
+                credited, not treated as lost time.
               </p>
             </Field>
           ) : null}
@@ -236,8 +274,68 @@ export function HrShiftsScreen() {
             />
             Public holidays
           </label>
-          {(form.works_saturday || form.works_public_holidays) && (
+          {(form.works_saturday || form.works_sunday || form.works_public_holidays) && (
             <div className="mt-2 space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+              <label className="flex items-start gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={form.use_alternate_lunch}
+                  onChange={(e) =>
+                    setForm((p) => ({
+                      ...p,
+                      use_alternate_lunch: e.target.checked,
+                      alternate_lunch_required: e.target.checked
+                        ? p.alternate_lunch_required
+                        : p.lunch_required,
+                      alternate_lunch_minutes: e.target.checked
+                        ? p.alternate_lunch_minutes || p.lunch_minutes
+                        : "",
+                    }))
+                  }
+                />
+                <span>
+                  Different lunch on Saturday / Sunday / public holidays
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    e.g. weekdays 60 minutes, Saturday/holiday 30 minutes or no lunch
+                  </span>
+                </span>
+              </label>
+              {form.use_alternate_lunch ? (
+                <>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={form.alternate_lunch_required}
+                      onChange={(e) =>
+                        setForm((p) => ({
+                          ...p,
+                          alternate_lunch_required: e.target.checked,
+                        }))
+                      }
+                    />
+                    Lunch break required on weekend / holiday
+                  </label>
+                  {form.alternate_lunch_required ? (
+                    <Field label="Weekend / holiday lunch minutes">
+                      <input
+                        type="number"
+                        min={0}
+                        max={240}
+                        value={form.alternate_lunch_minutes}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, alternate_lunch_minutes: e.target.value }))
+                        }
+                        className={inputClassName()}
+                      />
+                    </Field>
+                  ) : null}
+                </>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Weekend and holiday days use the same lunch settings as weekdays.
+                </p>
+              )}
               <label className="flex items-start gap-2 text-sm text-slate-700">
                 <input
                   type="checkbox"
@@ -248,9 +346,9 @@ export function HrShiftsScreen() {
                   }
                 />
                 <span>
-                  Different hours on Saturday / public holidays
+                  Different clock-in / clock-out on Saturday / Sunday / public holidays
                   <span className="mt-0.5 block text-xs text-slate-500">
-                    e.g. weekdays 08:00–17:00, Saturday and holidays 08:00–12:00
+                    e.g. weekdays 08:00–17:00, Saturday and holidays 08:00–13:00
                   </span>
                 </span>
               </label>
@@ -278,21 +376,6 @@ export function HrShiftsScreen() {
                       />
                     </Field>
                   </div>
-                  {form.lunch_required ? (
-                    <Field label="Alternate lunch minutes (optional)">
-                      <input
-                        type="number"
-                        min={0}
-                        max={240}
-                        placeholder="Same as weekday"
-                        value={form.alternate_lunch_minutes}
-                        onChange={(e) =>
-                          setForm((p) => ({ ...p, alternate_lunch_minutes: e.target.value }))
-                        }
-                        className={inputClassName()}
-                      />
-                    </Field>
-                  ) : null}
                   <label className="flex items-center gap-2 text-sm text-slate-700">
                     <input
                       type="checkbox"

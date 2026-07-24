@@ -18,6 +18,13 @@ import {
   formatShortDate,
   inputClassName,
 } from "@/components/catalog/catalog-shared";
+import {
+  BatchActionBar,
+  BatchDeleteButton,
+  TableRowSelectCell,
+  TableSelectAllHeader,
+  usePageRowSelection,
+} from "@/components/catalog/table-row-selection";
 import { HrSelectField } from "@/components/hr/hr-crud-page";
 import { HrTimePickerField } from "@/components/hr/hr-time-picker";
 import { FieldRepHrLinkageBanner } from "@/components/hr/field-rep-hr-linkage-banner";
@@ -89,6 +96,16 @@ export function HrAttendanceScreen() {
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
   const [employeePickerFilter, setEmployeePickerFilter] = useState("");
   const [bulkResult, setBulkResult] = useState(null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const {
+    selectedIds,
+    selectedCount,
+    toggleOne,
+    toggleAllOnPage,
+    clearSelection,
+    isAllOnPageSelected,
+    isSomeOnPageSelected,
+  } = usePageRowSelection();
 
   useEffect(() => {
     const handle = window.setTimeout(() => setDebouncedSearch(recordSearch.trim()), 300);
@@ -170,14 +187,33 @@ export function HrAttendanceScreen() {
       });
       setRecords(attendanceRes.data ?? []);
       setRecordsTotal(Number(attendanceRes.meta?.total ?? attendanceRes.total ?? attendanceRes.data?.length ?? 0));
+      clearSelection();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Failed to load attendance records");
       setRecords([]);
       setRecordsTotal(0);
+      clearSelection();
     } finally {
       setHistoryLoading(false);
     }
-  }, [debouncedSearch, historyFromDate, historyToDate]);
+  }, [debouncedSearch, historyFromDate, historyToDate, clearSelection]);
+
+  const recordPageIds = useMemo(() => records.map((r) => r.id), [records]);
+
+  const selectedRecords = useMemo(
+    () => records.filter((r) => selectedIds.has(String(r.id))),
+    [records, selectedIds],
+  );
+
+  const selectedWaiveableCount = useMemo(
+    () => selectedRecords.filter((r) => Number(r.late_minutes) > 0 && !r.lateness_waived).length,
+    [selectedRecords],
+  );
+
+  const selectedUndoWaiveCount = useMemo(
+    () => selectedRecords.filter((r) => Number(r.late_minutes) > 0 && r.lateness_waived).length,
+    [selectedRecords],
+  );
 
   const loadEmployeesForManual = useCallback(async () => {
     if (employees.length) return;
@@ -209,6 +245,41 @@ export function HrAttendanceScreen() {
   }, [companyMobileEnabled, sessions]);
 
   const timesRequired = !NON_WORK_STATUSES.includes(manualForm.status);
+
+  const selectedEmployees = useMemo(() => {
+    if (editingRecord) {
+      return employees.filter((e) => String(e.id) === String(manualForm.employee_id));
+    }
+    const idSet = new Set(selectedEmployeeIds.map(String));
+    return employees.filter((e) => idSet.has(String(e.id)));
+  }, [editingRecord, employees, manualForm.employee_id, selectedEmployeeIds]);
+
+  const lunchAppliesToSelection = useMemo(() => {
+    if (editingRecord) {
+      if (dayHint && typeof dayHint.lunch_required === "boolean") {
+        return !!dayHint.lunch_required && Number(dayHint.lunch_minutes ?? 0) > 0;
+      }
+      if (editingRecord.lunch_status === "-") return false;
+      if (editingRecord.lunch_status === "taken" || editingRecord.lunch_status === "skipped") {
+        return true;
+      }
+    }
+    if (selectedEmployees.length === 0) return true;
+    return selectedEmployees.some((e) => {
+      const shift = e.shift;
+      if (!shift) return true;
+      if (shift.lunch_required === false) return false;
+      // null minutes = legacy default lunch; explicit 0 = no lunch that day
+      if (shift.lunch_minutes == null) return true;
+      return Number(shift.lunch_minutes) > 0;
+    });
+  }, [editingRecord, dayHint, selectedEmployees]);
+
+  useEffect(() => {
+    if (!lunchAppliesToSelection && manualForm.lunch_taken) {
+      setManualForm((p) => ({ ...p, lunch_taken: false }));
+    }
+  }, [lunchAppliesToSelection, manualForm.lunch_taken]);
 
   const computedHours = useMemo(() => {
     if (!timesRequired) return null;
@@ -285,7 +356,7 @@ export function HrAttendanceScreen() {
       status: record.status ?? "present",
       hours_worked: record.hours_worked != null ? String(record.hours_worked) : "",
       notes: record.notes ?? "",
-      lunch_taken: record.lunch_status !== "skipped",
+      lunch_taken: record.lunch_status === "taken",
       lateness_waived: !!record.lateness_waived,
       lateness_waiver_reason: record.lateness_waiver_reason ?? "",
       late_minutes: record.late_minutes ?? 0,
@@ -325,6 +396,107 @@ export function HrAttendanceScreen() {
       await loadHistory();
     } catch (e) {
       notifyError(e instanceof ApiError ? e.message : "Delete failed");
+    }
+  }
+
+  async function deleteSelectedRecords() {
+    const ids = [...selectedIds].map((id) => Number(id)).filter((id) => id > 0);
+    if (ids.length === 0) return;
+    const ok = await confirm({
+      title: "Delete selected attendance",
+      message: `Delete ${ids.length} attendance record${ids.length === 1 ? "" : "s"}? Clock sessions and pending auto-OT for those days are cleared. This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+
+    setBatchBusy(true);
+    try {
+      const res = await apiRequest("/employee-attendance/bulk-delete", {
+        method: "POST",
+        body: { ids },
+      });
+      const deleted = Number(res.deleted_count ?? 0);
+      const skipped = Number(res.skipped_count ?? 0);
+      clearSelection();
+      await loadHistory();
+      if (deleted > 0 && skipped === 0) {
+        notifySuccess(`Deleted ${deleted} attendance record${deleted === 1 ? "" : "s"}.`);
+      } else if (deleted > 0) {
+        const reason = res.skipped?.[0]?.reason;
+        notifySuccess(
+          `Deleted ${deleted}; skipped ${skipped}${reason ? ` (${reason})` : ""}.`,
+        );
+      } else {
+        notifyError(res.skipped?.[0]?.reason ?? "No records deleted.");
+      }
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Bulk delete failed");
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
+  async function waiveSelectedLateness(waived) {
+    const eligible = selectedRecords.filter((r) => Number(r.late_minutes) > 0);
+    const ids = eligible
+      .filter((r) => (waived ? !r.lateness_waived : !!r.lateness_waived))
+      .map((r) => Number(r.id));
+    if (ids.length === 0) {
+      notifyError(
+        waived
+          ? "None of the selected records have unwaived lateness."
+          : "None of the selected records have a lateness waiver to undo.",
+      );
+      return;
+    }
+
+    let reason = "";
+    if (waived) {
+      const entered = window.prompt(
+        `Waive lateness for ${ids.length} record${ids.length === 1 ? "" : "s"}?\nOne reason is applied to all:`,
+        "",
+      );
+      if (entered === null) return;
+      reason = entered.trim();
+    } else {
+      const ok = await confirm({
+        title: "Undo lateness waiver?",
+        message: `Undo waiver for ${ids.length} record${ids.length === 1 ? "" : "s"}? Paid hours will again deduct late minutes for payroll.`,
+        confirmLabel: "Undo waiver",
+      });
+      if (!ok) return;
+    }
+
+    setBatchBusy(true);
+    try {
+      const res = await apiRequest("/employee-attendance/bulk-waive-lateness", {
+        method: "POST",
+        body: {
+          ids,
+          lateness_waived: waived,
+          lateness_waiver_reason: waived ? reason || null : null,
+        },
+      });
+      const updated = Number(res.updated_count ?? 0);
+      const skipped = Number(res.skipped_count ?? 0);
+      clearSelection();
+      await loadHistory();
+      if (updated > 0 && skipped === 0) {
+        notifySuccess(
+          waived
+            ? `Waived lateness for ${updated} record${updated === 1 ? "" : "s"}.`
+            : `Undid waiver for ${updated} record${updated === 1 ? "" : "s"}.`,
+        );
+      } else if (updated > 0) {
+        notifySuccess(`Updated ${updated}; skipped ${skipped}.`);
+      } else {
+        notifyError(res.skipped?.[0]?.reason ?? "No records updated.");
+      }
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Bulk waiver failed");
+    } finally {
+      setBatchBusy(false);
     }
   }
 
@@ -412,7 +584,8 @@ export function HrAttendanceScreen() {
             hours_worked: timesRequired ? computedHours : 0,
             notes: manualForm.notes.trim() || null,
             source: editingRecord.source ?? "manual",
-            lunch_taken: timesRequired ? !!manualForm.lunch_taken : false,
+            lunch_taken:
+              timesRequired && lunchAppliesToSelection ? !!manualForm.lunch_taken : false,
             lateness_waived: !!manualForm.lateness_waived,
             lateness_waiver_reason: manualForm.lateness_waived
               ? manualForm.lateness_waiver_reason.trim() || null
@@ -451,7 +624,8 @@ export function HrAttendanceScreen() {
           check_out: checkOutApi,
           status: manualForm.status,
           notes: manualForm.notes.trim() || null,
-          lunch_taken: timesRequired ? !!manualForm.lunch_taken : false,
+          lunch_taken:
+            timesRequired && lunchAppliesToSelection ? !!manualForm.lunch_taken : false,
         },
       });
       setBulkResult(res);
@@ -650,14 +824,21 @@ export function HrAttendanceScreen() {
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-[15px] font-medium text-slate-900">Attendance records</h2>
               <p className="mt-1 text-sm text-slate-500">
-                One row per employee per day. Paid hours exclude lunch and time after shift end.
-                Overtime ≥ 1 hour creates a pending OT draft for HR approval.
+                One row per employee per day. Select rows to waive lateness (one shared reason) or
+                delete in bulk. Paid hours exclude lunch and time after shift end. Overtime ≥ 1 hour
+                creates a pending OT draft for HR approval.
               </p>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="theme-table-head-row text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                   <tr>
+                    <TableSelectAllHeader
+                      checked={isAllOnPageSelected(recordPageIds)}
+                      indeterminate={isSomeOnPageSelected(recordPageIds)}
+                      onChange={(checked) => toggleAllOnPage(checked, recordPageIds)}
+                      label="Select all attendance records on this page"
+                    />
                     <th className="px-4 py-3">Employee</th>
                     <th className="px-4 py-3">Date</th>
                     <th className="px-4 py-3">In</th>
@@ -675,13 +856,13 @@ export function HrAttendanceScreen() {
                 <tbody className="divide-y divide-slate-100">
                   {historyLoading ? (
                     <tr>
-                      <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
+                      <td colSpan={13} className="px-4 py-8 text-center text-slate-500">
                         Loading…
                       </td>
                     </tr>
                   ) : records.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
+                      <td colSpan={13} className="px-4 py-8 text-center text-slate-500">
                         {recordSearch.trim()
                           ? "No attendance records match your search in this date range."
                           : "No attendance records in this date range."}
@@ -690,6 +871,11 @@ export function HrAttendanceScreen() {
                   ) : (
                     records.map((r) => (
                       <tr key={r.id} className="theme-table-body-row">
+                        <TableRowSelectCell
+                          checked={selectedIds.has(String(r.id))}
+                          onChange={() => toggleOne(r.id)}
+                          label={`Select attendance for ${composeEmployeeDisplayName(r.employee) || r.employee_id}`}
+                        />
                         <td className="px-4 py-3">
                           {composeEmployeeDisplayName(r.employee) || r.employee_id}
                         </td>
@@ -791,6 +977,36 @@ export function HrAttendanceScreen() {
               </table>
             </div>
           </section>
+
+          <BatchActionBar count={selectedCount} onClear={clearSelection}>
+            {selectedWaiveableCount > 0 ? (
+              <button
+                type="button"
+                disabled={batchBusy}
+                onClick={() => void waiveSelectedLateness(true)}
+                className="rounded-lg bg-emerald-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+              >
+                {batchBusy
+                  ? "Working…"
+                  : `Waive late (${selectedWaiveableCount})`}
+              </button>
+            ) : null}
+            {selectedUndoWaiveCount > 0 ? (
+              <button
+                type="button"
+                disabled={batchBusy}
+                onClick={() => void waiveSelectedLateness(false)}
+                className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+              >
+                Undo waive ({selectedUndoWaiveCount})
+              </button>
+            ) : null}
+            <BatchDeleteButton
+              count={selectedCount}
+              busy={batchBusy}
+              onClick={() => void deleteSelectedRecords()}
+            />
+          </BatchActionBar>
 
           {fieldAttendanceEnabled ? (
             <div className="mt-8">
@@ -981,23 +1197,30 @@ export function HrAttendanceScreen() {
               defaultPeriod="PM"
               required
             />
-            <label className="flex items-start gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={!!manualForm.lunch_taken}
-                onChange={(e) =>
-                  setManualForm((p) => ({ ...p, lunch_taken: e.target.checked }))
-                }
-              />
-              <span>
-                Lunch break taken
-                <span className="mt-0.5 block text-xs text-slate-500">
-                  Checked by default — credits the shift lunch break in paid hours. Uncheck only if
-                  the employee skipped lunch (or banked it).
+            {lunchAppliesToSelection ? (
+              <label className="flex items-start gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={!!manualForm.lunch_taken}
+                  onChange={(e) =>
+                    setManualForm((p) => ({ ...p, lunch_taken: e.target.checked }))
+                  }
+                />
+                <span>
+                  Lunch break taken
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    Shown only for shifts that require lunch. Checked by default — credits the
+                    configured lunch. Uncheck if lunch was skipped (or banked). Staff on no-lunch
+                    shifts are unaffected.
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
+            ) : (
+              <p className="text-xs text-slate-500">
+                Selected shift(s) have no lunch break — lunch will not be credited.
+              </p>
+            )}
             <Field label="Hours worked">
               <input
                 type="text"
