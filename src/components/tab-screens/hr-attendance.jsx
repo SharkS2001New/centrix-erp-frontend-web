@@ -379,7 +379,10 @@ export function HrAttendanceScreen() {
         setManualError("Select an employee.");
         return;
       }
-      if (dayHint?.has_existing_attendance && dayHint.existing_attendance?.id !== editingRecord?.id) {
+      if (
+        dayHint?.has_existing_attendance &&
+        Number(dayHint.existing_attendance?.id) !== Number(editingRecord?.id)
+      ) {
         setManualError(
           "This employee already has attendance for this date. Only one record per employee per day is allowed.",
         );
@@ -450,11 +453,15 @@ export function HrAttendanceScreen() {
       setBulkResult(res);
       const created = Number(res.created_count ?? 0);
       const skipped = Number(res.skipped_count ?? 0);
+      const skipReason =
+        Array.isArray(res.skipped) && res.skipped[0]?.reason
+          ? String(res.skipped[0].reason)
+          : null;
       if (created > 0) {
         notifySuccess(
           skipped > 0
-            ? `Created ${created} attendance record${created === 1 ? "" : "s"}; skipped ${skipped}.`
-            : `Created ${created} attendance record${created === 1 ? "" : "s"}.`,
+            ? `Saved ${created} attendance record${created === 1 ? "" : "s"}; skipped ${skipped}.`
+            : `Saved ${created} attendance record${created === 1 ? "" : "s"}.`,
         );
         await loadHistory();
         if (skipped === 0) {
@@ -465,17 +472,25 @@ export function HrAttendanceScreen() {
         }
       } else {
         setManualError(
-          skipped > 0
-            ? `No records created. ${skipped} employee${skipped === 1 ? " was" : "s were"} skipped (already recorded, on leave/off, or invalid).`
-            : "No records created.",
+          skipReason
+            ? `Could not save attendance: ${skipReason}`
+            : skipped > 0
+              ? `No records saved. ${skipped} employee${skipped === 1 ? " was" : "s were"} skipped.`
+              : "No records saved.",
         );
       }
     } catch (err) {
       const payload = err instanceof ApiError ? err.body : null;
       if (payload?.skipped_count && !payload?.created_count) {
         setBulkResult(payload);
+        const skipReason =
+          Array.isArray(payload.skipped) && payload.skipped[0]?.reason
+            ? String(payload.skipped[0].reason)
+            : null;
         setManualError(
-          `No records created. ${payload.skipped_count} employee${payload.skipped_count === 1 ? " was" : "s were"} skipped.`,
+          skipReason
+            ? `Could not save attendance: ${skipReason}`
+            : `No records saved. ${payload.skipped_count} employee${payload.skipped_count === 1 ? " was" : "s were"} skipped.`,
         );
       } else {
         setManualError(err instanceof ApiError ? err.message : "Save failed");
@@ -884,8 +899,9 @@ export function HrAttendanceScreen() {
               )}
             </div>
             <p className="text-xs text-slate-500">
-              Same date and times are applied to every selected employee. Staff already recorded or
-              on leave/off for that date are skipped.
+              Same date and times are applied to every selected employee. Existing unlocked
+              attendance for that date is updated. Staff on leave/off or locked to payroll are
+              skipped.
             </p>
           </div>
         )}
@@ -899,7 +915,7 @@ export function HrAttendanceScreen() {
         </Field>
         {editingRecord &&
         dayHint?.has_existing_attendance &&
-        dayHint.existing_attendance?.id !== editingRecord?.id ? (
+        Number(dayHint.existing_attendance?.id) !== Number(editingRecord?.id) ? (
           <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
             Attendance already exists for this employee on this date (
             {dayHint.existing_attendance?.status ?? "recorded"}
@@ -1024,7 +1040,7 @@ export function HrAttendanceScreen() {
         {bulkResult?.skipped?.length ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
             <p className="font-medium">
-              Created {bulkResult.created_count ?? 0}, skipped {bulkResult.skipped_count ?? 0}
+              Saved {bulkResult.created_count ?? 0}, skipped {bulkResult.skipped_count ?? 0}
             </p>
             <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto text-xs">
               {bulkResult.skipped.slice(0, 20).map((row) => (
