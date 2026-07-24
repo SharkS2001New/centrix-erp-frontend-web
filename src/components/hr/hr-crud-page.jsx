@@ -264,7 +264,13 @@ export function HrCrudPage({
           submitLabel={submitLabel}
           wide={drawerWide}
         >
-          {renderFormFields(form, setForm, { ...tableExtra, editingRow: editing })}
+          {renderFormFields(form, setForm, {
+            ...tableExtra,
+            editingRow: editing,
+            setExtra,
+            reload: load,
+            organizationId,
+          })}
         </FormDrawer>
       )}
     </>
@@ -305,34 +311,62 @@ export function HrSelectField({
   required,
   searchable = true,
   placeholder,
+  onAdd,
+  addLabel = "Add",
 }) {
   const useSearchable = searchable && options.length > 0;
+  const control = useSearchable ? (
+    <HrSearchableSelect
+      value={value}
+      onChange={onChange}
+      options={options}
+      required={required}
+      placeholder={placeholder ?? `Search ${String(label).toLowerCase()}…`}
+    />
+  ) : (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      required={required}
+      className={inputClassName()}
+    >
+      <option value="">{options.length === 0 ? "No options — use + to create" : "Select…"}</option>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+
+  if (!onAdd) {
+    return (
+      <Field label={label} required={required}>
+        {control}
+      </Field>
+    );
+  }
 
   return (
-    <Field label={label}>
-      {useSearchable ? (
-        <HrSearchableSelect
-          value={value}
-          onChange={onChange}
-          options={options}
-          required={required}
-          placeholder={placeholder ?? `Search ${label.toLowerCase()}…`}
-        />
-      ) : (
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          required={required}
-          className={inputClassName()}
+    <div className="block">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="theme-subtext text-xs font-medium">
+          {label}
+          {required ? <span className="text-red-600"> *</span> : null}
+        </span>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="inline-flex items-center gap-0.5 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-xs font-medium text-[#185FA5] hover:bg-slate-50"
+          title={addLabel}
         >
-          <option value="">Select…</option>
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      )}
-    </Field>
+          <span aria-hidden className="text-sm leading-none">
+            +
+          </span>
+          <span>{addLabel}</span>
+        </button>
+      </div>
+      {control}
+    </div>
   );
 }
