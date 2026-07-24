@@ -10,12 +10,14 @@ import { PlatformWhatsappScreen } from "@/components/platform/platform-whatsapp-
 import { PlatformAlertNotificationsPanel } from "@/components/platform/platform-alert-notifications-panel";
 import { PlatformR2BackupSettingsPanel } from "@/components/platform/platform-r2-backup-settings-panel";
 import { PlatformAiCredentialsScreen } from "@/components/platform/platform-ai-credentials-screen";
+import { PlatformPayrollScheduleSettingsPanel } from "@/components/platform/platform-payroll-schedule-settings-panel";
 
 const TABS = [
   { id: "email", label: "Email delivery" },
   { id: "whatsapp", label: "WhatsApp" },
   { id: "ai", label: "AI credentials" },
   { id: "alerts", label: "Alert notifications" },
+  { id: "payroll", label: "Payroll" },
   { id: "r2", label: "Cloudflare R2" },
 ];
 
@@ -68,9 +70,11 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
         ? "Shared WhatsApp webhook URL and verify token for all tenants."
         : activeTab === "ai"
           ? "OpenAI API key and model for platform-admin AI tools (email assist, training console)."
-          : activeTab === "r2"
-            ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
-            : "Email digest and instant WhatsApp/email alerts for system errors & reports.";
+          : activeTab === "payroll"
+            ? "When tenants may generate payroll runs (month-end schedule vs anytime)."
+            : activeTab === "r2"
+              ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
+              : "Email digest and instant WhatsApp/email alerts for system errors & reports.";
 
   return (
     <CatalogPageShell title="Platform settings" subtitle={subtitle}>
@@ -89,6 +93,7 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
       {activeTab === "whatsapp" ? <PlatformWhatsappScreen embedded /> : null}
       {activeTab === "ai" ? <PlatformAiCredentialsScreen embedded /> : null}
       {activeTab === "alerts" ? <PlatformAlertNotificationsPanel /> : null}
+      {activeTab === "payroll" ? <PlatformPayrollScheduleSettingsPanel /> : null}
       {activeTab === "r2" ? <PlatformR2BackupSettingsPanel /> : null}
     </CatalogPageShell>
   );

@@ -151,13 +151,24 @@ export function HrPayrollScreen() {
     [orgPeriods],
   );
 
+  const scheduleEnforced = runSchedule?.enforce_month_end_run_schedule !== false;
+
   const runnablePeriods = useMemo(() => {
+    if (!scheduleEnforced) {
+      const today = new Date();
+      const todayYm = today.getFullYear() * 100 + (today.getMonth() + 1);
+      return sortedPeriods.filter((p) => {
+        const end = new Date(p.period_end ?? p.period_start);
+        const ym = end.getFullYear() * 100 + (end.getMonth() + 1);
+        return ym <= todayYm;
+      });
+    }
     const codes = new Set(runSchedule?.runnable_period_codes ?? []);
     if (codes.size > 0) {
       return sortedPeriods.filter((p) => codes.has(p.period_code));
     }
     return sortedPeriods.filter((p) => payPeriodRunnableToday(p, new Date(), graceDays));
-  }, [sortedPeriods, runSchedule, graceDays]);
+  }, [sortedPeriods, runSchedule, graceDays, scheduleEnforced]);
 
   const ensurePayPeriodForRun = useCallback(async () => {
     if (!organizationId) {
@@ -172,6 +183,34 @@ export function HrPayrollScreen() {
       for (const p of ensured) byId.set(p.id, p);
       return [...byId.values()];
     });
+    const enforce = schedule?.enforce_month_end_run_schedule !== false;
+    if (!enforce) {
+      const all = await apiRequest("/pay-periods", { searchParams: { per_page: 50 } });
+      const list = all.data ?? [];
+      setPeriods(list);
+      const today = new Date();
+      const todayYm = today.getFullYear() * 100 + (today.getMonth() + 1);
+      const runnable = list
+        .filter((p) => Number(p.organization_id) === Number(organizationId))
+        .filter((p) => {
+          const end = new Date(p.period_end ?? p.period_start);
+          const ym = end.getFullYear() * 100 + (end.getMonth() + 1);
+          return ym <= todayYm;
+        })
+        .sort(
+          (a, b) => new Date(b.period_start).getTime() - new Date(a.period_start).getTime(),
+        );
+      if (runnable.length === 0 && ensured.length > 0) {
+        return ensured;
+      }
+      if (runnable.length === 0) {
+        throw new Error(
+          schedule?.rules?.join(" ") ||
+            "No pay period is available. Create a pay period for the current or a past month.",
+        );
+      }
+      return runnable;
+    }
     const effectiveGrace = payrollGraceDays(capabilities?.module_settings, schedule);
     const codes = new Set(schedule?.runnable_period_codes ?? []);
     const runnable =
@@ -626,9 +665,9 @@ export function HrPayrollScreen() {
           {runnablePeriods.length === 0 ? (
             <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
               <p>
-                No pay period is available to run today. Payroll runs on the last day of the month
-                or during the first {graceDays} day{graceDays === 1 ? "" : "s"} of the following month
-                (for the previous month only).
+                {scheduleEnforced
+                  ? `No pay period is available to run today. Payroll runs on the last day of the month or during the first ${graceDays} day${graceDays === 1 ? "" : "s"} of the following month (for the previous month only).`
+                  : "No pay period is available. Create a pay period for the current or a past month, then try again."}
               </p>
               {runSchedule?.rules?.map((rule) => (
                 <p key={rule} className="text-xs text-amber-800">

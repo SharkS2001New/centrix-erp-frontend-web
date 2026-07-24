@@ -1,6 +1,6 @@
 "use client";
 
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
@@ -83,6 +83,9 @@ export function HrAttendanceScreen() {
   const [manualError, setManualError] = useState(null);
   const [editingRecord, setEditingRecord] = useState(null);
   const [dayHint, setDayHint] = useState(null);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
+  const [employeePickerFilter, setEmployeePickerFilter] = useState("");
+  const [bulkResult, setBulkResult] = useState(null);
 
   useEffect(() => {
     const handle = window.setTimeout(() => setDebouncedSearch(recordSearch.trim()), 300);
@@ -221,7 +224,7 @@ export function HrAttendanceScreen() {
   }, [timesRequired, manualForm.check_in, manualForm.check_out, computedHours]);
 
   useEffect(() => {
-    if (!manualForm.employee_id || !manualForm.attendance_date) {
+    if (!editingRecord || !manualForm.employee_id || !manualForm.attendance_date) {
       setDayHint(null);
       return;
     }
@@ -241,13 +244,30 @@ export function HrAttendanceScreen() {
     return () => {
       cancelled = true;
     };
-  }, [manualForm.employee_id, manualForm.attendance_date]);
+  }, [editingRecord, manualForm.employee_id, manualForm.attendance_date]);
+
+  const filteredEmployeesForPicker = useMemo(() => {
+    const q = employeePickerFilter.trim().toLowerCase();
+    if (!q) return employees;
+    return employees.filter((e) => {
+      const name = composeEmployeeDisplayName(e).toLowerCase();
+      const code = String(e.employee_code ?? "").toLowerCase();
+      return name.includes(q) || code.includes(q);
+    });
+  }, [employees, employeePickerFilter]);
+
+  const allFilteredSelected =
+    filteredEmployeesForPicker.length > 0 &&
+    filteredEmployeesForPicker.every((e) => selectedEmployeeIds.includes(String(e.id)));
 
   function openCreateManual() {
     setEditingRecord(null);
     setManualForm(EMPTY_MANUAL);
     setManualError(null);
     setDayHint(null);
+    setBulkResult(null);
+    setSelectedEmployeeIds([]);
+    setEmployeePickerFilter("");
     setManualOpen(true);
     void loadEmployeesForManual();
   }
@@ -265,8 +285,29 @@ export function HrAttendanceScreen() {
     });
     setManualError(null);
     setDayHint(null);
+    setBulkResult(null);
+    setSelectedEmployeeIds([String(record.employee_id)]);
     setManualOpen(true);
     void loadEmployeesForManual();
+  }
+
+  function toggleEmployeeSelected(id) {
+    const key = String(id);
+    setSelectedEmployeeIds((prev) =>
+      prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key],
+    );
+  }
+
+  function selectAllFilteredEmployees() {
+    setSelectedEmployeeIds((prev) => {
+      const next = new Set(prev);
+      for (const e of filteredEmployeesForPicker) next.add(String(e.id));
+      return [...next];
+    });
+  }
+
+  function clearEmployeeSelection() {
+    setSelectedEmployeeIds([]);
   }
 
   async function deleteRecord(record) {
@@ -286,10 +327,6 @@ export function HrAttendanceScreen() {
 
   async function saveManual(e) {
     e.preventDefault();
-    if (!manualForm.employee_id) {
-      setManualError("Select an employee.");
-      return;
-    }
     const checkInApi = timesRequired ? formatTimeForApi(manualForm.check_in) : null;
     const checkOutApi = timesRequired ? formatTimeForApi(manualForm.check_out) : null;
     if (timesRequired && (!checkInApi || !checkOutApi)) {
@@ -300,50 +337,109 @@ export function HrAttendanceScreen() {
       setManualError(hoursHint ?? "Check-out must be after check-in on the same day.");
       return;
     }
-    if (dayHint?.has_existing_attendance && dayHint.existing_attendance?.id !== editingRecord?.id) {
-      setManualError(
-        "This employee already has attendance for this date. Only one record per employee per day is allowed.",
-      );
-      return;
-    }
-    if (dayHint?.blocks_attendance) {
-      const kind = dayHint.assignment_kind === "off_day" ? "off day" : "leave";
-      setManualError(
-        dayHint.reason ??
-          `This employee has an ${kind} assigned for this date. Attendance cannot be created.`,
-      );
-      return;
-    }
-    setManualSaving(true);
-    setManualError(null);
-    try {
-      const body = {
-        employee_id: Number(manualForm.employee_id),
-        attendance_date: manualForm.attendance_date,
-        check_in: checkInApi,
-        check_out: checkOutApi,
-        status: manualForm.status,
-        hours_worked: timesRequired ? computedHours : 0,
-        notes: manualForm.notes.trim() || null,
-      };
-      if (editingRecord) {
+
+    if (editingRecord) {
+      if (!manualForm.employee_id) {
+        setManualError("Select an employee.");
+        return;
+      }
+      if (dayHint?.has_existing_attendance && dayHint.existing_attendance?.id !== editingRecord?.id) {
+        setManualError(
+          "This employee already has attendance for this date. Only one record per employee per day is allowed.",
+        );
+        return;
+      }
+      if (dayHint?.blocks_attendance) {
+        const kind = dayHint.assignment_kind === "off_day" ? "off day" : "leave";
+        setManualError(
+          dayHint.reason ??
+            `This employee has an ${kind} assigned for this date. Attendance cannot be created.`,
+        );
+        return;
+      }
+      setManualSaving(true);
+      setManualError(null);
+      try {
         await apiRequest(`/employee-attendance/${editingRecord.id}`, {
           method: "PUT",
-          body: { ...body, source: editingRecord.source ?? "manual" },
+          body: {
+            employee_id: Number(manualForm.employee_id),
+            attendance_date: manualForm.attendance_date,
+            check_in: checkInApi,
+            check_out: checkOutApi,
+            status: manualForm.status,
+            hours_worked: timesRequired ? computedHours : 0,
+            notes: manualForm.notes.trim() || null,
+            source: editingRecord.source ?? "manual",
+          },
         });
-      } else {
-        await apiRequest("/employee-attendance", {
-          method: "POST",
-          body: { ...body, source: "manual" },
-        });
+        setManualOpen(false);
+        setEditingRecord(null);
+        setManualForm(EMPTY_MANUAL);
+        setDayHint(null);
+        setBulkResult(null);
+        await loadHistory();
+      } catch (err) {
+        setManualError(err instanceof ApiError ? err.message : "Save failed");
+      } finally {
+        setManualSaving(false);
       }
-      setManualOpen(false);
-      setEditingRecord(null);
-      setManualForm(EMPTY_MANUAL);
-      setDayHint(null);
-      await loadHistory();
+      return;
+    }
+
+    if (selectedEmployeeIds.length === 0) {
+      setManualError("Select one or more employees, or use Select all.");
+      return;
+    }
+
+    setManualSaving(true);
+    setManualError(null);
+    setBulkResult(null);
+    try {
+      const res = await apiRequest("/employee-attendance/bulk", {
+        method: "POST",
+        body: {
+          employee_ids: selectedEmployeeIds.map((id) => Number(id)),
+          attendance_date: manualForm.attendance_date,
+          check_in: checkInApi,
+          check_out: checkOutApi,
+          status: manualForm.status,
+          notes: manualForm.notes.trim() || null,
+        },
+      });
+      setBulkResult(res);
+      const created = Number(res.created_count ?? 0);
+      const skipped = Number(res.skipped_count ?? 0);
+      if (created > 0) {
+        notifySuccess(
+          skipped > 0
+            ? `Created ${created} attendance record${created === 1 ? "" : "s"}; skipped ${skipped}.`
+            : `Created ${created} attendance record${created === 1 ? "" : "s"}.`,
+        );
+        await loadHistory();
+        if (skipped === 0) {
+          setManualOpen(false);
+          setManualForm(EMPTY_MANUAL);
+          setSelectedEmployeeIds([]);
+          setBulkResult(null);
+        }
+      } else {
+        setManualError(
+          skipped > 0
+            ? `No records created. ${skipped} employee${skipped === 1 ? " was" : "s were"} skipped (already recorded, on leave/off, or invalid).`
+            : "No records created.",
+        );
+      }
     } catch (err) {
-      setManualError(err instanceof ApiError ? err.message : "Save failed");
+      const payload = err instanceof ApiError ? err.body : null;
+      if (payload?.skipped_count && !payload?.created_count) {
+        setBulkResult(payload);
+        setManualError(
+          `No records created. ${payload.skipped_count} employee${payload.skipped_count === 1 ? " was" : "s were"} skipped.`,
+        );
+      } else {
+        setManualError(err instanceof ApiError ? err.message : "Save failed");
+      }
     } finally {
       setManualSaving(false);
     }
@@ -370,7 +466,7 @@ export function HrAttendanceScreen() {
               disabled={historyLoading}
             />
             <PrimaryButton type="button" onClick={openCreateManual}>
-              Add manual record
+              Create attendance
             </PrimaryButton>
           </div>
         ) : null
@@ -617,34 +713,113 @@ export function HrAttendanceScreen() {
       )}
 
       <FormDrawer
-        title={editingRecord ? "Edit attendance" : "Manual attendance"}
+        title={editingRecord ? "Edit attendance" : "Create attendance"}
         open={manualOpen}
         onClose={() => {
           setManualOpen(false);
           setEditingRecord(null);
           setDayHint(null);
+          setBulkResult(null);
+          setSelectedEmployeeIds([]);
         }}
         onSubmit={saveManual}
         saving={manualSaving}
         error={manualError}
-        submitLabel={editingRecord ? "Save changes" : "Save record"}
+        submitLabel={
+          editingRecord
+            ? "Save changes"
+            : selectedEmployeeIds.length > 1
+              ? `Create for ${selectedEmployeeIds.length} employees`
+              : selectedEmployeeIds.length === 1
+                ? "Create attendance"
+                : "Create attendance"
+        }
         wide
       >
-        <HrSelectField
-          label="Employee"
-          value={manualForm.employee_id}
-          onChange={(v) => setManualForm((p) => ({ ...p, employee_id: v }))}
-          required
-          options={(
-            editingRecord?.employee &&
-            !employees.some((e) => Number(e.id) === Number(editingRecord.employee_id))
-              ? [editingRecord.employee, ...employees]
-              : employees
-          ).map((e) => ({
-            value: String(e.id),
-            label: composeEmployeeDisplayName(e),
-          }))}
-        />
+        {editingRecord ? (
+          <HrSelectField
+            label="Employee"
+            value={manualForm.employee_id}
+            onChange={(v) => setManualForm((p) => ({ ...p, employee_id: v }))}
+            required
+            options={(
+              editingRecord?.employee &&
+              !employees.some((e) => Number(e.id) === Number(editingRecord.employee_id))
+                ? [editingRecord.employee, ...employees]
+                : employees
+            ).map((e) => ({
+              value: String(e.id),
+              label: composeEmployeeDisplayName(e),
+            }))}
+          />
+        ) : (
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium text-slate-800">
+                Employees{" "}
+                <span className="font-normal text-slate-500">
+                  ({selectedEmployeeIds.length} selected)
+                </span>
+              </p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={selectAllFilteredEmployees}
+                  className="font-medium text-[#185FA5] hover:underline"
+                >
+                  {allFilteredSelected ? "All filtered selected" : "Select all"}
+                </button>
+                <button
+                  type="button"
+                  onClick={clearEmployeeSelection}
+                  className="font-medium text-slate-600 hover:underline"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+            <input
+              type="search"
+              value={employeePickerFilter}
+              onChange={(e) => setEmployeePickerFilter(e.target.value)}
+              placeholder="Search employees…"
+              className={inputClassName()}
+            />
+            <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+              {filteredEmployeesForPicker.length === 0 ? (
+                <p className="px-3 py-4 text-sm text-slate-500">No active employees found.</p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {filteredEmployeesForPicker.map((e) => {
+                    const id = String(e.id);
+                    const checked = selectedEmployeeIds.includes(id);
+                    return (
+                      <li key={id}>
+                        <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleEmployeeSelected(id)}
+                          />
+                          <span className="min-w-0 flex-1 truncate text-slate-800">
+                            {composeEmployeeDisplayName(e)}
+                          </span>
+                          <span className="shrink-0 text-xs text-slate-400">
+                            {e.employee_code || ""}
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+            <p className="text-xs text-slate-500">
+              Same date and times are applied to every selected employee. Staff already recorded or
+              on leave/off for that date are skipped.
+            </p>
+          </div>
+        )}
         <Field label="Date">
           <input
             type="date"
@@ -653,7 +828,9 @@ export function HrAttendanceScreen() {
             className={inputClassName()}
           />
         </Field>
-        {dayHint?.has_existing_attendance && dayHint.existing_attendance?.id !== editingRecord?.id ? (
+        {editingRecord &&
+        dayHint?.has_existing_attendance &&
+        dayHint.existing_attendance?.id !== editingRecord?.id ? (
           <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
             Attendance already exists for this employee on this date (
             {dayHint.existing_attendance?.status ?? "recorded"}
@@ -663,7 +840,7 @@ export function HrAttendanceScreen() {
             ). You cannot add a second record — edit the existing one in the Records tab.
           </p>
         ) : null}
-        {dayHint?.blocks_attendance ? (
+        {editingRecord && dayHint?.blocks_attendance ? (
           <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
             {dayHint.reason ??
               (dayHint.assignment_kind === "off_day"
@@ -671,7 +848,10 @@ export function HrAttendanceScreen() {
                 : "This employee has leave assigned for this date. Attendance cannot be created.")}
           </p>
         ) : null}
-        {dayHint && !dayHint.has_existing_attendance && !dayHint.blocks_attendance ? (
+        {editingRecord &&
+        dayHint &&
+        !dayHint.has_existing_attendance &&
+        !dayHint.blocks_attendance ? (
           <p
             className={`rounded-lg px-3 py-2 text-sm ${
               dayHint.should_work
@@ -702,12 +882,14 @@ export function HrAttendanceScreen() {
               label="Check in"
               value={manualForm.check_in}
               onChange={(v) => updateManualTime("check_in", v)}
+              defaultPeriod="AM"
               required
             />
             <HrTimePickerField
               label="Check out"
               value={manualForm.check_out}
               onChange={(v) => updateManualTime("check_out", v)}
+              defaultPeriod="PM"
               required
             />
             <Field label="Hours worked">
@@ -737,6 +919,23 @@ export function HrAttendanceScreen() {
             className={inputClassName()}
           />
         </Field>
+        {bulkResult?.skipped?.length ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            <p className="font-medium">
+              Created {bulkResult.created_count ?? 0}, skipped {bulkResult.skipped_count ?? 0}
+            </p>
+            <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto text-xs">
+              {bulkResult.skipped.slice(0, 20).map((row) => (
+                <li key={`${row.employee_id}-${row.reason}`}>
+                  {row.employee_name}: {row.reason}
+                </li>
+              ))}
+              {bulkResult.skipped.length > 20 ? (
+                <li>…and {bulkResult.skipped.length - 20} more</li>
+              ) : null}
+            </ul>
+          </div>
+        ) : null}
       </FormDrawer>
     </CatalogPageShell>
   );

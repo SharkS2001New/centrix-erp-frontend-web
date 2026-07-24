@@ -26,18 +26,41 @@ const PERIOD_OPTIONS = [
 /**
  * Dropdown time picker (hour / minute / AM·PM).
  * Keeps partial selections locally until all three are chosen — avoids clearing on first pick.
+ *
+ * @param {"AM"|"PM"} [defaultPeriod="AM"] Period pre-selected when value is empty (use PM for check-out).
  */
-export function HrTimePickerField({ label, value, onChange, required = false }) {
-  const [parts, setParts] = useState(() => time24hToParts(value));
+export function HrTimePickerField({
+  label,
+  value,
+  onChange,
+  required = false,
+  defaultPeriod = "AM",
+}) {
+  const [parts, setParts] = useState(() => {
+    const parsed = time24hToParts(value);
+    if (!value) {
+      return { hour: "", minute: "", period: defaultPeriod === "PM" ? "PM" : "AM" };
+    }
+    return parsed;
+  });
 
   useEffect(() => {
     if (value) {
       setParts(time24hToParts(value));
+      return;
     }
-  }, [value]);
+    setParts((prev) => ({
+      hour: "",
+      minute: "",
+      period: prev.period || (defaultPeriod === "PM" ? "PM" : "AM"),
+    }));
+  }, [value, defaultPeriod]);
 
   function updatePart(key, nextValue) {
     const next = { ...parts, [key]: nextValue };
+    if (!next.period) {
+      next.period = defaultPeriod === "PM" ? "PM" : "AM";
+    }
     setParts(next);
     const encoded = partsToTime24h(next.hour, next.minute, next.period);
     onChange(encoded || "");
@@ -79,7 +102,7 @@ export function HrTimePickerField({ label, value, onChange, required = false }) 
           ))}
         </select>
         <select
-          value={parts.period}
+          value={parts.period || (defaultPeriod === "PM" ? "PM" : "AM")}
           onChange={(e) => updatePart("period", e.target.value)}
           required={required}
           aria-label={`${label} AM or PM`}
