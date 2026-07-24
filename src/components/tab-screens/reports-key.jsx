@@ -5,12 +5,23 @@ import { useParams, useRouter } from "next/navigation";
 
 import { REPORT_DEFINITIONS } from "@/lib/reports/definitions";
 import { REPORT_UI_ROUTES } from "@/lib/reports/catalog-ui";
-import { hrReportSubtitle } from "@/lib/reports/hr-reports";
-import { distributionReportSubtitle } from "@/lib/reports/distribution-reports";
+import { HR_REPORT_DEFS, hrReportSubtitle } from "@/lib/reports/hr-reports";
+import {
+  DISTRIBUTION_REPORT_DEFS,
+  distributionReportSubtitle,
+} from "@/lib/reports/distribution-reports";
 import { StructuredReportScreen } from "@/components/reports/structured-report-screen";
 import { GenericReportScreen } from "@/components/reports/generic-report-screen";
 import { apiRequest } from "@/lib/api";
 import { AppRouteLoading } from "@/components/shared/app-route-loading";
+
+/** Known generic reports that must not depend on GET /reports (reports.view-only catalog). */
+const KNOWN_GENERIC_REPORT_META = Object.fromEntries(
+  [...HR_REPORT_DEFS, ...DISTRIBUTION_REPORT_DEFS].map((r) => [
+    r.key,
+    { key: r.key, path: `/reports/${r.key}`, label: r.label },
+  ]),
+);
 
 export function ReportsKeyScreen() {
   return (
@@ -40,6 +51,7 @@ function ReportViewerPageContent() {
   const externalRoute = reportKey ? REPORT_UI_ROUTES[reportKey] : undefined;
   const redirectsOutsideReports =
     externalRoute && !String(externalRoute).startsWith("/reports");
+  const knownMeta = reportKey ? KNOWN_GENERIC_REPORT_META[reportKey] : null;
 
   useEffect(() => {
     if (redirectsOutsideReports) {
@@ -55,7 +67,7 @@ function ReportViewerPageContent() {
   );
 
   useEffect(() => {
-    if (!reportKey || structuredDefinition || redirectsOutsideReports) return;
+    if (!reportKey || structuredDefinition || redirectsOutsideReports || knownMeta) return;
     apiRequest("/reports/")
       .then((catalog) => {
         for (const section of Object.values(catalog ?? {})) {
@@ -69,7 +81,7 @@ function ReportViewerPageContent() {
         setError("Report not found in catalog.");
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load catalog"));
-  }, [reportKey, structuredDefinition, redirectsOutsideReports]);
+  }, [reportKey, structuredDefinition, redirectsOutsideReports, knownMeta]);
 
   if (!reportKey) {
     return (
@@ -87,11 +99,13 @@ function ReportViewerPageContent() {
     return <StructuredReportScreen definition={structuredDefinition} />;
   }
 
-  if (error) {
+  const resolvedMeta = knownMeta ?? meta;
+
+  if (error && !resolvedMeta) {
     return <div className="p-6 text-sm text-red-600">{error}</div>;
   }
 
-  if (!meta) {
+  if (!resolvedMeta) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center p-6">
         <p className="text-sm text-slate-500">Loading report…</p>
@@ -102,8 +116,8 @@ function ReportViewerPageContent() {
   return (
     <GenericReportScreen
       reportKey={reportKey}
-      label={meta.label}
-      apiPath={meta.path}
+      label={resolvedMeta.label}
+      apiPath={resolvedMeta.path}
       subtitle={hrReportSubtitle(reportKey) ?? distributionReportSubtitle(reportKey) ?? undefined}
     />
   );

@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api";
-import { getStoredOrganization } from "@/lib/auth-storage";
+import { getStoredOrganization, getStoredUser } from "@/lib/auth-storage";
 import {
   fetchOrgCached,
   invalidateOrgCacheResource,
@@ -187,7 +187,12 @@ export function fetchUsersCached(organizationId, { path = "/users" } = {}) {
 /** Lean employee roster for pickers / dashboards (no bank/NOK/user graph). */
 export function fetchEmployeesCached(organizationId) {
   const orgId = resolveOrgId(organizationId);
-  const key = orgCacheKey(orgId, "employees-lean");
+  const user = getStoredUser();
+  const branchScope =
+    user?.access_scope && user.access_scope !== "org" && user.branch_id != null
+      ? `branch:${user.branch_id}`
+      : "org";
+  const key = orgCacheKey(orgId, "employees-lean", branchScope);
   return fetchOrgCached(key, async () => {
     const res = await apiRequest("/employees", {
       searchParams: { per_page: 200, fields: "lean" },
