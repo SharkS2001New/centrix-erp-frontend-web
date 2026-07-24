@@ -6,23 +6,33 @@ import { Field, formatShortDate, inputClassName } from "@/components/catalog/cat
 import { HrSelectField } from "@/components/hr/hr-crud-page";
 import { composeEmployeeDisplayName } from "@/components/hr/hr-shared";
 
-const DEDUCT_FROM_OPTIONS = [
+const BALANCE_POOL_OPTIONS = [
   { value: "off_days", label: "Off days" },
   { value: "annual", label: "Annual leave" },
   { value: "sick", label: "Sick leave" },
 ];
 
+/** Deductible offs reduce salary (unpaid). Non-deductible offs use a leave/off balance pool. */
+function resolveSalaryDeductible(row) {
+  if (row?.deduct_from === "unpaid" || row?.leave_type === "unpaid") return true;
+  if (row?.salary_deductible != null) return Boolean(row.salary_deductible);
+  return false;
+}
+
+function resolveBalancePool(row) {
+  if (row?.deduct_from === "annual" || row?.deduct_from === "sick") return row.deduct_from;
+  return "off_days";
+}
+
 export function buildOffDayEmptyForm(extra, row) {
   const today = new Date().toISOString().slice(0, 10);
-  const deductFrom =
-    row?.deduct_from === "annual" || row?.deduct_from === "sick"
-      ? row.deduct_from
-      : "off_days";
+  const salaryDeductible = resolveSalaryDeductible(row);
   return {
     employee_id: row?.employee_id != null ? String(row.employee_id) : "",
     start_date: row?.start_date?.slice?.(0, 10) ?? row?.leave_date?.slice?.(0, 10) ?? today,
     end_date: row?.end_date?.slice?.(0, 10) ?? row?.leave_date?.slice?.(0, 10) ?? today,
-    deduct_from: deductFrom,
+    salary_deductible: salaryDeductible,
+    deduct_from: salaryDeductible ? "unpaid" : resolveBalancePool(row),
     duration_type: row?.duration_type ?? "full_day",
     half_day_period: row?.half_day_period ?? "morning",
     notes: row?.notes ?? "",
@@ -30,9 +40,10 @@ export function buildOffDayEmptyForm(extra, row) {
 }
 
 export function buildOffDayBody(form) {
-  const deductFrom = form.deduct_from ?? "off_days";
+  const salaryDeductible = Boolean(form.salary_deductible);
+  const deductFrom = salaryDeductible ? "unpaid" : (form.deduct_from ?? "off_days");
   const leaveType =
-    deductFrom === "annual" ? "annual" : deductFrom === "sick" ? "sick" : "other";
+    deductFrom === "annual" ? "annual" : deductFrom === "sick" ? "sick" : deductFrom === "unpaid" ? "unpaid" : "other";
 
   return {
     employee_id: Number(form.employee_id),
@@ -49,7 +60,9 @@ export function buildOffDayBody(form) {
 
 export function validateOffDayForm(form, extra) {
   if (!form.employee_id) return "Select an employee.";
-  if (!form.deduct_from) return "Select where to deduct days from.";
+  if (!form.salary_deductible && !form.deduct_from) {
+    return "Select which balance pool to use for this non-deductible off day.";
+  }
   if (!form.start_date) return "Start date is required.";
   if (form.duration_type === "half_day") {
     if (!form.half_day_period) return "Select morning or afternoon for half day.";
@@ -70,6 +83,7 @@ export function validateOffDayForm(form, extra) {
 function deductFromLabel(value) {
   if (value === "annual") return "annual leave";
   if (value === "sick") return "sick leave";
+  if (value === "unpaid") return "salary (deductible)";
   return "off days";
 }
 
@@ -100,7 +114,8 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
   const [balances, setBalances] = useState(null);
 
   const isHalfDay = form.duration_type === "half_day";
-  const deductFrom = form.deduct_from ?? "off_days";
+  const salaryDeductible = Boolean(form.salary_deductible);
+  const deductFrom = salaryDeductible ? "unpaid" : (form.deduct_from ?? "off_days");
   const exceptLeaveId = extra?.editingRow?.id;
 
   useEffect(() => {
@@ -182,12 +197,15 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
 
   const previewLabel = useMemo(() => {
     if (previewLoading) return "Calculating…";
-    if (!preview) return "Select employee, pool, and dates to see totals.";
+    if (!preview) return "Select employee and dates to see totals.";
     const days = Number(preview.working_days ?? preview.total_days);
     const dayLabel = days === 1 ? "1 working day" : `${days} working days`;
     const hours = Number(preview.total_hours);
-    return `${dayLabel} · ${hours} hour${hours === 1 ? "" : "s"} deducted`;
-  }, [preview, previewLoading]);
+    if (salaryDeductible) {
+      return `${dayLabel} · deductible from salary (${hours} hour${hours === 1 ? "" : "s"})`;
+    }
+    return `${dayLabel} · ${hours} hour${hours === 1 ? "" : "s"} from balance`;
+  }, [preview, previewLoading, salaryDeductible]);
 
   return (
     <>
@@ -202,7 +220,34 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
         }))}
       />
 
-      {balances && (
+      <HrSelectField
+        label="Salary impact"
+        value={salaryDeductible ? "deductible" : "non_deductible"}
+        onChange={(v) => {
+          const nextDeductible = v === "deductible";
+          setForm((p) => ({
+            ...p,
+            salary_deductible: nextDeductible,
+            deduct_from: nextDeductible
+              ? "unpaid"
+              : p.deduct_from === "unpaid"
+                ? "off_days"
+                : (p.deduct_from ?? "off_days"),
+          }));
+        }}
+        options={[
+          {
+            value: "non_deductible",
+            label: "Non-deductible — off day, no salary deduction",
+          },
+          {
+            value: "deductible",
+            label: "Deductible — off day, deduct from salary",
+          },
+        ]}
+      />
+
+      {!salaryDeductible && balances ? (
         <div className="grid gap-2 sm:grid-cols-3">
           <BalanceChip
             label="Annual leave"
@@ -226,14 +271,21 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
             highlight={deductFrom === "off_days"}
           />
         </div>
-      )}
+      ) : null}
 
-      <HrSelectField
-        label="Deduct from"
-        value={deductFrom}
-        onChange={(v) => setForm((p) => ({ ...p, deduct_from: v }))}
-        options={DEDUCT_FROM_OPTIONS}
-      />
+      {!salaryDeductible ? (
+        <HrSelectField
+          label="Deduct from balance"
+          value={deductFrom === "unpaid" ? "off_days" : deductFrom}
+          onChange={(v) => setForm((p) => ({ ...p, deduct_from: v, salary_deductible: false }))}
+          options={BALANCE_POOL_OPTIONS}
+        />
+      ) : (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Deductible offs do not use leave/off balances. Payroll treats them as unpaid days
+          (salary is reduced when proration is on).
+        </p>
+      )}
 
       <Field label="Start date">
         <input
@@ -305,8 +357,10 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
         )}
         {preview && !previewLoading && preview.can_assign !== false ? (
           <p className="mt-1 text-xs opacity-90">
-            Deducting from {deductFromLabel(deductFrom)}. Based on shift length (
-            {Number(preview.shift_hours_per_day)} h per working day).
+            {salaryDeductible
+              ? "Deductible from salary."
+              : `Deducting from ${deductFromLabel(deductFrom)}.`}{" "}
+            Based on shift length ({Number(preview.shift_hours_per_day)} h per working day).
             {preview.calendar_days > (preview.working_days ?? preview.total_days) ? (
               <>
                 {" "}
@@ -318,7 +372,7 @@ export function HrOffDayAssignmentFields({ form, setForm, extra, setLeavePreview
             ) : (
               <> {formatShortDate(form.start_date)}.</>
             )}
-            {preview.available_after_assign != null ? (
+            {!salaryDeductible && preview.available_after_assign != null ? (
               <>
                 {" "}
                 After save: {Number(preview.available_after_assign)} day

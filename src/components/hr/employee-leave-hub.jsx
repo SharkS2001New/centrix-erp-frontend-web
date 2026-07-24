@@ -22,6 +22,7 @@ import {
 function deductFromLabel(value) {
   if (value === "annual") return "Annual leave";
   if (value === "sick") return "Sick leave";
+  if (value === "unpaid") return "Salary (deductible)";
   return "Off days";
 }
 
@@ -36,7 +37,11 @@ function formatPeriod(record) {
 
 function formatDays(record) {
   if (record.total_days == null) return "—";
-  return `${Number(record.days_deducted ?? record.total_days)} working d · ${Number(record.total_hours ?? 0)} h`;
+  const days =
+    record.deduct_from === "unpaid"
+      ? Number(record.total_days)
+      : Number(record.days_deducted ?? record.total_days);
+  return `${days} working d · ${Number(record.total_hours ?? 0)} h`;
 }
 
 function BalancePill({ label, available }) {
@@ -310,7 +315,7 @@ export function EmployeeLeaveHub({
                           <thead className="theme-table-head-row text-left text-xs font-medium">
                             <tr>
                               <th className="px-3 py-2">Period</th>
-                              <th className="px-3 py-2">Deducted from</th>
+                              <th className="px-3 py-2">Impact</th>
                               <th className="px-3 py-2">Days</th>
                               <th className="px-3 py-2">Duration</th>
                               <th className="px-3 py-2">Approval</th>

@@ -306,6 +306,14 @@ export function HrAttendanceScreen() {
       );
       return;
     }
+    if (dayHint?.blocks_attendance) {
+      const kind = dayHint.assignment_kind === "off_day" ? "off day" : "leave";
+      setManualError(
+        dayHint.reason ??
+          `This employee has an ${kind} assigned for this date. Attendance cannot be created.`,
+      );
+      return;
+    }
     setManualSaving(true);
     setManualError(null);
     try {
@@ -628,7 +636,15 @@ export function HrAttendanceScreen() {
             ). You cannot add a second record — edit the existing one in the Records tab.
           </p>
         ) : null}
-        {dayHint && !dayHint.has_existing_attendance ? (
+        {dayHint?.blocks_attendance ? (
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {dayHint.reason ??
+              (dayHint.assignment_kind === "off_day"
+                ? "This employee has an off day assigned for this date. Attendance cannot be created."
+                : "This employee has leave assigned for this date. Attendance cannot be created.")}
+          </p>
+        ) : null}
+        {dayHint && !dayHint.has_existing_attendance && !dayHint.blocks_attendance ? (
           <p
             className={`rounded-lg px-3 py-2 text-sm ${
               dayHint.should_work

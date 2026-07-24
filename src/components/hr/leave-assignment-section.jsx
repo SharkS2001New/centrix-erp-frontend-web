@@ -17,7 +17,8 @@ export function KenyaLeavePolicyAside({ defaultOpen = false }) {
         <div>
           <h2 className="text-[15px] font-medium text-slate-900">Kenya leave policy</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Annual and sick leave accrue from hire date. Off days are assigned manually.
+            Annual and sick leave accrue from hire date. Off days can be non-deductible
+            (balance only) or deductible (reduce salary).
           </p>
         </div>
         <span className="mt-0.5 shrink-0 text-slate-400" aria-hidden>
@@ -44,8 +45,8 @@ export function KenyaLeavePolicyAside({ defaultOpen = false }) {
           <div>
             <dt className="font-medium text-slate-900">Off days</dt>
             <dd className="mt-1 text-slate-600">
-              Employer rest days — not auto-accrued. Expand an employee below to see utilization
-              and assign new dates.
+              Employer rest days — not auto-accrued. Non-deductible offs use a balance pool;
+              deductible offs reduce salary. Attendance cannot be recorded on a full assigned off.
             </dd>
           </div>
         </dl>
