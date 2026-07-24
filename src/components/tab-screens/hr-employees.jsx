@@ -367,6 +367,8 @@ export function HrEmployeesScreen() {
                                 {formatShiftExpectedHours(employee.shift)}
                               </span>
                             </>
+                          ) : employee.shift_id ? (
+                            <span className="text-slate-600">Shift #{employee.shift_id}</span>
                           ) : (
                             <span className="text-amber-700">Not assigned</span>
                           )}
