@@ -13,7 +13,11 @@ import {
   useTabPaneActive,
 } from "@/contexts/tab-pane-activity-context";
 import { isMultiBranchCatalog } from "@/lib/catalog-scope";
-import { filterReportColumnKeys, reportColumnLabel } from "@/lib/reports/report-column-visibility";
+import {
+  filterReportColumnKeys,
+  reportColumnLabel,
+  reportConstantHeaderLines,
+} from "@/lib/reports/report-column-visibility";
 import { ReportExportToolbar } from "@/components/reports/report-export-toolbar";
 import { normalizeReportMeta, normalizeReportRows, normalizeReportSummary } from "@/lib/reports/api-response";
 import { defaultReportBranchId, defaultReportDateRange } from "@/lib/reports/report-filters";
@@ -133,8 +137,13 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
 
   const columns = useMemo(() => {
     if (!rows[0]) return [];
-    return filterReportColumnKeys(Object.keys(rows[0]), { multiBranch });
-  }, [rows, multiBranch]);
+    return filterReportColumnKeys(Object.keys(rows[0]), { multiBranch, reportKey, rows });
+  }, [rows, multiBranch, reportKey]);
+
+  const recordHeaderLines = useMemo(
+    () => reportConstantHeaderLines(reportKey, rows),
+    [reportKey, rows],
+  );
 
   const footerTotals = useMemo(() => {
     if (!reportShowsTableFooter(reportKey) || (!rows.length && !reportSummary) || !columns.length) return {};
@@ -166,7 +175,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
   const exportColumns = useMemo(() => {
     const sample = rows[0];
     if (!sample) return [];
-    return filterReportColumnKeys(Object.keys(sample), { multiBranch }).map((key) => ({
+    return filterReportColumnKeys(Object.keys(sample), { multiBranch, reportKey, rows }).map((key) => ({
       key,
       label: key === "notes" && reportKey === "stock-transfers" ? "Reason" : labelizeKey(key),
       accessor: (row) => formatCell(key, row[key], row),
@@ -215,6 +224,7 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
               fromDate,
               toDate,
               branchName: branchLabel,
+              extraLines: recordHeaderLines,
             }}
             disabled={loading}
           />
@@ -296,6 +306,15 @@ export function GenericReportScreen({ reportKey, label, apiPath, subtitle }) {
     >
       {vatKpis.length ? (
         <ReportKpiGrid items={vatKpis.map((item) => ({ ...item, hint: `${item.hint ?? ""} (current page)`.trim() }))} />
+      ) : null}
+      {recordHeaderLines.length ? (
+        <div className="mb-3 rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] px-4 py-3 text-sm text-slate-700">
+          {recordHeaderLines.map((line) => (
+            <p key={line} className="leading-6">
+              {line}
+            </p>
+          ))}
+        </div>
       ) : null}
       <div className="theme-panel theme-table-shell overflow-hidden rounded-xl shadow-sm">
         {!loading && rows.length === 0 ? (

@@ -45,7 +45,21 @@ export function HrCashAdvancesScreen() {
           render: (r) => formatShortDate(r.advance_date),
         },
         { key: "amount", label: "Advanced", render: (r) => formatHrKesFull(r.amount) },
-        { key: "balance", label: "Balance", render: (r) => formatHrKesFull(r.balance) },
+        { key: "balance", label: "Outstanding", render: (r) => formatHrKesFull(r.balance) },
+        {
+          key: "next_deduction",
+          label: "Next payroll deduction",
+          render: (r) => {
+            const next =
+              r.next_deduction_amount != null
+                ? Number(r.next_deduction_amount)
+                : r.status === "open"
+                  ? Number(r.balance ?? 0)
+                  : 0;
+            if (r.status !== "open" || next <= 0) return "—";
+            return formatHrKesFull(next);
+          },
+        },
         {
           key: "repayment_mode",
           label: "Repayment",
@@ -114,6 +128,7 @@ export function HrCashAdvancesScreen() {
       })}
       buildBody={(form, orgId) => {
         const amount = parseDecimalInput(form.amount);
+        // Balance tracks amount while typing; on edit it stays as loaded unless amount changes.
         const balance =
           form.balance !== "" ? parseDecimalInput(form.balance) : amount;
         return {
@@ -166,12 +181,14 @@ export function HrCashAdvancesScreen() {
             <input
               type="number"
               min="0"
+              step="0.01"
               value={form.amount}
               onChange={(e) =>
                 setForm((p) => ({
                   ...p,
                   amount: e.target.value,
-                  balance: p.balance === "" ? e.target.value : p.balance,
+                  // Keep outstanding balance in sync — there is no separate balance input.
+                  balance: e.target.value,
                 }))
               }
               className={inputClassName()}

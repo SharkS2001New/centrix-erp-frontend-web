@@ -647,8 +647,14 @@ export function buildEmployeeBody(form, organizationId, branchId, { isEdit = fal
 /** Rows for Kenya statutory breakdown UI from payroll line or calculate API */
 export function kenyaStatutoryRows(line) {
   const meta = line?.statutory_meta ?? line ?? {};
+  const gross =
+    meta.statutory_gross
+    ?? meta.contract_gross_for_statutory
+    ?? line?.gross_pay
+    ?? meta.gross_pay;
   return [
-    { label: "Gross pay", value: line?.gross_pay ?? meta.gross_pay, emphasis: true },
+    { label: "Gross pay (deduction base)", value: gross, emphasis: true },
+    { label: "Payable amount", value: meta.period_gross ?? line?.gross_pay ?? meta.gross_pay },
     { label: "NSSF (employee)", value: line?.nssf ?? meta.nssf },
     { label: "SHIF", value: line?.shif ?? meta.shif },
     { label: "Housing levy (employee)", value: line?.housing_levy ?? meta.housing_levy },
@@ -745,48 +751,92 @@ function statutoryAmount(line, meta, id) {
   return Number(line?.[id] ?? meta[id] ?? 0);
 }
 
-/** Earnings + locked statutory sections for payroll line detail panels. */
+/** Earnings + locked statutory sections for payroll line detail panels and receipts. */
 export function payrollBreakdownSections(line, employee) {
   const meta = line?.statutory_meta ?? {};
   const payroll = meta.payroll ?? {};
   const contractBasic = Number(
     payroll.contract_monthly_salary ?? meta.basic_salary ?? employee?.base_salary ?? 0,
   );
-  const basic = Number(meta.basic_salary ?? payrollBasicFromMeta(payroll, contractBasic));
-  const allowanceLines = payroll.allowance_lines ?? [];
-  const allowances = Number(
-    meta.allowances ?? payroll.allowances_period ?? 0,
-  );
+  const monthlyAllowance = Number(payroll.monthly_allowance ?? 0);
   const overtime = Number(payroll.overtime ?? 0);
-  const gross = Number(line?.gross_pay ?? basic + allowances + overtime);
+  const contractGross = Number(
+    meta.statutory_gross
+      ?? payroll.contract_gross_for_statutory
+      ?? contractBasic + monthlyAllowance + overtime,
+  );
+  const periodBasic = Number(meta.basic_salary ?? payrollBasicFromMeta(payroll, contractBasic));
+  const allowanceLines = payroll.allowance_lines ?? [];
+  const periodAllowances = Number(meta.allowances ?? payroll.allowances_period ?? 0);
+  const payable = Number(
+    meta.period_gross
+      ?? line?.gross_pay
+      ?? periodBasic + periodAllowances + overtime,
+  );
   const other = Number(line?.other_deductions ?? meta.other_deductions ?? 0);
+  const totalDeductions = Number(
+    line?.deductions
+      ?? Number(line?.nssf ?? meta.nssf ?? 0)
+        + Number(line?.shif ?? meta.shif ?? 0)
+        + Number(line?.housing_levy ?? meta.housing_levy ?? 0)
+        + Number(line?.paye ?? meta.paye ?? 0)
+        + other,
+  );
+  const useProration = Boolean(payroll.use_attendance_proration);
+  const paidDays = Number(payroll.paid_work_days ?? payroll.attendance?.paid_days ?? 0);
+  const expectedDays = Number(
+    payroll.expected_work_days ?? payroll.attendance?.expected_days ?? 0,
+  );
+  const daysHint =
+    useProration && expectedDays > 0
+      ? `${formatPayrollDays(paidDays)} of ${formatPayrollDays(expectedDays)} days`
+      : null;
 
   const earnings = [
-    { label: "Contract gross pay", value: contractBasic, muted: payroll.use_attendance_proration },
-    { label: "Basic pay (this period)", value: basic },
+    {
+      label: "Gross pay",
+      value: contractGross,
+      emphasis: true,
+      hint: "Contract salary + monthly allowances (deduction base)",
+    },
+    {
+      label: daysHint ? `Payable amount (${daysHint})` : "Payable amount",
+      value: payable,
+      emphasis: true,
+      hint: useProration
+        ? "Pay for days worked, before deductions"
+        : "Amount before deductions",
+    },
   ];
-  if (allowanceLines.length > 0) {
-    for (const line of allowanceLines) {
-      earnings.push({
-        label: `Allowance: ${line.name}`,
-        value: Number(line.amount ?? 0),
-      });
+
+  // Compact payable composition when useful (non-zero components differ from a single lump).
+  const payableDetail = [];
+  if (useProration || periodAllowances > 0 || overtime > 0) {
+    payableDetail.push({ label: "Basic (period)", value: periodBasic });
+    if (allowanceLines.length > 0) {
+      for (const row of allowanceLines) {
+        payableDetail.push({
+          label: `Allowance: ${row.name}`,
+          value: Number(row.amount ?? 0),
+        });
+      }
+    } else if (periodAllowances > 0) {
+      payableDetail.push({ label: "Allowances (period)", value: periodAllowances });
     }
-  } else if (allowances > 0) {
-    earnings.push({ label: "Allowances (this period)", value: allowances });
+    if (overtime > 0) {
+      payableDetail.push({ label: "Overtime", value: overtime });
+    }
   }
-  if (overtime > 0) {
-    earnings.push({ label: "Overtime", value: overtime });
-  }
-  earnings.push({ label: "Gross pay", value: gross, emphasis: true });
 
   const attendance = payroll.attendance;
   const attendanceNote =
-    attendance && payroll.use_attendance_proration
+    attendance && useProration
       ? [
-          `${attendance.paid_days ?? 0} paid days of ${attendance.expected_days ?? 0} scheduled`,
-          `${attendance.absent_days ?? 0} absent`,
-          `${attendance.unpaid_leave_days ?? 0} unpaid / deductible off`,
+          `${formatPayrollDays(attendance.paid_days ?? paidDays)} paid days of ${formatPayrollDays(attendance.expected_days ?? expectedDays)} scheduled`,
+          Number(attendance.absent_days ?? 0) > 0 ? `${attendance.absent_days} absent` : null,
+          Number(attendance.unpaid_leave_days ?? 0) > 0
+            ? `${attendance.unpaid_leave_days} unpaid / deductible off`
+            : null,
           Number(attendance.non_deductible_off_days ?? 0) > 0
             ? `${attendance.non_deductible_off_days} non-deductible off`
             : null,
@@ -795,52 +845,60 @@ export function payrollBreakdownSections(line, employee) {
           .join(" · ")
       : null;
 
+  const statutory = KENYA_STATUTORY_DEDUCTIONS.map((d) => ({
+    id: d.id,
+    label: d.label,
+    hint: d.hint,
+    value: statutoryAmount(line, meta, d.id),
+    system: true,
+  }));
+  const otherDeductions = payrollDeductionRows(payroll, other);
+
   return {
     earnings,
+    payableDetail,
     attendanceNote,
-    statutory: KENYA_STATUTORY_DEDUCTIONS.map((d) => ({
-      id: d.id,
-      label: d.label,
-      hint: d.hint,
-      value: statutoryAmount(line, meta, d.id),
-      system: true,
-    })),
-    otherDeductions: payrollDeductionRows(payroll, other),
-    net: { label: "Net salary", value: Number(line?.net_pay ?? meta.net_pay ?? 0) },
+    deductionsNote: "All deductions are calculated on gross pay (contract), not payable days",
+    statutory,
+    otherDeductions,
+    totalDeductions: {
+      label: "Total deductions",
+      value: totalDeductions,
+    },
+    net: {
+      label: "Net pay",
+      value: Number(line?.net_pay ?? meta.net_pay ?? Math.max(0, payable - totalDeductions)),
+    },
+    contractGross,
+    payable,
+    paidDays,
+    expectedDays,
   };
+}
+
+function formatPayrollDays(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
 }
 
 function payrollDeductionRows(payroll, otherTotal) {
   const detail = payroll.deductions_detail ?? [];
-  const percentBase = payroll.other_deductions_percent_base;
   if (detail.length > 0) {
     return detail.map((item) => {
       const name = item.name ?? (item.type === "cash_advance" ? "Cash advance" : "Deduction");
       const pct =
         item.calc_type === "percentage" && item.percentage != null
-          ? ` (${item.percentage}% of contract gross)`
+          ? ` (${item.percentage}% of gross pay)`
           : "";
       return {
         label: `${name}${pct}`,
         value: Number(item.amount ?? 0),
-        hint:
-          item.prorated === false && payroll.other_deductions_not_prorated
-            ? "Full amount for this pay run"
-            : undefined,
       };
     });
   }
   if (otherTotal > 0) {
-    return [
-      {
-        label: "Other deductions (total)",
-        value: otherTotal,
-        hint:
-          payroll.other_deductions_not_prorated && percentBase > 0
-            ? "Not reduced for attendance proration"
-            : undefined,
-      },
-    ];
+    return [{ label: "Other deductions", value: otherTotal }];
   }
   return [];
 }
@@ -856,11 +914,13 @@ function payrollBasicFromMeta(payroll, contractBasic) {
 
 /** Flat list (legacy / compact grids). */
 export function payrollBreakdownRows(line, employee) {
-  const { earnings, statutory, otherDeductions, net } = payrollBreakdownSections(line, employee);
+  const { earnings, statutory, otherDeductions, totalDeductions, net } =
+    payrollBreakdownSections(line, employee);
   return [
     ...earnings,
     ...statutory.map((r) => ({ label: r.label, value: r.value, system: true })),
     ...otherDeductions,
+    { label: totalDeductions.label, value: totalDeductions.value },
     { label: net.label, value: net.value, emphasis: true },
   ];
 }
@@ -966,28 +1026,17 @@ function CheckMiniIcon() {
   );
 }
 
-/** Whether API allows deleting this payroll run (20-minute window after creation). */
+/** Whether API allows deleting this payroll run (blocked only when marked paid). */
 export function payrollRunCanDelete(run) {
+  if (run?.status === "paid") return false;
   if (run?.can_delete === false) return false;
   if (run?.can_delete === true) return true;
-  if (!run?.delete_locked_after) return true;
-  return Date.now() < new Date(run.delete_locked_after).getTime();
+  return true;
 }
 
 export function payrollRunDeleteLockHint(run) {
   if (payrollRunCanDelete(run)) return null;
-  const until = run?.delete_locked_after
-    ? new Date(run.delete_locked_after).toLocaleString("en-KE", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : null;
-  const mins = run?.delete_lock_minutes ?? 20;
-  return until
-    ? `Delete locked after ${mins} minutes (since ${until}).`
-    : `Delete locked after ${mins} minutes.`;
+  return run?.delete_blocked_reason || "Paid payroll runs cannot be deleted.";
 }
 
 /** Client-side check if a pay period may be run today (mirrors API schedule). */
@@ -1263,7 +1312,7 @@ export function PayrollBreakdownPanel({ line, employee, loading = false }) {
   return (
     <div className="space-y-5">
       <section>
-        <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Earnings</h3>
+        <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Pay</h3>
         <dl className="mt-2 space-y-2">
           {sections.earnings.map((row) => (
             <div key={row.label}>
@@ -1277,6 +1326,16 @@ export function PayrollBreakdownPanel({ line, employee, loading = false }) {
             </div>
           ))}
         </dl>
+        {sections.payableDetail?.length ? (
+          <dl className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
+            <p className="px-3 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+              Payable breakdown
+            </p>
+            {sections.payableDetail.map((row) => (
+              <BreakdownAmountRow key={row.label} label={row.label} value={row.value} muted />
+            ))}
+          </dl>
+        ) : null}
         {sections.attendanceNote ? (
           <p className="mt-2 text-xs text-slate-500">{sections.attendanceNote}</p>
         ) : null}
@@ -1284,9 +1343,9 @@ export function PayrollBreakdownPanel({ line, employee, loading = false }) {
 
       <section>
         <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">
-          Government deductions
+          Deductions
         </h3>
-        <p className="mt-0.5 text-xs text-slate-500">Auto-calculated · system configured</p>
+        <p className="mt-0.5 text-xs text-slate-500">{sections.deductionsNote}</p>
         <dl className="mt-2 space-y-2">
           {sections.statutory.map((row) => {
             const meta = line?.statutory_meta ?? {};
@@ -1295,7 +1354,11 @@ export function PayrollBreakdownPanel({ line, employee, loading = false }) {
               hint = `Tier I ${formatHrKesFull(meta.nssf_tier1)} + Tier II ${formatHrKesFull(meta.nssf_tier2 ?? 0)}`;
             }
             if (row.id === "paye" && meta.paye_before_relief != null) {
-              hint = `Before relief ${formatHrKesFull(meta.paye_before_relief)} − relief ${formatHrKesFull((meta.personal_relief ?? 0) + (meta.insurance_relief ?? 0))}`;
+              const relief = (meta.personal_relief ?? 0) + (meta.insurance_relief ?? 0);
+              hint = `Before relief ${formatHrKesFull(meta.paye_before_relief)} − relief ${formatHrKesFull(relief)}`;
+              if (Number(row.value) === 0 && Number(meta.paye_before_relief) > 0) {
+                hint += " · PAYE is 0 because relief covers tax on this gross";
+              }
             }
             return (
               <div key={row.id}>
@@ -1304,26 +1367,16 @@ export function PayrollBreakdownPanel({ line, employee, loading = false }) {
               </div>
             );
           })}
+          {sections.otherDeductions.map((row) => (
+            <BreakdownAmountRow key={row.label} label={row.label} value={row.value} />
+          ))}
+          <BreakdownAmountRow
+            label={sections.totalDeductions.label}
+            value={sections.totalDeductions.value}
+            emphasis
+          />
         </dl>
       </section>
-
-      {sections.otherDeductions.length > 0 && (
-        <section>
-          <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Other deductions
-          </h3>
-          <dl className="mt-2 space-y-2">
-            {sections.otherDeductions.map((row) => (
-              <div key={row.label}>
-                <BreakdownAmountRow label={row.label} value={row.value} />
-                {row.hint ? (
-                  <p className="mt-0.5 px-3 text-[11px] text-slate-500">{row.hint}</p>
-                ) : null}
-              </div>
-            ))}
-          </dl>
-        </section>
-      )}
 
       <section className="border-t border-slate-200 pt-4">
         <BreakdownAmountRow
@@ -1331,6 +1384,9 @@ export function PayrollBreakdownPanel({ line, employee, loading = false }) {
           value={sections.net.value}
           emphasis
         />
+        <p className="mt-1 px-3 text-[11px] text-slate-500">
+          Net pay = payable amount − total deductions
+        </p>
       </section>
     </div>
   );

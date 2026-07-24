@@ -191,6 +191,25 @@ function GeneralPrintoutsTab({ form, setForm, hasSales, sections }) {
         <p className="mt-2 text-xs text-slate-500">{routeNote}</p>
       </div>
 
+      {(sections?.needsWork?.length ?? 0) > 0 ? (
+        <div>
+          <SectionHeading
+            title="Printouts to work on"
+            description="Documented printouts that still need contrast, branding, or layout polish before full Admin settings."
+          />
+          <ul className="mt-3 space-y-2 rounded-lg border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-950">
+            {sections.needsWork.map((item) => (
+              <li key={item.kind}>
+                <span className="font-medium">{item.label}</span>
+                {item.note ? (
+                  <span className="mt-0.5 block text-xs text-amber-900/80">{item.note}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {hasSales ? (
         <div>
           <SectionHeading

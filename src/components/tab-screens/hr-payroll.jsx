@@ -320,32 +320,32 @@ export function HrPayrollScreen() {
           total_net: 0,
         },
       });
-      if (created.status === "pending_approval") {
-        setRunDrawerOpen(false);
-        setRunForm({
-          ...EMPTY_PAYROLL_RUN_FORM,
-          ...payrollRunFormDefaults(capabilities?.module_settings),
-        });
-        router.push(`/hr/payroll/runs/${created.id}`);
-        return;
-      }
-      await apiRequest(`/payroll/runs/${created.id}/process-auto`, {
-        method: "POST",
-        body: {
-          department_id: runForm.department_id ? Number(runForm.department_id) : null,
-          include_allowances: runForm.include_allowances,
-          include_other_deductions: runForm.include_employee_deductions,
-          include_deductions: runForm.include_employee_deductions,
-          include_overtime: hrSettings.include_overtime_in_payroll ? runForm.include_overtime : false,
-          use_attendance_proration: runForm.use_attendance_proration,
-        },
-      });
+      const processOptions = {
+        department_id: runForm.department_id ? Number(runForm.department_id) : null,
+        include_allowances: runForm.include_allowances,
+        include_other_deductions: runForm.include_employee_deductions,
+        include_deductions: runForm.include_employee_deductions,
+        include_overtime: hrSettings.include_overtime_in_payroll ? runForm.include_overtime : false,
+        use_attendance_proration: runForm.use_attendance_proration,
+      };
       setRunDrawerOpen(false);
       setRunForm({
         ...EMPTY_PAYROLL_RUN_FORM,
         ...payrollRunFormDefaults(capabilities?.module_settings),
       });
-      router.push(`/hr/payroll/runs/${created.id}`);
+      if (created.status === "pending_approval") {
+        router.push(`/hr/payroll/runs/${created.id}`);
+        return;
+      }
+      try {
+        sessionStorage.setItem(
+          `payroll-auto-process-${created.id}`,
+          JSON.stringify(processOptions),
+        );
+      } catch {
+        /* ignore quota */
+      }
+      router.push(`/hr/payroll/runs/${created.id}?process=1`);
     } catch (err) {
       setRunError(err instanceof ApiError ? err.message : "Failed to generate payroll");
     } finally {

@@ -1,3 +1,5 @@
+import { formatOrgDate } from "@/lib/format";
+
 /** Org columns are implicit from the signed-in tenant. */
 const HIDDEN_ORG_COLUMNS = new Set(["organization_id", "organization_name"]);
 
@@ -9,6 +11,52 @@ const HIDDEN_PRODUCT_CODE_COLUMN = "product_code";
 
 /** Internal FK columns — kept in API for joins/UOM but not shown in report tables. */
 const HIDDEN_INTERNAL_ID_COLUMNS = new Set(["unit_id"]);
+
+/**
+ * Bank transfer (payroll bank payment) receipt — drop IDs / period / status from the grid;
+ * run date + pay period move to the document header when constant across rows.
+ */
+const BANK_TRANSFER_ALWAYS_HIDDEN = new Set([
+  "payroll_run_id",
+  "employee_id",
+  "period_code",
+  "period_start",
+  "period_end",
+  "run_date",
+  "payroll_status",
+]);
+
+/** @param {object[]} rows @param {string} key */
+export function isUniformReportColumn(rows, key) {
+  if (!Array.isArray(rows) || rows.length === 0) return false;
+  const first = String(rows[0]?.[key] ?? "");
+  return rows.every((row) => String(row?.[key] ?? "") === first);
+}
+
+/**
+ * Header lines for bank-transfer print/PDF when values are shared by every row.
+ * @param {string} reportKey
+ * @param {object[]} rows
+ * @returns {string[]}
+ */
+export function reportConstantHeaderLines(reportKey, rows = []) {
+  if (reportKey !== "bank-transfer" || !rows.length) return [];
+
+  const lines = [];
+  if (isUniformReportColumn(rows, "run_date") && rows[0].run_date) {
+    lines.push(`Run date: ${formatOrgDate(rows[0].run_date)}`);
+  }
+  if (
+    isUniformReportColumn(rows, "period_start")
+    && isUniformReportColumn(rows, "period_end")
+    && (rows[0].period_start || rows[0].period_end)
+  ) {
+    const start = rows[0].period_start ? formatOrgDate(rows[0].period_start) : "—";
+    const end = rows[0].period_end ? formatOrgDate(rows[0].period_end) : "—";
+    lines.push(`Pay period: ${start} – ${end}`);
+  }
+  return lines;
+}
 
 /** Reservation / on-hand helper fields — live stock columns already show available qty. */
 const HIDDEN_STOCK_HELPER_COLUMNS = new Set([
@@ -73,14 +121,35 @@ const REPORT_COLUMN_LABELS = {
 
 /**
  * @param {string} key
- * @param {{ multiBranch?: boolean, showProductCode?: boolean, rowKeys?: string[] }} [options]
+ * @param {{
+ *   multiBranch?: boolean,
+ *   showProductCode?: boolean,
+ *   rowKeys?: string[],
+ *   reportKey?: string,
+ *   rows?: object[],
+ * }} [options]
  */
-export function isRedundantReportColumn(key, { multiBranch = false, showProductCode = false, rowKeys = [] } = {}) {
+export function isRedundantReportColumn(
+  key,
+  {
+    multiBranch = false,
+    showProductCode = false,
+    rowKeys = [],
+    reportKey = "",
+    rows = [],
+  } = {},
+) {
   if (HIDDEN_ORG_COLUMNS.has(key)) return true;
   if (HIDDEN_INTERNAL_ID_COLUMNS.has(key)) return true;
   if (HIDDEN_STOCK_HELPER_COLUMNS.has(key)) return true;
   if (HIDDEN_REPORT_UOM_DETAIL_COLUMNS.has(key)) return true;
   if (!multiBranch && HIDDEN_SINGLE_BRANCH_COLUMNS.has(key)) return true;
+  if (reportKey === "bank-transfer") {
+    if (BANK_TRANSFER_ALWAYS_HIDDEN.has(key)) return true;
+    if (key === "payment_method" && isUniformReportColumn(rows, "payment_method")) {
+      return true;
+    }
+  }
   if (
     !showProductCode
     && key === HIDDEN_PRODUCT_CODE_COLUMN
@@ -154,7 +223,7 @@ export function filterStructuredReportColumns(columns = [], options = {}) {
 
 /**
  * @param {string[]} keys
- * @param {{ multiBranch?: boolean, showProductCode?: boolean }} [options]
+ * @param {{ multiBranch?: boolean, showProductCode?: boolean, reportKey?: string, rows?: object[] }} [options]
  */
 export function filterReportColumnKeys(keys, options = {}) {
   return keys.filter(

@@ -36,6 +36,15 @@ export function canApproveCashAdvances({ hasPermission = () => false, capabiliti
   );
 }
 
+/** Lateness waiver approval — dedicated approver, HR manage, or assigned manager via inbox. */
+export function canApproveLatenessWaivers({ hasPermission = () => false, capabilities } = {}) {
+  return (
+    approvalFlag(capabilities, "lateness_waivers") ||
+    hasPermission(P.hr.attendance.waiveApprove) ||
+    hasPermission(P.hr.manage)
+  );
+}
+
 /** Direct order cancellation without approval workflow. */
 export function canDirectCancelOrders({ hasPermission = () => false, capabilities } = {}) {
   return approvalFlag(capabilities, "direct_cancel_orders") || hasPermission("sales.manage");

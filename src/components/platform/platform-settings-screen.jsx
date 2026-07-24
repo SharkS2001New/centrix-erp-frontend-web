@@ -10,14 +10,14 @@ import { PlatformWhatsappScreen } from "@/components/platform/platform-whatsapp-
 import { PlatformAlertNotificationsPanel } from "@/components/platform/platform-alert-notifications-panel";
 import { PlatformR2BackupSettingsPanel } from "@/components/platform/platform-r2-backup-settings-panel";
 import { PlatformAiCredentialsScreen } from "@/components/platform/platform-ai-credentials-screen";
-import { PlatformPayrollScheduleSettingsPanel } from "@/components/platform/platform-payroll-schedule-settings-panel";
+import { PlatformKenyaPayrollSettingsPanel } from "@/components/platform/platform-kenya-payroll-settings-panel";
 
 const TABS = [
   { id: "email", label: "Email delivery" },
   { id: "whatsapp", label: "WhatsApp" },
   { id: "ai", label: "AI credentials" },
   { id: "alerts", label: "Alert notifications" },
-  { id: "payroll", label: "Payroll" },
+  { id: "payroll", label: "Kenya payroll" },
   { id: "r2", label: "Cloudflare R2" },
 ];
 
@@ -70,10 +70,10 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
         ? "Shared WhatsApp webhook URL and verify token for all tenants."
         : activeTab === "ai"
           ? "OpenAI API key and model for platform-admin AI tools (email assist, training console)."
-          : activeTab === "payroll"
-            ? "When tenants may generate payroll runs (month-end schedule vs anytime)."
-            : activeTab === "r2"
-              ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
+          : activeTab === "r2"
+            ? "Offsite Cloudflare R2 upload for scheduled and manual database backups."
+            : activeTab === "payroll"
+              ? "Kenya PAYE bands, personal relief, NSSF, SHIF, and housing levy — platform-wide defaults."
               : "Email digest and instant WhatsApp/email alerts for system errors & reports.";
 
   return (
@@ -93,7 +93,7 @@ export function PlatformSettingsScreen({ initialTab = "email" }) {
       {activeTab === "whatsapp" ? <PlatformWhatsappScreen embedded /> : null}
       {activeTab === "ai" ? <PlatformAiCredentialsScreen embedded /> : null}
       {activeTab === "alerts" ? <PlatformAlertNotificationsPanel /> : null}
-      {activeTab === "payroll" ? <PlatformPayrollScheduleSettingsPanel /> : null}
+      {activeTab === "payroll" ? <PlatformKenyaPayrollSettingsPanel /> : null}
       {activeTab === "r2" ? <PlatformR2BackupSettingsPanel /> : null}
     </CatalogPageShell>
   );

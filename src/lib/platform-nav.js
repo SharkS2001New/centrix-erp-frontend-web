@@ -136,7 +136,7 @@ export const PLATFORM_LINK_GROUPS = [
         label: "Platform settings",
         icon: "chat",
         description:
-          "Email delivery, WhatsApp webhook, AI credentials, renewal reminders, and alert notifications.",
+          "Email delivery, WhatsApp, AI credentials, R2 backups, and alert notifications.",
       },
     ],
   },

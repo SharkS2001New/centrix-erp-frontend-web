@@ -282,7 +282,7 @@ export const P = {
     deductions: { view: "hr.deductions.view" },
     overtime: { view: "hr.overtime.view" },
     cash_advances: { view: "hr.cash_advances.view", approve: "hr.cash_advances.approve" },
-    attendance: { view: "hr.attendance.view" },
+    attendance: { view: "hr.attendance.view", waiveApprove: "hr.attendance.waive.approve" },
     leave: { view: "hr.leave.view", approve: "hr.leave.approve" },
     payroll: { view: "hr.payroll.view", create: "hr.payroll.create", approve: "hr.payroll.approve" },
   },

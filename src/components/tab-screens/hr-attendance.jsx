@@ -14,6 +14,7 @@ import {
   Field,
   FormDrawer,
   PrimaryButton,
+  SECONDARY_BTN_CLASS,
   SearchInput,
   formatShortDate,
   inputClassName,
@@ -29,6 +30,7 @@ import { HrSelectField } from "@/components/hr/hr-crud-page";
 import { HrTimePickerField } from "@/components/hr/hr-time-picker";
 import { FieldRepHrLinkageBanner } from "@/components/hr/field-rep-hr-linkage-banner";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
+import { canApproveLatenessWaivers } from "@/lib/approval-permissions";
 import {
   composeEmployeeDisplayName,
   computeAttendanceHours,
@@ -70,9 +72,10 @@ function attendanceCountsInPayroll(status) {
 }
 
 export function HrAttendanceScreen() {
-  const { capabilities, hasPermission } = useAuth();
+  const { capabilities, hasPermission, user } = useAuth();
   const confirm = useConfirm();
   const canManageSettings = hasPermission(P.hr.manage);
+  const canApproveWaivers = canApproveLatenessWaivers({ hasPermission, capabilities });
   const companyMobileEnabled = isCompanyMobileAttendanceEnabled(capabilities?.module_settings);
   const fieldAttendanceEnabled = shouldShowMobileFieldAttendance(capabilities);
   const [tab, setTab] = useState("active");
@@ -97,6 +100,7 @@ export function HrAttendanceScreen() {
   const [employeePickerFilter, setEmployeePickerFilter] = useState("");
   const [bulkResult, setBulkResult] = useState(null);
   const [batchBusy, setBatchBusy] = useState(false);
+  const [markingAbsents, setMarkingAbsents] = useState(false);
   const {
     selectedIds,
     selectedCount,
@@ -206,14 +210,30 @@ export function HrAttendanceScreen() {
   );
 
   const selectedWaiveableCount = useMemo(
-    () => selectedRecords.filter((r) => Number(r.late_minutes) > 0 && !r.lateness_waived).length,
+    () =>
+      selectedRecords.filter(
+        (r) => Number(r.late_minutes) > 0 && !r.lateness_waived && !r.pending_waiver,
+      ).length,
     [selectedRecords],
   );
 
   const selectedUndoWaiveCount = useMemo(
-    () => selectedRecords.filter((r) => Number(r.late_minutes) > 0 && r.lateness_waived).length,
+    () =>
+      selectedRecords.filter(
+        (r) => Number(r.late_minutes) > 0 && r.lateness_waived && !r.pending_waiver,
+      ).length,
     [selectedRecords],
   );
+
+  function canReviewWaiver(record) {
+    const pending = record?.pending_waiver;
+    if (!pending) return false;
+    if (canApproveWaivers) return true;
+    return (
+      pending.assigned_manager_user_id != null &&
+      Number(pending.assigned_manager_user_id) === Number(user?.id)
+    );
+  }
 
   const loadEmployeesForManual = useCallback(async () => {
     if (employees.length) return;
@@ -438,15 +458,17 @@ export function HrAttendanceScreen() {
   }
 
   async function waiveSelectedLateness(waived) {
-    const eligible = selectedRecords.filter((r) => Number(r.late_minutes) > 0);
+    const eligible = selectedRecords.filter(
+      (r) => Number(r.late_minutes) > 0 && !r.pending_waiver,
+    );
     const ids = eligible
       .filter((r) => (waived ? !r.lateness_waived : !!r.lateness_waived))
       .map((r) => Number(r.id));
     if (ids.length === 0) {
       notifyError(
         waived
-          ? "None of the selected records have unwaived lateness."
-          : "None of the selected records have a lateness waiver to undo.",
+          ? "None of the selected records can request a lateness waiver."
+          : "None of the selected records can request undoing a waiver.",
       );
       return;
     }
@@ -454,16 +476,16 @@ export function HrAttendanceScreen() {
     let reason = "";
     if (waived) {
       const entered = window.prompt(
-        `Waive lateness for ${ids.length} record${ids.length === 1 ? "" : "s"}?\nOne reason is applied to all:`,
+        `Request lateness waiver for ${ids.length} record${ids.length === 1 ? "" : "s"}?\nRequires manager approval. One reason is sent with all:`,
         "",
       );
       if (entered === null) return;
       reason = entered.trim();
     } else {
       const ok = await confirm({
-        title: "Undo lateness waiver?",
-        message: `Undo waiver for ${ids.length} record${ids.length === 1 ? "" : "s"}? Paid hours will again deduct late minutes for payroll.`,
-        confirmLabel: "Undo waiver",
+        title: "Request undo lateness waiver?",
+        message: `Submit undo requests for ${ids.length} record${ids.length === 1 ? "" : "s"}? A manager must approve before payroll hours change.`,
+        confirmLabel: "Submit request",
       });
       if (!ok) return;
     }
@@ -478,42 +500,117 @@ export function HrAttendanceScreen() {
           lateness_waiver_reason: waived ? reason || null : null,
         },
       });
-      const updated = Number(res.updated_count ?? 0);
+      const updated = Number(res.submitted_count ?? res.updated_count ?? 0);
       const skipped = Number(res.skipped_count ?? 0);
       clearSelection();
       await loadHistory();
       if (updated > 0 && skipped === 0) {
         notifySuccess(
-          waived
-            ? `Waived lateness for ${updated} record${updated === 1 ? "" : "s"}.`
-            : `Undid waiver for ${updated} record${updated === 1 ? "" : "s"}.`,
+          `Submitted ${updated} waiver request${updated === 1 ? "" : "s"} for manager approval.`,
         );
       } else if (updated > 0) {
-        notifySuccess(`Updated ${updated}; skipped ${skipped}.`);
+        notifySuccess(`Submitted ${updated}; skipped ${skipped}.`);
       } else {
-        notifyError(res.skipped?.[0]?.reason ?? "No records updated.");
+        notifyError(res.skipped?.[0]?.reason ?? "No waiver requests submitted.");
       }
     } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Bulk waiver failed");
+      notifyError(e instanceof ApiError ? e.message : "Bulk waiver request failed");
     } finally {
       setBatchBusy(false);
     }
   }
 
+  async function reviewWaiverRequest(record, approve) {
+    const pending = record?.pending_waiver;
+    if (!pending?.id) return;
+    if (!approve) {
+      const entered = window.prompt("Reject reason (optional):", "");
+      if (entered === null) return;
+      try {
+        await apiRequest(`/lateness-waiver-requests/${pending.id}/reject`, {
+          method: "POST",
+          body: { reason: entered.trim() || null },
+        });
+        notifySuccess("Waiver request rejected.");
+        await loadHistory();
+      } catch (e) {
+        notifyError(e instanceof ApiError ? e.message : "Could not reject waiver");
+      }
+      return;
+    }
+    const ok = await confirm({
+      title: "Approve lateness waiver?",
+      message: pending.waive
+        ? `Approve waiving ${pending.late_minutes ?? record.late_minutes}m late? Paid hours will be restored for payroll.`
+        : "Approve undoing this lateness waiver? Late minutes will reduce paid hours again.",
+      confirmLabel: "Approve",
+    });
+    if (!ok) return;
+    try {
+      await apiRequest(`/lateness-waiver-requests/${pending.id}/approve`, {
+        method: "POST",
+      });
+      notifySuccess("Waiver request approved.");
+      await loadHistory();
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not approve waiver");
+    }
+  }
+
+  async function markMissingAsAbsent() {
+    const ok = await confirm({
+      title: "Mark missing as absent?",
+      message: `For ${historyFromDate} to ${historyToDate}, create absent records for active employees who were scheduled to work but have no attendance. Today and future dates are never marked. Leave/off days are skipped.`,
+      confirmLabel: "Mark absents",
+    });
+    if (!ok) return;
+
+    setMarkingAbsents(true);
+    try {
+      const res = await apiRequest("/employee-attendance/mark-absents", {
+        method: "POST",
+        body: {
+          from_date: historyFromDate,
+          to_date: historyToDate,
+        },
+      });
+      const created = Number(res.created_count ?? 0);
+      const skipped = Number(res.skipped_count ?? 0);
+      await loadHistory();
+      if (created > 0) {
+        notifySuccess(
+          skipped > 0
+            ? `Marked ${created} absent; skipped ${skipped}.`
+            : `Marked ${created} absent record${created === 1 ? "" : "s"}.`,
+        );
+      } else {
+        notifySuccess("No missing scheduled days to mark as absent in this range.");
+      }
+    } catch (e) {
+      notifyError(e instanceof ApiError ? e.message : "Could not mark absents");
+    } finally {
+      setMarkingAbsents(false);
+    }
+  }
+
   async function waiveLateness(record, waived) {
+    if (record.pending_waiver) {
+      notifyError("A waiver request is already pending for this day.");
+      return;
+    }
     let reason = record.lateness_waiver_reason ?? "";
     if (waived) {
       const entered = window.prompt(
-        `Waive ${record.late_minutes} minutes late for ${composeEmployeeDisplayName(record.employee) || "employee"}?\nOptional reason:`,
+        `Request to waive ${record.late_minutes} minutes late for ${composeEmployeeDisplayName(record.employee) || "employee"}?\nRequires manager approval. Optional reason:`,
         reason || "",
       );
       if (entered === null) return;
       reason = entered.trim();
     } else {
       const ok = await confirm({
-        title: "Undo lateness waiver?",
-        message: "Paid hours will again deduct the late minutes for payroll.",
-        confirmLabel: "Undo waiver",
+        title: "Request undo lateness waiver?",
+        message: "A manager must approve before paid hours change again.",
+        confirmLabel: "Submit request",
       });
       if (!ok) return;
     }
@@ -525,9 +622,10 @@ export function HrAttendanceScreen() {
           lateness_waiver_reason: waived ? reason || null : null,
         },
       });
+      notifySuccess("Waiver request sent for manager approval.");
       await loadHistory();
     } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Could not update lateness waiver");
+      notifyError(e instanceof ApiError ? e.message : "Could not submit waiver request");
     }
   }
 
@@ -585,7 +683,7 @@ export function HrAttendanceScreen() {
             notes: manualForm.notes.trim() || null,
             source: editingRecord.source ?? "manual",
             lunch_taken:
-              timesRequired && lunchAppliesToSelection ? !!manualForm.lunch_taken : false,
+              timesRequired && lunchAppliesToSelection ? Boolean(manualForm.lunch_taken) : false,
             lateness_waived: !!manualForm.lateness_waived,
             lateness_waiver_reason: manualForm.lateness_waived
               ? manualForm.lateness_waiver_reason.trim() || null
@@ -625,7 +723,7 @@ export function HrAttendanceScreen() {
           status: manualForm.status,
           notes: manualForm.notes.trim() || null,
           lunch_taken:
-            timesRequired && lunchAppliesToSelection ? !!manualForm.lunch_taken : false,
+            timesRequired && lunchAppliesToSelection ? Boolean(manualForm.lunch_taken) : false,
         },
       });
       setBulkResult(res);
@@ -681,7 +779,7 @@ export function HrAttendanceScreen() {
   return (
     <CatalogPageShell
       title="Attendance"
-      subtitle="Premises clock-in, company phone, mobile sales app, and manual records — all in one place for payroll"
+      subtitle="Premises clock-in, company phone, mobile sales app, and manual records — missing scheduled days are marked absent for payroll"
       action={
         tab === "records" ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -698,6 +796,14 @@ export function HrAttendanceScreen() {
               })}
               disabled={historyLoading}
             />
+            <button
+              type="button"
+              disabled={markingAbsents || historyLoading}
+              onClick={() => void markMissingAsAbsent()}
+              className={SECONDARY_BTN_CLASS}
+            >
+              {markingAbsents ? "Marking…" : "Mark missing as absent"}
+            </button>
             <PrimaryButton type="button" onClick={openCreateManual}>
               Create attendance
             </PrimaryButton>
@@ -897,6 +1003,11 @@ export function HrAttendanceScreen() {
                                   waived
                                 </span>
                               ) : null}
+                              {r.pending_waiver ? (
+                                <span className="ml-1 text-[11px] font-medium text-amber-700">
+                                  pending
+                                </span>
+                              ) : null}
                             </span>
                           ) : (
                             "—"
@@ -905,10 +1016,10 @@ export function HrAttendanceScreen() {
                         <td className="px-4 py-3">
                           {r.lunch_status === "taken"
                             ? r.lunch_minutes != null
-                              ? `${r.lunch_minutes}m`
+                              ? `Taken (${r.lunch_minutes}m)`
                               : "Taken"
                             : r.lunch_status === "skipped"
-                              ? "—"
+                              ? "Skipped"
                               : (r.lunch_status ?? "—")}
                         </td>
                         <td className="px-4 py-3">
@@ -944,22 +1055,43 @@ export function HrAttendanceScreen() {
                           >
                             Edit
                           </button>
-                          {r.late_minutes > 0 && !r.lateness_waived ? (
+                          {r.pending_waiver && canReviewWaiver(r) ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void reviewWaiverRequest(r, true)}
+                                className="ml-3 text-emerald-700 hover:underline"
+                              >
+                                Approve waive
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void reviewWaiverRequest(r, false)}
+                                className="ml-3 text-amber-800 hover:underline"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          ) : null}
+                          {r.pending_waiver && !canReviewWaiver(r) ? (
+                            <span className="ml-3 text-xs text-amber-700">Awaiting manager</span>
+                          ) : null}
+                          {r.late_minutes > 0 && !r.lateness_waived && !r.pending_waiver ? (
                             <button
                               type="button"
                               onClick={() => void waiveLateness(r, true)}
                               className="ml-3 text-emerald-700 hover:underline"
                             >
-                              Waive late
+                              Request waive
                             </button>
                           ) : null}
-                          {r.late_minutes > 0 && r.lateness_waived ? (
+                          {r.late_minutes > 0 && r.lateness_waived && !r.pending_waiver ? (
                             <button
                               type="button"
                               onClick={() => void waiveLateness(r, false)}
                               className="ml-3 text-amber-700 hover:underline"
                             >
-                              Undo waive
+                              Request undo
                             </button>
                           ) : null}
                           <button
@@ -988,7 +1120,7 @@ export function HrAttendanceScreen() {
               >
                 {batchBusy
                   ? "Working…"
-                  : `Waive late (${selectedWaiveableCount})`}
+                  : `Request waive (${selectedWaiveableCount})`}
               </button>
             ) : null}
             {selectedUndoWaiveCount > 0 ? (
@@ -998,7 +1130,7 @@ export function HrAttendanceScreen() {
                 onClick={() => void waiveSelectedLateness(false)}
                 className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
               >
-                Undo waive ({selectedUndoWaiveCount})
+                Request undo ({selectedUndoWaiveCount})
               </button>
             ) : null}
             <BatchDeleteButton
@@ -1198,27 +1330,35 @@ export function HrAttendanceScreen() {
               required
             />
             {lunchAppliesToSelection ? (
-              <label className="flex items-start gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={!!manualForm.lunch_taken}
-                  onChange={(e) =>
-                    setManualForm((p) => ({ ...p, lunch_taken: e.target.checked }))
-                  }
-                />
-                <span>
-                  Lunch break taken
-                  <span className="mt-0.5 block text-xs text-slate-500">
-                    Shown only for shifts that require lunch. Checked by default — credits the
-                    configured lunch. Uncheck if lunch was skipped (or banked). Staff on no-lunch
-                    shifts are unaffected.
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+                <label className="flex items-start gap-2 text-sm text-slate-800">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={!!manualForm.lunch_taken}
+                    onChange={(e) =>
+                      setManualForm((p) => ({ ...p, lunch_taken: e.target.checked }))
+                    }
+                  />
+                  <span>
+                    Went for lunch
+                    <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                      {manualForm.lunch_taken
+                        ? "Checked — lunch recorded as taken (shift lunch minutes credited per HR settings)."
+                        : "Unchecked — lunch recorded as skipped (did not go). Paid hours and early leave follow the shift lunch rules and the employee’s bank-lunch setting."}
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
+                <p className="text-xs text-slate-600">
+                  Lunch column will show:{" "}
+                  <span className="font-medium text-slate-900">
+                    {manualForm.lunch_taken ? "Taken" : "Skipped"}
+                  </span>
+                </p>
+              </div>
             ) : (
               <p className="text-xs text-slate-500">
-                Selected shift(s) have no lunch break — lunch will not be credited.
+                Selected shift(s) have no lunch break configured — lunch will show as —.
               </p>
             )}
             <Field label="Hours worked">
@@ -1254,7 +1394,8 @@ export function HrAttendanceScreen() {
               <span>
                 Waive lateness ({manualForm.late_minutes || editingRecord.late_minutes}m)
                 <span className="mt-0.5 block text-xs text-slate-500">
-                  When waived, late minutes are restored to paid hours so payroll is not reduced.
+                  Submits a request for the employee&apos;s manager (or HR approver) — hours change
+                  only after approval.
                 </span>
               </span>
             </label>

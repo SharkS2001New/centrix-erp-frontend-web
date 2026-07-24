@@ -1,14 +1,15 @@
 "use client";
 
-import { notifyError } from "@/lib/notify";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTabAwareDataLoad } from "@/contexts/tab-pane-activity-context";
 import { canApprovePayrollRuns } from "@/lib/approval-permissions";
 import { P } from "@/lib/permission-codes";
+import { useQueuedTask } from "@/lib/use-queued-task";
 import { Field, DetailDrawer, IconButton, PrimaryButton, StatCard, inputClassName } from "@/components/catalog/catalog-shared";
 import {
   PayrollBreakdownPanel,
@@ -30,10 +31,14 @@ import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
 import { ApprovalPendingNotice } from "@/components/approval-reminder-button";
 import { confirmDeleteOptions, useConfirm } from "@/lib/use-confirm";
 
+const AUTO_PROCESS_KEY = (id) => `payroll-auto-process-${id}`;
+
 export function HrPayrollRunsIdScreen() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const confirm = useConfirm();
+  const { runQueuedTask } = useQueuedTask("Generating payroll…");
   const { user, hasPermission, capabilities, organization, generalSettings } = useAuth();
   const admin = isAdminUser(user);
   const canApprove = canApprovePayrollRuns({ hasPermission, capabilities });
@@ -55,6 +60,10 @@ export function HrPayrollRunsIdScreen() {
   const [markPaidOpen, setMarkPaidOpen] = useState(false);
   const [paymentReference, setPaymentReference] = useState("");
   const [markPaidSaving, setMarkPaidSaving] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [progressPct, setProgressPct] = useState(0);
+  const [progressMessage, setProgressMessage] = useState("");
+  const autoProcessStarted = useRef(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -74,7 +83,68 @@ export function HrPayrollRunsIdScreen() {
     }
   }, [runId]);
 
+  const runAutoProcess = useCallback(
+    async (options = {}) => {
+      setProcessing(true);
+      setProgressPct(2);
+      setProgressMessage("Starting payroll calculation…");
+      setLines([]);
+      try {
+        await runQueuedTask(
+          () =>
+            apiRequest(`/payroll/runs/${runId}/process-auto`, {
+              method: "POST",
+              body: options,
+            }),
+          {
+            message: "Generating payroll…",
+            onProgress: (task) => {
+              setProgressPct(Number(task.progress ?? 0));
+              const msg = task.progress_message ?? task.payload?.progress_message;
+              if (msg) setProgressMessage(String(msg));
+            },
+          },
+        );
+        setProgressPct(100);
+        setProgressMessage("Loading payroll lines…");
+        await loadData();
+        notifySuccess("Payroll generated.");
+      } catch (e) {
+        if (e?.name !== "AbortError") {
+          notifyError(e instanceof ApiError ? e.message : "Process failed");
+          await loadData();
+        }
+      } finally {
+        setProcessing(false);
+        setProgressPct(0);
+        setProgressMessage("");
+      }
+    },
+    [runId, runQueuedTask, loadData],
+  );
+
   useTabAwareDataLoad(loadData);
+
+  useEffect(() => {
+    if (autoProcessStarted.current || !canProcess || !Number.isFinite(runId)) return;
+    const shouldProcess = searchParams.get("process") === "1";
+    if (!shouldProcess) return;
+
+    autoProcessStarted.current = true;
+    setProcessing(true);
+    setProgressPct(2);
+    setProgressMessage("Starting payroll calculation…");
+    let options = {};
+    try {
+      const raw = sessionStorage.getItem(AUTO_PROCESS_KEY(runId));
+      if (raw) options = JSON.parse(raw);
+      sessionStorage.removeItem(AUTO_PROCESS_KEY(runId));
+    } catch {
+      /* ignore */
+    }
+    router.replace(`/hr/payroll/runs/${runId}`);
+    void runAutoProcess(options);
+  }, [canProcess, runId, searchParams, router, runAutoProcess]);
 
   const period = run?.pay_period ?? run?.payPeriod ?? null;
 
@@ -132,19 +202,16 @@ export function HrPayrollRunsIdScreen() {
   }
 
   async function processRun() {
+    const reprocess = run?.status === "processed";
     const ok = await confirm({
-      title: "Process payroll",
-      message:
-        "Process this payroll run? Employee lines will be calculated and attendance, leave, and advance deductions for this cycle will be locked.",
-      confirmLabel: "Process payroll",
+      title: reprocess ? "Reprocess payroll" : "Process payroll",
+      message: reprocess
+        ? "Recalculate all employee lines (including PAYE and other statutory deductions)? Existing lines for this run will be replaced."
+        : "Process this payroll run? Employee lines will be calculated and attendance, leave, and advance deductions for this cycle will be locked.",
+      confirmLabel: reprocess ? "Reprocess payroll" : "Process payroll",
     });
     if (!ok) return;
-    try {
-      await apiRequest(`/payroll/runs/${runId}/process-auto`, { method: "POST", body: {} });
-      await loadData();
-    } catch (e) {
-      notifyError(e instanceof ApiError ? e.message : "Process failed");
-    }
+    await runAutoProcess({});
   }
 
   async function markPaid() {
@@ -166,8 +233,8 @@ export function HrPayrollRunsIdScreen() {
 
   const canProcessRun =
     canProcess &&
-    ((requireApproval && run?.status === "approved") ||
-      (!requireApproval && run?.status === "draft"));
+    ((requireApproval && ["approved", "processed"].includes(run?.status)) ||
+      (!requireApproval && ["draft", "processed"].includes(run?.status)));
 
   const approvedBy =
     run?.approved_by_user?.full_name ??
@@ -216,10 +283,43 @@ export function HrPayrollRunsIdScreen() {
         ]}
       />
 
-      {loading ? (
+      {loading && !processing && !run ? (
         <p className="text-sm text-slate-500">Loading payroll run…</p>
+      ) : processing && !run ? (
+        <div className="mb-6 rounded-xl border border-[#185FA5]/25 bg-[#185FA5]/05 p-5">
+          <p className="text-sm font-medium text-slate-900">Generating payroll…</p>
+          <p className="mt-1 text-xs text-slate-600">
+            {progressMessage || "Calculating employee lines. Results appear when this finishes."}
+          </p>
+          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full rounded-full bg-[#185FA5] transition-[width] duration-300"
+              style={{ width: `${Math.max(4, Math.min(100, progressPct))}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs font-medium text-slate-700">
+            {Math.max(0, Math.min(100, Math.round(progressPct)))}%
+          </p>
+        </div>
       ) : run ? (
         <>
+          {processing ? (
+            <div className="mb-6 rounded-xl border border-[#185FA5]/25 bg-[#185FA5]/05 p-5">
+              <p className="text-sm font-medium text-slate-900">Generating payroll…</p>
+              <p className="mt-1 text-xs text-slate-600">
+                {progressMessage || "Calculating employee lines. Results appear when this finishes."}
+              </p>
+              <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-[#185FA5] transition-[width] duration-300"
+                  style={{ width: `${Math.max(4, Math.min(100, progressPct))}%` }}
+                />
+              </div>
+              <p className="mt-2 text-xs font-medium text-slate-700">
+                {Math.max(0, Math.min(100, Math.round(progressPct)))}%
+              </p>
+            </div>
+          ) : null}
           <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="text-xl font-medium text-slate-900">
@@ -264,9 +364,9 @@ export function HrPayrollRunsIdScreen() {
                   </button>
                 </>
               ) : null}
-              {canProcessRun ? (
+              {canProcessRun && !processing ? (
                 <PrimaryButton type="button" onClick={processRun} showIcon={false}>
-                  Process payroll
+                  {run.status === "processed" ? "Reprocess payroll" : "Process payroll"}
                 </PrimaryButton>
               ) : null}
               {run.status === "processed" && canApprove ? (
@@ -344,15 +444,22 @@ export function HrPayrollRunsIdScreen() {
                   <tr className="theme-table-head-row text-left text-xs font-medium">
                     <th className="px-4 py-2.5">Employee</th>
                     <th className="px-4 py-2.5 text-right">Gross</th>
+                    <th className="px-4 py-2.5 text-right">PAYE</th>
                     <th className="px-4 py-2.5 text-right">Deductions</th>
                     <th className="px-4 py-2.5 text-right">Net salary</th>
                     <th className="w-[70px] px-4 py-2.5">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.length === 0 ? (
+                  {processing ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-12 text-center text-slate-500">
+                      <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                        Calculating employee lines… results will appear here when ready.
+                      </td>
+                    </tr>
+                  ) : lines.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
                         No payroll lines for this run.
                       </td>
                     </tr>
@@ -374,6 +481,7 @@ export function HrPayrollRunsIdScreen() {
                         >
                           <td className="px-4 py-3 font-medium text-slate-900">{name}</td>
                           <td className="px-4 py-3 text-right">{formatHrKesFull(line.gross_pay)}</td>
+                          <td className="px-4 py-3 text-right">{formatHrKesFull(line.paye)}</td>
                           <td className="px-4 py-3 text-right">
                             {formatHrKesFull(line.deductions)}
                           </td>

@@ -128,21 +128,22 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
                           Days into the next month when last month&apos;s payroll may still run.
                         </p>
                       </Field>
-                      <Field label="Delete lock (minutes)">
-                        <input
-                          type="number"
-                          min="1"
-                          max="1440"
-                          className={inputClassName()}
-                          value={form.payroll_run_delete_lock_minutes}
-                          onChange={(e) =>
-                            setForm((f) => ({ ...f, payroll_run_delete_lock_minutes: e.target.value }))
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium text-slate-900">Payroll run calendar</h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        When this organization may generate payroll runs.
+                      </p>
+                      <div className="mt-4 space-y-3">
+                        <Toggle
+                          label="Enforce month-end payroll schedule"
+                          description="Payroll can only run on the last day of the month, or in the grace window after month end for the prior period. Turn off to allow payroll for any past or current month anytime."
+                          checked={form.enforce_month_end_run_schedule !== false}
+                          onChange={(v) =>
+                            setForm((f) => ({ ...f, enforce_month_end_run_schedule: v }))
                           }
                         />
-                        <p className="mt-1 text-xs text-slate-500">
-                          Payroll runs can only be deleted within this window after creation.
-                        </p>
-                      </Field>
+                      </div>
                     </div>
                     <div>
                       <h3 className="text-sm font-medium text-slate-900">Processing defaults</h3>
@@ -414,9 +415,10 @@ export function HrSettingsPanel({ saving, setSaving, setError, setMessage }) {
       <section className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
         <p className="font-medium text-slate-800">Kenya statutory rates</p>
         <p className="mt-1">
-          PAYE bands, NSSF, SHIF, and housing levy rates are system-configured in{" "}
-          <code className="text-xs">config/kenya_payroll.php</code> and shown on the HR payroll
-          screen. Update those files when legislation changes.
+          PAYE bands, personal relief, NSSF, SHIF, and housing levy are set by the platform admin under{" "}
+          <span className="font-medium text-slate-800">Platform → Settings → Kenya payroll</span>. Defaults
+          follow current KRA rules and can be updated when legislation changes. Shown on the HR payroll
+          screen for reference.
         </p>
       </section>
     </div>

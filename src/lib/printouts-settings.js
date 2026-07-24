@@ -75,7 +75,20 @@ export const PRINTOUT_KIND_LABELS = {
   loading_sheet: "Loading sheets",
   picking_list: "Picking lists",
   trip_chart: "Trip chart lists",
+  payroll_receipt: "HR payroll receipts (payslips)",
 };
+
+/**
+ * Printouts that are catalogued but still need contrast / branding polish.
+ * Shown under Admin → Printouts so they stay on the work list.
+ */
+export const PRINTOUTS_NEEDS_WORK = [
+  {
+    kind: "payroll_receipt",
+    label: "HR payroll receipts (payslips)",
+    note: "Org name contrast improved; still needs full Admin Printouts settings (logo, footer, fonts) like sales receipts.",
+  },
+];
 
 /** Which document footer keys apply for the configured order print format. */
 export function footerKeysForOrderPrintFormat(footerKeys, orderDocumentType) {
@@ -113,6 +126,7 @@ export function resolvePrintoutSections(capabilities) {
   const hasSales = Boolean(modules.sales);
   const hasProcurement = Boolean(modules.customers_suppliers);
   const hasDistribution = Boolean(modules.distribution);
+  const hasHrPayroll = Boolean(modules.hr_payroll);
   const hasMobileSales = isPlatformMobileOrdersEnabled(capabilities);
   const hasRoutePrintouts = hasDistribution || hasMobileSales;
 
@@ -141,7 +155,10 @@ export function resolvePrintoutSections(capabilities) {
     hasRoutePrintouts ? "loading_sheet" : null,
     hasRoutePrintouts ? "picking_list" : null,
     hasRoutePrintouts ? "trip_chart" : null,
+    hasHrPayroll ? "payroll_receipt" : null,
   ].filter(Boolean);
+
+  const needsWork = PRINTOUTS_NEEDS_WORK.filter((item) => availableKinds.includes(item.kind));
 
   return {
     hasSales,
@@ -149,10 +166,12 @@ export function resolvePrintoutSections(capabilities) {
     hasDistribution,
     hasMobileSales,
     hasRoutePrintouts,
+    hasHrPayroll,
     footerKeys,
     previewTypes,
     availableKinds,
-    hasModuleSections: hasSales || hasProcurement || hasRoutePrintouts,
+    needsWork,
+    hasModuleSections: hasSales || hasProcurement || hasRoutePrintouts || hasHrPayroll,
   };
 }
 

@@ -58,7 +58,6 @@ function buildReceiptHtml(line, employee, options) {
   const {
     orgName,
     periodText,
-    runLabel,
     generalSettings,
     paidAt,
     paymentReference,
@@ -69,16 +68,16 @@ function buildReceiptHtml(line, employee, options) {
   const name = composeEmployeeDisplayName(employee) || employee?.full_name || "Employee";
   const subtitle = employeeSubtitle(employee);
 
-  const earningsRows = buildAmountRows(sections.earnings, generalSettings, { hideZero: compact });
-  const statutoryRows = buildAmountRows(sections.statutory, generalSettings, { hideZero: true });
-  const otherRows =
-    sections.otherDeductions.length > 0
-      ? buildAmountRows(sections.otherDeductions, generalSettings)
-      : "";
-
-  const attendanceNote = sections.attendanceNote
-    ? `<p class="note">${escapeHtml(sections.attendanceNote)}</p>`
-    : "";
+  const payRows = buildAmountRows(sections.earnings, generalSettings);
+  const deductionRows = buildAmountRows(
+    [
+      ...sections.statutory,
+      ...sections.otherDeductions,
+      sections.totalDeductions,
+    ],
+    generalSettings,
+    { hideZero: compact },
+  );
 
   const paidNote =
     paidAt || paymentReference
@@ -92,29 +91,21 @@ function buildReceiptHtml(line, employee, options) {
       <header class="receipt-head">
         <div class="org">${escapeHtml(orgName)}</div>
         <h2>Payroll receipt</h2>
-        <p class="period">${escapeHtml(periodText)}${runLabel ? ` · ${escapeHtml(runLabel)}` : ""}</p>
+        <p class="period">${escapeHtml(periodText)}</p>
       </header>
       <div class="employee">
         <div class="employee-name">${escapeHtml(name)}</div>
         ${subtitle ? `<div class="employee-meta">${escapeHtml(subtitle)}</div>` : ""}
       </div>
-      ${attendanceNote}
       <section>
-        <h3>Earnings</h3>
-        <table class="amt-table">${earningsRows}</table>
+        <h3>Pay</h3>
+        <table class="amt-table">${payRows}</table>
       </section>
       <section>
-        <h3>Government deductions</h3>
-        <table class="amt-table">${statutoryRows || `<tr><td class="label muted" colspan="2">None</td></tr>`}</table>
+        <h3>Deductions</h3>
+        <p class="note">${escapeHtml(sections.deductionsNote)}</p>
+        <table class="amt-table">${deductionRows || `<tr><td class="label muted" colspan="2">None</td></tr>`}</table>
       </section>
-      ${
-        otherRows
-          ? `<section>
-        <h3>Other deductions</h3>
-        <table class="amt-table">${otherRows}</table>
-      </section>`
-          : ""
-      }
       <section class="net-section">
         <table class="amt-table">
           <tr class="emphasis net">
@@ -228,31 +219,33 @@ function payrollReceiptPrintStyles(generalSettings, { single = false } = {}) {
     }
     .receipt-head { text-align: center; }
     .org {
-      font-size: 7.5px;
+      font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #64748b;
-      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: #0f172a;
+      font-weight: 700;
     }
-    .single-wrap .org { font-size: 9px; }
+    .single-wrap .org { font-size: 14px; }
     h2 {
       margin: 2px 0 0;
       font-size: 9.5px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.04em;
+      color: #0f172a;
     }
     .single-wrap h2 { font-size: ${headSize}; }
     .period {
       margin: 1px 0 0;
-      font-size: 7.5px;
-      color: #475569;
+      font-size: 8px;
+      color: #1e293b;
     }
     .single-wrap .period { font-size: 10px; }
     .employee { margin-top: 2px; }
     .employee-name {
       font-size: 9px;
       font-weight: 700;
+      color: #0f172a;
     }
     .single-wrap .employee-name { font-size: 12px; }
     .employee-meta {
@@ -346,7 +339,6 @@ function buildPayrollReceiptDocument({
     buildReceiptHtml(r.line, r.employee, {
       orgName,
       periodText: r.periodText,
-      runLabel: r.runLabel,
       generalSettings,
       paidAt: r.paidAt,
       paymentReference: r.paymentReference,
@@ -371,12 +363,10 @@ function buildPayrollReceiptDocument({
 
 function normalizeReceiptInput({ line, employee, run, period }) {
   const periodText = periodLabel(period ?? run?.pay_period ?? run?.payPeriod);
-  const runLabel = run?.id ? `Run ${run.id}` : "";
   return {
     line,
     employee: employee ?? line?.employee ?? null,
     periodText,
-    runLabel,
     paidAt: run?.paid_at ?? null,
     paymentReference: run?.payment_reference ?? null,
   };
