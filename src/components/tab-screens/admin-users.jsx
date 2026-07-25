@@ -154,10 +154,12 @@ export function AdminUsersScreen() {
       if (branchId != null && Number(till.branch_id) !== branchId) return false;
       return till.is_active !== false;
     });
-    const nextLabel = suggestNextTillDefaults(branchTills).till_name;
+    const next = suggestNextTillDefaults(branchTills);
     const options = [
-      { value: "auto", label: `Create next till (${nextLabel})` },
-      { value: "", label: "No till assigned" },
+      ...(next
+        ? [{ value: "auto", label: `Auto — create/assign next free (${next.till_name})` }]
+        : []),
+      { value: "", label: "No till assigned (auto on POS login if possible)" },
     ];
     for (const till of branchTills) {
       const assignedToOther =
@@ -953,8 +955,9 @@ export function AdminUsersScreen() {
                 placeholder="Select till"
               />
               <p className="mt-1 text-xs text-slate-500">
-                Each cashier should have their own till (Cashier 1 → Till01, Cashier 2 → Till02).
-                Choose an existing free till or create the next one automatically.
+                Lock this cashier to a till (Till01–Till10), or choose “Create next till” /
+                leave auto so POS assigns the lowest free unlocked till on declare float.
+                Tills locked to another cashier are never auto-assigned.
               </p>
             </Field>
           ) : null}

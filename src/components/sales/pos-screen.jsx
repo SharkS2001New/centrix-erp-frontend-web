@@ -137,6 +137,7 @@ import { isClassicExternalPosLayout } from "@/lib/external-pos-layout";
 import { usePosOfflineSupport } from "@/hooks/use-pos-offline-support";
 import {
   abandonOfflineSaleEdit,
+  adoptOnlineCartForOffline,
   beginOfflineSaleEdit,
   clearLocalPosCart,
   completeOfflineCashSale,

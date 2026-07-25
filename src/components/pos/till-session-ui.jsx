@@ -246,6 +246,8 @@ export function OpenSessionModal({
     Number(selectedTill.cashier_id) !== Number(user.id);
   const branchName =
     branches.find((b) => b.id === (selectedTill?.branch_id ?? user?.branch_id))?.branch_name ?? "—";
+  const noFreeTillSlot =
+    autoAssignTill && !tillId && !pendingTillLabel && !canResume;
 
   if (!open) return null;
 
@@ -264,7 +266,11 @@ export function OpenSessionModal({
           </p>
         ) : blockedByAssignment ? (
           <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            This till is assigned to another cashier. Each till can only be used by its assigned cashier.
+            This till is locked to another cashier and cannot be used.
+          </p>
+        ) : noFreeTillSlot ? (
+          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            All tills Till01–Till10 are locked to other cashiers. Ask an admin to unlock or assign a till to you.
           </p>
         ) : canResume ? (
           <p className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
@@ -289,7 +295,7 @@ export function OpenSessionModal({
                     ? tillDisplayName(selectedTill)
                     : pendingTillLabel
                       ? `${pendingTillLabel} (created when you save float)`
-                      : "Assigning till…"
+                      : "No free till (Till01–Till10 all locked)"
                 }
               />
             ) : (
@@ -376,6 +382,7 @@ export function OpenSessionModal({
               busy ||
               blockedByOtherCashier ||
               blockedByAssignment ||
+              noFreeTillSlot ||
               (!autoAssignTill && !tillId) ||
               (requireTillFloat && !canResume && (floatAmount === "" || Number(floatAmount) <= 0))
             }

@@ -167,6 +167,62 @@ export async function clearLocalPosCart() {
   await idbClearLocalCart("active");
 }
 
+/** Normalize server (or mixed) cart lines into local offline line shape. */
+export function serverCartLinesToLocal(lines) {
+  return (lines ?? [])
+    .map((line) => {
+      const qty = Number(line.quantity ?? 0);
+      if (!line?.product_code || !(qty > 0)) return null;
+      return {
+        client_line_id: String(
+          line.client_line_id ?? line.update_code ?? line.id ?? newClientSaleUuid(),
+        ),
+        product_code: line.product_code,
+        product_name: line.product_name ?? line.description ?? line.product_code,
+        quantity: qty,
+        unit_price: Number(line.unit_price ?? line.price ?? 0),
+        display_unit_price:
+          line.display_unit_price != null ? Number(line.display_unit_price) : undefined,
+        uom: line.uom ?? null,
+        on_wholesale_retail: Boolean(Number(line.on_wholesale_retail ?? 0)),
+        discount_given: Number(line.discount_given ?? 0),
+        vat_rate: Number(line.vat_rate ?? line.tax_rate ?? line.product_vat ?? 0),
+      };
+    })
+    .filter(Boolean);
+}
+
+/**
+ * When the link drops mid-sale, copy the open online cart into IndexedDB so lines
+ * are not wiped the next time offline cart helpers run.
+ */
+export async function adoptOnlineCartForOffline(onlineCart, seed = {}) {
+  if (onlineCart?.offline && Array.isArray(onlineCart.lines)) {
+    const saved = await saveLocalPosCart(onlineCart);
+    return saved;
+  }
+
+  const lines = serverCartLinesToLocal(onlineCart?.lines);
+  const local = {
+    id: "active",
+    offline: true,
+    channel: "pos",
+    lines,
+    branch_id: onlineCart?.branch_id ?? seed.branch_id ?? null,
+    till_id: onlineCart?.till_id ?? seed.till_id ?? null,
+    float_session_id: onlineCart?.float_session_id ?? seed.float_session_id ?? null,
+    customer_num: onlineCart?.customer_num ?? null,
+    customer_name_override: onlineCart?.customer_name_override ?? null,
+    held_order_num: onlineCart?.held_order_num ?? null,
+    offline_client_sale_uuid: onlineCart?.offline_client_sale_uuid ?? null,
+    offline_edit_snapshot: onlineCart?.offline_edit_snapshot ?? null,
+    migrated_from_online_cart_id: onlineCart?.id ?? null,
+    updated_at_ms: Date.now(),
+  };
+  await idbPutLocalCart(local);
+  return local;
+}
+
 function lineKey(line) {
   return `${line.product_code}|${line.uom ?? ""}|${line.on_wholesale_retail ? 1 : 0}`;
 }

@@ -56,6 +56,8 @@ export function resolveNetSalesMinusFloat({
   return Math.max(0, Number(netSales ?? 0) - Number(openingFloat ?? 0));
 }
 
+export const MAX_BRANCH_TILLS = 10;
+
 export function tillDisplayName(till) {
   if (!till) return "—";
   return till.till_name?.trim() || till.till_number || `Till #${till.id}`;
@@ -65,18 +67,34 @@ export function tillCode(till) {
   return till?.till_number ?? "—";
 }
 
-/** Next default till code/name: Till01, Till02, … based on existing tills. */
+/** Parse Till01 → 1, else null. */
+export function parseTillNumber(value) {
+  const match = String(value ?? "").trim().match(/^Till(\d+)$/i);
+  if (!match) return null;
+  const n = Number.parseInt(match[1], 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Next free Till01–Till10 label for the branch.
+ * Locked tills (assigned cashier_id) still occupy their slot number.
+ * Returns null when Till01–Till10 all exist.
+ */
 export function suggestNextTillDefaults(existingTills = []) {
-  let max = 0;
+  const used = new Set();
   for (const till of existingTills) {
     for (const value of [till?.till_name, till?.till_number]) {
-      const match = String(value ?? "").trim().match(/^Till(\d+)$/i);
-      if (match) max = Math.max(max, Number.parseInt(match[1], 10));
+      const n = parseTillNumber(value);
+      if (n != null && n >= 1 && n <= MAX_BRANCH_TILLS) used.add(n);
     }
   }
-  const next = max + 1;
-  const label = `Till${String(next).padStart(2, "0")}`;
-  return { till_number: label, till_name: label };
+  for (let n = 1; n <= MAX_BRANCH_TILLS; n += 1) {
+    if (!used.has(n)) {
+      const label = `Till${String(n).padStart(2, "0")}`;
+      return { till_number: label, till_name: label };
+    }
+  }
+  return null;
 }
 
 export function normalizeTillCode(value) {
@@ -98,14 +116,14 @@ export function isDuplicateTillCode(existingTills, branchId, tillCode, excludeTi
   });
 }
 
-/** True when the till is unassigned or belongs to this cashier. */
+/** True when the till is unlocked, or locked to this cashier. Locked-to-other = not available. */
 export function isTillAvailableForCashier(till, userId) {
   if (!till) return false;
   if (till.cashier_id == null || till.cashier_id === "") return true;
   return Number(till.cashier_id) === Number(userId);
 }
 
-/** Cashier's assigned till at a branch, if any. */
+/** Cashier's locked till at a branch, if any. */
 export function findAssignedTillForCashier(tills, userId, branchId = null) {
   return (tills ?? []).find((till) => {
     if (Number(till.cashier_id) !== Number(userId)) return false;
@@ -114,9 +132,16 @@ export function findAssignedTillForCashier(tills, userId, branchId = null) {
   }) ?? null;
 }
 
+function tillSortKey(till) {
+  return parseTillNumber(till?.till_name) ?? parseTillNumber(till?.till_number) ?? 999;
+}
+
 /**
- * Pick an available till for the cashier's branch without creating one.
- * Each till is tied to one cashier; only unassigned tills or the cashier's own till are returned.
+ * Pick till for declare-float / POS login:
+ * 1) Cashier's locked till (if any)
+ * 2) Lowest free (unlocked) Till01–Till10 without an open session by someone else
+ * 3) Else suggest creating the next free Till01–Till10 slot (null if all 10 exist)
+ * Never auto-picks a till locked to another user.
  */
 export function pickBranchTillForCashier({ branchId, tills = [], openSessions = [], userId }) {
   if (!branchId) {
@@ -124,9 +149,10 @@ export function pickBranchTillForCashier({ branchId, tills = [], openSessions = 
   }
 
   const openByTill = indexOpenSessionsByTill(openSessions);
-  const branchTills = tills.filter(
-    (t) => Number(t.branch_id) === Number(branchId) && t.is_active !== false,
-  );
+  const branchTills = tills
+    .filter((t) => Number(t.branch_id) === Number(branchId) && t.is_active !== false)
+    .slice()
+    .sort((a, b) => tillSortKey(a) - tillSortKey(b));
 
   const assignedTill = findAssignedTillForCashier(branchTills, userId, branchId);
   if (assignedTill) {
@@ -137,8 +163,9 @@ export function pickBranchTillForCashier({ branchId, tills = [], openSessions = 
     return { till: null, suggested: null };
   }
 
+  // Auto-pick only unlocked tills (cashier_id null).
   for (const till of branchTills) {
-    if (!isTillAvailableForCashier(till, userId)) continue;
+    if (till.cashier_id != null && till.cashier_id !== "") continue;
     const open = openByTill.get(till.id);
     if (!open || Number(open.cashier_id) === Number(userId)) {
       return { till, suggested: null };
@@ -151,7 +178,7 @@ export function pickBranchTillForCashier({ branchId, tills = [], openSessions = 
   };
 }
 
-/** Create a till for the branch — only call after float is declared. */
+/** Create a till for the branch — only call after float is declared / when auto-assign needs a new slot. */
 export async function createBranchTill({ branchId, existingTills = [], suggested = null, cashierId = null }) {
   if (cashierId != null) {
     const assigned = findAssignedTillForCashier(existingTills, cashierId, branchId);
@@ -164,8 +191,13 @@ export async function createBranchTill({ branchId, existingTills = [], suggested
     (t) => Number(t.branch_id) === Number(branchId),
   );
   let next = suggested ?? suggestNextTillDefaults(branchTills);
+  if (!next) {
+    throw new Error(
+      "All tills Till01–Till10 are in use at this branch. Unlock a till or ask an admin to reassign.",
+    );
+  }
 
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  for (let attempt = 0; attempt < MAX_BRANCH_TILLS; attempt += 1) {
     if (!isDuplicateTillCode(existingTills, branchId, next.till_number)) {
       try {
         const created = await apiRequest("/tills", {
@@ -187,7 +219,7 @@ export async function createBranchTill({ branchId, existingTills = [], suggested
         return created;
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
-        if (!message.toLowerCase().includes("already exists") || attempt >= 7) {
+        if (!message.toLowerCase().includes("already exists") || attempt >= MAX_BRANCH_TILLS - 1) {
           throw error;
         }
       }
@@ -197,6 +229,11 @@ export async function createBranchTill({ branchId, existingTills = [], suggested
       ...branchTills,
       { till_number: next.till_number, till_name: next.till_name },
     ]);
+    if (!next) {
+      throw new Error(
+        "All tills Till01–Till10 are in use at this branch. Unlock a till or ask an admin to reassign.",
+      );
+    }
   }
 
   throw new Error("Could not allocate a unique till code for this branch.");
